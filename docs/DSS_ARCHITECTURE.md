@@ -16,11 +16,11 @@ The DSS is an **Experience Layer module** used when an interaction requires inte
 
 ### 1.1 Responsibilities
 
-1. Recognise the actor's intent and map it to one or more capability needs.
+1. Recognise the actor's intent and map it to one or more capability needs, resolving references against prior interaction context.
 2. Apply moderation and policy checkpoints before invoking tools or Provider capabilities.
 3. Compose the configured persona, permitted context, skills, and tools for the interaction.
 4. Select the minimum relevant and permitted local tools or Provider capabilities.
-5. Coordinate tool and capability calls through stable interfaces.
+5. Plan and coordinate tool and capability calls through stable interfaces, and judge whether the gathered result is sufficient to answer the need.
 6. Compose and review the response, including provenance, confidence, limitations, and next steps where applicable.
 7. Return response content, status, and delivery instructions to the Experience API.
 8. Emit non-personal operational evidence for routing, policy, dependency, review, and failure decisions.
@@ -59,29 +59,59 @@ The DSS is an **Experience Layer module** used when an interaction requires inte
 
 ## 3. DSS logical functions
 
-The DSS decomposes into the following logical functions. Each has a single purpose.
+The DSS decomposes into the following logical functions. Each has a single purpose. They are listed in execution order.
 
-1. **Moderation and policy checks** decide whether an interaction may proceed.
-2. **Intent recognition** converts the request into a structured capability need without binding it to a channel.
-3. **Enrichment** uses previous historical context to sharpen the intent. May run in the same LLM call as intent recognition or as a separate step; the choice is an implementation decision.
-4. **Routing** selects the smallest relevant set of permitted skills, tools, and Provider capabilities.
-5. **Persona and context composition** applies configured behaviour and only the context permitted for the interaction.
-6. **Execution** coordinates tool calls and Provider-capability invocations until a result, accepted status, failure, or escalation condition is reached.
-7. **Response composition and review** produces an understandable result without changing Provider-owned meaning.
-8. **Channel response** shapes the reviewed content for the target channel (structured data, text, voice, media hints).
+1. **Intent recognition and enrichment** converts the request into a structured capability need without binding it to a channel, resolving references against previous historical context. Enrichment may run in the same LLM call as intent recognition or as a separate step; the choice is an implementation decision.
+2. **Moderation and policy checks** decide whether an interaction may proceed.
+3. **Skill discovery** selects the smallest relevant set of permitted skills for the interaction.
+4. **Persona and context composition** applies configured behaviour and only the context permitted for the interaction.
+5. **Planning and execution** produces a plan, coordinates tool calls and Provider-capability invocations, and validates that the gathered result is sufficient to answer the need — until a sufficient result, accepted status, failure, or escalation condition is reached.
+6. **Response composition and review** renders an understandable result without changing Provider-owned meaning.
+7. **Channel response** shapes the reviewed content for the target channel (structured data, text, voice, media hints). Shaping only — the DSS does not deliver (§1.2).
 
-> **Shape distinction inside Routing.** Skills are injected into the prompt as reasoning guidance. Tools and Provider capabilities are exposed to the LLM as function-call schemas (name + description + input schema) that the LLM may invoke inside Execution.
+> **Shape distinction.** Skills are injected into the prompt as reasoning guidance. Tools and Provider capabilities are exposed to the LLM as function-call schemas (name + description + input schema) that the LLM may invoke during Planning and execution.
+
+> **Altitude disclaimer.** This is high-level design. The rationale subsections below (§3.0, §3.2) fix *boundaries and direction*, not mechanics. Ordering, seams, and responsibility splits are the decisions being recorded; thresholds, iteration bounds, retry semantics, prompt structure, and schemas are **not** settled here. Every claim below should be re-questioned against real behaviour during implementation, and this document updated when implementation contradicts it. Do not treat these subsections as specifications to code against.
+
+### 3.0 Why enrichment precedes moderation
+
+Intent recognition and enrichment run **before** moderation. This is deliberate, and it reverses the more common ordering.
+
+A follow-up turn cannot be moderated in isolation. If turn 1 asks "what's the wheat price?" and turn 2 asks "can I grow it now?", the referent of `it` lives in history. Moderating the unresolved query means moderating a pronoun — the content that policy needs to judge is not yet present. Resolving first and moderating the **enriched** query is strictly more informative.
+
+Two consequences follow, and both are load-bearing:
+
+- **Moderation receives the substitution, not just the result.** Enrichment emits `original_query` and `enriched_query`; moderation evaluates the pair. Because enrichment reads history, and history contains prior user turns, a turn can plant a referent that a later turn dereferences — so a rewrite that materially changes semantic content is itself a signal worth policy-checking. Moderation is already an LLM-evaluated checkpoint (§4.1), so this is a prompt concern, not new structure.
+- **History is untrusted input to the enrichment prompt.** The enrichment call necessarily reads unmoderated user text. Prior turns must be treated as data, never as instructions.
+
+Nothing may be written to any cross-session store before moderation passes — see §5.2.
 
 ### 3.1 Bridging tools and Provider capabilities
 
 From the LLM's point of view, MCP tools and Network-backed Provider capabilities are indistinguishable tool calls with typed inputs and outputs. The DSS translates:
 
-- **Discovered Provider capabilities** (from `on_discover` responses cached locally by the Network Consumer Adapter) → synthetic tool definitions (name + description + input schema) exposed to the LLM.
+- **Discovered Provider capabilities** (from `on_discover` responses obtained through the Network Consumer Adapter — see §5.4) → synthetic tool definitions (name + description + input schema) exposed to the LLM.
 - **Local MCP tools** (from `list_tools` on the client MCP server) → tool definitions exposed to the LLM.
 
 When the LLM decides to invoke:
 - **Local MCP tools** — DSS calls MCP `call_tool` directly, feeds the result back.
 - **Provider-backed tools** — DSS delegates to the Network Consumer Adapter, which handles Registry resolution, signing, correlation, and callback handling. DSS never speaks Network itself.
+
+The asymmetry between a local tool and a network hop is resolved **below** the LLM: selection preference (prefer in-network, fall back to Provider) is declarative configuration, not something the model reasons about.
+
+### 3.2 The planner / composition seam
+
+Responsibility splits at one line: **the planner owns sufficiency, composition owns presentation.**
+
+**Planning and execution** terminates when the gathered data is judged sufficient to answer the recognised need — not merely when the plan finishes executing. Those are different conditions: a plan can execute perfectly and still return nothing useful. Locating sufficiency here is what makes §7's "no suitable capability returns a no-match outcome rather than a fabricated answer" enforceable, because the planner is the only component positioned to know it came up empty.
+
+**Response composition** receives data already judged sufficient and renders it — persona tone, length, `target_lang`, citations, channel shape. It does not re-open whether the data answers the query, and it does not trigger a replan.
+
+Consequences of the split:
+
+- Reviewer scope narrows to presentation defects, which is why the corrective retry is local to composition (§5.5).
+- "A required tool was never called" is a *planning* defect caught before execution, not a runtime condition repaired downstream.
+- Sufficiency is a model judgment, so the loop is bounded; on exhaustion the DSS returns the §7 no-match outcome rather than a best-effort answer built from insufficient data.
 
 ---
 
@@ -151,8 +181,8 @@ class UserTurn:
 ```
 
 **Why source and target are separate.**
-- `source_lang` drives inbound reasoning: Routing filters skills whose `supported_languages` don't include it; Intent Recognition routes through a language-appropriate embedding model; Provider capabilities can be down-ranked if they don't serve this language.
-- `target_lang` drives outbound reasoning: Persona composition may hint the LLM to draft in `target_lang`; a shipped `language_conformance` Response Reviewer verifies the candidate response is in `target_lang` and can trigger a corrective retry on drift.
+- `source_lang` drives inbound reasoning: Skill discovery filters skills whose `supported_languages` don't include it; Intent Recognition routes through a language-appropriate embedding model; Provider capabilities can be down-ranked if they don't serve this language.
+- `target_lang` drives outbound reasoning: Persona composition may hint the LLM to draft in `target_lang`; a shipped `language_conformance` Response Reviewer verifies the candidate response is in `target_lang` and can trigger a corrective retry on drift. The retry re-renders in Response composition (§5.5) — it does not re-execute the plan.
 
 **Translation is not a DSS responsibility.** Where translation is used, it is a conditional Experience-Layer adapter (or Provider-side capability). Any component that decrypts, translates, maps, or otherwise processes personal fields becomes an explicit personal-data processor — see §6.
 
@@ -180,13 +210,19 @@ The DSS uses **intent-based routing**: extract an intent once, then match unifor
 
 **Layered extraction (v1 direction).** Each layer is cheaper than the next; the pipeline stops at the first layer that returns a confident intent. The layers, in order:
 
-1. **Session cache.** In-session lookup keyed by `(session_id, normalised_query)`. Hits the case where a user repeats or lightly rephrases the same question inside one conversation. Constant time, no model call, no embedding lookup.
+1. **Session cache.** In-session lookup keyed by `(session_id, normalised_query)`. Hits the case where a user repeats or lightly rephrases the same question inside one conversation. Constant time, no model call, no embedding lookup. Scoped to one conversation, so it may be written inline during the turn.
 2. **Global frequency cache.** Cross-session cache of the most frequently seen `normalised_query → intent` mappings for this tenant. Populated from earlier LLM-classified intents. Bounded size, LRU eviction, TTL to protect against taxonomy drift. Constant time.
 3. **Pattern / regex match.** Handcrafted rules for high-confidence deterministic cases — mobile numbers, explicit slash-commands, canonical Provider names, structured queries the adopter knows about. Declared in tenant config; runs before any model is loaded. Deterministic.
 4. **Embedding similarity.** Query embedding matched against artifact embeddings (built from descriptions + example queries + tagged domains). Fast, cheap.
 5. **LLM classifier fallback.** If similarity confidence is low or the query is ambiguous, a small LLM call determines intent using artifact metadata. The result is written back to the global frequency cache so the next occurrence is served from layer 2.
 
 Each layer emits its outcome (`hit` / `miss` / `low_confidence`) to operational evidence so the tenant can see the cache-hit ratio and where LLM cost is being spent.
+
+**Cross-session cache writes happen after the answer, not during the turn.** Because enrichment and intent recognition run before moderation (§3.0), an in-turn write to the tenant-wide layer-2 cache would let an unmoderated turn influence later turns in other sessions. The write is therefore gated on two conditions: moderation allowed the turn, **and** the turn produced a reviewed, accepted response. A turn that ended in reviewer rejection, a no-match (§7), or a Provider failure does not teach the cache that its classification was good.
+
+Accepted trade-off: layer 2 warms more slowly, since only successful turns contribute. A cache that learns from failures is worse than a cold one.
+
+Cache keys use the **normalised** query. Raw user utterances can carry personal data (§8.3), and a cross-session, tenant-wide store of raw utterances would be a durable record of user content — which §6.1 does not permit. Normalisation and entity stripping before key construction avoids the problem rather than mitigating it.
 
 **Taxonomy.** The DSS ships a base taxonomy (`dairy`, `finance`, `weather`, `agri-scheme`, `livestock-health`, `soil-health`, `crop-advisory`, `mandi-prices`, …). Adopters extend locally. The DPG governs the taxonomy centrally — extensions that become widely used get promoted; deprecated tags follow a versioning lifecycle. The same taxonomy is used at **knowledge ingestion** so RAG retrieval respects the same intent structure that routing uses.
 
@@ -203,9 +239,32 @@ Each layer emits its outcome (`hit` / `miss` / `low_confidence`) to operational 
 - Same immutable image across all adopters and versions.
 - Extension happens through mounted config, not code changes.
 
-### 5.4 Local catalog cache 
+### 5.4 Catalog access — the DSS does not own the catalog
 
-The DSS embeds a **catalog cache** subscribed to Discovery updates through the Network Consumer Adapter. The cache reduces per-turn Discovery lookups (routing uses cached catalogs), refreshes on TTL and subscription push, and invalidates on Discovery change notifications. Cache ownership and freshness rules are open items (§8).
+**Catalog caching lives outside the DSS.** The DSS queries capability discovery through the Network Consumer Adapter, which owns catalog caching, subscription, TTL, and invalidation. This follows directly from §1.2: the DSS does not maintain the authoritative catalog index, nor resolve Provider endpoints, keys, schemas, or participation status. An embedded, subscription-fed catalog inside the DSS would be difficult to distinguish from exactly that.
+
+The DSS **may** cache its own selection decisions — "for this intent, this capability was chosen" — to avoid re-deriving a selection for a similar query. The constraint is what may be cached:
+
+- **Cacheable:** capability *references* (capability + schema version), which is a record of what the DSS decided.
+- **Not cacheable:** endpoints, keys, or participation status, which is a record of what is live.
+
+Every cached reference is still resolved through the adapter at execution time, so the adapter remains free to report that a capability is unavailable or now resolves elsewhere. Provider participation changes without notice — deregistration, endpoint moves, schema bumps, serving-area changes, transient unhealthiness — and the adapter is the only component positioned to know. Caching a reference skips the selection *reasoning*; it must never skip the *resolution*.
+
+As with intent caching (§5.2), only selections from turns that produced an accepted response are cached.
+
+### 5.5 Plan as a first-class artifact
+
+The planner produces an explicit **plan** — a structured, inspectable artifact — rather than deciding one step at a time and leaving the plan implicit in a tool-call trace. Three reasons, each tied to a commitment made elsewhere in this document:
+
+- **Policy can see the whole turn.** A per-call checkpoint can only judge one call in isolation, which makes combination rules ("these two data categories must not be disclosed in the same turn") inexpressible. Evaluating a plan before execution makes them expressible.
+- **Evidence comes almost free.** §6.3 requires a record of selected capability and dependency class *without* storing content. A plan is structurally that — intent-to-act with no payloads in it.
+- **Adopters can verify their configuration.** A plan shows what a given config produced without anyone reading model transcripts. That is the difference between "configuration-driven" as a claim and as something an adopter can check.
+
+**Costs accepted.** A plan is built against capability information that can shift before a later step executes; there is a planning phase before any output can stream, which matters most on voice; and a wrong plan commits to several steps of wrongness where a step-at-a-time approach would self-correct. Bounded iteration on the sufficiency check (§3.2) is what recovers the self-correction.
+
+**Plan reuse is deferred.** A prepared-statement model — cache the plan shape for a recurring intent, bind entities per turn — is attractive, and the intent object (§5.2) is already shaped for it (`primary_domain` + `action_type` as the statement, `entities{}` as bind parameters). It is **not** a v1 commitment, because the analogy breaks in one important place: a query optimiser is deterministic and owns its schema, whereas a planner samples one plan among several possible ones. A frozen bad plan yields a confidently wrong answer, not merely a slow one. Two further hazards: a semantic analogue of parameter sniffing (a plan compiled for one region hardcoding a Provider wrong for another), and imprecise invalidation (nothing tells the DSS which cached plans referenced a capability that just changed). Policy must in any case be re-evaluated per execution — it can depend on bound entities, context, and time — so a plan cache saves the planning call, not the policy check.
+
+v1 therefore plans fresh every turn and **instruments plan-shape recurrence**, so the decision to build a plan cache rests on a measured hit rate rather than an assumption. If built, two guardrails: cache only plans from accepted turns, and bind only entities the planner explicitly declared bindable — never inferred.
 
 ---
 
@@ -247,9 +306,9 @@ The DSS emits non-personal evidence events for every turn:
 
 - **Unsafe or disallowed requests** return a controlled rejection without invoking downstream capabilities.
 - **Ambiguous requests** ask for clarification before a capability is invoked.
-- **No suitable capability** returns a no-match outcome rather than a fabricated answer.
+- **No suitable capability** returns a no-match outcome rather than a fabricated answer. This also covers the case where capabilities were invoked but the result was judged insufficient to answer the need (§3.2).
 - **Dependency and Provider failures** preserve the Provider status and follow the declared retry or escalation policy.
-- **Low-confidence or reviewer-rejected responses** are qualified, retried, or escalated according to policy.
+- **Low-confidence or reviewer-rejected responses** are qualified, retried, or escalated according to policy. Reviewer-triggered retries re-render the response; they do not re-execute the plan (§3.2).
 - **A DSS failure does not change Provider-owned state or hide an accepted Provider obligation.**
 
 ---
@@ -267,7 +326,7 @@ The DSS emits non-personal evidence events for every turn:
 
 The architecture is deliberately silent on these; this repo makes explicit choices, and alternative implementations may substitute equivalent behaviour:
 
-- **ReAct** is one possible reasoning strategy — this repo uses it. An implementation may use another reasoning strategy or a deterministic workflow while preserving the same DSS contract.
+- **Plan-then-execute** is one possible reasoning strategy — this repo uses it, with the plan as a first-class artifact (§5.5) and bounded iteration on a sufficiency check (§3.2). A single-step plan degenerates to a direct tool call and should not pay planning overhead. An implementation may use ReAct, another reasoning strategy, or a deterministic workflow while preserving the same DSS contract.
 - **MCP** is one possible local-tool integration protocol — this repo uses it. An implementation may use another tool protocol.
 - The logical functions may run in one process or in separately deployed modules. Deployment choices do not change the Experience Layer boundary or move Provider and Network Exchange responsibilities into the DSS.
 
@@ -275,10 +334,13 @@ The architecture is deliberately silent on these; this repo makes explicit choic
 
 DSS-scoped, deferred to v1 design and later governance:
 
-- **Minimum DSS contracts** — request, response, tool, context, evidence, error.
+- **Minimum DSS contracts** — request, response, tool, context, evidence, error. Now includes the **plan schema** (§5.5), since the plan is a first-class artifact that policy evaluates and evidence records.
+- **Plan execution mechanics.** Step-failure handling, retry budgets, whether mid-execution replanning is ever permitted, and how partial side effects from an already-committed Provider call are reasoned about (§7 forbids changing Provider-owned state or hiding an accepted obligation). Direction: keep v1 failure behaviour simple and legible; the compensation problem is real and should not be entered accidentally.
+- **Sufficiency check semantics** (§3.2) — how "enough to answer" is evaluated, its iteration bound, and the guarantee that bound exhaustion yields the §7 no-match outcome rather than a best-effort answer built from insufficient data.
+- **Corrective-retry scope** (§5.5, §5.1) — confirming the retry re-renders in composition rather than re-executing the plan, and its bound.
 - **Which deployment profiles require a DSS**, and which may use a deterministic Experience implementation.
 - **Translation boundary and personal-data classification.**
-- **Ownership and freshness rules for the Experience-side catalog cache.**
+- **DSS-internal caches vs user context.** §5.2 and §5.4 give the DSS caches of its own decisions (intent classifications, capability references). These must stay a distinct store from the Experience-owned conversation history and profile, which the DSS reads but never writes (§1.2). Open: whether they share infrastructure, and how the boundary is enforced rather than merely intended.
 - **Evaluation thresholds, confidence categories, and human-escalation requirements.**
 - **Conformance tests** that prove an alternative reasoning engine or tool adapter preserves the DSS contract.
 - **Exact primitive schemas.** Direction locked; concrete schemas designed with the first prototype.
