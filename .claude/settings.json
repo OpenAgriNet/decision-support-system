@@ -1,0 +1,17 @@
+{
+  "$schema": "https://raw.githubusercontent.com/anthropics/claude-code/main/schemas/settings.json",
+  "permissions": {
+    "deny": [
+      "Bash(git push*)",
+      "Bash(git reset --hard*)",
+      "Bash(cat .env*)",
+      "Read(.env*)",
+      "Read(secrets/*)",
+      "Read(.aws/*)",
+      "Read(.ssh/*)",
+      "Bash(docker rm*)",
+      "Bash(docker rmi*)",
+      "Read(*prod*.config*)"
+    ]
+  }
+}
