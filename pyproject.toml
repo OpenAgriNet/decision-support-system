@@ -1,0 +1,88 @@
+[project]
+name = "decision-support-system"
+version = "0.1.0"
+description = "Decision Support System — reasoning runtime for the OpenAgriNet Experience Layer"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    # pydantic-ai-slim, not pydantic-ai: the metapackage ships no code of its own
+    # and force-installs anthropic, google-genai, logfire, mcp, evals, cli, and web.
+    # The LLM provider is a swappable adapter behind a port (DSS_ARCHITECTURE.md §4.3),
+    # so extras are declared explicitly as adapters are built.
+    "pydantic-ai-slim[openai]>=2.33.0",
+]
+
+[build-system]
+requires = ["hatchling>=1.32.0"]
+build-backend = "hatchling.build"
+
+# src/dss does not match the distribution name, so the package path is explicit.
+[tool.hatch.build.targets.wheel]
+packages = ["src/dss"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.16.4",
+    "jsonschema>=4.26.0",
+]
+
+# ---------------------------------------------------------------------------
+# Linting & formatting — ruff only; it replaces black, flake8, and isort.
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 88
+src = ["src", "tests"]
+target-version = "py313"
+# Docs contain illustrative Python in fenced blocks whose alignment is
+# deliberate. Formatting them rewrites the prose's meaning, so they are excluded.
+extend-exclude = ["docs"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort
+    "TID", # flake8-tidy-imports — carries the framework-boundary ban below
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+]
+
+# Hard boundary: only orchestration/ may import the agentic framework.
+# banned-api is global with no per-directory table, so the ban is declared once
+# and orchestration/ is exempted here.
+#
+# pydantic_graph is banned alongside pydantic_ai deliberately: pydantic-ai-slim
+# pulls pydantic-graph as a *core* dependency under a separate top-level import
+# name, so banning only pydantic_ai would leave core/ able to import the graph
+# library.
+[tool.ruff.lint.per-file-ignores]
+"src/dss/orchestration/**/*.py" = ["TID251"]
+"tests/integration/orchestration/**/*.py" = ["TID251"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"pydantic_ai".msg = "Only src/dss/orchestration may import Pydantic AI. core/ must stay framework-agnostic — depend on ports/ instead."
+"pydantic_graph".msg = "Only src/dss/orchestration may import pydantic-graph. core/ must stay framework-agnostic."
+
+# ---------------------------------------------------------------------------
+# Tests — the `eval` marker is excluded from the default run because the tier
+# table in CLAUDE.md requires tier 6 to be a scheduled job that never blocks a
+# merge. Without this, the documented `pytest` command would collect it.
+# Run it deliberately with `pytest -m eval`.
+# ---------------------------------------------------------------------------
+# Editors default to the system interpreter and then cannot resolve pytest or
+# pydantic. This points them at the project venv. Type checking is not a gate;
+# ruff is the only enforced tool.
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+include = ["src", "tests"]
+
+[tool.pytest]
+minversion = "9.0"
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-config", "-m", "not eval"]
+markers = [
+    "eval: tier-6 end-to-end quality eval; diagnostic only, never a merge gate",
+]
+strict_markers = true
