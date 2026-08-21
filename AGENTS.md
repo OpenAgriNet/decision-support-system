@@ -22,10 +22,10 @@ Do not duplicate architecture, domain model, or design-decision detail here — 
 - Test framework: pytest
 
 ## Build & Run
-<!-- fill in — no build/run commands committed yet; this is a greenfield repo -->
-Build: `# fill in — build command not detected`
-Test: `pytest`
-Run locally: `# fill in — run command not detected`
+Install: `uv sync`
+Lint: `uv run ruff check .` · Format: `uv run ruff format .`
+Test: `uv run pytest` — tier 6 (eval) is excluded; run it deliberately with `uv run pytest -m eval`
+Run locally: `# no entrypoint yet — the interface (REST/gRPC/in-process) is undecided; see docs/DSS_ARCHITECTURE.md §8.3`
 
 ## Conventions
 Naming, versioning, changelog, git workflow, logging, and linting conventions are documented separately in [`CONVENTIONS.md`](./CONVENTIONS.md) — read that file before naming anything, writing a commit, or opening a PR.
@@ -39,8 +39,15 @@ src/dss/
 ├── core/                     # Framework-agnostic domain logic — plain Python in, plain Python out.
 │                             # One subpackage per DSS logical function (see docs/DSS_ARCHITECTURE.md §3):
 │                             # moderation, intent, enrichment, routing, persona, execution, review, channel.
-│                             # Never imports Pydantic AI, MCP, or any vendor SDK — only `ports/` and `core/models/`.
-│   └── models/               # Shared domain types: UserTurn, UserDetails, Intent, RoutingDecision, etc.
+│                             # Create a subpackage when its slice is built, not ahead of it.
+│                             # Never imports Pydantic AI, pydantic-graph, MCP, or any vendor SDK.
+│   ├── <function>/           # Each logical function owns its types alongside its service:
+│   │                         #   models.py   — the types this function produces/consumes
+│   │                         #   service.py  — module-level functions, not use-case classes
+│   │                         # Split models.py into a models/ package only when it earns it
+│   │                         # (many types); a two-type models/ package is over-structured.
+│   └── shared/               # Models and behaviour used across core services (UserTurn, UserDetails).
+│                             # Cross-cutting only — a type used by one function lives with it.
 │
 ├── ports/                    # Interfaces the core depends on (Protocols/ABCs) — no implementation here.
 │                             # e.g. LLMProvider, ToolGateway, NetworkConsumerAdapter, CatalogCache, EvidenceSink.
