@@ -1,6 +1,6 @@
 # ADR-0001: Adopt Pydantic AI as the Agentic Framework for the DSS
 
-- **Status:** Proposed
+- **Status:** ACCEPTED
 - **Date:** 2026-08-21
 - **Deciders:** OAN (OpenAgriNet) DPG architecture group
 - **Consulted:** Adopter engineering leads across the sibling OAN repositories; Product Owner
