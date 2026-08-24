@@ -65,20 +65,26 @@ select = [
 "pydantic_graph".msg = "Only src/dss/orchestration may import pydantic-graph. core/ must stay framework-agnostic."
 
 # ---------------------------------------------------------------------------
-# Tests — the `eval` marker is excluded from the default run because the tier
-# table in CLAUDE.md requires tier 6 to be a scheduled job that never blocks a
-# merge. Without this, the documented `pytest` command would collect it.
-# Run it deliberately with `pytest -m eval`.
-# ---------------------------------------------------------------------------
 # Editors default to the system interpreter and then cannot resolve pytest or
 # pydantic. This points them at the project venv. Type checking is not a gate;
 # ruff is the only enforced tool.
+# ---------------------------------------------------------------------------
 [tool.pyright]
 venvPath = "."
 venv = ".venv"
 include = ["src", "tests"]
 
-[tool.pytest]
+# ---------------------------------------------------------------------------
+# Tests — the `eval` marker is excluded from the default run because the tier
+# table in CLAUDE.md requires tier 6 to be a scheduled job that never blocks a
+# merge. Without this, the documented `pytest` command would collect it.
+# Run it deliberately with `pytest -m eval`.
+#
+# The table must be `[tool.pytest.ini_options]`, not `[tool.pytest]` — pytest
+# silently ignores the latter, which leaves the eval exclusion, --strict-config
+# and strict_markers all inert with no warning that the config was skipped.
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
 minversion = "9.0"
 testpaths = ["tests"]
 addopts = ["-ra", "--strict-config", "-m", "not eval"]
