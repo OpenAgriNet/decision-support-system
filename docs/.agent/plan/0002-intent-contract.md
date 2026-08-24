@@ -51,7 +51,7 @@ half's contract.
 class ActionType(StrEnum):
     ADVISORY = "advisory"        # "when should I sow wheat?"
     LOOKUP = "lookup"            # "what's today's mandi price?"
-    TRANSACTION = "transaction"  # "book a soil test"
+    ACT = "act"                  # "book a soil test"
 
 
 class Intent(BaseModel):
