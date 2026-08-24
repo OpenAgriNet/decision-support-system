@@ -214,11 +214,31 @@ reachable-capability view.
 
 ## Failure handling
 
-**Retries, then a cheap fallback model, then fail closed.**
+**Retries, then fail closed.** A configurable fallback model is **out of scope here** —
+see below.
 
 `reason_code` separates `MODERATION_UNAVAILABLE` from a policy violation, so a
 transient failure produces *"something went wrong, try again"* rather than *"your
 question was rejected"*. Per-policy `fail_mode` allows the justified exception.
+
+### The fallback model is not built, and one doc implies it is
+
+An earlier draft of this section read *"retries, then a cheap fallback model, then fail
+closed"* — which overstated what this change delivers. There is no fallback setting, no
+YAML key, and no test for a fallback transition. This change retries, then fails closed.
+
+**Read this before assuming otherwise:** ADR-0001 states that `llm_core`'s "multi-provider
+routing, fallback, and circuit-breaking carry over as-is" (§4.2, and again in
+Consequences). That describes an inherited *capability*, not something this change wires
+up. Anyone reading the ADR alone would conclude moderation already degrades gracefully to a
+cheaper model. It does not.
+
+Deferred deliberately, and the gap is worth naming precisely, because the requirement is
+broader than failure handling: config should decide the fallback when a model *fails, is
+too slow, or is too costly*. Cost- and latency-driven demotion is a different trigger from
+error, and neither is built. It needs a model registry to reference models by name, and an
+endpoint setting so a local model can be addressed at all — neither of which exists yet.
+Its own story.
 
 ### Why the orchestrator does not judge on failure
 
