@@ -10,6 +10,10 @@ dependencies = [
     # The LLM provider is a swappable adapter behind a port (DSS_ARCHITECTURE.md §4.3),
     # so extras are declared explicitly as adapters are built.
     "pydantic-ai-slim[openai]>=2.33.0",
+    # Settings binding for the moderation LLM knobs and config paths (spec 0002).
+    "pydantic-settings>=2.5.0",
+    # The policy loader deserialises the mounted YAML pack (spec 0003).
+    "pyyaml>=6.0.2",
 ]
 
 [build-system]
@@ -23,8 +27,16 @@ packages = ["src/dss"]
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
+    "pytest-asyncio>=1.0.0",
     "ruff>=0.16.4",
     "jsonschema>=4.26.0",
+    # Dev-only test harnesses under examples/ — NOT the committed entrypoint
+    # (that needs an ADR; DSS_ARCHITECTURE.md §8.3). fastapi/uvicorn back the
+    # curl server; logfire ships Pydantic AI's OpenTelemetry instrumentation and
+    # exports traces to a self-hosted Langfuse via standard OTEL_* env vars.
+    "fastapi>=0.115.0",
+    "uvicorn>=0.34.0",
+    "logfire>=3.0.0",
 ]
 
 # ---------------------------------------------------------------------------
@@ -59,6 +71,11 @@ select = [
 [tool.ruff.lint.per-file-ignores]
 "src/dss/orchestration/**/*.py" = ["TID251"]
 "tests/integration/orchestration/**/*.py" = ["TID251"]
+# adapters/ is the one place outside orchestration/ where vendor/framework SDK
+# code is allowed to live (CLAUDE.md folder structure; ADR-0001 §4.3): the
+# LLMProvider port is implemented here against Pydantic AI. core/ stays clean —
+# the AST boundary test in tests/unit/test_framework_boundary.py only guards core/.
+"src/dss/adapters/**/*.py" = ["TID251"]
 
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 "pydantic_ai".msg = "Only src/dss/orchestration may import Pydantic AI. core/ must stay framework-agnostic — depend on ports/ instead."
@@ -87,7 +104,11 @@ include = ["src", "tests"]
 [tool.pytest.ini_options]
 minversion = "9.0"
 testpaths = ["tests"]
-addopts = ["-ra", "--strict-config", "-m", "not eval"]
+# async tier-1 tests (the LLMProvider port is async) run without per-test markers.
+asyncio_mode = "auto"
+# import-mode=importlib lets the mirrored test tree carry duplicate basenames
+# (tests/unit/core/*/test_service.py) without __init__ packages or name clashes.
+addopts = ["-ra", "--strict-config", "--import-mode=importlib", "-m", "not eval"]
 markers = [
     "eval: tier-6 end-to-end quality eval; diagnostic only, never a merge gate",
 ]
