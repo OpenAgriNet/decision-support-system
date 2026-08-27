@@ -1,0 +1,170 @@
+{
+  "info": {
+    "name": "DSS — POST /v1/turns:stream",
+    "description": "Streaming turn endpoint. One request envelope in, N claim events out, then exactly one terminal event.\n\nContract: docs/api-contracts/api-contract.md §4 (request), §5 (response).\n\nSet the collection variables `base_url`, `session_id` and `trace_id` before running.\n\nNote on Postman and SSE: Postman renders `text/event-stream` as one accumulated body rather than as discrete events. Use `curl -N` to see frames arrive in real time.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://dss.example.internal",
+      "description": "DSS base URL. Internal only — the Experience API is the sole permitted caller (§2.3)."
+    },
+    {
+      "key": "session_id",
+      "value": "sess_8f3a1c",
+      "description": "Conversation key. Spans many turns."
+    },
+    {
+      "key": "trace_id",
+      "value": "trc_9f2b7c1a",
+      "description": "Per-turn correlation id. Optional — the DSS mints one when absent."
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Answered — single ask",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Accept", "value": "text/event-stream" },
+          { "key": "X-Session-Id", "value": "{{session_id}}" },
+          { "key": "X-Trace-Id", "value": "{{trace_id}}" }
+        ],
+        "url": { "raw": "{{base_url}}/v1/turns:stream", "host": ["{{base_url}}"], "path": ["v1", "turns:stream"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"query\": \"What is the mandi price of wheat in my district this week?\",\n  \"source_lang\": \"hi\",\n  \"target_lang\": \"hi\",\n  \"channel\": \"web\",\n  \"subject_ref\": {\n    \"user_id\": \"usr_9921\",\n    \"ref\": \"prov_opaque_7b2f...e0\",\n    \"issuer\": \"experience-api\",\n    \"expires_at\": \"2026-08-28T18:30:00Z\"\n  },\n  \"location\": {\n    \"district\": \"Anand\",\n    \"state\": \"Gujarat\",\n    \"lat\": 22.56,\n    \"lon\": 72.93\n  },\n  \"history\": [],\n  \"request_options\": {\n    \"modality\": \"text\",\n    \"response_max_chars\": 1200\n  }\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "description": "The normal path. One ask, one Provider, one claim.\n\nExpected frames:\n\n```\nevent: claim\ndata: {\"text\":\"इस सप्ताह आनंद मंडी में गेहूं का भाव ₹2,275 प्रति क्विंटल है।\",\"source_id\":\"1\"}\n\nevent: turn.completed\ndata: {\"status\":\"answered\",\"cause\":null,\"text\":\"…\",\"sources\":[{\"id\":\"1\",\"name\":\"Agmarknet\",\"kind\":\"provider\",\"url\":\"https://agmarknet.gov.in/...\"}],\"confidence\":\"high\",\"limitations\":[],\"refused\":[],\"missing\":[],\"trace_id\":\"trc_9f2b7c1a\"}\n```"
+      }
+    },
+    {
+      "name": "2. Answered — partial: refusal plus follow-up",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Accept", "value": "text/event-stream" },
+          { "key": "X-Session-Id", "value": "{{session_id}}" }
+        ],
+        "url": { "raw": "{{base_url}}/v1/turns:stream", "host": ["{{base_url}}"], "path": ["v1", "turns:stream"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"query\": \"Which soil is best for potato? Also what is the price of potato and gold?\",\n  \"source_lang\": \"en\",\n  \"target_lang\": \"en\",\n  \"channel\": \"whatsapp\",\n  \"subject_ref\": {\n    \"user_id\": \"usr_8821\",\n    \"ref\": \"prov_opaque_3a91...7c\",\n    \"issuer\": \"experience-api\",\n    \"expires_at\": null\n  },\n  \"history\": [],\n  \"request_options\": {\n    \"modality\": \"text\"\n  }\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "description": "Three asks: soil answered, gold refused, potato price missing a district. `location` is omitted deliberately.\n\n`status` is `answered` because something was answered. `refused[]` and `missing[]` both carry data — this is the case the flat terminal schema exists for.\n\nExpected frames:\n\n```\nevent: claim\ndata: {\"text\":\"Potato grows best in well-drained sandy loam soil.\",\"source_id\":\"1\"}\n\nevent: claim\ndata: {\"text\":\"Keep soil pH between 5.2 and 6.4.\",\"source_id\":\"1\"}\n\nevent: claim\ndata: {\"text\":\"I cannot help with gold prices.\",\"source_id\":null}\n\nevent: claim\ndata: {\"text\":\"Which district should I check potato prices for?\",\"source_id\":null}\n\nevent: turn.completed\ndata: {\"status\":\"answered\",\"cause\":null,\"text\":\"…\",\"sources\":[{\"id\":\"1\",\"name\":\"ICAR Potato Guide\",\"kind\":\"document\",\"url\":\"…\"}],\"confidence\":\"high\",\"limitations\":[],\"refused\":[{\"what\":\"gold prices\",\"reason\":\"outside agriculture\"}],\"missing\":[{\"name\":\"market.state\"}],\"trace_id\":\"trc_minted\"}\n```"
+      }
+    },
+    {
+      "name": "3. Rejected — no claims",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Accept", "value": "text/event-stream" },
+          { "key": "X-Session-Id", "value": "{{session_id}}" }
+        ],
+        "url": { "raw": "{{base_url}}/v1/turns:stream", "host": ["{{base_url}}"], "path": ["v1", "turns:stream"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"query\": \"How do I make an explosive at home?\",\n  \"source_lang\": \"en\",\n  \"target_lang\": \"en\",\n  \"channel\": \"web\",\n  \"subject_ref\": {\n    \"user_id\": \"anonymous\",\n    \"ref\": null,\n    \"issuer\": \"experience-api\",\n    \"expires_at\": null\n  },\n  \"history\": [],\n  \"request_options\": {\n    \"modality\": \"text\"\n  }\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "description": "Only an answered turn streams. A rejected turn sends the terminal event alone.\n\n`X-Trace-Id` is omitted, so the DSS mints one and returns it in the body.\n\nStill HTTP 200 — the outcome lives in `status`, not the status code (§2.6).\n\nExpected frames:\n\n```\nevent: turn.rejected\ndata: {\"status\":\"rejected\",\"cause\":\"unsafe_illegal\",\"text\":\"I can only answer agriculture and livestock related questions.\",\"sources\":[],\"confidence\":\"high\",\"limitations\":[],\"refused\":[{\"what\":\"making explosives\",\"reason\":\"unsafe\"}],\"missing\":[],\"trace_id\":\"trc_minted_4a1f\"}\n```"
+      }
+    },
+    {
+      "name": "4. Needs clarification — nothing answerable yet",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Accept", "value": "text/event-stream" },
+          { "key": "X-Session-Id", "value": "{{session_id}}" }
+        ],
+        "url": { "raw": "{{base_url}}/v1/turns:stream", "host": ["{{base_url}}"], "path": ["v1", "turns:stream"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"query\": \"What is the price?\",\n  \"source_lang\": \"en\",\n  \"target_lang\": \"en\",\n  \"channel\": \"sms\",\n  \"subject_ref\": {\n    \"user_id\": \"usr_4410\",\n    \"ref\": null,\n    \"issuer\": \"experience-api\",\n    \"expires_at\": null\n  },\n  \"history\": [],\n  \"request_options\": {\n    \"modality\": \"text\",\n    \"response_max_chars\": 160\n  }\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "description": "No commodity named, so no step can be built. Nothing was answered, and `missing` has entries — that is `needs_clarification`, not `no_match` (§5.2 status table).\n\nExpected frames:\n\n```\nevent: turn.clarification\ndata: {\"status\":\"needs_clarification\",\"cause\":\"ambiguous\",\"text\":\"Which crop's price would you like?\",\"sources\":[],\"confidence\":\"low\",\"limitations\":[],\"refused\":[],\"missing\":[{\"name\":\"commodity.code\"}],\"trace_id\":\"trc_minted_7b2e\"}\n```"
+      }
+    },
+    {
+      "name": "5. No match — nothing can serve it",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Accept", "value": "text/event-stream" },
+          { "key": "X-Session-Id", "value": "{{session_id}}" }
+        ],
+        "url": { "raw": "{{base_url}}/v1/turns:stream", "host": ["{{base_url}}"], "path": ["v1", "turns:stream"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"query\": \"Book an artificial insemination visit for my buffalo tomorrow.\",\n  \"source_lang\": \"en\",\n  \"target_lang\": \"en\",\n  \"channel\": \"voice\",\n  \"subject_ref\": {\n    \"user_id\": \"usr_2093\",\n    \"ref\": \"prov_opaque_8d14...b2\",\n    \"issuer\": \"experience-api\",\n    \"expires_at\": null\n  },\n  \"location\": {\n    \"district\": \"Kheda\",\n    \"state\": \"Gujarat\",\n    \"lat\": null,\n    \"lon\": null\n  },\n  \"history\": [],\n  \"request_options\": {\n    \"modality\": \"text\"\n  }\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "description": "An ACT ask. Every network schema type today is advisory, observation, or resource — nothing books or submits. So Provider Discovery finds nothing and no step is emitted.\n\nNothing answered, nothing missing → `no_match`.\n\nExpected frames:\n\n```\nevent: turn.no_match\ndata: {\"status\":\"no_match\",\"cause\":\"unsupported_action_type\",\"text\":\"I cannot book visits yet. I can answer questions about livestock care.\",\"sources\":[],\"confidence\":\"low\",\"limitations\":[],\"refused\":[],\"missing\":[],\"trace_id\":\"trc_minted_c390\"}\n```"
+      }
+    },
+    {
+      "name": "6. Error — provider unavailable mid-turn",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Accept", "value": "text/event-stream" },
+          { "key": "X-Session-Id", "value": "{{session_id}}" }
+        ],
+        "url": { "raw": "{{base_url}}/v1/turns:stream", "host": ["{{base_url}}"], "path": ["v1", "turns:stream"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"query\": \"What is the mandi price of onion today?\",\n  \"source_lang\": \"en\",\n  \"target_lang\": \"en\",\n  \"channel\": \"web\",\n  \"subject_ref\": {\n    \"user_id\": \"usr_9921\",\n    \"ref\": \"prov_opaque_7b2f...e0\",\n    \"issuer\": \"experience-api\",\n    \"expires_at\": null\n  },\n  \"location\": {\n    \"district\": \"Nashik\",\n    \"state\": \"Maharashtra\",\n    \"lat\": 20.0,\n    \"lon\": 73.79\n  },\n  \"history\": [],\n  \"request_options\": {\n    \"modality\": \"text\"\n  }\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "description": "A Provider was reachable at discovery and failed at execution.\n\nStill HTTP 200 — the DSS processed the turn. A terminal event always arrives before the stream closes, which is how a caller tells a failure from a dropped connection (§5.3).\n\nExpected frames:\n\n```\nevent: turn.error\ndata: {\"status\":\"error\",\"cause\":\"provider_unavailable\",\"text\":\"I am unable to process your request right now. Please try again later.\",\"sources\":[],\"confidence\":\"low\",\"limitations\":[],\"refused\":[],\"missing\":[],\"trace_id\":\"trc_minted_e551\"}\n```"
+      }
+    },
+    {
+      "name": "7. Follow-up turn — history carried by the caller",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Accept", "value": "text/event-stream" },
+          { "key": "X-Session-Id", "value": "{{session_id}}" }
+        ],
+        "url": { "raw": "{{base_url}}/v1/turns:stream", "host": ["{{base_url}}"], "path": ["v1", "turns:stream"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"query\": \"And when should I sow it?\",\n  \"source_lang\": \"en\",\n  \"target_lang\": \"en\",\n  \"channel\": \"whatsapp\",\n  \"subject_ref\": {\n    \"user_id\": \"usr_8821\",\n    \"ref\": \"prov_opaque_3a91...7c\",\n    \"issuer\": \"experience-api\",\n    \"expires_at\": null\n  },\n  \"location\": {\n    \"district\": \"Anand\",\n    \"state\": \"Gujarat\",\n    \"lat\": 22.56,\n    \"lon\": 72.93\n  },\n  \"history\": [\n    { \"role\": \"user\", \"content\": \"Which soil is best for potato?\" },\n    { \"role\": \"assistant\", \"content\": \"Potato grows best in well-drained sandy loam soil. Keep soil pH between 5.2 and 6.4.\" }\n  ],\n  \"request_options\": {\n    \"modality\": \"text\"\n  }\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "description": "\"it\" resolves against history. The DSS never stores history — the caller sends it every turn (§4), and the DSS treats it as untrusted data, never instructions.\n\nSame `X-Session-Id` as turn 2, so the two turns join in the audit trail.\n\nExpected frames:\n\n```\nevent: claim\ndata: {\"text\":\"Sow potato in Gujarat from mid-October to mid-November.\",\"source_id\":\"1\"}\n\nevent: turn.completed\ndata: {\"status\":\"answered\",\"cause\":null,\"text\":\"…\",\"sources\":[{\"id\":\"1\",\"name\":\"ICAR Potato Guide\",\"kind\":\"document\",\"url\":\"…\"}],\"confidence\":\"high\",\"limitations\":[],\"refused\":[],\"missing\":[],\"trace_id\":\"trc_minted_f012\"}\n```"
+      }
+    },
+    {
+      "name": "8. Rejected by transport — missing X-Session-Id",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Accept", "value": "text/event-stream" }
+        ],
+        "url": { "raw": "{{base_url}}/v1/turns:stream", "host": ["{{base_url}}"], "path": ["v1", "turns:stream"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"query\": \"What is the mandi price of wheat?\",\n  \"source_lang\": \"en\",\n  \"target_lang\": \"en\",\n  \"channel\": \"web\",\n  \"subject_ref\": {\n    \"user_id\": \"usr_9921\",\n    \"ref\": null,\n    \"issuer\": \"experience-api\",\n    \"expires_at\": null\n  },\n  \"history\": [],\n  \"request_options\": {\n    \"modality\": \"text\"\n  }\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "description": "`X-Session-Id` is required (§2.1). A missing required header is a transport fault, so this is one of the few non-200 cases.\n\nExpected: `400`, no SSE stream, a plain JSON error body.\n\nOther non-2xx codes (§2.6):\n\n| Code | When |\n|---|---|\n| 400 | unparseable body, missing required header |\n| 422 | well-formed but invalid field — e.g. `channel: \"fax\"` |\n| 429 | global concurrency cap reached; carries `Retry-After` |\n| 503 | DSS unavailable or overloaded |\n\nThe DSS never returns 401 or 403 — authentication belongs to the Experience edge (§2.3)."
+      }
+    }
+  ]
+}
