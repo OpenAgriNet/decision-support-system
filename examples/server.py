@@ -33,9 +33,7 @@ from dss.core.shared.models import UserTurn
 # set, spans are simply created and dropped, so this stays silent offline.
 # metrics=False: Langfuse's OTEL endpoint ingests traces, not metrics, so leaving
 # metrics on produces a constant "Failed to export metrics batch" line.
-logfire.configure(
-    service_name="dss-moderation", send_to_logfire=False, metrics=False
-)
+logfire.configure(service_name="dss-moderation", send_to_logfire=False, metrics=False)
 logfire.instrument_pydantic_ai()
 
 _settings = Settings()
