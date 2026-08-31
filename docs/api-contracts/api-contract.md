@@ -1,397 +1,385 @@
-# DSS API Contract — `UserTurn`
+# DSS API Contract
 
-**Status:** Draft (v1). **Audience:** the Experience API of a participating deployment
-calling the DSS.
+**Status:** Draft (v1). **Who calls this:** the channel services of one deployment — chat,
+voice, and any other.
 
-This contract defines a single turn interface — one request envelope in, one event stream
-out — that supersedes the per-tenant `stream_chat_messages(...)` signatures across the amul,
-bharat, and mh deployments. It is authoritative for the wire surface; for boundary and
-posture rationale see `docs/DSS_ARCHITECTURE.md` (§8 there wins on any conflict). Settled
-design decisions are listed in §10; unresolved items in §8.
+One turn in. A stream of sentences out. Then one final event.
+
+For boundary and posture, see `docs/DSS_ARCHITECTURE.md`. Decisions are in §9, open items
+in §8.
 
 ---
 
-## 1. Shape of the interface
+## 1. What the DSS owns
 
-One turn in, a stream of claims out, then exactly one terminal event.
-
-| | |
+| Owns | Does not own |
 |---|---|
-| **In** | a request envelope — query, languages, channel, identity, optional location, history (§4) |
-| **Out** | `claim` events, then one terminal event (§5) |
-| **Owns** | interpreting the query and answering it |
-| **Does not own** | authentication, sessions, history persistence, rate limits per user — all Experience's (§2.3) |
+| Reading the question and answering it | Authentication and authorization |
+| Writing the answer for the channel | Sessions and history storage |
+| Citing where each fact came from | Per-user rate limits |
 
 The DSS stores nothing that outlives a turn, except its own evidence (§6).
-
-Legacy per-tenant signatures this replaces are mapped in §7.
 
 ---
 
 ## 2. Transport
 
-REST over HTTP, with Server-Sent Events (SSE) for streaming responses.
+REST over HTTP. Server-Sent Events for streaming.
 
-| Operation | Method and path | Request body | Response |
+| Operation | Method and path | Request | Response |
 |---|---|---|---|
-| Streaming turn | `POST /v1/turns:stream` | `application/json` (§4) | `text/event-stream` (§5) |
-| Image turn | `POST /v1/turns:analyze-image` | `multipart/form-data` | `text/event-stream` (§5) |
-| Non-streaming turn | `POST /v1/turns` | `application/json` | `application/json` (§5.3) |
+| Streaming turn | `POST /v1/turns:stream` | `application/json` | `text/event-stream` |
+| Image turn | `POST /v1/turns:analyze-image` | `multipart/form-data` | `text/event-stream` |
+| Non-streaming turn | `POST /v1/turns` | `application/json` | `application/json` |
 
-Requests use `POST` because `history` and context payloads do not belong in a query
-string and the image flow requires `multipart`.
+`POST` because `history` does not belong in a query string, and images need `multipart`.
 
 ### 2.1 Headers
 
-Conversation and correlation identifiers travel in headers.
-
-| Header | Required | Description |
+| Header | Required | What it is |
 |---|:--:|---|
-| `X-Session-Id` | Yes | Conversation key. The DSS reads `history` under it; the Experience API owns persistence. |
-| `X-Trace-Id` | No | Per-turn correlation id. Must be opaque and non-personal; the DSS mints one when absent. Serves as the idempotency key (§2.4) and operational-evidence key (§6). |
-| `Content-Type` | Yes | `application/json` or `multipart/form-data`. |
+| `X-Session-Id` | Yes | The conversation key. The caller owns storage. |
+| `X-Trace-Id` | No | Per-turn id. Opaque, non-personal. The DSS makes one if absent. |
+| `Content-Type` | Yes | `application/json` or `multipart/form-data` |
 
-Both identifiers are echoed on the response. `trace_id` is **also** in the terminal event
-body (§5.2) — a header is lost the moment Experience stores or forwards a turn, and the audit
-trail needs the join key to survive alongside the stored answer.
+Both are echoed back. `trace_id` is **also in the final event body** — a header is lost the
+moment the caller stores the answer, and the audit trail needs the join key to survive.
 
-No CORS headers are set. Only the Experience API reaches this port (§2.3); a browser never
-does.
-
-There is exactly one per-turn identifier — see the identifier model in §10.
+No CORS headers. Only this deployment's own services reach this port.
 
 ### 2.2 Versioning
 
-The API version is carried in the URI path (`/v1/...`). Additive, backward-compatible
-changes do not bump the version; a breaking change to the envelope or terminal schema
-introduces `/v2`.
+Version is in the path (`/v1/...`). Adding a field does not bump it. Changing or removing
+one introduces `/v2`.
 
-### 2.3 Authentication and trust boundary
+### 2.3 Trust boundary
 
-The DSS performs no application-level authentication of either the end user or the calling
-service; its trust boundary is the network perimeter. The deployment must ensure that only
-the Experience API can reach the DSS port (network policy or service mesh). Accordingly:
+**This API is internal.** The DSS runs in the deployment's private subnet. Only that
+deployment's own channel services call it. No browser, no mobile app, no third-party SDK.
 
-- The DSS never issues `401` or `403`; caller and user authentication belong to the
-  Experience edge.
-- Rate limiting is owned by the Experience edge. The DSS may apply a global concurrency
-  cap but enforces no per-user quotas.
+- No authentication. Network policy keeps others out. The DSS never returns `401` or `403`.
+- **No authorization.** A valid assertion means the turn runs. What a farmer may do is
+  decided upstream. If a Provider refuses a call, that comes back as a failure and the
+  answer says so.
+- Rate limits belong to the caller. The DSS may cap total concurrency.
 
-### 2.4 Idempotency — not in v1
+**Why this format and not OpenAI or Open Responses.** Those formats exist so a client team
+can reuse an SDK. No client team is on this boundary. They also stream model text, which
+has nowhere to put the two things this contract is built on: a source id per sentence, and
+an answer already written for its channel.
 
-**Replay protection is deferred.** `X-Trace-Id` is a correlation key only. A turn re-sent
-with the same `trace_id` re-executes, including any side-effecting tool it reaches.
+If a client ever wants an OpenAI-shaped API, that is a channel adapter in the chat service.
+The OAN architecture already allows it. The DSS does not change.
 
-The gap is real: a retrying caller can invoke a Provider capability twice. Two things are
-needed before it can be closed, and neither exists — a caller-supplied request id that
-survives a retry (`X-Trace-Id` is optional and minted when absent, so it does not), and a
-store of prior outcomes. Compensation across committed Provider side effects is a separate
-problem again (§8).
+### 2.4 Retries — not safe in v1
 
-Until then, callers must treat a failed turn as possibly-executed.
+A turn sent twice runs twice, including any Provider call it makes. `X-Trace-Id` is for
+correlation, not replay protection.
 
-### 2.5 Streaming and reconnection
+Closing this needs a caller-supplied id that survives a retry, plus a store of past
+outcomes. Neither exists. Until then, treat a failed turn as possibly already done.
 
-The SSE stream is non-resumable in v1. If the connection drops mid-turn, the DSS finalizes
-the turn server-side and persists the answer to the session. The client recovers by
-re-issuing with the same `X-Session-Id` — the completed turn is then present in history.
-`Last-Event-ID` replay is deferred.
+### 2.5 Dropped connections
 
-### 2.6 HTTP status codes
+The stream cannot be resumed. If the connection drops, the DSS finishes the turn and saves
+the answer to the session. The caller re-issues with the same `X-Session-Id` and finds it
+in history.
 
-A turn the DSS processed returns `200` regardless of outcome; `rejected`, `no_match`, and
-`error` are carried in the terminal event's `status` (§5.2), not the HTTP code. Non-2xx
-codes are reserved for transport and validation faults:
+### 2.6 Status codes
+
+A turn the DSS processed returns `200`, whatever the outcome. Refusals and errors are in
+the final event, not the HTTP code.
 
 | Code | Meaning |
 |---|---|
-| `400` | Malformed request (unparseable body, missing required header) |
-| `422` | Schema violation (well-formed but invalid field) |
-| `429` | Global concurrency cap reached. Carries `Retry-After`. Not a per-user quota — those belong to Experience (§2.3). |
-| `503` | DSS unavailable or overloaded |
+| `400` | Malformed request |
+| `422` | Well-formed but invalid |
+| `429` | Concurrency cap reached. Carries `Retry-After`. |
+| `503` | DSS unavailable |
 
 ---
 
-## 3. Identity and PII
+## 3. Identity
 
-Identity is carried as a single opaque `subject_ref` object minted by the Experience API.
-The envelope carries no raw personal data — no phone, farmer ID, unique ID, name, email,
-or JWT claims.
+Identity is one opaque object. No phone, no name, no email, no JWT claims.
 
 ```jsonc
 "subject_ref": {
-  "user_id":    "string",        // analytics/correlation id only; "anonymous" if unknown
-  "ref":        "string|null",   // Provider-scoped opaque token; the DSS transports but never
-                                  //   inspects, resolves, persists, or logs it
-  "issuer":     "string|null",   // who minted the ref, for audit
-  "expires_at": "string|null"    // RFC3339 bound; the DSS treats an expired ref as absent
+  "user_id":    "string",        // canonical id. "anonymous" if unknown
+  "ref":        "string|null",   // token for Provider calls. The DSS passes it on,
+                                 //   never opens, resolves, stores, or logs it
+  "issuer":     "string|null",   // who made the ref
+  "expires_at": "string|null"    // RFC3339. An expired ref counts as absent
 }
 ```
 
-- The DSS never inspects, resolves, or validates `subject_ref`. What `ref` resolves to,
-  and who validates it, are deferred to the Network Consumer Adapter design (§8).
-- `ref` is required for any turn that invokes a Provider capability on the caller's behalf;
-  `subject_ref` may otherwise be anonymous.
-- Personal payloads a Provider requires travel the protected Experience→Provider path, not
-  the prompt. The DSS does not resolve farmer context from a raw phone number.
+- `user_id` is a canonical id. The caller maps a phone or email to it and keeps that table.
+  The DSS never sees the real identifier and cannot reverse the id.
+- `ref` is needed for any turn that calls a Provider on the farmer's behalf. Otherwise the
+  turn can be anonymous.
+- Personal data a Provider needs travels the caller→Provider path, not the prompt.
 
-Per-tenant effect: amul's phone-driven farmer lookup, bharat's JWT claims, and mh's
-`farmer_id`/`unique_id` all move behind `ref` resolution or remain at the Experience layer;
-none appear on the envelope.
-
-**Free-text PII.** `subject_ref` removes structured PII only. `query` and `history` are
-scrubbed by the Experience API before the DSS sees them; sink-layer redaction is
-defense-in-depth. Residual items are tracked in §8.
+**Free text.** `query` and `history` are scrubbed by the caller. The DSS redacts again on
+write to its sinks (§6).
 
 ---
 
-## 4. Request envelope
-
-Body of `POST /v1/turns:stream` (identifiers in headers, §2.1):
+## 4. Request
 
 ```jsonc
 {
-  "query":       "string",              // user utterance (PII-scrubbed by the caller)
-  "source_lang": "string",              // BCP 47. inbound language; drives routing and skill filtering
-  "target_lang": "string",              // BCP 47. outbound language; drives composition and review
+  "query":       "string",              // what the farmer asked, already scrubbed
+  "source_lang": "string",              // BCP 47
+  "target_lang": "string",              // BCP 47
   "channel":     "web|whatsapp|voice|sms",
 
-  "subject_ref": {                      // identity, opaque (§3)
-    "user_id":    "string",
-    "ref":        "string|null",
-    "issuer":     "string|null",
-    "expires_at": "string|null"
+  "subject_ref": { "user_id": "string", "ref": "string|null",
+                   "issuer": "string|null", "expires_at": "string|null" },
+
+  "location": {                         // optional
+    "region":   "string|null",          // ISO 3166-2, e.g. "IN-GJ", "IN-CH"
+    "area":     "string|null",          // local name, e.g. "Anand"
+    "geometry": { "type": "Point", "coordinates": [72.93, 22.56] }   // [lon, lat]
   },
 
-  "location": {                         // optional — drives coverage-area filtering
-    "district": "string|null",
-    "state":    "string|null",
-    "lat":      0.0,
-    "lon":      0.0
-  },
+  "history": [ /* TurnHistoryEntry[] — { role, content, … }. Fields open (§8) */ ],
 
-  "history": [ /* TurnHistoryEntry[]: framework-neutral { role, content, … };
-                  not the orchestration framework's message type. Fields deferred (§8). */ ],
-
-  "request_options": {                  // all optional
-    "modality":           "text|image",
-    "response_max_chars": 0
-  }
+  "request_options": { "modality": "text|image", "response_max_chars": 0 }
 }
 ```
 
 Rules:
 
-- `query`, `source_lang`, `target_lang`, and `channel` are required; `X-Session-Id` is
-  required in headers.
-- `source_lang` and `target_lang` are BCP 47 tags validated against a supported set the DSS
-  publishes. The set is configuration, not part of this contract — adding a language is not a
-  contract change.
-- `subject_ref.ref` is required for capability-backed turns.
-- `location` is optional with no default. Provider Discovery filters coverage areas on it
-  when present. Two of three deployments cannot fill it.
-- `location.lat`/`lon` are expected pre-rounded by the caller. Whether rounding is required,
-  and to what precision, sits with the Experience layer.
-- `history` may be empty. Entries use the neutral `TurnHistoryEntry` schema; the DSS maps
-  them to its internal representation at the boundary and never writes to the caller's
-  store.
-- **Whether a turn streams follows from the endpoint, not a flag.** `/v1/turns:stream`
-  streams; `/v1/turns` does not. There is no `stream` option — offering one would let a
-  caller ask for an invalid combination.
-- `response_max_chars` is a caller-supplied cap. The Experience layer holds the per-channel
-  value; the DSS honours whatever it is given.
-- Unrecognized fields are rejected, including raw identity objects, framework handles, LLM
-  tier flags, and `session_id`/`qid` in the body.
+- `query`, `source_lang`, `target_lang`, `channel` are required. So is `X-Session-Id`.
+- Languages are BCP 47, checked against a list the DSS publishes. Adding a language is not
+  a contract change.
+- `region` is **ISO 3166-2**. One field covers states, union territories, and places outside
+  India. Chandigarh is `IN-CH`, not a district that happens to be a state.
+- `area` is free text. There is no governed list of Indian districts to validate against.
+- `geometry` is Beckn **`GeoJSONGeometry` v2.0** (RFC 7946, WGS-84). Coordinates are
+  **`[longitude, latitude]`** — GeoJSON order, the reverse of what the current deployments
+  send. `Polygon` works too, so a caller can send a served area instead of a point.
+- **`geometry` is used for planning and never written to the sinks (§6).**
+- `history` may be empty. The DSS reads it and never writes to the caller's store.
+- **The endpoint decides streaming, not a flag.** `/v1/turns:stream` streams. `/v1/turns`
+  does not.
+- `response_max_chars` is the caller's cap. The DSS writes to fit it.
+- Unknown fields are rejected.
 
 ---
 
 ## 5. Response
 
-Claims stream, followed by exactly one terminal event. Only an answered turn streams —
-`rejected`, `no_match`, and `needs_clarification` send the terminal event alone.
+Sentences stream, then one final event. Only an answered turn streams — the other outcomes
+send the final event alone.
 
 ### 5.1 Claim events
 
-A claim is **one whole sentence**, complete when emitted. Not a character delta. The caller
-groups claims into what its channel can send — a speakable phrase for voice, a paragraph for
-chat.
+A claim is **one whole sentence**, finished when sent. Not a character delta.
 
 ```
 event: claim
 data: {"text": "Potato grows best in well-drained sandy loam soil.", "source_id": "1"}
-
-event: claim
-data: {"text": "Keep soil pH between 5.2 and 6.4.", "source_id": "1"}
 ```
 
-`source_id` is `null` for a connective sentence that cites nothing.
+`source_id` is `null` for a linking sentence that cites nothing.
 
-### 5.2 Terminal event
+**The DSS writes for the channel.** Voice gets words made for speaking — short sentences,
+no bullets, amounts spelled out. Chat gets words made for reading. This happens in the DSS
+because writing differently needs a language model, and no language model runs outside it.
 
-One flat schema for every outcome. Fields not relevant to an outcome are empty, never
-absent.
+The caller groups sentences into what it can send and renders or strips the citation
+markers. It does not rewrite.
+
+### 5.2 Final event
 
 ```jsonc
 {
-  "status":      "answered|rejected|no_match|needs_clarification|error",
-  "cause":       "string|null",     // ReasonCode; null when answered
-  "text":        "string",          // the full answer, or the refusal message
-  "sources":     [ { "id": "1", "name": "Agmarknet", "kind": "provider", "url": "string|null" } ],
-  "confidence":  "high|low",
-  "limitations": [ "string" ],
-  "refused":     [ { "what": "gold prices", "reason": "outside agriculture" } ],
-  "missing":     [ { "name": "market.state" } ],
-  "trace_id":    "string"
+  "status":   "answered|rejected|no_match|needs_clarification|error",
+  "cause":    "string|null",     // null when answered
+  "text":     "string",          // the whole answer
+  "sources":  [ { "id": "1", "name": "Agmarknet", "kind": "provider", "url": "string|null" } ],
+  "trace_id": "string"
 }
 ```
 
-| Field | When it carries data |
-|---|---|
-| `sources` | any turn that cited something |
-| `refused[]` | part of the question was out of scope; the rest may still be answered |
-| `missing[]` | an input could not be filled — the caller should ask the farmer |
-| `limitations[]` | caveats on the answer |
-| `trace_id` | always — in the body, not only the header, so it survives being stored |
+**Five fields, and something reads each one.** `status` and `cause` let the caller tell a
+refusal from a crash — today's deployments cannot, because both look the same on the wire.
+`sources` carries provenance. `trace_id` joins the answer to its audit record.
 
-**`refused` and `missing` can both appear on an `answered` turn.** A farmer asking three
-things may get two answers, one refusal, and one follow-up question. Status reflects whether
-*anything* was answered:
+**Everything the farmer reads is in `text`.** Refusals, caveats, and follow-up questions are
+already sentences there, in the right language for the channel. A second structured copy
+would be a second source of truth, and the untested one. Refusals and skipped inputs still
+go to the diagnostic sink (§6), which is where "how often did we refuse, and why" is
+answered.
 
-| Answered anything | `missing` | `status` |
+**`status` on a partial answer.** A farmer asking three things may get two answers and one
+refusal:
+
+| Answered anything | Follow-up needed | `status` |
 |:--:|:--:|---|
-| yes | empty | `answered` |
-| yes | some | `answered` — with `missing[]` set |
-| no | some | `needs_clarification` |
-| no | empty | `no_match` |
+| yes | no | `answered` |
+| yes | yes | `answered` |
+| no | yes | `needs_clarification` |
+| no | no | `no_match` |
 
-**`text` is authoritative.** On a streaming turn it repeats the assembled claims, so a
-caller that renders claims live must not also append `text`. It exists for the
-non-streaming case and for storage.
+**`text` is authoritative.** On a streaming turn it repeats the sentences already sent. A
+caller rendering live must not append it too. It is there for the non-streaming case and for
+storage.
 
-**No capability names on the wire.** `sources` carries what the farmer sees — the Provider
-or document name. Which capability produced a result is internal and goes to telemetry keyed
-by `trace_id` (§6).
+**No capability names on the wire.** `sources` carries what the farmer sees. Which
+capability produced it goes to telemetry.
 
-`cause` is a closed, versioned enum published with the contract. Callers must treat an
-unrecognized `cause` as the generic case of its `status`, so adding a code is non-breaking.
+`cause` is a closed, versioned list. An unknown `cause` should be treated as the generic
+case of its `status`, so adding one is not a breaking change.
 
 | Group | Codes |
 |---|---|
-| harm — reads the query only | `unsafe_illegal`, `role_obfuscation`, `political_controversial`, `external_reference`, `adopter_policy` |
-| scope — reads the intent | `domain_unmapped`, `intent_low_confidence`, `unsupported_action_type` |
+| harm | `unsafe_illegal`, `role_obfuscation`, `political_controversial`, `external_reference`, `adopter_policy` |
+| scope | `domain_unmapped`, `intent_low_confidence`, `unsupported_action_type` |
 | infrastructure | `unavailable`, `provider_unavailable`, `timeout`, `internal` |
 
-### 5.3 Stream faults
+### 5.3 Faults
 
-A dropped connection and a completed turn are distinguishable: a completed turn always ends
-with a terminal event. If the DSS fails mid-stream it emits a terminal event with
-`status: "error"` before closing. If the connection itself drops, no terminal event
-arrives — the caller recovers per §2.5.
+A finished turn always ends with a final event. If the DSS fails mid-stream it sends one
+with `status: "error"` before closing. If the connection drops, none arrives — recover per
+§2.5.
 
-### 5.4 Non-streaming response
+### 5.4 Non-streaming
 
-`POST /v1/turns` returns the same terminal object directly, with no claim events and the
-full answer in `text`.
+`POST /v1/turns` returns the same object, no claim events, full answer in `text`.
 
 ---
 
-## 6. DSS-internal behavior
+## 6. Evidence
 
-The following are not part of the wire contract: history persistence, suggestion
-generation, telemetry and tracing, LLM tier and fallback selection, translation, thinking
-removal, image post-processing, and disconnect finalization.
+Not part of the wire contract: history storage, telemetry, model selection, translation,
+image post-processing.
 
-Evidence is emitted in **two tiers**, both keyed by the per-turn `trace_id`:
+Two tiers, both keyed by `trace_id`:
 
-| Tier | Content | Retention | Access |
+| Tier | Holds | Kept | Who reads |
 |---|---|---|---|
-| Metrics | stage, selected capability, moderation and routing outcomes, latency, terminal outcome. No user content. | long | broad |
-| Diagnostic | the above plus query, answer, and source list | short | restricted |
+| Metrics | stage, capability used, moderation and routing outcomes, latency, outcome. No user content. | long | broad |
+| Diagnostic | the above plus query, answer, sources, refusals, skipped inputs | short | restricted |
 
-The diagnostic tier holds farmer content deliberately — metadata alone tells you *that*
-something changed, not *what went wrong*. Retention, masking before write, and who may query
-it are open (§8).
+The diagnostic tier holds farmer content on purpose. Metadata tells you *that* something
+changed, not *what went wrong*. It is also where refusals are counted — the three current
+deployments each compute a moderation category and throw it away, so today that question can
+only be answered by reading prose in four languages.
+
+**Redaction happens on write to a sink**, not at the request boundary.
+
+**Location is cut at the sink.** `region` and `area` are written. `geometry` is not. A
+stable `user_id` next to a precise point, over many turns, is a home location.
 
 ---
 
-## 7. Migration notes
+## 7. Migration
 
-The DSS replaces `app/services/chat.py::stream_chat_messages` in the amul, bharat, and mh
-deployments. Their unioned parameters map as follows.
+The DSS replaces `stream_chat_messages` in the amul, bharat, and mh deployments.
 
-| Legacy parameter | amul | bharat | mh | Disposition |
-|---|:--:|:--:|:--:|---|
-| `query` | ✅ | ✅ | ✅ | Body field `query` |
-| `session_id` | ✅ | ✅ | ✅ | Header `X-Session-Id` (§2.1) |
-| `source_lang` | ✅ | ✅ | ✅ | Body field `source_lang` |
-| `target_lang` | ✅ | ✅ | ✅ | Body field `target_lang` |
-| `user_id` | ✅ | ✅ | ✅ | Moved into `subject_ref` (§3) |
-| `history` | ✅ | ✅ | ✅ | Body field `history`; read-only to the DSS |
-| `user_info` / `current_user` | ✅ | ✅ | ✅ | Dropped; replaced by `subject_ref` (§3) |
-| `channel` | ✅ | ✅ | ❌ | Body field `channel` |
-| `background_tasks` | ✅ | ✅ | ✅ | Dropped; DSS owns its own async work |
-| `use_translation_pipeline` | ✅ | ❌ | ❌ | Dropped; tenant/Identity config, not a caller flag |
-| `pipeline_profile` | ✅ | ❌ | ❌ | Dropped; LLM tier selection is DSS-internal |
-| `qid` | ❌ | ✅ | ❌ | Header `X-Trace-Id` (§2.1) |
-| `is_image_analysis` | ❌ | ✅ | ❌ | `request_options.modality = "image"` (§4) |
-| `latitude` / `longitude` | ❌ | ✅ | ❌ | Body field `location` (§4) |
-
-The legacy functions returned an `AsyncGenerator[str, None]` — a plain-text stream with
-declines and errors muxed inline, and moderation, provenance, and confidence visible only in
-internal tracing. This contract surfaces that structure as typed claim and terminal events
-(§5).
+| Legacy parameter | Where it goes |
+|---|---|
+| `query`, `source_lang`, `target_lang`, `channel` | Body, same names |
+| `session_id` | Header `X-Session-Id` |
+| `qid` | Header `X-Trace-Id` |
+| `user_id` | Into `subject_ref` |
+| `history` | Body `history`, read-only |
+| `latitude` / `longitude` | `location.geometry` — **reverse the pair to `[lon, lat]`** |
+| `is_image_analysis` | `request_options.modality`. Today bharat derives it by sniffing the query, not from a parameter. |
+| `user_info` / `current_user` | Dropped — use `subject_ref` |
+| `background_tasks` | Dropped — the DSS owns its own async work |
+| `use_translation_pipeline`, `pipeline_profile` | Dropped — DSS config, not caller flags |
 
 Per deployment:
 
-- **amul** — drop `use_translation_pipeline` and `pipeline_profile`; move phone-driven
-  farmer context behind `subject_ref.ref`; move `response_max_chars` to `request_options`;
-  move `session_id` to `X-Session-Id`.
-- **bharat** — `qid` → `X-Trace-Id`; `session_id` → `X-Session-Id`; `is_image_analysis` →
-  `modality: "image"`; `latitude`/`longitude` → the `location` object (§4);
-  JWT claims remain at the Experience layer.
-- **mh** — add an explicit `channel`; `session_id` → `X-Session-Id`; resolve
-  `farmer_id`/`unique_id` via `subject_ref.ref`.
+- **amul** — drop the pipeline flags; move phone-driven farmer context behind
+  `subject_ref.ref`; `response_max_chars` moves to `request_options`.
+- **bharat** — JWT claims stay at the caller; reverse the coordinate pair.
+- **mh** — add an explicit `channel`; resolve `farmer_id`/`unique_id` via `subject_ref.ref`.
+
+Two things to plan for, common to all three:
+
+- Today a blocked turn and a crashed turn look the same to the client. `status` and `cause`
+  tell them apart.
+- All three send bare text to their frontends under a `text/event-stream` content type.
+  They can keep doing that and parse SSE only on the DSS side. Passing frames through to the
+  frontend is a separate, breaking change.
 
 ---
 
-## 8. Open items
+## 8. Open
 
-- **`subject_ref` resolution.** How `ref` resolves and who validates it, pending the
-  Network Consumer Adapter design.
-- **`subject_ref` extensibility.** Whether non-personal tenant fields need a `user_context`
-  projection in addition to `ref`.
-- **`TurnHistoryEntry` fields.** Neutral-schema direction is fixed; concrete fields
-  (tool-call inclusion, redaction) are not.
-- **`cause` registry contents.** Enum shape is fixed; the full code list per `status` is to
-  be published.
-- **Replay protection.** A caller-supplied request id that survives a retry, plus a store of
-  prior outcomes. Deferred (§2.4); until then a failed turn may already have executed.
-- **Telemetry retention and access.** The diagnostic tier holds farmer content (§6). Open:
-  retention window, masking before write, who may query it, and whether reads are audited.
-- **Image turns.** No design work exists for the image flow beyond the endpoint and
-  `modality` flag. Whether the DSS handles images at all is unsettled.
-- **Stream heartbeat.** A voice turn is silent through intent, moderation, discovery and
-  planning. Infrastructure closes idle connections — Cloudflare caps SSE at 30 seconds, AWS
-  ALB closes idle by default. Whether to emit a keep-alive, or to treat that latency as an
-  SLA failure instead, is undecided.
-- **Image-turn envelope.** Encoding of `subject_ref`, `request_options`, and coordinates as
-  multipart fields.
-- **Free-text PII.** Scrub quality (entity-preserving pseudonymization vs deletion),
-  per-Provider forwarding allowlists, and personalization without visible names.
-- **Confidence scale and escalation.** A finer scale and human-escalation surfacing.
-- **Translation mode.** Per-tenant translate-then-reason vs reason-in-native selection.
+- **`ref` resolution.** What it resolves to and who validates it. Pending the Network
+  Consumer Adapter design.
+- **`TurnHistoryEntry` fields.** Direction is fixed, fields are not.
+- **`cause` list.** Shape is fixed; the full list per status is to be published.
+- **Retries.** A caller id that survives a retry, plus a store of past outcomes (§2.4).
+- **Telemetry retention and access.** Sharper than it looks — `user_id` is stable, so
+  diagnostic rows link across sessions. Open: how long, who reads, are reads audited.
+- **Image turns.** Nothing designed beyond the endpoint and the `modality` flag. Whether the
+  DSS handles images at all is unsettled — including how the envelope maps to multipart.
+- **Free-text PII.** Scrub quality, per-Provider allowlists, personalization without names.
+- **Translation mode.** Translate-then-reason or reason-in-native, per tenant.
+- **Provider-scoped refs.** The OAN architecture says each Provider gets a different scoped
+  reference. This contract carries one. Deferred until a second Provider actually receives
+  one and the two are run by different parties.
 
 ---
 
-## 9. Examples
+## 9. Decisions
 
-Illustrative values only. SSE frames are shown as written by the server; every processed
-turn returns HTTP `200` (§2.6).
+| Decision | Choice |
+|---|---|
+| API format | DSS-native. Not OpenAI, Claude, or Open Responses — this API is internal (§2.3) |
+| Transport | REST + SSE (below) |
+| Authentication | None. Network perimeter (§2.3) |
+| Authorization | None in the DSS. Valid assertion, turn runs (§2.3) |
+| Streaming unit | Claims — one whole sentence, with `source_id` (§5.1) |
+| Who writes for the channel | The DSS. The caller groups and renders (§5.1) |
+| Final event | Five fields: `status`, `cause`, `text`, `sources`, `trace_id` (§5.2) |
+| What the farmer reads | All of it in `text` — refusals and follow-ups included (§5.2) |
+| Capability names on the wire | None. `sources` carries farmer-visible names (§5.2) |
+| Evidence | Two tiers, keyed by `trace_id` (§6) |
+| Location in the sinks | `region` and `area` only. Never `geometry` (§6) |
+| Location shape | ISO 3166-2 + free-text area + Beckn `GeoJSONGeometry` v2.0 (§4) |
+| Identity | One opaque `subject_ref`. Canonical `user_id`, never reversible by the DSS (§3) |
+| Redaction | On write to a sink, not at the request boundary (§6) |
+| `trace_id` | Header **and** final event body, so it survives storage (§2.1) |
+| HTTP status | `200` for any processed turn (§2.6) |
+| Versioning | URI path. Additive changes do not bump (§2.2) |
+| Who decides streaming | The endpoint, not a flag (§4) |
+| Retries | Deferred. Replays re-execute (§2.4) |
+| Reconnection | Not resumable. The DSS finishes server-side (§2.5) |
 
-### 9.1 Streaming — answered
+### Why REST + SSE
+
+The DSS is a separate container, so a network boundary exists anyway. A turn is inherently
+streaming. The teams already run SSE over HTTP. No new tooling.
+
+gRPC was rejected — protobuf toolchains for little gain inside one subnet. An in-process
+call was rejected — it contradicts the separate-container model. SSE is one-way after the
+`POST`, which is enough for a turn. Voice barge-in would reopen this.
+
+### One id per turn
+
+`trace_id` is the per-turn id, supplied as `X-Trace-Id` (was `qid`), echoed back, and used
+as the evidence key. Opaque and non-personal. The DSS makes one when the caller omits it.
+
+`session_id` spans many turns. These are the only two ids. `interaction_id`,
+`correlation_id`, `qid`, and `request_id` are not used as synonyms.
+
+---
+
+## 10. Examples
+
+Every processed turn returns `200`.
+
+### Answered, streaming
 
 ```bash
-curl -N -X POST https://dss.example.internal/v1/turns:stream \
+curl -N -X POST https://dss.internal/v1/turns:stream \
   -H "Content-Type: application/json" \
   -H "X-Session-Id: sess_8f3a1c" \
   -H "X-Trace-Id: trc_9f2b7c1a" \
@@ -399,8 +387,9 @@ curl -N -X POST https://dss.example.internal/v1/turns:stream \
     "query": "What is the mandi price of wheat in my district this week?",
     "source_lang": "hi", "target_lang": "hi", "channel": "web",
     "subject_ref": { "user_id": "usr_9921", "ref": "prov_opaque_7b2f...e0",
-                     "issuer": "experience-api", "expires_at": "2026-08-24T18:30:00Z" },
-    "location": { "district": "Anand", "state": "Gujarat", "lat": 22.56, "lon": 72.93 },
+                     "issuer": "experience", "expires_at": "2026-08-24T18:30:00Z" },
+    "location": { "region": "IN-GJ", "area": "Anand",
+                  "geometry": { "type": "Point", "coordinates": [72.93, 22.56] } },
     "history": [],
     "request_options": { "modality": "text", "response_max_chars": 1200 }
   }'
@@ -411,72 +400,26 @@ event: claim
 data: {"text":"इस सप्ताह आनंद मंडी में गेहूं का भाव ₹2,275 प्रति क्विंटल है।","source_id":"1"}
 
 event: turn.completed
-data: {"status":"answered","cause":null,"text":"इस सप्ताह आनंद मंडी में गेहूं का भाव ₹2,275 प्रति क्विंटल है।","sources":[{"id":"1","name":"Agmarknet","kind":"provider","url":"https://agmarknet.gov.in/..."}],"confidence":"high","limitations":[],"refused":[],"missing":[],"trace_id":"trc_9f2b7c1a"}
+data: {"status":"answered","cause":null,"text":"इस सप्ताह आनंद मंडी में गेहूं का भाव ₹2,275 प्रति क्विंटल है।","sources":[{"id":"1","name":"Agmarknet","kind":"provider","url":"https://agmarknet.gov.in/..."}],"trace_id":"trc_9f2b7c1a"}
 ```
 
-### 9.2 Streaming — rejected
+### Rejected
 
-`X-Trace-Id` is omitted; the DSS mints one and returns it. A rejected turn does not stream —
-the terminal event arrives with no preceding claim.
-
-```bash
-curl -N -X POST https://dss.example.internal/v1/turns:stream \
-  -H "Content-Type: application/json" \
-  -H "X-Session-Id: sess_8f3a1c" \
-  -d '{
-    "query": "How do I make an explosive at home?",
-    "source_lang": "en", "target_lang": "en", "channel": "web",
-    "subject_ref": { "user_id": "anonymous", "ref": null, "issuer": "experience-api", "expires_at": null },
-    "history": [],
-    "request_options": { "modality": "text" }
-  }'
-```
+No claim events. `X-Trace-Id` was omitted, so the DSS made one.
 
 ```
 event: turn.rejected
-data: {"status":"rejected","cause":"unsafe_illegal","text":"I can only answer agriculture and livestock related questions.","sources":[],"confidence":"high","limitations":[],"refused":[{"what":"making explosives","reason":"unsafe"}],"missing":[],"trace_id":"trc_minted_4a1f"}
+data: {"status":"rejected","cause":"unsafe_illegal","text":"I can only answer agriculture and livestock related questions.","sources":[],"trace_id":"trc_minted_4a1f"}
 ```
 
-A provider outage uses the same schema:
+A Provider outage uses the same shape:
 
 ```
 event: turn.error
-data: {"status":"error","cause":"provider_unavailable","text":"I am unable to process your request right now. Please try again later.","sources":[],"confidence":"low","limitations":[],"refused":[],"missing":[],"trace_id":"trc_minted_4a1f"}
+data: {"status":"error","cause":"provider_unavailable","text":"I am unable to process your request right now. Please try again later.","sources":[],"trace_id":"trc_minted_4a1f"}
 ```
 
-### 9.3 Non-streaming — answered
-
-```bash
-curl -X POST https://dss.example.internal/v1/turns \
-  -H "Content-Type: application/json" \
-  -H "X-Session-Id: sess_8f3a1c" \
-  -H "X-Trace-Id: trc_c4a01b2d" \
-  -d '{
-    "query": "What is the mandi price of wheat in my district this week?",
-    "source_lang": "hi", "target_lang": "hi", "channel": "web",
-    "subject_ref": { "user_id": "usr_9921", "ref": "prov_opaque_7b2f...e0",
-                     "issuer": "experience-api", "expires_at": "2026-08-24T18:30:00Z" },
-    "location": { "district": "Anand", "state": "Gujarat", "lat": 22.56, "lon": 72.93 },
-    "history": [],
-    "request_options": { "modality": "text" }
-  }'
-```
-
-```json
-{
-  "status": "answered",
-  "cause": null,
-  "text": "इस सप्ताह आनंद मंडी में गेहूं का भाव ₹2,275 प्रति क्विंटल है।",
-  "sources": [ { "id": "1", "name": "Agmarknet", "kind": "provider", "url": "https://agmarknet.gov.in/..." } ],
-  "confidence": "high",
-  "limitations": [],
-  "refused": [],
-  "missing": [],
-  "trace_id": "trc_c4a01b2d"
-}
-```
-
-### 9.4 Non-streaming — no match
+### No match, non-streaming
 
 ```json
 {
@@ -484,18 +427,14 @@ curl -X POST https://dss.example.internal/v1/turns \
   "cause": "domain_unmapped",
   "text": "I couldn't find a way to help with that. I can assist with agriculture and livestock questions.",
   "sources": [],
-  "confidence": "low",
-  "limitations": [],
-  "refused": [],
-  "missing": [],
   "trace_id": "trc_a17c3e90"
 }
 ```
 
-### 9.5 The partial case — answered, with a refusal and a follow-up
+### The partial case
 
 *"Which soil is best for potato? What is the price of potato and gold?"* — two asks served,
-gold refused, and the mandi lookup missing a district.
+gold refused, and the price lookup short of a location.
 
 ```json
 {
@@ -503,59 +442,9 @@ gold refused, and the mandi lookup missing a district.
   "cause": null,
   "text": "Potato grows best in well-drained sandy loam soil. Keep soil pH between 5.2 and 6.4. I cannot help with gold prices. Which district should I check potato prices for?",
   "sources": [ { "id": "1", "name": "ICAR Potato Guide", "kind": "document", "url": "https://icar.example/..." } ],
-  "confidence": "high",
-  "limitations": [],
-  "refused": [ { "what": "gold prices", "reason": "outside agriculture" } ],
-  "missing": [ { "name": "market.state" } ],
   "trace_id": "trc_5b8d2f11"
 }
 ```
 
-`status` is `answered` because something was answered. `missing[]` tells the caller a
-follow-up is needed; `refused[]` tells it part of the question was out of scope.
-
----
-
-## 10. Design decisions
-
-| Decision | Choice | Reference |
-|---|---|---|
-| Transport | REST + SSE | §2, below |
-| PII scrubbing | Experience API scrubs `query`/`history`; DSS redaction is defense-in-depth | §3 |
-| `subject_ref` semantics | Opaque to the DSS; resolution deferred | §3 |
-| Identifier model | `trace_id` and interaction id unified | §2.1, below |
-| Streaming unit | **claims** — one whole sentence each, with `source_id` | §5.1 |
-| Terminal schema | **flat.** Reverses the earlier `details{}` wrapper | §5.2 |
-| Capability names on the wire | **none.** `sources` carries farmer-visible names only; capability goes to telemetry | §5.2, §6 |
-| Evidence content | **two tiers.** Reverses the earlier "no request or response content" | §6 |
-| Trace-id placement | header **and** terminal body, so it survives storage | §2.1, §5.2 |
-| Trace-id safety | Opaque, non-personal; DSS mints when absent | §2.1 |
-| HTTP status | `200` for processed turns; non-2xx for transport/validation only | §2.6 |
-| Versioning | URI path; additive changes do not bump | §2.2 |
-| `history` wire type | Neutral `TurnHistoryEntry` | §4 |
-| Service authentication | None; network-perimeter trust | §2.3 |
-| Idempotency | **deferred.** `trace_id` is correlation only; replays re-execute | §2.4 |
-| Who decides streaming | the endpoint, not a caller flag | §4 |
-| Language set | BCP 47, validated against published config, not enumerated here | §4 |
-| Reconnection | Non-resumable; server-side finalization | §2.5 |
-| `cause` registry | Closed, versioned, forward-compatible | §5.2 |
-| Answered fields | `confidence ∈ {high, low}`; `refused[]` and `missing[]` may both appear | §5.2 |
-
-### Transport rationale
-
-The DSS ships as a separate container in the adopter's network, so a network boundary
-exists by construction; a turn is inherently streaming; and adopter teams already operate
-SSE-over-HTTP endpoints. REST + SSE meets these with no new tooling. gRPC server-streaming
-was rejected as imposing protobuf toolchains for little in-network gain and a poor fit for
-browser and webhook clients; an in-process call was rejected as incompatible with the
-separate-container deployment model. SSE is one-directional after the initial `POST`, which
-suffices for a turn; a future bidirectional need (voice barge-in) would reopen this.
-
-### Identifier model
-
-`trace_id` and the operational-evidence "interaction id" are one value: a per-turn
-correlation id supplied via `X-Trace-Id` (formerly `qid`), echoed on the response, and used
-as the evidence key. It must be opaque and non-personal, and the DSS mints one when the
-caller omits it. It is distinct from `session_id`, which spans many turns. The contract uses
-`trace_id` throughout; `interaction_id`, `correlation_id`, `qid`, and `request_id` are
-avoided as synonyms.
+`status` is `answered` because something was answered. The refusal and the follow-up
+question are sentences in `text`. The caller renders them as they are.
