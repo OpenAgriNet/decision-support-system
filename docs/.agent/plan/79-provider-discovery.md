@@ -544,6 +544,12 @@ events reach the right sinks.
 6. **Per-catalog provenance in a federated response is unverified** — 3.11.
 7. **`Coverage.radius_m` has no source yet** — 3.4. Samples use both 25km and
    250km. Config is the assumption until decided.
+8. **How `network-specs` gets checked out onto disk is not yet built.**
+   `FilesystemSchemaPackSource` assumes a pinned-commit checkout already
+   exists at a configured path. Cloning/pulling that checkout, and a way to
+   trigger a re-checkout + `SchemaPackCache.refresh()` together, is real
+   remaining work — bigger than this slice, and depends on the entrypoint
+   shape (still undecided).
 
 ---
 
