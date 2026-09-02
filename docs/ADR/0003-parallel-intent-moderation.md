@@ -56,11 +56,13 @@ moderation judge, and how is frustration surfaced?**
 
 **Chosen option: A.**
 
-- **Parallel + decoupled.** `orchestration/turn.py::run_turn` gathers the two core
-  calls and returns a `TurnResult(intent, decision)`. `ModerationContext` loses its
-  `intent` field; a policy addresses only `turn.*`. Both results are always
-  computed — the caller decides precedence (a `REJECT` overrides the intent
-  downstream), so the reject path costs no extra round trip later.
+- **Parallel + decoupled, moderation gates.** `orchestration/turn.py::run_turn`
+  gathers the two core calls and returns a `TurnResult(intent, decision)`.
+  `ModerationContext` loses its `intent` field; a policy addresses only `turn.*`.
+  The two run concurrently for latency, but **moderation still gates the result**:
+  on any non-`PROCEED` outcome the classified intent is discarded in favour of an
+  empty `Intent()`, so a turn the assistant refuses to act on never surfaces an
+  intent read off that same text.
 - **Raw query.** `moderate()` reads `context.turn.original_query`. The deterministic
   word-check runs on that raw text; the (possibly sanitized) result is what the LLM
   policies judge.
@@ -86,8 +88,10 @@ moderation judge, and how is frustration surfaced?**
 
 - Frustration detection is coarse: only banned-word turns trip it, so a polite-but-
   frustrated user is not acknowledged (see revisit triggers → Option C).
-- `run_turn` computes intent even when moderation rejects. Accepted: the calls are
-  concurrent, so this costs no wall-clock, and it keeps the coordinator branch-free.
+- `run_turn` computes the intent classification even when moderation rejects and
+  then throws it away. Accepted: the calls are concurrent, so the wasted call costs
+  no wall-clock; blanking it in the coordinator is what keeps a refused turn from
+  leaking an intent.
 
 ## 5. Rejection Rationale
 

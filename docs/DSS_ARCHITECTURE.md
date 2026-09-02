@@ -84,7 +84,7 @@ The DSS decomposes into the following logical functions. Each has a single purpo
 
 A follow-up turn still cannot be judged in isolation. If turn 1 asks "what's the wheat price?" and turn 2 asks "can I grow it now?", the referent of `it` lives in history. But **resolving the reference and moderating a rewrite are separable**: rather than rewrite the query and then moderate the rewrite, moderation judges the raw query with the recent history handed to the LLM **as context**. The model resolves the reference itself; moderation never acts on words the user did not type.
 
-This decouples the two logical functions, so they fan out concurrently (`orchestration/turn.py::run_turn`, an `asyncio.gather`) and the turn's latency is the slower of the two calls rather than their sum. Both results are always produced; a rejecting moderation decision overrides the intent downstream.
+This decouples the two logical functions, so they fan out concurrently (`orchestration/turn.py::run_turn`, an `asyncio.gather`) and the turn's latency is the slower of the two calls rather than their sum. Moderation still gates the result: on any non-`PROCEED` outcome the classified intent is discarded in favour of an empty `Intent()`, so a refused turn surfaces no intent read off the text it refused.
 
 Consequences that remain load-bearing:
 
