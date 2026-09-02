@@ -197,16 +197,37 @@ class UserTurn:
 
 The DSS uses **intent-based routing**: extract an intent once, then match uniformly against skills, tools, and Provider capabilities.
 
-**Intent object (directional; concrete schema is v1 design work):**
+**Intent object (v1, implemented in `core/intent`).** The earlier sketch had one
+`primary_domain` + `entities` per turn. That was replaced once it became clear a
+single farmer sentence routinely holds several questions ("price of potato? am I
+eligible for PM-KISAN? when do I sow?"). The intent is therefore a tuple of
+**asks** — one per question — rather than a single domain:
+
+```python
+class ActionType(StrEnum):
+    ADVISORY = "advisory"   # advice / recommendation
+    LOOKUP   = "lookup"     # a fact to retrieve
+    ACT      = "act"        # perform an action on the farmer's behalf
+
+class Ask:
+    subject: str | None     # the farmer's own word ("potato", "PM-KISAN"); None for "will it rain?"
+    category: str           # one of the taxonomy's categories
+    action_type: ActionType
+
+class Intent:
+    asks: tuple[Ask, ...]   # one ask → one plan step. Empty = "understood nothing" (valid, not an error).
+    confidence: float       # the model's own; independent of ask count.
 ```
-{
-  primary_domain: "milk_collection",
-  secondary_domains: ["dairy"],
-  entities: { mobile: "...", week: "..." },
-  action_type: "lookup" | "advisory" | "transaction",
-  confidence: 0.87
-}
-```
+
+Intent **labels only** — it does not answer, fetch, resolve a subject to an id,
+or pick who to call; everything after reads the labels, and the raw query stays
+whole on `UserTurn`. Rules the classifier enforces: a category not in the active
+taxonomy is dropped (never coerced); a malformed `action_type` drops that ask
+(never guessed); a timeout raises rather than returning a fabricated `Intent`
+(§7). `action_type` renames the sketch's `transaction` to `act`; `subject`
+replaces the free `entities{}` map, since v1 does no entity resolution (§8.3
+open item). The classifier is the layer-5 LLM fallback of the layered extraction
+below; layers 1–4 (caches, patterns, embeddings) remain future work.
 
 **Layered extraction (v1 direction).** Each layer is cheaper than the next; the pipeline stops at the first layer that returns a confident intent. The layers, in order:
 

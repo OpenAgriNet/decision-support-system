@@ -83,11 +83,17 @@ include = ["src", "tests"]
 # The table must be `[tool.pytest.ini_options]`, not `[tool.pytest]` — pytest
 # silently ignores the latter, which leaves the eval exclusion, --strict-config
 # and strict_markers all inert with no warning that the config was skipped.
+#
+# `--import-mode=importlib` because the suite mirrors `src/dss/` (CLAUDE.md), so
+# basenames repeat across directories (many `test_service.py`, `test_models.py`).
+# The legacy prepend mode imports each by bare module name and collides on the
+# first duplicate; importlib imports by full path and needs no `__init__.py`
+# scattered through `tests/`.
 # ---------------------------------------------------------------------------
 [tool.pytest.ini_options]
 minversion = "9.0"
 testpaths = ["tests"]
-addopts = ["-ra", "--strict-config", "-m", "not eval"]
+addopts = ["-ra", "--strict-config", "--import-mode=importlib", "-m", "not eval"]
 markers = [
     "eval: tier-6 end-to-end quality eval; diagnostic only, never a merge gate",
 ]
