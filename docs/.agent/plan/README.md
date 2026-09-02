@@ -5,7 +5,10 @@ shared, then **deleted when the change lands**.
 
 ## Lifecycle
 
-1. A plan lands here as `NNNN-short-slug.md`, on the branch that implements it.
+1. A plan lands here as `<github-issue>-short-slug.md`, on the branch that
+   implements it — e.g. `79-provider-discovery.md` for issue #79. Same issue
+   number as the branch, the commits, and the PR's `Closes #N`, so one number
+   runs the whole chain (see [`CONVENTIONS.md`](../../../CONVENTIONS.md)).
 2. Reviewers comment on it alongside the diff.
 3. When the change merges, the plan is **deleted** and whatever is durable moves
    into the centralised docs — `docs/DSS_ARCHITECTURE.md` for design that holds,
