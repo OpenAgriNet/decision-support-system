@@ -218,10 +218,10 @@ async def run_turn(turn: UserTurn, ctx: TurnContext) -> AsyncIterator[ChannelChu
     tool_candidates_task       = discover_tools(intent, tool_index, ctx)
     moderation_verdict_task    = moderate(turn, intent, ctx)
     skills     = await skills_task
-    candidates = await provider_candidates_task
+    discovered = await provider_candidates_task      # DiscoveryResult
     tools      = await tool_candidates_task
 
-    plan     = await plan_turn(turn, intent, skills, candidates, tools, schemas,
+    plan     = await plan_turn(turn, intent, skills, discovered, tools, schemas,
                                moderation_verdict_task, ctx)
     evidence = await execute(plan, ctx)
     answer   = compose_response(evidence, plan, identity, ctx)
@@ -303,21 +303,21 @@ Full schema, operators, and the loader: `0003-policy-schema.md`.
 
 ```python
 class Taxonomy:
-    categories: tuple[str, ...]    # must be from the schema's six
+    categories: tuple[str, ...]    # must be from the schema's seven
     subjects: tuple[str, ...]      # open. may be empty.
 ```
 
 Categories come from the schema. Subjects come from the adopter.
 
-**Categories are constrained.** The schema defines six(for now) — `Crop`, `Livestock`, `Weather`,
-`Market`, `Scheme`, `Knowledge`. It is the `subjectCategories` enum in
+**Categories are constrained.** The schema defines seven(for now) — `Crop`, `Livestock`, `Weather`,
+`Market`, `Scheme`, `Knowledge`, `Service`. It is the `subjectCategories` enum in
 `schema/AgricultureResource/v0.1/attributes.yaml`. An adopter can narrow to a subset but cannot
 add any new category which is not defined in schema. A category outside the schema is a config error, caught at startup.
 
 **Subjects are open.** The schema expects a `subjectId` from a governed taxonomy but ships no
 list of them. So the adopter's list is the only source. [Open #7]
 
-**Both can be refreshed.** The six category are not frozen — the network can add a category. When it
+**Both can be refreshed.** The seven categories are not frozen — the network can add a category. When it
 does, Adopter should be able to refresh local cache to get the new category -  that can be done at certain interval and/or through API call. Also once the category is added to schema, adopter should be able to update 
 subject list again newly added category.
 
@@ -325,6 +325,13 @@ subject list again newly added category.
 so every published thing carries them. A provider that names no subjects covers its categories
 broadly; naming subjects narrows it. The DSS filters the same way — category first, subject to
 narrow.
+
+**Two axes, one array.** `subjectCategories` reads as a vertical and a horizontal collapsed into
+one list. `Crop`, `Livestock`, `Weather`, `Market`, `Scheme` are **verticals** — what a capability
+is about. `Knowledge` and `Service` are **horizontals** — what kind of thing it is.
+`["Crop", "Knowledge"]` is knowledge about crops; `["Market"]` alone is market data with no
+horizontal. Provider Discovery resolves `@type` from the pair — see **6.4**. The encoding may
+change; the two-axis direction holds.
 
 Intent is the only reader. `Ask.category` must be one of `categories`; a category not in the
 taxonomy is dropped. `Ask.subject` stays the farmer's own word. See **6.1 Intent**.
@@ -530,27 +537,64 @@ rejects attempts to disable them.
 Finds which Providers can serve an ask. It does not call them, and it does not plan.
 
 ```python
-class Provider:
-    id: str
-    name: str
-    capability: str                  # "openagrinet:MandiPriceCapability"
+class ProviderCapability:            # a capability offered by a named provider
+    provider_id: str
+    provider_name: str
+    capability: str                  # the resource's @type
+    resource_id: str                 # which resource `select` commits to
+    offer_id: str                    # TODO: ecommerce term, needs an OAN name
     kind: ProviderKind
 
 
+class DiscoveredAnswer:              # informationMode: Direct — values already present
+    provider_id: str
+    capability: str
+    resource_attributes: dict        # the published values
+    validity: TimePeriod | None
+    generated_at: datetime | None
+
+
 class ProviderKind(StrEnum):
-    LOCAL = "local"                  # found in this deployment's own registry
-    REMOTE = "remote"                # fetched from a remote discovery service
+    LOCAL = "local"                  # this deployment's own network
+    REMOTE = "remote"                # reached through a federated discovery service
 
 
-class ProviderCandidates:
-    by_ask: dict[int, tuple[Provider, ...]]     # ask index -> who can answer it
+class DiscoveryFailure:
+    ask_index: int
+    kind: FailureKind                # TRANSIENT or DEFECT
+    code: str                        # "429", "BIZ_NO_RESULTS_FOUND"
+
+
+class DiscoveryResult:
+    answers: dict[int, tuple[DiscoveredAnswer, ...]]         # Direct — no call needed
+    capabilities: dict[int, tuple[ProviderCapability, ...]]  # OnDemand — must select
+    failures: dict[int, tuple[DiscoveryFailure, ...]]
+    events: tuple[DiscoveryEvent, ...]                       # for the sinks
 ```
 
 ```python
-discover(intent: Intent, turn: UserTurn, ctx: TurnContext) -> ProviderCandidates
+discover(intent, turn, ctx, discovery: CapabilityDiscovery) -> DiscoveryResult
 ```
 
 **Candidates, not a choice.** The planner picks which one a step uses.
+
+**A capability, not a Provider.** One provider publishes many resources, each with its own
+`@type`. So the unit is a provider-capability pair, not a Provider — `Provider` stays what the
+architecture doc means by it, a network participant. Provider-level affinity is a `groupby` on
+`provider_id`.
+
+**Two kinds of result, because the catalog holds two kinds of thing.** Every resource declares
+`informationMode`. `Direct` means the values are already in the catalog, cached at the discovery
+service — no Provider call. `OnDemand` means the catalog advertises what the Provider *can*
+return, and a `select` is required. They have different failure modes: a `Direct` answer can be
+stale but cannot fail; an `OnDemand` `select` cannot be stale but can fail after
+`timeoutMs × retryMax`. Separate types keep a consumer from reading `supportedParameters` as if
+it were an answer.
+
+**Expired `Direct` answers are dropped, and the fallback is recorded.** `informationMode` says
+nothing about freshness — `validity` does. A `Direct` resource outside its window is dropped; if
+an `OnDemand` capability exists on the same `provider_id` + `capability`, the substitution is
+recorded so a cache-miss `select` is distinguishable from a normal one.
 
 **`kind` is where the record came from, not where the Provider runs.** The network is
 decentralised: this deployment has its own discovery registry, and also learns about Providers
@@ -559,23 +603,66 @@ from remote discovery services. Every Provider speaks the same schema either way
 **Runs alongside Skills and Moderation.** It needs only the intent, so it does not wait for a
 plan.
 
-**One query per ask.** Each ask in `intent.asks` gets its own query. They run at the same time.
-`by_ask` is keyed by the ask's position. No asks, no queries. Filters come from the ask plus
-turn context:
+**One query per ask, deduplicated by query value.** Each ask gets its own query; identical
+queries are issued once and their result maps back to every ask that produced it. With no
+`textSearch` and no subject filter, two asks in the same vertical produce byte-identical
+queries — the normal case for a multi-ask turn. So `ProviderQuery` is a value type with no
+turn-specific fields; ids and timestamps live in the envelope the adapter builds. Results are
+keyed by the ask's position. No asks, no queries.
+
+Filters come from the ask plus turn context:
 
 | Filter | From |
 |---|---|
-| `subjectCategories` | `Ask.category` |
-| capability type | `Ask.action_type` |
-| `descriptor.code` | `Ask.subject` |
+| `@type` | `Ask.category` (vertical) + `Ask.action_type` (horizontal) |
 | `languages` | `ctx.target_lang` |
 | `coverageAreas` | `turn.location` |
 
-**Broad or specific is adapter logic.** A Provider with no subjects listed covers its whole
-category. Match those, and any that names this subject. Skip the rest.
+**`@type` is resolved from the two axes, through the cached schema.** The vertical comes from
+`Ask.category`, the horizontal from `Ask.action_type` — see the two-axes note in **5. Taxonomy**.
+The DSS indexes each cached `network-specs` pack by the categories it serves and resolves the
+pair to one or more `@type` values. Normally one; several when the pair cannot be pinned
+(`Market` + `LOOKUP` may hit both `MandiPrice` and `MarketIntelligence`). Forcing one-to-one
+would make the mapping lie. Not a static map — a new pack is picked up by schema refresh.
+
+**The category index is inferred, not declared.** No pack declares which categories it serves:
+`subjectCategories` appears in one `attributes.yaml` (the base) and no pack narrows it. So the
+index is built from each pack's `examples/`, which makes it a convention rather than a contract.
+The upstream fix is one `subject_categories` key per `profile.json` in `network-specs`. When an
+observed category contradicts the index, record the divergence — do not widen the map. [Open #15]
+
+**No subject filtering here.** `Ask.subject` is the farmer's own word, and nothing resolves it to
+a governed id — string equality fails "rice" against "paddy". Semantic matching needs a model,
+and there is no subject glossary yet. So the whole vertical is passed through and the planner
+judges relevance. [Open #7]
+
+**No `textSearch`.** The network does not support it yet. It was the only signal that ranks —
+filters narrow, never rank — so discovery returns an unordered set and ordering falls entirely to
+`provider_selector` config order. [Open #10]
+
+**Failures are data, and classified.** `429`/`500`/`NET_*` are transient — that ask degrades to
+no candidates. `400`/`401`/`403` are a defect on our side: a malformed query or bad credentials,
+which is every turn for that capability, not a per-turn anomaly. Both are recorded; one ask
+failing leaves the others intact. The composer must be able to tell "nobody serves this" from
+"we could not reach discovery" — same empty result, different statements.
 
 **Every outside call goes through the network adapter** — discovery, the Beckn registry, and
-Provider invocation alike. No component talks to the network itself.
+Provider invocation alike. No component talks to the network itself. The adapter is a separately
+deployed service; the DSS holds a client for it, behind two ports:
+
+```python
+class CapabilityDiscovery(Protocol):     # read-only — may cross the barrier
+    async def discover(self, query: ProviderQuery) -> DiscoveryResult: ...
+
+
+class CapabilityInvocation(Protocol):    # side-effecting — executioner only
+    async def select(self, capability: ProviderCapability, ...) -> DiscoveredAnswer: ...
+```
+
+Two ports, not one, so the barrier is enforced by type: a component holding only
+`CapabilityDiscovery` cannot invoke a Provider. Protocol shapes — JSONPath, spatial operators,
+`[longitude, latitude]` ordering, the envelope — are composed in the adapter. `core/` sends
+domain fields and never sees them. `kind` is set there too, from the responding host URL.
 
 **Read-only, so it may cross the barrier.** The barrier blocks calls with side effects. A
 Provider call may already have happened and cannot be taken back; a discovery query can be
@@ -674,9 +761,9 @@ async def plan(
     turn: UserTurn,
     intent: Intent,
     skills: Skills,
-    candidates: ProviderCandidates,           # who can answer each ask
+    discovered: DiscoveryResult,              # Direct answers, OnDemand capabilities, failures
     tools: ToolCandidates,                    # MCP tools that might help
-    schemas: DomainSchemas,                   # only the capabilities in candidates
+    schemas: DomainSchemas,                   # only the capabilities discovered
     verdict: Awaitable[ModerationVerdict],    # not awaited yet
     ctx: TurnContext,
 ) -> Plan | Refusal:
@@ -685,7 +772,7 @@ async def plan(
 ```
 
 **Only the schemas this turn needs.** The cache holds every schema. The planner gets the ones
-for capabilities in `candidates`, nothing more — the rest would be prompt tokens for
+for capabilities in `discovered`, nothing more — the rest would be prompt tokens for
 capabilities it cannot call. How that filtering works is not decided. [Open #13]
 
 #### DomainSchemas — the network schema input
@@ -978,16 +1065,30 @@ Local only. No network call before the barrier.
 
 **In:** `Intent`, `UserTurn`, `ctx` — one query per ask, run together
 
+Ask 0 is `Crop` + `ADVISORY` → `openagrinet:KnowledgeAdvisory`. Ask 1 is `Market` + `LOOKUP` →
+`openagrinet:MandiPrice` and `openagrinet:MarketIntelligence`, since the pair cannot be pinned.
+Two distinct queries.
+
 ```python
-ProviderCandidates(by_ask={
-    0: (Provider(id="krishi-kb", name="Krishi Knowledge Base",
-                 capability="openagrinet:KnowledgeRetrievalCapability", kind=LOCAL),),
-    1: (Provider(id="agmarknet", name="Agmarknet",
-                 capability="openagrinet:MandiPriceCapability", kind=REMOTE),),
-})
+DiscoveryResult(
+    answers={},                       # nothing Direct in the catalog today
+    capabilities={
+        0: (ProviderCapability(provider_id="krishi-kb", provider_name="Krishi Knowledge Base",
+                               capability="openagrinet:KnowledgeAdvisory",
+                               resource_id="res:krishi-kb:crop-advisory",
+                               offer_id="offer:krishi-kb:open", kind=LOCAL),),
+        1: (ProviderCapability(provider_id="agmarknet", provider_name="Agmarknet",
+                               capability="openagrinet:MandiPrice",
+                               resource_id="res:agmarknet:daily-price",
+                               offer_id="offer:agmarknet:open", kind=REMOTE),),
+    },
+    failures={},
+    events=(),
+)
 ```
 
-Ask 2 is gold, which produced no ask, so there is nothing to look up.
+Gold produced no ask, so there is nothing to look up. Subject — "potato" — was not sent as a
+filter and is not matched here; the planner narrows on it.
 
 ### 6. Tool Discovery
 
@@ -1004,7 +1105,7 @@ ToolCandidates(tools=(
 
 ### 7. Planner
 
-**In:** `UserTurn`, `Intent`, `Skills`, `ProviderCandidates`, `ToolCandidates`,
+**In:** `UserTurn`, `Intent`, `Skills`, `DiscoveryResult`, `ToolCandidates`,
 `DomainSchemas`, `Awaitable[verdict]`, `ctx`
 
 The schemas it reads:
@@ -1121,7 +1222,7 @@ trimmed, no markers.
 
 1. Current struture for policy might not work for Response, need to check on this later.
 2. **Regeneration limit** — if review can trigger a rewrite, how many before giving up?
-3. **Required filters** — `network-specs` marks what you *may* filter on, not what you *must* send. `DomainSchema.required` has no source yet.
+3. **Required filters** — `network-specs` marks what you *may* filter on, not what you *must* send. `DomainSchema.required` still has no source. The packs do carry JSON Schema `required:`, but it is a different fact: it is gated on `informationMode` and constrains what a **publisher** must include in its catalog record — not what a **consumer** must supply at query time. There is no `required_filters` (or equivalent) key anywhere in the packs. So any broad query is legal, and every filter is a narrowing choice — a wrong guess excludes a Provider that could have answered, which is a false negative we cannot see. Open: where `DomainSchema.required` gets its values — a new key in `profile.json`, or the planner deriving them from what the capability needs in order to return a useful answer.
 4. **Operator-validity table** — 0003 refers to one, never prints it.
 5. **Language validation** — Gujarati script correctness, deferred. English only for now.
 6. **Does a conversation need a summary, and who keeps it?** Keeping it in memory means it is
@@ -1140,6 +1241,12 @@ trimmed, no markers.
     discovery tells us nothing about quality — only coverage, language and capability type. We
     learn how fresh an answer is after the call, not before. And if two Providers report
     different prices, nothing decides which is right.
+
+    Sharper now that `textSearch` is out: it was the *only* signal that ranks, so discovery
+    returns a genuinely unordered set and `provider_selector` config order is the whole
+    ordering story. Nothing in the DSS ranks anything today. Also unresolved: **who** selects.
+    **6.4** says the planner picks; **6.5** puts the choice in a `provider_selector` port. Those
+    cannot both be true.
 11. **What may telemetry hold, and for how long?** Farmer content reaches the sinks. Open: the
     retention window, masking before write, who may query it, and whether reads are audited.
 12. **Can a dropped stream be resumed?** Not today. The known pattern is to buffer each claim
@@ -1147,11 +1254,19 @@ trimmed, no markers.
     any replica can serve the rest on reconnect. Matters most on voice, where a dropped call
     means the whole answer is spoken again.
 13. **How do we filter schemas down to what a turn needs?** The planner should get only the
-    schemas for capabilities in `candidates`, not the whole cache. Where that filtering happens,
+    schemas for capabilities in `discovered`, not the whole cache. Where that filtering happens,
     and what it keys on, is undecided.
 14. **Who decides `sufficient`?** It is a judgement, and the executioner has no LLM. The
     architecture doc puts sufficiency with the planner, but the field sits on `Evidence`. To be
     settled during implementation.
+15. **Nothing declares which categories a schema pack serves.** `subjectCategories` is declared
+    once, on the base `AgricultureResource`, and no pack narrows it — so a `MandiPrice` resource
+    tagged `["Scheme"]` would validate. **6.4** resolves `@type` from a category index inferred
+    from each pack's `examples/`, which makes the index a convention rather than a contract. The
+    upstream fix is one `subject_categories` key per `profile.json` in `network-specs`; until
+    then, an observed category outside the index is recorded as a divergence and the map is not
+    widened. Also: two of the seven categories, `Livestock` and `Scheme`, have no pack of their
+    own — they appear only as secondary categories on `KnowledgeResource`.
 
 ## 9. Dependencies 
 1. As of now we are considering to read it from GitHub Repo, but if there are some change in the schema location we would need to change as well.
