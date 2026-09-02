@@ -12,8 +12,9 @@ dependencies = [
     "pydantic-ai-slim[openai]>=2.33.0",
     # Settings binding for the moderation LLM knobs and config paths (spec 0002).
     "pydantic-settings>=2.5.0",
-    # The policy loader deserialises the mounted YAML pack (spec 0003).
-    "pyyaml>=6.0.2",
+    # The policy loader deserialises the mounted YAML pack (spec 0003), and the
+    # schema-pack index parses attributes.yaml.
+    "pyyaml>=6.0.3",
 ]
 
 [build-system]
