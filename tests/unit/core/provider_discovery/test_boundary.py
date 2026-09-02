@@ -1,9 +1,9 @@
 """The read-only barrier: nothing in the discovery slice may invoke a provider.
 
-Discovery runs before moderation clears the turn (plan §3.2), so a component
-holding only ``CapabilityDiscovery`` must not be able to reach ``select``. This
-is enforced by type in orchestration/, but ``core`` doesn't get that check for
-free — this test walks the AST the same way test_framework_boundary.py does.
+Discovery runs before moderation clears the turn, so a component holding only
+``CapabilityDiscovery`` must not be able to reach ``select``. This is enforced
+by type in orchestration/, but ``core`` doesn't get that check for free — this
+test walks the AST the same way test_framework_boundary.py does.
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ def test_no_discovery_module_imports_capability_invocation(module_path: Path) ->
     tree = ast.parse(module_path.read_text(encoding="utf-8"), filename=str(module_path))
     assert "CapabilityInvocation" not in _imported_names(tree), (
         f"{module_path.relative_to(SRC)} imports CapabilityInvocation. "
-        "Discovery is read-only until the turn clears moderation (plan §3.2) — "
+        "Discovery is read-only until the turn clears moderation — "
         "invocation belongs to the Plan Executioner."
     )
 

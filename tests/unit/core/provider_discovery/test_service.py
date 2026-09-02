@@ -1,4 +1,4 @@
-"""Tests for the @type resolver (plan §3.6)."""
+"""Tests for the @type resolver."""
 
 from __future__ import annotations
 

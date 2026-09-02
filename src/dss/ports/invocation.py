@@ -1,8 +1,8 @@
 """The seam for the network's provider-invocation hop — implemented by an adapter.
 
-Out of scope for Provider Discovery (plan §4): the port is declared here so the
-type exists to keep discovery's read-only barrier enforceable (plan §3.2), but
-`select`/`on_select` itself belongs to the Plan Executioner.
+Out of scope for Provider Discovery: the port is declared here so the type
+exists to keep discovery's read-only barrier enforceable, but `select`/
+`on_select` itself belongs to the Plan Executioner.
 """
 
 from __future__ import annotations

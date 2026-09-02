@@ -18,7 +18,7 @@ class Coverage:
 @dataclass(frozen=True)
 class ProviderQuery:
     """A domain-level discovery query. No ask index, no trace id, no timestamp —
-    those live in the envelope the client adapter builds (plan §3.4).
+    those live in the envelope the client adapter builds.
     """
 
     capabilities: tuple[str, ...]
@@ -28,23 +28,23 @@ class ProviderQuery:
 
 @dataclass(frozen=True)
 class DiscoveryResult:
-    """Placeholder — full shape (answers/capabilities/failures/events per plan
-    §3.9) waits on DiscoveredAnswer, ProviderCapability, DiscoveryFailure, and
+    """Placeholder — full shape (answers/capabilities/failures/events) waits
+    on DiscoveredAnswer, ProviderCapability, DiscoveryFailure, and
     DiscoveryEvent, none of which are spec'd yet.
     """
 
 
 @dataclass(frozen=True)
 class ProviderCapability:
-    """What discovery intends to use, not the provider's full inventory (plan
-    §3.10). ``kind`` (plan §3.11) is deferred until host-URL derivation is built.
+    """What discovery intends to use, not the provider's full inventory.
+    ``kind`` is deferred until host-URL derivation is built.
     """
 
     provider_id: str
     provider_name: str
     capability: str  # the resource's @type
     resource_id: str  # names which resource `select` commits to
-    offer_id: str  # TODO: rename — ecommerce vocabulary, needs an OAN term (plan §6.5)
+    offer_id: str  # TODO: rename — ecommerce vocabulary, needs an OAN term
 
 
 @dataclass(frozen=True)
@@ -62,3 +62,17 @@ class CapabilityUnresolved:
 
     subject_category: str
     action_type: str
+
+
+@dataclass(frozen=True)
+class SchemaPackFiles:
+    """Raw file content for one schema pack — before any parsing.
+
+    Only the three files the index needs. ``vocab.jsonld``, ``renderer.json``,
+    and ``context.jsonld`` are never fetched.
+    """
+
+    pack_name: str
+    profile_json: str
+    attributes_yaml: str
+    examples_json: tuple[str, ...]
