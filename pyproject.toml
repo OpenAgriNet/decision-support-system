@@ -27,10 +27,7 @@ packages = ["src/dss"]
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
-    "pytest-asyncio>=1.0.0",
-    # Coverage is reported on every run (report-only, no gate) so regressions are
-    # visible without blocking a merge — see [tool.coverage] and addopts below.
-    "pytest-cov>=6.0.0",
+    "pytest-cov>=7.1.0",
     "ruff>=0.16.4",
     "jsonschema>=4.26.0",
     # Dev-only test harnesses under examples/ — NOT the committed entrypoint
