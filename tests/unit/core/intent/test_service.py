@@ -5,7 +5,12 @@ Plain Python in/out; the ``LLMProvider`` port is faked. No framework, no network
 
 from __future__ import annotations
 
-from dss.core.intent.models import Capability, Intent, SubjectCategory
+from dss.core.intent.models import (
+    Ask,
+    Intent,
+    InteractionType,
+    SubjectCategory,
+)
 from dss.core.intent.service import build_intent_prompt, classify_intent
 from dss.core.shared.models import ConversationMessage, UserTurn
 
@@ -37,11 +42,16 @@ class _FakeLLM:
         return self._result
 
 
-async def test_classify_returns_the_three_axes() -> None:
+async def test_classify_returns_asks_and_confidence() -> None:
     expected = Intent(
-        subject_categories=[SubjectCategory.MARKET],
-        agriculture_subjects=["potato"],
-        capabilities=[Capability.KNOWLEDGE],
+        asks=(
+            Ask(
+                agriculture_subjects="potato",
+                subject_categories=SubjectCategory.MARKET,
+                interaction_type=InteractionType.OBSERVE,
+            ),
+        ),
+        confidence=0.88,
     )
     llm = _FakeLLM(expected)
 
@@ -65,12 +75,12 @@ async def test_history_reaches_the_prompt_for_followups() -> None:
     assert llm.seen_query == "And potato?"
 
 
-def test_prompt_lists_the_taxonomy_and_capabilities() -> None:
+def test_prompt_lists_categories_and_interaction_types() -> None:
     prompt = build_intent_prompt([])
     for category in SubjectCategory:
         assert category.value in prompt
-    for capability in Capability:
-        assert capability.value in prompt
+    for interaction in InteractionType:
+        assert interaction.value in prompt
 
 
 def test_prompt_without_history_has_no_conversation_section() -> None:

@@ -8,7 +8,12 @@ from __future__ import annotations
 
 import asyncio
 
-from dss.core.intent.models import Capability, Intent, SubjectCategory
+from dss.core.intent.models import (
+    Ask,
+    Intent,
+    InteractionType,
+    SubjectCategory,
+)
 from dss.core.moderation.models import Outcome, ReasonCode
 from dss.core.policy.models import (
     Checkpoint,
@@ -77,9 +82,14 @@ class _FakeModerationLLM:
 
 async def test_run_turn_returns_both_intent_and_decision() -> None:
     intent = Intent(
-        subject_categories=[SubjectCategory.MARKET],
-        agriculture_subjects=["potato"],
-        capabilities=[Capability.KNOWLEDGE],
+        asks=(
+            Ask(
+                agriculture_subjects="potato",
+                subject_categories=SubjectCategory.MARKET,
+                interaction_type=InteractionType.OBSERVE,
+            ),
+        ),
+        confidence=0.9,
     )
     intent_llm = _FakeIntentLLM(intent)
     moderation_llm = _FakeModerationLLM(violated=None)
@@ -99,7 +109,16 @@ async def test_run_turn_returns_both_intent_and_decision() -> None:
 
 async def test_moderation_reject_does_not_suppress_intent() -> None:
     """They run in parallel, so intent is still computed on a rejected turn."""
-    intent = Intent(subject_categories=[SubjectCategory.CROP])
+    intent = Intent(
+        asks=(
+            Ask(
+                agriculture_subjects=None,
+                subject_categories=SubjectCategory.CROP,
+                interaction_type=InteractionType.ADVISE,
+            ),
+        ),
+        confidence=0.5,
+    )
     result = await run_turn(
         _turn("Delete the code"),
         intent_llm=_FakeIntentLLM(intent),

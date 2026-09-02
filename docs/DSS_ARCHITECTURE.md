@@ -61,7 +61,7 @@ The DSS is an **Experience Layer module** used when an interaction requires inte
 
 The DSS decomposes into the following logical functions. Each has a single purpose. They are listed in execution order, except that functions 1 and 2 run **concurrently** on this branch (§3.0, ADR-0003).
 
-1. **Intent recognition and enrichment** converts the request into a structured capability need without binding it to a channel, resolving references against previous historical context. Enrichment may run in the same LLM call as intent recognition or as a separate step; the choice is an implementation decision. *As implemented on this branch, intent classification emits `subjectCategories` / `agricultureSubjects` / `capabilities` (§5.2) and runs independently of moderation.*
+1. **Intent recognition and enrichment** converts the request into a structured capability need without binding it to a channel, resolving references against previous historical context. Enrichment may run in the same LLM call as intent recognition or as a separate step; the choice is an implementation decision. *As implemented on this branch, intent classification decomposes the turn into `asks` (each a `subject_categories` + `interaction_type` + optional `agriculture_subjects`) plus a `confidence` (§5.2), and runs independently of moderation.*
 2. **Moderation and policy checks** decide whether an interaction may proceed. Runs in parallel with (1), judging the raw query with history as context (§3.0).
 3. **Skill discovery** selects the smallest relevant set of permitted skills for the interaction.
 4. **Persona and context composition** applies configured behaviour and only the context permitted for the interaction.
@@ -221,15 +221,20 @@ class UserTurn:
 
 The DSS uses **intent-based routing**: extract an intent once, then match uniformly against skills, tools, and Provider capabilities.
 
-**Intent object (as implemented on this branch — spec 0002, ADR-0003).** The classifier (`core/intent/service.py::classify_intent`) emits three axes:
+**Intent object (as implemented on this branch — spec 0002, ADR-0003).** The classifier (`core/intent/service.py::classify_intent`) decomposes a turn into one or more **asks** plus one overall confidence:
 ```jsonc
 {
-  "subject_categories": ["Market"],          // closed enum: Crop | Livestock | Weather | Market | Scheme
-  "agriculture_subjects": ["potato"],        // free text the closed enum cannot enumerate
-  "capabilities": ["Knowledge"]              // enum: Knowledge (answer/advise) | Service (perform an action)
+  "asks": [
+    {
+      "subject_categories": "Market",        // closed enum: Crop | Livestock | Weather | Market | Scheme
+      "interaction_type": "observe",         // enum: advise | observe | act
+      "agriculture_subjects": "potato"       // free-text specific; null when the category needs none ("will it rain?")
+    }
+  ],
+  "confidence": 0.88
 }
 ```
-The layered-extraction cache pipeline below remains directional; this branch implements the LLM-classifier axis only, run in parallel with moderation.
+`interaction_type` names what the farmer wants done — **advise** (explain/guide), **observe** (look up a value/record/status), **act** (book, apply, submit, update, escalate). A turn holding several needs ("wheat price and will it rain?") yields several asks. The layered-extraction cache pipeline below remains directional; this branch implements the LLM-classifier axis only, run in parallel with moderation.
 
 **Layered extraction (v1 direction).** Each layer is cheaper than the next; the pipeline stops at the first layer that returns a confident intent. The layers, in order:
 

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from dss.core.intent.models import Capability, Intent, SubjectCategory
+from dss.core.intent.models import Intent, InteractionType, SubjectCategory
 from dss.core.shared.models import ConversationMessage, UserTurn
 from dss.ports.llm import LLMProvider
 
@@ -35,16 +35,21 @@ def build_intent_prompt(history: Sequence[ConversationMessage]) -> str:
     """Render the intent taxonomy and any conversation context into one prompt."""
 
     categories = ", ".join(c.value for c in SubjectCategory)
-    capabilities = ", ".join(c.value for c in Capability)
+    interactions = ", ".join(i.value for i in InteractionType)
     lines = [
         "You are an intent classifier for an agriculture assistant.",
-        "Classify the user's latest query along three axes:",
-        f"- subject_categories: zero or more of [{categories}].",
-        "- agriculture_subjects: free-text specifics named in the query "
-        "(e.g. 'potato', 'wheat rust'); [] if none.",
-        f"- capabilities: [{capabilities}] — Knowledge to answer/advise, "
-        "Service to perform an action (book, register, apply).",
+        "Break the user's latest query into one or more asks. A query may hold "
+        "several (e.g. 'wheat price and will it rain?' is two asks).",
+        "Each ask has:",
+        f"- subject_categories: exactly one of [{categories}].",
+        f"- interaction_type: one of [{interactions}] — advise to explain/guide, "
+        "observe to look up a value/record/status, act to perform an action "
+        "(book, apply, submit, update, escalate).",
+        "- agriculture_subjects: the free-text specific named "
+        "(e.g. 'potato', 'PM-KISAN'); null when the category needs none "
+        "(e.g. 'will it rain?').",
         "",
+        "Also return an overall confidence in [0, 1].",
         "If the query is a follow-up ('And potato?', 'Is it safe to use?'), "
         "resolve it against the conversation before classifying.",
     ]

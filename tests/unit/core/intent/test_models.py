@@ -5,26 +5,42 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from dss.core.intent.models import Capability, Intent, SubjectCategory
+from dss.core.intent.models import (
+    Ask,
+    Intent,
+    InteractionType,
+    SubjectCategory,
+)
 from dss.core.shared.models import UserTurn
 
 
 def test_intent_defaults_are_empty() -> None:
     intent = Intent()
-    assert intent.subject_categories == []
-    assert intent.agriculture_subjects == []
-    assert intent.capabilities == []
+    assert intent.asks == ()
+    assert intent.confidence == 0.0
 
 
-def test_intent_accepts_the_three_axes() -> None:
-    intent = Intent(
-        subject_categories=[SubjectCategory.MARKET],
-        agriculture_subjects=["potato"],
-        capabilities=[Capability.KNOWLEDGE],
+def test_intent_carries_asks_and_confidence() -> None:
+    ask = Ask(
+        agriculture_subjects="potato",
+        subject_categories=SubjectCategory.MARKET,
+        interaction_type=InteractionType.OBSERVE,
     )
-    assert intent.subject_categories == [SubjectCategory.MARKET]
-    assert intent.agriculture_subjects == ["potato"]
-    assert intent.capabilities == [Capability.KNOWLEDGE]
+    intent = Intent(asks=(ask,), confidence=0.9)
+    assert intent.asks == (ask,)
+    assert intent.confidence == 0.9
+
+
+def test_ask_subject_may_be_none() -> None:
+    ask = Ask(
+        subject_categories=SubjectCategory.WEATHER,
+        interaction_type=InteractionType.OBSERVE,
+    )
+    assert ask.agriculture_subjects is None
+
+
+def test_interaction_type_values() -> None:
+    assert {i.value for i in InteractionType} == {"advise", "observe", "act"}
 
 
 def test_subject_category_values() -> None:
@@ -37,8 +53,14 @@ def test_subject_category_values() -> None:
     }
 
 
-def test_capability_values() -> None:
-    assert {c.value for c in Capability} == {"Knowledge", "Service"}
+def test_confidence_out_of_range_raises() -> None:
+    with pytest.raises(ValidationError):
+        Intent(confidence=1.5)
+
+
+def test_unknown_subject_category_raises() -> None:
+    with pytest.raises(ValidationError):
+        Ask(subject_categories="Fishery", interaction_type=InteractionType.ADVISE)
 
 
 def test_unknown_field_raises() -> None:
@@ -46,15 +68,10 @@ def test_unknown_field_raises() -> None:
         Intent(primary_domian="dairy")
 
 
-def test_unknown_subject_category_raises() -> None:
-    with pytest.raises(ValidationError):
-        Intent(subject_categories=["Fishery"])
-
-
 def test_intent_is_frozen() -> None:
     intent = Intent()
     with pytest.raises(ValidationError):
-        intent.subject_categories = [SubjectCategory.CROP]
+        intent.confidence = 0.9
 
 
 def test_user_turn_requires_both_query_fields() -> None:

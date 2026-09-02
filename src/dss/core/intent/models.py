@@ -1,14 +1,9 @@
 """The intent contract — what a farmer is asking for (spec 0002).
 
 Classification lives here; it runs independently of moderation (they no longer
-share a context — see ADR-0003). An ``Intent`` names *what* the turn is about
-along three axes:
-
-- ``subject_categories`` — the closed top-level taxonomy (crop, livestock, …).
-- ``agriculture_subjects`` — free-text specifics ("potato", "wheat rust") the
-  closed enum cannot enumerate.
-- ``capabilities`` — whether the turn wants Knowledge (an answer) or a Service
-  (an action performed on the user's behalf).
+share a context — see ADR-0003). A turn can carry more than one ask (e.g. "wheat
+price and will it rain?"), so an ``Intent`` is a tuple of ``Ask``s, each naming a
+single subject on a single interaction type, plus one overall ``confidence``.
 """
 
 from __future__ import annotations
@@ -18,8 +13,19 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class InteractionType(StrEnum):
+    """What the farmer wants done with a subject — a turn may mix several."""
+
+    # explain/guide: crop advisory, cattle-health guidance, scheme explanation
+    ADVISE = "advise"
+    # look up a value/record/status: weather, mandi price, milk record, eligibility
+    OBSERVE = "observe"
+    # perform an action: book a service, apply for a scheme, submit a grievance
+    ACT = "act"
+
+
 class SubjectCategory(StrEnum):
-    """The closed top-level subject taxonomy for a turn."""
+    """The closed top-level subject taxonomy for an ask."""
 
     CROP = "Crop"
     LIVESTOCK = "Livestock"
@@ -28,23 +34,29 @@ class SubjectCategory(StrEnum):
     SCHEME = "Scheme"
 
 
-class Capability(StrEnum):
-    """What kind of help the turn wants."""
+class Ask(BaseModel):
+    """One thing the turn wants: a subject on a single interaction type.
 
-    KNOWLEDGE = "Knowledge"  # answer a question / give advice
-    SERVICE = "Service"  # perform an action (book, register, apply)
-
-
-class Intent(BaseModel):
-    """A finding about a turn. Empty lists mean the classifier recognised nothing
-    on that axis — an outcome worth acting on, not an error.
-
-    ``frozen`` blocks attribute assignment; it does not deep-freeze the list
-    fields (see spec 0002). Nothing caches an ``Intent`` yet, so that is fine.
+    ``agriculture_subjects`` is the free-text specific ("potato", "PM-KISAN") and
+    is ``None`` when the category needs no subject (e.g. "will it rain?").
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    subject_categories: list[SubjectCategory] = Field(default_factory=list)
-    agriculture_subjects: list[str] = Field(default_factory=list)
-    capabilities: list[Capability] = Field(default_factory=list)
+    agriculture_subjects: str | None = None
+    subject_categories: SubjectCategory
+    interaction_type: InteractionType
+
+
+class Intent(BaseModel):
+    """A finding about a turn. An empty ``asks`` means the classifier recognised
+    nothing — an outcome worth acting on, not an error.
+
+    ``frozen`` blocks attribute assignment; ``asks`` is a tuple so it is immutable
+    in fact, not just by convention (see spec 0002).
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    asks: tuple[Ask, ...] = ()
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
