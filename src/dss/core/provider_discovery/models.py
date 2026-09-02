@@ -50,3 +50,15 @@ class ProviderCapability:
 @dataclass(frozen=True)
 class DiscoveredAnswer:
     """Placeholder — fields not yet spec'd in the plan."""
+
+
+@dataclass(frozen=True)
+class CapabilityUnresolved:
+    """The (subject_category, action_type) pair resolves to zero @type values.
+
+    Every valid pair should map to at least one @type, so this means our own
+    mapping is incomplete — not that no provider serves this pair.
+    """
+
+    subject_category: str
+    action_type: str
