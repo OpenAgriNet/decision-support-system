@@ -1,9 +1,14 @@
 """The intent contract — what a farmer is asking for (spec 0002).
 
-Classification lives here; moderation consumes an ``Intent`` and judges harm.
-The two policies in this slice (profanity filter, delete-command) read only the
-turn, but ``Intent`` is a required root of the moderation context, so it is
-defined here from the start rather than retrofitted later.
+Classification lives here; it runs independently of moderation (they no longer
+share a context — see ADR-0003). An ``Intent`` names *what* the turn is about
+along three axes:
+
+- ``subject_categories`` — the closed top-level taxonomy (crop, livestock, …).
+- ``agriculture_subjects`` — free-text specifics ("potato", "wheat rust") the
+  closed enum cannot enumerate.
+- ``capabilities`` — whether the turn wants Knowledge (an answer) or a Service
+  (an action performed on the user's behalf).
 """
 
 from __future__ import annotations
@@ -13,17 +18,26 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class ActionType(StrEnum):
-    """What the farmer wants done — a turn may carry more than one."""
+class SubjectCategory(StrEnum):
+    """The closed top-level subject taxonomy for a turn."""
 
-    ADVISORY = "advisory"  # "when should I sow wheat?"
-    LOOKUP = "lookup"  # "what's today's mandi price?"
-    ACT = "act"  # "book a soil test"
+    CROP = "Crop"
+    LIVESTOCK = "Livestock"
+    WEATHER = "Weather"
+    MARKET = "Market"
+    SCHEME = "Scheme"
+
+
+class Capability(StrEnum):
+    """What kind of help the turn wants."""
+
+    KNOWLEDGE = "Knowledge"  # answer a question / give advice
+    SERVICE = "Service"  # perform an action (book, register, apply)
 
 
 class Intent(BaseModel):
-    """A finding about a turn. ``domains: []`` means the classifier recognised
-    nothing — an outcome worth acting on, not an error.
+    """A finding about a turn. Empty lists mean the classifier recognised nothing
+    on that axis — an outcome worth acting on, not an error.
 
     ``frozen`` blocks attribute assignment; it does not deep-freeze the list
     fields (see spec 0002). Nothing caches an ``Intent`` yet, so that is fine.
@@ -31,8 +45,6 @@ class Intent(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    domains: list[str] = Field(default_factory=list)
-    subdomains: list[str] = Field(default_factory=list)
-    action_types: list[ActionType] = Field(default_factory=list)
-    entities: dict[str, str] = Field(default_factory=dict)
-    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    subject_categories: list[SubjectCategory] = Field(default_factory=list)
+    agriculture_subjects: list[str] = Field(default_factory=list)
+    capabilities: list[Capability] = Field(default_factory=list)

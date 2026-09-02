@@ -23,6 +23,19 @@ def test_clean_proceed_streams_nothing() -> None:
     assert messages_for(ModerationDecision(outcome=Outcome.PROCEED)) == []
 
 
+def test_frustration_leads_with_an_empathetic_acknowledgement() -> None:
+    decision = ModerationDecision(
+        outcome=Outcome.PROCEED,
+        sanitized_query="potato price",
+        warnings=["Set aside the strong language."],
+        frustration_detected=True,
+    )
+    messages = messages_for(decision)
+    # empathy first, then the sanitization warning
+    assert "frustrat" in messages[0].lower()
+    assert messages[1] == "Set aside the strong language."
+
+
 def test_delete_command_reject_says_it_is_malicious() -> None:
     decision = ModerationDecision(
         outcome=Outcome.REJECT,

@@ -5,34 +5,56 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from dss.core.intent.models import ActionType, Intent
+from dss.core.intent.models import Capability, Intent, SubjectCategory
 from dss.core.shared.models import UserTurn
 
 
-def test_confidence_out_of_range_raises() -> None:
-    with pytest.raises(ValidationError):
-        Intent(confidence=1.5)
-
-
 def test_intent_defaults_are_empty() -> None:
-    intent = Intent(confidence=0.5)
-    assert intent.domains == []
-    assert intent.action_types == []
+    intent = Intent()
+    assert intent.subject_categories == []
+    assert intent.agriculture_subjects == []
+    assert intent.capabilities == []
+
+
+def test_intent_accepts_the_three_axes() -> None:
+    intent = Intent(
+        subject_categories=[SubjectCategory.MARKET],
+        agriculture_subjects=["potato"],
+        capabilities=[Capability.KNOWLEDGE],
+    )
+    assert intent.subject_categories == [SubjectCategory.MARKET]
+    assert intent.agriculture_subjects == ["potato"]
+    assert intent.capabilities == [Capability.KNOWLEDGE]
+
+
+def test_subject_category_values() -> None:
+    assert {c.value for c in SubjectCategory} == {
+        "Crop",
+        "Livestock",
+        "Weather",
+        "Market",
+        "Scheme",
+    }
+
+
+def test_capability_values() -> None:
+    assert {c.value for c in Capability} == {"Knowledge", "Service"}
 
 
 def test_unknown_field_raises() -> None:
     with pytest.raises(ValidationError):
-        Intent(confidence=0.5, primary_domian="dairy")
+        Intent(primary_domian="dairy")
+
+
+def test_unknown_subject_category_raises() -> None:
+    with pytest.raises(ValidationError):
+        Intent(subject_categories=["Fishery"])
 
 
 def test_intent_is_frozen() -> None:
-    intent = Intent(confidence=0.5)
+    intent = Intent()
     with pytest.raises(ValidationError):
-        intent.confidence = 0.9
-
-
-def test_action_type_values() -> None:
-    assert {a.value for a in ActionType} == {"advisory", "lookup", "act"}
+        intent.subject_categories = [SubjectCategory.CROP]
 
 
 def test_user_turn_requires_both_query_fields() -> None:

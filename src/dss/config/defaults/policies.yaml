@@ -14,8 +14,8 @@ policies:
     words:
       - shit
     warning: >-
-      I've removed some inappropriate language from your message and will answer
-      the rest of your question.
+      I've set aside the strong language and I'll go straight to answering the rest
+      of your question.
 
   # LLM. Rejects queries that are malicious commands aimed at the system (delete
   # the code/prompt, ignore your instructions) rather than a genuine user ask.

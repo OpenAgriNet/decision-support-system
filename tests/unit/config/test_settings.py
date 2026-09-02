@@ -5,19 +5,22 @@ from __future__ import annotations
 import pytest
 
 from dss.config.settings import Settings
-from dss.core.intent.models import ActionType
 
 
 def test_defaults() -> None:
     settings = Settings()
     assert settings.moderation_temperature == 0.0
-    assert settings.intent_confidence_min == 0.5
-    assert settings.supported_action_types == [ActionType.ADVISORY]
+    assert settings.intent_model == "openai:gpt-4o-mini"
+    assert settings.moderation_model == "openai:gpt-4o-mini"
 
 
-def test_dss_prefixed_env_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DSS_MODERATION_MODEL", "openai:gpt-4o")
-    assert Settings().moderation_model == "openai:gpt-4o"
+def test_each_component_binds_its_own_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The model name comes from the environment, per component (ADR-0004).
+    monkeypatch.setenv("DSS_INTENT_MODEL", "openai:gpt-4o")
+    monkeypatch.setenv("DSS_MODERATION_MODEL", "anthropic:claude-sonnet-5")
+    settings = Settings()
+    assert settings.intent_model == "openai:gpt-4o"
+    assert settings.moderation_model == "anthropic:claude-sonnet-5"
 
 
 def test_unrelated_env_vars_are_ignored(monkeypatch: pytest.MonkeyPatch) -> None:

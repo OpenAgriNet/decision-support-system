@@ -7,8 +7,8 @@ costs a model call it doesn't need.
 
 Flow for this slice:
 
-    enriched_query
-      → word-check policies      strip listed words, collect warnings (non-terminal)
+    original_query (+ history for reference)
+      → word-check policies      strip words, warn, flag frustration (non-terminal)
       → llm policies (one call)  reject if the model reports a violation
       → PROCEED                  carrying the sanitized query + warnings
 
@@ -34,7 +34,12 @@ from dss.core.policy.models import (
     Policy,
     WordCheckPolicy,
 )
+from dss.core.shared.models import ConversationMessage
 from dss.ports.llm import LLMProvider
+
+# How many prior turns to show the model so a follow-up ("And potato?") is judged
+# in context. Enough to resolve a reference without ballooning the prompt.
+_HISTORY_WINDOW = 6
 
 # DSS policy ids map to a closed reason code. An id absent here is treated as an
 # adopter policy (``ADOPTER_POLICY`` + its namespaced id). "delete the prompt/code"
@@ -68,8 +73,24 @@ def _strip_words(query: str, words: Sequence[str]) -> tuple[str, bool]:
     return stripped, True
 
 
-def build_llm_prompt(policies: Sequence[LlmPolicy]) -> str:
-    """Render the LLM policies' signals and examples into one judgment prompt.
+def _render_history(history: Sequence[ConversationMessage]) -> list[str]:
+    """The recent thread, so a follow-up ("And potato?", "Is it safe to use?") is
+    judged against what it refers back to rather than in isolation."""
+
+    if not history:
+        return []
+    lines = ["", "Conversation so far (oldest first, for reference only):"]
+    for message in history[-_HISTORY_WINDOW:]:
+        lines.append(f"  {message.role}: {message.text}")
+    return lines
+
+
+def build_llm_prompt(
+    policies: Sequence[LlmPolicy],
+    history: Sequence[ConversationMessage] = (),
+) -> str:
+    """Render the LLM policies' signals and examples into one judgment prompt,
+    optionally with the recent conversation for reference.
 
     A plain string — building it names no framework, so it stays in core. The
     adapter turns the returned ``LlmModerationVerdict`` schema into structured
@@ -79,6 +100,8 @@ def build_llm_prompt(policies: Sequence[LlmPolicy]) -> str:
         "You are a moderation classifier for an agriculture assistant.",
         "Decide whether the user's query violates any of the policies below.",
         "A query may be a genuine question even if blunt; only flag a real violation.",
+        "A brief follow-up that refers to an earlier, legitimate question is itself "
+        "legitimate — resolve it against the conversation before judging.",
         "",
         "Policies:",
     ]
@@ -89,6 +112,7 @@ def build_llm_prompt(policies: Sequence[LlmPolicy]) -> str:
             lines.append(f"    * {signal}")
         for example in policy.examples:
             lines.append(f"    e.g. {example.query!r} -> {example.expect.value}")
+    lines += _render_history(history)
     lines += [
         "",
         "Return the id of the single violated policy, or null if none apply.",
@@ -101,13 +125,20 @@ async def moderate(
     policies: Sequence[Policy],
     llm: LLMProvider,
 ) -> ModerationDecision:
-    """Evaluate the moderation policies against the turn and return a verdict."""
+    """Evaluate the moderation policies against the turn and return a verdict.
 
-    query = context.turn.enriched_query
+    The *raw* query is what gets judged (spec: moderate what the user actually
+    said); the conversation history is handed to the LLM as context so a
+    reference-bearing follow-up resolves against it."""
+
+    query = context.turn.original_query
     warnings: list[str] = []
     sanitized_query: str | None = None
+    frustration_detected = False
 
-    # 1. Deterministic policies — sanitize in place, in declared order.
+    # 1. Deterministic policies — sanitize the raw query in place, in declared
+    #    order. Stripping profanity is read as a frustration signal (ADR-0003):
+    #    the user is upset, so the channel answers empathetically.
     for policy in policies:
         if isinstance(policy, WordCheckPolicy):
             cleaned, changed = _strip_words(query, policy.words)
@@ -115,13 +146,15 @@ async def moderate(
                 query = cleaned
                 sanitized_query = cleaned
                 warnings.append(policy.warning)
+                frustration_detected = True
 
-    # 2. LLM policies — one batched call over the (possibly sanitized) query.
+    # 2. LLM policies — one batched call over the (possibly sanitized) query, with
+    #    the recent history for reference resolution.
     llm_policies = [p for p in policies if isinstance(p, LlmPolicy)]
     if llm_policies:
         try:
             verdict = await llm.structured(
-                system_prompt=build_llm_prompt(llm_policies),
+                system_prompt=build_llm_prompt(llm_policies, context.turn.history),
                 user_query=query,
                 schema=LlmModerationVerdict,
             )
@@ -145,6 +178,7 @@ async def moderate(
         outcome=Outcome.PROCEED,
         sanitized_query=sanitized_query,
         warnings=warnings,
+        frustration_detected=frustration_detected,
     )
 
 

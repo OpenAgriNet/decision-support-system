@@ -12,7 +12,6 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from dss.core.intent.models import Intent
 from dss.core.shared.models import UserTurn
 
 
@@ -47,14 +46,13 @@ class ReasonCode(StrEnum):
 
 
 class ModerationContext(BaseModel):
-    """The roots a moderation policy may address: ``turn.*`` and ``intent.*``
-    (spec 0003). A pure input bundle — nothing that a policy field-path cannot
-    reach belongs here."""
+    """The roots a moderation policy may address (spec 0003). Since ADR-0003
+    moderation runs in parallel with — and independently of — intent, so intent is
+    no longer a root here: a policy sees only ``turn.*``. A pure input bundle."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     turn: UserTurn
-    intent: Intent = Field(default_factory=lambda: Intent(confidence=0.0))
 
 
 class ModerationDecision(BaseModel):
@@ -64,8 +62,11 @@ class ModerationDecision(BaseModel):
 
     ``sanitized_query`` and ``warnings`` extend spec 0004 for the redact-and-warn
     behaviour of the profanity filter (see ADR-0002): a turn can be cleaned and
-    still proceed. They are only meaningful on ``PROCEED`` — harm never partitions,
-    so a rejected turn carries no sanitized query.
+    still proceed. ``frustration_detected`` rides alongside them: stripping
+    profanity is read as a sign the user is upset (they are not getting the answer
+    they want), so the channel can answer empathetically. All three are only
+    meaningful on ``PROCEED`` — harm never partitions, so a rejected turn carries
+    none of them.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -75,6 +76,7 @@ class ModerationDecision(BaseModel):
     violated_policy_id: str | None = None
     sanitized_query: str | None = None
     warnings: list[str] = Field(default_factory=list)
+    frustration_detected: bool = False
 
     @model_validator(mode="after")
     def _reason_required_unless_proceed(self) -> ModerationDecision:
@@ -85,11 +87,13 @@ class ModerationDecision(BaseModel):
     @model_validator(mode="after")
     def _sanitize_only_when_proceeding(self) -> ModerationDecision:
         if self.outcome is not Outcome.PROCEED and (
-            self.sanitized_query is not None or self.warnings
+            self.sanitized_query is not None
+            or self.warnings
+            or self.frustration_detected
         ):
             raise ValueError(
-                "sanitized_query/warnings are only valid on a PROCEED outcome — "
-                "harm never partitions"
+                "sanitized_query/warnings/frustration_detected are only valid on a "
+                "PROCEED outcome — harm never partitions"
             )
         return self
 

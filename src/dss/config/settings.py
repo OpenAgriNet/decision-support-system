@@ -2,6 +2,11 @@
 
 One source of truth per knob, each with its range declared so an unusable value
 fails at startup rather than silently disabling a feature.
+
+Each component binds its *own* model (ADR-0004): intent and moderation are
+separate ``DSS_<COMPONENT>_MODEL`` knobs so a deployment can point them at
+different models. The model name always comes from the environment
+(``env_prefix="DSS_"``): ``DSS_INTENT_MODEL``, ``DSS_MODERATION_MODEL``, etc.
 """
 
 from __future__ import annotations
@@ -10,8 +15,6 @@ from pathlib import Path
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-from dss.core.intent.models import ActionType
 
 
 class Settings(BaseSettings):
@@ -22,6 +25,12 @@ class Settings(BaseSettings):
         env_prefix="DSS_", env_file=".env", extra="ignore"
     )
 
+    # --- intent LLM binding (spec 0002) ---
+    intent_model: str = "openai:gpt-4o-mini"
+    intent_temperature: float = Field(0.0, ge=0.0, le=2.0)  # a classification
+    intent_timeout_seconds: float = Field(5.0, gt=0.0)
+    intent_retries: int = Field(1, ge=0)
+
     # --- moderation LLM binding (spec 0004: separate from composition) ---
     moderation_model: str = "openai:gpt-4o-mini"
     moderation_temperature: float = Field(0.0, ge=0.0, le=2.0)  # a judgment
@@ -31,10 +40,3 @@ class Settings(BaseSettings):
     # Where the adopter policy pack is mounted. Unset → use the bundled defaults;
     # set-but-missing → raise (see policy_loader), never boot on a different config.
     policy_config_path: Path | None = None
-
-    # --- intent (spec 0002) — unused by this slice's two policies, kept for the
-    # moderation context and the capability check that lands with intent. ---
-    intent_confidence_min: float = Field(0.5, ge=0.0, le=1.0)
-    supported_action_types: list[ActionType] = Field(
-        default_factory=lambda: [ActionType.ADVISORY]
-    )

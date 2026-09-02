@@ -28,6 +28,9 @@ packages = ["src/dss"]
 dev = [
     "pytest>=9.1.1",
     "pytest-asyncio>=1.0.0",
+    # Coverage is reported on every run (report-only, no gate) so regressions are
+    # visible without blocking a merge — see [tool.coverage] and addopts below.
+    "pytest-cov>=6.0.0",
     "ruff>=0.16.4",
     "jsonschema>=4.26.0",
     # Dev-only test harnesses under examples/ — NOT the committed entrypoint
@@ -108,8 +111,36 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 # import-mode=importlib lets the mirrored test tree carry duplicate basenames
 # (tests/unit/core/*/test_service.py) without __init__ packages or name clashes.
-addopts = ["-ra", "--strict-config", "--import-mode=importlib", "-m", "not eval"]
+addopts = [
+    "-ra",
+    "--strict-config",
+    "--import-mode=importlib",
+    "-m",
+    "not eval",
+    # Coverage is monitored, not gated: report the gaps every run, but never fail
+    # the build on a threshold (no --cov-fail-under). Keeps coverage visible
+    # without turning it into a merge blocker.
+    "--cov=src/dss",
+    "--cov-report=term-missing",
+]
 markers = [
     "eval: tier-6 end-to-end quality eval; diagnostic only, never a merge gate",
 ]
 strict_markers = true
+
+# ---------------------------------------------------------------------------
+# Coverage — report-only (see addopts). `eval` and the dev-only harness under
+# examples/ are excluded from the measured surface; they are not the core that
+# the tier-1 suite is meant to cover.
+# ---------------------------------------------------------------------------
+[tool.coverage.run]
+source = ["src/dss"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "\\.\\.\\.",
+]

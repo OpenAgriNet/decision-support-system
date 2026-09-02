@@ -24,16 +24,26 @@ _REJECT_MESSAGES: dict[ReasonCode, str] = {
 
 _GENERIC_REJECT = "I can't help with that request."
 
+# Led with when the turn shows frustration (profanity was stripped): acknowledge
+# the feeling before the sanitization warning, so the reply reads as empathetic
+# rather than scolding.
+_EMPATHY = (
+    "It sounds like this has been frustrating — I'm sorry it's been difficult. "
+    "Let me focus on helping with your question."
+)
+
 
 def messages_for(decision: ModerationDecision) -> list[str]:
     """Everything to stream to the user for this decision, in order.
 
-    - PROCEED: any sanitization warnings (may be empty).
+    - PROCEED: an empathetic acknowledgement first if the turn read as frustrated,
+      then any sanitization warnings (either may be absent).
     - REJECT/CLARIFY/NO_MATCH: the rendered reason message.
     """
 
     if decision.outcome is Outcome.PROCEED:
-        return list(decision.warnings)
+        lead = [_EMPATHY] if decision.frustration_detected else []
+        return lead + list(decision.warnings)
 
     assert decision.reason_code is not None  # guaranteed by the decision validator
     return [_REJECT_MESSAGES.get(decision.reason_code, _GENERIC_REJECT)]
