@@ -272,6 +272,7 @@ name = "decision-support-system"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "anyio" },
     { name = "pydantic-ai-slim", extra = ["openai"] },
     { name = "pydantic-settings" },
     { name = "pyyaml" },
@@ -291,6 +292,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "anyio", specifier = ">=4.14.2" },
     { name = "pydantic-ai-slim", extras = ["openai"], specifier = ">=2.33.0" },
     { name = "pydantic-settings", specifier = ">=2.5.0" },
     { name = "pyyaml", specifier = ">=6.0.3" },

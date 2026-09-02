@@ -17,6 +17,7 @@ Do not duplicate architecture, domain model, or design-decision detail here — 
 ## Tech Stack
 - Language: Python
 - Orchestration framework: Pydantic AI
+- Async concurrency: anyio
 - Dependency injection: Pydantic
 - Package manager: uv
 - Test framework: pytest

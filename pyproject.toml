@@ -5,6 +5,7 @@ description = "Decision Support System — reasoning runtime for the OpenAgriNet
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "anyio>=4.14.2",
     # pydantic-ai-slim, not pydantic-ai: the metapackage ships no code of its own
     # and force-installs anthropic, google-genai, logfire, mcp, evals, cli, and web.
     # The LLM provider is a swappable adapter behind a port (DSS_ARCHITECTURE.md §4.3),
@@ -126,6 +127,7 @@ addopts = [
 ]
 markers = [
     "eval: tier-6 end-to-end quality eval; diagnostic only, never a merge gate",
+    "anyio: marks a test to run under anyio's async test runner",
 ]
 strict_markers = true
 
