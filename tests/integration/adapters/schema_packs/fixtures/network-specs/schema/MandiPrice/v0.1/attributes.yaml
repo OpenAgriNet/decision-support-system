@@ -1,0 +1,8 @@
+components:
+  schemas:
+    MandiPrice:
+      allOf:
+        - type: object
+          properties:
+            "@type":
+              const: openagrinet:MandiPrice
