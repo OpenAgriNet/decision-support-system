@@ -8,8 +8,9 @@ not the adapter's.
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from dss.adapters.discovery.client import map_on_discover_response
 
@@ -94,3 +95,64 @@ def test_a_direct_resource_with_validity_parses_it() -> None:
     assert validity is not None
     assert validity.starts_at == datetime.fromisoformat("2026-08-24T00:00:00+00:00")
     assert validity.ends_at == datetime.fromisoformat("2026-08-25T00:00:00+00:00")
+
+
+def _direct_response_with_validity(validity: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "message": {
+            "catalogs": [
+                {
+                    "provider": {"id": "p", "descriptor": {"name": "P"}},
+                    "resources": [
+                        {
+                            "id": "r",
+                            "resourceAttributes": {
+                                "@type": "openagrinet:MandiPrice",
+                                "informationMode": "Direct",
+                                "validity": validity,
+                            },
+                        }
+                    ],
+                }
+            ]
+        }
+    }
+
+
+def test_a_bare_end_date_stretches_to_the_end_of_that_day() -> None:
+    """The spec allows a date-only endsAt, which means valid *through* that
+    day. Truncating it to midnight would expire the answer a day early.
+    """
+    response = _direct_response_with_validity({"endsAt": "2026-08-26"})
+
+    result = map_on_discover_response(response, ask_indices=(0,))
+
+    validity = result.answers[0][0].validity
+    assert validity is not None
+    assert validity.ends_at == datetime(2026, 8, 26, 23, 59, 59, 999999, tzinfo=UTC)
+
+
+def test_a_bare_start_date_stays_at_the_start_of_that_day() -> None:
+    response = _direct_response_with_validity({"startsAt": "2026-08-26"})
+
+    result = map_on_discover_response(response, ask_indices=(0,))
+
+    validity = result.answers[0][0].validity
+    assert validity is not None
+    assert validity.starts_at == datetime(2026, 8, 26, 0, 0, tzinfo=UTC)
+
+
+def test_a_naive_timestamp_is_read_as_utc_with_its_time_untouched() -> None:
+    """Core compares validity against a tz-aware now, so a naive value has to
+    pick up a zone here or the comparison raises.
+    """
+    response = _direct_response_with_validity(
+        {"startsAt": "2026-08-26T06:30:00", "endsAt": "2026-08-26T18:45:00"}
+    )
+
+    result = map_on_discover_response(response, ask_indices=(0,))
+
+    validity = result.answers[0][0].validity
+    assert validity is not None
+    assert validity.starts_at == datetime(2026, 8, 26, 6, 30, tzinfo=UTC)
+    assert validity.ends_at == datetime(2026, 8, 26, 18, 45, tzinfo=UTC)
