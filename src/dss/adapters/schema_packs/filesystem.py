@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import anyio.to_thread
+
 from dss.core.provider_discovery.models import SchemaPackFiles
 
 
@@ -12,6 +14,13 @@ class FilesystemSchemaPackSource:
         self._root = root
 
     async def fetch_packs(self) -> tuple[SchemaPackFiles, ...]:
+        """Walking the network-specs tree is blocking disk I/O, so it runs on
+        a worker thread — on the event loop it would stall every concurrent
+        task for the length of the walk.
+        """
+        return await anyio.to_thread.run_sync(self._read_all_packs)
+
+    def _read_all_packs(self) -> tuple[SchemaPackFiles, ...]:
         return tuple(
             self._read_pack(d) for d in sorted(self._root.iterdir()) if d.is_dir()
         )

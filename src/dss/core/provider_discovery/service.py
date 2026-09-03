@@ -181,6 +181,16 @@ async def discover_providers(
         failures.update(result.failures)
         events.extend(result.events)
 
+    for ask_index in answers:
+        kept_answers, expiry_events = _drop_expired_answers(
+            answers[ask_index], capabilities.get(ask_index, ()), now
+        )
+        answers[ask_index] = kept_answers
+        events.extend(expiry_events)
+
+    # After the expiry filter: divergence is an alert to go fix a provider's
+    # data, so raising it for an answer dropped in the same turn would point
+    # an operator at a resource that never reached the user.
     for answer_tuple in answers.values():
         for answer in answer_tuple:
             observed = tuple(answer.attributes.get("subjectCategories", ()))
@@ -192,13 +202,6 @@ async def discover_providers(
                     capability.capability, capability.observed_categories, index
                 )
             )
-
-    for ask_index in answers:
-        kept_answers, expiry_events = _drop_expired_answers(
-            answers[ask_index], capabilities.get(ask_index, ()), now
-        )
-        answers[ask_index] = kept_answers
-        events.extend(expiry_events)
 
     for ask_index in ask_capabilities:
         ask_failures = failures.get(ask_index, ())

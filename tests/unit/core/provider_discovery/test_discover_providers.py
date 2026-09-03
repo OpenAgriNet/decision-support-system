@@ -545,6 +545,86 @@ async def test_a_direct_answer_with_a_diverging_category_is_flagged() -> None:
     )
 
 
+async def test_an_expired_answer_is_not_also_reported_as_diverging() -> None:
+    """Divergence is an alert to go fix a provider's data. Raising it for an
+    answer that is dropped in the same turn points an operator at a resource
+    that never reached the user.
+    """
+    ask = Ask(
+        subject_categories=SubjectCategory.MARKET,
+        interaction_type=InteractionType.OBSERVE,
+    )
+    intent = Intent(asks=(ask,), confidence=0.9)
+    schema_pack_cache = _FakeSchemaPackCache(
+        {("Market", "Service"): ("openagrinet:MandiPrice",)}
+    )
+    expired_and_diverging = DiscoveredAnswer(
+        provider_id="agmarknet",
+        provider_name="AGMARKNET",
+        capability="openagrinet:MandiPrice",
+        resource_id="r1",
+        attributes={"subjectCategories": ["Weather"]},
+        validity=Validity(
+            starts_at=NOW - timedelta(days=2), ends_at=NOW - timedelta(days=1)
+        ),
+    )
+    discovery = _FakeDiscovery(
+        DiscoveryResult(
+            answers={0: (expired_and_diverging,)},
+            capabilities={0: ()},
+            failures={0: ()},
+            events=(),
+        )
+    )
+
+    result = await discover_providers(
+        intent, _turn(), discovery, schema_pack_cache, radius_m=25000, now=NOW
+    )
+
+    assert not [e for e in result.events if isinstance(e, CategoryMappingDiverged)]
+    assert [type(e) for e in result.events] == [ExpiredAnswerDropped, AskUnservable]
+
+
+async def test_a_live_answer_that_diverges_is_still_reported() -> None:
+    """The expiry filter must not swallow divergence for answers that survive."""
+    ask = Ask(
+        subject_categories=SubjectCategory.MARKET,
+        interaction_type=InteractionType.OBSERVE,
+    )
+    intent = Intent(asks=(ask,), confidence=0.9)
+    schema_pack_cache = _FakeSchemaPackCache(
+        {("Market", "Service"): ("openagrinet:MandiPrice",)}
+    )
+    live_and_diverging = DiscoveredAnswer(
+        provider_id="agmarknet",
+        provider_name="AGMARKNET",
+        capability="openagrinet:MandiPrice",
+        resource_id="r1",
+        attributes={"subjectCategories": ["Weather"]},
+        validity=Validity(
+            starts_at=NOW - timedelta(days=1), ends_at=NOW + timedelta(days=1)
+        ),
+    )
+    discovery = _FakeDiscovery(
+        DiscoveryResult(
+            answers={0: (live_and_diverging,)},
+            capabilities={0: ()},
+            failures={0: ()},
+            events=(),
+        )
+    )
+
+    result = await discover_providers(
+        intent, _turn(), discovery, schema_pack_cache, radius_m=25000, now=NOW
+    )
+
+    assert result.events == (
+        CategoryMappingDiverged(
+            capability="openagrinet:MandiPrice", observed_category="Weather"
+        ),
+    )
+
+
 async def test_an_empty_catalog_result_emits_ask_unservable() -> None:
     ask = Ask(
         subject_categories=SubjectCategory.MARKET,

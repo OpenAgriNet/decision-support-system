@@ -33,6 +33,14 @@ SCHEMA_PACK_CACHE = _FakeSchemaPackCache(
 )
 
 
+def _base_url(httpserver: HTTPServer) -> str:
+    """url_for("") ends in a slash, which would make the adapter request
+    //discover. The server tolerates that, but a real gateway may not — and
+    the composition root never produces a trailing-slash base URL.
+    """
+    return httpserver.url_for("").rstrip("/")
+
+
 async def test_discover_against_a_real_local_server(httpserver: HTTPServer) -> None:
     on_discover = json.loads((FIXTURES / "on_discover_response.json").read_text())
     httpserver.expect_request("/discover", method="POST").respond_with_json(on_discover)
@@ -40,7 +48,7 @@ async def test_discover_against_a_real_local_server(httpserver: HTTPServer) -> N
     async with httpx2.AsyncClient() as client:
         discovery = HttpCapabilityDiscovery(
             client=client,
-            base_url=httpserver.url_for(""),
+            base_url=_base_url(httpserver),
             schema_pack_cache=SCHEMA_PACK_CACHE,
             schema_base_url="https://schemas.openagrinet.global/schema",
         )
@@ -65,7 +73,7 @@ async def test_a_real_429_response_is_returned_as_a_failure(
     async with httpx2.AsyncClient() as client:
         discovery = HttpCapabilityDiscovery(
             client=client,
-            base_url=httpserver.url_for(""),
+            base_url=_base_url(httpserver),
             schema_pack_cache=SCHEMA_PACK_CACHE,
             schema_base_url="https://schemas.openagrinet.global/schema",
         )
