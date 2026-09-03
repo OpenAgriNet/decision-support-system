@@ -74,3 +74,16 @@ async def test_a_successful_refresh_replaces_the_index_wholesale() -> None:
     await cache.refresh()
 
     assert cache.current() == {}
+
+
+@pytest.mark.anyio
+async def test_refresh_also_populates_the_schema_context_index() -> None:
+    cache = SchemaPackCache(_FakeSource(packs=(MANDI_PRICE_PACK,)))
+    assert cache.current_schema_context() == {}
+
+    await cache.refresh()
+
+    assert cache.current_schema_context()["openagrinet:MandiPrice"] == (
+        "MandiPrice",
+        "v0.1",
+    )
