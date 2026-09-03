@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
 from dss.core.provider_discovery.models import (
     AskDiscoveryFailed,
@@ -192,6 +194,61 @@ async def test_a_failing_query_does_not_prevent_a_sibling_from_succeeding() -> N
             status_code=500,
         ),
     )
+
+
+class _RaisingDiscovery:
+    """Violates the CapabilityDiscovery contract by raising. Stands in for a
+    defective adapter, to pin down what that costs: anyio's task group
+    cancels every sibling, so the whole turn dies. Adapters must return
+    failures as data — see the mapping guard in adapters/discovery/client.py.
+    """
+
+    def __init__(self, raises_for: str) -> None:
+        self._raises_for = raises_for
+        self.calls: list[tuple] = []
+
+    async def discover(self, query, ask_indices):
+        self.calls.append((query, ask_indices))
+        if self._raises_for in query.capabilities:
+            raise KeyError("resources")
+        return DiscoveryResult(
+            answers={i: () for i in ask_indices},
+            capabilities={i: () for i in ask_indices},
+            failures={i: () for i in ask_indices},
+            events=(),
+        )
+
+
+async def test_an_adapter_that_raises_takes_the_whole_turn_down() -> None:
+    """Documents why the adapter must never let an exception escape: core
+    gives it no safety net, by design — a raise here is a fail-fast bug
+    signal, not a per-query failure mode.
+    """
+    intent = Intent(
+        asks=(
+            Ask(
+                subject_categories=SubjectCategory.WEATHER,
+                interaction_type=InteractionType.OBSERVE,
+            ),
+            Ask(
+                subject_categories=SubjectCategory.MARKET,
+                interaction_type=InteractionType.OBSERVE,
+            ),
+        ),
+        confidence=0.8,
+    )
+    schema_pack_cache = _FakeSchemaPackCache(
+        {
+            ("Weather", "Service"): ("openagrinet:WeatherObservation",),
+            ("Market", "Service"): ("openagrinet:MandiPrice",),
+        }
+    )
+    discovery = _RaisingDiscovery(raises_for="openagrinet:WeatherObservation")
+
+    with pytest.raises(BaseExceptionGroup):
+        await discover_providers(
+            intent, _turn(), discovery, schema_pack_cache, radius_m=25000, now=NOW
+        )
 
 
 async def test_two_asks_sharing_a_pair_dedupe_to_one_query() -> None:

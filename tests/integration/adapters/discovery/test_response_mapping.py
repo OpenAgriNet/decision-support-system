@@ -142,6 +142,78 @@ def test_a_bare_start_date_stays_at_the_start_of_that_day() -> None:
     assert validity.starts_at == datetime(2026, 8, 26, 0, 0, tzinfo=UTC)
 
 
+def test_a_resource_without_subject_categories_still_maps() -> None:
+    """subjectCategories is optional on the wire. Core compares whatever is
+    observed against the index, so absent means 'nothing observed', not a
+    broken response.
+    """
+    response = {
+        "message": {
+            "catalogs": [
+                {
+                    "provider": {"id": "p", "descriptor": {"name": "P"}},
+                    "resources": [
+                        {
+                            "id": "r",
+                            "resourceAttributes": {
+                                "@type": "openagrinet:WeatherObservation",
+                                "informationMode": "OnDemand",
+                            },
+                        }
+                    ],
+                }
+            ]
+        }
+    }
+
+    result = map_on_discover_response(response, ask_indices=(0,))
+
+    assert result.capabilities[0][0].observed_categories == ()
+
+
+def test_a_catalog_without_resources_maps_to_nothing() -> None:
+    response = {
+        "message": {
+            "catalogs": [{"provider": {"id": "p", "descriptor": {"name": "P"}}}]
+        }
+    }
+
+    result = map_on_discover_response(response, ask_indices=(0,))
+
+    assert result.capabilities == {0: ()}
+    assert result.answers == {0: ()}
+
+
+def test_a_resource_without_an_information_mode_is_skipped() -> None:
+    """Neither OnDemand nor Direct — nothing can be done with it, but it must
+    not take the rest of the catalog down with it.
+    """
+    response = {
+        "message": {
+            "catalogs": [
+                {
+                    "provider": {"id": "p", "descriptor": {"name": "P"}},
+                    "resources": [
+                        {"id": "r", "resourceAttributes": {"@type": "openagrinet:X"}},
+                        {
+                            "id": "r2",
+                            "resourceAttributes": {
+                                "@type": "openagrinet:WeatherObservation",
+                                "informationMode": "OnDemand",
+                            },
+                        },
+                    ],
+                }
+            ]
+        }
+    }
+
+    result = map_on_discover_response(response, ask_indices=(0,))
+
+    assert len(result.capabilities[0]) == 1
+    assert result.capabilities[0][0].resource_id == "r2"
+
+
 def test_a_naive_timestamp_is_read_as_utc_with_its_time_untouched() -> None:
     """Core compares validity against a tz-aware now, so a naive value has to
     pick up a zone here or the comparison raises.

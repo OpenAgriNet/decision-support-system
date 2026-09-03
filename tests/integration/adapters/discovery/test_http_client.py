@@ -12,7 +12,7 @@ from pathlib import Path
 import httpx2
 
 from dss.adapters.discovery.client import HttpCapabilityDiscovery
-from dss.core.provider_discovery.models import ProviderQuery
+from dss.core.provider_discovery.models import FailureClass, ProviderQuery
 
 FIXTURES = Path(__file__).parent / "fixtures"
 BASE_URL = "https://discovery-network-vistaar.da.gov.in/oan"
@@ -105,6 +105,43 @@ async def test_a_non_2xx_response_is_returned_as_a_failure() -> None:
 
     assert result.failures[0][0].status_code == 429
     assert result.capabilities[0] == ()
+
+
+async def test_a_response_that_cannot_be_mapped_is_returned_as_a_defect() -> None:
+    """A 200 carrying a shape we can't read must not raise: discover()
+    failing by exception would cancel every sibling query in the caller's
+    task group. It's a defect on one side or the other, never retry-worthy.
+    """
+    discovery = _discovery(_client_returning({"message": {"catalogs": [{}]}}))
+    query = ProviderQuery(
+        capabilities=("openagrinet:WeatherObservation",),
+        languages=("hi",),
+        coverage=None,
+    )
+
+    result = await discovery.discover(query, ask_indices=(0,))
+
+    failure = result.failures[0][0]
+    assert failure.failure_class == FailureClass.DEFECT
+    assert failure.capability == "openagrinet:WeatherObservation"
+    assert result.answers[0] == ()
+    assert result.capabilities[0] == ()
+
+
+async def test_a_body_that_is_not_json_is_returned_as_a_defect() -> None:
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(200, text="<html>gateway splash page</html>")
+
+    discovery = _discovery(httpx2.AsyncClient(transport=httpx2.MockTransport(handler)))
+    query = ProviderQuery(
+        capabilities=("openagrinet:WeatherObservation",),
+        languages=("hi",),
+        coverage=None,
+    )
+
+    result = await discovery.discover(query, ask_indices=(0,))
+
+    assert result.failures[0][0].failure_class == FailureClass.DEFECT
 
 
 async def test_a_connection_error_is_returned_as_a_failure() -> None:

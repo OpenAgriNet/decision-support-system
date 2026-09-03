@@ -60,6 +60,30 @@ def _failure_result(
     )
 
 
+def _malformed_result(
+    query: ProviderQuery, ask_indices: tuple[int, ...], detail: str
+) -> DiscoveryResult:
+    """A response we can't map is a defect on one side or the other — never
+    retry-worthy — and it must not escape: discover() failing by exception
+    would cancel every sibling query in the caller's task group.
+    """
+    failures = tuple(
+        DiscoveryFailure(
+            capability=capability,
+            status_code=_NO_STATUS_CODE,
+            failure_class=FailureClass.DEFECT,
+            detail=detail,
+        )
+        for capability in query.capabilities
+    )
+    return DiscoveryResult(
+        answers={index: () for index in ask_indices},
+        capabilities={index: () for index in ask_indices},
+        failures={index: failures for index in ask_indices},
+        events=(),
+    )
+
+
 class SchemaContextSource(Protocol):
     def current_schema_context(self) -> dict[str, tuple[str, str]]: ...
 
@@ -72,9 +96,9 @@ _DISCOVER_VERSION = "2.0.0"
 def _capabilities_from_catalog(catalog: dict[str, Any]) -> list[ProviderCapability]:
     provider = catalog["provider"]
     capabilities = []
-    for resource in catalog["resources"]:
+    for resource in catalog.get("resources", ()):
         attributes = resource["resourceAttributes"]
-        if attributes["informationMode"] != _ON_DEMAND:
+        if attributes.get("informationMode") != _ON_DEMAND:
             continue
         capabilities.append(
             ProviderCapability(
@@ -82,7 +106,7 @@ def _capabilities_from_catalog(catalog: dict[str, Any]) -> list[ProviderCapabili
                 provider_name=provider["descriptor"]["name"],
                 capability=attributes["@type"],
                 resource_id=resource["id"],
-                observed_categories=tuple(attributes["subjectCategories"]),
+                observed_categories=tuple(attributes.get("subjectCategories", ())),
             )
         )
     return capabilities
@@ -120,9 +144,9 @@ def _extract_validity(attributes: dict[str, Any]) -> Validity | None:
 def _answers_from_catalog(catalog: dict[str, Any]) -> list[DiscoveredAnswer]:
     provider = catalog["provider"]
     answers = []
-    for resource in catalog["resources"]:
+    for resource in catalog.get("resources", ()):
         attributes = resource["resourceAttributes"]
-        if attributes["informationMode"] != _DIRECT:
+        if attributes.get("informationMode") != _DIRECT:
             continue
         answers.append(
             DiscoveredAnswer(
@@ -265,4 +289,7 @@ class HttpCapabilityDiscovery:
             )
         except httpx2.HTTPError as exc:
             return _failure_result(query, ask_indices, _NO_STATUS_CODE, str(exc))
-        return map_on_discover_response(response.json(), ask_indices)
+        try:
+            return map_on_discover_response(response.json(), ask_indices)
+        except (KeyError, TypeError, ValueError) as exc:
+            return _malformed_result(query, ask_indices, f"malformed response: {exc!r}")
