@@ -133,7 +133,7 @@ class CategoryMappingDiverged:
     observed_category: str
 
 
-DiscoveryEvent = (
+type DiscoveryEvent = (
     CapabilityUnresolved
     | ExpiredAnswerDropped
     | AskDiscoveryFailed
