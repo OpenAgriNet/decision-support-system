@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import datetime
 from typing import Protocol
 
 import anyio
@@ -11,7 +12,10 @@ from dss.core.intent.models import Ask, Intent, InteractionType
 from dss.core.provider_discovery.models import (
     CapabilityUnresolved,
     Coverage,
+    DiscoveredAnswer,
     DiscoveryResult,
+    ExpiredAnswerDropped,
+    ProviderCapability,
     ProviderQuery,
 )
 from dss.core.shared.models import UserTurn
@@ -67,12 +71,46 @@ def _query_for_ask(
     ), None
 
 
+def _is_expired(answer: DiscoveredAnswer, now: datetime) -> bool:
+    if answer.validity is None or answer.validity.ends_at is None:
+        return False
+    return now > answer.validity.ends_at
+
+
+def _drop_expired_answers(
+    answers: tuple[DiscoveredAnswer, ...],
+    capabilities: tuple[ProviderCapability, ...],
+    now: datetime,
+) -> tuple[tuple[DiscoveredAnswer, ...], list[ExpiredAnswerDropped]]:
+    kept = []
+    events = []
+    for answer in answers:
+        if not _is_expired(answer, now):
+            kept.append(answer)
+            continue
+        had_fallback = any(
+            capability.provider_id == answer.provider_id
+            and capability.capability == answer.capability
+            for capability in capabilities
+        )
+        events.append(
+            ExpiredAnswerDropped(
+                provider_id=answer.provider_id,
+                capability=answer.capability,
+                resource_id=answer.resource_id,
+                had_fallback=had_fallback,
+            )
+        )
+    return tuple(kept), events
+
+
 async def discover_providers(
     intent: Intent,
     turn: UserTurn,
     discovery: CapabilityDiscovery,
     schema_pack_cache: CapabilityIndexSource,
     radius_m: int,
+    now: datetime,
 ) -> DiscoveryResult:
     languages = (turn.target_lang,)
     coverage = _coverage(turn, radius_m)
@@ -114,6 +152,13 @@ async def discover_providers(
         capabilities.update(result.capabilities)
         failures.update(result.failures)
         events.extend(result.events)
+
+    for ask_index in answers:
+        kept_answers, expiry_events = _drop_expired_answers(
+            answers[ask_index], capabilities.get(ask_index, ()), now
+        )
+        answers[ask_index] = kept_answers
+        events.extend(expiry_events)
 
     return DiscoveryResult(
         answers=answers,

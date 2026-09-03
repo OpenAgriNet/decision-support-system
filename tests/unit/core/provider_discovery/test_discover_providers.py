@@ -4,16 +4,23 @@ CapabilityDiscovery together.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
 from dss.core.provider_discovery.models import (
     CapabilityUnresolved,
+    DiscoveredAnswer,
     DiscoveryFailure,
     DiscoveryResult,
+    ExpiredAnswerDropped,
     FailureClass,
     ProviderCapability,
+    Validity,
 )
 from dss.core.provider_discovery.service import discover_providers
 from dss.core.shared.models import UserTurn
+
+NOW = datetime(2026, 8, 26, 12, 0, 0, tzinfo=UTC)
 
 
 def _turn(**overrides) -> UserTurn:
@@ -70,7 +77,7 @@ async def test_a_single_ask_resolves_and_returns_the_discovery_result() -> None:
     discovery = _FakeDiscovery(expected_result)
 
     result = await discover_providers(
-        intent, turn, discovery, schema_pack_cache, radius_m=25000
+        intent, turn, discovery, schema_pack_cache, radius_m=25000, now=NOW
     )
 
     assert result == expected_result
@@ -93,7 +100,7 @@ async def test_an_unresolved_ask_never_calls_discover() -> None:
     )
 
     result = await discover_providers(
-        intent, turn, discovery, schema_pack_cache, radius_m=25000
+        intent, turn, discovery, schema_pack_cache, radius_m=25000, now=NOW
     )
 
     assert discovery.calls == []
@@ -166,7 +173,7 @@ async def test_a_failing_query_does_not_prevent_a_sibling_from_succeeding() -> N
     discovery = _PartiallyFailingDiscovery(fails_for="openagrinet:WeatherObservation")
 
     result = await discover_providers(
-        intent, turn, discovery, schema_pack_cache, radius_m=25000
+        intent, turn, discovery, schema_pack_cache, radius_m=25000, now=NOW
     )
 
     assert len(discovery.calls) == 2
@@ -195,8 +202,168 @@ async def test_two_asks_sharing_a_pair_dedupe_to_one_query() -> None:
         )
     )
 
-    await discover_providers(intent, turn, discovery, schema_pack_cache, radius_m=25000)
+    await discover_providers(
+        intent, turn, discovery, schema_pack_cache, radius_m=25000, now=NOW
+    )
 
     assert len(discovery.calls) == 1
     _, ask_indices = discovery.calls[0]
     assert set(ask_indices) == {0, 1}
+
+
+def _expired_answer() -> DiscoveredAnswer:
+    return DiscoveredAnswer(
+        provider_id="agmarknet",
+        provider_name="AGMARKNET",
+        capability="openagrinet:MandiPrice",
+        resource_id="r1",
+        attributes={},
+        validity=Validity(
+            starts_at=NOW - timedelta(days=2),
+            ends_at=NOW - timedelta(days=1),
+        ),
+    )
+
+
+async def test_an_expired_answer_with_no_fallback_is_dropped() -> None:
+    ask = Ask(
+        subject_categories=SubjectCategory.MARKET,
+        interaction_type=InteractionType.OBSERVE,
+    )
+    intent = Intent(asks=(ask,), confidence=0.9)
+    turn = _turn()
+    schema_pack_cache = _FakeSchemaPackCache(
+        {("Market", "Service"): ("openagrinet:MandiPrice",)}
+    )
+    discovery = _FakeDiscovery(
+        DiscoveryResult(
+            answers={0: (_expired_answer(),)},
+            capabilities={0: ()},
+            failures={0: ()},
+            events=(),
+        )
+    )
+
+    result = await discover_providers(
+        intent, turn, discovery, schema_pack_cache, radius_m=25000, now=NOW
+    )
+
+    assert result.answers[0] == ()
+    assert result.events == (
+        ExpiredAnswerDropped(
+            provider_id="agmarknet",
+            capability="openagrinet:MandiPrice",
+            resource_id="r1",
+            had_fallback=False,
+        ),
+    )
+
+
+async def test_an_expired_answer_with_an_on_demand_sibling_records_a_fallback() -> None:
+    ask = Ask(
+        subject_categories=SubjectCategory.MARKET,
+        interaction_type=InteractionType.OBSERVE,
+    )
+    intent = Intent(asks=(ask,), confidence=0.9)
+    turn = _turn()
+    schema_pack_cache = _FakeSchemaPackCache(
+        {("Market", "Service"): ("openagrinet:MandiPrice",)}
+    )
+    fallback_capability = ProviderCapability(
+        "agmarknet", "AGMARKNET", "openagrinet:MandiPrice", "r2"
+    )
+    discovery = _FakeDiscovery(
+        DiscoveryResult(
+            answers={0: (_expired_answer(),)},
+            capabilities={0: (fallback_capability,)},
+            failures={0: ()},
+            events=(),
+        )
+    )
+
+    result = await discover_providers(
+        intent, turn, discovery, schema_pack_cache, radius_m=25000, now=NOW
+    )
+
+    assert result.answers[0] == ()
+    assert result.capabilities[0] == (fallback_capability,)
+    assert result.events == (
+        ExpiredAnswerDropped(
+            provider_id="agmarknet",
+            capability="openagrinet:MandiPrice",
+            resource_id="r1",
+            had_fallback=True,
+        ),
+    )
+
+
+async def test_a_non_expired_answer_is_kept() -> None:
+    ask = Ask(
+        subject_categories=SubjectCategory.MARKET,
+        interaction_type=InteractionType.OBSERVE,
+    )
+    intent = Intent(asks=(ask,), confidence=0.9)
+    turn = _turn()
+    schema_pack_cache = _FakeSchemaPackCache(
+        {("Market", "Service"): ("openagrinet:MandiPrice",)}
+    )
+    fresh_answer = DiscoveredAnswer(
+        provider_id="agmarknet",
+        provider_name="AGMARKNET",
+        capability="openagrinet:MandiPrice",
+        resource_id="r1",
+        attributes={},
+        validity=Validity(
+            starts_at=NOW - timedelta(hours=1), ends_at=NOW + timedelta(hours=1)
+        ),
+    )
+    discovery = _FakeDiscovery(
+        DiscoveryResult(
+            answers={0: (fresh_answer,)},
+            capabilities={0: ()},
+            failures={0: ()},
+            events=(),
+        )
+    )
+
+    result = await discover_providers(
+        intent, turn, discovery, schema_pack_cache, radius_m=25000, now=NOW
+    )
+
+    assert result.answers[0] == (fresh_answer,)
+    assert result.events == ()
+
+
+async def test_an_answer_with_no_validity_is_kept() -> None:
+    ask = Ask(
+        subject_categories=SubjectCategory.MARKET,
+        interaction_type=InteractionType.OBSERVE,
+    )
+    intent = Intent(asks=(ask,), confidence=0.9)
+    turn = _turn()
+    schema_pack_cache = _FakeSchemaPackCache(
+        {("Market", "Service"): ("openagrinet:MandiPrice",)}
+    )
+    answer_without_validity = DiscoveredAnswer(
+        provider_id="agmarknet",
+        provider_name="AGMARKNET",
+        capability="openagrinet:MandiPrice",
+        resource_id="r1",
+        attributes={},
+        validity=None,
+    )
+    discovery = _FakeDiscovery(
+        DiscoveryResult(
+            answers={0: (answer_without_validity,)},
+            capabilities={0: ()},
+            failures={0: ()},
+            events=(),
+        )
+    )
+
+    result = await discover_providers(
+        intent, turn, discovery, schema_pack_cache, radius_m=25000, now=NOW
+    )
+
+    assert result.answers[0] == (answer_without_validity,)
+    assert result.events == ()
