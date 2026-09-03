@@ -9,6 +9,7 @@ from datetime import UTC, datetime, timedelta
 from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
 from dss.core.provider_discovery.models import (
     CapabilityUnresolved,
+    CategoryMappingDiverged,
     DiscoveredAnswer,
     DiscoveryFailure,
     DiscoveryResult,
@@ -366,4 +367,105 @@ async def test_an_answer_with_no_validity_is_kept() -> None:
     )
 
     assert result.answers[0] == (answer_without_validity,)
+
+
+async def test_a_capability_matching_the_index_has_no_divergence_event() -> None:
+    ask = Ask(
+        subject_categories=SubjectCategory.MARKET,
+        interaction_type=InteractionType.OBSERVE,
+    )
+    intent = Intent(asks=(ask,), confidence=0.9)
+    turn = _turn()
+    schema_pack_cache = _FakeSchemaPackCache(
+        {("Market", "Service"): ("openagrinet:MandiPrice",)}
+    )
+    matching_capability = ProviderCapability(
+        "mausamgram", "IMD", "openagrinet:MandiPrice", "r1",
+        observed_categories=("Market",),
+    )
+    discovery = _FakeDiscovery(
+        DiscoveryResult(
+            answers={0: ()},
+            capabilities={0: (matching_capability,)},
+            failures={0: ()},
+            events=(),
+        )
+    )
+
+    result = await discover_providers(
+        intent, turn, discovery, schema_pack_cache, radius_m=25000, now=NOW
+    )
+
     assert result.events == ()
+
+
+async def test_a_capability_with_a_category_outside_the_index_diverges() -> None:
+    ask = Ask(
+        subject_categories=SubjectCategory.MARKET,
+        interaction_type=InteractionType.OBSERVE,
+    )
+    intent = Intent(asks=(ask,), confidence=0.9)
+    turn = _turn()
+    schema_pack_cache = _FakeSchemaPackCache(
+        {("Market", "Service"): ("openagrinet:MandiPrice",)}
+    )
+    diverging_capability = ProviderCapability(
+        "mausamgram", "IMD", "openagrinet:MandiPrice", "r1",
+        observed_categories=("Scheme",),
+    )
+    discovery = _FakeDiscovery(
+        DiscoveryResult(
+            answers={0: ()},
+            capabilities={0: (diverging_capability,)},
+            failures={0: ()},
+            events=(),
+        )
+    )
+
+    result = await discover_providers(
+        intent, turn, discovery, schema_pack_cache, radius_m=25000, now=NOW
+    )
+
+    assert result.events == (
+        CategoryMappingDiverged(
+            capability="openagrinet:MandiPrice", observed_category="Scheme"
+        ),
+    )
+
+
+async def test_a_direct_answer_with_a_diverging_category_is_flagged() -> None:
+    ask = Ask(
+        subject_categories=SubjectCategory.MARKET,
+        interaction_type=InteractionType.OBSERVE,
+    )
+    intent = Intent(asks=(ask,), confidence=0.9)
+    turn = _turn()
+    schema_pack_cache = _FakeSchemaPackCache(
+        {("Market", "Service"): ("openagrinet:MandiPrice",)}
+    )
+    diverging_answer = DiscoveredAnswer(
+        provider_id="agmarknet",
+        provider_name="AGMARKNET",
+        capability="openagrinet:MandiPrice",
+        resource_id="r1",
+        attributes={"subjectCategories": ["Weather"]},
+        validity=None,
+    )
+    discovery = _FakeDiscovery(
+        DiscoveryResult(
+            answers={0: (diverging_answer,)},
+            capabilities={0: ()},
+            failures={0: ()},
+            events=(),
+        )
+    )
+
+    result = await discover_providers(
+        intent, turn, discovery, schema_pack_cache, radius_m=25000, now=NOW
+    )
+
+    assert result.events == (
+        CategoryMappingDiverged(
+            capability="openagrinet:MandiPrice", observed_category="Weather"
+        ),
+    )

@@ -82,6 +82,7 @@ def _capabilities_from_catalog(catalog: dict[str, Any]) -> list[ProviderCapabili
                 provider_name=provider["descriptor"]["name"],
                 capability=attributes["@type"],
                 resource_id=resource["id"],
+                observed_categories=tuple(attributes["subjectCategories"]),
             )
         )
     return capabilities

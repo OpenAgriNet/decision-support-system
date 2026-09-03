@@ -11,6 +11,7 @@ import anyio
 from dss.core.intent.models import Ask, Intent, InteractionType
 from dss.core.provider_discovery.models import (
     CapabilityUnresolved,
+    CategoryMappingDiverged,
     Coverage,
     DiscoveredAnswer,
     DiscoveryResult,
@@ -104,6 +105,29 @@ def _drop_expired_answers(
     return tuple(kept), events
 
 
+def _expected_categories(
+    capability: str, index: Mapping[tuple[str, str], tuple[str, ...]]
+) -> set[str]:
+    return {
+        subject_category
+        for (subject_category, _action_type), types in index.items()
+        if capability in types
+    }
+
+
+def _diverged_categories(
+    capability: str,
+    observed_categories: tuple[str, ...],
+    index: Mapping[tuple[str, str], tuple[str, ...]],
+) -> list[CategoryMappingDiverged]:
+    expected = _expected_categories(capability, index)
+    return [
+        CategoryMappingDiverged(capability=capability, observed_category=category)
+        for category in observed_categories
+        if category not in expected
+    ]
+
+
 async def discover_providers(
     intent: Intent,
     turn: UserTurn,
@@ -152,6 +176,18 @@ async def discover_providers(
         capabilities.update(result.capabilities)
         failures.update(result.failures)
         events.extend(result.events)
+
+    for answer_tuple in answers.values():
+        for answer in answer_tuple:
+            observed = tuple(answer.attributes.get("subjectCategories", ()))
+            events.extend(_diverged_categories(answer.capability, observed, index))
+    for capability_tuple in capabilities.values():
+        for capability in capability_tuple:
+            events.extend(
+                _diverged_categories(
+                    capability.capability, capability.observed_categories, index
+                )
+            )
 
     for ask_index in answers:
         kept_answers, expiry_events = _drop_expired_answers(

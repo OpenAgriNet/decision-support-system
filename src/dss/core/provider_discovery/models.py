@@ -39,6 +39,7 @@ class ProviderCapability:
     provider_name: str
     capability: str  # the resource's @type
     resource_id: str  # names which resource `select` commits to
+    observed_categories: tuple[str, ...] = ()  # the resource's own subjectCategories
 
 
 @dataclass(frozen=True)
