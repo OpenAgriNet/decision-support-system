@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DSS Turn Lifecycle &amp; Hexagon</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --bg-soft: #f6f7f9;
+    --ink: #1b1f24;
+    --ink-soft: #5b6270;
+    --line: #d7dbe1;
+    --accent: #b45309;
+    --accent-soft: #fef3e2;
+    --core: #eef2ff;
+    --core-line: #4f46e5;
+    --danger: #9f1239;
+    --ok: #0f7a4a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171c;
+      --bg-soft: #1b1f26;
+      --ink: #e8eaed;
+      --ink-soft: #9aa2b1;
+      --line: #333944;
+      --accent: #f0a94e;
+      --accent-soft: #2a2115;
+      --core: #1e2140;
+      --core-line: #8b93ff;
+      --danger: #ff9db3;
+      --ok: #4ade9e;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  main { max-width: 960px; margin: 0 auto; padding: 40px 24px 80px; }
+  h1 { font-size: 1.5rem; margin: 0 0 6px; }
+  h2 { font-size: 1.15rem; margin: 48px 0 4px; border-top: 1px solid var(--line); padding-top: 28px; }
+  .kicker { color: var(--ink-soft); font-size: 0.9rem; margin: 0 0 32px; }
+  p { color: var(--ink); }
+  figure { margin: 20px 0 8px; padding: 16px; background: var(--bg-soft); border: 1px solid var(--line); border-radius: 10px; }
+  figure svg { width: 100%; height: auto; display: block; }
+  figcaption { font-size: 0.85rem; color: var(--ink-soft); margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); }
+  code { background: var(--bg-soft); border: 1px solid var(--line); border-radius: 4px; padding: 0.1em 0.4em; font-size: 0.9em; }
+  .callout { background: var(--accent-soft); border-left: 3px solid var(--accent); padding: 10px 14px; border-radius: 0 6px 6px 0; margin: 16px 0; font-size: 0.95rem; }
+  .section-label { display: inline-block; font-size: 0.75rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-soft); margin-bottom: 4px; }
+  svg text { fill: currentColor; }
+  .dim { opacity: 0.55; }
+</style>
+</head>
+<body>
+<main>
+
+  <span class="section-label">DSS API contract — single endpoint proposal</span>
+  <h1>Two diagrams: the turn lifecycle, and the hexagon in classic terms</h1>
+  <p class="kicker">The first draws <code>POST /v1/turns</code> end to end — one envelope, two response modes, and the <code>outcome.status</code> / <code>outcome.kind</code> split the way the §4 worked examples actually implement it (not the way §3's canonical schema currently shows it — see the review). The second is the ports-and-adapters shape again, but drawn once, cleanly, with the standard primary/secondary vocabulary and this proposal's own endpoint sitting in the primary-adapter box.</p>
+
+  <h2>1. One request, two response modes, one outcome model</h2>
+
+  <figure>
+    <svg viewBox="0 0 900 620" role="img" aria-label="Turn lifecycle: a single POST to /v1/turns with context and message forks on the Accept header into a synchronous JSON response or an SSE stream of turn.created, repeated claim.completed, and a terminal turn.completed or turn.failed event; underneath, outcome.status separates DSS execution (completed or failed) from outcome.kind, the domain result (answered, rejected, no_match, requires_input, or unavailable), which stays HTTP 200 either way once execution has completed.">
+      <defs>
+        <marker id="t1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+        </marker>
+      </defs>
+
+      <!-- request -->
+      <rect x="300" y="16" width="300" height="56" rx="7" fill="var(--core)" stroke="var(--core-line)" stroke-width="1.6"/>
+      <text x="450" y="40" font-size="12.5" text-anchor="middle" font-weight="600">POST /v1/turns</text>
+      <text x="450" y="57" font-size="10.5" text-anchor="middle" class="dim">context + message.input[] (text · image · file · history)</text>
+
+      <line x1="450" y1="72" x2="450" y2="98" stroke="currentColor" stroke-width="1.4" marker-end="url(#t1)"/>
+      <text x="480" y="90" font-size="10" class="dim">Accept header selects mode</text>
+
+      <!-- fork -->
+      <line x1="450" y1="98" x2="220" y2="140" stroke="currentColor" stroke-width="1.3"/>
+      <line x1="450" y1="98" x2="680" y2="140" stroke="currentColor" stroke-width="1.3"/>
+
+      <!-- sync branch -->
+      <rect x="80" y="146" width="280" height="46" rx="6" fill="none" stroke="currentColor" stroke-width="1.3"/>
+      <text x="220" y="166" font-size="11.5" text-anchor="middle" font-weight="600">Accept: application/json</text>
+      <text x="220" y="182" font-size="10" text-anchor="middle" class="dim">single synchronous response</text>
+
+      <line x1="220" y1="192" x2="220" y2="222" stroke="currentColor" stroke-width="1.4" marker-end="url(#t1)"/>
+      <rect x="80" y="228" width="280" height="52" rx="6" fill="var(--core)" stroke="var(--core-line)" stroke-width="1.5"/>
+      <text x="220" y="250" font-size="12" text-anchor="middle" font-weight="600">canonical turn, HTTP 200</text>
+      <text x="220" y="267" font-size="10" text-anchor="middle" class="dim">message.turn — no event wrapper</text>
+
+      <!-- streaming branch -->
+      <rect x="540" y="146" width="280" height="46" rx="6" fill="none" stroke="currentColor" stroke-width="1.3"/>
+      <text x="680" y="166" font-size="11.5" text-anchor="middle" font-weight="600">Accept: text/event-stream</text>
+      <text x="680" y="182" font-size="10" text-anchor="middle" class="dim">HTTP 200 opens the stream</text>
+
+      <line x1="680" y1="192" x2="680" y2="216" stroke="currentColor" stroke-width="1.4" marker-end="url(#t1)"/>
+      <rect x="600" y="222" width="160" height="34" rx="6" fill="none" stroke="var(--core-line)" stroke-width="1.3"/>
+      <text x="680" y="243" font-size="10.5" text-anchor="middle">turn.created</text>
+      <text x="835" y="243" font-size="9" class="dim">seq 0</text>
+
+      <line x1="680" y1="256" x2="680" y2="280" stroke="currentColor" stroke-width="1.4" marker-end="url(#t1)"/>
+      <rect x="600" y="286" width="160" height="34" rx="6" fill="none" stroke="var(--core-line)" stroke-width="1.3"/>
+      <text x="680" y="307" font-size="10.5" text-anchor="middle">claim.completed</text>
+      <text x="835" y="307" font-size="9" class="dim">seq 1..n</text>
+
+      <path d="M 596 303 A 26 26 0 1 1 596 320" fill="none" stroke="var(--accent)" stroke-width="1.3" marker-end="url(#t1)"/>
+      <text x="560" y="315" font-size="9" fill="var(--accent)" text-anchor="middle">repeats,</text>
+      <text x="560" y="326" font-size="9" fill="var(--accent)" text-anchor="middle">one per</text>
+      <text x="560" y="337" font-size="9" fill="var(--accent)" text-anchor="middle">reviewed claim</text>
+
+      <line x1="680" y1="320" x2="680" y2="344" stroke="currentColor" stroke-width="1.4" marker-end="url(#t1)"/>
+
+      <!-- terminal fork -->
+      <line x1="680" y1="344" x2="620" y2="376" stroke="currentColor" stroke-width="1.3"/>
+      <line x1="680" y1="344" x2="740" y2="376" stroke="currentColor" stroke-width="1.3"/>
+
+      <rect x="530" y="382" width="180" height="46" rx="6" fill="var(--core)" stroke="var(--ok)" stroke-width="1.6"/>
+      <text x="620" y="403" font-size="11" text-anchor="middle" font-weight="600" fill="var(--ok)">turn.completed</text>
+      <text x="620" y="419" font-size="9.5" text-anchor="middle" class="dim">terminal · seq n+1</text>
+
+      <rect x="720" y="382" width="180" height="46" rx="6" fill="none" stroke="var(--danger)" stroke-width="1.6" stroke-dasharray="3 3"/>
+      <text x="810" y="403" font-size="11" text-anchor="middle" font-weight="600" fill="var(--danger)">turn.failed</text>
+      <text x="810" y="419" font-size="9.5" text-anchor="middle" class="dim">terminal · HTTP unchanged</text>
+
+      <text x="680" y="452" font-size="10" text-anchor="middle" class="dim">"The terminal event is authoritative — the client does not infer</text>
+      <text x="680" y="466" font-size="10" text-anchor="middle" class="dim">success or failure from connection closure."</text>
+
+      <!-- outcome model -->
+      <rect x="40" y="500" width="820" height="104" rx="8" fill="var(--bg)" stroke="var(--core-line)" stroke-width="1.3" stroke-dasharray="2 2"/>
+      <text x="450" y="522" font-size="12" text-anchor="middle" font-weight="600">the model both terminals resolve to — turn.outcome, per the §4 worked examples</text>
+
+      <text x="70" y="548" font-size="10.5" font-weight="600" class="dim">outcome.status — execution</text>
+      <rect x="70" y="556" width="150" height="26" rx="4" fill="var(--core)" stroke="var(--ok)" stroke-width="1.2"/>
+      <text x="145" y="573" font-size="10" text-anchor="middle" fill="var(--ok)">completed</text>
+      <rect x="230" y="556" width="150" height="26" rx="4" fill="none" stroke="var(--danger)" stroke-width="1.2"/>
+      <text x="305" y="573" font-size="10" text-anchor="middle" fill="var(--danger)">failed</text>
+
+      <text x="470" y="548" font-size="10.5" font-weight="600" class="dim">outcome.kind — domain result (independent axis)</text>
+      <rect x="470" y="556" width="90" height="26" rx="4" fill="none" stroke="currentColor" stroke-width="1.1"/>
+      <text x="515" y="573" font-size="9.5" text-anchor="middle">answered</text>
+      <rect x="566" y="556" width="90" height="26" rx="4" fill="none" stroke="currentColor" stroke-width="1.1"/>
+      <text x="611" y="573" font-size="9.5" text-anchor="middle">rejected</text>
+      <rect x="662" y="556" width="90" height="26" rx="4" fill="none" stroke="currentColor" stroke-width="1.1"/>
+      <text x="707" y="573" font-size="9.5" text-anchor="middle">no_match</text>
+      <rect x="758" y="556" width="98" height="26" rx="4" fill="none" stroke="var(--danger)" stroke-width="1.1" stroke-dasharray="2 2"/>
+      <text x="807" y="573" font-size="9.5" text-anchor="middle" fill="var(--danger)">unavailable</text>
+
+      <text x="450" y="596" font-size="10" text-anchor="middle" class="dim">completed pairs with answered / rejected / no_match / requires_input — all HTTP 200. failed pairs with unavailable.</text>
+    </svg>
+    <figcaption>This is the clean model the four §4 worked examples already implement correctly — <code>status</code> answers "did DSS finish," <code>kind</code> answers "what did it conclude," and they vary independently. The review flags that §3's own canonical schema currently shows a different, contradictory shape; this diagram draws the target, not that placeholder.</figcaption>
+  </figure>
+
+  <h2>2. Primary adapters, ports, secondary adapters — the hexagon, once, clearly</h2>
+  <p>Same boundary as the folder-structure hexagon, redrawn with the classic Cockburn names side by side with the folder names, and this proposal's own transport sitting concretely in the primary-adapter box instead of staying an abstract "entrypoint."</p>
+
+  <figure>
+    <svg viewBox="0 0 940 400" role="img" aria-label="Hexagon with primary adapters entrypoint (POST slash v1 slash turns) and orchestration calling into core and ports from the left, and secondary adapters for LLM, MCP, network, cache and evidence implementing those ports from the right.">
+      <defs>
+        <marker id="t2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+        </marker>
+      </defs>
+
+      <!-- bracket labels -->
+      <text x="140" y="26" font-size="13" font-weight="700" text-anchor="middle">PRIMARY ADAPTERS</text>
+      <text x="140" y="41" font-size="10.5" text-anchor="middle" class="dim">drive the application — calls in</text>
+
+      <text x="800" y="26" font-size="13" font-weight="700" text-anchor="middle">SECONDARY ADAPTERS</text>
+      <text x="800" y="41" font-size="10.5" text-anchor="middle" class="dim">driven by the application — implement ports</text>
+
+      <!-- primary adapters -->
+      <rect x="20" y="60" width="240" height="64" rx="7" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <text x="140" y="84" font-size="12" text-anchor="middle" font-weight="600">entrypoint/</text>
+      <text x="140" y="100" font-size="10.5" text-anchor="middle">POST /v1/turns</text>
+      <text x="140" y="114" font-size="9.5" text-anchor="middle" class="dim">REST · JSON or SSE by Accept</text>
+
+      <rect x="20" y="140" width="240" height="56" rx="7" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <text x="140" y="163" font-size="12" text-anchor="middle" font-weight="600">orchestration/</text>
+      <text x="140" y="179" font-size="9.5" text-anchor="middle" class="dim">Pydantic AI graph, policy checkpoints</text>
+
+      <!-- hexagon -->
+      <polygon points="380,20 620,20 700,200 620,380 380,380 300,200"
+               fill="var(--core)" stroke="var(--core-line)" stroke-width="1.9"/>
+      <text x="500" y="90" font-size="15" font-weight="700" text-anchor="middle">core/</text>
+      <text x="500" y="112" font-size="10.5" text-anchor="middle" class="dim">intent · moderation · routing · persona</text>
+      <text x="500" y="128" font-size="10.5" text-anchor="middle" class="dim">execution · review · channel — plain Python</text>
+
+      <rect x="400" y="170" width="200" height="90" rx="6" fill="var(--bg)" stroke="var(--core-line)" stroke-width="1.4"/>
+      <text x="500" y="192" font-size="12.5" text-anchor="middle" font-weight="700">ports/</text>
+      <text x="500" y="210" font-size="9.5" text-anchor="middle" class="dim">LLMProvider</text>
+      <text x="500" y="224" font-size="9.5" text-anchor="middle" class="dim">ToolGateway</text>
+      <text x="500" y="238" font-size="9.5" text-anchor="middle" class="dim">NetworkConsumerAdapter</text>
+      <text x="500" y="252" font-size="9.5" text-anchor="middle" class="dim">CatalogCache · EvidenceSink</text>
+
+      <text x="500" y="300" font-size="10.5" text-anchor="middle" class="dim">Protocols only —</text>
+      <text x="500" y="316" font-size="10.5" text-anchor="middle" class="dim">no framework, vendor SDK, network,</text>
+      <text x="500" y="332" font-size="10.5" text-anchor="middle" class="dim">clock, or filesystem import</text>
+
+      <!-- driving arrows -->
+      <line x1="260" y1="92" x2="298" y2="150" stroke="currentColor" stroke-width="1.4" marker-end="url(#t2)"/>
+      <line x1="260" y1="168" x2="298" y2="185" stroke="currentColor" stroke-width="1.4" marker-end="url(#t2)"/>
+      <text x="280" y="130" font-size="9.5" class="dim">calls</text>
+
+      <!-- secondary adapters -->
+      <rect x="720" y="56" width="200" height="40" rx="6" fill="none" stroke="currentColor" stroke-width="1.4"/>
+      <text x="820" y="80" font-size="11.5" text-anchor="middle">adapters/llm</text>
+
+      <rect x="720" y="104" width="200" height="40" rx="6" fill="none" stroke="currentColor" stroke-width="1.4"/>
+      <text x="820" y="128" font-size="11.5" text-anchor="middle">adapters/mcp</text>
+
+      <rect x="720" y="152" width="200" height="40" rx="6" fill="none" stroke="currentColor" stroke-width="1.1" stroke-dasharray="3 3"/>
+      <text x="820" y="176" font-size="11.5" text-anchor="middle" class="dim">adapters/network</text>
+
+      <rect x="720" y="200" width="200" height="40" rx="6" fill="none" stroke="currentColor" stroke-width="1.4"/>
+      <text x="820" y="224" font-size="11.5" text-anchor="middle">adapters/cache</text>
+
+      <rect x="720" y="248" width="200" height="40" rx="6" fill="none" stroke="currentColor" stroke-width="1.4"/>
+      <text x="820" y="272" font-size="11.5" text-anchor="middle">adapters/evidence</text>
+
+      <!-- implements: secondary -> ports -->
+      <line x1="716" y1="76" x2="604" y2="200" stroke="var(--accent)" stroke-width="1.3" marker-end="url(#t2)"/>
+      <line x1="716" y1="124" x2="604" y2="205" stroke="var(--accent)" stroke-width="1.3" marker-end="url(#t2)"/>
+      <line x1="716" y1="172" x2="604" y2="210" stroke="var(--accent)" stroke-width="1.1" stroke-dasharray="3 3" marker-end="url(#t2)"/>
+      <line x1="716" y1="220" x2="604" y2="215" stroke="var(--accent)" stroke-width="1.3" marker-end="url(#t2)"/>
+      <line x1="716" y1="268" x2="604" y2="220" stroke="var(--accent)" stroke-width="1.3" marker-end="url(#t2)"/>
+      <text x="670" y="308" font-size="10" text-anchor="middle" fill="var(--accent)">implements</text>
+      <text x="670" y="322" font-size="10" text-anchor="middle" fill="var(--accent)">(import points left)</text>
+
+      <!-- calls: ports -> secondary -->
+      <path d="M 605 190 C 660 175, 690 150, 716 130" fill="none" stroke="var(--core-line)" stroke-width="1.7" marker-end="url(#t2)"/>
+      <text x="672" y="150" font-size="10" text-anchor="middle" fill="var(--core-line)">calls, at runtime</text>
+    </svg>
+    <figcaption>Two names for the same two rims: "driving" = primary, "driven" = secondary — Cockburn's original vocabulary and this repo's folder names refer to the same boundary. What's new here versus the earlier folder diagram: <code>entrypoint/</code> stops being a placeholder and becomes this proposal's actual concrete shape, <code>POST /v1/turns</code>, so the diagram is now a claim about a real endpoint, not a hypothetical one.</figcaption>
+  </figure>
+
+  <div class="callout">One consequence of drawing the endpoint concretely: everything <code>POST /v1/turns</code> accepts or returns — the envelope shape, the SSE event names, the <code>status</code>/<code>kind</code> split — is <code>core/</code>'s public contract as seen from outside the hexagon. Any inconsistency in that contract (see the companion review) is therefore not just a documentation nit; it's the primary adapter's interface to the one boundary this whole architecture is built to protect.</div>
+
+</main>
+</body>
+</html>
