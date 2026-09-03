@@ -151,6 +151,20 @@ class DiscoveryResult:
 
 
 @dataclass(frozen=True)
+class SchemaPackSkipped:
+    """A pack was malformed and left out of the index.
+
+    network-specs is an external checkout, so one third-party commit must not
+    blind every other capability. Skipping keeps the system serving — but a
+    skipped pack looks exactly like a capability nobody offers, so this has to
+    reach an operator rather than pass silently.
+    """
+
+    pack_name: str
+    reason: str
+
+
+@dataclass(frozen=True)
 class SchemaPackFiles:
     """Raw file content for one schema pack — before any parsing.
 
