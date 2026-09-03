@@ -45,3 +45,20 @@ def build_capability_index(
             for action_type in _ACTION_TYPES:
                 index[(category, action_type)].append(type_const)
     return {key: tuple(values) for key, values in index.items()}
+
+
+def build_schema_context_index(
+    packs: tuple[SchemaPackFiles, ...],
+) -> dict[str, tuple[str, str]]:
+    """Maps each @type to the (pack_name, version) that declares it.
+
+    Used to build the discover request's schemaContext URLs, which need a
+    pack's name and version — the @type string alone doesn't carry either.
+    """
+    return {
+        _extract_type_const(pack.attributes_yaml, pack.pack_name): (
+            pack.pack_name,
+            pack.version,
+        )
+        for pack in packs
+    }

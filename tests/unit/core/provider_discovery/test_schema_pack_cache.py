@@ -22,6 +22,7 @@ MANDI_PRICE_EXAMPLE = '{"subjectCategories": ["Market"]}'
 
 MANDI_PRICE_PACK = SchemaPackFiles(
     pack_name="MandiPrice",
+    version="v0.1",
     profile_json="{}",
     attributes_yaml=MANDI_PRICE_ATTRIBUTES,
     examples_json=(MANDI_PRICE_EXAMPLE,),

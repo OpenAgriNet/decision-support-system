@@ -34,6 +34,7 @@ class FilesystemSchemaPackSource:
 
         return SchemaPackFiles(
             pack_name=pack_dir.name,
+            version=version_dir.name,
             profile_json=profile_json,
             attributes_yaml=attributes_yaml,
             examples_json=examples_json,

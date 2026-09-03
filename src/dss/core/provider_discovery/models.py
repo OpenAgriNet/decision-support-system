@@ -157,6 +157,7 @@ class SchemaPackFiles:
     """
 
     pack_name: str
+    version: str
     profile_json: str
     attributes_yaml: str
     examples_json: tuple[str, ...]

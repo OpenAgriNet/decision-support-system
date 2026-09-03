@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from dss.core.provider_discovery.index import build_capability_index
+from dss.core.provider_discovery.index import (
+    build_capability_index,
+    build_schema_context_index,
+)
 from dss.core.provider_discovery.models import SchemaPackFiles
 
 MANDI_PRICE_ATTRIBUTES = """
@@ -35,6 +38,7 @@ MARKET_INTELLIGENCE_EXAMPLE = '{"subjectCategories": ["Market"]}'
 def test_a_single_pack_maps_its_category_to_its_type() -> None:
     pack = SchemaPackFiles(
         pack_name="MandiPrice",
+        version="v0.1",
         profile_json="{}",
         attributes_yaml=MANDI_PRICE_ATTRIBUTES,
         examples_json=(MANDI_PRICE_EXAMPLE,),
@@ -49,12 +53,14 @@ def test_a_single_pack_maps_its_category_to_its_type() -> None:
 def test_two_distinct_packs_sharing_a_category_both_appear() -> None:
     mandi_price = SchemaPackFiles(
         pack_name="MandiPrice",
+        version="v0.1",
         profile_json="{}",
         attributes_yaml=MANDI_PRICE_ATTRIBUTES,
         examples_json=(MANDI_PRICE_EXAMPLE,),
     )
     market_intelligence = SchemaPackFiles(
         pack_name="MarketIntelligence",
+        version="v0.1",
         profile_json="{}",
         attributes_yaml=MARKET_INTELLIGENCE_ATTRIBUTES,
         examples_json=(MARKET_INTELLIGENCE_EXAMPLE,),
@@ -66,3 +72,17 @@ def test_two_distinct_packs_sharing_a_category_both_appear() -> None:
         "openagrinet:MandiPrice",
         "openagrinet:MarketIntelligence",
     )
+
+
+def test_schema_context_index_maps_a_type_to_its_pack_name_and_version() -> None:
+    pack = SchemaPackFiles(
+        pack_name="MandiPrice",
+        version="v0.1",
+        profile_json="{}",
+        attributes_yaml=MANDI_PRICE_ATTRIBUTES,
+        examples_json=(MANDI_PRICE_EXAMPLE,),
+    )
+
+    index = build_schema_context_index((pack,))
+
+    assert index["openagrinet:MandiPrice"] == ("MandiPrice", "v0.1")
