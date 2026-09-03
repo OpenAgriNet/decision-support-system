@@ -55,7 +55,6 @@ def _discovery(
     )
 
 
-@pytest.mark.anyio
 async def test_discover_posts_to_the_discover_endpoint_and_maps_the_response() -> None:
     on_discover = json.loads((FIXTURES / "on_discover_response.json").read_text())
     discovery = _discovery(_client_returning(on_discover))
@@ -70,7 +69,6 @@ async def test_discover_posts_to_the_discover_endpoint_and_maps_the_response() -
     assert result.capabilities[0][0].provider_id == "mausamgram"
 
 
-@pytest.mark.anyio
 async def test_a_refreshed_cache_is_reflected_without_rewiring() -> None:
     """Proves the adapter reads the cache live, not a construction-time
     snapshot — the schema_context_index dict is mutated after wiring.
@@ -91,7 +89,6 @@ async def test_a_refreshed_cache_is_reflected_without_rewiring() -> None:
     assert result.capabilities[0][0].provider_id == "mausamgram"
 
 
-@pytest.mark.anyio
 async def test_a_non_2xx_response_raises() -> None:
     """Classifying transient vs defect is discover_providers' job — this
     adapter only needs to surface the failure, not decide what it means.
@@ -111,7 +108,6 @@ async def test_a_non_2xx_response_raises() -> None:
     assert exc_info.value.response.status_code == 429
 
 
-@pytest.mark.anyio
 async def test_a_connection_error_propagates() -> None:
     """No HTTP response at all — the network-level failure case, distinct
     from a non-2xx status. Classification is discover_providers' job.

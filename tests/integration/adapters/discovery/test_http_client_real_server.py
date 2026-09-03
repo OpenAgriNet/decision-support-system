@@ -34,7 +34,6 @@ SCHEMA_PACK_CACHE = _FakeSchemaPackCache(
 )
 
 
-@pytest.mark.anyio
 async def test_discover_against_a_real_local_server(httpserver: HTTPServer) -> None:
     on_discover = json.loads((FIXTURES / "on_discover_response.json").read_text())
     httpserver.expect_request("/discover", method="POST").respond_with_json(on_discover)
@@ -57,7 +56,6 @@ async def test_discover_against_a_real_local_server(httpserver: HTTPServer) -> N
     assert result.capabilities[0][0].provider_id == "mausamgram"
 
 
-@pytest.mark.anyio
 async def test_a_real_429_response_raises(httpserver: HTTPServer) -> None:
     httpserver.expect_request("/discover", method="POST").respond_with_json(
         {"error": "rate limited"}, status=429

@@ -40,7 +40,6 @@ class _FakeSource:
         return self.packs
 
 
-@pytest.mark.anyio
 async def test_refresh_populates_an_empty_cache() -> None:
     cache = SchemaPackCache(_FakeSource(packs=(MANDI_PRICE_PACK,)))
     assert cache.current() == {}
@@ -50,7 +49,6 @@ async def test_refresh_populates_an_empty_cache() -> None:
     assert cache.current()[("Market", "Knowledge")] == ("openagrinet:MandiPrice",)
 
 
-@pytest.mark.anyio
 async def test_a_failed_refresh_keeps_the_last_good_index() -> None:
     source = _FakeSource(packs=(MANDI_PRICE_PACK,))
     cache = SchemaPackCache(source)
@@ -64,7 +62,6 @@ async def test_a_failed_refresh_keeps_the_last_good_index() -> None:
     assert cache.current() == good_index
 
 
-@pytest.mark.anyio
 async def test_a_successful_refresh_replaces_the_index_wholesale() -> None:
     source = _FakeSource(packs=(MANDI_PRICE_PACK,))
     cache = SchemaPackCache(source)
@@ -76,7 +73,6 @@ async def test_a_successful_refresh_replaces_the_index_wholesale() -> None:
     assert cache.current() == {}
 
 
-@pytest.mark.anyio
 async def test_refresh_also_populates_the_schema_context_index() -> None:
     cache = SchemaPackCache(_FakeSource(packs=(MANDI_PRICE_PACK,)))
     assert cache.current_schema_context() == {}

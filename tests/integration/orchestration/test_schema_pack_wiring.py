@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from dss.orchestration.schema_packs import build_schema_pack_cache
 
 FIXTURE_ROOT = (
@@ -18,7 +16,6 @@ FIXTURE_ROOT = (
 )
 
 
-@pytest.mark.anyio
 async def test_the_wired_cache_resolves_a_capability_after_refresh() -> None:
     cache = build_schema_pack_cache(FIXTURE_ROOT)
     assert cache.current() == {}

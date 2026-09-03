@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 
 import httpx2
-import pytest
 
 from dss.adapters.schema_packs.filesystem import FilesystemSchemaPackSource
 from dss.core.provider_discovery.models import ProviderQuery
@@ -32,7 +31,6 @@ ON_DISCOVER_RESPONSE = json.loads(
 )
 
 
-@pytest.mark.anyio
 async def test_the_wired_adapter_resolves_a_query() -> None:
     schema_pack_cache = SchemaPackCache(
         FilesystemSchemaPackSource(root=SCHEMA_PACKS_FIXTURE_ROOT)

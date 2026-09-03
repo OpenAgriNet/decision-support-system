@@ -129,7 +129,6 @@ addopts = [
 ]
 markers = [
     "eval: tier-6 end-to-end quality eval; diagnostic only, never a merge gate",
-    "anyio: marks a test to run under anyio's async test runner",
 ]
 strict_markers = true
 

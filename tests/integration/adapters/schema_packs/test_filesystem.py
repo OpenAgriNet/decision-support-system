@@ -15,7 +15,6 @@ from dss.adapters.schema_packs.filesystem import FilesystemSchemaPackSource
 FIXTURE_ROOT = Path(__file__).parent / "fixtures" / "network-specs" / "schema"
 
 
-@pytest.mark.anyio
 async def test_reads_the_three_files_a_pack_needs() -> None:
     source = FilesystemSchemaPackSource(root=FIXTURE_ROOT)
 
@@ -30,7 +29,6 @@ async def test_reads_the_three_files_a_pack_needs() -> None:
     assert "Market" in pack.examples_json[0]
 
 
-@pytest.mark.anyio
 async def test_a_pack_with_two_version_dirs_fails_loudly(tmp_path: Path) -> None:
     pack_dir = tmp_path / "MandiPrice"
     (pack_dir / "v0.1").mkdir(parents=True)
