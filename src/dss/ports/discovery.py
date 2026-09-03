@@ -8,4 +8,6 @@ from dss.core.provider_discovery.models import DiscoveryResult, ProviderQuery
 
 
 class CapabilityDiscovery(Protocol):
-    async def discover(self, query: ProviderQuery) -> DiscoveryResult: ...
+    async def discover(
+        self, query: ProviderQuery, ask_indices: tuple[int, ...]
+    ) -> DiscoveryResult: ...
