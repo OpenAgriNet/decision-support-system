@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from dss.core.provider_discovery.index import (
     build_capability_index,
     build_schema_context_index,
@@ -72,6 +74,32 @@ def test_two_distinct_packs_sharing_a_category_both_appear() -> None:
         "openagrinet:MandiPrice",
         "openagrinet:MarketIntelligence",
     )
+
+
+def test_a_pack_spanning_many_categories_indexes_them_in_a_stable_order() -> None:
+    """Categories are collected into a set, whose iteration order over strings
+    varies with PYTHONHASHSEED. The resulting @type order reaches the discover
+    request's jsonpath filter, so two identical deployments must not build
+    different requests from the same packs.
+    """
+    categories = ["Market", "Weather", "Scheme", "Advisory", "Livestock", "Crop"]
+    pack = SchemaPackFiles(
+        pack_name="MandiPrice",
+        version="v0.1",
+        profile_json="{}",
+        attributes_yaml=MANDI_PRICE_ATTRIBUTES,
+        examples_json=tuple(
+            json.dumps({"subjectCategories": [category]}) for category in categories
+        ),
+    )
+
+    index = build_capability_index((pack,))
+
+    assert list(index) == [
+        (category, action_type)
+        for category in sorted(categories)
+        for action_type in ("Knowledge", "Service")
+    ]
 
 
 def test_schema_context_index_maps_a_type_to_its_pack_name_and_version() -> None:

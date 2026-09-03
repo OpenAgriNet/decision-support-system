@@ -41,7 +41,9 @@ def build_capability_index(
     index: dict[tuple[str, str], list[str]] = defaultdict(list)
     for pack in packs:
         type_const = _extract_type_const(pack.attributes_yaml, pack.pack_name)
-        for category in _extract_subject_categories(pack.examples_json):
+        # sorted: set iteration order varies with PYTHONHASHSEED, and this
+        # order reaches the discover request's jsonpath filter.
+        for category in sorted(_extract_subject_categories(pack.examples_json)):
             for action_type in _ACTION_TYPES:
                 index[(category, action_type)].append(type_const)
     return {key: tuple(values) for key, values in index.items()}
