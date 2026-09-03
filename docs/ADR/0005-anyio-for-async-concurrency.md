@@ -1,4 +1,4 @@
-# ADR-0003: Use anyio for Async Concurrency and Structured Concurrency
+# ADR-0005: Use anyio for Async Concurrency and Structured Concurrency
 
 - **Status:** ACCEPTED
 - **Date:** 2026-09-02
