@@ -7,15 +7,19 @@ core's job. This module never decides anything; it only reshapes data.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from dss.core.provider_discovery.models import (
+    DiscoveredAnswer,
     DiscoveryResult,
     ProviderCapability,
     ProviderQuery,
+    Validity,
 )
 
 _ON_DEMAND = "OnDemand"
+_DIRECT = "Direct"
 _DISCOVER_VERSION = "2.0.0"
 
 
@@ -37,19 +41,51 @@ def _capabilities_from_catalog(catalog: dict[str, Any]) -> list[ProviderCapabili
     return capabilities
 
 
+def _extract_validity(attributes: dict[str, Any]) -> Validity | None:
+    validity = attributes.get("validity")
+    if validity is None:
+        return None
+    starts_at = validity.get("startsAt")
+    ends_at = validity.get("endsAt")
+    return Validity(
+        starts_at=datetime.fromisoformat(starts_at) if starts_at else None,
+        ends_at=datetime.fromisoformat(ends_at) if ends_at else None,
+    )
+
+
+def _answers_from_catalog(catalog: dict[str, Any]) -> list[DiscoveredAnswer]:
+    provider = catalog["provider"]
+    answers = []
+    for resource in catalog["resources"]:
+        attributes = resource["resourceAttributes"]
+        if attributes["informationMode"] != _DIRECT:
+            continue
+        answers.append(
+            DiscoveredAnswer(
+                provider_id=provider["id"],
+                provider_name=provider["descriptor"]["name"],
+                capability=attributes["@type"],
+                resource_id=resource["id"],
+                attributes=attributes,
+                validity=_extract_validity(attributes),
+            )
+        )
+    return answers
+
+
 def map_on_discover_response(
     response: dict[str, Any], ask_indices: tuple[int, ...]
 ) -> DiscoveryResult:
     capabilities: list[ProviderCapability] = []
+    answers: list[DiscoveredAnswer] = []
     for catalog in response["message"]["catalogs"]:
         capabilities.extend(_capabilities_from_catalog(catalog))
-
-    capabilities_by_ask = {index: tuple(capabilities) for index in ask_indices}
+        answers.extend(_answers_from_catalog(catalog))
 
     return DiscoveryResult(
-        answers={},
-        capabilities=capabilities_by_ask,
-        failures={},
+        answers={index: tuple(answers) for index in ask_indices},
+        capabilities={index: tuple(capabilities) for index in ask_indices},
+        failures={index: () for index in ask_indices},
         events=(),
     )
 

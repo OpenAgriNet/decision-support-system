@@ -1,0 +1,70 @@
+{
+  "context": {
+    "version": "2.0.0",
+    "action": "on_discover",
+    "networkId": "da.gov.in/vistaar",
+    "senderId": "seeker-network-vistaar.da.gov.in",
+    "senderUri": "https://seeker-network-vistaar.da.gov.in/oan",
+    "receiverId": "discovery-network-vistaar.da.gov.in",
+    "receiverUri": "https://discovery-network-vistaar.da.gov.in/oan",
+    "transactionId": "a1b2c3d4-1111-2222-3333-444455556666",
+    "messageId": "b2c3d4e5-2222-3333-4444-555566667777",
+    "timestamp": "2026-08-24T10:30:05.000Z"
+  },
+  "message": {
+    "catalogs": [
+      {
+        "id": "cat:agmarknet:mandi-price",
+        "descriptor": {
+          "code": "AGMARKNET-01",
+          "name": "AGMARKNET Mandi Price"
+        },
+        "provider": {
+          "id": "agmarknet",
+          "descriptor": {
+            "code": "AGMARKNET-01",
+            "name": "AGMARKNET"
+          }
+        },
+        "resources": [
+          {
+            "id": "res:agmarknet:onion-lasalgaon",
+            "descriptor": {
+              "name": "Onion price at Lasalgaon"
+            },
+            "resourceAttributes": {
+              "@context": "https://schemas.openagrinet.global/schema/MandiPrice/v0.1/context.jsonld",
+              "@type": "openagrinet:MandiPrice",
+              "informationMode": "Direct",
+              "subjectCategories": ["Market"],
+              "source": {
+                "sourceId": "source:agmarknet",
+                "sourceName": "AGMARKNET"
+              },
+              "commodity": {
+                "name": "Onion",
+                "code": "ONION"
+              },
+              "variety": "Red",
+              "market": {
+                "marketCode": "MH-LASALGAON",
+                "marketName": "Lasalgaon",
+                "district": "Nashik",
+                "state": "Maharashtra"
+              },
+              "arrivalDate": "2026-08-24",
+              "prices": {
+                "minimum": 1800,
+                "maximum": 2450,
+                "modal": 2200,
+                "currency": "INR",
+                "unit": "quintal"
+              },
+              "generatedAt": "2026-08-24T10:30:00Z"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}
