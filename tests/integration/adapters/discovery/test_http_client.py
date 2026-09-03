@@ -18,9 +18,17 @@ from dss.core.provider_discovery.models import ProviderQuery
 FIXTURES = Path(__file__).parent / "fixtures"
 BASE_URL = "https://discovery-network-vistaar.da.gov.in/oan"
 
-SCHEMA_CONTEXT_INDEX = {
-    "openagrinet:WeatherObservation": ("WeatherObservation", "v0.1")
-}
+
+class _FakeSchemaPackCache:
+    """Stands in for SchemaPackCache — this adapter reads it live, not a
+    snapshot, so a refresh() elsewhere is reflected without re-wiring.
+    """
+
+    def __init__(self, schema_context_index: dict[str, tuple[str, str]]) -> None:
+        self._schema_context_index = schema_context_index
+
+    def current_schema_context(self) -> dict[str, tuple[str, str]]:
+        return self._schema_context_index
 
 
 def _client_returning(
@@ -32,16 +40,25 @@ def _client_returning(
     return httpx2.AsyncClient(transport=httpx2.MockTransport(handler))
 
 
+def _discovery(
+    client: httpx2.AsyncClient, schema_pack_cache=None
+) -> HttpCapabilityDiscovery:
+    if schema_pack_cache is None:
+        schema_pack_cache = _FakeSchemaPackCache(
+            {"openagrinet:WeatherObservation": ("WeatherObservation", "v0.1")}
+        )
+    return HttpCapabilityDiscovery(
+        client=client,
+        base_url=BASE_URL,
+        schema_pack_cache=schema_pack_cache,
+        schema_base_url="https://schemas.openagrinet.global/schema",
+    )
+
+
 @pytest.mark.anyio
 async def test_discover_posts_to_the_discover_endpoint_and_maps_the_response() -> None:
     on_discover = json.loads((FIXTURES / "on_discover_response.json").read_text())
-    client = _client_returning(on_discover)
-    discovery = HttpCapabilityDiscovery(
-        client=client,
-        base_url=BASE_URL,
-        schema_context_index=SCHEMA_CONTEXT_INDEX,
-        schema_base_url="https://schemas.openagrinet.global/schema",
-    )
+    discovery = _discovery(_client_returning(on_discover))
     query = ProviderQuery(
         capabilities=("openagrinet:WeatherObservation",),
         languages=("hi",),
@@ -54,16 +71,33 @@ async def test_discover_posts_to_the_discover_endpoint_and_maps_the_response() -
 
 
 @pytest.mark.anyio
+async def test_a_refreshed_cache_is_reflected_without_rewiring() -> None:
+    """Proves the adapter reads the cache live, not a construction-time
+    snapshot — the schema_context_index dict is mutated after wiring.
+    """
+    on_discover = json.loads((FIXTURES / "on_discover_response.json").read_text())
+    index: dict[str, tuple[str, str]] = {}
+    cache = _FakeSchemaPackCache(index)
+    discovery = _discovery(_client_returning(on_discover), schema_pack_cache=cache)
+    query = ProviderQuery(
+        capabilities=("openagrinet:WeatherObservation",),
+        languages=("hi",),
+        coverage=None,
+    )
+
+    index["openagrinet:WeatherObservation"] = ("WeatherObservation", "v0.1")
+    result = await discovery.discover(query, ask_indices=(0,))
+
+    assert result.capabilities[0][0].provider_id == "mausamgram"
+
+
+@pytest.mark.anyio
 async def test_a_non_2xx_response_raises() -> None:
     """Classifying transient vs defect is discover_providers' job — this
     adapter only needs to surface the failure, not decide what it means.
     """
-    client = _client_returning({"error": "rate limited"}, status_code=429)
-    discovery = HttpCapabilityDiscovery(
-        client=client,
-        base_url=BASE_URL,
-        schema_context_index=SCHEMA_CONTEXT_INDEX,
-        schema_base_url="https://schemas.openagrinet.global/schema",
+    discovery = _discovery(
+        _client_returning({"error": "rate limited"}, status_code=429)
     )
     query = ProviderQuery(
         capabilities=("openagrinet:WeatherObservation",),
@@ -87,12 +121,7 @@ async def test_a_connection_error_propagates() -> None:
         raise httpx2.ConnectError("connection refused", request=request)
 
     client = httpx2.AsyncClient(transport=httpx2.MockTransport(handler))
-    discovery = HttpCapabilityDiscovery(
-        client=client,
-        base_url=BASE_URL,
-        schema_context_index=SCHEMA_CONTEXT_INDEX,
-        schema_base_url="https://schemas.openagrinet.global/schema",
-    )
+    discovery = _discovery(client)
     query = ProviderQuery(
         capabilities=("openagrinet:WeatherObservation",),
         languages=("hi",),

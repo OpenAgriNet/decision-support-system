@@ -20,9 +20,18 @@ from dss.core.provider_discovery.models import ProviderQuery
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
-SCHEMA_CONTEXT_INDEX = {
-    "openagrinet:WeatherObservation": ("WeatherObservation", "v0.1")
-}
+
+class _FakeSchemaPackCache:
+    def __init__(self, schema_context_index: dict[str, tuple[str, str]]) -> None:
+        self._schema_context_index = schema_context_index
+
+    def current_schema_context(self) -> dict[str, tuple[str, str]]:
+        return self._schema_context_index
+
+
+SCHEMA_PACK_CACHE = _FakeSchemaPackCache(
+    {"openagrinet:WeatherObservation": ("WeatherObservation", "v0.1")}
+)
 
 
 @pytest.mark.anyio
@@ -34,7 +43,7 @@ async def test_discover_against_a_real_local_server(httpserver: HTTPServer) -> N
         discovery = HttpCapabilityDiscovery(
             client=client,
             base_url=httpserver.url_for(""),
-            schema_context_index=SCHEMA_CONTEXT_INDEX,
+            schema_pack_cache=SCHEMA_PACK_CACHE,
             schema_base_url="https://schemas.openagrinet.global/schema",
         )
         query = ProviderQuery(
@@ -58,7 +67,7 @@ async def test_a_real_429_response_raises(httpserver: HTTPServer) -> None:
         discovery = HttpCapabilityDiscovery(
             client=client,
             base_url=httpserver.url_for(""),
-            schema_context_index=SCHEMA_CONTEXT_INDEX,
+            schema_pack_cache=SCHEMA_PACK_CACHE,
             schema_base_url="https://schemas.openagrinet.global/schema",
         )
         query = ProviderQuery(
