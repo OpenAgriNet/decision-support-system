@@ -8,6 +8,8 @@ from datetime import UTC, datetime, timedelta
 
 from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
 from dss.core.provider_discovery.models import (
+    AskDiscoveryFailed,
+    AskUnservable,
     CapabilityUnresolved,
     CategoryMappingDiverged,
     DiscoveredAnswer,
@@ -182,6 +184,14 @@ async def test_a_failing_query_does_not_prevent_a_sibling_from_succeeding() -> N
     assert result.failures[0] != ()
     assert result.answers[0] == ()
     assert result.capabilities[0] == ()
+    assert result.events == (
+        AskDiscoveryFailed(
+            ask_index=0,
+            capability="openagrinet:WeatherObservation",
+            failure_class=FailureClass.TRANSIENT,
+            status_code=500,
+        ),
+    )
 
 
 async def test_two_asks_sharing_a_pair_dedupe_to_one_query() -> None:
@@ -257,6 +267,7 @@ async def test_an_expired_answer_with_no_fallback_is_dropped() -> None:
             resource_id="r1",
             had_fallback=False,
         ),
+        AskUnservable(ask_index=0, capabilities=("openagrinet:MandiPrice",)),
     )
 
 
@@ -380,7 +391,10 @@ async def test_a_capability_matching_the_index_has_no_divergence_event() -> None
         {("Market", "Service"): ("openagrinet:MandiPrice",)}
     )
     matching_capability = ProviderCapability(
-        "mausamgram", "IMD", "openagrinet:MandiPrice", "r1",
+        "mausamgram",
+        "IMD",
+        "openagrinet:MandiPrice",
+        "r1",
         observed_categories=("Market",),
     )
     discovery = _FakeDiscovery(
@@ -410,7 +424,10 @@ async def test_a_capability_with_a_category_outside_the_index_diverges() -> None
         {("Market", "Service"): ("openagrinet:MandiPrice",)}
     )
     diverging_capability = ProviderCapability(
-        "mausamgram", "IMD", "openagrinet:MandiPrice", "r1",
+        "mausamgram",
+        "IMD",
+        "openagrinet:MandiPrice",
+        "r1",
         observed_categories=("Scheme",),
     )
     discovery = _FakeDiscovery(
@@ -469,3 +486,115 @@ async def test_a_direct_answer_with_a_diverging_category_is_flagged() -> None:
             capability="openagrinet:MandiPrice", observed_category="Weather"
         ),
     )
+
+
+async def test_an_empty_catalog_result_emits_ask_unservable() -> None:
+    ask = Ask(
+        subject_categories=SubjectCategory.MARKET,
+        interaction_type=InteractionType.OBSERVE,
+    )
+    intent = Intent(asks=(ask,), confidence=0.9)
+    turn = _turn()
+    schema_pack_cache = _FakeSchemaPackCache(
+        {("Market", "Service"): ("openagrinet:MandiPrice",)}
+    )
+    discovery = _FakeDiscovery(
+        DiscoveryResult(
+            answers={0: ()}, capabilities={0: ()}, failures={0: ()}, events=()
+        )
+    )
+
+    result = await discover_providers(
+        intent, turn, discovery, schema_pack_cache, radius_m=25000, now=NOW
+    )
+
+    assert result.events == (
+        AskUnservable(ask_index=0, capabilities=("openagrinet:MandiPrice",)),
+    )
+
+
+async def test_a_failed_ask_emits_ask_discovery_failed_not_unservable() -> None:
+    ask = Ask(
+        subject_categories=SubjectCategory.MARKET,
+        interaction_type=InteractionType.OBSERVE,
+    )
+    intent = Intent(asks=(ask,), confidence=0.9)
+    turn = _turn()
+    schema_pack_cache = _FakeSchemaPackCache(
+        {("Market", "Service"): ("openagrinet:MandiPrice",)}
+    )
+    discovery = _FakeDiscovery(
+        DiscoveryResult(
+            answers={0: ()},
+            capabilities={0: ()},
+            failures={
+                0: (
+                    DiscoveryFailure(
+                        capability="openagrinet:MandiPrice",
+                        status_code=500,
+                        failure_class=FailureClass.TRANSIENT,
+                    ),
+                )
+            },
+            events=(),
+        )
+    )
+
+    result = await discover_providers(
+        intent, turn, discovery, schema_pack_cache, radius_m=25000, now=NOW
+    )
+
+    assert result.events == (
+        AskDiscoveryFailed(
+            ask_index=0,
+            capability="openagrinet:MandiPrice",
+            failure_class=FailureClass.TRANSIENT,
+            status_code=500,
+        ),
+    )
+
+
+async def test_an_unresolved_ask_does_not_also_emit_ask_unservable() -> None:
+    ask = Ask(
+        subject_categories=SubjectCategory.SCHEME,
+        interaction_type=InteractionType.ACT,
+    )
+    intent = Intent(asks=(ask,), confidence=0.7)
+    turn = _turn()
+    schema_pack_cache = _FakeSchemaPackCache({})
+    discovery = _FakeDiscovery(
+        DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
+    )
+
+    result = await discover_providers(
+        intent, turn, discovery, schema_pack_cache, radius_m=25000, now=NOW
+    )
+
+    assert result.events == (CapabilityUnresolved("Scheme", "Service"),)
+
+
+async def test_a_resolved_answer_does_not_emit_ask_unservable() -> None:
+    ask = Ask(
+        subject_categories=SubjectCategory.MARKET,
+        interaction_type=InteractionType.OBSERVE,
+    )
+    intent = Intent(asks=(ask,), confidence=0.9)
+    turn = _turn()
+    schema_pack_cache = _FakeSchemaPackCache(
+        {("Market", "Service"): ("openagrinet:MandiPrice",)}
+    )
+    capability = ProviderCapability("mausamgram", "IMD", "openagrinet:MandiPrice", "r1")
+    discovery = _FakeDiscovery(
+        DiscoveryResult(
+            answers={0: ()},
+            capabilities={0: (capability,)},
+            failures={0: ()},
+            events=(),
+        )
+    )
+
+    result = await discover_providers(
+        intent, turn, discovery, schema_pack_cache, radius_m=25000, now=NOW
+    )
+
+    assert result.events == ()

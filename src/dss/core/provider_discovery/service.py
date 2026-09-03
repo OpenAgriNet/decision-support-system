@@ -10,6 +10,8 @@ import anyio
 
 from dss.core.intent.models import Ask, Intent, InteractionType
 from dss.core.provider_discovery.models import (
+    AskDiscoveryFailed,
+    AskUnservable,
     CapabilityUnresolved,
     CategoryMappingDiverged,
     Coverage,
@@ -141,6 +143,7 @@ async def discover_providers(
     index = schema_pack_cache.current()
 
     queries_to_asks: dict[ProviderQuery, list[int]] = {}
+    ask_capabilities: dict[int, tuple[str, ...]] = {}
     events = []
     unresolved_asks: set[int] = set()
     for ask_index, ask in enumerate(intent.asks):
@@ -151,6 +154,7 @@ async def discover_providers(
             unresolved_asks.add(ask_index)
             continue
         queries_to_asks.setdefault(query, []).append(ask_index)
+        ask_capabilities[ask_index] = query.capabilities
 
     answers: dict[int, tuple] = {i: () for i in unresolved_asks}
     capabilities: dict[int, tuple] = {i: () for i in unresolved_asks}
@@ -195,6 +199,26 @@ async def discover_providers(
         )
         answers[ask_index] = kept_answers
         events.extend(expiry_events)
+
+    for ask_index in ask_capabilities:
+        ask_failures = failures.get(ask_index, ())
+        if ask_failures:
+            for failure in ask_failures:
+                events.append(
+                    AskDiscoveryFailed(
+                        ask_index=ask_index,
+                        capability=failure.capability,
+                        failure_class=failure.failure_class,
+                        status_code=failure.status_code,
+                    )
+                )
+            continue
+        if not answers.get(ask_index) and not capabilities.get(ask_index):
+            events.append(
+                AskUnservable(
+                    ask_index=ask_index, capabilities=ask_capabilities[ask_index]
+                )
+            )
 
     return DiscoveryResult(
         answers=answers,
