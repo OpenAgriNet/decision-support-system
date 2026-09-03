@@ -1,0 +1,818 @@
+openapi: 3.1.0
+
+info:
+  title: DSS Turn API
+  version: "1.0.0"
+  description: |
+    Decision Support System (DSS) turn API.
+
+    One endpoint handles text, image, streaming, and non-streaming turns.
+    The `Accept` header selects JSON or SSE; it does not change the operation.
+
+    Authoritative prose contract: `docs/api-contracts/api-contract.md`.
+    File input is not supported in v1.
+
+servers:
+  - url: https://dss.internal
+    description: In-cluster DSS endpoint
+
+# DSS performs no authentication or authorization itself (see api-contract.md
+# 1.1). Workload authentication is terminated ahead of DSS, which is why 401
+# and 403 are documented outcomes. Defining the scheme for every Experience
+# deployment is an open item.
+security:
+  - {}
+  - workloadAuth: []
+
+tags:
+  - name: turns
+    description: DSS turn execution
+
+paths:
+  /v1/turns:
+    post:
+      tags: [turns]
+      operationId: createTurn
+      summary: Execute one DSS turn
+      description: |
+        Send one turn. A valid turn that DSS handles returns 200 whatever the
+        domain result — a safe rejection, no match, or a request for more
+        information is still a 200. The domain result is in `message.outcome`.
+
+        With `Accept: text/event-stream` the response is an SSE stream whose
+        terminal event carries the same canonical turn object. Once the stream
+        has opened with 200, failures are reported by a terminal `turn.failed`
+        event; the HTTP status cannot change.
+      parameters:
+        - $ref: '#/components/parameters/Traceparent'
+        - $ref: '#/components/parameters/Tracestate'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TurnRequest'
+            examples:
+              textWithHistory:
+                $ref: '#/components/examples/RequestTextWithHistory'
+              imageQuestion:
+                $ref: '#/components/examples/RequestImageQuestion'
+      responses:
+        '200':
+          description: |
+            DSS handled the turn. Inspect `message.outcome`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TurnResponse'
+              examples:
+                answered:
+                  $ref: '#/components/examples/ResponseAnswered'
+                rejected:
+                  $ref: '#/components/examples/ResponseRejected'
+                providerOutage:
+                  $ref: '#/components/examples/ResponseProviderOutage'
+                noMatch:
+                  $ref: '#/components/examples/ResponseNoMatch'
+                partiallyAnswered:
+                  $ref: '#/components/examples/ResponsePartiallyAnswered'
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/TurnEventStream'
+              examples:
+                answeredStream:
+                  $ref: '#/components/examples/StreamAnswered'
+        '400':
+          description: Malformed request or envelope
+        '401':
+          description: Missing or invalid workload authentication
+        '403':
+          description: Authenticated workload is not permitted to call DSS
+        '422':
+          description: Well-formed request that violates the contract
+        '429':
+          description: Concurrency or rate limit reached
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying
+              schema:
+                type: integer
+                minimum: 0
+        '502':
+          description: A required upstream service returned an invalid response before streaming began
+        '503':
+          description: DSS or a required dependency is unavailable before streaming began
+        '504':
+          description: A required dependency timed out before streaming began
+
+components:
+
+  securitySchemes:
+    workloadAuth:
+      type: http
+      scheme: bearer
+      description: |
+        Workload (service-to-service) token presented by the calling
+        Experience. DSS itself performs no authentication or authorization; a
+        rejected token yields 401 or 403 ahead of turn execution. The scheme
+        per Experience deployment is an open item.
+
+  parameters:
+    Traceparent:
+      name: traceparent
+      in: header
+      required: false
+      description: W3C trace context. DSS starts its server span from this and echoes the trace id as `context.traceId`.
+      schema:
+        type: string
+        pattern: '^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$'
+      example: 00-9f2b7c1a487a9138e394d31b51134a61-00f067aa0ba902b7-01
+    Tracestate:
+      name: tracestate
+      in: header
+      required: false
+      description: Optional vendor-specific W3C trace state.
+      schema:
+        type: string
+
+  schemas:
+
+    # ---------- request ----------
+
+    TurnRequest:
+      type: object
+      additionalProperties: false
+      required: [context, message]
+      properties:
+        context:
+          $ref: '#/components/schemas/RequestContext'
+        message:
+          $ref: '#/components/schemas/RequestMessage'
+
+    RequestContext:
+      type: object
+      additionalProperties: false
+      required: [id, timestamp, sessionId, transactionId]
+      description: Operational metadata for identity, correlation, and timestamps. Never model input.
+      properties:
+        id:
+          type: string
+          description: Contract identifier.
+          const: api.dss.turn
+        version:
+          type: string
+          description: Caller-supplied envelope version. Optional; DSS sets its own release id on responses.
+          example: "2.0.0"
+        transactionId:
+          type: string
+          format: uuid
+          description: Caller-supplied per-turn trace id. Echoed back as `context.traceId`.
+        messageId:
+          type: string
+          description: Caller-supplied id for this message. Retry and duplicate-detection behaviour is an open item.
+        timestamp:
+          type: string
+          format: date-time
+          description: RFC 3339 timestamp of the request.
+        sessionId:
+          type: string
+          description: Conversation key. The Experience owns conversation storage.
+
+    RequestMessage:
+      type: object
+      additionalProperties: false
+      required: [input, attributes]
+      properties:
+        userContext:
+          type: array
+          description: |
+            Typed identity facts. No phone, name, email, or JWT claims — only
+            opaque per-turn facts DSS may see. New facts arrive as new typed
+            variants, not untyped keys.
+          items:
+            $ref: '#/components/schemas/UserContextItem'
+        input:
+          type: array
+          minItems: 1
+          description: The current user message, plus any earlier messages the Experience supplies.
+          items:
+            $ref: '#/components/schemas/InputMessage'
+        attributes:
+          $ref: '#/components/schemas/RequestAttributes'
+
+    UserContextItem:
+      oneOf:
+        - $ref: '#/components/schemas/IdentityFact'
+      discriminator:
+        propertyName: type
+        mapping:
+          identity: '#/components/schemas/IdentityFact'
+
+    IdentityFact:
+      type: object
+      additionalProperties: false
+      required: [type, userId]
+      properties:
+        type:
+          type: string
+          const: identity
+        userId:
+          type: string
+          description: Canonical id. `anonymous` when unknown. Not reversible by DSS.
+          example: usr_9921
+
+    InputMessage:
+      type: object
+      additionalProperties: false
+      required: [role, content]
+      properties:
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/InputContentItem'
+
+    InputContentItem:
+      description: Closed set for v1 — `text` or `image`. `file` is not accepted.
+      oneOf:
+        - $ref: '#/components/schemas/InputText'
+        - $ref: '#/components/schemas/InputImage'
+      discriminator:
+        propertyName: type
+        mapping:
+          text: '#/components/schemas/InputText'
+          image: '#/components/schemas/InputImage'
+
+    InputText:
+      type: object
+      additionalProperties: false
+      required: [type, text]
+      properties:
+        type:
+          type: string
+          const: text
+        text:
+          type: string
+          description: Free text, already scrubbed by the Experience.
+
+    InputImage:
+      type: object
+      additionalProperties: false
+      required: [type, attachment]
+      properties:
+        type:
+          type: string
+          const: image
+        attachment:
+          $ref: '#/components/schemas/ImageAttachment'
+
+    ImageAttachment:
+      type: object
+      additionalProperties: false
+      required: [url, mediaType, sha256]
+      description: |
+        A link to bytes in the deployment's own blob store. The bytes never pass
+        through the Experience layer: the client app uploads directly with a
+        pre-signed PUT URL, and the Experience mints a short-lived pre-signed
+        read URL for DSS to fetch.
+
+        Scanning happens before the link is usable — upload triggers a scan and
+        the object stays quarantined until it passes, so DSS never fetches
+        unscanned bytes. DSS does not scan.
+
+        Size limits, expiry duration, the upload-URL grant, quarantine, and
+        cleanup belong to the attachment service contract.
+      properties:
+        url:
+          type: string
+          format: uri
+          description: |
+            Pre-signed read URL. Not an arbitrary caller-supplied URL — DSS
+            accepts only hosts on the deployment's configured allowlist and
+            rejects anything else with 422. An expired URL is also a 422; DSS
+            does not retry it or request a new one.
+          example: https://blob.oan.internal/att/att_tomato_leaf_01?X-Amz-Expires=900&X-Amz-Signature=...
+        mediaType:
+          type: string
+          enum: [image/jpeg, image/png]
+          description: Any other value is rejected with 422.
+        sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+          description: |
+            64-character lowercase hexadecimal SHA-256 digest. DSS verifies the
+            fetched bytes against it and rejects a mismatch with 422.
+
+    RequestAttributes:
+      type: object
+      additionalProperties: false
+      required: [sourceLanguage, targetLanguage, channel]
+      description: Caller-supplied facts that qualify the input. Language, channel, location, and non-personal domain facts.
+      properties:
+        sourceLanguage:
+          $ref: '#/components/schemas/LanguageTag'
+        targetLanguage:
+          $ref: '#/components/schemas/LanguageTag'
+        channel:
+          type: string
+          enum: [web, whatsapp, voice, sms]
+          description: The Experience channel. Raw audio is transcribed before DSS is called.
+        location:
+          $ref: '#/components/schemas/Location'
+        response:
+          type: object
+          additionalProperties: false
+          properties:
+            maxCharacters:
+              type: integer
+              minimum: 1
+              description: Caller's cap on answer length. DSS writes to fit it.
+              example: 1200
+
+    LanguageTag:
+      type: string
+      description: |
+        BCP 47 language tag, validated against the list of languages DSS
+        publishes. Not an enum — adding a supported language is not a contract
+        change.
+      example: hi
+
+    Location:
+      type: object
+      additionalProperties: false
+      description: Only the minimum non-personal information needed for the turn.
+      properties:
+        region:
+          type: [string, "null"]
+          description: ISO 3166-2 subdivision code.
+          example: IN-GJ
+        area:
+          type: [string, "null"]
+          description: Local name. Free text — there is no governed list to validate against.
+          example: Anand
+        geometry:
+          $ref: '#/components/schemas/GeoJsonPoint'
+
+    GeoJsonPoint:
+      type: object
+      additionalProperties: false
+      required: [type, coordinates]
+      description: RFC 7946 / WGS-84. Coordinates are `[longitude, latitude]` — GeoJSON order.
+      properties:
+        type:
+          type: string
+          const: Point
+        coordinates:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items:
+            type: number
+          example: [72.93, 22.56]
+
+    # ---------- response ----------
+
+    TurnResponse:
+      type: object
+      additionalProperties: false
+      required: [context, message]
+      description: |
+        The canonical turn object. Used for the non-streaming JSON response and
+        for the terminal SSE event.
+      properties:
+        context:
+          $ref: '#/components/schemas/ResponseContext'
+        message:
+          $ref: '#/components/schemas/ResponseMessage'
+
+    ResponseContext:
+      type: object
+      required: [id, version, timestamp, messageId, sessionId, traceId]
+      description: |
+        Clients must ignore unknown optional fields here to stay compatible with
+        later `/v1` releases.
+      properties:
+        id:
+          type: string
+          const: api.dss.turn
+        version:
+          type: string
+          description: |
+            The concrete DSS release that handled the turn. The identifier
+            convention is an open item — it may be `v1`, `v1.1`, semver, or a date.
+          example: v1.1
+        timestamp:
+          type: string
+          format: date-time
+        messageId:
+          type: string
+          example: msg_01KXYZ
+        sessionId:
+          type: string
+          example: conv_8f3a1c
+        traceId:
+          type: string
+          description: The trace id for this turn, echoing the request's `context.transactionId`.
+          example: 4bf92f3577b34da6a3ce929d0e0e4736
+
+    ResponseMessage:
+      type: object
+      required: [outcome, content]
+      properties:
+        outcome:
+          $ref: '#/components/schemas/Outcome'
+        content:
+          type: array
+          description: |
+            Farmer-facing content, authoritative for presentation. Each item
+            carries its own type and its own citations, so the Experience can
+            route and render without parsing prose.
+          items:
+            $ref: '#/components/schemas/OutputContentItem'
+        sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/Source'
+        error:
+          $ref: '#/components/schemas/TurnError'
+
+    Outcome:
+      type: object
+      required: [status, cause, confidence]
+      description: The result of the turn.
+      properties:
+        status:
+          type: string
+          enum: [answered, rejected, no_match, requires_input, unavailable, partially_answered]
+          description: The domain result.
+        cause:
+          type: [string, "null"]
+          description: |
+            Machine-readable reason for the status, `null` when answered. Open,
+            additive set — an unrecognized value must be treated as an opaque
+            string, not an error. Known values include `unsafe_illegal`,
+            `provider_unavailable`, `domain_unmapped`.
+          example: null
+        confidence:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: DSS's confidence in the answer, as a percentage.
+
+    OutputContentItem:
+      oneOf:
+        - $ref: '#/components/schemas/OutputText'
+        - $ref: '#/components/schemas/OutputRefusal'
+      discriminator:
+        propertyName: type
+        mapping:
+          text: '#/components/schemas/OutputText'
+          refusal: '#/components/schemas/OutputRefusal'
+
+    OutputText:
+      type: object
+      required: [type, text]
+      properties:
+        type:
+          type: string
+          const: text
+        text:
+          type: string
+          description: Written for the target channel and language.
+        annotations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Annotation'
+
+    OutputRefusal:
+      type: object
+      required: [type, text]
+      properties:
+        type:
+          type: string
+          const: refusal
+        text:
+          type: string
+
+    Annotation:
+      type: object
+      required: [type, sourceId, startIndex, endIndex]
+      description: Cites a span of the enclosing `text` to one entry in `message.sources`.
+      properties:
+        type:
+          type: string
+          const: url_citation
+        url:
+          type: string
+          format: uri
+        sourceId:
+          type: string
+          description: Matches a `Source.id` in `message.sources`.
+          example: src_1
+        sourceName:
+          type: string
+          example: Agmarknet
+        startIndex:
+          type: integer
+          minimum: 0
+          description: Inclusive start offset into `text`.
+        endIndex:
+          type: integer
+          minimum: 0
+          description: Exclusive end offset into `text`.
+
+    Source:
+      type: object
+      required: [id, name, kind]
+      description: |
+        Farmer-visible provenance. No capability names on the wire — which DSS
+        capability produced the answer goes to telemetry.
+      properties:
+        id:
+          type: string
+          example: src_1
+        name:
+          type: string
+          example: Agmarknet
+        kind:
+          type: string
+          description: Open, additive set. Known values include `provider` and `document`.
+          example: provider
+
+    TurnError:
+      type: object
+      required: [code, message, retryable]
+      description: Present on an `unavailable` outcome. Operational detail, not farmer-facing text.
+      properties:
+        code:
+          type: string
+          example: provider_unavailable
+        message:
+          type: string
+        retryable:
+          type: boolean
+        retryAfterSeconds:
+          type: integer
+          minimum: 0
+
+    # ---------- streaming ----------
+
+    TurnEventStream:
+      type: string
+      description: |
+        An SSE stream. Event names are `turn.created`, `claim.completed`,
+        `turn.completed`, and `turn.failed`. Each `data:` line is one JSON
+        object matching `TurnEvent`. The terminal event is authoritative; the
+        client does not infer the outcome from connection closure.
+      contentMediaType: text/event-stream
+      externalDocs:
+        description: Payload schema carried on each `data:` line
+        url: '#/components/schemas/TurnEvent'
+
+    TurnEvent:
+      type: object
+      required: [context, message]
+      description: |
+        One SSE `data:` payload. `turn.completed` and `turn.failed` carry the
+        full canonical turn — context, outcome, content, and sources. Clients
+        should store or render the terminal event rather than reconstructing it
+        from earlier `claim.completed` events.
+      properties:
+        context:
+          allOf:
+            - $ref: '#/components/schemas/ResponseContext'
+            - type: object
+              required: [sequenceNumber]
+              properties:
+                sequenceNumber:
+                  type: integer
+                  minimum: 1
+                  description: Monotonically increasing within one stream.
+        message:
+          type: object
+          description: |
+            On `claim.completed` this carries `content` only — one reviewed
+            content item ready for presentation. On a terminal event it carries
+            the full `ResponseMessage`.
+          properties:
+            outcome:
+              $ref: '#/components/schemas/Outcome'
+            content:
+              type: array
+              items:
+                $ref: '#/components/schemas/OutputContentItem'
+            sources:
+              type: array
+              items:
+                $ref: '#/components/schemas/Source'
+            error:
+              $ref: '#/components/schemas/TurnError'
+
+  examples:
+
+    RequestTextWithHistory:
+      summary: Text turn carrying earlier messages
+      value:
+        context:
+          id: api.dss.turn
+          version: "2.0.0"
+          transactionId: 9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44
+          messageId: 7d41b9e0-52a6-4c18-8b73-1e9f0a4c6d22
+          timestamp: "2026-08-26T06:12:04.918Z"
+          sessionId: conv_8f3a1c
+        message:
+          userContext:
+            - type: identity
+              userId: usr_9921
+          input:
+            - role: user
+              content:
+                - type: text
+                  text: What is the mandi price of wheat?
+            - role: assistant
+              content:
+                - type: text
+                  text: Wheat is ₹2,275 per quintal at Anand mandi.
+            - role: user
+              content:
+                - type: text
+                  text: And potato?
+          attributes:
+            sourceLanguage: en
+            targetLanguage: hi
+            channel: web
+            location:
+              region: IN-GJ
+              area: Anand
+              geometry:
+                type: Point
+                coordinates: [72.93, 22.56]
+            response:
+              maxCharacters: 1200
+
+    RequestImageQuestion:
+      summary: Image turn — text and image in one message
+      value:
+        context:
+          id: api.dss.turn
+          transactionId: 3e7a91c4-2d16-4f88-9a01-b5c7d2e40f13
+          timestamp: "2026-09-01T09:35:00Z"
+          sessionId: conv_crop_image_01
+        message:
+          userContext:
+            - type: identity
+              userId: anonymous
+          input:
+            - role: user
+              content:
+                - type: text
+                  text: What disease is affecting this tomato leaf?
+                - type: image
+                  attachment:
+                    url: https://blob.oan.internal/att/att_tomato_leaf_01?X-Amz-Expires=900&X-Amz-Signature=...
+                    mediaType: image/jpeg
+                    sha256: 29c8e6a1c8102d3d7a2e6f21c1bd2fa96564d30d93a66fba211e50e7d7ecfb79
+          attributes:
+            sourceLanguage: en
+            targetLanguage: en
+            channel: web
+            response:
+              maxCharacters: 800
+
+    ResponseAnswered:
+      summary: Answered
+      value:
+        context:
+          id: api.dss.turn
+          version: v1.1
+          timestamp: "2026-09-01T09:30:02Z"
+          messageId: msg_01KXYZ
+          sessionId: conv_8f3a1c
+          traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+        message:
+          outcome:
+            status: answered
+            cause: null
+            confidence: 92
+          content:
+            - type: text
+              text: इस सप्ताह आनंद मंडी में गेहूं का भाव ₹2,275 प्रति क्विंटल है।
+              annotations:
+                - type: url_citation
+                  url: https://agmarknet.gov.in/...
+                  sourceId: src_1
+                  sourceName: Agmarknet
+                  startIndex: 0
+                  endIndex: 61
+          sources:
+            - id: src_1
+              name: Agmarknet
+              kind: provider
+
+    ResponseRejected:
+      summary: Rejected — out of domain
+      value:
+        context:
+          id: api.dss.turn
+          version: v1.1
+          timestamp: "2026-09-01T09:31:00Z"
+          messageId: msg_rejected_01
+          sessionId: conv_8f3a1c
+          traceId: 4a1f0a96fd9e4e01940ee6ec177b8328
+        message:
+          outcome:
+            status: rejected
+            cause: unsafe_illegal
+            confidence: 98
+          content:
+            - type: refusal
+              text: I can only answer agriculture and livestock related questions.
+
+    ResponseProviderOutage:
+      summary: Unavailable — Provider outage
+      value:
+        context:
+          id: api.dss.turn
+          version: v1.1
+          timestamp: "2026-09-01T09:32:00Z"
+          messageId: msg_mandi_outage_01
+          sessionId: conv_8f3a1c
+          traceId: f54280ec6a7e44f9b6221265e4150ca1
+        message:
+          outcome:
+            status: unavailable
+            cause: provider_unavailable
+            confidence: 0
+          content:
+            - type: text
+              text: The required market-price service is unavailable. Please try again shortly.
+          error:
+            code: provider_unavailable
+            message: The required market-price Provider is unavailable.
+            retryable: true
+            retryAfterSeconds: 30
+
+    ResponseNoMatch:
+      summary: No match — no approved capability
+      value:
+        context:
+          id: api.dss.turn
+          version: v1.1
+          timestamp: "2026-09-01T09:33:00Z"
+          messageId: msg_no_match_01
+          sessionId: conv_8f3a1c
+          traceId: a17c3e9018bc4e6382c078e09714e72b
+        message:
+          outcome:
+            status: no_match
+            cause: domain_unmapped
+            confidence: 88
+          content:
+            - type: text
+              text: I could not find an approved agricultural capability for that request.
+
+    ResponsePartiallyAnswered:
+      summary: Partially answered — answer, refusal, and a follow-up question
+      value:
+        context:
+          id: api.dss.turn
+          version: v1.1
+          timestamp: "2026-09-01T09:34:00Z"
+          messageId: msg_partial_01
+          sessionId: conv_8f3a1c
+          traceId: 5b8d2f11c0a94e7d8f1a2b3c4d5e6f70
+        message:
+          outcome:
+            status: partially_answered
+            cause: null
+            confidence: 74
+          content:
+            - type: text
+              text: Potato grows best in well-drained sandy loam soil.
+              annotations:
+                - type: url_citation
+                  url: https://icar.example/...
+                  sourceId: src_1
+                  sourceName: ICAR Potato Guide
+                  startIndex: 0
+                  endIndex: 49
+            - type: refusal
+              text: I cannot help with gold prices.
+            - type: text
+              text: Which district should I check potato prices for?
+          sources:
+            - id: src_1
+              name: ICAR Potato Guide
+              kind: document
+
+    StreamAnswered:
+      summary: Answered, streaming
+      value: |
+        event: claim.completed
+        data: {"context":{"id":"api.dss.turn","version":"v1.1","messageId":"msg_mandi_wheat_01","sessionId":"conv_8f3a1c","traceId":"9f2b7c1a487a9138e394d31b51134a61","timestamp":"2026-09-01T09:30:01Z","sequenceNumber":1},"message":{"content":[{"type":"text","text":"इस सप्ताह आनंद मंडी में गेहूं का भाव ₹2,275 प्रति क्विंटल है।","annotations":[{"type":"url_citation","url":"https://agmarknet.gov.in/...","sourceId":"src_1","sourceName":"Agmarknet","startIndex":0,"endIndex":61}]}]}}
+
+        event: turn.completed
+        data: {"context":{"id":"api.dss.turn","version":"v1.1","messageId":"msg_mandi_wheat_01","sessionId":"conv_8f3a1c","traceId":"9f2b7c1a487a9138e394d31b51134a61","timestamp":"2026-09-01T09:30:02Z","sequenceNumber":2},"message":{"outcome":{"status":"answered","cause":null,"confidence":92},"content":[{"type":"text","text":"इस सप्ताह आनंद मंडी में गेहूं का भाव ₹2,275 प्रति क्विंटल है।","annotations":[{"type":"url_citation","url":"https://agmarknet.gov.in/...","sourceId":"src_1","sourceName":"Agmarknet","startIndex":0,"endIndex":61}]}],"sources":[{"id":"src_1","name":"Agmarknet","kind":"provider"}]}}
