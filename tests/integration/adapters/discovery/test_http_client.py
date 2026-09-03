@@ -10,7 +10,6 @@ import json
 from pathlib import Path
 
 import httpx2
-import pytest
 
 from dss.adapters.discovery.client import HttpCapabilityDiscovery
 from dss.core.provider_discovery.models import ProviderQuery
@@ -89,9 +88,9 @@ async def test_a_refreshed_cache_is_reflected_without_rewiring() -> None:
     assert result.capabilities[0][0].provider_id == "mausamgram"
 
 
-async def test_a_non_2xx_response_raises() -> None:
-    """Classifying transient vs defect is discover_providers' job — this
-    adapter only needs to surface the failure, not decide what it means.
+async def test_a_non_2xx_response_is_returned_as_a_failure() -> None:
+    """discover() never raises — failures are data. Status-code
+    classification itself is covered in test_failure_classification.py.
     """
     discovery = _discovery(
         _client_returning({"error": "rate limited"}, status_code=429)
@@ -102,15 +101,15 @@ async def test_a_non_2xx_response_raises() -> None:
         coverage=None,
     )
 
-    with pytest.raises(httpx2.HTTPStatusError) as exc_info:
-        await discovery.discover(query, ask_indices=(0,))
+    result = await discovery.discover(query, ask_indices=(0,))
 
-    assert exc_info.value.response.status_code == 429
+    assert result.failures[0][0].status_code == 429
+    assert result.capabilities[0] == ()
 
 
-async def test_a_connection_error_propagates() -> None:
+async def test_a_connection_error_is_returned_as_a_failure() -> None:
     """No HTTP response at all — the network-level failure case, distinct
-    from a non-2xx status. Classification is discover_providers' job.
+    from a non-2xx status, but still returned as data, not raised.
     """
 
     def handler(request: httpx2.Request) -> httpx2.Response:
@@ -124,5 +123,6 @@ async def test_a_connection_error_propagates() -> None:
         coverage=None,
     )
 
-    with pytest.raises(httpx2.ConnectError):
-        await discovery.discover(query, ask_indices=(0,))
+    result = await discovery.discover(query, ask_indices=(0,))
+
+    assert result.failures[0][0].status_code == 0

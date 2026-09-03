@@ -12,7 +12,6 @@ import json
 from pathlib import Path
 
 import httpx2
-import pytest
 from pytest_httpserver import HTTPServer
 
 from dss.adapters.discovery.client import HttpCapabilityDiscovery
@@ -56,7 +55,9 @@ async def test_discover_against_a_real_local_server(httpserver: HTTPServer) -> N
     assert result.capabilities[0][0].provider_id == "mausamgram"
 
 
-async def test_a_real_429_response_raises(httpserver: HTTPServer) -> None:
+async def test_a_real_429_response_is_returned_as_a_failure(
+    httpserver: HTTPServer,
+) -> None:
     httpserver.expect_request("/discover", method="POST").respond_with_json(
         {"error": "rate limited"}, status=429
     )
@@ -74,7 +75,6 @@ async def test_a_real_429_response_raises(httpserver: HTTPServer) -> None:
             coverage=None,
         )
 
-        with pytest.raises(httpx2.HTTPStatusError) as exc_info:
-            await discovery.discover(query, ask_indices=(0,))
+        result = await discovery.discover(query, ask_indices=(0,))
 
-    assert exc_info.value.response.status_code == 429
+    assert result.failures[0][0].status_code == 429

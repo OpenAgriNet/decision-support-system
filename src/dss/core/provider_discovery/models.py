@@ -93,6 +93,7 @@ class DiscoveryFailure:
     status_code: int
     failure_class: FailureClass
     provider_id: str | None = None
+    detail: str | None = None
 
 
 @dataclass(frozen=True)

@@ -15,11 +15,49 @@ import httpx2
 
 from dss.core.provider_discovery.models import (
     DiscoveredAnswer,
+    DiscoveryFailure,
     DiscoveryResult,
+    FailureClass,
     ProviderCapability,
     ProviderQuery,
     Validity,
 )
+
+_DEFECT_STATUS_CODES = {400, 401, 403}
+_NO_STATUS_CODE = 0  # a pure network-level failure never had an HTTP response
+
+
+def _classify_status_code(status_code: int) -> FailureClass:
+    """400/401/403 are our own bad request; every other status — 429, 500,
+    and anything unlisted — is treated as transient/retry-worthy.
+    """
+    if status_code in _DEFECT_STATUS_CODES:
+        return FailureClass.DEFECT
+    return FailureClass.TRANSIENT
+
+
+def _failure_result(
+    query: ProviderQuery,
+    ask_indices: tuple[int, ...],
+    status_code: int,
+    detail: str | None,
+) -> DiscoveryResult:
+    failure_class = _classify_status_code(status_code)
+    failures = tuple(
+        DiscoveryFailure(
+            capability=capability,
+            status_code=status_code,
+            failure_class=failure_class,
+            detail=detail,
+        )
+        for capability in query.capabilities
+    )
+    return DiscoveryResult(
+        answers={index: () for index in ask_indices},
+        capabilities={index: () for index in ask_indices},
+        failures={index: failures for index in ask_indices},
+        events=(),
+    )
 
 
 class SchemaContextSource(Protocol):
@@ -198,8 +236,15 @@ class HttpCapabilityDiscovery:
             transaction_id=str(uuid4()),
             timestamp=datetime.now(UTC).isoformat(),
         )
-        response = await self._client.post(
-            f"{self._base_url}/discover", json=request_body
-        )
-        response.raise_for_status()
+        try:
+            response = await self._client.post(
+                f"{self._base_url}/discover", json=request_body
+            )
+            response.raise_for_status()
+        except httpx2.HTTPStatusError as exc:
+            return _failure_result(
+                query, ask_indices, exc.response.status_code, exc.response.text
+            )
+        except httpx2.HTTPError as exc:
+            return _failure_result(query, ask_indices, _NO_STATUS_CODE, str(exc))
         return map_on_discover_response(response.json(), ask_indices)

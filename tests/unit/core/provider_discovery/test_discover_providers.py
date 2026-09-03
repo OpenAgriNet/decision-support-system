@@ -7,7 +7,9 @@ from __future__ import annotations
 from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
 from dss.core.provider_discovery.models import (
     CapabilityUnresolved,
+    DiscoveryFailure,
     DiscoveryResult,
+    FailureClass,
     ProviderCapability,
 )
 from dss.core.provider_discovery.service import discover_providers
@@ -99,6 +101,79 @@ async def test_an_unresolved_ask_never_calls_discover() -> None:
     assert result.capabilities == {0: ()}
     assert result.failures == {0: ()}
     assert result.events == (CapabilityUnresolved("Scheme", "Service"),)
+
+
+class _PartiallyFailingDiscovery:
+    """Returns a failure result for one capability, succeeds for another —
+    proves one query's failure doesn't prevent a concurrent sibling from
+    completing. discover() never raises — failures are data.
+    """
+
+    def __init__(self, fails_for: str) -> None:
+        self._fails_for = fails_for
+        self.calls: list[tuple] = []
+
+    async def discover(self, query, ask_indices):
+        self.calls.append((query, ask_indices))
+        if self._fails_for in query.capabilities:
+            return DiscoveryResult(
+                answers={i: () for i in ask_indices},
+                capabilities={i: () for i in ask_indices},
+                failures={
+                    i: (
+                        DiscoveryFailure(
+                            capability=self._fails_for,
+                            status_code=500,
+                            failure_class=FailureClass.TRANSIENT,
+                        ),
+                    )
+                    for i in ask_indices
+                },
+                events=(),
+            )
+        return DiscoveryResult(
+            answers={i: () for i in ask_indices},
+            capabilities={
+                i: (
+                    ProviderCapability(
+                        "mausamgram", "IMD", query.capabilities[0], "r1"
+                    ),
+                )
+                for i in ask_indices
+            },
+            failures={i: () for i in ask_indices},
+            events=(),
+        )
+
+
+async def test_a_failing_query_does_not_prevent_a_sibling_from_succeeding() -> None:
+    weather_ask = Ask(
+        subject_categories=SubjectCategory.WEATHER,
+        interaction_type=InteractionType.OBSERVE,
+    )
+    market_ask = Ask(
+        subject_categories=SubjectCategory.MARKET,
+        interaction_type=InteractionType.OBSERVE,
+    )
+    intent = Intent(asks=(weather_ask, market_ask), confidence=0.8)
+    turn = _turn()
+    schema_pack_cache = _FakeSchemaPackCache(
+        {
+            ("Weather", "Service"): ("openagrinet:WeatherObservation",),
+            ("Market", "Service"): ("openagrinet:MandiPrice",),
+        }
+    )
+    discovery = _PartiallyFailingDiscovery(fails_for="openagrinet:WeatherObservation")
+
+    result = await discover_providers(
+        intent, turn, discovery, schema_pack_cache, radius_m=25000
+    )
+
+    assert len(discovery.calls) == 2
+    assert result.capabilities[1][0].capability == "openagrinet:MandiPrice"
+    assert result.failures[0] != ()
+    assert result.answers[0] == ()
+    assert result.capabilities[0] == ()
 
 
 async def test_two_asks_sharing_a_pair_dedupe_to_one_query() -> None:

@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Protocol
 
+import anyio
+
 from dss.core.intent.models import Ask, Intent, InteractionType
 from dss.core.provider_discovery.models import (
     CapabilityUnresolved,
@@ -92,8 +94,22 @@ async def discover_providers(
     capabilities: dict[int, tuple] = {i: () for i in unresolved_asks}
     failures: dict[int, tuple] = {i: () for i in unresolved_asks}
 
-    for query, ask_indices in queries_to_asks.items():
-        result = await discovery.discover(query, tuple(ask_indices))
+    # discover() never raises (failures are data), so every
+    # query's results land independently: one query hitting a defect never
+    # cancels or delays a sibling still in flight.
+    query_results: list[DiscoveryResult | None] = [None] * len(queries_to_asks)
+
+    async def _run(
+        slot: int, query: ProviderQuery, ask_indices: tuple[int, ...]
+    ) -> None:
+        query_results[slot] = await discovery.discover(query, ask_indices)
+
+    async with anyio.create_task_group() as task_group:
+        for slot, (query, ask_indices) in enumerate(queries_to_asks.items()):
+            task_group.start_soon(_run, slot, query, tuple(ask_indices))
+
+    for result in query_results:
+        assert result is not None
         answers.update(result.answers)
         capabilities.update(result.capabilities)
         failures.update(result.failures)
