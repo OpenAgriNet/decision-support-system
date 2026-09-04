@@ -156,11 +156,14 @@ chance for the model to contradict its own `@type` choice.
 **Validation, correctly scoped.** The model inventing a field the pack never
 declared is still the real risk — the tool validates `resource_attributes`'s
 keys against the pack's `filterable_paths` and raises `ModelRetry` on a miss
-(the pattern `amul` already uses to catch bad search queries), then checks
-the *merged* structural + model-filled object against the schema's required
-minimum. Missing a required field after merging (e.g. no `location`, and the
-turn has none) is a `CLARIFY` outcome, not a `ModelRetry` — the model cannot
-supply what it doesn't have either.
+(the pattern `amul` already uses to catch bad search queries).
+
+No "required minimum" check is built for this POC. `profile.json` has no
+`required_filters` key — the design doc's Open #3 is unresolved network-wide,
+not something to improvise an answer to inside this validation function. A
+`select` that comes back with too little to answer is what `sufficiency.py`
+already catches downstream, from the ask/`Evidence` side, not from the
+request side.
 
 ### The tool returns markdown; `Evidence` is built separately
 
