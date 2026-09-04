@@ -5,11 +5,14 @@ description = "Decision Support System — reasoning runtime for the OpenAgriNet
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "anyio>=4.14.2",
     # pydantic-ai-slim, not pydantic-ai: the metapackage ships no code of its own
     # and force-installs anthropic, google-genai, logfire, mcp, evals, cli, and web.
     # The LLM provider is a swappable adapter behind a port (DSS_ARCHITECTURE.md §4.3),
     # so extras are declared explicitly as adapters are built.
+    "fastapi>=0.141.1",
     "pydantic-ai-slim[openai]>=2.33.0",
+    "uvicorn>=0.52.4",
 ]
 
 [build-system]
@@ -25,6 +28,8 @@ dev = [
     "pytest>=9.1.1",
     "ruff>=0.16.4",
     "jsonschema>=4.26.0",
+    "pytest-asyncio>=1.4.0",
+    "httpx>=0.28.1",
 ]
 
 # ---------------------------------------------------------------------------
@@ -87,7 +92,17 @@ include = ["src", "tests"]
 [tool.pytest.ini_options]
 minversion = "9.0"
 testpaths = ["tests"]
-addopts = ["-ra", "--strict-config", "-m", "not eval"]
+# tests/support/ holds hand-written doubles that test modules import directly.
+# Without this, `tests` is not a package on sys.path and those imports fail.
+pythonpath = ["."]
+# --import-mode=importlib: the tier table mirrors src/, so sibling packages each
+# hold a `test_service.py`. Under the default prepend mode those collide on the
+# module name `test_service`; importlib gives each its own full path.
+addopts = ["-ra", "--strict-config", "--import-mode=importlib", "-m", "not eval"]
+# ADR-0005: async tests run under pytest-asyncio in auto mode, which claims every
+# async test regardless of marker. anyio's own pytest plugin is deliberately not
+# used, so `@pytest.mark.anyio` would be inert.
+asyncio_mode = "auto"
 markers = [
     "eval: tier-6 end-to-end quality eval; diagnostic only, never a merge gate",
 ]
