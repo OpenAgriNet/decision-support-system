@@ -359,24 +359,6 @@ Steps 1–5 are unblocked right now. Step 6 is the only thing ADR-0003 holds up.
 
 ---
 
-## Needs a decision
-
-| Thing | Who | Blocks |
-|---|---|---|
-| **Does `ref` exist?** design-v2 §3 has `SubjectRef.ref: SecretStr`; the proposal dropped it. If it stays, `UserTurn` gains a secret field and on-behalf-of Provider calls are in scope | Bhavesh | step 1 |
-| **`Outcome` values.** design-v2 has 4; the proposal has 6 (adds `unavailable`, `partially_answered`) | Bhavesh | step 1 |
-| **`Location` shape.** design-v2 has `district · state · lat · lon`; the proposal has ISO 3166-2 + GeoJSON | Bhavesh | step 1 |
-| **Web framework** — FastAPI / Starlette / Litestar. ADR-0003 | Kelvin | step 6 |
-| **Type checker.** `isinstance` on a Protocol checks names, not signatures, and the repo has none — nothing catches `run(turn, context)` against `run(turn, ctx)` | Kelvin | case 23 |
-| **Coverage gate.** Asked for in the session; `pyproject.toml` has no `--cov`, no `pytest-cov`, CI has no coverage step | Kelvin | step 8 |
-| **ADR for the agent / plain-code split.** It decides which core function takes an LLM port; `DSS_ARCHITECTURE.md` §3 doesn't record it | Bhavesh / Kelvin | step 10 |
-
-Not blocking: where the real LLM adapter lives (only `orchestration/` may import
-`pydantic_ai`, so `adapters/llm/` must use a vendor SDK); whether `core/channel`
-splits into composer and channel shaper; the cap and heartbeat numbers.
-
----
-
 ## Contract rules to code against
 
 **One endpoint.** `POST /v1/turns`. `Accept` picks JSON or SSE — no streaming flag.
