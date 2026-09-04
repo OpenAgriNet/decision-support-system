@@ -32,7 +32,7 @@ ON_DISCOVER_RESPONSE = json.loads(
         / "adapters"
         / "discovery"
         / "fixtures"
-        / "on_discover_response_direct.json"
+        / "discover_response_direct.json"
     ).read_text()
 )
 

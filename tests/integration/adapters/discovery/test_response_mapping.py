@@ -43,7 +43,7 @@ def test_the_same_result_is_keyed_under_every_ask_index() -> None:
 
 
 def test_a_direct_resource_maps_to_a_discovered_answer() -> None:
-    response = json.loads((FIXTURES / "on_discover_response_direct.json").read_text())
+    response = json.loads((FIXTURES / "discover_response_direct.json").read_text())
 
     result = map_on_discover_response(response, ask_indices=(0,))
 
