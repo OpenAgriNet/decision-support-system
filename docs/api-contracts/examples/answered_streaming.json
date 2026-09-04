@@ -1,0 +1,48 @@
+{
+  "context": {
+    "id": "api.dss.turn",
+    "timestamp": "2026-09-04T08:00:00Z",
+    "envelopeVersion": "1.0.0",
+    "sessionId": "conv_8f3a1c",
+    "transactionId": "txn_9f2c1a8e",
+    "messageId": "msg_mandi_wheat_01"
+  },
+  "message": {
+    "input": [
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "इस सप्ताह आनंद मंडी में गेहूं का भाव क्या है?"
+          }
+        ]
+      }
+    ],
+    "attributes": {
+      "channel": "web",
+      "location": {
+        "region": "IN-GJ",
+        "area": "Anand",
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            72.93,
+            22.56
+          ]
+        }
+      },
+      "response": {
+        "maxCharacters": 1200
+      },
+      "sourceLanguage": "hi",
+      "targetLanguage": "hi"
+    },
+    "userContext": [
+      {
+        "type": "identity",
+        "userId": "usr_9921"
+      }
+    ]
+  }
+}
