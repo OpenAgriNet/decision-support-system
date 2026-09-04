@@ -353,8 +353,10 @@ confirm the test catches a tool call that does not wait for it.
 **ADRs this change needs:**
 1. The agent loop is orchestration, not a port — with the tool-typing argument
 2. `Skill` gains `tool_names` — an addition to the design doc's shape
-3. The envelope gains `transaction_id` and `session_id` — or a note on ADR-0004,
-   whose revisit trigger has fired
+   (done — ADR-0005, ADR-0006)
+
+`transaction_id`/`session_id` envelope work is landing separately, in the
+provider-discovery branch — dropped from this plan's ADR list.
 
 **Deferred:**
 - Swap the stub base URL when the network endpoint exists. Nothing else changes.
@@ -364,3 +366,9 @@ confirm the test catches a tool call that does not wait for it.
 - Whether `offer.id` stays constant once the network defines offers properly.
   The design doc already flags the name as ecommerce vocabulary needing an OAN
   term.
+- Runtime, intent-based skill loading (a `load_skill` tool the model calls to
+  pull a skill's full guidance on demand, with the skill's other tools
+  unlocked only after it loads — Claude-Code-style progressive disclosure).
+  For this POC, skills stay always-selected and rendered into the prompt
+  directly; only their *storage* moved to config (markdown files). Skill
+  *discovery/selection* is still [Open] in the design doc.
