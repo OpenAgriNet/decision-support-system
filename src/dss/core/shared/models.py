@@ -85,6 +85,7 @@ class UserTurn(BaseModel):
     original_query: str
     enriched_query: str
     session_id: str
+    transaction_id: str
     source_lang: str  # language the user spoke/typed (BCP-47)
     target_lang: str  # language the response should come back in (BCP-47)
     channel: str  # web / whatsapp / voice / ... (lowercase)

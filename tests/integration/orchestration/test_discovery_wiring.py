@@ -59,7 +59,7 @@ async def test_the_wired_adapter_resolves_a_query() -> None:
             coverage=None,
         )
 
-        result = await discovery.discover(query, ask_indices=(0,))
+        result = await discovery.discover(query, ask_indices=(0,), transaction_id="t1")
 
     assert result.answers[0][0].provider_id == "agmarknet"
 
@@ -92,6 +92,7 @@ async def test_the_wired_discover_providers_bakes_in_radius() -> None:
             original_query="onion price",
             enriched_query="onion price",
             session_id="s1",
+            transaction_id="t1",
             source_lang="hi",
             target_lang="hi",
             channel="web",

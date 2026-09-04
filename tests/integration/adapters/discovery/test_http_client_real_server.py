@@ -58,7 +58,7 @@ async def test_discover_against_a_real_local_server(httpserver: HTTPServer) -> N
             coverage=None,
         )
 
-        result = await discovery.discover(query, ask_indices=(0,))
+        result = await discovery.discover(query, ask_indices=(0,), transaction_id="t1")
 
     assert result.capabilities[0][0].provider_id == "mausamgram"
 
@@ -83,6 +83,6 @@ async def test_a_real_429_response_is_returned_as_a_failure(
             coverage=None,
         )
 
-        result = await discovery.discover(query, ask_indices=(0,))
+        result = await discovery.discover(query, ask_indices=(0,), transaction_id="t1")
 
     assert result.failures[0][0].status_code == 429

@@ -47,6 +47,13 @@ class InputMessage(BaseModel):
         return " ".join(p.text for p in self.content if p.type == "text").strip()
 
 
+class RequestContext(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    transaction_id: str = Field(alias="transactionId")
+    session_id: str = Field(alias="sessionId")
+
+
 class UserContext(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -75,6 +82,7 @@ class Attributes(BaseModel):
 class TurnEnvelope(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
+    context: RequestContext
     input: list[InputMessage] = Field(min_length=1)
     user_context: UserContext = Field(default_factory=UserContext)
     attributes: Attributes
@@ -125,8 +133,8 @@ def to_user_turn(envelope: TurnEnvelope, *, now: datetime) -> UserTurn:
     return UserTurn(
         original_query=current,
         enriched_query=current,  # enrichment has not run yet — mirror the raw query
-        # The envelope carries no session id; key the turn on the canonical user id.
-        session_id=ctx.user_id,
+        session_id=envelope.context.session_id,
+        transaction_id=envelope.context.transaction_id,
         source_lang=attrs.source_language,
         target_lang=attrs.target_language,
         channel=attrs.channel,

@@ -23,13 +23,17 @@ from dss.core.provider_discovery.models import (
     Validity,
 )
 
-_DEFECT_STATUS_CODES = {400, 401, 403}
+_DEFECT_STATUS_CODES = {
+    httpx2.codes.BAD_REQUEST,
+    httpx2.codes.UNAUTHORIZED,
+    httpx2.codes.FORBIDDEN,
+}
 _NO_STATUS_CODE = 0  # a pure network-level failure never had an HTTP response
 
 
 def _classify_status_code(status_code: int) -> FailureClass:
-    """400/401/403 are our own bad request; every other status — 429, 500,
-    and anything unlisted — is treated as transient/retry-worthy.
+    """BAD_REQUEST/UNAUTHORIZED/FORBIDDEN are our own bad request; every other
+    status — 429, 500, and anything unlisted — is treated as transient/retry-worthy.
     """
     if status_code in _DEFECT_STATUS_CODES:
         return FailureClass.DEFECT
@@ -268,14 +272,14 @@ class HttpCapabilityDiscovery:
         self._schema_base_url = schema_base_url
 
     async def discover(
-        self, query: ProviderQuery, ask_indices: tuple[int, ...]
+        self, query: ProviderQuery, ask_indices: tuple[int, ...], transaction_id: str
     ) -> DiscoveryResult:
         request_body = build_discover_request(
             query,
             schema_context_index=self._schema_pack_cache.current_schema_context(),
             schema_base_url=self._schema_base_url,
             message_id=str(uuid4()),
-            transaction_id=str(uuid4()),
+            transaction_id=transaction_id,
             timestamp=datetime.now(UTC).isoformat(),
         )
         try:

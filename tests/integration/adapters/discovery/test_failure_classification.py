@@ -55,7 +55,9 @@ QUERY = ProviderQuery(
 async def test_transient_status_codes_classify_as_transient(status_code: int) -> None:
     discovery = _discovery_returning_status(status_code)
 
-    result = await discovery.discover(QUERY, ask_indices=(0,))
+    result = await discovery.discover(
+        QUERY, ask_indices=(0,), transaction_id="txn-test"
+    )
 
     failure = result.failures[0][0]
     assert failure.status_code == status_code
@@ -69,7 +71,9 @@ async def test_transient_status_codes_classify_as_transient(status_code: int) ->
 async def test_defect_status_codes_classify_as_defect(status_code: int) -> None:
     discovery = _discovery_returning_status(status_code)
 
-    result = await discovery.discover(QUERY, ask_indices=(0,))
+    result = await discovery.discover(
+        QUERY, ask_indices=(0,), transaction_id="txn-test"
+    )
 
     failure = result.failures[0][0]
     assert failure.status_code == status_code
@@ -79,7 +83,9 @@ async def test_defect_status_codes_classify_as_defect(status_code: int) -> None:
 async def test_a_connection_error_classifies_as_transient() -> None:
     discovery = _discovery_raising_connection_error()
 
-    result = await discovery.discover(QUERY, ask_indices=(0,))
+    result = await discovery.discover(
+        QUERY, ask_indices=(0,), transaction_id="txn-test"
+    )
 
     failure = result.failures[0][0]
     assert failure.failure_class == FailureClass.TRANSIENT
@@ -91,7 +97,9 @@ async def test_a_connection_error_classifies_as_transient() -> None:
 async def test_a_failed_call_produces_empty_answers_and_capabilities() -> None:
     discovery = _discovery_returning_status(429)
 
-    result = await discovery.discover(QUERY, ask_indices=(0,))
+    result = await discovery.discover(
+        QUERY, ask_indices=(0,), transaction_id="txn-test"
+    )
 
     assert result.answers == {0: ()}
     assert result.capabilities == {0: ()}
@@ -105,7 +113,9 @@ async def test_a_query_with_two_capabilities_gets_a_failure_entry_each() -> None
     )
     discovery = _discovery_returning_status(500)
 
-    result = await discovery.discover(two_capability_query, ask_indices=(0,))
+    result = await discovery.discover(
+        two_capability_query, ask_indices=(0,), transaction_id="txn-test"
+    )
 
     capabilities_failed = {f.capability for f in result.failures[0]}
     assert capabilities_failed == {
@@ -117,6 +127,8 @@ async def test_a_query_with_two_capabilities_gets_a_failure_entry_each() -> None
 async def test_a_failure_is_keyed_under_every_ask_index() -> None:
     discovery = _discovery_returning_status(429)
 
-    result = await discovery.discover(QUERY, ask_indices=(0, 2))
+    result = await discovery.discover(
+        QUERY, ask_indices=(0, 2), transaction_id="txn-test"
+    )
 
     assert result.failures[0] == result.failures[2]

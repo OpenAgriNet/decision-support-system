@@ -167,6 +167,7 @@ async def _run_queries(
     queries_to_asks: dict[ProviderQuery, list[int]],
     unresolved_asks: set[int],
     discovery: CapabilityDiscovery,
+    transaction_id: str,
 ) -> tuple[
     dict[int, tuple[DiscoveredAnswer, ...]],
     dict[int, tuple[ProviderCapability, ...]],
@@ -188,7 +189,9 @@ async def _run_queries(
     async def _run(
         slot: int, query: ProviderQuery, ask_indices: tuple[int, ...]
     ) -> None:
-        query_results[slot] = await discovery.discover(query, ask_indices)
+        query_results[slot] = await discovery.discover(
+            query, ask_indices, transaction_id=transaction_id
+        )
 
     async with anyio.create_task_group() as task_group:
         for slot, (query, ask_indices) in enumerate(queries_to_asks.items()):
@@ -304,7 +307,7 @@ async def discover_providers(
     )
 
     answers, capabilities, failures, run_events = await _run_queries(
-        queries_to_asks, unresolved_asks, discovery
+        queries_to_asks, unresolved_asks, discovery, turn.transaction_id
     )
     events.extend(run_events)
 

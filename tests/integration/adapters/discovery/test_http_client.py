@@ -63,9 +63,36 @@ async def test_discover_posts_to_the_discover_endpoint_and_maps_the_response() -
         coverage=None,
     )
 
-    result = await discovery.discover(query, ask_indices=(0,))
+    result = await discovery.discover(
+        query, ask_indices=(0,), transaction_id="txn-from-experience-layer"
+    )
 
     assert result.capabilities[0][0].provider_id == "mausamgram"
+
+
+async def test_discover_sends_the_given_transaction_id() -> None:
+    """The transactionId correlates a whole request across discover/select —
+    it must be whatever the Experience layer supplied, not one we invent."""
+    sent_bodies = []
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        sent_bodies.append(json.loads(request.content))
+        on_discover = json.loads((FIXTURES / "on_discover_response.json").read_text())
+        return httpx2.Response(200, json=on_discover)
+
+    client = httpx2.AsyncClient(transport=httpx2.MockTransport(handler))
+    discovery = _discovery(client)
+    query = ProviderQuery(
+        capabilities=("openagrinet:WeatherObservation",),
+        languages=("hi",),
+        coverage=None,
+    )
+
+    await discovery.discover(
+        query, ask_indices=(0,), transaction_id="txn-from-experience-layer"
+    )
+
+    assert sent_bodies[0]["context"]["transactionId"] == "txn-from-experience-layer"
 
 
 async def test_a_refreshed_cache_is_reflected_without_rewiring() -> None:
@@ -83,7 +110,9 @@ async def test_a_refreshed_cache_is_reflected_without_rewiring() -> None:
     )
 
     index["openagrinet:WeatherObservation"] = ("WeatherObservation", "v0.1")
-    result = await discovery.discover(query, ask_indices=(0,))
+    result = await discovery.discover(
+        query, ask_indices=(0,), transaction_id="txn-test"
+    )
 
     assert result.capabilities[0][0].provider_id == "mausamgram"
 
@@ -101,7 +130,9 @@ async def test_a_non_2xx_response_is_returned_as_a_failure() -> None:
         coverage=None,
     )
 
-    result = await discovery.discover(query, ask_indices=(0,))
+    result = await discovery.discover(
+        query, ask_indices=(0,), transaction_id="txn-test"
+    )
 
     assert result.failures[0][0].status_code == 429
     assert result.capabilities[0] == ()
@@ -119,7 +150,9 @@ async def test_a_response_that_cannot_be_mapped_is_returned_as_a_defect() -> Non
         coverage=None,
     )
 
-    result = await discovery.discover(query, ask_indices=(0,))
+    result = await discovery.discover(
+        query, ask_indices=(0,), transaction_id="txn-test"
+    )
 
     failure = result.failures[0][0]
     assert failure.failure_class == FailureClass.DEFECT
@@ -139,7 +172,9 @@ async def test_a_body_that_is_not_json_is_returned_as_a_defect() -> None:
         coverage=None,
     )
 
-    result = await discovery.discover(query, ask_indices=(0,))
+    result = await discovery.discover(
+        query, ask_indices=(0,), transaction_id="txn-test"
+    )
 
     assert result.failures[0][0].failure_class == FailureClass.DEFECT
 
@@ -160,6 +195,8 @@ async def test_a_connection_error_is_returned_as_a_failure() -> None:
         coverage=None,
     )
 
-    result = await discovery.discover(query, ask_indices=(0,))
+    result = await discovery.discover(
+        query, ask_indices=(0,), transaction_id="txn-test"
+    )
 
     assert result.failures[0][0].status_code == 0

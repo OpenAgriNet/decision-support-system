@@ -33,6 +33,7 @@ def _turn(**overrides) -> UserTurn:
         original_query="market price",
         enriched_query="market price",
         session_id="s1",
+        transaction_id="t1",
         source_lang="hi",
         target_lang="hi",
         channel="web",
@@ -54,8 +55,8 @@ class _FakeDiscovery:
         self._result = result
         self.calls: list[tuple] = []
 
-    async def discover(self, query, ask_indices):
-        self.calls.append((query, ask_indices))
+    async def discover(self, query, ask_indices, transaction_id):
+        self.calls.append((query, ask_indices, transaction_id))
         return self._result
 
 
@@ -87,9 +88,10 @@ async def test_a_single_ask_resolves_and_returns_the_discovery_result() -> None:
 
     assert result == expected_result
     assert len(discovery.calls) == 1
-    query, ask_indices = discovery.calls[0]
+    query, ask_indices, transaction_id = discovery.calls[0]
     assert query.capabilities == ("openagrinet:MandiPrice",)
     assert ask_indices == (0,)
+    assert transaction_id == "t1"
 
 
 async def test_an_unresolved_ask_never_calls_discover() -> None:
@@ -125,8 +127,8 @@ class _PartiallyFailingDiscovery:
         self._fails_for = fails_for
         self.calls: list[tuple] = []
 
-    async def discover(self, query, ask_indices):
-        self.calls.append((query, ask_indices))
+    async def discover(self, query, ask_indices, transaction_id):
+        self.calls.append((query, ask_indices, transaction_id))
         if self._fails_for in query.capabilities:
             return DiscoveryResult(
                 answers={i: () for i in ask_indices},
@@ -207,8 +209,8 @@ class _RaisingDiscovery:
         self._raises_for = raises_for
         self.calls: list[tuple] = []
 
-    async def discover(self, query, ask_indices):
-        self.calls.append((query, ask_indices))
+    async def discover(self, query, ask_indices, transaction_id):
+        self.calls.append((query, ask_indices, transaction_id))
         if self._raises_for in query.capabilities:
             raise KeyError("resources")
         return DiscoveryResult(
@@ -275,7 +277,7 @@ async def test_two_asks_sharing_a_pair_dedupe_to_one_query() -> None:
     )
 
     assert len(discovery.calls) == 1
-    _, ask_indices = discovery.calls[0]
+    _, ask_indices, _ = discovery.calls[0]
     assert set(ask_indices) == {0, 1}
 
 
