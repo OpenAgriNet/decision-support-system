@@ -42,7 +42,7 @@ def _base_url(httpserver: HTTPServer) -> str:
 
 
 async def test_discover_against_a_real_local_server(httpserver: HTTPServer) -> None:
-    on_discover = json.loads((FIXTURES / "on_discover_response.json").read_text())
+    on_discover = json.loads((FIXTURES / "discover_response.json").read_text())
     httpserver.expect_request("/discover", method="POST").respond_with_json(on_discover)
 
     async with httpx2.AsyncClient() as client:

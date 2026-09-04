@@ -18,7 +18,7 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 
 def test_an_on_demand_resource_maps_to_a_provider_capability() -> None:
-    response = json.loads((FIXTURES / "on_discover_response.json").read_text())
+    response = json.loads((FIXTURES / "discover_response.json").read_text())
 
     result = map_on_discover_response(response, ask_indices=(0,))
 
@@ -35,7 +35,7 @@ def test_an_on_demand_resource_maps_to_a_provider_capability() -> None:
 
 
 def test_the_same_result_is_keyed_under_every_ask_index() -> None:
-    response = json.loads((FIXTURES / "on_discover_response.json").read_text())
+    response = json.loads((FIXTURES / "discover_response.json").read_text())
 
     result = map_on_discover_response(response, ask_indices=(0, 2))
 

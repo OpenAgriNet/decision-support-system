@@ -55,7 +55,7 @@ def _discovery(
 
 
 async def test_discover_posts_to_the_discover_endpoint_and_maps_the_response() -> None:
-    on_discover = json.loads((FIXTURES / "on_discover_response.json").read_text())
+    on_discover = json.loads((FIXTURES / "discover_response.json").read_text())
     discovery = _discovery(_client_returning(on_discover))
     query = ProviderQuery(
         capabilities=("openagrinet:WeatherObservation",),
@@ -77,7 +77,7 @@ async def test_discover_sends_the_given_transaction_id() -> None:
 
     def handler(request: httpx2.Request) -> httpx2.Response:
         sent_bodies.append(json.loads(request.content))
-        on_discover = json.loads((FIXTURES / "on_discover_response.json").read_text())
+        on_discover = json.loads((FIXTURES / "discover_response.json").read_text())
         return httpx2.Response(200, json=on_discover)
 
     client = httpx2.AsyncClient(transport=httpx2.MockTransport(handler))
@@ -99,7 +99,7 @@ async def test_a_refreshed_cache_is_reflected_without_rewiring() -> None:
     """Proves the adapter reads the cache live, not a construction-time
     snapshot — the schema_context_index dict is mutated after wiring.
     """
-    on_discover = json.loads((FIXTURES / "on_discover_response.json").read_text())
+    on_discover = json.loads((FIXTURES / "discover_response.json").read_text())
     index: dict[str, tuple[str, str]] = {}
     cache = _FakeSchemaPackCache(index)
     discovery = _discovery(_client_returning(on_discover), schema_pack_cache=cache)
