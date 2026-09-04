@@ -67,6 +67,20 @@ class Failure(BaseModel):
     retryable: bool
 
 
+class Identity(BaseModel):
+    """Who the assistant is (design doc §6.7). One per deployment, loaded from
+    config like ``PolicyPack`` is — injected into the planner prompt for now
+    because the planner is what speaks; moves to the Response Composer once
+    that component exists (plan issue #10).
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    name: str
+    persona: str
+    boundaries: str
+
+
 class Evidence(BaseModel):
     """What the loop gathered for a turn — every source, every result, every
     gap. ``served`` indexes into ``Intent.asks``; ``sufficiency.py`` sets

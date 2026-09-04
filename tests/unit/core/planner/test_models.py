@@ -5,7 +5,15 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from dss.core.planner.models import Evidence, Failure, Result, Skill, Source, SourceKind
+from dss.core.planner.models import (
+    Evidence,
+    Failure,
+    Identity,
+    Result,
+    Skill,
+    Source,
+    SourceKind,
+)
 
 
 def test_source_carries_provenance() -> None:
@@ -104,3 +112,20 @@ def test_evidence_is_frozen() -> None:
     evidence = Evidence(sources=(), results=(), served=(), failed=(), sufficient=False)
     with pytest.raises(ValidationError):
         evidence.sufficient = True
+
+
+def test_identity_carries_name_persona_boundaries() -> None:
+    identity = Identity(
+        name="Kisan Mitra",
+        persona="A calm, practical farm advisor.",
+        boundaries="Never gives financial or legal advice.",
+    )
+    assert identity.name == "Kisan Mitra"
+    assert identity.persona == "A calm, practical farm advisor."
+    assert identity.boundaries == "Never gives financial or legal advice."
+
+
+def test_identity_is_frozen() -> None:
+    identity = Identity(name="Kisan Mitra", persona="p", boundaries="b")
+    with pytest.raises(ValidationError):
+        identity.name = "Someone else"
