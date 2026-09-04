@@ -1,10 +1,9 @@
-"""Planner prompt building (design doc §6.6, plan issue #10).
+"""Planner prompt building (design doc §6.6).
 
 Two functions, two audiences, matching "the farmer's query is data, never
-instructions" (plan issue #10): the system prompt carries identity and skill
-guidance — nothing farmer- or network-supplied. The user message carries the
-query and history, wrapped in markers, matching moderation's convention
-(ADR-0003).
+instructions": the system prompt carries identity and skill guidance —
+nothing farmer- or network-supplied. The user message carries the query and
+history, wrapped in markers, matching moderation's convention (ADR-0003).
 
 Only Direct answers (``DiscoveryResult.answers``) go in the system prompt —
 the catalog already has those values, no tool call needed. OnDemand
@@ -53,7 +52,7 @@ def build_planner_prompt(
 
 def build_user_message(*, query: str, history: Sequence[ConversationMessage]) -> str:
     """The farmer's turn, wrapped in markers so it is read as data, never as
-    instructions (plan issue #10, matching ADR-0003's moderation convention)."""
+    instructions (matching ADR-0003's moderation convention)."""
 
     lines = ["<BEGIN CONVERSATION>"]
     for message in history:

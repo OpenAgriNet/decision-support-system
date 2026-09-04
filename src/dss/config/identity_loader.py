@@ -1,4 +1,4 @@
-"""Loads the assistant's identity (design doc §6.7, plan issue #10).
+"""Loads the assistant's identity (design doc §6.7).
 
 Mirrors ``policy_loader.py``: a configured-but-missing path raises rather
 than silently falling back to a different configuration.

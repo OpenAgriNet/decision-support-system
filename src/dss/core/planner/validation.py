@@ -1,5 +1,5 @@
 """Validates the model's ``resource_attributes`` against a pack's filterable
-paths (plan issue #10).
+paths.
 
 Only catches an invented field the pack never declared as filterable. No
 "required minimum" check — ``profile.json`` has no ``required_filters`` key

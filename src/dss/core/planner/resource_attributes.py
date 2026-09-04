@@ -1,4 +1,4 @@
-"""Assembles resourceAttributes for a /select call (plan issue #10).
+"""Assembles resourceAttributes for a /select call.
 
 Structural fields (@context, @type, subjectCategories, location) come from
 discovery data and the turn — never from the model. The model's own

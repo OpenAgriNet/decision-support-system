@@ -43,11 +43,11 @@ class Skill(BaseModel):
 class Result(BaseModel):
     """One capability call's data, mapped to the domain schema.
 
-    The design doc's ``Result.step_id`` names a ``Plan`` step, which this POC
-    does not build (issue #10 scope). ``ask_index`` names what a result
-    actually answers here — the position into ``Intent.asks`` — so sufficiency
-    can compare ``Evidence.served`` against it directly. No ``url`` here: it
-    lives on the ``Source`` this result's ``source_id`` points to.
+    The design doc's ``Result.step_id`` names a ``Plan`` step; there is no
+    ``Plan`` here. ``ask_index`` names what a result actually answers instead
+    — the position into ``Intent.asks`` — so sufficiency can compare
+    ``Evidence.served`` against it directly. No ``url`` here: it lives on the
+    ``Source`` this result's ``source_id`` points to.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -71,7 +71,7 @@ class Identity(BaseModel):
     """Who the assistant is (design doc §6.7). One per deployment, loaded from
     config like ``PolicyPack`` is — injected into the planner prompt for now
     because the planner is what speaks; moves to the Response Composer once
-    that component exists (plan issue #10).
+    that component exists.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)

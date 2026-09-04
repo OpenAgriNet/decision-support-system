@@ -1,5 +1,5 @@
 """Loads skills from markdown files — one file per skill, YAML frontmatter for
-metadata and the markdown body as ``guidance`` (plan issue #10).
+metadata and the markdown body as ``guidance``.
 
 Hand-rolled frontmatter split rather than a new dependency: the format is
 ``---\\n<yaml>\\n---\\n<body>``, and pyyaml is already a dependency.
