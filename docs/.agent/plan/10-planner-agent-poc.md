@@ -77,23 +77,90 @@ From discovery: `resource_id`, `provider_id`, `provider_name`, `provider_code`,
 Note the path differs from discovery's `/discover`, so the configured base URL
 must suit both.
 
-### The model fills `resourceAttributes`
+### Structural fields are mechanical; the model resolves and fills the rest
 
-A weather select sends a point and a date range; a mandi select sends commodity
-and market. The shape comes from the schema pack, the values from the farmer's
-query.
+Superseded. This section originally said the model fills the whole
+`resourceAttributes` object. Real `on_discover`/`select` fixtures and the
+`network-specs` schema packs (`WeatherObservation`, `MandiPrice`,
+`KnowledgeAdvisory`, `AgricultureFacility`) showed a narrower split than
+either the original decision or the first revision of this section: less is
+mechanical than it first looked, because "resolve a word to a governed code"
+is a semantic problem ("rice" → `PADDY`, not a substring match), not a
+lookup. The earlier "hybrid" rejection was still wrong about its stated
+reason, though: two producers for one object is exactly what the schema
+wants, and attribution is not a problem, because every field's source is
+logged.
 
-Rejected: **a deterministic builder per capability type.** It needs a hand-written
-mapping for each, written blind before we know which capabilities the network
-actually serves. And `Ask.agriculture_subjects` is the farmer's own word
-("potato"), which may not be what the provider wants.
+**Mechanical — structural, zero judgment, built by the `select` tool from
+`RunContext.deps`:**
 
-Rejected: **a hybrid** — code fills location and dates, the model fills the rest.
-Two producers for one object means a failed select cannot be attributed.
+- `@context`, `@type`, `subjectCategories` — echoed from the chosen
+  `ProviderCapability`, not re-derived.
+- `location`, `address.addressLocality`, `address.addressRegion` — copied
+  from `turn.location`, wherever a capability's schema declares them (not
+  just weather). Missing → the turn needs a `CLARIFY` outcome asking for
+  location, not a guess.
 
-The model inventing a field is the real risk. Mitigated by validating the tool's
-argument against the pack's `filterable` paths and raising `ModelRetry` on a
-miss — the pattern `amul` already uses to catch bad search queries.
+**Model-filled — anything that resolves a farmer's word to a governed value:**
+
+- `commodity.code` / `commodity.name`, `market.marketCode` / `market.state`
+  (MandiPrice) — "rice" must become `PADDY`; a string glossary cannot carry
+  that, so the model picks the code itself.
+- `facilityType` (AgricultureFacility) — the model matches the farmer's
+  phrasing ("soil testing centre") against the pack's own closed `enum` in
+  `attributes.yaml` (`CustomHiringCentre`, `KrishiVigyanKendra`, `Warehouse`,
+  `SoilTestingFacility`).
+- `topics` (KnowledgeAdvisory) — free text describing the kind of advisory
+  wanted ("soil advisory", "pest management"); nothing enumerates every
+  possible topic.
+
+No new glossary config is needed. The valid values the model resolves
+against already exist and reach it without a separate lookup file:
+`supportedCommodities` (an OnDemand `ProviderCapability`'s own `{code, name}`
+list, present in the discovery response) for commodities, and the schema
+pack's own `enum` for `facilityType`. This also closes out the design doc's
+Open #7 for this POC's scope specifically — not a general answer, since
+`supportedCommodities` only exists where a provider declares it.
+
+**The `select` tool's signature is nearly argument-free:**
+
+```python
+async def select(ctx: RunContext[PlannerDeps], ask_index: int, resource_attributes: dict) -> str: ...
+```
+
+`resource_attributes` holds only what the model resolves or authors — for
+example `{"commodity": {"code": "PADDY", "name": "Paddy"}}` or
+`{"topics": [...]}`. It never carries `@context`, `@type`, or `location`:
+those are structural, so the tool builds them itself from `ctx.deps` first,
+then merges the model's `resource_attributes` on top to form the full object
+sent to `/select`.
+
+Rejected: **a deterministic builder per capability type**, full stop, with
+nothing left for the model. Resolving a farmer's word to a governed code is
+exactly the kind of matching a builder can't do — this is why "structural is
+mechanical, resolution is the model's job" replaces "the model fills
+`resourceAttributes`" outright, rather than just carving out one exception
+field.
+
+Rejected: **a static resolution glossary** (e.g. a hand-maintained
+`commodity_codes.yaml`). Would need an entry per synonym per commodity,
+maintained by us, for a job the model already does — and `supportedCommodities`
+already carries the valid list, so there is nothing left for a glossary to
+add.
+
+Rejected: **the model passes the structural fields too** (`@context`, `@type`,
+`location` as explicit tool arguments). Once a capability is chosen, those
+values are already known — passing them through the model only adds a
+chance for the model to contradict its own `@type` choice.
+
+**Validation, correctly scoped.** The model inventing a field the pack never
+declared is still the real risk — the tool validates `resource_attributes`'s
+keys against the pack's `filterable_paths` and raises `ModelRetry` on a miss
+(the pattern `amul` already uses to catch bad search queries), then checks
+the *merged* structural + model-filled object against the schema's required
+minimum. Missing a required field after merging (e.g. no `location`, and the
+turn has none) is a `CLARIFY` outcome, not a `ModelRetry` — the model cannot
+supply what it doesn't have either.
 
 ### The tool returns markdown; `Evidence` is built separately
 
