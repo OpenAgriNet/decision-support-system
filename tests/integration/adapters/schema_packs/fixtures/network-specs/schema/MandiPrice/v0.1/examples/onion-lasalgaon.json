@@ -1,0 +1,5 @@
+{
+  "@type": "openagrinet:MandiPrice",
+  "informationMode": "Direct",
+  "subjectCategories": ["Market"]
+}

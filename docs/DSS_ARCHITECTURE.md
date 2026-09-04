@@ -173,13 +173,14 @@ The DSS receives every turn as a structured envelope from the Experience API. **
 
 ```jsonc
 {
+  "context": { "id", "version", "transactionId", "messageId", "timestamp", "sessionId" },
   "input": [ { "role": "user", "content": [ { "type": "text", "text": "…" } ] }, … ],
   "user_context": { "user_id", "reference_token", "issuer", "expires_at" },
   "attributes": { "sourceLanguage", "targetLanguage", "channel", "location", "response": { "max_characters" } }
 }
 ```
 
-`orchestration/envelope.py::to_user_turn` normalizes this into the domain `UserTurn` — camelCase and provider JSON never reach the core. The last `user` message is the current query; earlier messages become typed `history`; an expired `reference_token` (`expires_at <= now`) is treated as absent. The envelope carries no session id, so `session_id` is keyed on `user_id` until one is added.
+`orchestration/envelope.py::to_user_turn` normalizes this into the domain `UserTurn` — camelCase and provider JSON never reach the core. The last `user` message is the current query; earlier messages become typed `history`; an expired `reference_token` (`expires_at <= now`) is treated as absent. `session_id` and `transaction_id` come from the request's top-level `context` object (`context.sessionId`, `context.transactionId` — both required per `docs/api-contracts/api-contract.md`), not from `user_context`. `transaction_id` is passed through unchanged to every `/discover` and `/select` call the turn makes, so a Provider can correlate them.
 
 **Domain `UserTurn` (normalized shape the core works with).**
 
@@ -192,7 +193,8 @@ class UserDetails:
 class UserTurn:
     original_query: str
     enriched_query: str       # mirrors original_query until enrichment lands
-    session_id: str
+    session_id: str           # from request context.sessionId
+    transaction_id: str       # from request context.transactionId; passed through to Provider calls
     source_lang: str          # language the user spoke/typed
     target_lang: str          # language the response should come back in
     channel: str              # web / voice / sms / whatsapp / ...

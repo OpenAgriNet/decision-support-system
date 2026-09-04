@@ -91,6 +91,7 @@ def test_non_bcp47_language_raises() -> None:
             original_query="hi",
             enriched_query="hi",
             session_id="s",
+            transaction_id="t",
             source_lang="gujarati",  # full name, not a code
             target_lang="en",
             channel="web",

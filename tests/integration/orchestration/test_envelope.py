@@ -17,6 +17,14 @@ _NOW = datetime(2026, 9, 2, 12, 0, tzinfo=UTC)
 
 # The sample thread from the feedback: two prior turns, then a follow-up.
 _SAMPLE = {
+    "context": {
+        "id": "api.dss.turn",
+        "version": "2.0.0",
+        "transactionId": "9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44",
+        "messageId": "7d41b9e0-52a6-4c18-8b73-1e9f0a4c6d22",
+        "timestamp": "2026-08-26T06:12:04.918Z",
+        "sessionId": "conv_8f3a1c",
+    },
     "input": [
         {
             "role": "user",
@@ -77,11 +85,17 @@ def test_attributes_map_onto_the_turn() -> None:
 def test_user_id_is_carried() -> None:
     turn = _map(_SAMPLE)
     assert turn.user.user_id == "u-123"
-    assert turn.session_id == "u-123"  # envelope has no session id; key on user id
+
+
+def test_context_ids_are_carried() -> None:
+    turn = _map(_SAMPLE)
+    assert turn.session_id == "conv_8f3a1c"
+    assert turn.transaction_id == "9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44"
 
 
 def test_content_may_be_a_bare_string() -> None:
     payload = {
+        "context": _SAMPLE["context"],
         "input": [{"role": "user", "content": "And potato?"}],
         "attributes": {
             "sourceLanguage": "en",
@@ -122,6 +136,7 @@ def test_expired_reference_token_counts_as_absent() -> None:
 
 def test_envelope_with_no_user_message_is_rejected() -> None:
     payload = {
+        "context": _SAMPLE["context"],
         "input": [{"role": "assistant", "content": "hello"}],
         "attributes": {
             "sourceLanguage": "en",
@@ -131,3 +146,16 @@ def test_envelope_with_no_user_message_is_rejected() -> None:
     }
     with pytest.raises(ValueError):
         _map(payload)
+
+
+def test_envelope_without_context_is_rejected() -> None:
+    payload = {
+        "input": [{"role": "user", "content": "And potato?"}],
+        "attributes": {
+            "sourceLanguage": "en",
+            "targetLanguage": "en",
+            "channel": "web",
+        },
+    }
+    with pytest.raises(ValueError):
+        TurnEnvelope.model_validate(payload)

@@ -5,15 +5,18 @@ description = "Decision Support System — reasoning runtime for the OpenAgriNet
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "anyio>=4.14.2",
     # pydantic-ai-slim, not pydantic-ai: the metapackage ships no code of its own
     # and force-installs anthropic, google-genai, logfire, mcp, evals, cli, and web.
     # The LLM provider is a swappable adapter behind a port (DSS_ARCHITECTURE.md §4.3),
     # so extras are declared explicitly as adapters are built.
+    "httpx2>=2.12.0",
     "pydantic-ai-slim[openai]>=2.33.0",
     # Settings binding for the moderation LLM knobs and config paths (spec 0002).
     "pydantic-settings>=2.5.0",
-    # The policy loader deserialises the mounted YAML pack (spec 0003).
-    "pyyaml>=6.0.2",
+    # The policy loader deserialises the mounted YAML pack (spec 0003), and the
+    # schema-pack index parses attributes.yaml.
+    "pyyaml>=6.0.3",
 ]
 
 [build-system]
@@ -40,6 +43,7 @@ dev = [
     "fastapi>=0.115.0",
     "uvicorn>=0.34.0",
     "logfire>=3.0.0",
+    "pytest-httpserver>=1.1.5",
 ]
 
 # ---------------------------------------------------------------------------

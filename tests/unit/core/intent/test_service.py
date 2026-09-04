@@ -20,6 +20,7 @@ def _turn(query: str, history: list[ConversationMessage] | None = None) -> UserT
         original_query=query,
         enriched_query=query,
         session_id="s1",
+        transaction_id="t1",
         source_lang="en",
         target_lang="en",
         channel="web",
