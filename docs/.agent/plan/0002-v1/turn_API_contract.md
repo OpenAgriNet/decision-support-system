@@ -8,16 +8,6 @@
 > **Appendix A**, so this document stands alone. References that used to read
 > "0002 §n" now point there.
 
-## Problem
-
-The wire contract is designed; nothing proves the hops connect. A hexagon has
-five places to get wrong and four of them only fail once assembled: a port that
-mirrors its first adapter, a business rule that leaks into a node, a vendor type
-that escapes an adapter, an anaemic core. Building core logic first hides all
-four behind unit tests that pass.
-
-This plan builds the thinnest turn that touches every hop, with **real seams and
-fake logic**. Every later change replaces one body and touches no seam.
 
 ## Scope — two changes, not one
 
