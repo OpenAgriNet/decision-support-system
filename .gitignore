@@ -17,3 +17,6 @@ dist/
 .ruff_cache/
 .coverage
 htmlcov/
+
+# Local scratch — handoffs, notes, anything not for review
+.scratchpad/
