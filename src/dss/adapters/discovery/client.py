@@ -165,7 +165,7 @@ def _answers_from_catalog(catalog: dict[str, Any]) -> list[DiscoveredAnswer]:
     return answers
 
 
-def map_on_discover_response(
+def map_discover_response(
     response: dict[str, Any], ask_indices: tuple[int, ...]
 ) -> DiscoveryResult:
     capabilities: list[ProviderCapability] = []
@@ -294,6 +294,6 @@ class HttpCapabilityDiscovery:
         except httpx2.HTTPError as exc:
             return _failure_result(query, ask_indices, _NO_STATUS_CODE, str(exc))
         try:
-            return map_on_discover_response(response.json(), ask_indices)
+            return map_discover_response(response.json(), ask_indices)
         except (KeyError, TypeError, ValueError) as exc:
             return _malformed_result(query, ask_indices, f"malformed response: {exc!r}")

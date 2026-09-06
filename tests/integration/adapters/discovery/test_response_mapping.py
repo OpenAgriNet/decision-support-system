@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from dss.adapters.discovery.client import map_on_discover_response
+from dss.adapters.discovery.client import map_discover_response
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -20,7 +20,7 @@ FIXTURES = Path(__file__).parent / "fixtures"
 def test_an_on_demand_resource_maps_to_a_provider_capability() -> None:
     response = json.loads((FIXTURES / "discover_response.json").read_text())
 
-    result = map_on_discover_response(response, ask_indices=(0,))
+    result = map_discover_response(response, ask_indices=(0,))
 
     assert result.answers == {0: ()}
     assert result.failures == {0: ()}
@@ -37,7 +37,7 @@ def test_an_on_demand_resource_maps_to_a_provider_capability() -> None:
 def test_the_same_result_is_keyed_under_every_ask_index() -> None:
     response = json.loads((FIXTURES / "discover_response.json").read_text())
 
-    result = map_on_discover_response(response, ask_indices=(0, 2))
+    result = map_discover_response(response, ask_indices=(0, 2))
 
     assert result.capabilities[0] == result.capabilities[2]
 
@@ -45,7 +45,7 @@ def test_the_same_result_is_keyed_under_every_ask_index() -> None:
 def test_a_direct_resource_maps_to_a_discovered_answer() -> None:
     response = json.loads((FIXTURES / "discover_response_direct.json").read_text())
 
-    result = map_on_discover_response(response, ask_indices=(0,))
+    result = map_discover_response(response, ask_indices=(0,))
 
     assert result.capabilities == {0: ()}
     assert result.failures == {0: ()}
@@ -89,7 +89,7 @@ def test_a_direct_resource_with_validity_parses_it() -> None:
         }
     }
 
-    result = map_on_discover_response(response, ask_indices=(0,))
+    result = map_discover_response(response, ask_indices=(0,))
 
     validity = result.answers[0][0].validity
     assert validity is not None
@@ -125,7 +125,7 @@ def test_a_bare_end_date_stretches_to_the_end_of_that_day() -> None:
     """
     response = _direct_response_with_validity({"endsAt": "2026-08-26"})
 
-    result = map_on_discover_response(response, ask_indices=(0,))
+    result = map_discover_response(response, ask_indices=(0,))
 
     validity = result.answers[0][0].validity
     assert validity is not None
@@ -135,7 +135,7 @@ def test_a_bare_end_date_stretches_to_the_end_of_that_day() -> None:
 def test_a_bare_start_date_stays_at_the_start_of_that_day() -> None:
     response = _direct_response_with_validity({"startsAt": "2026-08-26"})
 
-    result = map_on_discover_response(response, ask_indices=(0,))
+    result = map_discover_response(response, ask_indices=(0,))
 
     validity = result.answers[0][0].validity
     assert validity is not None
@@ -166,7 +166,7 @@ def test_a_resource_without_subject_categories_still_maps() -> None:
         }
     }
 
-    result = map_on_discover_response(response, ask_indices=(0,))
+    result = map_discover_response(response, ask_indices=(0,))
 
     assert result.capabilities[0][0].observed_categories == ()
 
@@ -178,7 +178,7 @@ def test_a_catalog_without_resources_maps_to_nothing() -> None:
         }
     }
 
-    result = map_on_discover_response(response, ask_indices=(0,))
+    result = map_discover_response(response, ask_indices=(0,))
 
     assert result.capabilities == {0: ()}
     assert result.answers == {0: ()}
@@ -208,7 +208,7 @@ def test_a_resource_without_an_information_mode_is_skipped() -> None:
         }
     }
 
-    result = map_on_discover_response(response, ask_indices=(0,))
+    result = map_discover_response(response, ask_indices=(0,))
 
     assert len(result.capabilities[0]) == 1
     assert result.capabilities[0][0].resource_id == "r2"
@@ -222,7 +222,7 @@ def test_a_naive_timestamp_is_read_as_utc_with_its_time_untouched() -> None:
         {"startsAt": "2026-08-26T06:30:00", "endsAt": "2026-08-26T18:45:00"}
     )
 
-    result = map_on_discover_response(response, ask_indices=(0,))
+    result = map_discover_response(response, ask_indices=(0,))
 
     validity = result.answers[0][0].validity
     assert validity is not None
