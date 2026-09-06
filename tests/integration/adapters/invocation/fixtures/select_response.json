@@ -1,0 +1,70 @@
+{
+  "context": {
+    "action": "on_select",
+    "version": "2.0.0",
+    "messageId": "7d41b9e0-52a6-4c18-8b73-1e9f0a4c6d22",
+    "transactionId": "9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44",
+    "timestamp": "2026-08-26T06:12:04.918Z",
+    "senderId": "provider-network-vistaar.da.gov.in",
+    "receiverId": "seeker-network-vistaar.da.gov.in"
+  },
+  "message": {
+    "contract": {
+      "commitments": [
+        {
+          "status": {
+            "descriptor": {
+              "code": "ACTIVE",
+              "name": "Active"
+            }
+          },
+          "resources": [
+            {
+              "id": "res:mausamgram:forecast:2026-08-26",
+              "resourceAttributes": {
+                "@context": "https://schemas.openagrinet.global/schema/WeatherObservation/v0.1/context.jsonld",
+                "@type": "openagrinet:WeatherObservation",
+                "informationMode": "Direct",
+                "observationType": "Forecast",
+                "subjectCategories": ["Weather"],
+                "source": {
+                  "sourceId": "mausamgram",
+                  "sourceName": "IMD Mausamgram NWP"
+                },
+                "location": {
+                  "type": "Point",
+                  "coordinates": [73.7898, 19.9975]
+                },
+                "validity": {
+                  "startsAt": "2026-08-26T00:00:00Z",
+                  "endsAt": "2026-08-26T23:59:59Z"
+                },
+                "generatedAt": "2026-08-26T06:12:04.201Z",
+                "parameters": [
+                  {"parameter": "Rainfall", "aggregation": "Total", "unit": "mm", "value": 0.84},
+                  {"parameter": "Temperature", "aggregation": "Maximum", "unit": "Cel", "value": 39.24},
+                  {"parameter": "Temperature", "aggregation": "Minimum", "unit": "Cel", "value": 32.8},
+                  {"parameter": "Humidity", "aggregation": "Maximum", "unit": "%", "value": 58.67},
+                  {"parameter": "Humidity", "aggregation": "Minimum", "unit": "%", "value": 40.81},
+                  {"parameter": "WindSpeed", "aggregation": "Mean", "unit": "m/s", "value": 2.83},
+                  {"parameter": "WindDirection", "aggregation": "Mean", "unit": "deg", "value": 273.39}
+                ]
+              }
+            }
+          ],
+          "offer": {
+            "id": "offer:mausamgram:open-data",
+            "resourceIds": ["res:mausamgram:forecast:2026-08-26"],
+            "provider": {
+              "id": "mausamgram",
+              "descriptor": {
+                "code": "IMD-NWP-01",
+                "name": "IMD Mausamgram NWP"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
