@@ -13,7 +13,11 @@ from uuid import uuid4
 
 import httpx2
 
-from dss.adapters.network_common import extract_validity
+from dss.adapters.network_common import (
+    NO_STATUS_CODE,
+    classify_status_code,
+    extract_validity,
+)
 from dss.core.provider_discovery.models import (
     DiscoveredAnswer,
     DiscoveryFailure,
@@ -23,22 +27,6 @@ from dss.core.provider_discovery.models import (
     ProviderQuery,
 )
 
-_DEFECT_STATUS_CODES = {
-    httpx2.codes.BAD_REQUEST,
-    httpx2.codes.UNAUTHORIZED,
-    httpx2.codes.FORBIDDEN,
-}
-_NO_STATUS_CODE = 0  # a pure network-level failure never had an HTTP response
-
-
-def _classify_status_code(status_code: int) -> FailureClass:
-    """BAD_REQUEST/UNAUTHORIZED/FORBIDDEN are our own bad request; every other
-    status — 429, 500, and anything unlisted — is treated as transient/retry-worthy.
-    """
-    if status_code in _DEFECT_STATUS_CODES:
-        return FailureClass.DEFECT
-    return FailureClass.TRANSIENT
-
 
 def _failure_result(
     query: ProviderQuery,
@@ -46,7 +34,7 @@ def _failure_result(
     status_code: int,
     detail: str | None,
 ) -> DiscoveryResult:
-    failure_class = _classify_status_code(status_code)
+    failure_class = classify_status_code(status_code)
     failures = tuple(
         DiscoveryFailure(
             capability=capability,
@@ -74,7 +62,7 @@ def _malformed_result(
     failures = tuple(
         DiscoveryFailure(
             capability=capability,
-            status_code=_NO_STATUS_CODE,
+            status_code=NO_STATUS_CODE,
             failure_class=FailureClass.DEFECT,
             detail=detail,
         )
@@ -263,7 +251,7 @@ class HttpCapabilityDiscovery:
                 query, ask_indices, exc.response.status_code, exc.response.text
             )
         except httpx2.HTTPError as exc:
-            return _failure_result(query, ask_indices, _NO_STATUS_CODE, str(exc))
+            return _failure_result(query, ask_indices, NO_STATUS_CODE, str(exc))
         try:
             return map_discover_response(response.json(), ask_indices)
         except (KeyError, TypeError, ValueError) as exc:

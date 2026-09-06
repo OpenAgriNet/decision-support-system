@@ -8,9 +8,26 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from dss.core.provider_discovery.models import Validity
+import httpx2
+
+from dss.core.provider_discovery.models import FailureClass, Validity
 
 _BARE_DATE_LENGTH = len("YYYY-MM-DD")
+
+# Our own bad request; every other status — 429, 500, and anything unlisted —
+# is treated as transient/retry-worthy.
+_DEFECT_STATUS_CODES = {
+    httpx2.codes.BAD_REQUEST,
+    httpx2.codes.UNAUTHORIZED,
+    httpx2.codes.FORBIDDEN,
+}
+NO_STATUS_CODE = 0  # a pure network-level failure never had an HTTP response
+
+
+def classify_status_code(status_code: int) -> FailureClass:
+    if status_code in _DEFECT_STATUS_CODES:
+        return FailureClass.DEFECT
+    return FailureClass.TRANSIENT
 
 
 def to_utc(value: str, *, end_of_day: bool) -> datetime:
