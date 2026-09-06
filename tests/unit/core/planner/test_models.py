@@ -1,4 +1,4 @@
-"""Tier 1 — the Planner Agent (POC) evidence contract (issue #10)."""
+"""Tier 1 — the planner agent's evidence contract."""
 
 from __future__ import annotations
 

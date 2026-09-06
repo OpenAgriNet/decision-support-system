@@ -1,4 +1,4 @@
-"""Tier 1 — planner prompt building (issue #10).
+"""Tier 1 — planner prompt building.
 
 No framework, no network. Asserts on prompt *content*, not exact wording —
 each test checks that a specific fact from the input is present in the

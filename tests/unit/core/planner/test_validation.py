@@ -1,5 +1,5 @@
 """Tier 1 — validating the model's resource_attributes against a pack's
-filterable paths (plan issue #10).
+filterable paths.
 
 No "required minimum" check here — profile.json has no required_filters key
 (design doc Open #3, unresolved network-wide). This only catches an invented

@@ -1,4 +1,4 @@
-"""Tier 3 — PlannerDeps, the Agent's deps_type (plan issue #10)."""
+"""Tier 3 — PlannerDeps, the Agent's deps_type."""
 
 from __future__ import annotations
 

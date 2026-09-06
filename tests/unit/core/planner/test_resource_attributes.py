@@ -1,4 +1,4 @@
-"""Tier 1 — assembling resourceAttributes for a /select call (plan issue #10).
+"""Tier 1 — assembling resourceAttributes for a /select call.
 
 Structural fields (@context, @type, subjectCategories, location) are built
 here from discovery data and the turn; the model's own resource_attributes
