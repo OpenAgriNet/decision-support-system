@@ -31,6 +31,7 @@ def _invocation_returning_status(status_code: int) -> HttpCapabilityInvocation:
         base_url="https://provider-network-vistaar.da.gov.in/oan",
         sender_id="seeker-network-vistaar.da.gov.in",
         receiver_id="provider-network-vistaar.da.gov.in",
+        attempts=1,  # classification, not retry — see test_retry.py
     )
 
 
@@ -44,6 +45,7 @@ def _invocation_raising_connection_error() -> HttpCapabilityInvocation:
         base_url="https://provider-network-vistaar.da.gov.in/oan",
         sender_id="seeker-network-vistaar.da.gov.in",
         receiver_id="provider-network-vistaar.da.gov.in",
+        attempts=1,  # classification, not retry — see test_retry.py
     )
 
 

@@ -37,6 +37,16 @@ class Settings(BaseSettings):
     moderation_timeout_seconds: float = Field(5.0, gt=0.0)
     moderation_retries: int = Field(1, ge=0)
 
+    # --- provider invocation (/select) ---
+    # One slow provider must not block the turn. The timeout bounds a single
+    # call; attempts bound how many times a *transient* failure is retried (a
+    # defect is never retried — the same malformed request fails the same
+    # way). Backoff doubles per attempt, because 429 is transient too and
+    # retrying at once is what caused it.
+    select_timeout_seconds: float = Field(5.0, gt=0.0)
+    select_attempts: int = Field(3, ge=1)  # 0 would never call the provider
+    select_backoff_seconds: float = Field(0.5, ge=0.0)
+
     # Where the adopter policy pack is mounted. Unset → use the bundled defaults;
     # set-but-missing → raise (see policy_loader), never boot on a different config.
     policy_config_path: Path | None = None

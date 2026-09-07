@@ -14,6 +14,39 @@ def test_defaults() -> None:
     assert settings.moderation_model == "openai:gpt-4o-mini"
 
 
+def test_provider_call_timeout_and_retries_have_defaults() -> None:
+    """A slow provider must not block a turn indefinitely, and a transient
+    failure gets more than one chance. Both configurable per deployment."""
+
+    settings = Settings()
+
+    assert settings.select_timeout_seconds == 5.0
+    assert settings.select_attempts == 3
+    assert settings.select_backoff_seconds == 0.5
+
+
+def test_provider_call_retries_are_configurable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DSS_SELECT_ATTEMPTS", "5")
+    monkeypatch.setenv("DSS_SELECT_TIMEOUT_SECONDS", "2.5")
+
+    settings = Settings()
+
+    assert settings.select_attempts == 5
+    assert settings.select_timeout_seconds == 2.5
+
+
+def test_zero_attempts_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Zero attempts would never call the provider at all — a config that
+    silently answers nothing."""
+
+    monkeypatch.setenv("DSS_SELECT_ATTEMPTS", "0")
+
+    with pytest.raises(ValueError):
+        Settings()
+
+
 def test_each_component_binds_its_own_model(monkeypatch: pytest.MonkeyPatch) -> None:
     # The model name comes from the environment, per component (ADR-0004).
     monkeypatch.setenv("DSS_INTENT_MODEL", "openai:gpt-4o")

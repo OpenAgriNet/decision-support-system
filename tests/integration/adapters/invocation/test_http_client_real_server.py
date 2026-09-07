@@ -67,6 +67,7 @@ async def test_a_real_429_response_raises_selectfailed(httpserver: HTTPServer) -
             base_url=_base_url(httpserver),
             sender_id="seeker-network-vistaar.da.gov.in",
             receiver_id="provider-network-vistaar.da.gov.in",
+            attempts=1,  # classification, not retry — see test_retry.py
         )
 
         with pytest.raises(SelectFailed) as exc_info:

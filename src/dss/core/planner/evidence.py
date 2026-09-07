@@ -18,7 +18,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from dss.core.intent.models import Intent
-from dss.core.planner.models import Evidence, Result, Source, SourceKind
+from dss.core.planner.models import Evidence, Failure, Result, Source, SourceKind
 from dss.core.provider_discovery.models import DiscoveredAnswer
 
 
@@ -26,8 +26,14 @@ def assemble_evidence(
     raw_answers: Sequence[tuple[int, DiscoveredAnswer]],
     *,
     intent: Intent,
+    failures: Sequence[tuple[int, Failure]] = (),
 ) -> Evidence:
     """Turn the loop's accumulated answers into ``Evidence``.
+
+    ``failures`` are calls that errored after the adapter's retries. They ride
+    alongside the results so the composer can say "we could not reach
+    Agmarknet" rather than "nobody serves this" — the same empty result, two
+    different things to tell a farmer.
 
     Sources are numbered ``"1"``, ``"2"``, … in first-seen order, one per
     distinct provider: a provider answering two asks is one citable source,
@@ -66,6 +72,6 @@ def assemble_evidence(
         sources=tuple(sources),
         results=tuple(results),
         served=served,
-        failed=(),
+        failed=tuple(failure for _, failure in failures),
         sufficient=bool(results),
     )

@@ -83,6 +83,8 @@ def build_plan(
             build_user_message(query=turn.enriched_query, history=turn.history),
             deps=deps,
         )
-        return assemble_evidence(deps.raw_answers, intent=intent)
+        return assemble_evidence(
+            deps.raw_answers, intent=intent, failures=deps.failures
+        )
 
     return plan

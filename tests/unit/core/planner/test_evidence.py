@@ -6,7 +6,7 @@ import pytest
 
 from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
 from dss.core.planner.evidence import assemble_evidence
-from dss.core.planner.models import SourceKind
+from dss.core.planner.models import Failure, SourceKind
 from dss.core.provider_discovery.models import DiscoveredAnswer
 
 # One answer per capability this change touches. `attributes` holds a
@@ -206,3 +206,20 @@ def test_any_answer_is_sufficient() -> None:
     evidence = assemble_evidence([(0, MANDI_PRICE)], intent=_intent(PRICE_ASK))
 
     assert evidence.sufficient is True
+
+
+def test_failures_are_carried_onto_the_evidence() -> None:
+    """The composer must be able to say "we could not reach Agmarknet" rather
+    than "nobody serves this" — the same empty result, two very different
+    things to tell a farmer."""
+
+    failure = Failure(
+        capability="openagrinet:MandiPrice",
+        reason="too many requests",
+        retryable=True,
+    )
+
+    evidence = assemble_evidence([], failures=[(0, failure)], intent=_intent(PRICE_ASK))
+
+    assert evidence.failed == (failure,)
+    assert evidence.sufficient is False
