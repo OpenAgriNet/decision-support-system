@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from dss.adapters.http.v1 import mapping, schema
-from dss.core.shared.models import Channel, HistoryEntry, Point, Role
+from dss.core.shared.models import ConversationMessage, Geometry
 
 
 def test_geometry_coordinates_are_longitude_then_latitude(a_body):
@@ -19,22 +19,23 @@ def test_geometry_coordinates_are_longitude_then_latitude(a_body):
     turn = mapping.to_user_turn(body)
 
     assert turn.location is not None
-    assert turn.location.geometry == Point(lon=72.93, lat=22.56)
+    assert turn.location.geometry == Geometry(coordinates=[72.93, 22.56])
 
 
 def test_identity_supplies_the_user_id(a_body):
     body = schema.TurnRequest.model_validate(a_body())
 
-    assert mapping.to_user_turn(body).user_id == "usr_9921"
+    assert mapping.to_user_turn(body).user.user_id == "usr_9921"
 
 
-def test_user_id_is_anonymous_when_no_identity_is_supplied(a_body, omit):
-    """The contract's `user_id` is "anonymous" if unknown — a turn need not be
-    attributed, and the core must never see an empty string it has to interpret."""
+def test_the_turn_is_unattributed_when_no_identity_is_supplied(a_body, omit):
+    """A turn need not be attributed. `UserDetails.user_id` stays `None` rather
+    than being invented — the wire's "anonymous" is a presentation choice, not a
+    domain fact."""
 
     body = schema.TurnRequest.model_validate(a_body(message__userContext=omit))
 
-    assert mapping.to_user_turn(body).user_id == "anonymous"
+    assert mapping.to_user_turn(body).user.user_id is None
 
 
 def _thread() -> list[dict]:
@@ -48,16 +49,16 @@ def _thread() -> list[dict]:
 def test_the_last_user_message_is_the_current_query(a_body):
     body = schema.TurnRequest.model_validate(a_body(message__input=_thread()))
 
-    assert mapping.to_user_turn(body).query == "And potato?"
+    assert mapping.to_user_turn(body).original_query == "And potato?"
 
 
 def test_messages_before_the_current_query_become_history(a_body):
     body = schema.TurnRequest.model_validate(a_body(message__input=_thread()))
 
-    assert mapping.to_user_turn(body).history == (
-        HistoryEntry(role=Role.USER, content="Wheat price?"),
-        HistoryEntry(role=Role.ASSISTANT, content="Rs 2275."),
-    )
+    assert mapping.to_user_turn(body).history == [
+        ConversationMessage(role="user", text="Wheat price?"),
+        ConversationMessage(role="assistant", text="Rs 2275."),
+    ]
 
 
 def test_several_content_parts_join_into_one_query(a_body):
@@ -79,7 +80,7 @@ def test_several_content_parts_join_into_one_query(a_body):
     )
 
     assert (
-        mapping.to_user_turn(body).query
+        mapping.to_user_turn(body).original_query
         == "What disease is this? The leaves are curling."
     )
 
@@ -88,7 +89,7 @@ def test_languages_and_channel_reach_the_turn(a_body):
     turn = mapping.to_user_turn(schema.TurnRequest.model_validate(a_body()))
 
     assert (turn.source_lang, turn.target_lang) == ("hi", "hi")
-    assert turn.channel is Channel.WEB
+    assert turn.channel == "web"
 
 
 def test_the_response_cap_reaches_the_turn(a_body):
@@ -110,11 +111,14 @@ def test_the_context_carries_the_session_and_the_callers_transaction_id(a_body):
     body = a_body()
     body["context"]["transactionId"] = "txn_77"
 
-    ctx = mapping.to_turn_context(
-        schema.TurnRequest.model_validate(body), message_id="minted"
-    )
+    validated = schema.TurnRequest.model_validate(body)
+    ctx = mapping.to_turn_context(validated, message_id="minted")
 
-    assert (ctx.session_id, ctx.transaction_id) == ("conv_8f3a1c", "txn_77")
+    assert ctx.session_id == "conv_8f3a1c"
+    # `transaction_id` is not duplicated on the context — `trace_id` already is
+    # it. The turn keeps its own copy for the Provider hop.
+    assert ctx.trace_id == "txn_77"
+    assert mapping.to_user_turn(validated).transaction_id == "txn_77"
 
 
 def test_the_trace_id_comes_from_the_caller_span_not_the_body(a_body):

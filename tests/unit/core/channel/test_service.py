@@ -6,13 +6,20 @@ import pytest
 
 from dss.adapters.llm.stub import StubLLM
 from dss.core.channel.service import compose
-from dss.core.intent.models import ActionType, Intent
+from dss.core.intent.models import Intent
 
 
 @pytest.fixture
 def intent():
     return Intent(
-        primary_domain="mandi-prices", action_type=ActionType.LOOKUP, confidence=0.9
+        asks=(
+            Ask(
+                agriculture_subjects="wheat",
+                subject_categories=SubjectCategory.MARKET,
+                interaction_type=InteractionType.OBSERVE,
+            ),
+        ),
+        confidence=0.9,
     )
 
 

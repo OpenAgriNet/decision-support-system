@@ -22,7 +22,7 @@ from dss.core.shared.models import (
 )
 
 NOW = datetime(2026, 9, 4, 8, 0, tzinfo=UTC)
-CTX = TurnContext(trace_id="trc_1", session_id="conv_1", message_id="msg_in", transaction_id="txn_1")
+CTX = TurnContext(trace_id="trc_1", session_id="conv_1", message_id="msg_in")
 
 
 def _lines(path) -> list[dict]:
@@ -121,11 +121,11 @@ def test_geometry_is_never_written_to_the_sink(tmp_path, a_turn):
     """`api-contract.md` §6: region and area are written, geometry is not. A
     stable user id beside a precise point, over many turns, is a home address."""
 
-    from dss.core.shared.models import Location, Point
+    from dss.core.shared.models import Location
 
     path = tmp_path / "turns.jsonl"
     turn = a_turn(
-        location=Location(region="IN-GJ", area="Anand", geometry=Point(lon=72.93, lat=22.56))
+        location=Location(region="IN-GJ", area="Anand", geometry=Geometry(coordinates=[72.93, 22.56]))
     )
 
     FileTurnSink(path, clock=lambda: NOW).opened(CTX, turn)

@@ -11,9 +11,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from dss.entrypoint.app import build_app
-from dss.entrypoint.settings import Settings
 from tests.support.fakes import FakeRunner
+
+from dss.config.settings import Settings
+from dss.entrypoint.app import build_app
 
 
 def _document() -> dict[str, Any]:

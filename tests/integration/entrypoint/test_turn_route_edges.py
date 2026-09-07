@@ -11,7 +11,9 @@ import gzip
 import json
 
 from fastapi.testclient import TestClient
+from tests.support.fakes import FakeRunner
 
+from dss.config.settings import Settings
 from dss.core.shared.models import (
     Claim,
     TextBlock,
@@ -21,8 +23,6 @@ from dss.core.shared.models import (
     TurnStatus,
 )
 from dss.entrypoint.app import build_app
-from dss.entrypoint.settings import Settings
-from tests.support.fakes import FakeRunner
 
 JSON = "application/json"
 

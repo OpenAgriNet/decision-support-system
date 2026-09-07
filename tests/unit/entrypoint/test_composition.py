@@ -7,8 +7,8 @@ import warnings
 
 import pytest
 
+from dss.config.settings import Settings
 from dss.entrypoint.composition import build_runner
-from dss.entrypoint.settings import Settings
 
 
 def test_evidence_paths_sit_under_the_configured_directory(tmp_path):

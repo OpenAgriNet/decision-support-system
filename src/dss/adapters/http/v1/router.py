@@ -34,6 +34,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import ValidationError
 
 from dss.adapters.http.v1 import mapping, problem, schema, sse
+from dss.config.settings import Settings
 from dss.core.shared.models import (
     Cause,
     TurnContext,
@@ -42,7 +43,6 @@ from dss.core.shared.models import (
     TurnStarted,
     TurnStatus,
 )
-from dss.entrypoint.settings import Settings
 from dss.ports.turn import TurnRunner
 
 JSON_MEDIA_TYPE = "application/json"

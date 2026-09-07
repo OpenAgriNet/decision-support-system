@@ -42,7 +42,7 @@ def test_the_core_runner_satisfies_the_port(a_turn, a_context):
     from dss.adapters.llm.stub import StubLLM
     from dss.adapters.sinks.memory import MemoryTurnSink
     from dss.adapters.sinks.stdout import StdoutTelemetrySink
-    from dss.core.intent.models import ActionType, Intent
+    from dss.core.intent.models import Intent
     from dss.orchestration.core_runner import CoreRunner
 
     runner = CoreRunner(

@@ -30,7 +30,6 @@ def ctx():
     return TurnContext(
         trace_id="trc_9f2b",
         session_id="conv_8f3a1c",
-        transaction_id="txn_77",
         message_id="msg_in_1",
     )
 

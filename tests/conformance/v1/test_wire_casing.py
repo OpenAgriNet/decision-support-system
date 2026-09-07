@@ -15,12 +15,19 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
+from tests.support.fakes import FakeRunner
 
 from dss.adapters.http.v1 import schema
-from dss.core.shared.models import Claim, TextBlock, TurnFinished, TurnOutcome, TurnStarted, TurnStatus
+from dss.config.settings import Settings
+from dss.core.shared.models import (
+    Claim,
+    TextBlock,
+    TurnFinished,
+    TurnOutcome,
+    TurnStarted,
+    TurnStatus,
+)
 from dss.entrypoint.app import build_app
-from dss.entrypoint.settings import Settings
-from tests.support.fakes import FakeRunner
 
 CAMEL_REQUEST = {
     "context": {
@@ -67,7 +74,7 @@ def test_a_camel_case_request_validates():
     assert body.message.attributes.source_language == "hi"
     assert body.message.attributes.response is not None
     assert body.message.attributes.response.max_characters == 1200
-    assert body.message.user_context[0].user_id == "usr_9921"
+    assert body.message.user_context[0].user.user_id == "usr_9921"
 
 
 @pytest.mark.parametrize(

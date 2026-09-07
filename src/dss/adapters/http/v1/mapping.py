@@ -6,20 +6,18 @@ from datetime import datetime
 
 from dss.adapters.http.v1 import schema
 from dss.core.shared.models import (
-    ANONYMOUS,
     Cause,
-    Channel,
     Claim,
-    HistoryEntry,
+    ConversationMessage,
+    Geometry,
     Location,
     OutputContent,
-    Point,
     RefusalBlock,
-    Role,
     TurnContext,
     TurnFinished,
     TurnOutcome,
     TurnStatus,
+    UserDetails,
     UserTurn,
 )
 
@@ -29,45 +27,42 @@ DSS_RELEASE = "v1.0.0"
 
 
 def to_user_turn(body: schema.TurnRequest) -> UserTurn:
-    """Normalize a validated request body into the turn the core works with."""
+    """Normalize a validated request body into the turn the core works with.
+
+    `enriched_query` mirrors `original_query`: enrichment has not landed, and
+    `core/shared/models.py` defines both so later slices need not re-thread the
+    second field through every signature.
+    """
 
     thread = body.message.input
     current = _current_index(thread)
-
     attributes = body.message.attributes
     response = attributes.response
+    query = _text(thread[current])
 
     return UserTurn(
-        query=_text(thread[current]),
-        source_lang=attributes.source_language,
-        target_lang=attributes.target_language,
-        channel=Channel(attributes.channel),
-        response_max_chars=response.max_characters if response else None,
-        user_id=_user_id(body.message.user_context),
-        history=tuple(
-            HistoryEntry(role=Role(m.role), content=_text(m)) for m in thread[:current]
-        ),
-        location=_location(attributes.location),
-    )
-
-
-def to_turn_context(body: schema.TurnRequest, *, message_id: str) -> TurnContext:
-    """Assemble the turn's ids.
-
-    The trace id **is** the caller's `transactionId` — the contract says
-    `traceId` echoes it, so the caller owns the correlation key. `traceparent`
-    still starts the server span; it does not supply this id.
-
-    `message_id` is required on the response, so the transport mints one when the
-    caller omits it.
-    """
-
-    return TurnContext(
-        trace_id=body.context.transaction_id,
+        original_query=query,
+        enriched_query=query,
         session_id=body.context.session_id,
         transaction_id=body.context.transaction_id,
-        message_id=body.context.message_id or message_id,
+        source_lang=attributes.source_language,
+        target_lang=attributes.target_language,
+        channel=attributes.channel,
+        user=_user(body.message.user_context),
+        history=[
+            ConversationMessage(role=m.role, text=_text(m)) for m in thread[:current]
+        ],
+        location=_location(attributes.location),
+        response_max_chars=response.max_characters if response else None,
     )
+
+
+def _user(entries: list[schema.Identity]) -> UserDetails:
+    """The first identity entry names the actor. None present leaves the turn
+    unattributed — `user_id` stays `None` rather than being invented."""
+
+    user_id = next((e.user_id for e in entries), None)
+    return UserDetails(user_id=user_id)
 
 
 def _current_index(thread: list[schema.InputMessage]) -> int:
@@ -87,27 +82,45 @@ def _text(message: schema.InputMessage) -> str:
     return " ".join(part.text for part in message.content).strip()
 
 
-def _user_id(entries: list[schema.Identity]) -> str:
-    """The first identity entry names the actor. None present means the turn is
-    unattributed, which the contract spells "anonymous"."""
-
-    return next((e.user_id for e in entries), ANONYMOUS)
-
-
 def _location(wire: schema.Location | None) -> Location | None:
     if wire is None:
         return None
-    return Location(region=wire.region, area=wire.area, geometry=_point(wire.geometry))
+    return Location(
+        region=wire.region, area=wire.area, geometry=_geometry(wire.geometry)
+    )
 
 
-def _point(wire: schema.Geometry | None) -> Point | None:
-    """GeoJSON is `[longitude, latitude]`. This is the only place that ordering
-    is positional; everything inward uses named axes."""
+def _geometry(wire: schema.Geometry | None) -> Geometry | None:
+    """GeoJSON is `[longitude, latitude]` — the reverse of what the current
+    deployments send.
+
+    The domain `Geometry` keeps the pair positional (it mirrors GeoJSON), so
+    unlike a named-axes type it cannot make the reversal unrepresentable. A range
+    check would not catch it either: for Anand, 72.93 and 22.56 are both a valid
+    latitude *and* a valid longitude. The mapping test is the guard.
+    """
 
     if wire is None:
         return None
-    lon, lat = wire.coordinates
-    return Point(lon=lon, lat=lat)
+    return Geometry(coordinates=list(wire.coordinates))
+
+
+def to_turn_context(body: schema.TurnRequest, *, message_id: str) -> TurnContext:
+    """Assemble the ids a response is filed under.
+
+    The trace id **is** the caller's `transactionId` — the contract says
+    `traceId` echoes it, so the caller owns the correlation key. `traceparent`
+    still starts the server span; it does not supply this id.
+
+    `messageId` is required on the response, so the transport mints one when the
+    caller omits it.
+    """
+
+    return TurnContext(
+        trace_id=body.context.transaction_id,
+        message_id=body.context.message_id or message_id,
+        session_id=body.context.session_id,
+    )
 
 
 UNAVAILABLE_MESSAGE = "A service this turn needed could not be reached."

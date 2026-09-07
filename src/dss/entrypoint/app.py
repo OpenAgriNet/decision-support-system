@@ -11,8 +11,8 @@ from fastapi import FastAPI
 
 from dss.adapters.http.v1 import schema
 from dss.adapters.http.v1.router import turn_router
+from dss.config.settings import Settings
 from dss.entrypoint.composition import build_runner
-from dss.entrypoint.settings import Settings
 from dss.ports.turn import TurnRunner
 
 TITLE = "Decision Support System"

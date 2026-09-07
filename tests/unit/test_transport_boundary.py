@@ -27,6 +27,12 @@ TRANSPORT_ROOTS = (SRC / "dss" / "adapters" / "http", SRC / "dss" / "entrypoint"
 
 ALLOWED_CORE_PREFIXES = ("dss.core.shared",)
 
+# The composition root is the one module allowed to name every concrete type,
+# core ones included — building a runner means loading a policy pack, which
+# needs `dss.core.policy`. Exempting it by name keeps the rule meaningful for
+# every other transport module.
+COMPOSITION_ROOT = "composition.py"
+
 
 def _forbidden(modules: set[str]) -> set[str]:
     return {
@@ -37,7 +43,12 @@ def _forbidden(modules: set[str]) -> set[str]:
 
 
 def _transport_modules() -> list[Path]:
-    return sorted(p for root in TRANSPORT_ROOTS for p in root.rglob("*.py"))
+    return sorted(
+        p
+        for root in TRANSPORT_ROOTS
+        for p in root.rglob("*.py")
+        if p.name != COMPOSITION_ROOT
+    )
 
 
 def test_there_are_transport_modules_to_check() -> None:

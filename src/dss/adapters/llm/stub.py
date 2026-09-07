@@ -15,7 +15,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from dss.core.intent.models import ActionType, Intent
+from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
 
 # The answers a stub deployment hands back. They live here, not in the
 # composition root: the root names concrete *classes*, and reaching past
@@ -23,8 +23,13 @@ from dss.core.intent.models import ActionType, Intent
 # slice — which the transport boundary check forbids.
 DEFAULT_ANSWERS: dict[type[BaseModel], object] = {
     Intent: Intent(
-        primary_domain="mandi-prices",
-        action_type=ActionType.LOOKUP,
+        asks=(
+            Ask(
+                agriculture_subjects="wheat",
+                subject_categories=SubjectCategory.MARKET,
+                interaction_type=InteractionType.OBSERVE,
+            ),
+        ),
         confidence=0.9,
     )
 }

@@ -1,19 +1,20 @@
 """Response composition — writing the answer for its channel.
 
-An agent (2026-09-03 classification): the signature takes an `LLM` and keeps it.
-The body is STUB(#84) — a fixed answer, so the streaming shape can be exercised
-before anything can actually reason.
+An agent under the 2026-09-03 classification: the signature takes an
+`LLMProvider` and keeps it. The body is STUB(#84) — a fixed answer, so the
+streaming shape can be exercised before anything can reason.
 
 Writing for the channel happens here because the rewrite needs a language model,
-and no language model runs outside the DSS.
+and no language model runs outside the DSS. Farmer-facing wording lives here and
+not in the runner, for the same reason.
 """
 
 from __future__ import annotations
 
 from dss.core.channel.models import ComposedAnswer
 from dss.core.intent.models import Intent
-from dss.core.shared.llm import LLM
 from dss.core.shared.models import Source, SourceKind, TextBlock, UserTurn
+from dss.ports.llm import LLMProvider
 
 _SOURCE = Source(
     id="src_1",
@@ -22,10 +23,21 @@ _SOURCE = Source(
     url="https://agmarknet.gov.in/",
 )
 
+NO_MATCH_TEXT = (
+    "I could not find a way to help with that. I can assist with agriculture "
+    "and livestock questions."
+)
 
-async def compose(turn: UserTurn, intent: Intent, *, llm: LLM) -> ComposedAnswer:
-    """Write the answer. Two blocks, so the multi-claim stream has something to
-    carry."""
+
+async def compose(
+    turn: UserTurn, intent: Intent, *, llm: LLMProvider
+) -> ComposedAnswer:
+    """Write the answer.
+
+    Two blocks, so the multi-claim stream has something to carry. The real
+    composer writes one claim per ask (`intent.asks`) from the evidence a plan
+    gathered; this ignores both.
+    """
 
     return ComposedAnswer(
         content=(
@@ -42,21 +54,11 @@ async def compose(turn: UserTurn, intent: Intent, *, llm: LLM) -> ComposedAnswer
     )
 
 
-def no_match_answer(turn: UserTurn) -> ComposedAnswer:
+def no_match_answer() -> ComposedAnswer:
     """What the farmer reads when nothing could serve the ask.
 
-    Farmer-facing wording lives here, not in the runner: a refusal or a no-match
-    still has to be written in the right language for the channel, which is this
-    function's job. STUB(#84) — fixed English until composition is real.
+    Deterministic, so it needs no model. The real version writes in
+    `target_lang` and for the channel.
     """
 
-    return ComposedAnswer(
-        content=(
-            TextBlock(
-                text=(
-                    "I could not find a way to help with that. I can assist with "
-                    "agriculture and livestock questions."
-                )
-            ),
-        )
-    )
+    return ComposedAnswer(content=(TextBlock(text=NO_MATCH_TEXT),))

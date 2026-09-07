@@ -26,7 +26,7 @@ def test_a_turn_is_recorded_under_its_trace_id(a_turn):
 
     record = sink.records["trc_1"]
     assert record.turn is not None
-    assert record.turn.query == "Wheat price?"
+    assert record.turn.original_query == "Wheat price?"
     assert record.finished is finished
 
 
