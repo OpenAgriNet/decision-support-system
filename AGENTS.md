@@ -18,6 +18,7 @@ Do not duplicate architecture, domain model, or design-decision detail here — 
 - Language: Python
 - Orchestration framework: Pydantic AI
 - HTTP framework: FastAPI on uvicorn (ADR-0006)
+- Async concurrency: anyio
 - Dependency injection: Pydantic
 - Package manager: uv
 - Test framework: pytest

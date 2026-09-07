@@ -59,10 +59,10 @@ The DSS is an **Experience Layer module** used when an interaction requires inte
 
 ## 3. DSS logical functions
 
-The DSS decomposes into the following logical functions. Each has a single purpose. They are listed in execution order.
+The DSS decomposes into the following logical functions. Each has a single purpose. They are listed in execution order, except that functions 1 and 2 run **concurrently** on this branch (§3.0, ADR-0003).
 
-1. **Intent recognition and enrichment** converts the request into a structured capability need without binding it to a channel, resolving references against previous historical context. Enrichment may run in the same LLM call as intent recognition or as a separate step; the choice is an implementation decision.
-2. **Moderation and policy checks** decide whether an interaction may proceed.
+1. **Intent recognition and enrichment** converts the request into a structured capability need without binding it to a channel, resolving references against previous historical context. Enrichment may run in the same LLM call as intent recognition or as a separate step; the choice is an implementation decision. *As implemented on this branch, intent classification decomposes the turn into `asks` (each a `subject_categories` + `interaction_type` + optional `agriculture_subjects`) plus a `confidence` (§5.2), and runs independently of moderation.*
+2. **Moderation and policy checks** decide whether an interaction may proceed. Runs in parallel with (1), judging the raw query with history as context (§3.0).
 3. **Skill discovery** selects the smallest relevant set of permitted skills for the interaction.
 4. **Persona and context composition** applies configured behaviour and only the context permitted for the interaction.
 5. **Planning and execution** produces a plan, coordinates tool calls and Provider-capability invocations, and validates that the gathered result is sufficient to answer the need — until a sufficient result, accepted status, failure, or escalation condition is reached.
@@ -73,16 +73,23 @@ The DSS decomposes into the following logical functions. Each has a single purpo
 
 > **Altitude disclaimer.** This is high-level design. The rationale subsections below (§3.0, §3.2) fix *boundaries and direction*, not mechanics. Ordering, seams, and responsibility splits are the decisions being recorded; thresholds, iteration bounds, retry semantics, prompt structure, and schemas are **not** settled here. Every claim below should be re-questioned against real behaviour during implementation, and this document updated when implementation contradicts it. Do not treat these subsections as specifications to code against.
 
-### 3.0 Why enrichment precedes moderation
+### 3.0 Intent and moderation run in parallel (ADR-0003)
 
-Intent recognition and enrichment run **before** moderation. This is deliberate, and it reverses the more common ordering.
+> **Superseded direction.** An earlier draft ran intent/enrichment **before**
+> moderation so moderation could judge the *enriched* query. As implemented on this
+> branch (ADR-0003) the two run **in parallel and decoupled**: moderation no longer
+> consumes intent, and it judges the **raw** query. The reasoning below records the
+> current decision; the follow-up-resolution concern it started from is still
+> honoured, just handled differently.
 
-A follow-up turn cannot be moderated in isolation. If turn 1 asks "what's the wheat price?" and turn 2 asks "can I grow it now?", the referent of `it` lives in history. Moderating the unresolved query means moderating a pronoun — the content that policy needs to judge is not yet present. Resolving first and moderating the **enriched** query is strictly more informative.
+A follow-up turn still cannot be judged in isolation. If turn 1 asks "what's the wheat price?" and turn 2 asks "can I grow it now?", the referent of `it` lives in history. But **resolving the reference and moderating a rewrite are separable**: rather than rewrite the query and then moderate the rewrite, moderation judges the raw query with the recent history handed to the LLM **as context**. The model resolves the reference itself; moderation never acts on words the user did not type.
 
-Two consequences follow, and both are load-bearing:
+This decouples the two logical functions, so they fan out concurrently (`orchestration/turn.py::run_turn`, an `asyncio.gather`) and the turn's latency is the slower of the two calls rather than their sum. Moderation still gates the result: on any non-`PROCEED` outcome the classified intent is discarded in favour of an empty `Intent()`, so a refused turn surfaces no intent read off the text it refused.
 
-- **Moderation receives the substitution, not just the result.** Enrichment emits `original_query` and `enriched_query`; moderation evaluates the pair. Because enrichment reads history, and history contains prior user turns, a turn can plant a referent that a later turn dereferences — so a rewrite that materially changes semantic content is itself a signal worth policy-checking. Moderation is already an LLM-evaluated checkpoint (§4.1), so this is a prompt concern, not new structure.
-- **History is untrusted input to the enrichment prompt.** The enrichment call necessarily reads unmoderated user text. Prior turns must be treated as data, never as instructions.
+Consequences that remain load-bearing:
+
+- **Moderation judges the raw query, with history for reference only.** `moderate()` reads `turn.original_query`; the deterministic word-check runs on that text and the LLM policies see the recent thread as reference context (`build_llm_prompt(policies, history)`). There is no enriched-query substitution step in front of moderation on this branch.
+- **History is untrusted input to any prompt that reads it.** Both intent classification and moderation read unmoderated prior user text. Prior turns must be treated as data, never as instructions.
 
 Nothing may be written to any cross-session store before moderation passes — see §5.2.
 
@@ -162,23 +169,42 @@ The sections below refine implementation decisions this repo makes on top of the
 
 The DSS receives every turn as a structured envelope from the Experience API. **Language is a first-class field on the envelope**, not a projected Context Provider variable — it is a channel/session property, not user-profile data.
 
-**Envelope shape (directional; concrete class locked during v1 design).**
+**Inbound envelope (as implemented on this branch — ADR-0004).** The wire contract is an OpenAI-style thread plus `user_context` and `attributes`:
+
+```jsonc
+{
+  "context": { "id", "version", "transactionId", "messageId", "timestamp", "sessionId" },
+  "input": [ { "role": "user", "content": [ { "type": "text", "text": "…" } ] }, … ],
+  "user_context": { "user_id", "reference_token", "issuer", "expires_at" },
+  "attributes": { "sourceLanguage", "targetLanguage", "channel", "location", "response": { "max_characters" } }
+}
+```
+
+`orchestration/envelope.py::to_user_turn` normalizes this into the domain `UserTurn` — camelCase and provider JSON never reach the core. The last `user` message is the current query; earlier messages become typed `history`; an expired `reference_token` (`expires_at <= now`) is treated as absent. `session_id` and `transaction_id` come from the request's top-level `context` object (`context.sessionId`, `context.transactionId` — both required per `docs/api-contracts/api-contract.md`), not from `user_context`. `transaction_id` is passed through unchanged to every `/discover` and `/select` call the turn makes, so a Provider can correlate them.
+
+**Domain `UserTurn` (normalized shape the core works with).**
 
 ```python
 class UserDetails:
     user_id: str | None = None
     phone: str | None = None
+    reference: ReferenceToken | None = None   # passed on to Provider calls, not consumed
 
 class UserTurn:
-    query: str
-    session_id: str
+    original_query: str
+    enriched_query: str       # mirrors original_query until enrichment lands
+    session_id: str           # from request context.sessionId
+    transaction_id: str       # from request context.transactionId; passed through to Provider calls
     source_lang: str          # language the user spoke/typed
     target_lang: str          # language the response should come back in
     channel: str              # web / voice / sms / whatsapp / ...
     user: UserDetails
-    history: list             # typed shape deferred (see §8)
+    history: list[ConversationMessage]
+    location: Location | None = None
     response_max_chars: int | None = None
 ```
+
+**Per-component model binding (ADR-0004).** Each logical function binds its own model from the environment — `DSS_INTENT_MODEL`, `DSS_MODERATION_MODEL`, etc. — so a deployment can run intent on a small fast model and moderation on a stronger one without code change.
 
 **Why source and target are separate.**
 - `source_lang` drives inbound reasoning: Skill discovery filters skills whose `supported_languages` don't include it; Intent Recognition routes through a language-appropriate embedding model; Provider capabilities can be down-ranked if they don't serve this language.
@@ -197,16 +223,20 @@ class UserTurn:
 
 The DSS uses **intent-based routing**: extract an intent once, then match uniformly against skills, tools, and Provider capabilities.
 
-**Intent object (directional; concrete schema is v1 design work):**
-```
+**Intent object (as implemented on this branch — spec 0002, ADR-0003).** The classifier (`core/intent/service.py::classify_intent`) decomposes a turn into one or more **asks** plus one overall confidence:
+```jsonc
 {
-  primary_domain: "milk_collection",
-  secondary_domains: ["dairy"],
-  entities: { mobile: "...", week: "..." },
-  action_type: "lookup" | "advisory" | "transaction",
-  confidence: 0.87
+  "asks": [
+    {
+      "subject_categories": "Market",        // closed enum: Crop | Livestock | Weather | Market | Scheme
+      "interaction_type": "observe",         // enum: advise | observe | act
+      "agriculture_subjects": "potato"       // free-text specific; null when the category needs none ("will it rain?")
+    }
+  ],
+  "confidence": 0.88
 }
 ```
+`interaction_type` names what the farmer wants done — **advise** (explain/guide), **observe** (look up a value/record/status), **act** (book, apply, submit, update, escalate). A turn holding several needs ("wheat price and will it rain?") yields several asks. The layered-extraction cache pipeline below remains directional; this branch implements the LLM-classifier axis only, run in parallel with moderation.
 
 **Layered extraction (v1 direction).** Each layer is cheaper than the next; the pipeline stops at the first layer that returns a confident intent. The layers, in order:
 
@@ -218,7 +248,7 @@ The DSS uses **intent-based routing**: extract an intent once, then match unifor
 
 Each layer emits its outcome (`hit` / `miss` / `low_confidence`) to operational evidence so the tenant can see the cache-hit ratio and where LLM cost is being spent.
 
-**Cross-session cache writes happen after the answer, not during the turn.** Because enrichment and intent recognition run before moderation (§3.0), an in-turn write to the tenant-wide layer-2 cache would let an unmoderated turn influence later turns in other sessions. The write is therefore gated on two conditions: moderation allowed the turn, **and** the turn produced a reviewed, accepted response. A turn that ended in reviewer rejection, a no-match (§7), or a Provider failure does not teach the cache that its classification was good.
+**Cross-session cache writes happen after the answer, not during the turn.** Because intent recognition does not wait on a moderation verdict (§3.0, they run in parallel), an in-turn write to the tenant-wide layer-2 cache would let an unmoderated turn influence later turns in other sessions. The write is therefore gated on two conditions: moderation allowed the turn, **and** the turn produced a reviewed, accepted response. A turn that ended in reviewer rejection, a no-match (§7), or a Provider failure does not teach the cache that its classification was good.
 
 Accepted trade-off: layer 2 warms more slowly, since only successful turns contribute. A cache that learns from failures is worse than a cold one.
 

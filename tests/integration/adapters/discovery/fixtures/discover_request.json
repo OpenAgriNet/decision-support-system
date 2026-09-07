@@ -1,0 +1,34 @@
+{
+  "context": {
+    "action": "discover",
+    "version": "2.0.0",
+    "messageId": "1c0a55d7-8e64-4b19-9a2f-33b7c6e1d905",
+    "transactionId": "9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44",
+    "timestamp": "2026-08-26T06:11:58.004Z",
+    "schemaContext": [
+      "https://schemas.openagrinet.global/schema/WeatherObservation/v0.1/context.jsonld#openagrinet:WeatherObservation"
+    ]
+  },
+  "message": {
+    "intent": {
+      "textSearch": "weather forecast rain next five days",
+      "filters": {
+        "type": "jsonpath",
+        "expression": "$.catalogs[*].resources[*] ? (@.resourceAttributes.\"@type\" == \"openagrinet:WeatherObservation\")"
+      },
+      "spatial": [
+        {
+          "op": "S_DWITHIN",
+          "targets": "$.catalogs[*].provider.availableAt[*].geo",
+          "geometry": {
+            "type": "Point",
+            "coordinates": [73.7898, 19.9975]
+          },
+          "distanceMeters": 250000,
+          "quantifier": "ANY",
+          "srid": "EPSG:4326"
+        }
+      ]
+    }
+  }
+}

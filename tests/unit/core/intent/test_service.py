@@ -1,44 +1,88 @@
-"""Intent recognition. A real business rule with a stub prompt behind it."""
+"""Tier 1 — the intent classifier over a mocked LLM.
+
+Plain Python in/out; the ``LLMProvider`` port is faked. No framework, no network.
+"""
 
 from __future__ import annotations
 
-from dss.adapters.llm.stub import StubLLM
-from dss.core.intent.models import ActionType, Intent
-from dss.core.intent.service import CONFIDENCE_FLOOR, recognise_intent
+from dss.core.intent.models import (
+    Ask,
+    Intent,
+    InteractionType,
+    SubjectCategory,
+)
+from dss.core.intent.service import build_intent_prompt, classify_intent
+from dss.core.shared.models import ConversationMessage, UserTurn
 
 
-def _intent(confidence: float) -> Intent:
-    return Intent(
-        primary_domain="mandi-prices",
-        action_type=ActionType.LOOKUP,
-        confidence=confidence,
+def _turn(query: str, history: list[ConversationMessage] | None = None) -> UserTurn:
+    return UserTurn(
+        original_query=query,
+        enriched_query=query,
+        session_id="s1",
+        transaction_id="t1",
+        source_lang="en",
+        target_lang="en",
+        channel="web",
+        history=history or [],
     )
 
 
-async def test_a_confident_intent_is_returned(a_turn):
-    expected = _intent(0.9)
+class _FakeLLM:
+    """Records what it was asked and returns a scripted Intent."""
 
-    assert await recognise_intent(a_turn(), llm=StubLLM({Intent: expected})) is expected
+    def __init__(self, result: Intent) -> None:
+        self._result = result
+        self.seen_query: str | None = None
+        self.seen_prompt: str | None = None
 
-
-async def test_an_intent_below_the_floor_is_not_returned(a_turn):
-    """Below the floor the answer is "I don't know", not a guess. Returning a
-    low-confidence intent would let routing act on a reading nobody trusts."""
-
-    low = _intent(CONFIDENCE_FLOOR - 0.01)
-
-    assert await recognise_intent(a_turn(), llm=StubLLM({Intent: low})) is None
-
-
-async def test_the_floor_itself_is_confident_enough(a_turn):
-    at_floor = _intent(CONFIDENCE_FLOOR)
-
-    assert await recognise_intent(a_turn(), llm=StubLLM({Intent: at_floor})) is at_floor
+    async def structured(self, *, system_prompt, user_query, schema):
+        self.seen_prompt = system_prompt
+        self.seen_query = user_query
+        assert schema is Intent
+        return self._result
 
 
-async def test_the_query_is_what_the_model_is_asked_about(a_turn):
-    llm = StubLLM({Intent: _intent(0.9)})
+async def test_classify_returns_asks_and_confidence() -> None:
+    expected = Intent(
+        asks=(
+            Ask(
+                agriculture_subjects="potato",
+                subject_categories=SubjectCategory.MARKET,
+                interaction_type=InteractionType.OBSERVE,
+            ),
+        ),
+        confidence=0.88,
+    )
+    llm = _FakeLLM(expected)
 
-    await recognise_intent(a_turn(query="What is the price of potato?"), llm=llm)
+    intent = await classify_intent(_turn("What is the potato price?"), llm)
 
-    assert llm.calls[0].user_query == "What is the price of potato?"
+    assert intent == expected
+    assert llm.seen_query == "What is the potato price?"
+
+
+async def test_history_reaches_the_prompt_for_followups() -> None:
+    llm = _FakeLLM(Intent())
+    history = [
+        ConversationMessage(role="user", text="What is the wheat price?"),
+        ConversationMessage(role="assistant", text="Wheat is ₹2,275 per quintal."),
+    ]
+
+    await classify_intent(_turn("And potato?", history), llm)
+
+    assert "wheat price" in llm.seen_prompt.lower()
+    # The raw follow-up is judged, not a rewrite.
+    assert llm.seen_query == "And potato?"
+
+
+def test_prompt_lists_categories_and_interaction_types() -> None:
+    prompt = build_intent_prompt([])
+    for category in SubjectCategory:
+        assert category.value in prompt
+    for interaction in InteractionType:
+        assert interaction.value in prompt
+
+
+def test_prompt_without_history_has_no_conversation_section() -> None:
+    assert "Conversation so far" not in build_intent_prompt([])

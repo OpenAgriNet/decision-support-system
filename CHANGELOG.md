@@ -7,3 +7,20 @@
 - Framework-boundary enforcement — `core/` cannot import `pydantic_ai` or
   `pydantic_graph`, checked by ruff and by an AST test (#57)
 - pre-commit hooks and CI workflow (#57)
+- Intent contract (`Intent`, `ActionType`) and request envelope (`UserTurn`,
+  `UserDetails`) with BCP-47 language validation (#57)
+- Policy schema (focused): `WordCheckPolicy` / `LlmPolicy` discriminated union,
+  `PolicyPack`, and a YAML loader with the shipped default pack (#57)
+- Moderation service: deterministic-first evaluation with a single batched LLM
+  call, `ModerationDecision` (with `sanitized_query`/`warnings`), and fail-closed
+  handling behind the `LLMProvider` port + Pydantic AI adapter (#57)
+- Two policies: `profanity-filter` (redact-and-warn, non-LLM) and `delete-command`
+  (LLM, hard reject) (#57)
+- ADR-0002: redact-and-warn modelled as a `PROCEED`-carried transform (#57)
+- Dev-only harnesses under `examples/`: a FastAPI `POST /moderate` server for curl
+  testing and Logfire→OpenTelemetry export to a self-hosted Langfuse (not the
+  committed entrypoint; that needs an ADR) (#57)
+
+### Fixed
+- `Settings()` no longer raises when `.env` carries non-DSS vars the LLM SDK and
+  Langfuse read directly (`OPENAI_API_KEY`, `OTEL_*`) — `extra="ignore"` (#57)

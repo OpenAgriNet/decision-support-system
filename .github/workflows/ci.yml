@@ -31,5 +31,10 @@ jobs:
 
       # The framework-boundary test lives here. Tier 6 (eval) is excluded by
       # addopts in pyproject.toml and must never gate a merge.
+      #
+      # Coverage gates at 85%. Note that src/dss is currently all empty
+      # __init__.py files: 0 statements reports as 100%, so this gate is
+      # green for now without proving anything. It starts biting as soon as
+      # the first core service lands.
       - name: Test
-        run: uv run pytest
+        run: uv run pytest --cov=src/dss --cov-report=term-missing --cov-fail-under=85

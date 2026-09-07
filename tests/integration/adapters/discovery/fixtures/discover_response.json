@@ -1,0 +1,59 @@
+{
+  "context": {
+    "version": "2.0.0",
+    "action": "on_discover",
+    "networkId": "da.gov.in/vistaar",
+    "senderId": "seeker-network-vistaar.da.gov.in",
+    "senderUri": "https://seeker-network-vistaar.da.gov.in/oan",
+    "receiverId": "discovery-network-vistaar.da.gov.in",
+    "receiverUri": "https://discovery-network-vistaar.da.gov.in/oan",
+    "transactionId": "9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44",
+    "messageId": "1c0a55d7-8e64-4b19-9a2f-33b7c6e1d905",
+    "timestamp": "2026-08-26T06:11:58.612Z"
+  },
+  "message": {
+    "catalogs": [
+      {
+        "id": "cat:mausamgram:weather",
+        "descriptor": {
+          "code": "IMD-NWP-01",
+          "name": "IMD Mausamgram NWP"
+        },
+        "provider": {
+          "id": "mausamgram",
+          "descriptor": {
+            "code": "IMD-NWP-01",
+            "name": "IMD Mausamgram NWP"
+          },
+          "availableAt": [
+            {
+              "geo": {
+                "type": "Polygon",
+                "coordinates": [[[68.1, 8.0], [97.4, 8.0], [97.4, 37.1], [68.1, 37.1], [68.1, 8.0]]]
+              }
+            }
+          ]
+        },
+        "resources": [
+          {
+            "id": "res:mausamgram:point-forecast",
+            "descriptor": {
+              "name": "Five-day point forecast"
+            },
+            "resourceAttributes": {
+              "@context": "https://schemas.openagrinet.global/schema/WeatherObservation/v0.1/context.jsonld",
+              "@type": "openagrinet:WeatherObservation",
+              "informationMode": "OnDemand",
+              "supportedObservationTypes": ["Forecast"],
+              "supportedParameters": ["Rainfall", "Temperature", "Humidity", "WindSpeed", "WindDirection"],
+              "geographicGranularity": ["Point"],
+              "forecastHorizon": "P5D",
+              "updateFrequency": "PT12H",
+              "subjectCategories": ["Weather"]
+            }
+          }
+        ]
+      }
+    ]
+  }
+}
