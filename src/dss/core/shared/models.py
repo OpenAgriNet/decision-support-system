@@ -77,6 +77,21 @@ class Location(BaseModel):
     geometry: Geometry | None = None
 
 
+class Refused(BaseModel):
+    """One thing the DSS will not answer, and why (design v2 §6.2).
+
+    The partial case: "price of potato and gold" proceeds for potato and refuses
+    gold. Moderation produces these; the planner carries them through unchanged
+    and the composer says so in the answer. Shared because three components touch
+    it and none owns the other's module.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    what: str  # "gold prices"
+    reason: str  # "outside agriculture"
+
+
 class UserTurn(BaseModel):
     """One normalized turn from the Experience API."""
 
