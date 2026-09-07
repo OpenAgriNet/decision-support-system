@@ -1,9 +1,9 @@
 # Running the DSS locally
 
-`POST /v1/turns` works end to end today. **The reasoning is stubbed** — moderation
-decides from a word list, intent classification returns a canned answer, and the
-composer returns fixed English sentences whatever you ask. Every seam around them
-is real: the wire contract, the port, the runner's ordering, the evidence sinks.
+`POST /v1/turns` works end to end today. **Moderation and intent are real** (merged from provider discovery); only the
+model behind them and the composer are stubbed. With `DSS_STUB_LLM=true` the
+canned provider answers both, so deterministic policies apply and LLM ones do
+not, and the composer returns fixed English sentences whatever you ask.
 
 So this is for exercising the *transport and the flow*, not the answers.
 
@@ -11,8 +11,12 @@ So this is for exercising the *transport and the flow*, not the answers.
 
 ```bash
 uv sync
-uv run uvicorn --factory dss.entrypoint.app:create_app --port 8077
+DSS_STUB_LLM=true uv run uvicorn --factory dss.entrypoint.app:create_app --port 8077
 ```
+
+`DSS_STUB_LLM=true` wires the canned provider, so no API key and no network are
+needed. Drop it and the composition root builds a real Pydantic AI provider from
+`intent_model` / `moderation_model`.
 
 `--factory` because `create_app()` builds the app rather than being one. Add
 `--reload` while you are poking at the code. `Ctrl-C` stops it.
@@ -156,6 +160,14 @@ Same turn, one body, no event wrapper, and no `sequence_number`. Dropping the
 take a streaming flag; `Accept` decides.**
 
 ### The moderation gate
+
+**With `DSS_STUB_LLM=true`, LLM-evaluated policies never fire.** The stub reports
+no violation, so `delete-command` — an `llm` policy in the default pack — lets
+everything through. Deterministic policies (`profanity-filter`) still work,
+because they are word checks and need no model. To exercise a real refusal you
+need a real provider, or a test with its own fake:
+`tests/integration/orchestration/test_core_runner.py` does exactly that.
+
 
 Put any of `illegal`, `illegally`, `gold loan`, `weapon` in the question. This is
 the one path that runs real core logic:
