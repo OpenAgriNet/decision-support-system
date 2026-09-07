@@ -9,6 +9,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from pydantic_ai import Agent, ModelRetry, RunContext
+from pydantic_ai.models import Model
 
 from dss.core.moderation.models import Outcome
 from dss.core.planner.describe_capability import render_candidates_as_markdown
@@ -100,7 +101,12 @@ async def _describe_capability(ctx: RunContext[PlannerDeps], ask_index: int) -> 
 _TOOLS = {"select": _select, "describe_capability": _describe_capability}
 
 
-def build_planner_agent(*, skills: Sequence[Skill]) -> Agent[PlannerDeps, str]:
+def build_planner_agent(
+    *,
+    skills: Sequence[Skill],
+    model: Model | str | None = None,
+    system_prompt: str = "",
+) -> Agent[PlannerDeps, str]:
     """Construct the planner agent, binding the union of the selected skills'
     ``tool_names`` (ADR-0006). An unselected skill's tools are never in the
     model's schema.
@@ -112,9 +118,14 @@ def build_planner_agent(*, skills: Sequence[Skill]) -> Agent[PlannerDeps, str]:
     ``name=name`` is required. Without it the tool registers under the Python
     function's own name (``_select``), and the model's call for ``select``
     comes back "Unknown tool name".
+
+    ``model`` and ``system_prompt`` default to unset so a test can drive the
+    agent with ``agent.override(model=...)`` and no prompt.
     """
 
-    agent: Agent[PlannerDeps, str] = Agent(deps_type=PlannerDeps)
+    agent: Agent[PlannerDeps, str] = Agent(
+        model, deps_type=PlannerDeps, system_prompt=system_prompt
+    )
     for name in tool_names_for(skills):
         agent.tool(_TOOLS[name], name=name)
     return agent
