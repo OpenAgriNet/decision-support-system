@@ -17,9 +17,9 @@ produced an answer.
 Building it now takes too long.
 
 This change proves the end-to-end path instead — turn in, provider answer out —
-using a tool-calling agent in place of the planner/executioner pair. The sibling
-repos (`amul-oan-api`, `bharat-oan-api`, `mh-oan-api`) all work this way today: a
-single Pydantic AI agent with tools bound, looping until it can answer.
+using a tool-calling agent in place of the planner/executioner pair. Existing
+adopters all work this way today: a single Pydantic AI agent with tools bound,
+looping until it can answer.
 
 **The design doc is not changed.** The agent loop is a stand-in that sits behind
 the same seams the design already defines, so the real planner and executioner
@@ -156,7 +156,7 @@ chance for the model to contradict its own `@type` choice.
 **Validation, correctly scoped.** The model inventing a field the pack never
 declared is still the real risk — the tool validates `resource_attributes`'s
 keys against the pack's `filterable_paths` and raises `ModelRetry` on a miss
-(the pattern `amul` already uses to catch bad search queries).
+(the pattern an existing adopter already uses to catch bad search queries).
 
 No "required minimum" check is built for this POC. `profile.json` has no
 `required_filters` key — the design doc's Open #3 is unresolved network-wide,
@@ -165,6 +165,26 @@ not something to improvise an answer to inside this validation function. A
 already catches downstream, from the ask/`Evidence` side, not from the
 request side.
 
+**Some fields matter more than others, and nothing declares which.**
+`AgricultureFacility`'s `attributes.yaml` does not mark `facilityType`
+required, but skipping it turns a narrow search into "every facility,
+everywhere" — a real cost, concretely different from an optional field like
+`address.postalCode` that's simply rarely available. A per-`@type`
+hard-coded list of "fields that matter" was considered and rejected: it
+needs a code or config change for every new capability the network adds,
+which breaks the same "zero code change for a new schema" property the
+mechanical/model-filled split above is built around. `profile.json` and
+`attributes.yaml` have no data to derive "matters for a useful answer" from
+— that distinction genuinely does not exist in the packs today, matching
+Open #3 exactly.
+
+So this stays advisory, not enforced: the `provider-invocation` skill's
+guidance tells the model to fill every field it can, not just the minimum,
+rather than a validation gate requiring it. This is a known limitation, not
+a fix — an ask can still come back too broad because the model judged a
+field unnecessary. Revisit if the network ever adds a
+required-for-narrowing convention to `profile.json`.
+
 ### The tool returns markdown; `Evidence` is built separately
 
 Two consumers, two shapes. The model reads prose and cites it. `Evidence` needs
@@ -172,8 +192,8 @@ typed data for the composer downstream.
 
 So the tool returns rendered markdown to the model *and* accumulates the raw
 `on_select` response on the agent's deps. `Evidence.results` is assembled from
-that accumulator after the loop. `amul` does the same for its image-analysis path
-and calls it the one place with real provenance.
+that accumulator after the loop. An existing adopter does the same for its
+image-analysis path and calls it the one place with real provenance.
 
 Rejected: **raw JSON to the model.** Bare keys like `"modal"` or `"arrivalDate"`
 with no help, and pack JSON nests deeply.
@@ -212,8 +232,8 @@ class Skill:
 
 The design doc has `Skill(id, domain, guidance)`. `tool_names` is an addition:
 tools bind from the union of selected skills' `tool_names`, so an unselected
-skill's tools are never in the model's schema. `amul` does this manually with
-Pydantic AI's `prepare=` hook; this makes it declarative.
+skill's tools are never in the model's schema. An existing adopter does this
+manually with Pydantic AI's `prepare=` hook; this makes it declarative.
 
 `description` is about the skill, for future selection. `guidance` is for the
 model. Different readers.
