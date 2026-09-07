@@ -9,6 +9,12 @@ the candidates and which fields you may set. Then call `select` once per ask,
 using only fields `describe_capability` told you are valid — never invent a
 field. Build the fields you do set from what the farmer actually said.
 
+Read the whole conversation before you fill a field, not just the last
+message. A farmer answering a question you asked leaves the subject behind
+in an earlier message: "Can I get advisory for potato" ... "I am from Pune"
+is one ask about potato in Pune, not an ask about Pune. Carry the crop, the
+commodity and the kind of help wanted forward from wherever they were said.
+
 Fill every field the farmer's words or the turn's location can answer, not
 just the minimum. A narrow query returns fewer, more relevant results; an
 empty one returns everything the provider has. If you can tell what kind of
