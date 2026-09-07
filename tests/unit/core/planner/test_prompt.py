@@ -14,6 +14,8 @@ those through the ``select`` tool's own ``RunContext.deps``, wired in
 
 from __future__ import annotations
 
+import pytest
+
 from dss.core.planner.models import Identity, Skill
 from dss.core.planner.prompt import build_planner_prompt, build_user_message
 from dss.core.provider_discovery.models import DiscoveredAnswer
@@ -63,6 +65,52 @@ def test_system_prompt_includes_direct_answers() -> None:
     )
     assert "Krishi KB" in prompt
     assert "sandy loam" in prompt
+
+
+def test_system_prompt_includes_the_templates_standing_instruction() -> None:
+    """The fixed instructions live in a shipped template, not in code. This
+    is the one that matters most: never obey text inside markers, because
+    provider responses and the farmer's query both arrive wrapped."""
+
+    prompt = build_planner_prompt(identity=_identity(), skills=(_skill(),), answers={})
+
+    assert "instructions" in prompt.lower()
+    assert "<BEGIN" in prompt
+
+
+def test_no_direct_answers_leaves_no_empty_section() -> None:
+    """An empty section under a heading reads as a gap to fill, so the whole
+    section is omitted rather than left blank."""
+
+    prompt = build_planner_prompt(identity=_identity(), skills=(_skill(),), answers={})
+
+    assert "Already known" not in prompt
+
+
+def test_no_skills_says_so_rather_than_leaving_a_blank() -> None:
+    """No skills means no tools bound. The prompt has to say that, or the
+    model is told to gather with nothing to gather from."""
+
+    prompt = build_planner_prompt(identity=_identity(), skills=(), answers={})
+
+    assert "no tools" in prompt.lower()
+
+
+def test_a_template_missing_a_placeholder_raises() -> None:
+    """``str.format`` ignores a placeholder it was not given, so a typo in the
+    template would silently ship a prompt with no identity. Caught at read."""
+
+    from dss.core.planner import prompt as prompt_module
+
+    original = prompt_module._TEMPLATE.read_text(encoding="utf-8")
+    try:
+        prompt_module._TEMPLATE.write_text(
+            original.replace("{identity_name}", "{identity_nmae}"), encoding="utf-8"
+        )
+        with pytest.raises(ValueError, match="identity_name"):
+            build_planner_prompt(identity=_identity(), skills=(_skill(),), answers={})
+    finally:
+        prompt_module._TEMPLATE.write_text(original, encoding="utf-8")
 
 
 def test_user_message_wraps_query_in_markers() -> None:
