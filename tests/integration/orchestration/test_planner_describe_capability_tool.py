@@ -5,7 +5,7 @@ from __future__ import annotations
 from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart, ToolCallPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
-from dss.core.planner.models import Verdict
+from dss.core.planner.models import Skill, Verdict
 from dss.core.planner.validation import DomainSchema
 from dss.core.provider_discovery.models import DiscoveryResult, ProviderCapability
 from dss.core.shared.models import UserTurn
@@ -24,6 +24,19 @@ SCHEMAS = {
         type="MandiPrice", filterable=("commodity.code", "market.marketCode")
     )
 }
+
+
+def _skill_with(*tool_names: str) -> Skill:
+    """A skill carrying just the tools under test — gating itself is tested in
+    ``test_planner_skill_gating.py``."""
+
+    return Skill(
+        id="provider-invocation",
+        domain="agriculture",
+        description="Call providers to answer an ask.",
+        guidance="call the tools",
+        tool_names=tool_names,
+    )
 
 
 def _deps() -> PlannerDeps:
@@ -62,7 +75,7 @@ def _calls_describe_capability_then_answers(
 
 
 async def test_the_loop_calls_describe_capability_and_continues() -> None:
-    agent = build_planner_agent(tool_names=("describe_capability",))
+    agent = build_planner_agent(skills=(_skill_with("describe_capability"),))
 
     with agent.override(model=FunctionModel(_calls_describe_capability_then_answers)):
         result = await agent.run("price of paddy", deps=_deps())
@@ -73,7 +86,7 @@ async def test_the_loop_calls_describe_capability_and_continues() -> None:
 async def test_the_tool_result_carries_the_candidates_filterable_fields() -> None:
     from pydantic_ai.messages import ToolReturnPart
 
-    agent = build_planner_agent(tool_names=("describe_capability",))
+    agent = build_planner_agent(skills=(_skill_with("describe_capability"),))
 
     with agent.override(model=FunctionModel(_calls_describe_capability_then_answers)):
         result = await agent.run("price of paddy", deps=_deps())

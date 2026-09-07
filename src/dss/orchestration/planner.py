@@ -14,8 +14,9 @@ from dss.core.moderation.models import Outcome
 from dss.core.planner.describe_capability import render_candidates_as_markdown
 from dss.core.planner.lookup import find_capability
 from dss.core.planner.markdown import render_answer_as_markdown
-from dss.core.planner.models import Verdict
+from dss.core.planner.models import Skill, Verdict
 from dss.core.planner.resource_attributes import build_resource_attributes
+from dss.core.planner.skills import tool_names_for
 from dss.core.planner.validation import (
     DomainSchema,
     InvalidArgument,
@@ -99,13 +100,21 @@ async def _describe_capability(ctx: RunContext[PlannerDeps], ask_index: int) -> 
 _TOOLS = {"select": _select, "describe_capability": _describe_capability}
 
 
-def build_planner_agent(*, tool_names: Sequence[str]) -> Agent[PlannerDeps, str]:
-    """Construct the planner agent, binding only the tools named in
-    ``tool_names`` — the union of every selected skill's ``tool_names``
-    (ADR-0006). A tool absent from this set is never in the model's schema.
+def build_planner_agent(*, skills: Sequence[Skill]) -> Agent[PlannerDeps, str]:
+    """Construct the planner agent, binding the union of the selected skills'
+    ``tool_names`` (ADR-0006). An unselected skill's tools are never in the
+    model's schema.
+
+    A skill naming a tool that does not exist raises here rather than binding
+    what it can: its guidance would tell the model to call a tool that is not
+    there. Same stance as ``load_skills`` — do not boot on a broken config.
+
+    ``name=name`` is required. Without it the tool registers under the Python
+    function's own name (``_select``), and the model's call for ``select``
+    comes back "Unknown tool name".
     """
 
     agent: Agent[PlannerDeps, str] = Agent(deps_type=PlannerDeps)
-    for name in tool_names:
+    for name in tool_names_for(skills):
         agent.tool(_TOOLS[name], name=name)
     return agent

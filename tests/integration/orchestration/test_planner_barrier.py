@@ -19,7 +19,7 @@ from pydantic_ai.messages import (
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from dss.core.moderation.models import ModerationDecision, Outcome, ReasonCode
-from dss.core.planner.models import Verdict
+from dss.core.planner.models import Skill, Verdict
 from dss.core.planner.validation import DomainSchema
 from dss.core.provider_discovery.models import (
     DiscoveredAnswer,
@@ -71,6 +71,19 @@ class _RecordingInvocation:
             attributes={"prices": {"modal": 2200}},
             validity=None,
         )
+
+
+def _skill_with(*tool_names: str) -> Skill:
+    """A skill carrying just the tools under test — gating itself is tested in
+    ``test_planner_skill_gating.py``."""
+
+    return Skill(
+        id="provider-invocation",
+        domain="agriculture",
+        description="Call providers to answer an ask.",
+        guidance="call the tools",
+        tool_names=tool_names,
+    )
 
 
 def _deps(invocation: _RecordingInvocation, verdict: Verdict) -> PlannerDeps:
@@ -126,7 +139,7 @@ async def test_a_turn_that_does_not_proceed_never_reaches_the_provider(
         ModerationDecision(outcome=outcome, reason_code=ReasonCode.UNSAFE_ILLEGAL)
     )
     invocation = _RecordingInvocation(verdict)
-    agent = build_planner_agent(tool_names=("select",))
+    agent = build_planner_agent(skills=(_skill_with("select"),))
 
     with agent.override(model=FunctionModel(_calls_select_then_answers)):
         await agent.run("price of paddy", deps=_deps(invocation, verdict))
@@ -137,7 +150,7 @@ async def test_a_turn_that_does_not_proceed_never_reaches_the_provider(
 async def test_select_waits_for_a_late_verdict() -> None:
     verdict = Verdict()
     invocation = _RecordingInvocation(verdict)
-    agent = build_planner_agent(tool_names=("select",))
+    agent = build_planner_agent(skills=(_skill_with("select"),))
     deps = _deps(invocation, verdict)
 
     async def moderate_late() -> None:
@@ -180,7 +193,7 @@ async def test_the_barrier_lets_several_select_calls_through() -> None:
 
     verdict = Verdict()
     invocation = _RecordingInvocation(verdict)
-    agent = build_planner_agent(tool_names=("select",))
+    agent = build_planner_agent(skills=(_skill_with("select"),))
     deps = _deps(invocation, verdict)
 
     async def moderate_late() -> None:
@@ -213,7 +226,7 @@ async def test_describe_capability_does_not_wait_for_the_verdict() -> None:
 
     verdict = Verdict()
     invocation = _RecordingInvocation(verdict)
-    agent = build_planner_agent(tool_names=("describe_capability",))
+    agent = build_planner_agent(skills=(_skill_with("describe_capability"),))
 
     deps = _deps(invocation, verdict)
     with anyio.fail_after(1):

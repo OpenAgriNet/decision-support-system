@@ -16,7 +16,7 @@ from pydantic_ai.messages import (
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from dss.core.moderation.models import ModerationDecision, Outcome
-from dss.core.planner.models import Verdict
+from dss.core.planner.models import Skill, Verdict
 from dss.core.planner.validation import DomainSchema
 from dss.core.provider_discovery.models import (
     DiscoveredAnswer,
@@ -71,6 +71,19 @@ def _cleared_verdict() -> Verdict:
     return verdict
 
 
+def _skill_with(*tool_names: str) -> Skill:
+    """A skill carrying just the tools under test — gating itself is tested in
+    ``test_planner_skill_gating.py``."""
+
+    return Skill(
+        id="provider-invocation",
+        domain="agriculture",
+        description="Call providers to answer an ask.",
+        guidance="call the tools",
+        tool_names=tool_names,
+    )
+
+
 def _deps(invocation: _FakeInvocation) -> PlannerDeps:
     from dss.core.provider_discovery.models import DiscoveryResult
 
@@ -116,7 +129,7 @@ def _calls_select_then_answers(
 
 async def test_the_loop_calls_select_and_stops() -> None:
     invocation = _FakeInvocation()
-    agent = build_planner_agent(tool_names=("select",))
+    agent = build_planner_agent(skills=(_skill_with("select"),))
 
     with agent.override(model=FunctionModel(_calls_select_then_answers)):
         result = await agent.run("price of paddy", deps=_deps(invocation))
@@ -129,7 +142,7 @@ async def test_the_loop_calls_select_and_stops() -> None:
 
 async def test_the_raw_answer_is_accumulated_on_deps() -> None:
     invocation = _FakeInvocation()
-    agent = build_planner_agent(tool_names=("select",))
+    agent = build_planner_agent(skills=(_skill_with("select"),))
     deps = _deps(invocation)
 
     with agent.override(model=FunctionModel(_calls_select_then_answers)):
@@ -180,7 +193,7 @@ def _calls_select_with_invented_field(
 
 async def test_an_invalid_argument_gets_a_retry() -> None:
     invocation = _FakeInvocation()
-    agent = build_planner_agent(tool_names=("select",))
+    agent = build_planner_agent(skills=(_skill_with("select"),))
 
     with agent.override(model=FunctionModel(_calls_select_with_invented_field)):
         result = await agent.run("price of paddy", deps=_deps(invocation))
