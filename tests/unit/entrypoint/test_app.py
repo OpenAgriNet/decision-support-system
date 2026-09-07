@@ -23,6 +23,9 @@ def test_create_app_builds_an_application_serving_the_turn_route(tmp_path, monke
 
 def test_the_real_composition_writes_evidence_where_configured(tmp_path, monkeypatch):
     monkeypatch.setenv("DSS_EVIDENCE_DIR", str(tmp_path))
+    # Without this the composition root builds a real Pydantic AI provider and
+    # the turn would reach the network.
+    monkeypatch.setenv("DSS_STUB_LLM", "true")
     body = {
         "context": {
             "id": "api.dss.turn",
@@ -32,7 +35,9 @@ def test_the_real_composition_writes_evidence_where_configured(tmp_path, monkeyp
             "transactionId": "9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44",
         },
         "message": {
-            "input": [{"role": "user", "content": [{"type": "text", "text": "Wheat price?"}]}],
+            "input": [
+                {"role": "user", "content": [{"type": "text", "text": "Wheat price?"}]}
+            ],
             "attributes": {
                 "sourceLanguage": "en",
                 "targetLanguage": "en",
@@ -41,7 +46,13 @@ def test_the_real_composition_writes_evidence_where_configured(tmp_path, monkeyp
         },
     }
 
-    TestClient(create_app()).post("/v1/turns", json=body, headers={"Accept": "application/json"})
+    response = TestClient(create_app()).post(
+        "/v1/turns", json=body, headers={"Accept": "application/json"}
+    )
 
+    # Assert the outcome, not just that files appeared: a stub missing an answer
+    # for moderation's verdict schema fails closed and turns every turn into
+    # `moderation_unavailable`, with the evidence files still written.
+    assert response.json()["message"]["outcome"]["status"] == "answered"
     assert (tmp_path / "telemetry.jsonl").exists()
     assert (tmp_path / "turns.jsonl").exists()

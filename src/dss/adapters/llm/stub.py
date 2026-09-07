@@ -16,12 +16,17 @@ from typing import Any
 from pydantic import BaseModel
 
 from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
+from dss.core.moderation.models import LlmModerationVerdict
 
 # The answers a stub deployment hands back. They live here, not in the
 # composition root: the root names concrete *classes*, and reaching past
 # `core.shared` for a model would let the transport package import a core
 # slice — which the transport boundary check forbids.
 DEFAULT_ANSWERS: dict[type[BaseModel], object] = {
+    # Moderation's LLM policies fail *closed*, so a stub with no verdict here
+    # turns every turn into `moderation_unavailable` — which is exactly what
+    # happened before this entry existed.
+    LlmModerationVerdict: LlmModerationVerdict(violated_policy_id=None),
     Intent: Intent(
         asks=(
             Ask(
