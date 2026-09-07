@@ -31,6 +31,7 @@ dev = [
     "pytest-asyncio>=1.4.0",
     "httpx>=0.28.1",
     "pytest-cov>=7.1.0",
+    "pyyaml>=6.0.3",
 ]
 
 # ---------------------------------------------------------------------------
@@ -99,7 +100,18 @@ pythonpath = ["."]
 # --import-mode=importlib: the tier table mirrors src/, so sibling packages each
 # hold a `test_service.py`. Under the default prepend mode those collide on the
 # module name `test_service`; importlib gives each its own full path.
-addopts = ["-ra", "--strict-config", "--import-mode=importlib", "-m", "not eval"]
+# --cov-fail-under: the 2026-09-03 session asked for a coverage gate; the
+# provider-discovery branch gates at 85%, so the same number is used here.
+addopts = [
+    "-ra",
+    "--strict-config",
+    "--import-mode=importlib",
+    "-m",
+    "not eval",
+    "--cov=dss",
+    "--cov-report=term-missing:skip-covered",
+    "--cov-fail-under=85",
+]
 # ADR-0005: async tests run under pytest-asyncio in auto mode, which claims every
 # async test regardless of marker. anyio's own pytest plugin is deliberately not
 # used, so `@pytest.mark.anyio` would be inert.
