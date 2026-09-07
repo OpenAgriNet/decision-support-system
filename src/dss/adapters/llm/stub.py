@@ -36,7 +36,7 @@ DEFAULT_ANSWERS: dict[type[BaseModel], object] = {
             ),
         ),
         confidence=0.9,
-    )
+    ),
 }
 
 
