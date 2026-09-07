@@ -56,10 +56,12 @@ class _JsonLines:
             handle.write(line + "\n")
 
     def _keys(self, ctx: TurnContext) -> dict[str, Any]:
+        # `trace_id` is the caller's transactionId, so recording both would be
+        # the same fact twice.
         return {
             "trace_id": ctx.trace_id,
             "session_id": ctx.session_id,
-            "transaction_id": ctx.transaction_id,
+            "message_id": ctx.message_id,
         }
 
 

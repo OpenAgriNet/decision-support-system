@@ -11,7 +11,9 @@ import pytest
 from dss.adapters.http.v1.router import _wants_stream
 
 
-@pytest.mark.parametrize("accept", [None, "", "application/json", "*/*", "application/*"])
+@pytest.mark.parametrize(
+    "accept", [None, "", "application/json", "*/*", "application/*"]
+)
 def test_json_is_the_default_and_the_fallback(accept):
     assert _wants_stream(accept) is False
 

@@ -89,7 +89,9 @@ def test_the_terminal_frame_carries_the_outcome_content_and_sources(ctx, answere
 
 def test_a_cause_serializes_to_its_wire_string(ctx):
     finished = TurnFinished(
-        outcome=TurnOutcome(status=TurnStatus.REJECTED, confidence=98, cause=Cause.UNSAFE_ILLEGAL),
+        outcome=TurnOutcome(
+            status=TurnStatus.REJECTED, confidence=98, cause=Cause.UNSAFE_ILLEGAL
+        ),
         content=(),
     )
 

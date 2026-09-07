@@ -103,7 +103,7 @@ def test_the_opened_record_holds_the_question(tmp_path, a_turn):
 
     FileTurnSink(path, clock=lambda: NOW).opened(CTX, a_turn(query="Wheat price?"))
 
-    assert _lines(path)[0]["turn"]["query"] == "Wheat price?"
+    assert _lines(path)[0]["turn"]["original_query"] == "Wheat price?"
 
 
 def test_the_closed_record_holds_the_outcome_the_answer_and_the_sources(tmp_path):
@@ -118,14 +118,16 @@ def test_the_closed_record_holds_the_outcome_the_answer_and_the_sources(tmp_path
 
 
 def test_geometry_is_never_written_to_the_sink(tmp_path, a_turn):
+    from dss.core.shared.models import Geometry, Location
+
     """`api-contract.md` §6: region and area are written, geometry is not. A
     stable user id beside a precise point, over many turns, is a home address."""
 
-    from dss.core.shared.models import Location
-
     path = tmp_path / "turns.jsonl"
     turn = a_turn(
-        location=Location(region="IN-GJ", area="Anand", geometry=Geometry(coordinates=[72.93, 22.56]))
+        location=Location(
+            region="IN-GJ", area="Anand", geometry=Geometry(coordinates=[72.93, 22.56])
+        )
     )
 
     FileTurnSink(path, clock=lambda: NOW).opened(CTX, turn)

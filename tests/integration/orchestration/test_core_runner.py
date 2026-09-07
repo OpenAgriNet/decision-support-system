@@ -79,7 +79,9 @@ class _FakeModerationLLM:
         return schema(violated_policy_id=self._violated)
 
 
-def _runner(*, violated=None, intent_llm=None, turns=None, telemetry=None) -> CoreRunner:
+def _runner(
+    *, violated=None, intent_llm=None, turns=None, telemetry=None
+) -> CoreRunner:
     return CoreRunner(
         intent_llm=intent_llm or _FakeIntentLLM(),
         moderation_llm=_FakeModerationLLM(violated=violated),

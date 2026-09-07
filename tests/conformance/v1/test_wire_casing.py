@@ -33,14 +33,15 @@ CAMEL_REQUEST = {
     "context": {
         "id": "api.dss.turn",
         "version": "1.0.0",
-        "transactionId": "9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44",
         "timestamp": "2026-09-04T08:00:00Z",
         "sessionId": "conv_8f3a1c",
-        "transactionId": "txn_9f2c1a8e",
+        "transactionId": "9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44",
         "messageId": "msg_01",
     },
     "message": {
-        "input": [{"role": "user", "content": [{"type": "text", "text": "Wheat price?"}]}],
+        "input": [
+            {"role": "user", "content": [{"type": "text", "text": "Wheat price?"}]}
+        ],
         "userContext": [{"type": "identity", "userId": "usr_9921"}],
         "attributes": {
             "sourceLanguage": "hi",
@@ -74,7 +75,7 @@ def test_a_camel_case_request_validates():
     assert body.message.attributes.source_language == "hi"
     assert body.message.attributes.response is not None
     assert body.message.attributes.response.max_characters == 1200
-    assert body.message.user_context[0].user.user_id == "usr_9921"
+    assert body.message.user_context[0].user_id == "usr_9921"
 
 
 @pytest.mark.parametrize(

@@ -6,7 +6,7 @@ import pytest
 
 from dss.adapters.llm.stub import StubLLM
 from dss.core.channel.service import compose
-from dss.core.intent.models import Intent
+from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
 
 
 @pytest.fixture

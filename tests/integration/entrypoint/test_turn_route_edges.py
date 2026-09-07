@@ -33,7 +33,9 @@ ANSWER = TurnFinished(
 
 
 def _client(runner=None, **overrides):
-    runner = runner or FakeRunner([TurnStarted(), Claim(content=ANSWER.content[0]), ANSWER])
+    runner = runner or FakeRunner(
+        [TurnStarted(), Claim(content=ANSWER.content[0]), ANSWER]
+    )
     return TestClient(
         build_app(runner=runner, settings=Settings(**overrides)),
         raise_server_exceptions=False,

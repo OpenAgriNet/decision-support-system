@@ -22,7 +22,9 @@ def test_a_configured_url_is_not_silently_ignored(tmp_path):
     """A setting that does nothing is worse than a missing one — it reads as
     working. Warn until the endpoint is real."""
 
-    settings = Settings(evidence_dir=tmp_path, evidence_url="https://evidence.internal/v1")
+    settings = Settings(
+        evidence_dir=tmp_path, evidence_url="https://evidence.internal/v1"
+    )
 
     with pytest.warns(UserWarning, match="not implemented"):
         build_runner(settings)

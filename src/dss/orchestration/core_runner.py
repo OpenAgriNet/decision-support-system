@@ -137,7 +137,9 @@ def _classified(intent: Intent) -> str:
     """A non-personal summary for telemetry: which categories the turn asked
     about, never the question itself."""
 
-    return ",".join(ask.subject_categories.value for ask in intent.asks) or "unclassified"
+    return (
+        ",".join(ask.subject_categories.value for ask in intent.asks) or "unclassified"
+    )
 
 
 def _refused(decision: ModerationDecision) -> tuple[TurnOutcome, ComposedAnswer]:
