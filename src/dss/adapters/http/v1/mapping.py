@@ -13,6 +13,7 @@ from dss.core.shared.models import (
     Location,
     OutputContent,
     RefusalBlock,
+    TextBlock,
     TurnContext,
     TurnFinished,
     TurnOutcome,
@@ -185,6 +186,7 @@ def _response_context(
         session_id=ctx.session_id,
         trace_id=ctx.trace_id,
         res_message_id=response_id,
+        transaction_id=ctx.trace_id,
         sequence_number=seq,
     )
 
@@ -207,4 +209,23 @@ def _error(outcome: TurnOutcome) -> schema.TurnError | None:
 def _block(content: OutputContent) -> schema.OutputText | schema.OutputRefusal:
     if isinstance(content, RefusalBlock):
         return schema.OutputRefusal(text=content.text)
-    return schema.OutputText(text=content.text, source_ids=list(content.source_ids))
+    return schema.OutputText(text=content.text, annotations=_annotations(content))
+
+
+def _annotations(block: TextBlock) -> list[schema.Annotation]:
+    """Render a block's citations as contract annotations.
+
+    A block cites its sources as a whole, so each annotation spans the whole
+    block: `startIndex 0`, `endIndex len(text)`. That is what "this sentence came
+    from that source" means, and it satisfies the contract's required offsets
+    without inventing sub-sentence spans nothing has computed.
+
+    When real sub-span citations arrive, `TextBlock` grows an annotations field
+    and this stops synthesising.
+    """
+
+    end = len(block.text)  # code points — see schema.Annotation
+    return [
+        schema.Annotation(source_id=source_id, start_index=0, end_index=end)
+        for source_id in block.source_ids
+    ]

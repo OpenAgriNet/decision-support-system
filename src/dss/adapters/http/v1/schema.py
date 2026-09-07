@@ -119,6 +119,10 @@ class ResponseContext(_WireOut):
     session_id: str
     trace_id: str
     res_message_id: str
+    # Echoed for the caller's own correlation. Identical to `traceId` today —
+    # the contract's §3 example carries both, and `ResponseContext` allows
+    # additional properties.
+    transaction_id: str | None = None
     sequence_number: int | None = Field(default=None, ge=1)
 
 
@@ -142,10 +146,34 @@ class Outcome(_WireOut):
         return data
 
 
+class Annotation(_WireOut):
+    """A citation over a span of `text`.
+
+    `startIndex` and `endIndex` are **Unicode code points** — Python string
+    indices.
+
+    The contract does not name a unit in prose, but its own §3 example resolves
+    it: for "इस सप्ताह आनंद मंडी में गेहूं का भाव ₹2,275 प्रति क्विंटल है।" it gives
+    `end_index: 61`, which is that sentence's code-point length. The same
+    sentence is 151 bytes in UTF-8, so the example rules bytes out.
+
+    Code points and UTF-16 units agree for Devanagari and Tamil (both BMP), so
+    the choice only diverges on non-BMP characters such as emoji. Worth writing
+    into the contract explicitly, since an example is weaker than a rule.
+    """
+
+    type: Literal["url_citation"] = "url_citation"
+    source_id: str
+    start_index: int = Field(ge=0)
+    end_index: int = Field(ge=0)
+    url: str | None = None
+    source_name: str | None = None
+
+
 class OutputText(_WireOut):
     type: Literal["text"] = "text"
     text: str
-    source_ids: list[str] = []
+    annotations: list[Annotation] = []
 
 
 class OutputRefusal(_WireOut):

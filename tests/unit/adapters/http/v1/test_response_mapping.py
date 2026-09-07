@@ -83,7 +83,9 @@ def test_the_terminal_frame_carries_the_outcome_content_and_sources(ctx, answere
     assert frame.message.outcome.status == "answered"
     assert frame.message.outcome.cause is None
     assert [b.text for b in frame.message.content] == ["Wheat is Rs 2,275 per quintal."]
-    assert [b.source_ids for b in frame.message.content] == [["src_1"]]
+    assert [a.source_id for b in frame.message.content for a in b.annotations] == [
+        "src_1"
+    ]
     assert [s.name for s in frame.message.sources] == ["Agmarknet"]
 
 
@@ -178,3 +180,49 @@ def test_the_cause_is_sent_as_null_rather_than_omitted(ctx, answered):
 
     rendered = json.loads(frame.model_dump_json(by_alias=True, exclude_none=True))
     assert rendered["message"]["outcome"]["cause"] is None
+
+
+def test_a_citation_spans_the_whole_block(ctx, answered):
+    """A block cites its sources as a whole, so the annotation covers the whole
+    block. Offsets are code points — the contract requires them and names no
+    unit (see schema.Annotation)."""
+
+    frame = mapping.to_terminal_frame(
+        answered, ctx, now=NOW, seq=None, response_id=RESPONSE_ID
+    )
+
+    block = frame.message.content[0]
+    annotation = block.annotations[0]
+    assert (annotation.start_index, annotation.end_index) == (0, len(block.text))
+
+
+def test_a_block_citing_nothing_carries_no_annotations(ctx):
+    finished = TurnFinished(
+        outcome=TurnOutcome(status=TurnStatus.ANSWERED, confidence=92),
+        content=(TextBlock(text="A linking sentence."),),
+    )
+
+    frame = mapping.to_terminal_frame(
+        finished, ctx, now=NOW, seq=None, response_id=RESPONSE_ID
+    )
+
+    assert frame.message.content[0].annotations == []
+
+
+def test_the_offsets_are_code_points_not_bytes(ctx):
+    """Devanagari is three bytes per character in UTF-8. A byte offset would
+    land every citation past the end of the sentence."""
+
+    text = "गेहूं का भाव"
+    finished = TurnFinished(
+        outcome=TurnOutcome(status=TurnStatus.ANSWERED, confidence=92),
+        content=(TextBlock(text=text, source_ids=("src_1",)),),
+    )
+
+    frame = mapping.to_terminal_frame(
+        finished, ctx, now=NOW, seq=None, response_id=RESPONSE_ID
+    )
+
+    annotation = frame.message.content[0].annotations[0]
+    assert annotation.end_index == len(text)
+    assert annotation.end_index < len(text.encode("utf-8"))

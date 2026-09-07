@@ -126,4 +126,6 @@ def test_content_items_carry_camel_case_citations():
         "/v1/turns", json=CAMEL_REQUEST, headers={"Accept": "application/json"}
     )
 
-    assert response.json()["message"]["content"][0]["sourceIds"] == ["src_1"]
+    annotation = response.json()["message"]["content"][0]["annotations"][0]
+    assert annotation["sourceId"] == "src_1"
+    assert set(annotation) == {"type", "sourceId", "startIndex", "endIndex"}
