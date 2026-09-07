@@ -5,25 +5,30 @@ The committed entrypoint (REST/gRPC/in-process) is undecided and needs an ADR
 (``orchestration/orchestrator.py::run_turn``, ADR-0006) can be exercised with
 curl end to end.
 
-Intent and moderation are the *real* services (they call the model bound in
-settings). Everything the team has not built yet runs as its shipped placeholder.
-The one component that genuinely needs an external service — Provider Discovery,
-which hops to the network adapter — is stubbed here with ``_demo_discover`` so the
-pipeline streams offline; point ``discover_providers`` at the real adapter to make
-it live.
+Intent and moderation are the *real* services, run against an Azure OpenAI
+deployment (its v1 Responses endpoint). Everything the team has not built yet runs
+as its shipped placeholder. The one component that genuinely needs an external
+service — Provider Discovery, which hops to the network adapter — is stubbed with
+``_demo_discover`` so the pipeline streams without it.
+
+Prerequisites (in the environment / .env):
+    AZURE_OPENAI_ENDPOINT     e.g. https://<res>.services.ai.azure.com/openai/v1/responses
+    AZURE_OPENAI_API_KEY      the deployment key
+    AZURE_OPENAI_DEPLOYMENT   the Azure deployment id (no spaces)
 
 Run:
-    OPENAI_API_KEY=sk-...  uv run uvicorn examples.orchestrate:app --port 8000
+    uv run uvicorn examples.orchestrate:app --port 8000
 """
 
 from __future__ import annotations
 
+import os
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from fastapi import FastAPI
 
-from dss.adapters.llm.pydantic_ai_provider import PydanticAILLMProvider
+from dss.adapters.llm.pydantic_ai_provider import build_azure_llm
 from dss.config.policy_loader import load_policy_pack
 from dss.config.settings import Settings
 from dss.core.composition.models import Identity
@@ -39,17 +44,40 @@ _settings = Settings()
 _policies = load_policy_pack(_settings.policy_config_path).for_checkpoint(
     Checkpoint.MODERATION
 )
-_intent_llm = PydanticAILLMProvider(
-    _settings.intent_model,
-    temperature=_settings.intent_temperature,
-    timeout=_settings.intent_timeout_seconds,
-    retries=_settings.intent_retries,
+
+# Azure OpenAI backs both components. Both share one model here (the design lets a
+# deployment bind each its own). Fail fast at startup if the creds are missing —
+# there is no fallback backend.
+_AZURE_ENDPOINT = os.environ.get("AZURE_OPENAI_ENDPOINT")
+_AZURE_KEY = os.environ.get("AZURE_OPENAI_API_KEY")
+_AZURE_DEPLOYMENT = os.environ.get("AZURE_OPENAI_DEPLOYMENT")
+if not (_AZURE_ENDPOINT and _AZURE_KEY and _AZURE_DEPLOYMENT):
+    raise RuntimeError(
+        "Set AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY and "
+        "AZURE_OPENAI_DEPLOYMENT in the environment (.env) before starting."
+    )
+
+
+def _make_llm(temperature: float, timeout: float, retries: int):
+    return build_azure_llm(
+        _AZURE_DEPLOYMENT,
+        endpoint=_AZURE_ENDPOINT,
+        api_key=_AZURE_KEY,
+        temperature=temperature,
+        timeout=timeout,
+        retries=retries,
+    )
+
+
+_intent_llm = _make_llm(
+    _settings.intent_temperature,
+    _settings.intent_timeout_seconds,
+    _settings.intent_retries,
 )
-_moderation_llm = PydanticAILLMProvider(
-    _settings.moderation_model,
-    temperature=_settings.moderation_temperature,
-    timeout=_settings.moderation_timeout_seconds,
-    retries=_settings.moderation_retries,
+_moderation_llm = _make_llm(
+    _settings.moderation_temperature,
+    _settings.moderation_timeout_seconds,
+    _settings.moderation_retries,
 )
 
 # The tenant's assistant identity (the Identity config primitive). Hard-coded here;
