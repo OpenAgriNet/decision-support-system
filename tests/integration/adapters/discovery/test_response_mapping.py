@@ -34,6 +34,31 @@ def test_an_on_demand_resource_maps_to_a_provider_capability() -> None:
     assert capability.resource_id == "res:mausamgram:point-forecast"
 
 
+def test_the_providers_descriptor_code_is_kept() -> None:
+    """``on_discover`` carries a provider code the mapper used to discard.
+    Nothing sends it yet — the real select request names the provider by id
+    and name only — but discarding data the network gave us means it cannot
+    be sent later without another round of discovery."""
+
+    response = json.loads((FIXTURES / "discover_response.json").read_text())
+
+    result = map_discover_response(response, ask_indices=(0,))
+
+    assert result.capabilities[0][0].provider_code == "IMD-NWP-01"
+
+
+def test_a_provider_with_no_descriptor_code_maps_to_none() -> None:
+    """``code`` is not guaranteed — only ``name`` appears in every fixture."""
+
+    response = json.loads((FIXTURES / "discover_response.json").read_text())
+    provider = response["message"]["catalogs"][0]["provider"]
+    del provider["descriptor"]["code"]
+
+    result = map_discover_response(response, ask_indices=(0,))
+
+    assert result.capabilities[0][0].provider_code is None
+
+
 def test_the_same_result_is_keyed_under_every_ask_index() -> None:
     response = json.loads((FIXTURES / "discover_response.json").read_text())
 
