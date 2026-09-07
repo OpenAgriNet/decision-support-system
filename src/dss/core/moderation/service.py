@@ -9,8 +9,8 @@ fake thing in this slice, on purpose.
 from __future__ import annotations
 
 from dss.core.moderation.models import Outcome, Screening
+from dss.core.shared.llm import LLM
 from dss.core.shared.models import Cause, UserTurn
-from dss.ports.llm import LLM
 
 # STUB(#82): replaced by the policy evaluator reading the Policies primitive.
 _DENY = ("illegal", "illegally", "gold loan", "weapon")

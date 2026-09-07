@@ -23,6 +23,7 @@ from dss.core.channel.service import compose, no_match_answer
 from dss.core.intent.service import recognise_intent
 from dss.core.moderation.models import Outcome
 from dss.core.moderation.service import screen
+from dss.core.shared.llm import LLM
 from dss.core.shared.models import (
     Cause,
     Claim,
@@ -35,7 +36,6 @@ from dss.core.shared.models import (
     TurnStatus,
     UserTurn,
 )
-from dss.ports.llm import LLM
 from dss.ports.sinks import TelemetrySink, TurnSink
 
 

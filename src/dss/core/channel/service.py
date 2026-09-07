@@ -12,8 +12,8 @@ from __future__ import annotations
 
 from dss.core.channel.models import ComposedAnswer
 from dss.core.intent.models import Intent
+from dss.core.shared.llm import LLM
 from dss.core.shared.models import Source, SourceKind, TextBlock, UserTurn
-from dss.ports.llm import LLM
 
 _SOURCE = Source(
     id="src_1",

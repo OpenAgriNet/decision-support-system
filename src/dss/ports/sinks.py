@@ -1,5 +1,7 @@
 """The two evidence ports.
 
+Driven ports: the runner calls them, `adapters/sinks/` implements them.
+
 They are separate because their rules are opposite, and one combined port could
 carry neither correctly:
 

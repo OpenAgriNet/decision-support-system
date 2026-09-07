@@ -1,4 +1,8 @@
-"""The LLM port — what the core needs from a language model.
+"""What the core needs from a language model.
+
+Declared here rather than in `ports/` because `core/` is what depends on it, and
+a Protocol is satisfied structurally — `adapters/llm/` implements this without
+importing it, so the dependency still points inward.
 
 Deliberately not what any SDK offers. There is no `temperature`, no
 `model="..."`, no `messages=[...]`, no retry budget and no API key: those are a
