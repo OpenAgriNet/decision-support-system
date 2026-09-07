@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class Role(StrEnum):
@@ -93,10 +93,10 @@ class TurnContext(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    trace_id: str
+    trace_id: str  # the caller's transactionId, echoed back as traceId
     session_id: str
+    message_id: str  # the caller's, or one minted by the transport
     transaction_id: str | None = None
-    message_id: str | None = None
 
 
 class TurnStatus(StrEnum):
@@ -180,9 +180,17 @@ OutputContent = TextBlock | RefusalBlock
 
 
 class TurnOutcome(BaseModel):
+    """How the turn ended, and how sure the DSS is of it.
+
+    `confidence` is on the wire because the contract requires it. What the number
+    *means* per status is an open question — a refusal's 98 and an answer's 92
+    are not the same measurement.
+    """
+
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     status: TurnStatus
+    confidence: int = Field(ge=0, le=100)
     cause: Cause | None = None
     retry_after_seconds: int | None = None
 
