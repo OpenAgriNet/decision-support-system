@@ -3,14 +3,14 @@
 - **Status:** PROPOSED (out for review with the experience-layer team)
 - **Date:** 2026-08-31
 - **Deciders:** OAN (OpenAgriNet) DPG architecture group
-- **Consulted:** Experience-layer engineering leads (chat and voice channel services); adopter engineering leads across the amul, bharat, and mh deployments; Product Owner
+- **Consulted:** Experience-layer engineering leads (chat and voice channel services); adopter engineering leads across current deployments; Product Owner
 - **Informed:** Adopter engineering teams; OAN DPG steward
 
 ---
 
 ## 1. Context and Problem Statement
 
-The DSS is a reasoning runtime that takes **one turn in** and returns **a stream of sentences out, then one final event.** It is an Experience-Layer module of the OAN DPG: its only callers are the channel services of a single deployment — chat, voice, and any other the deployment runs. It replaces the existing `stream_chat_messages` flow in the amul, bharat, and mh deployments.
+The DSS is a reasoning runtime that takes **one turn in** and returns **a stream of sentences out, then one final event.** It is an Experience-Layer module of the OAN DPG: its only callers are the channel services of a single deployment — chat, voice, and any other the deployment runs. It replaces the existing `stream_chat_messages` flow in current deployments.
 
 A contract has to be fixed for this boundary before the channel services can integrate against it. The question is not only *what fields cross the wire*, but **what shape the API takes**: a DSS-native REST + SSE contract, or a compatibility surface that mirrors an existing LLM API — OpenAI Chat Completions, Claude Messages, or the OpenAI **Responses** API.
 
@@ -230,7 +230,7 @@ Five native DSS events must be synthesised into up to fourteen Responses events 
 - **[Owner: DSS CODE OWNERS]** Implement the native contract in `entrypoint/` (the interface choice this ADR settles) and keep `docs/api-contracts/api-contract.md` as the authoritative field-level reference.
 - **[Owner: DSS CODE OWNERS]** Enforce `ref` as a secret (`SecretStr`) that is never inspected, resolved, persisted, or logged; enforce that `geometry` is never written to the sinks.
 - **[Owner: DSS CODE OWNERS]** Publish the full `cause` list per `status`, currently open (`api-contract.md` §8).
-- **[Owner: Experience-layer leads]** Execute the per-deployment migration from `stream_chat_messages` for amul, bharat, and mh per `api-contract.md` §7, including the `[lon, lat]` coordinate reversal.
+- **[Owner: Experience-layer leads]** Execute the per-deployment migration from `stream_chat_messages` for each current deployment per `api-contract.md` §7, including the `[lon, lat]` coordinate reversal.
 - **[Owner: OAN DPG steward]** Update `docs/DSS_ARCHITECTURE.md` §8.3 to record REST + SSE as the chosen interface, and update the CLAUDE.md "Build & Run" entrypoint note in the same change.
 
 ---

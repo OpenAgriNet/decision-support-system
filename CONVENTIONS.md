@@ -35,7 +35,7 @@ Repo-wide conventions for naming, versioning, git workflow, logging, and linting
 - Input/output models: `{ToolName}Input`, `{ToolName}Output`.
 
 ### Configuration & primitives
-- Config files: `kebab-case.yaml` — e.g. `amul-identity.yaml`, `crop-advisory.md`.
+- Config files: `kebab-case.yaml` — e.g. `adopter-identity.yaml`, `crop-advisory.md`.
 - Primitive IDs: kebab-case — the override key; an adopter file with the same ID wins.
 
 ### Environment variables

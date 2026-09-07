@@ -18,10 +18,10 @@ in the design. The POC skips it: one skill, `provider-invocation`, is always
 on. But even with one skill, the agent still needs to know which tools to
 offer the model.
 
-The sibling repo `amul-oan-api` solves this with a `prepare=` hook per tool:
-code that runs at call time and decides whether to include that tool. It
-works, but the fact "this tool belongs to this skill" lives inside a
-callback, not on the `Skill` itself.
+An existing adopter solves this with a `prepare=` hook per tool: code that
+runs at call time and decides whether to include that tool. It works, but
+the fact "this tool belongs to this skill" lives inside a callback, not on
+the `Skill` itself.
 
 ## 2. Decision Drivers
 
@@ -36,8 +36,8 @@ callback, not on the `Skill` itself.
 
 - **Option A — add `Skill.tool_names: tuple[str, ...]`.** Tools bind from the
   union of every selected skill's `tool_names`.
-- **Option B — keep `prepare=` hooks, one per tool.** Same pattern `amul`
-  already uses.
+- **Option B — keep `prepare=` hooks, one per tool.** Same pattern an
+  existing adopter already uses.
 - **Option C — a separate table mapping skill id to tool names.** Keep
   `Skill` exactly as the design doc has it; store the mapping elsewhere.
 
@@ -93,9 +93,9 @@ it wrong costs little at this size.
 
 ## 5. Rejection Rationale
 
-**Option B** (`prepare=` per tool) is what `amul` does today and it works.
-But the fact "this tool belongs to this skill" is spread across each tool's
-own hook instead of living in one place. That gets harder to check as skills
+**Option B** (`prepare=` per tool) is what an existing adopter does today and
+it works. But the fact "this tool belongs to this skill" is spread across
+each tool's own hook instead of living in one place. That gets harder to check as skills
 grow.
 
 **Option C** (separate table) keeps `Skill` matching the design doc, but now
