@@ -4,7 +4,43 @@ from __future__ import annotations
 
 from enum import StrEnum
 
+import anyio
 from pydantic import BaseModel, ConfigDict
+
+from dss.core.moderation.models import ModerationDecision
+
+
+class Verdict:
+    """The moderation decision, awaited by any tool that leaves the process.
+
+    Mutable, unlike the frozen models around it: the decision arrives after
+    construction, because the planner starts before moderation finishes.
+
+    A holder, not an awaitable. The model may call a tool several times in
+    one turn, and a coroutine can only be awaited once. An ``anyio.Event``
+    can be waited on as often as asked.
+    """
+
+    def __init__(self) -> None:
+        self._event = anyio.Event()
+        self._decision: ModerationDecision | None = None
+
+    def set(self, decision: ModerationDecision) -> None:
+        self._decision = decision
+        self._event.set()
+
+    def is_set(self) -> bool:
+        """Whether the decision has landed. For assertions and logging — a
+        tool wanting the decision should ``await get()`` instead."""
+
+        return self._event.is_set()
+
+    async def get(self) -> ModerationDecision:
+        """Block until moderation has decided, then return its decision."""
+
+        await self._event.wait()
+        assert self._decision is not None
+        return self._decision
 
 
 class SourceKind(StrEnum):

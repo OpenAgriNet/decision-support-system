@@ -309,11 +309,20 @@ Intent and moderation already run in parallel (ADR-0003). Discovery needs
 `Intent.asks`, so it starts when intent lands — without waiting for moderation.
 
 This is the design doc's own arrangement: a discovery query is read-only and can
-be thrown away, so it may cross the barrier. `plan()` takes
-`verdict: Awaitable[ModerationVerdict]` and awaits it at the last moment.
+be thrown away, so it may cross the barrier. The planner is handed a `Verdict`
+— a small holder wrapping an `anyio.Event` — and the `select` tool awaits it as
+its first statement, at the last moment before the network.
 
-The barrier must hold before **any** tool call, not just `/select`. A provider
-call cannot be taken back.
+A holder, not an `Awaitable`: a coroutine can only be awaited once, and the
+model may call `select` several times in one turn. Awaiting an `anyio.Event`
+repeatedly is normal, so the holder makes the repeat case correct by
+construction. anyio because `core/` already uses it (ADR-0005); asyncio's
+`ensure_future` has no anyio equivalent.
+
+The barrier holds before every tool call that leaves the process. `select` waits.
+`describe_capability` does not — it renders discovery data already in memory, so
+it crosses the barrier the same way discovery itself does. A provider call cannot
+be taken back; reading a dict can.
 
 Cost: discovery calls wasted on rejected turns. Cheap, and rejection is rare.
 

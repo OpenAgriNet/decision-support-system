@@ -15,6 +15,8 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
+from dss.core.moderation.models import ModerationDecision, Outcome
+from dss.core.planner.models import Verdict
 from dss.core.planner.validation import DomainSchema
 from dss.core.provider_discovery.models import (
     DiscoveredAnswer,
@@ -60,6 +62,15 @@ class _FakeInvocation:
         )
 
 
+def _cleared_verdict() -> Verdict:
+    """A verdict that has already landed, so select's barrier lets it through
+    at once. The barrier itself is tested in ``test_planner_barrier.py``."""
+
+    verdict = Verdict()
+    verdict.set(ModerationDecision(outcome=Outcome.PROCEED))
+    return verdict
+
+
 def _deps(invocation: _FakeInvocation) -> PlannerDeps:
     from dss.core.provider_discovery.models import DiscoveryResult
 
@@ -80,6 +91,7 @@ def _deps(invocation: _FakeInvocation) -> PlannerDeps:
         schema_context_index={"openagrinet:MandiPrice": ("MandiPrice", "0.1")},
         schema_base_url="https://schemas.openagrinet.global/schema",
         invocation=invocation,
+        verdict=_cleared_verdict(),
     )
 
 

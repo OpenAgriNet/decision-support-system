@@ -10,9 +10,11 @@ from dataclasses import dataclass, field
 
 from pydantic_ai import Agent, ModelRetry, RunContext
 
+from dss.core.moderation.models import Outcome
 from dss.core.planner.describe_capability import render_candidates_as_markdown
 from dss.core.planner.lookup import find_capability
 from dss.core.planner.markdown import render_answer_as_markdown
+from dss.core.planner.models import Verdict
 from dss.core.planner.resource_attributes import build_resource_attributes
 from dss.core.planner.validation import (
     DomainSchema,
@@ -35,6 +37,7 @@ class PlannerDeps:
     schema_context_index: dict[str, tuple[str, str]]
     schema_base_url: str
     invocation: CapabilityInvocation | None
+    verdict: Verdict
     raw_answers: list[tuple[int, DiscoveredAnswer]] = field(default_factory=list)
 
 
@@ -50,6 +53,11 @@ async def _select(
     text) — structural fields are assembled here, not by the model."""
 
     deps = ctx.deps
+    decision = await deps.verdict.get()
+    if decision.outcome is not Outcome.PROCEED:
+        # Not a ModelRetry: retrying cannot clear a moderation rejection.
+        return "This turn was not cleared to call providers. Do not retry."
+
     capability = find_capability(
         deps.discovery, ask_index=ask_index, resource_id=resource_id
     )

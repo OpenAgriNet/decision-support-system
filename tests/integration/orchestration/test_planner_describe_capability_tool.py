@@ -5,6 +5,7 @@ from __future__ import annotations
 from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart, ToolCallPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
+from dss.core.planner.models import Verdict
 from dss.core.planner.validation import DomainSchema
 from dss.core.provider_discovery.models import DiscoveryResult, ProviderCapability
 from dss.core.shared.models import UserTurn
@@ -43,6 +44,10 @@ def _deps() -> PlannerDeps:
         schema_context_index={"openagrinet:MandiPrice": ("MandiPrice", "0.1")},
         schema_base_url="https://schemas.openagrinet.global/schema",
         invocation=None,
+        # Left unset on purpose: describe_capability reads discovery data
+        # already in memory, so it does not wait for moderation. A tool that
+        # awaited this Verdict would hang here.
+        verdict=Verdict(),
     )
 
 

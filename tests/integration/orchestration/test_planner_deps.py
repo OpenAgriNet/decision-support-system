@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dss.core.planner.models import Verdict
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.shared.models import UserTurn
 from dss.orchestration.planner import PlannerDeps
@@ -31,6 +32,7 @@ def test_planner_deps_starts_with_an_empty_accumulator() -> None:
         schema_context_index={},
         schema_base_url="https://schemas.openagrinet.global/schema",
         invocation=None,
+        verdict=Verdict(),
     )
 
     assert deps.raw_answers == []
