@@ -2,10 +2,10 @@
   "context": {
     "id": "api.dss.turn",
     "timestamp": "2026-09-04T08:00:00Z",
-    "envelopeVersion": "1.0.0",
     "sessionId": "conv_8f3a1c",
     "transactionId": "txn_9f2c1a8e",
-    "messageId": "msg_mandi_wheat_01"
+    "messageId": "msg_mandi_wheat_01",
+    "version": "1.0.0"
   },
   "message": {
     "input": [

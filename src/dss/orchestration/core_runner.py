@@ -38,6 +38,24 @@ from dss.core.shared.models import (
 )
 from dss.ports.sinks import TelemetrySink, TurnSink
 
+# STUB(#86): no component computes confidence yet. The contract requires the
+# field, so the runner supplies a number per status; the real value arrives when
+# intent and composition can each report one. Note the numbers are not
+# comparable — a refusal's certainty and an answer's certainty measure different
+# things, which is the open question behind the field.
+_STUB_CONFIDENCE = {
+    TurnStatus.ANSWERED: 92,
+    TurnStatus.PARTIALLY_ANSWERED: 74,
+    TurnStatus.REJECTED: 98,
+    TurnStatus.NO_MATCH: 88,
+    TurnStatus.REQUIRES_INPUT: 80,
+    TurnStatus.UNAVAILABLE: 0,
+}
+
+
+def outcome_for(status: TurnStatus, cause: Cause | None = None) -> TurnOutcome:
+    return TurnOutcome(status=status, cause=cause, confidence=_STUB_CONFIDENCE[status])
+
 
 class CoreRunner:
     def __init__(self, *, llm: LLM, turns: TurnSink, telemetry: TelemetrySink) -> None:
@@ -54,7 +72,7 @@ class CoreRunner:
         if screening.outcome is not Outcome.PROCEED:
             yield self._finish(
                 ctx,
-                TurnOutcome(status=TurnStatus.REJECTED, cause=screening.cause),
+                outcome_for(TurnStatus.REJECTED, screening.cause),
                 ComposedAnswer(content=(RefusalBlock(text=screening.message),)),
             )
             return
@@ -64,9 +82,7 @@ class CoreRunner:
         if intent is None:
             yield self._finish(
                 ctx,
-                TurnOutcome(
-                    status=TurnStatus.NO_MATCH, cause=Cause.INTENT_LOW_CONFIDENCE
-                ),
+                outcome_for(TurnStatus.NO_MATCH, Cause.INTENT_LOW_CONFIDENCE),
                 no_match_answer(turn),
             )
             return
@@ -76,7 +92,7 @@ class CoreRunner:
             yield Claim(content=block)
         self._note("channel", ctx, str(len(answer.content)))
 
-        yield self._finish(ctx, TurnOutcome(status=TurnStatus.ANSWERED), answer)
+        yield self._finish(ctx, outcome_for(TurnStatus.ANSWERED), answer)
 
     def _finish(
         self, ctx: TurnContext, outcome: TurnOutcome, answer: ComposedAnswer

@@ -20,7 +20,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_serializer
 from pydantic.alias_generators import to_camel
 
 
@@ -41,11 +41,14 @@ class _WireOut(BaseModel):
 
 
 class Context(_WireIn):
+    """`RequestContext` in the contract. `additionalProperties: false`, so a
+    field this does not name is rejected outright."""
+
     id: Literal["api.dss.turn"]
-    envelope_version: str
     timestamp: datetime
     session_id: str
-    transaction_id: str | None = None
+    transaction_id: str  # required; echoed back as `traceId`
+    version: str | None = None
     message_id: str | None = None
 
 
@@ -101,25 +104,42 @@ class TurnRequest(_WireIn):
 
 
 class ResponseContext(_WireOut):
-    """Response side of the envelope. `sequence_number` is present on a stream
-    and absent on a single JSON response."""
+    """Response side of the envelope.
+
+    The contract requires `id`, `version`, `timestamp`, `messageId`, `sessionId`
+    and `traceId`, and allows additional properties — so `resMessageId` and
+    `sequenceNumber` ride along. `sequenceNumber` is present on a stream and
+    absent on a single JSON response.
+    """
 
     id: Literal["api.dss.turn"] = "api.dss.turn"
-    envelope_version: str
-    dss_release: str
+    version: str  # the concrete DSS release that handled the turn
     timestamp: datetime
+    message_id: str
     session_id: str
     trace_id: str
-    response_message_id: str
-    transaction_id: str | None = None
-    message_id: str | None = None
-    sequence_number: int | None = None
+    res_message_id: str
+    sequence_number: int | None = Field(default=None, ge=1)
 
 
 class Outcome(_WireOut):
+    """The contract requires all three fields, and `cause` is nullable.
+
+    `cause` therefore has to be emitted as `null` rather than omitted. Frames are
+    dumped with `exclude_none=True` (so optional fields stay out), which would
+    drop it — hence the explicit serializer. Every field the contract marks
+    required *and* nullable needs this treatment.
+    """
+
     status: str
+    confidence: int = Field(ge=0, le=100)
     cause: str | None = None
-    retry_after_seconds: int | None = None
+
+    @model_serializer(mode="wrap")
+    def _keep_null_cause(self, handler):  # type: ignore[no-untyped-def]
+        data = handler(self)
+        data.setdefault("cause", None)
+        return data
 
 
 class OutputText(_WireOut):
@@ -140,6 +160,16 @@ class Source(_WireOut):
     url: str | None = None
 
 
+class TurnError(_WireOut):
+    """Present when a dependency failed. `code` repeats `outcome.cause` — the
+    contract carries both, so both are sent."""
+
+    code: str
+    message: str
+    retryable: bool
+    retry_after_seconds: int | None = None
+
+
 class ResponseMessage(_WireOut):
     """`outcome` is absent until the turn ends, so `turn.created` and
     `claim.completed` carry content without implying a result."""
@@ -147,6 +177,7 @@ class ResponseMessage(_WireOut):
     outcome: Outcome | None = None
     content: list[OutputText | OutputRefusal] = []
     sources: list[Source] = []
+    error: TurnError | None = None
 
 
 class TurnResponse(_WireOut):

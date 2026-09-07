@@ -24,6 +24,7 @@ from __future__ import annotations
 import gzip
 import json
 import uuid
+import zlib
 from collections.abc import AsyncIterator, Callable
 from datetime import UTC, datetime
 
@@ -47,10 +48,6 @@ from dss.ports.turn import TurnRunner
 JSON_MEDIA_TYPE = "application/json"
 SSE_MEDIA_TYPE = "text/event-stream"
 RETRY_AFTER_SECONDS = "1"
-
-# `00-<32 hex trace id>-<16 hex span id>-<flags>` (W3C trace context).
-_TRACEPARENT_FIELDS = 4
-_TRACE_ID_LENGTH = 32
 
 
 def turn_router(
@@ -103,6 +100,12 @@ def turn_router(
                 problem.PAYLOAD_TOO_LARGE,
                 f"The decompressed body exceeds {settings.max_body_bytes} bytes.",
             )
+        except _Undecodable as exc:
+            return problem.problem(
+                400,
+                problem.MALFORMED,
+                f"Body is not valid gzip: {exc}",
+            )
 
         try:
             payload = json.loads(raw)
@@ -115,9 +118,14 @@ def turn_router(
             return problem.problem(422, problem.INVALID, exc.json())
 
         async with limiter:
-            trace_id = _trace_id(request.headers.get("traceparent"))
-            ctx = mapping.to_turn_context(body, trace_id=trace_id)
-            turn = mapping.to_user_turn(body)
+            ctx = mapping.to_turn_context(body, message_id=_minted_id())
+            try:
+                turn = mapping.to_user_turn(body)
+            except ValueError as exc:
+                # Well-formed against the schema, but not a turn the DSS can act
+                # on — a thread whose last message is not the farmer's, for
+                # instance. The schema cannot express that, so it lands here.
+                return problem.problem(422, problem.INVALID, str(exc))
             response_id = _minted_id()
 
             if wants_stream:
@@ -240,7 +248,11 @@ def _internal_failure() -> TurnFinished:
     """What a caller gets when the turn broke and said nothing itself."""
 
     return TurnFinished(
-        outcome=TurnOutcome(status=TurnStatus.UNAVAILABLE, cause=Cause.INTERNAL)
+        outcome=TurnOutcome(
+            status=TurnStatus.UNAVAILABLE,
+            cause=Cause.INTERNAL,
+            confidence=0,
+        )
     )
 
 
@@ -261,6 +273,10 @@ class _TooLarge(Exception):
     pass
 
 
+class _Undecodable(Exception):
+    """The body could not be decompressed. A caller's broken client, not ours."""
+
+
 def _decoded_body(raw: bytes, *, encoding: str | None, cap: int) -> bytes:
     """Decompress if asked, and enforce the cap on the *decompressed* size.
 
@@ -269,25 +285,15 @@ def _decoded_body(raw: bytes, *, encoding: str | None, cap: int) -> bytes:
     """
 
     if (encoding or "").strip().lower() == "gzip":
-        raw = gzip.decompress(raw)
+        try:
+            raw = gzip.decompress(raw)
+        except (OSError, EOFError, zlib.error) as exc:
+            # A body that is not gzip, or is truncated. Both are the caller's
+            # mistake, and neither may take the process down.
+            raise _Undecodable(str(exc)) from exc
     if len(raw) > cap:
         raise _TooLarge
     return raw
-
-
-def _trace_id(traceparent: str | None) -> str:
-    """Read the trace id out of `traceparent`, minting one when it is absent.
-
-    A malformed header is treated as absent: the turn still needs an evidence
-    key, and refusing the request would make a caller's broken instrumentation
-    into an outage.
-    """
-
-    if traceparent:
-        fields = traceparent.split("-")
-        if len(fields) == _TRACEPARENT_FIELDS and len(fields[1]) == _TRACE_ID_LENGTH:
-            return fields[1]
-    return _minted_id()
 
 
 def _minted_id() -> str:

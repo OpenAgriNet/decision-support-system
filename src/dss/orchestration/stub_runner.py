@@ -47,7 +47,7 @@ _SOURCES = (
 
 class StubRunner:
     ANSWER = TurnFinished(
-        outcome=TurnOutcome(status=TurnStatus.ANSWERED),
+        outcome=TurnOutcome(status=TurnStatus.ANSWERED, confidence=92),
         content=_CONTENT,
         sources=_SOURCES,
     )

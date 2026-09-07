@@ -104,7 +104,12 @@ snake_case; aliases on the wire models bridge the two, and nothing inward of
 `mapping.py` ever sees a camelCase name.
 
 Input is strict. A snake_case key is an unknown field, and the contract sets
-`additionalProperties: false`, so it comes back `422`.
+`additionalProperties: false`, so it comes back `422`. `context.transactionId` is
+required — it is the correlation key, echoed back as `context.traceId`.
+
+Responses are validated against `docs/api-contracts/openapi.yaml` in CI by
+`tests/conformance/v1/test_against_openapi.py`, so what the server sends and what
+the spec promises cannot drift.
 
 ## Send a turn
 
@@ -126,11 +131,13 @@ hides the thing you are trying to look at.
 Expect four frames:
 
 ```
-event: turn.created      sequence_number 0
-event: claim.completed   sequence_number 1
-event: claim.completed   sequence_number 2
-event: turn.completed    sequence_number 3   outcome.status "answered"
+event: turn.created      sequenceNumber 1
+event: claim.completed   sequenceNumber 2
+event: claim.completed   sequenceNumber 3
+event: turn.completed    sequenceNumber 4   outcome.status "answered"
 ```
+
+The contract sets `sequenceNumber` minimum 1, so the stream is 1-based.
 
 The `traceId` in every frame body is the one from your `traceparent`. Omit that
 header and the DSS mints one — a turn always has an evidence key.

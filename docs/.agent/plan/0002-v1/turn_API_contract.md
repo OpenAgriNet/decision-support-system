@@ -1,420 +1,271 @@
-# 0003 — Build `POST /v1/turns` with a stub core
+# `POST /v1/turns` — the structure as built
 
-**Issue:** #3 · **Status:** in review · **Blocked by:** ADR-0003 (web framework)
-**Aligned to:** session of 2026-09-03 · **Spec of record:** `docs/dss-design-v2.md`
-**Full reasoning:** `turn_API_contract.detailed.md`
 
-## What this builds
+The endpoint runs with a stubbed core. 1,873 lines of `src/`, 197 tests, 100%
+line coverage. This document describes **what is on disk today** and what is
+left.
 
-One working endpoint. Real plumbing, fake thinking.
-
-The HTTP layer is real, the port is real, the runner returns canned data. No LLM,
-no network, no business rules. `curl` it and get a valid answer.
-
-**Why fake first:** most seams only break once assembled. Build the logic first
-and you find out last.
-
-**One rule:** signatures are final, bodies are throwaway.
+```bash
+uv run uvicorn --factory dss.entrypoint.app:create_app --port 8077
+```
 
 ---
 
-## Naming
-
-| Word | Means | Lives in |
-|---|---|---|
-| `Stub…` | ships, fake body, replaced later | `src/` |
-| `Fake…` | test-only double | `tests/support/` |
-| `STUB(#n)` | marker on a throwaway body — CI requires the issue number | anywhere |
-
-Nothing else. No dummy, skeleton, scripted, mock, or recording.
-
-Tests reuse the `Stub…` adapters instead of re-declaring them — a memory sink
-already records, so a `Recording…` twin would be the same class twice.
-
----
-
-## The flow
+## 1. How a turn moves through it
 
 ```
    POST /v1/turns
         │
-        ▼
-   1. HTTP        adapters/http/v1/ + entrypoint/
-      JSON <-> objects, Accept, status codes, SSE frames
+   ┌────▼─────────────────────────────────────────────┐
+   │ adapters/http/v1/router.py                        │  OUTSIDE
+   │   capacity -> readiness -> Content-Type -> body   │
+   │   -> gunzip+cap -> parse -> Accept                │
+   └────┬─────────────────────────────────────────────┘
+        │  schema.TurnRequest
+   ┌────▼─────────────────────┐
+   │ mapping.py               │  wire -> domain, pure
+   └────┬─────────────────────┘
         │  UserTurn, TurnContext
-        ▼
-   2. PORT        ports/turn.py :: TurnRunner
-      the only thing the HTTP layer may call
+   ┌────▼─────────────────────┐
+   │ ports/turn.py            │  INSIDE — the only thing the transport may call
+   │   TurnRunner             │
+   └────┬─────────────────────┘
         │
-        ▼
-   3. RUNNER      orchestration/
-      decides the order.  step A: canned.  step B: calls core
-        │
-        ▼
-   4. PORTS OUT   ports/llm.py, ports/sinks.py          step B
-        │
-        ▼
-   5. ADAPTERS    adapters/llm/, adapters/sinks/        step B
+   ┌────▼─────────────────────────────────────────────┐
+   │ orchestration/core_runner.py                      │  OUTSIDE
+   │   owns the order, and nothing else                │
+   └────┬─────────────────────────────────────────────┘
+        │  calls, in sequence
+   ┌────▼──────────────────────────────────────┐
+   │ core/moderation.screen(turn, llm)         │  INSIDE
+   │   -> reject?  terminal, no claims          │
+   │ core/intent.recognise_intent(turn, llm)   │
+   │   -> None?    terminal, no_match           │
+   │ core/channel.compose(turn, intent, llm)   │
+   └────┬──────────────────────────────────────┘
+        │  yields TurnStarted, Claim…, TurnFinished
+   ┌────▼─────────────────────┐
+   │ sse.py  or  router._single │  events -> frames, or drained to one body
+   └──────────────────────────┘
 
-   Answers come back up as TurnEvent objects.
-   Only hop 1 turns them into SSE or JSON.
+   evidence, written by the runner at each step:
+     ports/sinks.py  ->  adapters/sinks/file.py  ->  var/evidence/*.jsonl
 ```
 
-Two arrows, opposite directions — that is the pattern:
+Two arrows, opposite directions — that inversion is the pattern:
 
-- **Runtime:** HTTP → port → runner → core → port → adapter.
-- **Imports:** adapter → port ← core. The port imports nothing.
+- **runtime:** transport → port → runner → core → interface → adapter
+- **imports:** adapter → interface ← core. The interface imports nothing.
 
 ---
 
-## Two steps
+## 2. Every file, and what it holds
 
-The session scoped this as *"test the port, not the runner's internals."*
+### Inside the hexagon
 
-| | **A — now** | **B — next** |
+`core/` imports only `__future__`, `enum`, `typing`, `pydantic`, and itself.
+Audited by AST, enforced by `test_core_isolation.py`.
+
+| File | Holds |
+|---|---|
+| `core/shared/models.py` | the domain language: `UserTurn`, `TurnContext`, `HistoryEntry`, `Role`, `Channel`, `Location`, `Point`, `TurnStatus`, `Cause`, `Source`, `SourceKind`, `TextBlock`, `RefusalBlock`, `TurnOutcome`, `TurnStarted`, `Claim`, `TurnFinished`, `TurnEvent` |
+| `core/shared/llm.py` | `LLM` — one method, `structured(system_prompt, user_query, schema)`. No `temperature`, no `model=`, no API key |
+| `core/shared/errors.py` | `DssError`, `ProviderUnavailable` — what adapters wrap vendor exceptions into |
+| `core/moderation/models.py` | `Outcome` (proceed/reject/clarify/no_match), `Screening` |
+| `core/moderation/service.py` | `screen(turn, *, llm)` — **`STUB(#82)`**, a deny word list |
+| `core/intent/models.py` | `Intent`, `ActionType` |
+| `core/intent/service.py` | `recognise_intent(turn, *, llm)`, `CONFIDENCE_FLOOR = 0.6` — the floor is **real** and survives the stub |
+| `core/channel/models.py` | `ComposedAnswer` |
+| `core/channel/service.py` | `compose(turn, intent, *, llm)`, `no_match_answer(turn)` — **`STUB(#84)`**, fixed sentences |
+| `ports/turn.py` | `TurnRunner` — the driving port |
+| `ports/sinks.py` | `TurnSink` (required), `TelemetrySink` (optional) — driven ports |
+
+**Why `llm.py` is in `core/shared/` and not `ports/`:** `core/` is what declares
+that need, and a Protocol is satisfied structurally — `adapters/llm/stub.py`
+implements it without importing it, so the dependency still points inward. The
+sinks stayed in `ports/` because the runner *drives* them, which is the textbook
+driven-port shape.
+
+### Outside
+
+| File | Holds |
+|---|---|
+| `adapters/http/v1/schema.py` | the wire models. **camelCase lives here and nowhere else** — `_WireIn` (`populate_by_name=False`, so only camelCase is accepted) and `_WireOut` (built by field name, dumped `by_alias=True`). Plus `component_schemas()` for the OpenAPI document |
+| `adapters/http/v1/mapping.py` | wire ↔ domain, pure functions. The clock and the minted id are arguments |
+| `adapters/http/v1/sse.py` | `Stream` — owns the event names and the sequence counter |
+| `adapters/http/v1/router.py` | the HTTP rules; admission ordered cheapest-rejection-first |
+| `adapters/http/v1/problem.py` | 4xx/5xx bodies |
+| `adapters/llm/stub.py` | `StubLLM` — **`STUB(#83)`**, canned answers, records every ask |
+| `adapters/sinks/file.py` | `FileTurnSink`, `FileTelemetrySink` — JSON Lines. Drops `geometry` on write |
+| `adapters/sinks/memory.py` | `MemoryTurnSink` — **`STUB(#85)`** |
+| `adapters/sinks/stdout.py` | `StdoutTelemetrySink` |
+| `orchestration/core_runner.py` | `CoreRunner` — the order, and nothing else |
+| `orchestration/stub_runner.py` | `StubRunner` — **`STUB(#81)`**, canned events, reads the turn for nothing |
+| `entrypoint/app.py` | builds the `FastAPI` app, publishes the wire schemas into `components.schemas` |
+| `entrypoint/composition.py` | **the only file that names concrete classes** |
+| `entrypoint/settings.py` | caps, release id, evidence dir and URL. `DSS_`-prefixed env overrides |
+
+### Tests
+
+| Path | Drives | Doubles |
 |---|---|---|
-| Proves | HTTP layer + port | runner + core wiring |
-| Builds | hops 1, 2, 3 | hops 4, 5, real hop 3 |
-| Runner | `StubRunner` — canned events | `CoreRunner` — calls three core functions |
-| Core | none | `moderation`, `intent`, `channel` (stub bodies) |
-| Cases | 1–3, 9–25, 28–30 | 4–8, 26–29 |
+| `tests/unit/adapters/http/v1/` | `mapping.py`, `sse.py`, `_wants_stream` | none — pure functions |
+| `tests/unit/core/**` | the three core services | `StubLLM` |
+| `tests/unit/adapters/llm/` | `StubLLM` itself | none |
+| `tests/unit/entrypoint/` | `create_app`, `build_runner` | env via `monkeypatch` |
+| `tests/integration/entrypoint/` | the HTTP layer | `FakeRunner` — no core |
+| `tests/integration/orchestration/` | `CoreRunner` over real core | `StubLLM`, `FakeTurnSink`, `FakeTelemetrySink` |
+| `tests/integration/adapters/sinks/` | the three sink adapters | `tmp_path`, `capsys` |
+| `tests/conformance/v1/` | camelCase both ways, OpenAPI ref resolution | `FakeRunner` |
+| `tests/support/fakes.py` | `FakeRunner(events, fail_after=)`, `FakeTurnSink(fail_on=)`, `FakeTelemetrySink(fail=)` | hand-written, never `MagicMock` |
 
-A green step A proves the transport. It does not yet prove the architecture — the
-assembly cases are all step B.
+**Three boundary suites, each proven able to fail** by planting a violation:
 
----
-
-## Files
-
-`+` new · `A`/`B` step.
-
-```
-src/dss/
-├── ports/
-│   ├── turn.py                 + A   TurnRunner
-│   ├── llm.py                  + B   LLM
-│   └── sinks.py                + B   TurnSink, TelemetrySink
-│
-├── core/
-│   ├── shared/models.py        + A   domain language
-│   ├── moderation/             + B   agent — takes llm
-│   ├── intent/                 + B   agent — takes llm
-│   └── channel/                + B   agent — takes llm
-│
-├── orchestration/
-│   ├── stub_runner.py          + A   StubRunner — canned, reads nothing
-│   └── core_runner.py          + B   CoreRunner — orders the three core calls
-│
-├── adapters/
-│   ├── http/v1/
-│   │   ├── router.py           + A   route, headers, Accept, status codes
-│   │   ├── schema.py           + A   wire models — field names live here
-│   │   ├── mapping.py          + A   wire <-> domain, pure
-│   │   ├── sse.py              + A   frames + sequence numbers
-│   │   └── problem.py          + A   4xx / 5xx bodies
-│   ├── llm/stub.py             + B   StubLLM — canned answers
-│   └── sinks/
-│       ├── memory.py           + B   MemoryTurnSink
-│       └── stdout.py           + B   StdoutTelemetrySink
-│
-└── entrypoint/
-    ├── app.py                  + A   ASGI app, startup, readiness
-    ├── composition.py          + A   the only file naming concrete classes
-    └── settings.py             + A   caps, release id
-
-tests/
-├── support/fakes.py            + A   FakeRunner
-├── support/builders.py         + A   a_turn(), a_body()
-├── unit/adapters/http/v1/      + A   mapping + sse
-├── unit/core/                  + B
-├── integration/entrypoint/     + A   ASGI client + FakeRunner
-├── integration/orchestration/  + B   real runner, stub adapters
-├── conformance/v1/             + A   contract examples, byte-for-byte
-└── e2e/                        + A   one smoke test
-```
-
-`v1/` is a folder because the version is in the URL. A `/v2` envelope is a new
-folder, not an edit.
-
-**One job each, so one reason to change each.** `router.py` owns HTTP rules ·
-`schema.py` + `mapping.py` own the envelope · `sse.py` owns frames and sequence
-numbers · `composition.py` owns which concrete class · `orchestration/` owns
-**the order** · `core/*/service.py` owns one rule each · `adapters/` translate.
-
-Two checks that keep it honest:
-
-- **The runner has no `if` with business meaning.** It branches on values other
-  modules decided. The moment it grows `if turn.channel == "voice"`, a rule
-  escaped `core/`.
-- **Streaming lives in the HTTP layer, not the runner** (session decision). The
-  runner produces events; it never frames, counts, or negotiates. Same reason the
-  port returns an iterator instead of taking a push-sink.
+| Suite | Rule |
+|---|---|
+| `test_framework_boundary.py` | `core/` imports no agent framework |
+| `test_transport_boundary.py` | `adapters/http/**` and `entrypoint/**` may import `ports/**` and `core.shared` — nothing else from `core/` |
+| `test_core_isolation.py` | nothing inside imports `adapters`/`orchestration`/`entrypoint`/`config`, or anything impure (clock, filesystem, env, randomness, network) |
 
 ---
 
-## The port
+## 3. Decisions this structure records
 
-```python
-# src/dss/ports/turn.py
-class TurnRunner(Protocol):
-    def run(self, turn: UserTurn, ctx: TurnContext) -> AsyncIterator[TurnEvent]: ...
-```
+| Decision | Where it shows up |
+|---|---|
+| One endpoint; `Accept` selects JSON or SSE | `router.py::_wants_stream` — no streaming flag anywhere |
+| Streaming is the transport's business, not the runner's | the port returns an iterator; `sse.py` owns framing and the counter |
+| camelCase on the wire, snake_case in Python | aliases on `_WireIn`/`_WireOut` only |
+| Outcome is one axis; `unavailable` is the failure value | `TurnStatus`, six values, no `kind` |
+| Citations per block | `TextBlock.source_ids` — **contract disagrees, see §4** |
+| No authentication | no auth middleware; `401`/`403` never emitted |
+| Two evidence tiers with opposite failure rules | `ports/sinks.py`; telemetry swallowed, turn record propagates |
+| `geometry` never written to a sink | `adapters/sinks/file.py::_turn` |
+| Axis order exists in one function | `mapping.py::_point`; `Point` holds named floats |
+| The composition root is the process entry | `entrypoint/composition.py` (ADR-0006) |
+| FastAPI on uvicorn | ADR-0006 |
+| Sequential runner, no graph | `core_runner.py` — ADR-0001 makes `pydantic-graph` the escalation, not the start |
 
-One method. Streaming vs JSON never crosses it — that is hop 1's business. SSE
-forwards each event; JSON drains and renders the last one.
+**Nothing imports an agent framework.** `pydantic-ai-slim` is a dependency; no
+module uses it. `core/` is provably framework-independent; framework
+*swappability* is designed for and has not been exercised once.
 
-Three things satisfy it on day one: `StubRunner`, `FakeRunner`, later
-`CoreRunner`. Three implementations is the evidence the port inverted something
-instead of mirroring one caller.
-
----
-
-## Step A — the stub runner
-
-```python
-# src/dss/orchestration/stub_runner.py — STUB(#81)
-class StubRunner:
-    async def run(self, turn: UserTurn, ctx: TurnContext) -> AsyncIterator[TurnEvent]:
-        yield TurnStarted()
-        for block in _ANSWER:
-            yield Claim(content=block)
-        yield TurnFinished(
-            outcome=TurnOutcome(status=TurnStatus.ANSWERED),
-            content=_ANSWER,
-            sources=_SOURCES,
-        )
-```
-
-It reads `turn` for nothing — deliberately. If the HTTP layer passes its cases
-against this, the HTTP layer is proven independent of everything below it.
-
-```python
-# entrypoint/composition.py — the one place concrete classes are named
-def build_runner(settings: Settings) -> TurnRunner:
-    return StubRunner()        # step B: CoreRunner(llm=..., turns=..., telemetry=...)
-
-# entrypoint/app.py
-def build_app(settings: Settings) -> ASGIApp:
-    return mount(v1_router(runner=build_runner(settings), settings=settings))
-```
-
-`router.py` receives a runner and never builds one. That is what makes it
-testable against a fake.
+**The tool-calling loop will not go behind a port** — `10-planner-agent-poc.md`
+rejects that deliberately, so switching frameworks later means rewriting
+`orchestration/planner.py`. One module, with `core/` and `ports/` untouched.
 
 ---
 
-## Step B — the core runner
+## 4. Contract conformance — seven closed, four open
 
-Three core functions. All three are **agents** per the session's split, so all
-three take the LLM port and are awaited.
+Responses are now validated against the published spec by
+`tests/conformance/v1/test_against_openapi.py`, which loads
+`docs/api-contracts/openapi.yaml` and checks rendered bodies with `jsonschema`.
+That test is what closed these — and it found two gaps the hand-written
+conformance tests had missed.
 
-```python
-# src/dss/orchestration/core_runner.py
-class CoreRunner:
-    def __init__(self, *, llm: LLM, turns: TurnSink, telemetry: TelemetrySink) -> None: ...
+### Closed
 
-    async def run(self, turn, ctx):
-        yield TurnStarted()
-        self._turns.opened(ctx, turn)
-
-        screening = await screen(turn, llm=self._llm)
-        if screening.outcome is Outcome.REJECT:
-            yield self._close(ctx, TurnStatus.REJECTED, screening)   # no claims
-            return
-
-        intent = await recognise_intent(turn, llm=self._llm)
-        if intent is None:
-            yield self._close(ctx, TurnStatus.NO_MATCH, ...)
-            return
-
-        answer = await compose(turn, intent, llm=self._llm)
-        for block in answer.content:
-            yield Claim(content=block)                               # streams as produced
-        yield self._close(ctx, TurnStatus.ANSWERED, answer)
-```
-
-`self._telemetry.stage(...)` after each step; omitted above for width.
-
-| Function | Stub body returns | Real version |
+| # | Was | Now |
 |---|---|---|
-| `screen` | `PROCEED`, or `REJECT` if the query hits `_DENY` | #82 policy evaluator |
-| `recognise_intent` | whatever `StubLLM` holds, or `None` under `CONFIDENCE_FLOOR = 0.6` | #83 real prompt |
-| `compose` | two text blocks + one source | #84 composer + reviewer |
+| 1 | `outcome.confidence` absent (**required**) | present; `STUB(#86)` supplies a number per status |
+| 1b | `outcome.cause` omitted when null (**required**, nullable) | always emitted, via an explicit `model_serializer` |
+| 3 | `message.error` absent | `TurnError` — `code`, `message`, `retryable`, `retryAfterSeconds` |
+| 4 | `envelopeVersion` + `dssRelease` (**rejected** — `additionalProperties: false`) | one `version` = the DSS release |
+| 5 | `responseMessageId` | `resMessageId` |
+| 8 | `sequenceNumber` started at 0 | starts at 1 |
+| 9 | `traceId` minted from `traceparent`; body value rejected | `traceId` **is** the caller's `transactionId`, now required. `traceparent` still starts the span |
 
-`_DENY` is a word list, not a model, so the reject path is deterministic on day
-one. It is the most obviously fake thing here, on purpose.
+Two of those were not on the original list. The validator found them:
+`envelopeVersion` was **illegal** rather than merely misnamed, and response
+`messageId` is required but was dropped whenever the caller omitted one — the
+transport now mints it.
 
-`CONFIDENCE_FLOOR = 0.6` is a **real** rule and survives. Its test never changes.
+### Open
 
-**Why these three.** The session split components into agents (intent,
-moderation, planner, response composer) and plain code (tool, provider, skill
-discovery). These three are agents, and they cover an early exit, a `None` path
-with a real threshold, and multi-claim streaming. A discovery function adds
-nothing they don't already prove.
-
-**Two sinks, not one** — `dss-design-v2.md` §3, and the failure rules are
-opposite:
-
-| Port | Holds | Required | If it raises |
+| # | `openapi.yaml` | Code | Blocked on |
 |---|---|---|---|
-| `TurnSink` | the turn record — query, answer, refusals. Farmer content, on purpose | yes, it's the audit trail | **the turn fails** |
-| `TelemetrySink` | stage, timing, outcome. **Never** farmer content | no, stdout default | swallowed |
-
----
-
-## Mocking
-
-One double. Hand-written — a `MagicMock` answers a method you renamed in the
-Protocol, so the test keeps passing after the contract moved.
-
-```python
-# tests/support/fakes.py
-class FakeRunner:
-    def __init__(self, events, *, fail_after=None): ...
-    async def run(self, turn, ctx):
-        for i, e in enumerate(self._events):
-            if i == self._fail_after:
-                raise ProviderUnavailable("stub")
-            yield e
-```
-
-Everything else reuses the shipped stubs:
-
-```
-mapping.py, sse.py      <- nothing. pure functions.
-core/*/service.py       <- StubLLM
-orchestration/          <- StubLLM + MemoryTurnSink + StdoutTelemetrySink
-http + entrypoint       <- FakeRunner
-e2e                     <- the real app, wired to the stubs
-```
-
-**Rule: no test uses two layers' doubles at once.** A test needing `FakeRunner`
-*and* `StubLLM` is testing two things — split it.
-
----
-
-## Cases that must pass
-
-| # | Case | Expected | Step |
+| # | `openapi.yaml` | Code | Blocked on |
 |---|---|---|---|
-| 1 | Answered, streaming | `turn.created` 0 · `claim.completed` 1, 2 · `turn.completed` 3 | A |
-| 2 | Answered, JSON | `200`, terminal body only, no `sequence_number` | A |
-| 3 | Same turn both ways | identical `message` object | A |
-| 4 | Devanagari | contract example byte-for-byte | A |
-| 5 | Malformed JSON | `400` | A |
-| 6 | Empty `input[]` | `422`, runner never called | A |
-| 7 | Unknown field | `422` | A |
-| 8 | `Accept: text/event-stream` | SSE | A |
-| 9 | `Accept` absent or `*/*` | JSON | A |
-| 10 | `Accept: application/xml` | `406` | A |
-| 11 | `Content-Type: text/plain` | `415` | A |
-| 12 | Body over cap | `413` | A |
-| 13 | Cap reached | `429` + `Retry-After` | A |
-| 14 | Not ready | `503` | A |
-| 15 | Crash mid-stream | sent events stand; `turn.failed`; HTTP stayed `200` | A |
-| 16 | Failure before streaming, JSON | `200` + `unavailable` — **not** `502` | A |
-| 17 | `[lon, lat]` | `[72.93, 22.56]` → `Point(lon=72.93, lat=22.56)` | A |
-| 18 | `user_context` absent | `user_id == "anonymous"` | A |
-| 19 | `trace_id` | from `traceparent`, never the body; in every event | A |
-| 20 | `message_id` | echoed; `response_message_id` minted, different | A |
-| 21 | HTTP layer → core | importing `core/*/service.py` from `adapters/http/**` rejected | A |
-| 22 | core → framework | existing `test_framework_boundary.py` | A |
-| 23 | Port conformance | every impl callable through a port-annotated parameter | A |
-| 24 | Moderation rejects | zero claims, `rejected`, `unsafe_illegal`, one refusal | B |
-| 25 | Moderation rejects | `StubLLM` **never called** — proves the early exit | B |
-| 26 | Below the floor | `recognise_intent` returns `None`, never a made-up `Intent` | B |
-| 27 | Intent `None` | `no_match`, `intent_low_confidence` | B |
-| 28 | Stage order | telemetry saw `moderation`, `intent`, `channel`, in order | B |
-| 29 | `TelemetrySink` raises | turn still completes | B |
-| 30 | `TelemetrySink` content | no line contains the query | B |
-| 31 | `TurnSink` content | record **does** carry query, answer, refusals | B |
-| 32 | `TurnSink` raises | turn **fails** — a lost audit record is not a success | B |
+| 2 | `content[].annotations` with `start_index`/`end_index` | `sourceIds: []` — an extra field the spec permits, so responses still validate; `annotations` is simply absent | **the unit of an offset** |
+| 6 | `401 · 403 · 502 · 504` | not emitted; `406 · 413 · 415` invented | **auth posture** |
+| 7 | `content[].type` is `text \| image` | `text` only | the attachment service contract |
+| 10 | `tracestate` | not read | nothing — no behaviour is specified for it |
 
-Cases 25, 28, 29–32 only a wired-up system can answer. They are statements about
-assembly, not about any one function.
+Fixing #9 **inverted two existing tests** — they asserted that a body-supplied
+trace id was rejected, which was a security instinct the contract had already
+decided against. That is a rule change rather than a bug fix, and worth a
+reviewer's eye.
 
-**Case 21 does not exist yet.** `test_framework_boundary.py` checks that `core/`
-imports no framework; nothing checks that hop 1 may not skip hops 2 and 3. Same
-AST walk, new rule: `adapters/http/**` and `entrypoint/**` may import `ports/**`
-and `core/shared/models`, nothing else from `core/`.
+The lesson from #1b is the reusable one: `exclude_none=True` silently drops any
+null, so **every field the contract marks `required` and nullable is a latent bug
+of the same shape.** A hand-written conformance test cannot catch that class;
+validating against the spec can.
 
 ---
 
-## Build order
+## 5. The flow this will become
 
-Each step ends green.
+`10-planner-agent-poc.md` fixes the real shape. Today's runner is the middle
+column of it, straightened out.
 
-**A** — 1. `core/shared/models.py` + `builders.py` *(settle `ref` first, below)* ·
-2. `ports/turn.py` · 3. `fakes.py` · 4. `mapping.py` + `sse.py`, tests first —
-**pure, writable today, no framework needed** · 5. `schema.py`, driven by 4's
-failures · 6. ADR-0003, then `router.py`, `problem.py`, `entrypoint/` ·
-7. `stub_runner.py` + `composition.py`, plus the e2e smoke · 8. boundary and
-conformance checks, `CLAUDE.md` tier rows, coverage gate.
+```
+intent ∥ moderation                parallel — ADR-0003, not sequential
+discovery(intent.asks)             starts when intent lands; does NOT wait for the verdict
+plan(discovery, verdict, skills)   awaits the verdict before ANY tool call   ← the barrier
+sufficiency(evidence, asks)        plain code, no LLM, ever
+compose(evidence, identity)        content items + sources
+```
 
-**B** — 9. `ports/llm.py`, `ports/sinks.py` · 10. the three core packages ·
-11. `adapters/llm/stub.py`, `adapters/sinks/` · 12. `core_runner.py` replaces
-`StubRunner`.
+Three differences from `core_runner.py` as written:
 
-Steps 1–5 are unblocked right now. Step 6 is the only thing ADR-0003 holds up.
+- intent and moderation are **concurrent**
+- **discovery may cross the moderation barrier** — a discovery query is read-only
+  and disposable; a provider invocation is not
+- the gate is **"no tool call before the verdict resolves"**, not "moderation
+  first". A rejected turn may already have run discovery, and that is correct
+
+New files that flow needs: `core/planner/{models,sufficiency}.py`,
+`orchestration/planner.py`, `ports/discovery.py`, `ports/invocation.py`,
+`adapters/discovery/stub.py`, `adapters/invocation/stub.py`.
+
+The barrier is the highest-value case in the whole plan and is testable with
+stubs: a verdict that records when it was awaited, an invocation stub that
+records when it was called, assert the ordering — then reorder the runner and
+watch it fail.
 
 ---
 
-## Contract rules to code against
+## 6. Order
 
-**One endpoint.** `POST /v1/turns`. `Accept` picks JSON or SSE — no streaming flag.
+1. ~~Items 1, 1b, 3, 4, 5, 8, 9~~ — **done**; responses validate against the spec.
+2. The §5 flow with stubs — **the barrier first**.
+3. Item **6** — needs the auth posture.
+4. Item **2** — needs the offset unit.
+5. Item **7** — schema half; behaviour half needs another team.
 
-**Outcome is one field.**
+The server is now conformant on everything that is not itself an open contract
+question.
 
-```
-status : answered | partially_answered | rejected | no_match | requires_input | unavailable
-cause  : string | null
-```
+## 7. Questions that block work
 
-`unavailable` is the failure value, so there is no second `kind` field. Path is
-`message.outcome`.
+1. **`start_index` — code points, UTF-16 units, or bytes?** Whatever is chosen
+   goes into the contract with a conformance test in Devanagari and Tamil.
+2. **`401`/`403` — reserve, implement, or pluggable?** The contract asks for
+   codes ADR-0002 §2.3 says cannot happen.
+3. **`502`/`504` — ever really returned?** Defined "before streaming began", but
+   JSON mode never begins streaming and the proposal's own outage example is
+   `200`.
+4. **Should `406`/`413`/`415` join the contract?** They cover cases it requires
+   but gives no code for.
 
-**Status codes.** `200` · `400` malformed · `406` bad `Accept` · `413` too big ·
-`415` wrong content type · `422` invalid · `429` cap · `503` not ready. No
-`401`/`403` (no auth), no `502`/`504`.
+## 8. What a `feat/79` merge has to settle
 
-Once the first byte is out the code cannot change, so a dependency failure
-**always** lands in `outcome`, both modes.
-
-**Events.** `turn.created` (0) · `claim.completed` (1..n) · `turn.completed` or
-`turn.failed` (n+1). `turn.failed` only when `status: unavailable`. The terminal
-event is authoritative — never infer the result from the connection closing. No
-`id:`; the stream is not resumable. Every SSE turn gets `turn.created` and a
-terminal event whatever the outcome; `claim.completed` only when there is content.
-
-**Fields.** `snake_case` in JSON (`CONVENTIONS.md:17`) · unknown fields rejected ·
-citations are `source_ids` per block, **no character offsets** (undefined unit,
-breaks in Devanagari) · `trace_id` from `traceparent`, in every response body ·
-`transaction_id` echoed, never interpreted · coordinates flat `[lon, lat]` ·
-input content `text | image`, output `text | refusal` · no `confidence` in v1.
-
----
-
-## Verify
-
-```bash
-uv sync
-uv run ruff check . && uv run ruff format --check .
-
-uv run pytest tests/unit                       # 17-23 (A) · 26 (B)
-uv run pytest tests/integration/entrypoint     # 5-16  (A)
-uv run pytest tests/conformance/v1             # 3, 4  (A)
-uv run pytest tests/integration/orchestration  # 24-32 (B)
-uv run pytest                                  # everything; tier 6 excluded
-```
-
-Then the point of it all:
-
-```bash
-uv run <asgi-server> dss.entrypoint.app:app &
-curl -N -X POST localhost:8000/v1/turns \
-  -H 'Content-Type: application/json' -H 'Accept: text/event-stream' \
-  -d @docs/api-contracts/examples/answered_streaming.json
-```
-
-A valid contract-shaped answer from a runner that read none of the request. Every
-seam proven. Everything after this is a body swap.
+- `ports/llm.py` exists there; here the interface is `core/shared/llm.py`.
+- `Intent` there has `asks: tuple[Ask, ...]`; here `primary_domain` + `confidence`.
+- `UserTurn` there has `original_query`/`enriched_query`, ids on the turn,
+  `UserDetails.phone`, `ReferenceToken`. The `ref` question is unanswered.
+- `Outcome` names two different things — moderation's enum and the wire object.
+- ADR numbers: `feat/79` holds 0003–0005 and a second 0002; ADR-0006 is here.
+- `CLAUDE.md` and `HEXAGONAL_ARCHITECTURE.md` §3.1 still place `LLMProvider` in
+  `ports/`.

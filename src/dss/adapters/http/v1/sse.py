@@ -44,7 +44,7 @@ class Stream:
         self._ctx = ctx
         self._response_id = response_id
         self._clock = clock
-        self._seq = 0
+        self._seq = 1  # the contract sets sequenceNumber minimum 1
 
     def frame(self, event: TurnEvent) -> bytes:
         """Render one event, consuming the next sequence number."""

@@ -7,6 +7,7 @@ from datetime import datetime
 from dss.adapters.http.v1 import schema
 from dss.core.shared.models import (
     ANONYMOUS,
+    Cause,
     Channel,
     Claim,
     HistoryEntry,
@@ -17,6 +18,8 @@ from dss.core.shared.models import (
     Role,
     TurnContext,
     TurnFinished,
+    TurnOutcome,
+    TurnStatus,
     UserTurn,
 )
 
@@ -48,19 +51,22 @@ def to_user_turn(body: schema.TurnRequest) -> UserTurn:
     )
 
 
-def to_turn_context(body: schema.TurnRequest, *, trace_id: str) -> TurnContext:
+def to_turn_context(body: schema.TurnRequest, *, message_id: str) -> TurnContext:
     """Assemble the turn's ids.
 
-    `trace_id` is supplied by the transport from the caller's `traceparent`
-    span, never read from the body — a body field would let a caller forge the
-    key its own audit record is filed under.
+    The trace id **is** the caller's `transactionId` — the contract says
+    `traceId` echoes it, so the caller owns the correlation key. `traceparent`
+    still starts the server span; it does not supply this id.
+
+    `message_id` is required on the response, so the transport mints one when the
+    caller omits it.
     """
 
     return TurnContext(
-        trace_id=trace_id,
+        trace_id=body.context.transaction_id,
         session_id=body.context.session_id,
         transaction_id=body.context.transaction_id,
-        message_id=body.context.message_id,
+        message_id=body.context.message_id or message_id,
     )
 
 
@@ -104,7 +110,7 @@ def _point(wire: schema.Geometry | None) -> Point | None:
     return Point(lon=lon, lat=lat)
 
 
-ENVELOPE_VERSION = "1.0.0"
+UNAVAILABLE_MESSAGE = "A service this turn needed could not be reached."
 
 
 def to_created_frame(
@@ -143,14 +149,15 @@ def to_terminal_frame(
         message=schema.ResponseMessage(
             outcome=schema.Outcome(
                 status=finished.outcome.status.value,
+                confidence=finished.outcome.confidence,
                 cause=finished.outcome.cause.value if finished.outcome.cause else None,
-                retry_after_seconds=finished.outcome.retry_after_seconds,
             ),
             content=[_block(b) for b in finished.content],
             sources=[
                 schema.Source(id=s.id, name=s.name, kind=s.kind.value, url=s.url)
                 for s in finished.sources
             ],
+            error=_error(finished.outcome),
         ),
     )
 
@@ -159,15 +166,28 @@ def _response_context(
     ctx: TurnContext, *, now: datetime, seq: int | None, response_id: str
 ) -> schema.ResponseContext:
     return schema.ResponseContext(
-        envelope_version=ENVELOPE_VERSION,
-        dss_release=DSS_RELEASE,
+        version=DSS_RELEASE,
         timestamp=now,
+        message_id=ctx.message_id,
         session_id=ctx.session_id,
         trace_id=ctx.trace_id,
-        response_message_id=response_id,
-        transaction_id=ctx.transaction_id,
-        message_id=ctx.message_id,
+        res_message_id=response_id,
         sequence_number=seq,
+    )
+
+
+def _error(outcome: TurnOutcome) -> schema.TurnError | None:
+    """A dependency failure is reported twice on purpose — as `outcome.cause`,
+    and as a structured `error` a caller can branch on."""
+
+    if outcome.status is not TurnStatus.UNAVAILABLE:
+        return None
+    cause = outcome.cause.value if outcome.cause else Cause.INTERNAL.value
+    return schema.TurnError(
+        code=cause,
+        message=UNAVAILABLE_MESSAGE,
+        retryable=True,
+        retry_after_seconds=outcome.retry_after_seconds,
     )
 
 
