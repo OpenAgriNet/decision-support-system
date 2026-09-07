@@ -19,7 +19,7 @@ def test_provider_invocation_skill_shape() -> None:
     skills = load_skills()
     skill = next(s for s in skills if s.id == "provider-invocation")
     assert skill.domain == "agriculture"
-    assert skill.tool_names == ("select",)
+    assert skill.tool_names == ("describe_capability", "select")
     assert skill.description
     assert skill.guidance
 

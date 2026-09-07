@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 
 from pydantic_ai import Agent, ModelRetry, RunContext
 
+from dss.core.planner.describe_capability import render_candidates_as_markdown
 from dss.core.planner.lookup import find_capability
 from dss.core.planner.markdown import render_answer_as_markdown
 from dss.core.planner.resource_attributes import build_resource_attributes
@@ -79,7 +80,15 @@ async def _select(
     return render_answer_as_markdown(answer)
 
 
-_TOOLS = {"select": _select}
+async def _describe_capability(ctx: RunContext[PlannerDeps], ask_index: int) -> str:
+    """Show an ask's candidates and each one's filterable fields, so the
+    model knows what it may set before calling ``select``."""
+
+    candidates = ctx.deps.discovery.capabilities.get(ask_index, ())
+    return render_candidates_as_markdown(candidates, schemas=ctx.deps.schemas)
+
+
+_TOOLS = {"select": _select, "describe_capability": _describe_capability}
 
 
 def build_planner_agent(*, tool_names: Sequence[str]) -> Agent[PlannerDeps, str]:
