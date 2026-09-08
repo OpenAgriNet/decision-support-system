@@ -79,6 +79,15 @@ class _FakeModerationLLM:
         return schema(violated_policy_id=self._violated)
 
 
+async def _no_discovery(intent, turn, *, now):
+    """These tests are about the runner's sequencing and its sinks, not
+    discovery. An empty result keeps that focus."""
+
+    from dss.core.provider_discovery.models import DiscoveryResult
+
+    return DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
+
+
 def _runner(
     *, violated=None, intent_llm=None, turns=None, telemetry=None
 ) -> CoreRunner:
@@ -86,6 +95,7 @@ def _runner(
         intent_llm=intent_llm or _FakeIntentLLM(),
         moderation_llm=_FakeModerationLLM(violated=violated),
         policies=[DELETE_COMMAND],
+        discover_providers=_no_discovery,
         turns=turns or FakeTurnSink(),
         telemetry=telemetry or FakeTelemetrySink(),
     )

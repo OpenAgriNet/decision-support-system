@@ -11,13 +11,17 @@ checkpoints are declared but not yet evaluated.
 from __future__ import annotations
 
 import warnings
+from datetime import datetime
 
 from dss.adapters.llm.pydantic_ai_provider import PydanticAILLMProvider
 from dss.adapters.llm.stub import StubLLM
 from dss.adapters.sinks.file import FileTelemetrySink, FileTurnSink
 from dss.config.policy_loader import load_policy_pack
 from dss.config.settings import Settings
+from dss.core.intent.models import Intent
 from dss.core.policy.models import Checkpoint
+from dss.core.provider_discovery.models import DiscoveryResult
+from dss.core.shared.models import UserTurn
 from dss.orchestration.core_runner import CoreRunner
 from dss.ports.turn import TurnRunner
 
@@ -45,9 +49,28 @@ def build_runner(settings: Settings) -> TurnRunner:
         intent_llm=_intent_llm(settings),
         moderation_llm=_moderation_llm(settings),
         policies=policies,
+        discover_providers=_discovers_nothing,
         turns=FileTurnSink(settings.turns_path),
         telemetry=FileTelemetrySink(settings.telemetry_path),
     )
+
+
+async def _discovers_nothing(
+    intent: Intent, turn: UserTurn, *, now: datetime
+) -> DiscoveryResult:
+    """Provider discovery is NOT wired — every turn finds nobody to call.
+
+    `CoreRunner` requires a `DiscoverProviders` so that nothing can be built
+    without deciding what discovery to give it. Building the real one needs a
+    schema-pack checkout on disk, an HTTP client, and six settings that do not
+    exist yet (base URLs, coverage radius, sender/receiver ids). Tracked in
+    TODO.md under "Planner Agent (#10)".
+
+    Replacing this one function is the whole change — the seam is already
+    typed and in place.
+    """
+
+    return DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
 
 
 def _intent_llm(settings: Settings):

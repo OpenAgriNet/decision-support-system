@@ -17,6 +17,7 @@ from typing import Protocol
 
 from pydantic_ai.models import Model
 
+from dss.config.planner_prompt_loader import load_planner_prompt_template
 from dss.core.intent.models import Intent
 from dss.core.planner.evidence import assemble_evidence
 from dss.core.planner.models import Evidence, Identity, Skill, Verdict
@@ -63,6 +64,9 @@ def build_plan(
     """
 
     model_settings = {"temperature": temperature, "timeout": timeout_seconds}
+    # Read once at wiring time, not per turn: the template is a shipped
+    # constant, and `core/` may not read files at all.
+    prompt_template = load_planner_prompt_template()
 
     async def plan(
         turn: UserTurn,
@@ -76,7 +80,10 @@ def build_plan(
             model=model,
             retries=retries,
             system_prompt=build_planner_prompt(
-                identity=identity, skills=skills, answers=discovery.answers
+                identity=identity,
+                skills=skills,
+                answers=discovery.answers,
+                template=prompt_template,
             ),
         )
         deps = PlannerDeps(
