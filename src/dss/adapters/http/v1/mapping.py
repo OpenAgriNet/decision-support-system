@@ -22,7 +22,6 @@ from dss.core.shared.models import (
     UserDetails,
     UserTurn,
 )
-
 # The concrete DSS release that handled the turn. Distinct from the envelope
 # version: the contract shape and the build that served it move independently.
 DSS_RELEASE = "v1.0.0"
