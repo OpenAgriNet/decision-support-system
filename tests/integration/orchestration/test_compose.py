@@ -25,6 +25,7 @@ from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from dss.core.planner.models import (
     Evidence,
+    Failure,
     Identity,
     Result,
     Source,
@@ -57,6 +58,20 @@ EVIDENCE = Evidence(
 )
 
 NOTHING_FOUND = Evidence(sources=(), results=(), served=(), failed=(), sufficient=False)
+
+UNREACHABLE = Evidence(
+    sources=(),
+    results=(),
+    served=(),
+    failed=(
+        Failure(
+            capability="openagrinet:MandiPrice",
+            reason="429 too many requests",
+            retryable=True,
+        ),
+    ),
+    sufficient=False,
+)
 
 
 def _turn(query: str = "What is the price of paddy?") -> UserTurn:
@@ -135,3 +150,20 @@ async def test_nothing_retrieved_says_so_in_the_prompt() -> None:
     # collapse the prompt's line wrapping so a phrase split across two lines
     # still matches
     assert "could not find it" in " ".join(recorder.everything.split())
+
+
+async def test_a_failed_provider_is_named_rather_than_reading_as_no_provider() -> None:
+    """ "We could not reach Agmarknet" and "nobody serves this" are the same
+    empty result but very different things to tell a farmer. `Evidence.failed`
+    exists for exactly that distinction — and the composer was not reading it,
+    so both rendered as "Nothing was retrieved."."""
+
+    recorder = _Recorder()
+    compose = build_compose(identity=IDENTITY, model=recorder.as_model())
+
+    await compose(UNREACHABLE, turn=_turn())
+
+    assert "openagrinet:MandiPrice" in recorder.everything
+    assert "429 too many requests" in recorder.everything
+    # and it must not read as "nobody serves this"
+    assert "Nothing was retrieved." not in recorder.everything
