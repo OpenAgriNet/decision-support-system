@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     dss_release: str = "v1.0.0"
     # A cap, not a rate limit — per-user limits belong to the caller. Zero
     # refuses every turn, which is how the saturated path is tested.
-    max_concurrent_turns: int = Field(32, ge=0)
+    # max_concurrent_turns: int = Field(32, ge=0) # future plan based on need
     # Checked after decompression: a small gzip payload can expand well past it.
     max_body_bytes: int = Field(1_000_000, ge=1)
     # Stands in for a real readiness probe until there is a dependency to probe.

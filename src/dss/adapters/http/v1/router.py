@@ -1,8 +1,8 @@
 """The HTTP rules for `POST /v1/turns`.
 
 Admission is ordered cheapest-rejection-first, so a flood of bad requests costs
-as little as possible: capacity, then readiness, then media type, then the body,
-then the schema, then negotiation.
+as little as possible: readiness, then media type, then the body, then the
+schema, then negotiation.
 
 The one invariant that shapes everything else: **once the first response byte is
 written, the status code cannot change.** So every failure discovered after that
@@ -17,6 +17,9 @@ The handler takes a raw `Request` rather than a bound model, because the
 anything validates them. That means FastAPI cannot infer the request schema, so
 it is declared explicitly in `openapi_extra` — the schema comes from the wire
 models, which *are* the contract.
+
+Concurrency admission (the `429`/capacity gate) is deliberately not handled
+here — it lives at the infra layer (proxy / gateway) in front of this service.
 """
 
 from __future__ import annotations
@@ -29,7 +32,6 @@ from collections.abc import AsyncIterable, AsyncIterator, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-import anyio
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import ValidationError
@@ -50,7 +52,6 @@ logger = logging.getLogger(__name__)
 
 JSON_MEDIA_TYPE = "application/json"
 SSE_MEDIA_TYPE = "text/event-stream"
-RETRY_AFTER_SECONDS = "1"
 
 
 @dataclass(frozen=True)
@@ -67,15 +68,11 @@ def turn_router(
     settings: Settings,
     clock: Callable[[], datetime] = lambda: datetime.now(UTC),
 ) -> APIRouter:
-    limiter = anyio.Semaphore(max(settings.max_concurrent_turns, 1))
-    saturated = settings.max_concurrent_turns == 0
-
     async def endpoint(request: Request) -> Response:
-        admitted = await _admit(request, settings, saturated=saturated)
+        admitted = await _admit(request, settings)
         if isinstance(admitted, Response):
             return admitted
-        async with limiter:
-            return await _run(admitted, runner=runner, clock=clock)
+        return await _run(admitted, runner=runner, clock=clock)
 
     router = APIRouter()
     router.add_api_route(
@@ -89,25 +86,15 @@ def turn_router(
     return router
 
 
-async def _admit(
-    request: Request, settings: Settings, *, saturated: bool
-) -> Response | _Admitted:
+async def _admit(request: Request, settings: Settings) -> Response | _Admitted:
     """Every gate a request must pass, in order — or the rejection it earned.
 
     **The order is the design**, which is why it stays in one function rather
     than one function per step: cheapest rejection first, so a flood of bad
-    requests costs as little as possible. Capacity and readiness are answered
-    from memory; the media type from a header; only then is the body read, and
-    only then parsed.
+    requests costs as little as possible. Readiness is answered from memory;
+    the media type from a header; only then is the body read, and only then
+    parsed.
     """
-
-    if saturated:
-        return problem.problem(
-            429,
-            problem.CAPACITY,
-            "The DSS is at its concurrency cap.",
-            headers={"Retry-After": RETRY_AFTER_SECONDS},
-        )
 
     if not settings.ready:
         return problem.problem(
@@ -224,7 +211,6 @@ _OPENAPI = {
         "413": {"description": "Decompressed body over the cap"},
         "415": {"description": "Content-Type is not application/json"},
         "422": {"description": "Well-formed JSON that violates the contract"},
-        "429": {"description": "Concurrency cap reached; carries Retry-After"},
         "503": {"description": "The DSS is not ready"},
     },
 }
