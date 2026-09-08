@@ -28,6 +28,14 @@ INVOCATION_SKILL = Skill(
 )
 
 
+class _UnusedInvocation:
+    """These tests never reach ``select``, but ``invocation`` is required —
+    the tool cannot work without one, so the type says so."""
+
+    async def select(self, capability, resource_attributes, transaction_id):
+        raise AssertionError("select must not be called in this test")
+
+
 def _deps() -> PlannerDeps:
     verdict = Verdict()
     verdict.set(ModerationDecision(outcome=Outcome.PROCEED))
@@ -48,7 +56,7 @@ def _deps() -> PlannerDeps:
             )
         },
         schema_context_index={},
-        invocation=None,
+        invocation=_UnusedInvocation(),
         verdict=verdict,
     )
 

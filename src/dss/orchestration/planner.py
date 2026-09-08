@@ -41,7 +41,10 @@ class PlannerDeps:
     discovery: DiscoveryResult
     schemas: dict[str, DomainSchema]
     schema_context_index: dict[str, str]
-    invocation: CapabilityInvocation | None
+    # Required, not optional: the tool cannot work without it, and an
+    # `assert` guard would be stripped by `python -O`, turning a wiring
+    # mistake into an AttributeError from inside a tool body.
+    invocation: CapabilityInvocation
     verdict: Verdict
     raw_answers: list[tuple[int, DiscoveredAnswer]] = field(default_factory=list)
     failures: list[tuple[int, Failure]] = field(default_factory=list)
@@ -98,7 +101,6 @@ async def _select(
         schema_context_index=deps.schema_context_index,
     )
 
-    assert deps.invocation is not None
     try:
         answer = await deps.invocation.select(
             capability, full_attributes, deps.turn.transaction_id

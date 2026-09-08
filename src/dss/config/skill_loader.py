@@ -23,9 +23,31 @@ _DEFAULTS = Path(__file__).parent / "defaults" / "skills"
 _FRONTMATTER_DELIMITER = "---\n"
 
 
-def _parse_skill_file(text: str) -> Skill:
-    _, frontmatter, body = text.split(_FRONTMATTER_DELIMITER, 2)
-    metadata = yaml.safe_load(frontmatter)
+def _parse_skill_file(text: str, name: str) -> Skill:
+    """Parse one ``---``-delimited skill file.
+
+    ``name`` is only for the error. A bare unpack or ``KeyError`` names no
+    file, and a deployment can mount many skills — "do not boot on a broken
+    config" has to say *which* config.
+    """
+
+    parts = text.split(_FRONTMATTER_DELIMITER, 2)
+    if len(parts) != 3:
+        raise ValueError(
+            f"{name} has no '---' frontmatter block — a skill file is "
+            "'---', YAML metadata, '---', then the guidance"
+        )
+
+    _, frontmatter, body = parts
+    metadata = yaml.safe_load(frontmatter) or {}
+    missing = [
+        key
+        for key in ("id", "domain", "description", "tool_names")
+        if key not in metadata
+    ]
+    if missing:
+        raise ValueError(f"{name} is missing {', '.join(missing)} in its frontmatter")
+
     return Skill(
         id=metadata["id"],
         domain=metadata["domain"],
@@ -51,6 +73,6 @@ def load_skills(path: Path | None = None) -> tuple[Skill, ...]:
         )
 
     return tuple(
-        _parse_skill_file(skill_file.read_text(encoding="utf-8"))
+        _parse_skill_file(skill_file.read_text(encoding="utf-8"), skill_file.name)
         for skill_file in sorted(source.glob("*.md"))
     )

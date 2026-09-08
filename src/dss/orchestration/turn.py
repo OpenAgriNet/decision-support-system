@@ -44,9 +44,20 @@ from dss.core.shared.models import UserTurn
 from dss.orchestration.discovery import DiscoverProviders
 from dss.ports.llm import LLMProvider
 
-_NOTHING_DISCOVERED = DiscoveryResult(
-    answers={}, capabilities={}, failures={}, events=()
-)
+
+def _nothing_discovered() -> DiscoveryResult:
+    """An empty result, fresh each time.
+
+    A factory rather than a module constant: ``DiscoveryResult`` is frozen,
+    but its ``answers``/``capabilities``/``failures`` are plain dicts, and
+    frozen stops you reassigning a field, not mutating the dict inside it.
+    ``_apply_expiry_filter`` writes ``answers[ask_index]`` in place on
+    whatever result it is handed. Nothing routes this one there today, but a
+    single shared object means one such write would corrupt every subsequent
+    rejected turn in the process.
+    """
+
+    return DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
 
 
 class TurnResult(BaseModel):
@@ -97,7 +108,7 @@ async def run_turn(
     """
 
     intent = Intent()
-    discovery = _NOTHING_DISCOVERED
+    discovery = _nothing_discovered()
     decision: ModerationDecision | None = None
 
     async def classify_then_discover() -> None:
@@ -115,9 +126,12 @@ async def run_turn(
         task_group.start_soon(run_moderation)
         task_group.start_soon(classify_then_discover)
 
-    assert decision is not None  # the task group joined, so both branches ran
+    # Type narrowing only, safe to strip under `python -O`: the task group
+    # either ran both branches to completion or raised out of the `async
+    # with`, so reaching here means moderation set this.
+    assert decision is not None
     if decision.outcome is not Outcome.PROCEED:
         return TurnResult(
-            intent=Intent(), decision=decision, discovery=_NOTHING_DISCOVERED
+            intent=Intent(), decision=decision, discovery=_nothing_discovered()
         )
     return TurnResult(intent=intent, decision=decision, discovery=discovery)

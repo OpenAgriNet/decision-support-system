@@ -24,13 +24,21 @@ def _discovery_result() -> DiscoveryResult:
     return DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
 
 
+class _UnusedInvocation:
+    """These tests never reach ``select``, but ``invocation`` is required —
+    the tool cannot work without one, so the type says so."""
+
+    async def select(self, capability, resource_attributes, transaction_id):
+        raise AssertionError("select must not be called in this test")
+
+
 def test_planner_deps_starts_with_an_empty_accumulator() -> None:
     deps = PlannerDeps(
         turn=_turn(),
         discovery=_discovery_result(),
         schemas={},
         schema_context_index={},
-        invocation=None,
+        invocation=_UnusedInvocation(),
         verdict=Verdict(),
     )
 

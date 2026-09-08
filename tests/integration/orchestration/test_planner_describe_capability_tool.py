@@ -39,6 +39,14 @@ def _skill_with(*tool_names: str) -> Skill:
     )
 
 
+class _UnusedInvocation:
+    """These tests never reach ``select``, but ``invocation`` is required —
+    the tool cannot work without one, so the type says so."""
+
+    async def select(self, capability, resource_attributes, transaction_id):
+        raise AssertionError("select must not be called in this test")
+
+
 def _deps() -> PlannerDeps:
     return PlannerDeps(
         turn=UserTurn(
@@ -57,7 +65,7 @@ def _deps() -> PlannerDeps:
         schema_context_index={
             "openagrinet:MandiPrice": "https://schemas.openagrinet.global/schema/MandiPrice/0.1/context.jsonld"
         },
-        invocation=None,
+        invocation=_UnusedInvocation(),
         # Left unset on purpose: describe_capability reads discovery data
         # already in memory, so it does not wait for moderation. A tool that
         # awaited this Verdict would hang here.
