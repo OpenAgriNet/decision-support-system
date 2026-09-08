@@ -1,8 +1,9 @@
-"""The orchestrator — one function that runs a turn (design v2 §4).
+"""The orchestrator — the live turn runner (design doc §4).
 
-The orchestrator holds the turn and calls each component in order. Components never
-call each other: every one takes plain objects and returns plain objects, and this
-module is the only place that knows the sequence. Order is code, not config.
+It holds the turn and calls each real component in order, then streams the
+result to the transport. Components never call each other; every one takes
+plain objects and returns plain objects, and this module is the only place
+that knows the sequence. Order is code, not config.
 
     intent ∥ moderation      run together — both need only the turn (ADR-0003)
           │
@@ -10,158 +11,258 @@ module is the only place that knows the sequence. Order is code, not config.
       (gate on the verdict — the barrier)
           │  proceed
           ▼
-      provider discovery      read-only; only runs once moderation has cleared
+      provider discovery      read-only; may cross the barrier (see `turn.py`)
           │
           ▼
-      planner agent           builds *and runs* the plan (owns execution)
+      planner agent           builds *and runs* the plan → `Evidence`
           │
           ▼
-       TurnResult
+      response composer        `Evidence` → the prose a farmer reads
+          │
+          ▼
+      TurnFinished
 
-Nothing side-effecting runs until moderation has cleared: the planner — which is
-also what touches the outside world — is reached only on ``PROCEED``, and the three
-non-answer outcomes return before it (design v2 §3).
+The understand phase (intent ∥ moderation ∥ discovery, and the barrier) is
+delegated to `turn.py:run_turn`, which already owns that concurrency and is
+tested there. This runner adds what the transport needs on top: the planner
+and composer, the event stream, the evidence writes, and the mapping from a
+turn's findings to a contract outcome.
 
-Downstream response composition and channel shaping are separate components, not
-yet built; this orchestrator stops at the planner's result and does not stub them.
-
-Composition, not config, decides which components run: the callables are wired once
-in :func:`build_components` (or a test). This module never imports the orchestration
-framework — it composes plain async callables behind ``ports``. Concurrency is
-``anyio`` (ADR-0005), consistent with the rest of ``core``/``adapters``.
+This replaces the stub answer `core_runner.CoreRunner` streamed: same
+`TurnRunner` seam, but a real planner and composer instead of a fixed price.
+Nothing side-effecting runs until moderation has cleared — the planner is
+reached only on `PROCEED`, and its own `select` tool waits on the `Verdict`
+before it touches a provider.
 """
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
-from datetime import datetime
-from functools import partial
 
-import anyio
-from pydantic import BaseModel, ConfigDict
-
+from dss.core.channel.models import ComposedAnswer
+from dss.core.channel.service import answer_from_evidence, no_match_answer
 from dss.core.intent.models import Intent
-from dss.core.intent.service import classify_intent
-from dss.core.moderation.models import ModerationContext, ModerationDecision, Outcome
-from dss.core.moderation.service import moderate as moderate_service
-from dss.core.planning.models import Plan
-from dss.core.planning.service import plan_turn
+from dss.core.moderation.messages import messages_for
+from dss.core.moderation.models import ModerationDecision, Outcome
+from dss.core.planner.models import Evidence, Verdict
+from dss.core.planner.sufficiency import unserved_asks
 from dss.core.policy.models import Policy
 from dss.core.provider_discovery.models import DiscoveryResult
-from dss.core.shared.models import UserTurn
+from dss.core.shared.models import (
+    Cause,
+    Claim,
+    RefusalBlock,
+    TurnContext,
+    TurnEvent,
+    TurnFinished,
+    TurnOutcome,
+    TurnStarted,
+    TurnStatus,
+    UserTurn,
+)
+from dss.orchestration.compose import Compose
 from dss.orchestration.discovery import DiscoverProviders
+from dss.orchestration.plan import Plan
+from dss.orchestration.turn import run_turn
 from dss.ports.llm import LLMProvider
+from dss.ports.sinks import TelemetrySink, TurnSink
+
+# A moderation outcome is not a turn status: `CLARIFY` means the DSS understood
+# and needs more from the farmer, which the contract calls `requires_input`.
+_STATUS_FOR = {
+    Outcome.REJECT: TurnStatus.REJECTED,
+    Outcome.CLARIFY: TurnStatus.REQUIRES_INPUT,
+    Outcome.NO_MATCH: TurnStatus.NO_MATCH,
+}
+
+# STUB(#86): no component reports confidence yet. The contract requires the
+# field, so the runner supplies a number per status. Note these are not
+# comparable — a refusal's certainty and an answer's certainty measure
+# different things, which is the open question behind the field. (Kept in step
+# with `core_runner._STUB_CONFIDENCE` until that runner is retired.)
+_STUB_CONFIDENCE = {
+    TurnStatus.ANSWERED: 92,
+    TurnStatus.PARTIALLY_ANSWERED: 74,
+    TurnStatus.REJECTED: 98,
+    TurnStatus.NO_MATCH: 88,
+    TurnStatus.REQUIRES_INPUT: 80,
+    TurnStatus.UNAVAILABLE: 0,
+}
+
+
+def outcome_for(status: TurnStatus, cause: Cause | None = None) -> TurnOutcome:
+    return TurnOutcome(status=status, cause=cause, confidence=_STUB_CONFIDENCE[status])
 
 
 @dataclass(frozen=True)
-class OrchestratorComponents:
-    """The components a turn runs through, each already bound to its own model,
-    ports and config. Swapping an implementation is a change here, not in
-    ``run_turn``."""
+class Components:
+    """The real components a turn runs through downstream of the understand
+    phase, each already bound to its model, ports and config in the composition
+    root. Swapping an implementation is a change there, not here.
 
-    classify: Callable[[UserTurn], Awaitable[Intent]]
-    moderate: Callable[[UserTurn], Awaitable[ModerationDecision]]
-    discover_providers: Callable[
-        [Intent, UserTurn, datetime], Awaitable[DiscoveryResult]
-    ]
-    plan: Callable[
-        [UserTurn, Intent, DiscoveryResult, ModerationDecision], Awaitable[Plan]
-    ]
+    `discover` chains off intent inside `run_turn`; `plan` and `compose` run
+    here, past the barrier."""
+
+    discover: DiscoverProviders
+    plan: Plan
+    compose: Compose
 
 
-class TurnResult(BaseModel):
-    """The turn's finding. ``plan`` is ``None`` when the turn did not proceed. On a
-    non-``PROCEED`` outcome ``intent`` is blanked (ADR-0003): a refused turn surfaces
-    no intent read off the text it refused."""
+class Orchestrator:
+    """Satisfies `ports.turn.TurnRunner`. The live runner: real intent,
+    moderation, discovery, planner and composer, streamed to the transport."""
 
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    def __init__(
+        self,
+        *,
+        intent_llm: LLMProvider,
+        moderation_llm: LLMProvider,
+        policies: Sequence[Policy],
+        components: Components,
+        turns: TurnSink,
+        telemetry: TelemetrySink,
+    ) -> None:
+        self._intent_llm = intent_llm
+        self._moderation_llm = moderation_llm
+        self._policies = policies
+        self._components = components
+        self._turns = turns
+        self._telemetry = telemetry
 
-    outcome: Outcome
-    decision: ModerationDecision
-    intent: Intent
-    plan: Plan | None = None
+    async def run(self, turn: UserTurn, ctx: TurnContext) -> AsyncIterator[TurnEvent]:
+        yield TurnStarted()
+        self._turns.opened(ctx, turn)
 
+        # Intent ∥ moderation, discovery chained off intent, and the barrier —
+        # all owned by `run_turn`. It blanks intent and discovery on any
+        # non-PROCEED outcome, so a refused turn surfaces neither.
+        result = await run_turn(
+            turn,
+            intent_llm=self._intent_llm,
+            moderation_llm=self._moderation_llm,
+            policies=self._policies,
+            discover_providers=self._components.discover,
+        )
+        decision = result.decision
+        self._note("moderation", ctx, decision.outcome.value)
 
-def outcome_for(decision: ModerationDecision, plan: Plan) -> Outcome:
-    """Which of the four ways out the turn took. Only the orchestrator can decide
-    this — it is the only thing that sees both the verdict and the plan. Moderation's
-    outcome wins; on ``PROCEED`` the plan's steps/missing pair decides (design v2
-    §6.6 table)."""
+        if decision.outcome is not Outcome.PROCEED:
+            yield self._finish(ctx, _refused(decision))
+            return
 
-    if decision.outcome is not Outcome.PROCEED:
-        return decision.outcome
-    if plan.steps:
-        return Outcome.PROCEED  # run it (missing inputs, if any, asked alongside)
-    if plan.missing:
-        return Outcome.CLARIFY  # pure clarification
-    return Outcome.NO_MATCH  # nothing to do
+        self._note("intent", ctx, _classified(result.intent))
 
+        # Nobody can serve the ask: no provider is reachable for it, so there is
+        # nothing for the planner to call and nothing for the composer to write
+        # from. Answer NO_MATCH here rather than spend a planner and composer
+        # round-trip to arrive at the same empty-handed place.
+        if _nobody_serves(result.discovery):
+            yield self._finish(
+                ctx, (outcome_for(TurnStatus.NO_MATCH), no_match_answer())
+            )
+            return
 
-async def run_turn(
-    turn: UserTurn,
-    components: OrchestratorComponents,
-    *,
-    now: datetime,
-) -> TurnResult:
-    """Run one turn: classify and moderate concurrently, gate on the verdict, then
-    discover and plan. ``now`` is passed in rather than read from the clock so a turn
-    is reproducible (the repo threads time explicitly)."""
-
-    # Intent and moderation need only the turn, so they run together (ADR-0003).
-    box: dict[str, Intent | ModerationDecision] = {}
-
-    async def _classify() -> None:
-        box["intent"] = await components.classify(turn)
-
-    async def _moderate() -> None:
-        box["decision"] = await components.moderate(turn)
-
-    async with anyio.create_task_group() as tg:
-        tg.start_soon(_classify)
-        tg.start_soon(_moderate)
-
-    intent: Intent = box["intent"]  # type: ignore[assignment]
-    decision: ModerationDecision = box["decision"]  # type: ignore[assignment]
-
-    # The barrier. On any non-PROCEED outcome nothing further runs — no discovery,
-    # no planner, so no outside call — and the classified intent is discarded.
-    if decision.outcome is not Outcome.PROCEED:
-        return TurnResult(
-            outcome=decision.outcome, decision=decision, intent=Intent(), plan=None
+        # Past the barrier: the decision cleared, so the planner's `select` tool
+        # is free to call providers. The `Verdict` is how that clearance reaches
+        # the tool, which may be several model round-trips deep.
+        verdict = Verdict()
+        verdict.set(decision)
+        evidence = await self._components.plan(
+            turn, intent=result.intent, discovery=result.discovery, verdict=verdict
         )
 
-    # Past the barrier. Discovery is read-only; the planner builds and runs the plan.
-    discovered = await components.discover_providers(intent, turn, now)
-    plan = await components.plan(turn, intent, discovered, decision)
+        text = await self._components.compose(evidence, turn=turn)
+        answer = answer_from_evidence(text, evidence)
+        for block in answer.content:
+            yield Claim(content=block)
+        self._note("channel", ctx, str(len(answer.content)))
 
-    return TurnResult(
-        outcome=outcome_for(decision, plan),
-        decision=decision,
-        intent=intent,
-        plan=plan,
+        status, cause = _status_for(evidence, result.intent)
+        yield self._finish(ctx, (outcome_for(status, cause), answer))
+
+    def _finish(
+        self, ctx: TurnContext, resolved: tuple[TurnOutcome, ComposedAnswer]
+    ) -> TurnFinished:
+        """Build the terminal event and record it.
+
+        The turn sink is required, so a failure here is deliberately not caught —
+        answering while silently failing to record the turn is not a success
+        worth having.
+        """
+
+        outcome, answer = resolved
+        finished = TurnFinished(
+            outcome=outcome, content=answer.content, sources=answer.sources
+        )
+        self._turns.closed(ctx, finished)
+        return finished
+
+    def _note(self, stage: str, ctx: TurnContext, outcome: str) -> None:
+        """Telemetry is optional (`ports/sinks.py`), so losing a span must never
+        cost the farmer an answer."""
+
+        try:
+            self._telemetry.stage(stage, ctx, outcome)
+        except Exception:  # noqa: BLE001 - an optional sink may fail any way it likes
+            pass
+
+
+def _nobody_serves(discovery: DiscoveryResult) -> bool:
+    """Whether discovery found anyone for any ask. An empty dict, or one whose
+    values are all empty tuples, both mean nobody: a Direct answer lands in
+    `answers`, an OnDemand capability in `capabilities`, and neither being
+    present for any ask is the no-match the composer would otherwise be asked to
+    narrate from nothing."""
+
+    return not any(discovery.answers.values()) and not any(
+        discovery.capabilities.values()
     )
 
 
-def build_components(
-    *,
-    intent_llm: LLMProvider,
-    moderation_llm: LLMProvider,
-    policies: Sequence[Policy],
-    discover_providers: DiscoverProviders,
-) -> OrchestratorComponents:
-    """Wire the real components — intent, moderation, provider discovery — and the
-    planner into one bundle, each bound to its model, ports and config. The
-    entrypoint calls this once at startup; ``run_turn`` reuses it for every turn."""
+def _status_for(evidence: Evidence, intent: Intent) -> tuple[TurnStatus, Cause | None]:
+    """Map what the loop actually gathered to a contract outcome. Reads facts
+    off `Evidence` — it invents no rule, so no business `if` escapes `core/`:
 
-    async def moderate(turn: UserTurn) -> ModerationDecision:
-        return await moderate_service(
-            ModerationContext(turn=turn), policies, moderation_llm
-        )
+    - no results, but calls failed → the providers exist but could not be
+      reached: `unavailable`, which the transport reports as a retryable error.
+    - no results, no failures → nobody served it after all: `no_match`.
+    - some asks unserved → `partially_answered` (design v2 §6.2).
+    - every ask served → `answered`.
+    """
 
-    return OrchestratorComponents(
-        classify=partial(classify_intent, llm=intent_llm),
-        moderate=moderate,
-        discover_providers=discover_providers,
-        plan=plan_turn,
+    if not evidence.results:
+        if evidence.failed:
+            return TurnStatus.UNAVAILABLE, Cause.PROVIDER_UNAVAILABLE
+        return TurnStatus.NO_MATCH, None
+    if unserved_asks(evidence, intent=intent):
+        return TurnStatus.PARTIALLY_ANSWERED, None
+    return TurnStatus.ANSWERED, None
+
+
+def _classified(intent: Intent) -> str:
+    """A non-personal summary for telemetry: which categories the turn asked
+    about, never the question itself."""
+
+    return (
+        ",".join(ask.subject_categories.value for ask in intent.asks) or "unclassified"
+    )
+
+
+def _refused(decision: ModerationDecision) -> tuple[TurnOutcome, ComposedAnswer]:
+    """Turn a moderation decision into what the farmer reads.
+
+    The wording comes from `core/moderation/messages.py` rather than from here —
+    the runner does not write prose. A `NO_MATCH` decision falls back to the
+    composer's own no-match answer when moderation supplies no message.
+    """
+
+    status = _STATUS_FOR[decision.outcome]
+    cause = Cause(decision.reason_code.value) if decision.reason_code else None
+    texts = messages_for(decision)
+
+    if not texts:
+        return outcome_for(status, cause), no_match_answer()
+    return outcome_for(status, cause), ComposedAnswer(
+        content=tuple(RefusalBlock(text=text) for text in texts)
     )

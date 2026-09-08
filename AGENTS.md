@@ -27,7 +27,7 @@ Do not duplicate architecture, domain model, or design-decision detail here — 
 Install: `uv sync`
 Lint: `uv run ruff check .` · Format: `uv run ruff format .`
 Test: `uv run pytest` — tier 6 (eval) is excluded; run it deliberately with `uv run pytest -m eval`
-Run locally: `uv run uvicorn --factory dss.entrypoint.app:create_app --port 8077` — `POST /v1/turns`, `Accept` selects JSON or SSE. The core is stubbed; see [`docs/RUNNING.md`](./docs/RUNNING.md) for curl recipes, knobs, and what is fake.
+Run locally: `uv run uvicorn --factory dss.entrypoint.app:create_app --port 8077` — `POST /v1/turns`, `Accept` selects JSON or SSE. The full pipeline is wired (`orchestration/orchestrator.py` is the live runner: intent → moderation → discovery → planner → composer); discovery + invocation are gated on the three network settings, so without them a local turn is `no_match`. See [`docs/RUNNING.md`](./docs/RUNNING.md) for curl recipes, knobs, and what is still fake.
 
 ## Conventions
 Naming, versioning, changelog, git workflow, logging, and linting conventions are documented separately in [`CONVENTIONS.md`](./CONVENTIONS.md) — read that file before naming anything, writing a commit, or opening a PR.
