@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
+from enum import StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -103,3 +104,145 @@ class UserTurn(BaseModel):
                 "never a full name like 'gujarati'"
             )
         return value
+
+
+# ---------------------------------------------------------------------------
+# What a turn produces. Added by the /v1/turns transport (spec 87); main has no
+# response types, so nothing above this line changes.
+# ---------------------------------------------------------------------------
+
+
+class TurnContext(BaseModel):
+    """The ids a *response* is filed under, and the evidence key.
+
+    `trace_id` is the caller's `transactionId`, echoed back as `traceId`.
+    `message_id` is the caller's, or one the transport minted — the contract
+    requires it on every response. `session_id` is copied from the turn because
+    every frame carries it; `transaction_id` is deliberately absent, since
+    `trace_id` already is it.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    trace_id: str
+    message_id: str
+    session_id: str
+
+
+class TurnStatus(StrEnum):
+    """How a turn ended. One axis: `unavailable` is the execution-failure value,
+    so no second field is needed to tell a refusal from a crash."""
+
+    ANSWERED = "answered"
+    PARTIALLY_ANSWERED = "partially_answered"
+    REJECTED = "rejected"
+    NO_MATCH = "no_match"
+    REQUIRES_INPUT = "requires_input"
+    UNAVAILABLE = "unavailable"
+
+
+class Cause(StrEnum):
+    """Why a turn ended the way it did.
+
+    Closed here on purpose: the core may only emit causes it knows. The wire set
+    is documented as open, which is a promise to callers about future releases —
+    not a licence to return a free string.
+    """
+
+    # harm
+    UNSAFE_ILLEGAL = "unsafe_illegal"
+    ROLE_OBFUSCATION = "role_obfuscation"
+    POLITICAL_CONTROVERSIAL = "political_controversial"
+    EXTERNAL_REFERENCE = "external_reference"
+    ADOPTER_POLICY = "adopter_policy"
+    # scope
+    DOMAIN_UNMAPPED = "domain_unmapped"
+    INTENT_LOW_CONFIDENCE = "intent_low_confidence"
+    UNSUPPORTED_ACTION_TYPE = "unsupported_action_type"
+    # infrastructure
+    MODERATION_UNAVAILABLE = "moderation_unavailable"
+    PROVIDER_UNAVAILABLE = "provider_unavailable"
+    TIMEOUT = "timeout"
+    INTERNAL = "internal"
+
+
+class SourceKind(StrEnum):
+    PROVIDER = "provider"
+    DOCUMENT = "document"
+    TOOL = "tool"
+
+
+class Source(BaseModel):
+    """Where a fact came from, named as the farmer sees it. Which internal
+    capability produced it is telemetry, not wire."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    id: str
+    name: str
+    kind: SourceKind
+    url: str | None = None
+
+
+class TextBlock(BaseModel):
+    """One whole sentence the farmer reads, with the sources behind it."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    text: str
+    source_ids: tuple[str, ...] = ()
+
+
+class RefusalBlock(BaseModel):
+    """Something the DSS will not answer, in words the farmer reads."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    text: str
+
+
+OutputContent = TextBlock | RefusalBlock
+
+
+class TurnOutcome(BaseModel):
+    """How the turn ended, and how sure the DSS is of it.
+
+    `confidence` is on the wire because the contract requires it. What the
+    number *means* per status is an open question — a refusal's 98 and an
+    answer's 92 are not the same measurement.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    status: TurnStatus
+    confidence: int = Field(ge=0, le=100)
+    cause: Cause | None = None
+    retry_after_seconds: int | None = None
+
+
+class TurnStarted(BaseModel):
+    """The turn was accepted and execution began."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class Claim(BaseModel):
+    """One reviewed block, ready to present. Emitted as it is produced."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    content: OutputContent
+
+
+class TurnFinished(BaseModel):
+    """The whole turn. Authoritative — a caller stores this rather than
+    reassembling the claims it already rendered."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    outcome: TurnOutcome
+    content: tuple[OutputContent, ...] = ()
+    sources: tuple[Source, ...] = ()
+
+
+TurnEvent = TurnStarted | Claim | TurnFinished

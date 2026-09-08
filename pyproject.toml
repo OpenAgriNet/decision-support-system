@@ -10,6 +10,10 @@ dependencies = [
     # and force-installs anthropic, google-genai, logfire, mcp, evals, cli, and web.
     # The LLM provider is a swappable adapter behind a port (DSS_ARCHITECTURE.md §4.3),
     # so extras are declared explicitly as adapters are built.
+    # The HTTP entrypoint (ADR-0006). Runtime, not dev: fastapi and uvicorn back
+    # the committed /v1/turns surface, no longer just the examples/ harness.
+    "fastapi>=0.141.1",
+    "uvicorn>=0.52.4",
     "httpx2>=2.12.0",
     "pydantic-ai-slim[openai]>=2.33.0",
     # Settings binding for the moderation LLM knobs and config paths (spec 0002).
@@ -36,14 +40,14 @@ dev = [
     "pytest-cov>=7.1.0",
     "ruff>=0.16.4",
     "jsonschema>=4.26.0",
-    # Dev-only test harnesses under examples/ — NOT the committed entrypoint
-    # (that needs an ADR; DSS_ARCHITECTURE.md §8.3). fastapi/uvicorn back the
-    # curl server; logfire ships Pydantic AI's OpenTelemetry instrumentation and
-    # exports traces to a self-hosted Langfuse via standard OTEL_* env vars.
-    "fastapi>=0.115.0",
-    "uvicorn>=0.34.0",
+    # logfire ships Pydantic AI's OpenTelemetry instrumentation and exports
+    # traces to a self-hosted Langfuse via standard OTEL_* env vars. fastapi and
+    # uvicorn moved to runtime dependencies when ADR-0006 made FastAPI the
+    # committed entrypoint.
     "logfire>=3.0.0",
     "pytest-httpserver>=1.1.5",
+    # fastapi's TestClient is built on httpx specifically, not httpx2.
+    "httpx>=0.28.1",
 ]
 
 # ---------------------------------------------------------------------------
@@ -111,10 +115,12 @@ include = ["src", "tests"]
 [tool.pytest.ini_options]
 minversion = "9.0"
 testpaths = ["tests"]
-# async tier-1 tests (the LLMProvider port is async) run without per-test markers.
-asyncio_mode = "auto"
-# import-mode=importlib lets the mirrored test tree carry duplicate basenames
-# (tests/unit/core/*/test_service.py) without __init__ packages or name clashes.
+# tests/support/ holds hand-written doubles that test modules import directly.
+# Without this, `tests` is not a package on sys.path and those imports fail.
+pythonpath = ["."]
+# --import-mode=importlib: the tier table mirrors src/, so sibling packages each
+# hold a `test_service.py`. Under the default prepend mode those collide on the
+# module name `test_service`; importlib gives each its own full path.
 addopts = [
     "-ra",
     "--strict-config",
@@ -127,24 +133,11 @@ addopts = [
     "--cov=src/dss",
     "--cov-report=term-missing",
 ]
+# ADR-0005: async tests run under pytest-asyncio in auto mode, which claims every
+# async test regardless of marker. anyio's own pytest plugin is deliberately not
+# used, so `@pytest.mark.anyio` would be inert.
+asyncio_mode = "auto"
 markers = [
     "eval: tier-6 end-to-end quality eval; diagnostic only, never a merge gate",
 ]
 strict_markers = true
-
-# ---------------------------------------------------------------------------
-# Coverage — report-only (see addopts). `eval` and the dev-only harness under
-# examples/ are excluded from the measured surface; they are not the core that
-# the tier-1 suite is meant to cover.
-# ---------------------------------------------------------------------------
-[tool.coverage.run]
-source = ["src/dss"]
-branch = true
-
-[tool.coverage.report]
-show_missing = true
-exclude_lines = [
-    "pragma: no cover",
-    "if TYPE_CHECKING:",
-    "\\.\\.\\.",
-]

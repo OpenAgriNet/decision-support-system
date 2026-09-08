@@ -17,3 +17,6 @@ dist/
 .ruff_cache/
 .coverage
 htmlcov/
+# tests/
+# Evidence written by a local run (docs/RUNNING.md)
+var/

@@ -40,3 +40,34 @@ class Settings(BaseSettings):
     # Where the adopter policy pack is mounted. Unset → use the bundled defaults;
     # set-but-missing → raise (see policy_loader), never boot on a different config.
     policy_config_path: Path | None = None
+
+    # --- HTTP entrypoint (ADR-0006) ---------------------------------------
+    # The concrete build that served the turn, echoed as `context.version`.
+    dss_release: str = "v1.0.0"
+    # A cap, not a rate limit — per-user limits belong to the caller. Zero
+    # refuses every turn, which is how the saturated path is tested.
+    # max_concurrent_turns: int = Field(32, ge=0) # future plan based on need
+    # Checked after decompression: a small gzip payload can expand well past it.
+    max_body_bytes: int = Field(1_000_000, ge=1)
+    # Stands in for a real readiness probe until there is a dependency to probe.
+    ready: bool = True
+    # Wire StubLLM instead of a real provider, so the endpoint can be exercised
+    # with no API key and no network (docs/RUNNING.md). Never true in a
+    # deployment — the answers are canned.
+    stub_llm: bool = False
+
+    # --- evidence ---------------------------------------------------------
+    # The external evidence API does not exist yet, so records are written here
+    # as JSON Lines in the meantime.
+    evidence_dir: Path = Path("var/evidence")
+    # Declared so the destination is configuration rather than a code change.
+    # NOT wired — `entrypoint.composition.build_runner` warns if it is set.
+    evidence_url: str | None = None
+
+    @property
+    def telemetry_path(self) -> Path:
+        return self.evidence_dir / "telemetry.jsonl"
+
+    @property
+    def turns_path(self) -> Path:
+        return self.evidence_dir / "turns.jsonl"
