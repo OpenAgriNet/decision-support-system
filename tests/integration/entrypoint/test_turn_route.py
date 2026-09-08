@@ -49,9 +49,6 @@ def frames(text: str) -> list[tuple[str, dict]]:
     return out
 
 
-# --- happy path -------------------------------------------------------------
-
-
 def test_a_streaming_turn_returns_the_event_sequence(a_body):
     app, _ = client()
 
@@ -91,9 +88,6 @@ def test_both_modes_describe_the_same_turn(a_body):
 
     terminal = frames(stream.text)[-1][1]
     assert terminal["message"] == single.json()["message"]
-
-
-# --- request rules ----------------------------------------------------------
 
 
 def test_a_malformed_body_is_a_bad_request():
@@ -165,11 +159,11 @@ def test_a_gzipped_body_within_the_cap_is_accepted(a_body):
     assert response.status_code == 200
 
 
-# --- content negotiation ----------------------------------------------------
-
-
 @pytest.mark.parametrize("accept", [JSON, "*/*", None])
 def test_anything_but_the_event_stream_gets_json(a_body, accept):
+    """JSON is both the default and the fallback: an absent `Accept`, a
+    wildcard, and an explicit request all resolve to it."""
+
     app, _ = client()
     headers = {} if accept is None else {"Accept": accept}
 
@@ -188,9 +182,6 @@ def test_an_unsatisfiable_accept_is_refused(a_body):
     assert response.status_code == 406
 
 
-# --- capacity and readiness -------------------------------------------------
-
-
 def test_a_saturated_dss_says_come_back_later(a_body):
     app, _ = client(max_concurrent_turns=0)
 
@@ -204,9 +195,6 @@ def test_an_unready_dss_is_unavailable(a_body):
     app, _ = client(ready=False)
 
     assert app.post("/v1/turns", json=a_body()).status_code == 503
-
-
-# --- trace context ----------------------------------------------------------
 
 
 def test_the_trace_id_echoes_the_callers_transaction_id(a_body):
@@ -232,9 +220,6 @@ def test_a_response_always_carries_a_message_id(a_body):
     response = app.post("/v1/turns", json=body, headers={"Accept": JSON})
 
     assert response.json()["context"]["messageId"]
-
-
-# --- failures ---------------------------------------------------------------
 
 
 def test_a_fault_mid_stream_keeps_the_frames_already_sent(a_body):

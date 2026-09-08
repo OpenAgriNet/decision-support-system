@@ -1,5 +1,10 @@
 """STUB(#83) — an LLM that answers from a table.
 
+TODO(#83): delete this module once a real provider is wired for every
+component. `adapters/llm/pydantic_ai_provider.py` already implements the port;
+this is selected only when `Settings.stub_llm` is set, and the whole file goes
+with that flag.
+
 No network, no vendor SDK, no clock. It records what it was asked so a test can
 assert *that* a stage ran, or that a stage was skipped.
 

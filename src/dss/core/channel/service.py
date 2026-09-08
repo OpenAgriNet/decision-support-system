@@ -16,6 +16,10 @@ from dss.core.intent.models import Intent
 from dss.core.shared.models import Source, SourceKind, TextBlock, UserTurn
 from dss.ports.llm import LLMProvider
 
+# TODO(#84): delete `_SOURCE` and the fixed sentences below with the real
+# composer. Sources belong to the evidence a plan gathered, not to this module —
+# a hardcoded provider here would silently outlive the stub and start citing a
+# source no turn actually consulted.
 _SOURCE = Source(
     id="src_1",
     name="Agmarknet",

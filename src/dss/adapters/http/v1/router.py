@@ -26,6 +26,7 @@ import logging
 import uuid
 import zlib
 from collections.abc import AsyncIterable, AsyncIterator, Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import anyio
@@ -52,6 +53,14 @@ SSE_MEDIA_TYPE = "text/event-stream"
 RETRY_AFTER_SECONDS = "1"
 
 
+@dataclass(frozen=True)
+class _Admitted:
+    """A request that passed every gate, and the mode it asked for."""
+
+    body: schema.TurnRequest
+    wants_stream: bool
+
+
 def turn_router(
     *,
     runner: TurnRunner,
@@ -62,82 +71,11 @@ def turn_router(
     saturated = settings.max_concurrent_turns == 0
 
     async def endpoint(request: Request) -> Response:
-        if saturated:
-            return problem.problem(
-                429,
-                problem.CAPACITY,
-                "The DSS is at its concurrency cap.",
-                headers={"Retry-After": RETRY_AFTER_SECONDS},
-            )
-        if not settings.ready:
-            return problem.problem(
-                503, problem.NOT_READY, "The DSS is not ready to serve turns."
-            )
-
-        media_type = request.headers.get("content-type", "").split(";")[0].strip()
-        if media_type != JSON_MEDIA_TYPE:
-            return problem.problem(
-                415,
-                problem.UNSUPPORTED_MEDIA_TYPE,
-                f"Send {JSON_MEDIA_TYPE}.",
-            )
-
-        wants_stream = _wants_stream(request.headers.get("accept"))
-        if wants_stream is None:
-            return problem.problem(
-                406,
-                problem.NOT_ACCEPTABLE,
-                f"This endpoint serves {JSON_MEDIA_TYPE} or {SSE_MEDIA_TYPE}.",
-            )
-
-        try:
-            raw = await _decoded_body(
-                request.stream(),
-                encoding=request.headers.get("content-encoding"),
-                cap=settings.max_body_bytes,
-                declared=_declared_length(request),
-            )
-        except _TooLarge:
-            return problem.problem(
-                413,
-                problem.PAYLOAD_TOO_LARGE,
-                f"The decompressed body exceeds {settings.max_body_bytes} bytes.",
-            )
-        except _Undecodable as exc:
-            return problem.problem(
-                400,
-                problem.MALFORMED,
-                f"Body is not valid gzip: {exc}",
-            )
-
-        try:
-            payload = json.loads(raw)
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            return problem.problem(400, problem.MALFORMED, f"Body is not JSON: {exc}")
-
-        try:
-            body = schema.TurnRequest.model_validate(payload)
-        except ValidationError as exc:
-            return problem.problem(422, problem.INVALID, exc.json())
-
+        admitted = await _admit(request, settings, saturated=saturated)
+        if isinstance(admitted, Response):
+            return admitted
         async with limiter:
-            ctx = mapping.to_turn_context(body, message_id=_minted_id())
-            try:
-                turn = mapping.to_user_turn(body)
-            except ValueError as exc:
-                # Well-formed against the schema, but not a turn the DSS can act
-                # on — a thread whose last message is not the farmer's, for
-                # instance. The schema cannot express that, so it lands here.
-                return problem.problem(422, problem.INVALID, str(exc))
-            response_id = _minted_id()
-
-            if wants_stream:
-                stream = sse.Stream(ctx, response_id=response_id, clock=clock)
-                return StreamingResponse(
-                    _frames(runner, turn, ctx, stream),
-                    media_type=SSE_MEDIA_TYPE,
-                )
-            return await _single(runner, turn, ctx, response_id, clock)
+            return await _run(admitted, runner=runner, clock=clock)
 
     router = APIRouter()
     router.add_api_route(
@@ -149,6 +87,100 @@ def turn_router(
         openapi_extra=_OPENAPI,
     )
     return router
+
+
+async def _admit(
+    request: Request, settings: Settings, *, saturated: bool
+) -> Response | _Admitted:
+    """Every gate a request must pass, in order — or the rejection it earned.
+
+    **The order is the design**, which is why it stays in one function rather
+    than one function per step: cheapest rejection first, so a flood of bad
+    requests costs as little as possible. Capacity and readiness are answered
+    from memory; the media type from a header; only then is the body read, and
+    only then parsed.
+    """
+
+    if saturated:
+        return problem.problem(
+            429,
+            problem.CAPACITY,
+            "The DSS is at its concurrency cap.",
+            headers={"Retry-After": RETRY_AFTER_SECONDS},
+        )
+
+    if not settings.ready:
+        return problem.problem(
+            503, problem.NOT_READY, "The DSS is not ready to serve turns."
+        )
+
+    media_type = request.headers.get("content-type", "").split(";")[0].strip()
+    if media_type != JSON_MEDIA_TYPE:
+        return problem.problem(
+            415, problem.UNSUPPORTED_MEDIA_TYPE, f"Send {JSON_MEDIA_TYPE}."
+        )
+
+    wants_stream = _wants_stream(request.headers.get("accept"))
+    if wants_stream is None:
+        return problem.problem(
+            406,
+            problem.NOT_ACCEPTABLE,
+            f"This endpoint serves {JSON_MEDIA_TYPE} or {SSE_MEDIA_TYPE}.",
+        )
+
+    try:
+        raw = await _decoded_body(
+            request.stream(),
+            encoding=request.headers.get("content-encoding"),
+            cap=settings.max_body_bytes,
+            declared=_declared_length(request),
+        )
+    except _TooLarge:
+        return problem.problem(
+            413,
+            problem.PAYLOAD_TOO_LARGE,
+            f"The decompressed body exceeds {settings.max_body_bytes} bytes.",
+        )
+    except _Undecodable as exc:
+        return problem.problem(400, problem.MALFORMED, f"Body is not valid gzip: {exc}")
+
+    try:
+        payload = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        return problem.problem(400, problem.MALFORMED, f"Body is not JSON: {exc}")
+
+    try:
+        body = schema.TurnRequest.model_validate(payload)
+    except ValidationError as exc:
+        return problem.problem(422, problem.INVALID, exc.json())
+
+    return _Admitted(body=body, wants_stream=wants_stream)
+
+
+async def _run(
+    admitted: _Admitted, *, runner: TurnRunner, clock: Callable[[], datetime]
+) -> Response:
+    """Map the admitted request into the domain and dispatch it.
+
+    One rejection survives past admission: the schema cannot express "the last
+    message must be the farmer's", so a thread of only assistant messages is
+    well-formed and still unusable. It is caught here rather than in `_admit`
+    because only the mapping can tell.
+    """
+
+    ctx = mapping.to_turn_context(admitted.body, message_id=_minted_id())
+    try:
+        turn = mapping.to_user_turn(admitted.body)
+    except ValueError as exc:
+        return problem.problem(422, problem.INVALID, str(exc))
+
+    response_id = _minted_id()
+    if admitted.wants_stream:
+        stream = sse.Stream(ctx, response_id=response_id, clock=clock)
+        return StreamingResponse(
+            _frames(runner, turn, ctx, stream), media_type=SSE_MEDIA_TYPE
+        )
+    return await _single(runner, turn, ctx, response_id, clock)
 
 
 def _ref(model: type) -> dict[str, str]:
