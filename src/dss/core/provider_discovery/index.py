@@ -22,13 +22,28 @@ _PACK_DEFECTS = (KeyError, TypeError, ValueError, yaml.YAMLError)
 
 
 def _extract_type_const(attributes_yaml: str, pack_name: str) -> str:
+    """The pack's canonical ``@type``, read from ``x-jsonld``.
+
+    A pack declares its type twice. ``x-jsonld."@type"`` is a plain scalar;
+    ``properties["@type"]`` is a ``oneOf`` because the schema also permits an
+    array containing the canonical type alongside provider-defined ones.
+
+    This reads ``x-jsonld``: one scalar with nothing to unwrap, and
+    ``@context`` sits beside it so both come from the same place. Reading
+    ``properties["@type"]["const"]`` raised ``KeyError('const')`` on every
+    real pack — the ``const`` is nested inside the ``oneOf``.
+    """
+
+    return _x_jsonld(attributes_yaml, pack_name)["@type"]
+
+
+def _x_jsonld(attributes_yaml: str, pack_name: str) -> dict:
     parsed = yaml.safe_load(attributes_yaml)
     schema = parsed["components"]["schemas"][pack_name]
-    for member in schema["allOf"]:
-        type_prop = member.get("properties", {}).get("@type")
-        if type_prop is not None:
-            return type_prop["const"]
-    raise ValueError(f"no @type const found for pack {pack_name}")
+    x_jsonld = schema.get("x-jsonld")
+    if not x_jsonld:
+        raise ValueError(f"no x-jsonld block for pack {pack_name}")
+    return x_jsonld
 
 
 def _extract_subject_categories(examples_json: tuple[str, ...]) -> set[str]:
