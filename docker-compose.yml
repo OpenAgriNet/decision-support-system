@@ -13,9 +13,9 @@ services:
       AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:?set AZURE_OPENAI_API_KEY in .env}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     ports:
-      - "127.0.0.1:${DSS_HOST_PORT:-8000}:8000"
+      - "127.0.0.1:${DSS_HOST_PORT:-8077}:8077"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8077/openapi.json')"]
       interval: 10s
       timeout: 5s
       retries: 5
