@@ -50,7 +50,6 @@ async def test_discover_against_a_real_local_server(httpserver: HTTPServer) -> N
             client=client,
             base_url=_base_url(httpserver),
             schema_pack_cache=SCHEMA_PACK_CACHE,
-            schema_base_url="https://schemas.openagrinet.global/schema",
         )
         query = ProviderQuery(
             capabilities=("openagrinet:WeatherObservation",),
@@ -75,7 +74,6 @@ async def test_a_real_429_response_is_returned_as_a_failure(
             client=client,
             base_url=_base_url(httpserver),
             schema_pack_cache=SCHEMA_PACK_CACHE,
-            schema_base_url="https://schemas.openagrinet.global/schema",
         )
         query = ProviderQuery(
             capabilities=("openagrinet:WeatherObservation",),

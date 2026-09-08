@@ -22,13 +22,28 @@ _PACK_DEFECTS = (KeyError, TypeError, ValueError, yaml.YAMLError)
 
 
 def _extract_type_const(attributes_yaml: str, pack_name: str) -> str:
+    """The pack's canonical ``@type``, read from ``x-jsonld``.
+
+    A pack declares its type twice. ``x-jsonld."@type"`` is a plain scalar;
+    ``properties["@type"]`` is a ``oneOf`` because the schema also permits an
+    array containing the canonical type alongside provider-defined ones.
+
+    This reads ``x-jsonld``: one scalar with nothing to unwrap, and
+    ``@context`` sits beside it so both come from the same place. Reading
+    ``properties["@type"]["const"]`` raised ``KeyError('const')`` on every
+    real pack — the ``const`` is nested inside the ``oneOf``.
+    """
+
+    return _x_jsonld(attributes_yaml, pack_name)["@type"]
+
+
+def _x_jsonld(attributes_yaml: str, pack_name: str) -> dict:
     parsed = yaml.safe_load(attributes_yaml)
     schema = parsed["components"]["schemas"][pack_name]
-    for member in schema["allOf"]:
-        type_prop = member.get("properties", {}).get("@type")
-        if type_prop is not None:
-            return type_prop["const"]
-    raise ValueError(f"no @type const found for pack {pack_name}")
+    x_jsonld = schema.get("x-jsonld")
+    if not x_jsonld:
+        raise ValueError(f"no x-jsonld block for pack {pack_name}")
+    return x_jsonld
 
 
 def _extract_subject_categories(examples_json: tuple[str, ...]) -> set[str]:
@@ -66,23 +81,27 @@ def build_capability_index(
 
 def build_schema_context_index(
     packs: tuple[SchemaPackFiles, ...],
-) -> tuple[dict[str, tuple[str, str]], tuple[SchemaPackSkipped, ...]]:
-    """Maps each @type to the (pack_name, version) that declares it.
+) -> tuple[dict[str, str], tuple[SchemaPackSkipped, ...]]:
+    """Maps each @type to the ``@context`` URL its pack declares.
 
-    Used to build the discover request's schemaContext URLs, which need a
-    pack's name and version — the @type string alone doesn't carry either.
+    The URL comes from the pack's own ``x-jsonld."@context"``, not from
+    concatenating a base URL with the pack name and version. Both reach the
+    network — discover sends it in ``schemaContext``, select in
+    ``resourceAttributes`` — and the pack is what states it. Building the
+    string happened to match, but it was our guess at a value already
+    published.
 
     Skips the same malformed packs as build_capability_index: if one index
     kept a pack the other dropped, discovery could resolve a @type that has
     no schemaContext URL.
     """
-    index: dict[str, tuple[str, str]] = {}
+    index: dict[str, str] = {}
     skipped: list[SchemaPackSkipped] = []
     for pack in packs:
         try:
-            type_const = _extract_type_const(pack.attributes_yaml, pack.pack_name)
+            x_jsonld = _x_jsonld(pack.attributes_yaml, pack.pack_name)
+            index[x_jsonld["@type"]] = x_jsonld["@context"]
         except _PACK_DEFECTS as exc:
             skipped.append(SchemaPackSkipped(pack.pack_name, repr(exc)))
             continue
-        index[type_const] = (pack.pack_name, pack.version)
     return index, tuple(skipped)

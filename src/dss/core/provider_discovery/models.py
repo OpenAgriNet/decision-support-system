@@ -40,6 +40,10 @@ class ProviderCapability:
     capability: str  # the resource's @type
     resource_id: str  # names which resource `select` commits to
     observed_categories: tuple[str, ...] = ()  # the resource's own subjectCategories
+    # The provider's own code from on_discover ("AGMARKNET-01"). Kept rather
+    # than sent: the real select request names a provider by id and name only.
+    # Optional because only `name` appears in every fixture.
+    provider_code: str | None = None
 
 
 @dataclass(frozen=True)
@@ -99,7 +103,12 @@ class DiscoveryFailure:
 
 @dataclass(frozen=True)
 class ExpiredAnswerDropped:
-    """A Direct answer was outside its validity window and was dropped."""
+    """A Direct answer was outside its validity window and was dropped.
+
+    Either side of the window: the name says "expired", but an answer whose
+    ``startsAt`` has not arrived yet is dropped and reported here too. Not
+    renamed because the event type is what the sinks consume.
+    """
 
     provider_id: str
     capability: str

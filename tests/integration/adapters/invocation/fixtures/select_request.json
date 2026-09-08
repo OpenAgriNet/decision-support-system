@@ -1,15 +1,12 @@
 {
   "context": {
-    "version": "2.0.0",
     "action": "select",
-    "networkId": "da.gov.in/vistaar",
-    "senderId": "seeker-network-vistaar.da.gov.in",
-    "senderUri": "https://seeker-network-vistaar.da.gov.in/oan",
-    "receiverId": "provider-network-vistaar.da.gov.in",
-    "receiverUri": "https://provider-network-vistaar.da.gov.in/oan",
-    "transactionId": "9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44",
+    "version": "2.0.0",
     "messageId": "7d41b9e0-52a6-4c18-8b73-1e9f0a4c6d22",
-    "timestamp": "2026-08-26T06:12:01.330Z"
+    "transactionId": "9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44",
+    "timestamp": "2026-08-26T06:12:01.330Z",
+    "senderId": "seeker-network-vistaar.da.gov.in",
+    "receiverId": "provider-network-vistaar.da.gov.in"
   },
   "message": {
     "contract": {
@@ -23,7 +20,7 @@
           },
           "resources": [
             {
-              "id": "res:mausamgram:point-forecast",
+              "id": "3f6a9d2e-8c41-4b0a-9e77-1d2f5c8a6b90",
               "resourceAttributes": {
                 "@context": "https://schemas.openagrinet.global/schema/WeatherObservation/v0.1/context.jsonld",
                 "@type": "openagrinet:WeatherObservation",
@@ -31,21 +28,16 @@
                 "location": {
                   "type": "Point",
                   "coordinates": [73.7898, 19.9975]
-                },
-                "validity": {
-                  "startsAt": "2026-08-26",
-                  "endsAt": "2026-08-30"
                 }
               }
             }
           ],
           "offer": {
             "id": "offer:mausamgram:open-data",
-            "resourceIds": ["res:mausamgram:point-forecast"],
+            "resourceIds": ["3f6a9d2e-8c41-4b0a-9e77-1d2f5c8a6b90"],
             "provider": {
               "id": "mausamgram",
               "descriptor": {
-                "code": "IMD-NWP-01",
                 "name": "IMD Mausamgram NWP"
               }
             }

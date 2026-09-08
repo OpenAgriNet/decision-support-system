@@ -23,19 +23,17 @@ def build_capability_discovery(
     client: httpx2.AsyncClient,
     base_url: str,
     schema_pack_cache: SchemaContextSource,
-    schema_base_url: str,
 ) -> HttpCapabilityDiscovery:
     return HttpCapabilityDiscovery(
         client=client,
         base_url=base_url,
         schema_pack_cache=schema_pack_cache,
-        schema_base_url=schema_base_url,
     )
 
 
 class DiscoverProviders(Protocol):
     async def __call__(
-        self, intent: Intent, turn: UserTurn, now: datetime
+        self, intent: Intent, turn: UserTurn, *, now: datetime
     ) -> DiscoveryResult: ...
 
 

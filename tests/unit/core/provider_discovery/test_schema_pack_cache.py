@@ -12,11 +12,10 @@ MANDI_PRICE_ATTRIBUTES = """
 components:
   schemas:
     MandiPrice:
-      allOf:
-        - type: object
-          properties:
-            "@type":
-              const: openagrinet:MandiPrice
+      type: object
+      x-jsonld:
+        "@context": "https://schemas.openagrinet.global/schema/MandiPrice/v0.1/context.jsonld"
+        "@type": openagrinet:MandiPrice
 """
 
 MANDI_PRICE_EXAMPLE = '{"subjectCategories": ["Market"]}'
@@ -82,11 +81,10 @@ MARKET_INTELLIGENCE_PACK = SchemaPackFiles(
 components:
   schemas:
     MarketIntelligence:
-      allOf:
-        - type: object
-          properties:
-            "@type":
-              const: openagrinet:MarketIntelligence
+      type: object
+      x-jsonld:
+        "@context": "https://schemas.openagrinet.global/schema/MarketIntelligence/v0.1/context.jsonld"
+        "@type": openagrinet:MarketIntelligence
 """,
     examples_json=('{"subjectCategories": ["Advisory"]}',),
 )
@@ -178,7 +176,7 @@ async def test_refresh_also_populates_the_schema_context_index() -> None:
 
     await cache.refresh()
 
-    assert cache.current_schema_context()["openagrinet:MandiPrice"] == (
-        "MandiPrice",
-        "v0.1",
+    assert (
+        cache.current_schema_context()["openagrinet:MandiPrice"]
+        == "https://schemas.openagrinet.global/schema/MandiPrice/v0.1/context.jsonld"
     )

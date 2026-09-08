@@ -32,6 +32,7 @@ from dss.core.shared.models import (
     TurnStatus,
     UserTurn,
 )
+from dss.orchestration.discovery import DiscoverProviders
 from dss.orchestration.turn import run_turn
 from dss.ports.llm import LLMProvider
 from dss.ports.sinks import TelemetrySink, TurnSink
@@ -71,12 +72,14 @@ class CoreRunner:
         intent_llm: LLMProvider,
         moderation_llm: LLMProvider,
         policies: Sequence[Policy],
+        discover_providers: DiscoverProviders,
         turns: TurnSink,
         telemetry: TelemetrySink,
     ) -> None:
         self._intent_llm = intent_llm
         self._moderation_llm = moderation_llm
         self._policies = policies
+        self._discover_providers = discover_providers
         self._turns = turns
         self._telemetry = telemetry
 
@@ -89,6 +92,7 @@ class CoreRunner:
             intent_llm=self._intent_llm,
             moderation_llm=self._moderation_llm,
             policies=self._policies,
+            discover_providers=self._discover_providers,
         )
         decision = result.decision
         self._note("moderation", ctx, decision.outcome.value)

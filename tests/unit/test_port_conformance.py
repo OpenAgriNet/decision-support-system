@@ -38,6 +38,14 @@ def test_the_fake_runner_satisfies_the_port(a_turn, a_context):
     assert events == [StubRunner.ANSWER]
 
 
+async def _no_discovery(intent, turn, *, now):
+    """Conformance is about the port's shape, not discovery."""
+
+    from dss.core.provider_discovery.models import DiscoveryResult
+
+    return DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
+
+
 def test_the_core_runner_satisfies_the_port(a_turn, a_context):
     from dss.adapters.llm.stub import StubLLM
     from dss.adapters.sinks.memory import MemoryTurnSink
@@ -48,6 +56,7 @@ def test_the_core_runner_satisfies_the_port(a_turn, a_context):
         intent_llm=StubLLM(),
         moderation_llm=StubLLM(),
         policies=[],
+        discover_providers=_no_discovery,
         turns=MemoryTurnSink(),
         telemetry=StdoutTelemetrySink(),
     )

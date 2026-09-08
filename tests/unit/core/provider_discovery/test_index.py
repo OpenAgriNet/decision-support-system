@@ -10,15 +10,36 @@ from dss.core.provider_discovery.index import (
 )
 from dss.core.provider_discovery.models import SchemaPackFiles
 
+# Trimmed from the real MandiPrice/v0.1/attributes.yaml, keeping both places
+# `@type` appears.
+#
+# `x-jsonld` is what the index reads: a plain scalar, and `@context` sits
+# beside it so both come from one place.
+#
+# `properties["@type"]` also declares the type, but as a `oneOf` — the schema
+# lets a provider send either the canonical string or an array that contains
+# it. The earlier fixture simplified that to `{const: ...}`, so the extractor
+# was written to read `["const"]` directly and raised `KeyError('const')` on
+# every real pack, leaving the capability index empty.
 MANDI_PRICE_ATTRIBUTES = """
 components:
   schemas:
     MandiPrice:
+      type: object
+      x-beckn-container: resourceAttributes
+      x-jsonld:
+        "@context": "https://schemas.openagrinet.global/schema/MandiPrice/v0.1/context.jsonld"
+        "@type": openagrinet:MandiPrice
       allOf:
         - type: object
           properties:
             "@type":
-              const: openagrinet:MandiPrice
+              oneOf:
+                - type: string
+                  const: openagrinet:MandiPrice
+                - type: array
+                  contains:
+                    const: openagrinet:MandiPrice
 """
 
 MANDI_PRICE_EXAMPLE = '{"subjectCategories": ["Market"]}'
@@ -27,11 +48,10 @@ MARKET_INTELLIGENCE_ATTRIBUTES = """
 components:
   schemas:
     MarketIntelligence:
-      allOf:
-        - type: object
-          properties:
-            "@type":
-              const: openagrinet:MarketIntelligence
+      type: object
+      x-jsonld:
+        "@context": "https://schemas.openagrinet.global/schema/MarketIntelligence/v0.1/context.jsonld"
+        "@type": openagrinet:MarketIntelligence
 """
 
 MARKET_INTELLIGENCE_EXAMPLE = '{"subjectCategories": ["Market"]}'
@@ -168,11 +188,16 @@ def test_a_bad_pack_is_skipped_from_the_schema_context_index_too() -> None:
 
     index, skipped = build_schema_context_index((good, misnamed))
 
-    assert index == {"openagrinet:MandiPrice": ("MandiPrice", "v0.1")}
+    assert index == {
+        "openagrinet:MandiPrice": "https://schemas.openagrinet.global/schema/MandiPrice/v0.1/context.jsonld"
+    }
     assert [s.pack_name for s in skipped] == ["MisnamedPack"]
 
 
-def test_schema_context_index_maps_a_type_to_its_pack_name_and_version() -> None:
+def test_schema_context_index_maps_a_type_to_the_url_the_pack_declares() -> None:
+    """The pack declares its own ``@context`` under ``x-jsonld``, so the index
+    carries that URL rather than the parts to rebuild it."""
+
     pack = SchemaPackFiles(
         pack_name="MandiPrice",
         version="v0.1",
@@ -183,4 +208,6 @@ def test_schema_context_index_maps_a_type_to_its_pack_name_and_version() -> None
 
     index, _ = build_schema_context_index((pack,))
 
-    assert index["openagrinet:MandiPrice"] == ("MandiPrice", "v0.1")
+    assert index["openagrinet:MandiPrice"] == (
+        "https://schemas.openagrinet.global/schema/MandiPrice/v0.1/context.jsonld"
+    )
