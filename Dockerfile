@@ -12,18 +12,16 @@ COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-install-project
 
-# examples/server.py is a dev harness, not the committed entrypoint (see DSS_ARCHITECTURE.md §8.3).
 COPY README.md ./
 COPY src/ ./src/
-COPY examples/ ./examples/
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen
 
 ENV PATH="/app/.venv/bin:$PATH"
 
-RUN python -c "import examples.server"
+RUN python -c "import dss.entrypoint.app"
 
 EXPOSE 8000
 
-CMD ["uvicorn", "examples.server:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "--factory", "dss.entrypoint.app:create_app", "--host", "0.0.0.0", "--port", "8000"]
