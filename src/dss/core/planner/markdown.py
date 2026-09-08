@@ -7,10 +7,8 @@ retrieved data, never as instructions, matching moderation's convention.
 
 from __future__ import annotations
 
+from dss.core.planner.markers import RETRIEVED_DATA, wrap_as_data
 from dss.core.provider_discovery.models import DiscoveredAnswer
-
-_BEGIN_MARKER = "<BEGIN RETRIEVED DATA>"
-_END_MARKER = "<END RETRIEVED DATA>"
 
 
 def _render_value(value: object) -> str:
@@ -29,8 +27,14 @@ def _render_field(key: str, value: object, *, indent: str) -> list[str]:
 
 
 def render_answer_as_markdown(answer: DiscoveredAnswer) -> str:
-    lines = [_BEGIN_MARKER]
+    """Render a provider's answer for the model, wrapped as data.
+
+    ``wrap_as_data`` rather than bracketing the lines by hand: a provider's
+    own field could otherwise contain the end marker and close the block
+    early.
+    """
+
+    lines: list[str] = []
     for key, value in answer.attributes.items():
         lines.extend(_render_field(key, value, indent=""))
-    lines.append(_END_MARKER)
-    return "\n".join(lines)
+    return wrap_as_data("\n".join(lines), RETRIEVED_DATA)

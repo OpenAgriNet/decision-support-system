@@ -22,6 +22,11 @@ from typing import Protocol
 from pydantic_ai import Agent
 from pydantic_ai.models import Model
 
+from dss.core.planner.markers import (
+    QUESTION,
+    RETRIEVED_DATA,
+    wrap_as_data,
+)
 from dss.core.planner.models import Evidence, Identity
 from dss.core.shared.models import UserTurn
 
@@ -85,14 +90,12 @@ def build_compose(*, identity: Identity, model: Model | str) -> Compose:
             ),
         )
         # The question and the provider's values, wrapped as data — a
-        # provider's text is third-party and must never read as instructions.
+        # provider's text is third-party and must never read as instructions,
+        # and `wrap_as_data` stops either from closing its block early.
         user_message = (
-            "<BEGIN QUESTION>\n"
-            f"{turn.enriched_query}\n"
-            "<END QUESTION>\n\n"
-            "<BEGIN RETRIEVED DATA>\n"
-            f"{_render_evidence(evidence)}\n"
-            "<END RETRIEVED DATA>"
+            wrap_as_data(turn.enriched_query, QUESTION)
+            + "\n\n"
+            + wrap_as_data(_render_evidence(evidence), RETRIEVED_DATA)
         )
         result = await agent.run(user_message)
         return result.output
