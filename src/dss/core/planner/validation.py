@@ -46,14 +46,35 @@ def parse_domain_schema(pack: SchemaPackFiles) -> DomainSchema:
 
 
 def _flatten(data: dict, prefix: str = "") -> list[str]:
-    paths = []
+    """Every leaf path in ``data``, descending through dicts and lists.
+
+    Lists matter: a list of objects (``{"topics": [{"evil": "x"}]}``) hides
+    keys one level down, and recursing into dicts alone never saw them — so
+    the model could smuggle arbitrary structure past validation and out to a
+    provider. A list of plain values contributes only its own path, which is
+    the normal case for a free-text field.
+    """
+
+    paths: list[str] = []
     for key, value in data.items():
-        path = f"{prefix}{key}"
-        if isinstance(value, dict):
-            paths.extend(_flatten(value, prefix=f"{path}."))
-        else:
-            paths.append(path)
-    return paths
+        paths.extend(_flatten_value(value, path=f"{prefix}{key}"))
+    # a list of plain values yields its own path once per item; dedupe so the
+    # error message names a field once
+    return list(dict.fromkeys(paths))
+
+
+def _flatten_value(value: object, *, path: str) -> list[str]:
+    if isinstance(value, dict):
+        return _flatten(value, prefix=f"{path}.")
+    if isinstance(value, list):
+        nested = [
+            nested_path
+            for item in value
+            for nested_path in _flatten_value(item, path=path)
+        ]
+        # a list of plain values flattens to the list's own path
+        return nested or [path]
+    return [path]
 
 
 def validate_arguments(resource_attributes: dict, schema: DomainSchema) -> None:

@@ -13,6 +13,7 @@ import json
 import pytest
 
 from dss.core.planner.validation import (
+    DomainSchema,
     InvalidArgument,
     parse_domain_schema,
     validate_arguments,
@@ -60,3 +61,24 @@ def test_validate_arguments_rejects_an_invented_field() -> None:
     schema = parse_domain_schema(_mandi_pack_files())
     with pytest.raises(InvalidArgument):
         validate_arguments({"cropVariety": "Basmati"}, schema)
+
+
+def test_an_invented_field_inside_a_list_is_rejected() -> None:
+    """``_flatten`` recursed into dicts only, so a key hidden inside a list
+    of objects was never seen — the model could smuggle arbitrary structure
+    into ``resourceAttributes`` and out to a provider, which is the one thing
+    this module exists to prevent."""
+
+    schema = DomainSchema(type="KnowledgeAdvisory", filterable=("topics",))
+
+    with pytest.raises(InvalidArgument, match="topics.evil"):
+        validate_arguments({"topics": [{"evil": "x"}]}, schema)
+
+
+def test_a_list_of_plain_values_is_still_accepted() -> None:
+    """``topics`` legitimately holds free text, so a list of strings is the
+    normal case and must not start failing."""
+
+    schema = DomainSchema(type="KnowledgeAdvisory", filterable=("topics",))
+
+    validate_arguments({"topics": ["soil advisory", "pest management"]}, schema)
