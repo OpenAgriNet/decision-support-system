@@ -84,3 +84,76 @@ async def test_a_connection_error_raises_selectfailed_transient() -> None:
     assert exc_info.value.failure_class == FailureClass.TRANSIENT
     assert exc_info.value.status_code == 0
     assert "connection refused" in exc_info.value.detail
+
+
+def _invocation_returning_body(body: dict) -> HttpCapabilityInvocation:
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(200, json=body)
+
+    return HttpCapabilityInvocation(
+        client=httpx2.AsyncClient(transport=httpx2.MockTransport(handler)),
+        base_url="https://provider-network-vistaar.da.gov.in/oan",
+        sender_id="seeker-network-vistaar.da.gov.in",
+        receiver_id="provider-network-vistaar.da.gov.in",
+        attempts=1,
+    )
+
+
+@pytest.mark.parametrize(
+    ("label", "body"),
+    [
+        ("no contract", {"message": {}}),
+        ("no commitments", {"message": {"contract": {}}}),
+        ("empty commitments", {"message": {"contract": {"commitments": []}}}),
+        (
+            "resource missing resourceAttributes",
+            {"message": {"contract": {"commitments": [{"resources": [{"id": "r"}]}]}}},
+        ),
+    ],
+    ids=lambda value: value if isinstance(value, str) else "",
+)
+async def test_a_malformed_200_raises_selectfailed_not_a_bare_keyerror(
+    label: str, body: dict
+) -> None:
+    """The port's contract is "an answer or ``SelectFailed``". The response
+    mapper sat outside the try, so a 200 with an unreadable body raised
+    ``KeyError``/``IndexError`` straight past the planner tool's handler and
+    aborted the whole agent run — losing every other ask's answers.
+
+    The discovery adapter already does this (``_malformed_result``); select
+    was missing the equivalent.
+    """
+
+    invocation = _invocation_returning_body(body)
+
+    with pytest.raises(SelectFailed) as exc_info:
+        await invocation.select(CAPABILITY, {}, transaction_id="txn-test")
+
+    # a defect, not transient: the same body will fail the same way
+    assert exc_info.value.failure_class == FailureClass.DEFECT
+    assert exc_info.value.capability == "openagrinet:WeatherObservation"
+
+
+async def test_a_malformed_200_is_not_retried() -> None:
+    """A defect means retrying sends the same request and reads the same bad
+    body. Three attempts would only delay the failure."""
+
+    calls = 0
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        nonlocal calls
+        calls += 1
+        return httpx2.Response(200, json={"message": {}})
+
+    invocation = HttpCapabilityInvocation(
+        client=httpx2.AsyncClient(transport=httpx2.MockTransport(handler)),
+        base_url="https://provider-network-vistaar.da.gov.in/oan",
+        sender_id="seeker-network-vistaar.da.gov.in",
+        receiver_id="provider-network-vistaar.da.gov.in",
+        backoff_seconds=0.0,
+    )
+
+    with pytest.raises(SelectFailed):
+        await invocation.select(CAPABILITY, {}, transaction_id="txn-test")
+
+    assert calls == 1

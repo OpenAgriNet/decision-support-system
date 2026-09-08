@@ -32,6 +32,11 @@ from dss.ports.invocation import SelectFailed
 
 __all__ = ["HttpCapabilityInvocation", "SelectFailed", "build_select_request"]
 
+# A 200 whose body we cannot read. KeyError/IndexError for a missing key or
+# an empty commitments list, TypeError for a wrong shape, ValueError because
+# json.JSONDecodeError is one — a body that is not JSON at all.
+_MALFORMED_RESPONSE = (KeyError, IndexError, TypeError, ValueError)
+
 _SELECT_VERSION = "2.0.0"
 _DEFAULT_STATUS_DESCRIPTOR = {"code": "DRAFT", "name": "Draft"}
 _DEFAULT_OFFER_ID = "offer:open-data"
@@ -194,8 +199,23 @@ class HttpCapabilityInvocation:
                 str(exc),
             ) from exc
 
-        return map_select_response(
-            response.json(),
-            provider_id=capability.provider_id,
-            provider_name=capability.provider_name,
-        )
+        # Inside a guard, not after it: the port promises "an answer or
+        # SelectFailed", and a 200 with an unreadable body would otherwise
+        # raise KeyError/IndexError straight past the planner tool's handler
+        # and abort the whole run, losing every other ask's answers. Same
+        # treatment the discovery adapter gives its own mapper.
+        try:
+            return map_select_response(
+                response.json(),
+                provider_id=capability.provider_id,
+                provider_name=capability.provider_name,
+            )
+        except _MALFORMED_RESPONSE as exc:
+            raise SelectFailed(
+                capability.capability,
+                NO_STATUS_CODE,
+                # A defect, never transient: the same body reads the same way,
+                # so retrying would only delay the failure.
+                FailureClass.DEFECT,
+                f"malformed response: {exc!r}",
+            ) from exc
