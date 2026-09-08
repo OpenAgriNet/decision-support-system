@@ -15,7 +15,7 @@ never seen assembles with no code change.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 from dss.core.intent.models import Intent
 from dss.core.planner.models import Evidence, Failure, Result, Source, SourceKind
@@ -26,9 +26,20 @@ def assemble_evidence(
     raw_answers: Sequence[tuple[int, DiscoveredAnswer]],
     *,
     intent: Intent,
+    direct_answers: Mapping[int, tuple[DiscoveredAnswer, ...]] | None = None,
     failures: Sequence[tuple[int, Failure]] = (),
 ) -> Evidence:
-    """Turn the loop's accumulated answers into ``Evidence``.
+    """Turn everything the turn gathered into ``Evidence``.
+
+    Two sources of answer, both ``DiscoveredAnswer``, so both assemble the
+    same way:
+
+    - ``raw_answers`` — what the loop's ``select`` calls returned.
+    - ``direct_answers`` — ``DiscoveryResult.answers``, values the catalog
+      already holds. These never appear in ``raw_answers``, because a Direct
+      resource needs no call. Leaving them out meant an ask the catalog had
+      already answered reached the planner's prompt and then vanished: the
+      planner is told not to answer, and the composer never saw it.
 
     ``failures`` are calls that errored after the adapter's retries. They ride
     alongside the results so the composer can say "we could not reach
@@ -46,7 +57,13 @@ def assemble_evidence(
     sources: list[Source] = []
     results: list[Result] = []
 
-    for ask_index, answer in raw_answers:
+    direct = [
+        (ask_index, answer)
+        for ask_index, ask_answers in (direct_answers or {}).items()
+        for answer in ask_answers
+    ]
+
+    for ask_index, answer in [*direct, *raw_answers]:
         source_id = source_id_by_provider.get(answer.provider_id)
         if source_id is None:
             source_id = str(len(sources) + 1)
@@ -67,7 +84,7 @@ def assemble_evidence(
             )
         )
 
-    served = tuple(dict.fromkeys(ask_index for ask_index, _ in raw_answers))
+    served = tuple(dict.fromkeys(ask_index for ask_index, _ in [*direct, *raw_answers]))
     return Evidence(
         sources=tuple(sources),
         results=tuple(results),

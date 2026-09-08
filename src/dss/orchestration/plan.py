@@ -81,8 +81,14 @@ def build_plan(
             build_user_message(query=turn.enriched_query, history=turn.history),
             deps=deps,
         )
+        # Direct answers too: they need no select call, so they never land in
+        # raw_answers, and leaving them out lost an ask the catalog had
+        # already answered.
         return assemble_evidence(
-            deps.raw_answers, intent=intent, failures=deps.failures
+            deps.raw_answers,
+            intent=intent,
+            direct_answers=discovery.answers,
+            failures=deps.failures,
         )
 
     return plan

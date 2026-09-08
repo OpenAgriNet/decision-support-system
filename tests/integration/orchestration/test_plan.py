@@ -206,6 +206,62 @@ async def test_the_prompt_carries_the_identity_and_the_marked_history() -> None:
     assert "<BEGIN CONVERSATION>" in everything
 
 
+DIRECT_ANSWER = DiscoveredAnswer(
+    provider_id="krishi-kb",
+    provider_name="Krishi Knowledge Base",
+    capability="openagrinet:KnowledgeAdvisory",
+    resource_id="res:krishi-kb:crop-advisory",
+    attributes={"soilType": "sandy loam"},
+    validity=None,
+)
+
+
+def _answers_without_calling(
+    messages: list[ModelMessage], info: AgentInfo
+) -> ModelResponse:
+    return ModelResponse(parts=[TextPart(content="already known, nothing to call")])
+
+
+async def test_a_direct_answer_reaches_the_evidence_through_plan() -> None:
+    """The seam, not just the pieces. `assemble_evidence` takes
+    `direct_answers`, but a tier-1 test of that function passes whether or
+    not `plan` actually hands them over — so this drives the real `plan`.
+
+    A Direct answer needs no `select` call, so it never lands in
+    `raw_answers`. It used to be shown to the planner and then dropped: the
+    planner is told not to answer, and the composer never saw it, so the
+    farmer got nothing while the answer sat in the prompt."""
+
+    invocation = _FakeInvocation()
+    plan = build_plan(
+        schemas=SCHEMAS,
+        schema_context_index={
+            "openagrinet:MandiPrice": (
+                "https://schemas.openagrinet.global/schema/MandiPrice/v0.1/context.jsonld"
+            )
+        },
+        invocation=invocation,
+        identity=IDENTITY,
+        skills=(SKILL,),
+        model=FunctionModel(_answers_without_calling),
+    )
+
+    evidence = await plan(
+        _turn(),
+        intent=Intent(asks=(PRICE_ASK,), confidence=0.9),
+        discovery=DiscoveryResult(
+            answers={0: (DIRECT_ANSWER,)}, capabilities={}, failures={}, events=()
+        ),
+        verdict=_cleared_verdict(),
+    )
+
+    assert invocation.calls == []  # no provider call was needed
+    assert [source.name for source in evidence.sources] == ["Krishi Knowledge Base"]
+    assert evidence.results[0].data == {"soilType": "sandy loam"}
+    assert evidence.served == (0,)
+    assert evidence.sufficient is True
+
+
 async def test_a_rejected_turn_yields_empty_insufficient_evidence() -> None:
     """The barrier stops ``select`` inside the tool, so the loop still runs
     and ``plan`` still returns. What it must not return is evidence: no

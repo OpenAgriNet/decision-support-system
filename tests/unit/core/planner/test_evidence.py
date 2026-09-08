@@ -208,6 +208,38 @@ def test_any_answer_is_sufficient() -> None:
     assert evidence.sufficient is True
 
 
+def test_a_direct_answer_reaches_the_evidence() -> None:
+    """A Direct answer needs no ``select`` call — its values are already in
+    the catalog — so it never lands in ``raw_answers``. It was therefore
+    dropped: shown to the planner, which is told not to answer, and never
+    passed to the composer, so the farmer got nothing while the answer sat
+    in the prompt."""
+
+    evidence = assemble_evidence(
+        [], direct_answers={0: (MANDI_PRICE,)}, intent=_intent(PRICE_ASK)
+    )
+
+    assert [source.name for source in evidence.sources] == ["Agmarknet"]
+    assert evidence.results[0].data == MANDI_PRICE.attributes
+    assert evidence.served == (0,)
+    assert evidence.sufficient is True
+
+
+def test_a_direct_answer_and_a_selected_one_share_a_source() -> None:
+    """Both are ``DiscoveredAnswer``s from the same provider, so they cite as
+    one source — the same rule as two selected answers."""
+
+    evidence = assemble_evidence(
+        [(1, MANDI_PRICE)],
+        direct_answers={0: (MANDI_PRICE,)},
+        intent=_intent(PRICE_ASK, ADVISORY_ASK),
+    )
+
+    assert [source.id for source in evidence.sources] == ["1"]
+    assert sorted(result.ask_index for result in evidence.results) == [0, 1]
+    assert sorted(evidence.served) == [0, 1]
+
+
 def test_failures_are_carried_onto_the_evidence() -> None:
     """The composer must be able to say "we could not reach Agmarknet" rather
     than "nobody serves this" — the same empty result, two very different

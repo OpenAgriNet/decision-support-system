@@ -107,13 +107,28 @@ def test_direct_answers_are_wrapped_as_data() -> None:
     assert marked.rstrip().endswith(RETRIEVED_DATA.end)
 
 
+def test_the_prompt_says_not_to_call_for_an_already_answered_ask() -> None:
+    """The "Already known" section's own line said "no call is needed", but
+    only at the very end. The rule now sits where the model reads the rest of
+    its instructions, and names the partial case — call for the asks that are
+    *not* listed."""
+
+    prompt = build_planner_prompt(identity=_identity(), skills=(_skill(),), answers={})
+    collapsed = " ".join(prompt.split())
+
+    assert "Do not call a provider for an ask listed there" in collapsed
+    assert "call only for the asks that are missing from it" in collapsed
+
+
 def test_no_direct_answers_leaves_no_empty_section() -> None:
     """An empty section under a heading reads as a gap to fill, so the whole
     section is omitted rather than left blank."""
 
     prompt = build_planner_prompt(identity=_identity(), skills=(_skill(),), answers={})
 
-    assert "Already known" not in prompt
+    # the heading, not the instruction above that refers to it by name
+    assert "# Already known" not in prompt
+    assert "No call is needed for these" not in prompt
 
 
 def test_no_skills_says_so_rather_than_leaving_a_blank() -> None:

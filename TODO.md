@@ -2,6 +2,46 @@
 
 ## Planner Agent (#10) — deferred to separate PRs
 
+- **`Skill` + `tool_names` duplicates Pydantic AI's `AgentCapability`. Needs
+  an ADR; supersedes or amends ADR-0006.**
+
+  `Agent(capabilities=[...])` exists in pydantic-ai 2.33.0, and
+  `capabilities.Capability` bundles instructions, tools and toolsets with no
+  subclassing required. It maps onto our `Skill` field for field:
+
+  | our `Skill` | `Capability` |
+  |---|---|
+  | `id` | `id` |
+  | `description` | `description` |
+  | `guidance` | `instructions` |
+  | `tool_names` + our gating in `build_planner_agent` | `tools` |
+  | — | `defer_loading` |
+
+  Verified against the installed package: an unselected capability's tools
+  never reach the model, which is exactly what ADR-0006 added `tool_names`
+  for. The framework's own `capabilities/AGENTS.md` says "prefer a capability
+  over a new `Agent` constructor kwarg when behavior contributes
+  instructions... tools" — which is what we added a kwarg for.
+
+  **`defer_loading=True` is the deferred progressive-disclosure item, in one
+  flag.** The framework gives the model a `load_capability` tool and keeps
+  the guidance out of the prompt until it is called; the capability's own
+  tools appear only after. The plan doc lists this as future work needing a
+  `load_skill` tool we build ourselves. Verified: eager gives
+  `tools=['select']` with guidance in the prompt, deferred gives
+  `tools=['load_capability']` with none.
+
+  Two things to settle first:
+  - `Skill` is a `core/` type with no framework import (the hexagonal rule in
+    `CLAUDE.md`), so the `Skill` → `Capability` conversion has to happen in
+    `orchestration/`. Config-loaded markdown skills still work — build a
+    `Capability` per loaded `Skill` at wiring time.
+  - `Skill.domain` has no `Capability` equivalent. Unused today.
+
+  Note this finding *supports* ADR-0005 (the loop belongs in
+  `orchestration/`, the framework's vocabulary cannot hide behind a port)
+  while undermining ADR-0006.
+
 - **Wire `plan()` and `compose()` into `run_turn`.** The orchestrator runs
   intent, moderation and discovery today and returns `TurnResult`. Both
   remaining components exist and are tested, but nothing calls them in
