@@ -21,11 +21,11 @@ models, which *are* the contract.
 
 from __future__ import annotations
 
-import gzip
 import json
+import logging
 import uuid
 import zlib
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterable, AsyncIterator, Callable
 from datetime import UTC, datetime
 
 import anyio
@@ -44,6 +44,8 @@ from dss.core.shared.models import (
     TurnStatus,
 )
 from dss.ports.turn import TurnRunner
+
+logger = logging.getLogger(__name__)
 
 JSON_MEDIA_TYPE = "application/json"
 SSE_MEDIA_TYPE = "text/event-stream"
@@ -89,10 +91,11 @@ def turn_router(
             )
 
         try:
-            raw = _decoded_body(
-                await request.body(),
+            raw = await _decoded_body(
+                request.stream(),
                 encoding=request.headers.get("content-encoding"),
                 cap=settings.max_body_bytes,
+                declared=_declared_length(request),
             )
         except _TooLarge:
             return problem.problem(
@@ -208,6 +211,16 @@ async def _frames(
         async for event in runner.run(turn, ctx):
             yield stream.frame(event)
     except Exception:
+        # `except Exception` deliberately does not catch a cancellation: anyio's
+        # cancelled class is `asyncio.CancelledError`, which derives from
+        # BaseException, so a client disconnect propagates and unwinds rather
+        # than being turned into a frame written to a closed socket.
+        #
+        # Logging matters because otherwise the crash reaches the caller as a
+        # generic "could not be reached" and reaches nobody else at all. The
+        # trace id goes in the message, not only in `extra` — the default
+        # formatter drops extras, so an operator would never see it.
+        logger.exception("turn failed mid-stream (trace_id=%s)", ctx.trace_id)
         yield stream.frame(_internal_failure())
 
 
@@ -230,6 +243,8 @@ async def _single(
             if isinstance(event, TurnFinished):
                 finished = event
     except Exception:
+        # See `_frames` — a cancellation is BaseException-derived and propagates.
+        logger.exception("turn failed (trace_id=%s)", ctx.trace_id)
         finished = _internal_failure()
 
     if finished is None:
@@ -269,6 +284,23 @@ def _wants_stream(accept: str | None) -> bool | None:
     return None
 
 
+def _declared_length(request: Request) -> int | None:
+    """`Content-Length`, when it is present and a number.
+
+    A malformed header is treated as absent rather than rejected — the streaming
+    caps below catch an oversized body anyway, and refusing a request over a bad
+    header would turn a caller's broken client into an outage.
+    """
+
+    raw = request.headers.get("content-length")
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
+
 class _TooLarge(Exception):
     pass
 
@@ -277,23 +309,72 @@ class _Undecodable(Exception):
     """The body could not be decompressed. A caller's broken client, not ours."""
 
 
-def _decoded_body(raw: bytes, *, encoding: str | None, cap: int) -> bytes:
-    """Decompress if asked, and enforce the cap on the *decompressed* size.
+# zlib needs to be told the payload carries a gzip header rather than a raw
+# deflate stream.
+_GZIP_WBITS = zlib.MAX_WBITS | 16
 
-    A compressed length proves nothing — a few hundred bytes of gzip expands to
-    megabytes, which is the whole shape of a decompression bomb.
+
+async def _decoded_body(
+    stream: AsyncIterable[bytes],
+    *,
+    encoding: str | None,
+    cap: int,
+    declared: int | None,
+) -> bytes:
+    """Read the body, decompressing if asked, without letting it choose how much
+    memory we use.
+
+    Three bounds, because a compressed length proves nothing — a few hundred
+    bytes of gzip expands to megabytes, which is the whole shape of a
+    decompression bomb:
+
+    1. `Content-Length` over the cap is refused before a single byte is read.
+    2. Bytes *read* are capped, so an incompressible stream cannot be used to
+       push gigabytes through while the inflated output stays small.
+    3. Bytes *produced* are capped as they are produced. `decompress(data, n)`
+       yields at most `n` bytes and parks the rest in `unconsumed_tail`, so a
+       non-empty tail means the payload wants more room than the cap allows.
+
+    The peak allocation is therefore one chunk plus the cap, whatever the caller
+    sends.
     """
 
-    if (encoding or "").strip().lower() == "gzip":
-        try:
-            raw = gzip.decompress(raw)
-        except (OSError, EOFError, zlib.error) as exc:
-            # A body that is not gzip, or is truncated. Both are the caller's
-            # mistake, and neither may take the process down.
-            raise _Undecodable(str(exc)) from exc
-    if len(raw) > cap:
+    if declared is not None and declared > cap:
         raise _TooLarge
-    return raw
+
+    gzipped = (encoding or "").strip().lower() == "gzip"
+    inflater = zlib.decompressobj(_GZIP_WBITS) if gzipped else None
+    body = bytearray()
+    read = 0
+
+    async for chunk in stream:
+        read += len(chunk)
+        if read > cap:
+            raise _TooLarge
+        if inflater is None:
+            body += chunk
+        else:
+            try:
+                body += inflater.decompress(chunk, cap + 1 - len(body))
+            except zlib.error as exc:
+                raise _Undecodable(str(exc)) from exc
+            if inflater.unconsumed_tail:
+                raise _TooLarge
+        if len(body) > cap:
+            raise _TooLarge
+
+    if inflater is not None:
+        try:
+            body += inflater.flush()
+        except zlib.error as exc:
+            raise _Undecodable(str(exc)) from exc
+        if not inflater.eof:
+            # The stream ended mid-member: a truncated body.
+            raise _Undecodable("gzip stream is incomplete")
+        if len(body) > cap:
+            raise _TooLarge
+
+    return bytes(body)
 
 
 def _minted_id() -> str:

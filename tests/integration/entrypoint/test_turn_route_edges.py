@@ -135,3 +135,31 @@ def test_a_body_that_is_not_utf8_is_a_bad_request():
     )
 
     assert response.status_code == 400
+
+
+def test_a_decompression_bomb_is_refused(a_body):
+    """A few KB of gzip that inflates far past the cap. The cap is enforced as
+    the body is produced, so the payload never lands in memory."""
+
+    app = _client(max_body_bytes=10_000)
+    bomb = gzip.compress(b"\x00" * 20_000_000)
+
+    response = app.post(
+        "/v1/turns",
+        content=bomb,
+        headers={"Content-Type": JSON, "Content-Encoding": "gzip"},
+    )
+
+    assert response.status_code == 413
+    assert len(bomb) < 100_000, "the compressed payload really is small"
+
+
+def test_a_declared_length_over_the_cap_is_refused(a_body):
+    """`Content-Length` is consulted first, so an oversized body is rejected
+    before it is read."""
+
+    app = _client(max_body_bytes=100)
+
+    response = app.post("/v1/turns", json=a_body(), headers={"Content-Type": JSON})
+
+    assert response.status_code == 413
