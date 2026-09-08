@@ -6,7 +6,8 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import uuid4
 
-from dss.adapters.http.v1 import schema
+from dss.adapters.http.v1 import schema # noqa: F401
+
 from dss.core.shared.models import (
     Cause,
     Claim,
