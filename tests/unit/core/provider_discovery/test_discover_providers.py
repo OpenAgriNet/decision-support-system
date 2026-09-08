@@ -445,6 +445,54 @@ async def test_a_non_expired_answer_is_kept() -> None:
     assert result.events == ()
 
 
+async def test_an_answer_whose_window_has_not_opened_is_dropped() -> None:
+    """``validity`` is a window, not a deadline. A provider publishing
+    tomorrow's mandi price with ``startsAt`` in the future was being served
+    as today's answer and cited to the farmer — the open lower bound is the
+    more dangerous half, since a stale price at least *was* true once."""
+
+    ask = Ask(
+        subject_categories=SubjectCategory.MARKET,
+        interaction_type=InteractionType.OBSERVE,
+    )
+    intent = Intent(asks=(ask,), confidence=0.9)
+    schema_pack_cache = _FakeSchemaPackCache(
+        {("Market", "Service"): ("openagrinet:MandiPrice",)}
+    )
+    tomorrows_price = DiscoveredAnswer(
+        provider_id="agmarknet",
+        provider_name="AGMARKNET",
+        capability="openagrinet:MandiPrice",
+        resource_id="r1",
+        attributes={},
+        validity=Validity(
+            starts_at=NOW + timedelta(hours=6), ends_at=NOW + timedelta(days=1)
+        ),
+    )
+    discovery = _FakeDiscovery(
+        DiscoveryResult(
+            answers={0: (tomorrows_price,)},
+            capabilities={0: ()},
+            failures={0: ()},
+            events=(),
+        )
+    )
+
+    result = await discover_providers(
+        intent,
+        _turn(),
+        discovery=discovery,
+        schema_pack_cache=schema_pack_cache,
+        radius_m=25000,
+        now=NOW,
+    )
+
+    assert result.answers[0] == ()
+    # dropped, and then the ask has nothing left to serve it
+    assert isinstance(result.events[0], ExpiredAnswerDropped)
+    assert isinstance(result.events[1], AskUnservable)
+
+
 async def test_an_answer_with_no_validity_is_kept() -> None:
     ask = Ask(
         subject_categories=SubjectCategory.MARKET,

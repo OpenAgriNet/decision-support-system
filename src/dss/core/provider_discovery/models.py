@@ -103,7 +103,12 @@ class DiscoveryFailure:
 
 @dataclass(frozen=True)
 class ExpiredAnswerDropped:
-    """A Direct answer was outside its validity window and was dropped."""
+    """A Direct answer was outside its validity window and was dropped.
+
+    Either side of the window: the name says "expired", but an answer whose
+    ``startsAt`` has not arrived yet is dropped and reported here too. Not
+    renamed because the event type is what the sinks consume.
+    """
 
     provider_id: str
     capability: str

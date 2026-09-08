@@ -76,10 +76,21 @@ def _query_for_ask(
     ), None
 
 
-def _is_expired(answer: DiscoveredAnswer, now: datetime) -> bool:
-    if answer.validity is None or answer.validity.ends_at is None:
+def _is_outside_validity(answer: DiscoveredAnswer, now: datetime) -> bool:
+    """Whether ``now`` falls outside the answer's validity window.
+
+    Both bounds, not just ``ends_at``. A provider publishing tomorrow's mandi
+    price with ``startsAt`` in the future was otherwise served as today's
+    answer — the worse half of the two, since a stale price at least was true
+    once. Either bound may be absent, which means unbounded on that side.
+    """
+
+    validity = answer.validity
+    if validity is None:
         return False
-    return now > answer.validity.ends_at
+    if validity.starts_at is not None and now < validity.starts_at:
+        return True
+    return validity.ends_at is not None and now > validity.ends_at
 
 
 def _had_fallback(
@@ -98,8 +109,8 @@ def _drop_expired_answers(
     now: datetime,
 ) -> tuple[tuple[DiscoveredAnswer, ...], list[ExpiredAnswerDropped]]:
     expired, kept = (
-        tuple(a for a in answers if _is_expired(a, now)),
-        tuple(a for a in answers if not _is_expired(a, now)),
+        tuple(a for a in answers if _is_outside_validity(a, now)),
+        tuple(a for a in answers if not _is_outside_validity(a, now)),
     )
     events = [
         ExpiredAnswerDropped(
