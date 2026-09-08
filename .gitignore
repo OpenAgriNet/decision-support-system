@@ -17,6 +17,9 @@ dist/
 .ruff_cache/
 .coverage
 htmlcov/
+# tests/
+# Evidence written by a local run (docs/RUNNING.md)
+var/
 
 # Local scratch — handoffs, notes, anything not for review
 .scratchpad/

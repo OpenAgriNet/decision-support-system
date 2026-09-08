@@ -1,0 +1,69 @@
+"""Test doubles.
+
+Hand-written, not `MagicMock`: a mock answers a method you renamed in the
+Protocol, so the test keeps passing after the contract moved. A stub class
+fails, which is the point of having a contract at all.
+"""
+
+from __future__ import annotations
+
+from collections.abc import AsyncIterator, Sequence
+
+from dss.core.shared.errors import ProviderUnavailable
+from dss.core.shared.models import TurnContext, TurnEvent, UserTurn
+
+
+class FakeRunner:
+    """Yields the events it was handed, optionally failing part-way.
+
+    `fail_after=n` raises once `n` events have been yielded, which is how the
+    transport's mid-stream failure path is reached without a real dependency.
+    """
+
+    def __init__(
+        self, events: Sequence[TurnEvent], *, fail_after: int | None = None
+    ) -> None:
+        self.events = list(events)
+        self.fail_after = fail_after
+        self.calls: list[tuple[UserTurn, TurnContext]] = []
+
+    async def run(self, turn: UserTurn, ctx: TurnContext) -> AsyncIterator[TurnEvent]:
+        self.calls.append((turn, ctx))
+        for index, event in enumerate(self.events):
+            if index == self.fail_after:
+                raise ProviderUnavailable("fake runner asked to fail")
+            yield event
+
+
+class FakeTelemetrySink:
+    """Records stages. `fail=True` makes every write raise, which is how the
+    "an optional sink never fails a turn" rule gets exercised."""
+
+    def __init__(self, *, fail: bool = False) -> None:
+        self.fail = fail
+        self.stages: list[tuple[str, str]] = []
+
+    def stage(self, name: str, ctx: TurnContext, outcome: str) -> None:
+        if self.fail:
+            raise RuntimeError("telemetry backend unreachable")
+        self.stages.append((name, outcome))
+
+
+class FakeTurnSink:
+    """Records the turn. `fail_on` names the call that raises, which is how the
+    "the audit trail is required" rule gets exercised."""
+
+    def __init__(self, *, fail_on: str | None = None) -> None:
+        self.fail_on = fail_on
+        self.opened_with: list[UserTurn] = []
+        self.closed_with: list[object] = []
+
+    def opened(self, ctx: TurnContext, turn: UserTurn) -> None:
+        if self.fail_on == "opened":
+            raise RuntimeError("turn store unreachable")
+        self.opened_with.append(turn)
+
+    def closed(self, ctx: TurnContext, finished: object) -> None:
+        if self.fail_on == "closed":
+            raise RuntimeError("turn store unreachable")
+        self.closed_with.append(finished)
