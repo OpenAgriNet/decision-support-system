@@ -246,6 +246,37 @@ avoid adopter adding the code, instead they should be able to extend by configs,
 
     *Reason why we should avoid extention via code is simply because you will not be able to control what kind of code adopter will run, though we can provide some reference, test suits etc, there can still be loop holes. So we should come back to this point when we have a strong reason to allow and with proper governance and quality and security checks in place*
 
+### Implementation status (this branch — ADR-0006)
+
+The illustration above is the target. What this branch actually ships is the
+**skeleton**, wiring only the components that exist:
+
+```python
+async def run_turn(turn: UserTurn, components: OrchestratorComponents,
+                   *, now: datetime) -> TurnResult:
+    intent, decision = await (classify ∥ moderate)   # anyio task group (ADR-0003/0005)
+    if decision.outcome is not PROCEED:               # the barrier
+        return TurnResult(outcome=decision.outcome, intent=Intent(), plan=None)
+    discovered = await discover_providers(intent, turn, now)   # read-only
+    plan       = await plan_turn(turn, intent, discovered, decision)
+    return TurnResult(outcome=outcome_for(decision, plan), intent=intent, plan=plan)
+```
+
+- **Concurrency is `anyio`**, not `asyncio` — consistent with the rest of `core`
+  (ADR-0005). Intent and moderation run in one task group.
+- **The barrier is enforced by the gate**, not by passing an awaitable into the
+  planner: nothing side-effecting runs until moderation clears, so discovery and the
+  planner are reached only on `PROCEED`.
+- **The planner owns plan creation *and* execution** — there is no separate
+  executioner step in the code.
+- **No placeholders for unbuilt components.** Skills/tool discovery, response
+  composition, channel shaping and review are *not* stubbed; the orchestrator stops
+  at the planner's `TurnResult` and those steps are added when their components land.
+  So `run_turn` returns a `TurnResult` today, not the streamed `ChannelChunk`s the
+  target draws.
+- **Composition, not config**, decides which components run: they are wired once in
+  `build_components(...)` behind `ports`; this module never imports the framework.
+
 Before the orchestrator can run a single turn, some things have to exist already.
 
 ---
