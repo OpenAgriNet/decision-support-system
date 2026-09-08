@@ -1,4 +1,3 @@
-
 """Wire <-> domain. Pure functions — the one module that speaks both vocabularies."""
 
 from __future__ import annotations
@@ -6,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import uuid4
 
-from dss.adapters.http.v1 import schema
+from dss.adapters.http.v1 import schema  # noqa: F401
 from dss.core.shared.models import (
     Cause,
     Claim,
@@ -47,10 +46,10 @@ def to_user_turn(body: schema.TurnRequest) -> UserTurn:
         original_query=query,
         enriched_query=query,
         session_id=body.context.session_id,
-        transaction_id = (
+        transaction_id=(
             body.context.transaction_id
             if body.context.transaction_id is not None
-                else str(uuid4())
+            else str(uuid4())
         ),
         source_lang=attributes.source_language,
         target_lang=attributes.target_language,
