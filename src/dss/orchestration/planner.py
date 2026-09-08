@@ -147,6 +147,7 @@ def build_planner_agent(
     skills: Sequence[Skill],
     model: Model | str | None = None,
     system_prompt: str = "",
+    retries: int = 1,
 ) -> Agent[PlannerDeps, str]:
     """Construct the planner agent, binding the union of the selected skills'
     ``tool_names`` (ADR-0006). An unselected skill's tools are never in the
@@ -162,10 +163,18 @@ def build_planner_agent(
 
     ``model`` and ``system_prompt`` default to unset so a test can drive the
     agent with ``agent.override(model=...)`` and no prompt.
+
+    ``retries`` is the model's own budget for ``ModelRetry``. The design
+    raises it in three places — an invented field, an unknown ``resource_id``,
+    a capability with no loaded schema — so the framework's default of 1 is
+    too few for a real turn.
     """
 
     agent: Agent[PlannerDeps, str] = Agent(
-        model, deps_type=PlannerDeps, system_prompt=system_prompt
+        model,
+        deps_type=PlannerDeps,
+        system_prompt=system_prompt,
+        retries=retries,
     )
     for name in tool_names_for(skills):
         agent.tool(_TOOLS[name], name=name)

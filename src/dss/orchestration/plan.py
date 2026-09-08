@@ -49,8 +49,20 @@ def build_plan(
     identity: Identity,
     skills: Sequence[Skill],
     model: Model | str,
+    temperature: float = 0.0,
+    timeout_seconds: float = 30.0,
+    retries: int = 3,
 ) -> Plan:
-    """Bake in the per-deployment configuration; return the per-turn callable."""
+    """Bake in the per-deployment configuration; return the per-turn callable.
+
+    The planner binds its own model settings (ADR-0004: each component does).
+    A longer timeout than the single-shot components, because one run is
+    several model round-trips plus the provider calls between them; and more
+    retries than the framework's default of 1, because the design raises
+    ``ModelRetry`` in three places.
+    """
+
+    model_settings = {"temperature": temperature, "timeout": timeout_seconds}
 
     async def plan(
         turn: UserTurn,
@@ -62,6 +74,7 @@ def build_plan(
         agent = build_planner_agent(
             skills=skills,
             model=model,
+            retries=retries,
             system_prompt=build_planner_prompt(
                 identity=identity, skills=skills, answers=discovery.answers
             ),
@@ -80,6 +93,7 @@ def build_plan(
         await agent.run(
             build_user_message(query=turn.enriched_query, history=turn.history),
             deps=deps,
+            model_settings=model_settings,
         )
         # Direct answers too: they need no select call, so they never land in
         # raw_answers, and leaving them out lost an ask the catalog had

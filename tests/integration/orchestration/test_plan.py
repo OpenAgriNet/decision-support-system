@@ -262,6 +262,43 @@ async def test_a_direct_answer_reaches_the_evidence_through_plan() -> None:
     assert evidence.sufficient is True
 
 
+async def test_the_planner_binds_its_own_model_settings() -> None:
+    """ADR-0004: each component binds its own model. The planner was the one
+    that did not — it set no temperature, timeout or retries at all, while
+    intent and moderation read all three from Settings.
+
+    Retries matter most here: the design raises ``ModelRetry`` in three
+    places, and the framework default budget is 1."""
+
+    settings: list[dict] = []
+
+    def record_settings(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        settings.append(dict(info.model_settings or {}))
+        return ModelResponse(parts=[TextPart(content="done")])
+
+    plan = build_plan(
+        schemas=SCHEMAS,
+        schema_context_index={},
+        invocation=_FakeInvocation(),
+        identity=IDENTITY,
+        skills=(SKILL,),
+        model=FunctionModel(record_settings),
+        temperature=0.0,
+        timeout_seconds=30.0,
+        retries=3,
+    )
+
+    await plan(
+        _turn(),
+        intent=Intent(asks=(PRICE_ASK,), confidence=0.9),
+        discovery=DiscoveryResult(answers={}, capabilities={}, failures={}, events=()),
+        verdict=_cleared_verdict(),
+    )
+
+    assert settings[0]["temperature"] == 0.0
+    assert settings[0]["timeout"] == 30.0
+
+
 async def test_a_rejected_turn_yields_empty_insufficient_evidence() -> None:
     """The barrier stops ``select`` inside the tool, so the loop still runs
     and ``plan`` still returns. What it must not return is evidence: no

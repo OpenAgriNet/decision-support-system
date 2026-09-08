@@ -95,8 +95,22 @@ def _render_failures(evidence: Evidence) -> list[str]:
     ]
 
 
-def build_compose(*, identity: Identity, model: Model | str) -> Compose:
-    """Bind the identity and model once; return the per-turn callable."""
+def build_compose(
+    *,
+    identity: Identity,
+    model: Model | str,
+    temperature: float = 0.3,
+    timeout_seconds: float = 30.0,
+    retries: int = 1,
+) -> Compose:
+    """Bind the identity and model once; return the per-turn callable.
+
+    Its own model settings, like every other component (ADR-0004). Warmer
+    than the planner by default: this one writes the farmer's answer, where a
+    little variation reads better than a fixed phrasing.
+    """
+
+    model_settings = {"temperature": temperature, "timeout": timeout_seconds}
 
     async def compose(evidence: Evidence, *, turn: UserTurn) -> str:
         agent: Agent[None, str] = Agent(
@@ -107,6 +121,7 @@ def build_compose(*, identity: Identity, model: Model | str) -> Compose:
                 boundaries=identity.boundaries,
                 target_lang=turn.target_lang,
             ),
+            retries=retries,
         )
         # The question and the provider's values, wrapped as data — a
         # provider's text is third-party and must never read as instructions,
@@ -116,7 +131,7 @@ def build_compose(*, identity: Identity, model: Model | str) -> Compose:
             + "\n\n"
             + wrap_as_data(_render_evidence(evidence), RETRIEVED_DATA)
         )
-        result = await agent.run(user_message)
+        result = await agent.run(user_message, model_settings=model_settings)
         return result.output
 
     return compose

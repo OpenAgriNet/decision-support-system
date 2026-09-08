@@ -37,6 +37,28 @@ class Settings(BaseSettings):
     moderation_timeout_seconds: float = Field(5.0, gt=0.0)
     moderation_retries: int = Field(1, ge=0)
 
+    # --- planner LLM binding (ADR-0004: each component binds its own) ---
+    # A longer timeout than the single-shot components: the planner is a loop,
+    # so one run is several model round-trips plus the provider calls between
+    # them.
+    #
+    # More retries than the default 1, because the design leans on
+    # `ModelRetry` in three places — an invented field, an unknown
+    # resource_id, a capability with no loaded schema — and each one costs an
+    # attempt.
+    planner_model: str = "openai:gpt-4o-mini"
+    planner_temperature: float = Field(0.0, ge=0.0, le=2.0)  # governed codes
+    planner_timeout_seconds: float = Field(30.0, gt=0.0)
+    planner_retries: int = Field(3, ge=0)
+
+    # --- composer LLM binding ---
+    # Warmer than the planner by default: this one writes the farmer's answer,
+    # where a little variation reads better than a fixed phrasing.
+    composer_model: str = "openai:gpt-4o-mini"
+    composer_temperature: float = Field(0.3, ge=0.0, le=2.0)
+    composer_timeout_seconds: float = Field(30.0, gt=0.0)
+    composer_retries: int = Field(1, ge=0)
+
     # --- provider invocation (/select) ---
     # One slow provider must not block the turn. The timeout bounds a single
     # call; attempts bound how many times a *transient* failure is retried (a
