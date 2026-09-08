@@ -35,7 +35,7 @@ def build_capability_discovery(
 
 class DiscoverProviders(Protocol):
     async def __call__(
-        self, intent: Intent, turn: UserTurn, now: datetime
+        self, intent: Intent, turn: UserTurn, *, now: datetime
     ) -> DiscoveryResult: ...
 
 

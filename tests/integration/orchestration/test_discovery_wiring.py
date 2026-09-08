@@ -17,6 +17,7 @@ from dss.orchestration.discovery import (
     build_capability_discovery,
     build_discover_providers,
 )
+from dss.orchestration.turn import run_turn
 
 SCHEMA_PACKS_FIXTURE_ROOT = (
     Path(__file__).parents[1]
@@ -103,3 +104,73 @@ async def test_the_wired_discover_providers_bakes_in_radius() -> None:
         )
 
     assert result.answers[0][0].provider_id == "agmarknet"
+
+
+class _FakeIntentLLM:
+    def __init__(self, result: Intent) -> None:
+        self._result = result
+
+    async def structured(self, *, system_prompt, user_query, schema):
+        return self._result
+
+
+class _FakeModerationLLM:
+    async def structured(self, *, system_prompt, user_query, schema):
+        return schema(violated_policy_id=None)
+
+
+async def test_run_turn_can_call_the_composed_discover_providers() -> None:
+    """The two halves of this seam, composed.
+
+    ``test_turn.py`` substitutes a fake for ``discover_providers``, and the
+    test above calls the real partial with ``now=`` as a keyword. Neither
+    exercises what ``run_turn`` actually does — call the partial with three
+    positional arguments — so a parameter-order mismatch between the two
+    passed both suites while failing every real turn.
+    """
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(200, json=ON_DISCOVER_RESPONSE)
+
+    cache = SchemaPackCache(FilesystemSchemaPackSource(root=SCHEMA_PACKS_FIXTURE_ROOT))
+    await cache.refresh()
+
+    async with httpx2.AsyncClient(transport=httpx2.MockTransport(handler)) as client:
+        discover_providers = build_discover_providers(
+            build_capability_discovery(
+                client=client,
+                base_url="https://network-adapter.example",
+                schema_pack_cache=cache,
+                schema_base_url="https://schemas.openagrinet.global/schema",
+            ),
+            cache,
+            50_000,
+        )
+
+        result = await run_turn(
+            UserTurn(
+                original_query="onion price",
+                enriched_query="onion price",
+                session_id="s1",
+                transaction_id="t1",
+                source_lang="en",
+                target_lang="en",
+                channel="web",
+            ),
+            intent_llm=_FakeIntentLLM(
+                Intent(
+                    asks=(
+                        Ask(
+                            subject_categories=SubjectCategory.MARKET,
+                            interaction_type=InteractionType.OBSERVE,
+                        ),
+                    ),
+                    confidence=0.9,
+                )
+            ),
+            moderation_llm=_FakeModerationLLM(),
+            policies=[],
+            discover_providers=discover_providers,
+        )
+
+    assert result.discovery.answers[0][0].provider_id == "agmarknet"

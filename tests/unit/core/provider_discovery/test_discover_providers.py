@@ -83,7 +83,12 @@ async def test_a_single_ask_resolves_and_returns_the_discovery_result() -> None:
     discovery = _FakeDiscovery(expected_result)
 
     result = await discover_providers(
-        intent, turn, discovery, schema_pack_cache, radius_m=25000, now=NOW
+        intent,
+        turn,
+        discovery=discovery,
+        schema_pack_cache=schema_pack_cache,
+        radius_m=25000,
+        now=NOW,
     )
 
     assert result == expected_result
@@ -107,7 +112,12 @@ async def test_an_unresolved_ask_never_calls_discover() -> None:
     )
 
     result = await discover_providers(
-        intent, turn, discovery, schema_pack_cache, radius_m=25000, now=NOW
+        intent,
+        turn,
+        discovery=discovery,
+        schema_pack_cache=schema_pack_cache,
+        radius_m=25000,
+        now=NOW,
     )
 
     assert discovery.calls == []
@@ -180,7 +190,12 @@ async def test_a_failing_query_does_not_prevent_a_sibling_from_succeeding() -> N
     discovery = _PartiallyFailingDiscovery(fails_for="openagrinet:WeatherObservation")
 
     result = await discover_providers(
-        intent, turn, discovery, schema_pack_cache, radius_m=25000, now=NOW
+        intent,
+        turn,
+        discovery=discovery,
+        schema_pack_cache=schema_pack_cache,
+        radius_m=25000,
+        now=NOW,
     )
 
     assert len(discovery.calls) == 2
@@ -249,7 +264,12 @@ async def test_an_adapter_that_raises_takes_the_whole_turn_down() -> None:
 
     with pytest.raises(BaseExceptionGroup):
         await discover_providers(
-            intent, _turn(), discovery, schema_pack_cache, radius_m=25000, now=NOW
+            intent,
+            _turn(),
+            discovery=discovery,
+            schema_pack_cache=schema_pack_cache,
+            radius_m=25000,
+            now=NOW,
         )
 
 
@@ -273,7 +293,12 @@ async def test_two_asks_sharing_a_pair_dedupe_to_one_query() -> None:
     )
 
     await discover_providers(
-        intent, turn, discovery, schema_pack_cache, radius_m=25000, now=NOW
+        intent,
+        turn,
+        discovery=discovery,
+        schema_pack_cache=schema_pack_cache,
+        radius_m=25000,
+        now=NOW,
     )
 
     assert len(discovery.calls) == 1
@@ -315,7 +340,12 @@ async def test_an_expired_answer_with_no_fallback_is_dropped() -> None:
     )
 
     result = await discover_providers(
-        intent, turn, discovery, schema_pack_cache, radius_m=25000, now=NOW
+        intent,
+        turn,
+        discovery=discovery,
+        schema_pack_cache=schema_pack_cache,
+        radius_m=25000,
+        now=NOW,
     )
 
     assert result.answers[0] == ()
@@ -353,7 +383,12 @@ async def test_an_expired_answer_with_an_on_demand_sibling_records_a_fallback() 
     )
 
     result = await discover_providers(
-        intent, turn, discovery, schema_pack_cache, radius_m=25000, now=NOW
+        intent,
+        turn,
+        discovery=discovery,
+        schema_pack_cache=schema_pack_cache,
+        radius_m=25000,
+        now=NOW,
     )
 
     assert result.answers[0] == ()
@@ -398,7 +433,12 @@ async def test_a_non_expired_answer_is_kept() -> None:
     )
 
     result = await discover_providers(
-        intent, turn, discovery, schema_pack_cache, radius_m=25000, now=NOW
+        intent,
+        turn,
+        discovery=discovery,
+        schema_pack_cache=schema_pack_cache,
+        radius_m=25000,
+        now=NOW,
     )
 
     assert result.answers[0] == (fresh_answer,)
@@ -433,7 +473,12 @@ async def test_an_answer_with_no_validity_is_kept() -> None:
     )
 
     result = await discover_providers(
-        intent, turn, discovery, schema_pack_cache, radius_m=25000, now=NOW
+        intent,
+        turn,
+        discovery=discovery,
+        schema_pack_cache=schema_pack_cache,
+        radius_m=25000,
+        now=NOW,
     )
 
     assert result.answers[0] == (answer_without_validity,)
@@ -466,7 +511,12 @@ async def test_a_capability_matching_the_index_has_no_divergence_event() -> None
     )
 
     result = await discover_providers(
-        intent, turn, discovery, schema_pack_cache, radius_m=25000, now=NOW
+        intent,
+        turn,
+        discovery=discovery,
+        schema_pack_cache=schema_pack_cache,
+        radius_m=25000,
+        now=NOW,
     )
 
     assert result.events == ()
@@ -499,7 +549,12 @@ async def test_a_capability_with_a_category_outside_the_index_diverges() -> None
     )
 
     result = await discover_providers(
-        intent, turn, discovery, schema_pack_cache, radius_m=25000, now=NOW
+        intent,
+        turn,
+        discovery=discovery,
+        schema_pack_cache=schema_pack_cache,
+        radius_m=25000,
+        now=NOW,
     )
 
     assert result.events == (
@@ -537,7 +592,12 @@ async def test_a_direct_answer_with_a_diverging_category_is_flagged() -> None:
     )
 
     result = await discover_providers(
-        intent, turn, discovery, schema_pack_cache, radius_m=25000, now=NOW
+        intent,
+        turn,
+        discovery=discovery,
+        schema_pack_cache=schema_pack_cache,
+        radius_m=25000,
+        now=NOW,
     )
 
     assert result.events == (
@@ -580,7 +640,12 @@ async def test_an_expired_answer_is_not_also_reported_as_diverging() -> None:
     )
 
     result = await discover_providers(
-        intent, _turn(), discovery, schema_pack_cache, radius_m=25000, now=NOW
+        intent,
+        _turn(),
+        discovery=discovery,
+        schema_pack_cache=schema_pack_cache,
+        radius_m=25000,
+        now=NOW,
     )
 
     assert not [e for e in result.events if isinstance(e, CategoryMappingDiverged)]
@@ -617,7 +682,12 @@ async def test_a_live_answer_that_diverges_is_still_reported() -> None:
     )
 
     result = await discover_providers(
-        intent, _turn(), discovery, schema_pack_cache, radius_m=25000, now=NOW
+        intent,
+        _turn(),
+        discovery=discovery,
+        schema_pack_cache=schema_pack_cache,
+        radius_m=25000,
+        now=NOW,
     )
 
     assert result.events == (
@@ -644,7 +714,12 @@ async def test_an_empty_catalog_result_emits_ask_unservable() -> None:
     )
 
     result = await discover_providers(
-        intent, turn, discovery, schema_pack_cache, radius_m=25000, now=NOW
+        intent,
+        turn,
+        discovery=discovery,
+        schema_pack_cache=schema_pack_cache,
+        radius_m=25000,
+        now=NOW,
     )
 
     assert result.events == (
@@ -680,7 +755,12 @@ async def test_a_failed_ask_emits_ask_discovery_failed_not_unservable() -> None:
     )
 
     result = await discover_providers(
-        intent, turn, discovery, schema_pack_cache, radius_m=25000, now=NOW
+        intent,
+        turn,
+        discovery=discovery,
+        schema_pack_cache=schema_pack_cache,
+        radius_m=25000,
+        now=NOW,
     )
 
     assert result.events == (
@@ -706,7 +786,12 @@ async def test_an_unresolved_ask_does_not_also_emit_ask_unservable() -> None:
     )
 
     result = await discover_providers(
-        intent, turn, discovery, schema_pack_cache, radius_m=25000, now=NOW
+        intent,
+        turn,
+        discovery=discovery,
+        schema_pack_cache=schema_pack_cache,
+        radius_m=25000,
+        now=NOW,
     )
 
     assert result.events == (CapabilityUnresolved("Scheme", "Service"),)
@@ -733,7 +818,12 @@ async def test_a_resolved_answer_does_not_emit_ask_unservable() -> None:
     )
 
     result = await discover_providers(
-        intent, turn, discovery, schema_pack_cache, radius_m=25000, now=NOW
+        intent,
+        turn,
+        discovery=discovery,
+        schema_pack_cache=schema_pack_cache,
+        radius_m=25000,
+        now=NOW,
     )
 
     assert result.events == ()

@@ -103,7 +103,7 @@ async def run_turn(
     async def classify_then_discover() -> None:
         nonlocal intent, discovery
         intent = await classify_intent(turn, intent_llm)
-        discovery = await discover_providers(intent, turn, now or datetime.now(UTC))
+        discovery = await discover_providers(intent, turn, now=now or datetime.now(UTC))
 
     async def run_moderation() -> None:
         nonlocal decision

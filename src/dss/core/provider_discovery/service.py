@@ -293,11 +293,21 @@ def _build_ask_events(
 async def discover_providers(
     intent: Intent,
     turn: UserTurn,
+    *,
     discovery: CapabilityDiscovery,
     schema_pack_cache: CapabilityIndexSource,
     radius_m: int,
     now: datetime,
 ) -> DiscoveryResult:
+    """Find who can serve each of ``intent``'s asks.
+
+    Everything past ``turn`` is keyword-only on purpose. ``build_discover_providers``
+    binds ``discovery``/``schema_pack_cache``/``radius_m`` by keyword and leaves
+    the caller to pass ``now``; with these positional, a caller passing ``now``
+    by position landed it in ``discovery``'s slot and collided with the bound
+    value. Keyword-only makes that impossible to write.
+    """
+
     languages = (turn.target_lang,)
     coverage = _coverage(turn, radius_m)
     index = schema_pack_cache.current()
