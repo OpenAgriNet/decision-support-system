@@ -12,6 +12,10 @@ from __future__ import annotations
 from dss.core.provider_discovery.models import ProviderCapability
 from dss.core.shared.models import UserTurn
 
+# select is only called for an OnDemand capability — a Direct resource's
+# values are already in the catalog, so there is nothing to select.
+_ON_DEMAND = "OnDemand"
+
 
 def _location_field(turn: UserTurn) -> dict | None:
     if turn.location is None or turn.location.geometry is None:
@@ -27,16 +31,24 @@ def build_resource_attributes(
     capability: ProviderCapability,
     turn: UserTurn,
     model_filled: dict,
-    schema_context_index: dict[str, tuple[str, str]],
-    schema_base_url: str,
+    schema_context_index: dict[str, str],
 ) -> dict:
     """Build the full resourceAttributes object: structural fields first, the
-    model's fields merged on top — but structural fields always win."""
+    model's fields merged on top — but structural fields always win.
 
-    pack_name, version = schema_context_index[capability.capability]
+    ``@context`` is the URL the pack declares, taken verbatim rather than
+    rebuilt from a base URL and the pack's name and version.
+
+    ``informationMode`` is constant here: ``select`` is only ever called for
+    an OnDemand capability. A Direct resource's values are already in the
+    catalog and arrive as a ``DiscoveredAnswer``, so there is nothing to
+    select.
+    """
+
     structural: dict = {
-        "@context": f"{schema_base_url}/{pack_name}/{version}/context.jsonld",
+        "@context": schema_context_index[capability.capability],
         "@type": capability.capability,
+        "informationMode": _ON_DEMAND,
         "subjectCategories": list(capability.observed_categories),
     }
 

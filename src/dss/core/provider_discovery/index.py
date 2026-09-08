@@ -81,23 +81,27 @@ def build_capability_index(
 
 def build_schema_context_index(
     packs: tuple[SchemaPackFiles, ...],
-) -> tuple[dict[str, tuple[str, str]], tuple[SchemaPackSkipped, ...]]:
-    """Maps each @type to the (pack_name, version) that declares it.
+) -> tuple[dict[str, str], tuple[SchemaPackSkipped, ...]]:
+    """Maps each @type to the ``@context`` URL its pack declares.
 
-    Used to build the discover request's schemaContext URLs, which need a
-    pack's name and version — the @type string alone doesn't carry either.
+    The URL comes from the pack's own ``x-jsonld."@context"``, not from
+    concatenating a base URL with the pack name and version. Both reach the
+    network — discover sends it in ``schemaContext``, select in
+    ``resourceAttributes`` — and the pack is what states it. Building the
+    string happened to match, but it was our guess at a value already
+    published.
 
     Skips the same malformed packs as build_capability_index: if one index
     kept a pack the other dropped, discovery could resolve a @type that has
     no schemaContext URL.
     """
-    index: dict[str, tuple[str, str]] = {}
+    index: dict[str, str] = {}
     skipped: list[SchemaPackSkipped] = []
     for pack in packs:
         try:
-            type_const = _extract_type_const(pack.attributes_yaml, pack.pack_name)
+            x_jsonld = _x_jsonld(pack.attributes_yaml, pack.pack_name)
+            index[x_jsonld["@type"]] = x_jsonld["@context"]
         except _PACK_DEFECTS as exc:
             skipped.append(SchemaPackSkipped(pack.pack_name, repr(exc)))
             continue
-        index[type_const] = (pack.pack_name, pack.version)
     return index, tuple(skipped)

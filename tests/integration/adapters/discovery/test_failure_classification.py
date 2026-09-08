@@ -29,7 +29,6 @@ def _discovery_returning_status(status_code: int) -> HttpCapabilityDiscovery:
         client=client,
         base_url="https://discovery-network-vistaar.da.gov.in/oan",
         schema_pack_cache=_FakeSchemaPackCache(),
-        schema_base_url="https://schemas.openagrinet.global/schema",
     )
 
 
@@ -42,7 +41,6 @@ def _discovery_raising_connection_error() -> HttpCapabilityDiscovery:
         client=client,
         base_url="https://discovery-network-vistaar.da.gov.in/oan",
         schema_pack_cache=_FakeSchemaPackCache(),
-        schema_base_url="https://schemas.openagrinet.global/schema",
     )
 
 

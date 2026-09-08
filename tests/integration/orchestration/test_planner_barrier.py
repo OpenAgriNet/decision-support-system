@@ -101,8 +101,9 @@ def _deps(invocation: _RecordingInvocation, verdict: Verdict) -> PlannerDeps:
             answers={}, capabilities={0: (CAPABILITY,)}, failures={}, events=()
         ),
         schemas=SCHEMAS,
-        schema_context_index={"openagrinet:MandiPrice": ("MandiPrice", "0.1")},
-        schema_base_url="https://schemas.openagrinet.global/schema",
+        schema_context_index={
+            "openagrinet:MandiPrice": "https://schemas.openagrinet.global/schema/MandiPrice/0.1/context.jsonld"
+        },
         invocation=invocation,
         verdict=verdict,
     )

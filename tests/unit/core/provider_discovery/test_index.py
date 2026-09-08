@@ -188,11 +188,16 @@ def test_a_bad_pack_is_skipped_from_the_schema_context_index_too() -> None:
 
     index, skipped = build_schema_context_index((good, misnamed))
 
-    assert index == {"openagrinet:MandiPrice": ("MandiPrice", "v0.1")}
+    assert index == {
+        "openagrinet:MandiPrice": "https://schemas.openagrinet.global/schema/MandiPrice/v0.1/context.jsonld"
+    }
     assert [s.pack_name for s in skipped] == ["MisnamedPack"]
 
 
-def test_schema_context_index_maps_a_type_to_its_pack_name_and_version() -> None:
+def test_schema_context_index_maps_a_type_to_the_url_the_pack_declares() -> None:
+    """The pack declares its own ``@context`` under ``x-jsonld``, so the index
+    carries that URL rather than the parts to rebuild it."""
+
     pack = SchemaPackFiles(
         pack_name="MandiPrice",
         version="v0.1",
@@ -203,4 +208,6 @@ def test_schema_context_index_maps_a_type_to_its_pack_name_and_version() -> None
 
     index, _ = build_schema_context_index((pack,))
 
-    assert index["openagrinet:MandiPrice"] == ("MandiPrice", "v0.1")
+    assert index["openagrinet:MandiPrice"] == (
+        "https://schemas.openagrinet.global/schema/MandiPrice/v0.1/context.jsonld"
+    )

@@ -50,7 +50,6 @@ def _discovery(
         client=client,
         base_url=BASE_URL,
         schema_pack_cache=schema_pack_cache,
-        schema_base_url="https://schemas.openagrinet.global/schema",
     )
 
 

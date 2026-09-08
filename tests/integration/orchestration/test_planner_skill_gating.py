@@ -48,7 +48,6 @@ def _deps() -> PlannerDeps:
             )
         },
         schema_context_index={},
-        schema_base_url="https://schemas.openagrinet.global/schema",
         invocation=None,
         verdict=verdict,
     )

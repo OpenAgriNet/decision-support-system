@@ -12,7 +12,9 @@ from dss.adapters.discovery.client import build_discover_request
 from dss.core.provider_discovery.models import Coverage, ProviderQuery
 
 SCHEMA_CONTEXT_INDEX = {
-    "openagrinet:WeatherObservation": ("WeatherObservation", "v0.1")
+    "openagrinet:WeatherObservation": (
+        "https://schemas.openagrinet.global/schema/WeatherObservation/v0.1/context.jsonld"
+    )
 }
 SCHEMA_BASE_URL = "https://schemas.openagrinet.global/schema"
 
@@ -27,7 +29,6 @@ def test_builds_the_envelope_from_given_ids_and_timestamp() -> None:
     request = build_discover_request(
         query,
         schema_context_index=SCHEMA_CONTEXT_INDEX,
-        schema_base_url=SCHEMA_BASE_URL,
         message_id="1c0a55d7-8e64-4b19-9a2f-33b7c6e1d905",
         transaction_id="9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44",
         timestamp="2026-08-26T06:11:58.004Z",
@@ -50,7 +51,6 @@ def test_schema_context_is_built_from_the_capability_index() -> None:
     request = build_discover_request(
         query,
         schema_context_index=SCHEMA_CONTEXT_INDEX,
-        schema_base_url=SCHEMA_BASE_URL,
         message_id="m",
         transaction_id="t",
         timestamp="2026-08-26T06:11:58.004Z",
@@ -72,7 +72,6 @@ def test_the_jsonpath_filter_matches_a_single_type() -> None:
     request = build_discover_request(
         query,
         schema_context_index=SCHEMA_CONTEXT_INDEX,
-        schema_base_url=SCHEMA_BASE_URL,
         message_id="m",
         transaction_id="t",
         timestamp="2026-08-26T06:11:58.004Z",
@@ -101,7 +100,6 @@ def test_the_jsonpath_filter_ors_together_multiple_types() -> None:
     request = build_discover_request(
         query,
         schema_context_index=index,
-        schema_base_url=SCHEMA_BASE_URL,
         message_id="m",
         transaction_id="t",
         timestamp="2026-08-26T06:11:58.004Z",
@@ -125,7 +123,6 @@ def test_no_coverage_means_no_spatial_filter() -> None:
     request = build_discover_request(
         query,
         schema_context_index=SCHEMA_CONTEXT_INDEX,
-        schema_base_url=SCHEMA_BASE_URL,
         message_id="m",
         transaction_id="t",
         timestamp="2026-08-26T06:11:58.004Z",
@@ -144,7 +141,6 @@ def test_coverage_becomes_an_s_dwithin_spatial_filter() -> None:
     request = build_discover_request(
         query,
         schema_context_index=SCHEMA_CONTEXT_INDEX,
-        schema_base_url=SCHEMA_BASE_URL,
         message_id="m",
         transaction_id="t",
         timestamp="2026-08-26T06:11:58.004Z",
@@ -167,7 +163,6 @@ def test_textsearch_is_never_included() -> None:
     request = build_discover_request(
         query,
         schema_context_index=SCHEMA_CONTEXT_INDEX,
-        schema_base_url=SCHEMA_BASE_URL,
         message_id="m",
         transaction_id="t",
         timestamp="2026-08-26T06:11:58.004Z",

@@ -52,7 +52,6 @@ async def test_the_wired_adapter_resolves_a_query() -> None:
             client=client,
             base_url="https://discovery-network-vistaar.da.gov.in/oan",
             schema_pack_cache=schema_pack_cache,
-            schema_base_url="https://schemas.openagrinet.global/schema",
         )
         query = ProviderQuery(
             capabilities=("openagrinet:MandiPrice",),
@@ -79,7 +78,6 @@ async def test_the_wired_discover_providers_bakes_in_radius() -> None:
             client=client,
             base_url="https://discovery-network-vistaar.da.gov.in/oan",
             schema_pack_cache=schema_pack_cache,
-            schema_base_url="https://schemas.openagrinet.global/schema",
         )
         discover_providers = build_discover_providers(
             discovery=discovery, schema_pack_cache=schema_pack_cache, radius_m=25000
@@ -141,7 +139,6 @@ async def test_run_turn_can_call_the_composed_discover_providers() -> None:
                 client=client,
                 base_url="https://network-adapter.example",
                 schema_pack_cache=cache,
-                schema_base_url="https://schemas.openagrinet.global/schema",
             ),
             cache,
             50_000,

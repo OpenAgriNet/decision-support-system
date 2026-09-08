@@ -13,7 +13,7 @@ from dss.core.provider_discovery.models import ProviderCapability
 from dss.core.shared.models import Geometry, Location, UserTurn
 
 _SCHEMA_CONTEXT_INDEX = {
-    "openagrinet:MandiPrice": ("MandiPrice", "0.1"),
+    "openagrinet:MandiPrice": "https://schemas.openagrinet.global/schema/MandiPrice/v0.1/context.jsonld",
 }
 _SCHEMA_BASE_URL = "https://schemas.openagrinet.global/schema"
 
@@ -47,11 +47,10 @@ def test_builds_context_type_and_subject_categories() -> None:
         turn=_turn(location=None),
         model_filled={},
         schema_context_index=_SCHEMA_CONTEXT_INDEX,
-        schema_base_url=_SCHEMA_BASE_URL,
     )
 
     assert resource_attributes["@context"] == (
-        "https://schemas.openagrinet.global/schema/MandiPrice/0.1/context.jsonld"
+        "https://schemas.openagrinet.global/schema/MandiPrice/v0.1/context.jsonld"
     )
     assert resource_attributes["@type"] == "openagrinet:MandiPrice"
     assert resource_attributes["subjectCategories"] == ["Market"]
@@ -63,7 +62,6 @@ def test_omits_location_when_turn_has_none() -> None:
         turn=_turn(location=None),
         model_filled={},
         schema_context_index=_SCHEMA_CONTEXT_INDEX,
-        schema_base_url=_SCHEMA_BASE_URL,
     )
 
     assert "location" not in resource_attributes
@@ -76,7 +74,6 @@ def test_includes_location_from_turn_geometry() -> None:
         turn=_turn(location=location),
         model_filled={},
         schema_context_index=_SCHEMA_CONTEXT_INDEX,
-        schema_base_url=_SCHEMA_BASE_URL,
     )
 
     assert resource_attributes["location"] == {
@@ -91,7 +88,6 @@ def test_merges_model_filled_fields_on_top() -> None:
         turn=_turn(location=None),
         model_filled={"commodity": {"code": "PADDY", "name": "Paddy"}},
         schema_context_index=_SCHEMA_CONTEXT_INDEX,
-        schema_base_url=_SCHEMA_BASE_URL,
     )
 
     assert resource_attributes["commodity"] == {"code": "PADDY", "name": "Paddy"}
@@ -103,7 +99,6 @@ def test_model_filled_cannot_override_a_structural_field() -> None:
         turn=_turn(location=None),
         model_filled={"@type": "something-else"},
         schema_context_index=_SCHEMA_CONTEXT_INDEX,
-        schema_base_url=_SCHEMA_BASE_URL,
     )
 
     assert resource_attributes["@type"] == "openagrinet:MandiPrice"

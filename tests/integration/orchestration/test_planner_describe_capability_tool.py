@@ -54,8 +54,9 @@ def _deps() -> PlannerDeps:
             answers={}, capabilities={0: (CAPABILITY,)}, failures={}, events=()
         ),
         schemas=SCHEMAS,
-        schema_context_index={"openagrinet:MandiPrice": ("MandiPrice", "0.1")},
-        schema_base_url="https://schemas.openagrinet.global/schema",
+        schema_context_index={
+            "openagrinet:MandiPrice": "https://schemas.openagrinet.global/schema/MandiPrice/0.1/context.jsonld"
+        },
         invocation=None,
         # Left unset on purpose: describe_capability reads discovery data
         # already in memory, so it does not wait for moderation. A tool that

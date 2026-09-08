@@ -176,7 +176,7 @@ async def test_refresh_also_populates_the_schema_context_index() -> None:
 
     await cache.refresh()
 
-    assert cache.current_schema_context()["openagrinet:MandiPrice"] == (
-        "MandiPrice",
-        "v0.1",
+    assert (
+        cache.current_schema_context()["openagrinet:MandiPrice"]
+        == "https://schemas.openagrinet.global/schema/MandiPrice/v0.1/context.jsonld"
     )

@@ -40,8 +40,7 @@ class PlannerDeps:
     turn: UserTurn
     discovery: DiscoveryResult
     schemas: dict[str, DomainSchema]
-    schema_context_index: dict[str, tuple[str, str]]
-    schema_base_url: str
+    schema_context_index: dict[str, str]
     invocation: CapabilityInvocation | None
     verdict: Verdict
     raw_answers: list[tuple[int, DiscoveredAnswer]] = field(default_factory=list)
@@ -84,7 +83,6 @@ async def _select(
         turn=deps.turn,
         model_filled=resource_attributes,
         schema_context_index=deps.schema_context_index,
-        schema_base_url=deps.schema_base_url,
     )
 
     assert deps.invocation is not None

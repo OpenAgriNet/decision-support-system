@@ -30,7 +30,6 @@ def test_planner_deps_starts_with_an_empty_accumulator() -> None:
         discovery=_discovery_result(),
         schemas={},
         schema_context_index={},
-        schema_base_url="https://schemas.openagrinet.global/schema",
         invocation=None,
         verdict=Verdict(),
     )

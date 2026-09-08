@@ -44,8 +44,7 @@ class Plan(Protocol):
 def build_plan(
     *,
     schemas: dict[str, DomainSchema],
-    schema_context_index: dict[str, tuple[str, str]],
-    schema_base_url: str,
+    schema_context_index: dict[str, str],
     invocation: CapabilityInvocation,
     identity: Identity,
     skills: Sequence[Skill],
@@ -72,7 +71,6 @@ def build_plan(
             discovery=discovery,
             schemas=schemas,
             schema_context_index=schema_context_index,
-            schema_base_url=schema_base_url,
             invocation=invocation,
             verdict=verdict,
         )

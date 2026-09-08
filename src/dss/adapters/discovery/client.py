@@ -77,7 +77,7 @@ def _malformed_result(
 
 
 class SchemaContextSource(Protocol):
-    def current_schema_context(self) -> dict[str, tuple[str, str]]: ...
+    def current_schema_context(self) -> dict[str, str]: ...
 
 
 _ON_DEMAND = "OnDemand"
@@ -144,16 +144,20 @@ def map_discover_response(
 
 def _schema_context_urls(
     capabilities: tuple[str, ...],
-    schema_context_index: dict[str, tuple[str, str]],
-    schema_base_url: str,
+    schema_context_index: dict[str, str],
 ) -> list[str]:
-    urls = []
-    for capability in capabilities:
-        pack_name, version = schema_context_index[capability]
-        urls.append(
-            f"{schema_base_url}/{pack_name}/{version}/context.jsonld#{capability}"
-        )
-    return urls
+    """The pack's own ``@context`` URL, with the @type as a fragment.
+
+    The base URL comes from the pack rather than configuration — it is the
+    pack that states where its context lives. The ``#{capability}`` fragment
+    is discover's own addition: it names which type in that context the query
+    is about, and the real ``discover_request.json`` carries it.
+    """
+
+    return [
+        f"{schema_context_index[capability]}#{capability}"
+        for capability in capabilities
+    ]
 
 
 def _jsonpath_filter(capabilities: tuple[str, ...]) -> dict[str, str]:
@@ -186,8 +190,7 @@ def _spatial_filter(query: ProviderQuery) -> list[dict[str, Any]]:
 
 def build_discover_request(
     query: ProviderQuery,
-    schema_context_index: dict[str, tuple[str, str]],
-    schema_base_url: str,
+    schema_context_index: dict[str, str],
     message_id: str,
     transaction_id: str,
     timestamp: str,
@@ -205,7 +208,7 @@ def build_discover_request(
             "transactionId": transaction_id,
             "timestamp": timestamp,
             "schemaContext": _schema_context_urls(
-                query.capabilities, schema_context_index, schema_base_url
+                query.capabilities, schema_context_index
             ),
         },
         "message": {"intent": intent},
@@ -224,12 +227,10 @@ class HttpCapabilityDiscovery:
         client: httpx2.AsyncClient,
         base_url: str,
         schema_pack_cache: SchemaContextSource,
-        schema_base_url: str,
     ) -> None:
         self._client = client
         self._base_url = base_url
         self._schema_pack_cache = schema_pack_cache
-        self._schema_base_url = schema_base_url
 
     async def discover(
         self, query: ProviderQuery, ask_indices: tuple[int, ...], transaction_id: str
@@ -237,7 +238,6 @@ class HttpCapabilityDiscovery:
         request_body = build_discover_request(
             query,
             schema_context_index=self._schema_pack_cache.current_schema_context(),
-            schema_base_url=self._schema_base_url,
             message_id=str(uuid4()),
             transaction_id=transaction_id,
             timestamp=datetime.now(UTC).isoformat(),

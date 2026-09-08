@@ -128,8 +128,9 @@ async def test_plan_returns_evidence_from_what_the_tools_returned() -> None:
     invocation = _FakeInvocation()
     plan = build_plan(
         schemas=SCHEMAS,
-        schema_context_index={"openagrinet:MandiPrice": ("MandiPrice", "0.1")},
-        schema_base_url="https://schemas.openagrinet.global/schema",
+        schema_context_index={
+            "openagrinet:MandiPrice": "https://schemas.openagrinet.global/schema/MandiPrice/0.1/context.jsonld"
+        },
         invocation=invocation,
         identity=IDENTITY,
         skills=(SKILL,),
@@ -170,8 +171,9 @@ async def test_the_prompt_carries_the_identity_and_the_marked_history() -> None:
 
     plan = build_plan(
         schemas=SCHEMAS,
-        schema_context_index={"openagrinet:MandiPrice": ("MandiPrice", "0.1")},
-        schema_base_url="https://schemas.openagrinet.global/schema",
+        schema_context_index={
+            "openagrinet:MandiPrice": "https://schemas.openagrinet.global/schema/MandiPrice/0.1/context.jsonld"
+        },
         invocation=_FakeInvocation(),
         identity=IDENTITY,
         skills=(SKILL,),
@@ -212,8 +214,9 @@ async def test_a_rejected_turn_yields_empty_insufficient_evidence() -> None:
     invocation = _FakeInvocation()
     plan = build_plan(
         schemas=SCHEMAS,
-        schema_context_index={"openagrinet:MandiPrice": ("MandiPrice", "0.1")},
-        schema_base_url="https://schemas.openagrinet.global/schema",
+        schema_context_index={
+            "openagrinet:MandiPrice": "https://schemas.openagrinet.global/schema/MandiPrice/0.1/context.jsonld"
+        },
         invocation=invocation,
         identity=IDENTITY,
         skills=(SKILL,),

@@ -18,13 +18,13 @@ class SchemaPackCache:
     def __init__(self, source: SchemaPackSource) -> None:
         self._source = source
         self._index: dict[tuple[str, str], tuple[str, ...]] = {}
-        self._schema_context_index: dict[str, tuple[str, str]] = {}
+        self._schema_context_index: dict[str, str] = {}
         self._skipped: tuple[SchemaPackSkipped, ...] = ()
 
     def current(self) -> dict[tuple[str, str], tuple[str, ...]]:
         return self._index
 
-    def current_schema_context(self) -> dict[str, tuple[str, str]]:
+    def current_schema_context(self) -> dict[str, str]:
         return self._schema_context_index
 
     def skipped_packs(self) -> tuple[SchemaPackSkipped, ...]:
