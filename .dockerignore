@@ -1,0 +1,47 @@
+# Python virtual environments
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+htmlcov/
+.coverage
+
+# Secrets & env files
+.env
+.env.*
+
+# Git & IDE
+.git/
+.github/
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Docs & non-runtime files (README.md stays — hatchling needs it for package metadata)
+docs/
+AGENTS.md
+CLAUDE.md
+CONVENTIONS.md
+CHANGELOG.md
+TODO.md
+
+# Tests
+tests/
+
+# Claude / AI tooling
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db

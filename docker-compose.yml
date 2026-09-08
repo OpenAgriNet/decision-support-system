@@ -1,0 +1,22 @@
+# Dev: docker compose --env-file .env up -d --build
+# Deploy: docker compose --env-file .env pull && docker compose --env-file .env up -d
+services:
+  dss:
+    image: ghcr.io/openagrinet/decision-support-system:${IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      DSS_INTENT_MODEL: ${DSS_INTENT_MODEL:-azure:gpt-5.6-luna}
+      DSS_MODERATION_MODEL: ${DSS_MODERATION_MODEL:-azure:gpt-5.6-luna}
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:?set AZURE_OPENAI_ENDPOINT in .env}
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:?set AZURE_OPENAI_API_KEY in .env}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    ports:
+      - "127.0.0.1:${DSS_HOST_PORT:-8077}:8077"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8077/openapi.json')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
