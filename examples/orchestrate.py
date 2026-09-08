@@ -1,15 +1,15 @@
-"""Throwaway dev HTTP harness for the *full* orchestrator — NOT the DSS entrypoint.
+"""Throwaway dev HTTP harness for the orchestrator — NOT the DSS entrypoint.
 
 The committed entrypoint (REST/gRPC/in-process) is undecided and needs an ADR
-(DSS_ARCHITECTURE.md §8.3). This exists only so the composed turn workflow
-(``orchestration/orchestrator.py::run_turn``, ADR-0006) can be exercised with
-curl end to end.
+(DSS_ARCHITECTURE.md §8.3). This exists only so the orchestrator workflow
+(``orchestration/orchestrator.py::run_turn``, ADR-0006) can be exercised with curl.
 
-Intent and moderation are the *real* services, run against an Azure OpenAI
-deployment (its v1 Responses endpoint). Everything the team has not built yet runs
-as its shipped placeholder. The one component that genuinely needs an external
-service — Provider Discovery, which hops to the network adapter — is stubbed with
-``_demo_discover`` so the pipeline streams without it.
+Intent and moderation are the real services, run against an Azure OpenAI deployment
+(its v1 Responses endpoint). Provider discovery genuinely needs the network adapter,
+so it is stubbed here with ``_demo_discover`` so a turn reaches the planner offline.
+The planner itself is a placeholder that owns plan creation; response composition and
+channel shaping are separate components, not yet built, so the harness returns the
+turn's ``TurnResult`` (outcome, intent, plan) as JSON.
 
 Prerequisites (in the environment / .env):
     AZURE_OPENAI_ENDPOINT     e.g. https://<res>.services.ai.azure.com/openai/v1/responses
@@ -23,7 +23,6 @@ Run:
 from __future__ import annotations
 
 import os
-from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from fastapi import FastAPI
@@ -31,12 +30,10 @@ from fastapi import FastAPI
 from dss.adapters.llm.pydantic_ai_provider import build_azure_llm
 from dss.config.policy_loader import load_policy_pack
 from dss.config.settings import Settings
-from dss.core.composition.models import Identity
 from dss.core.intent.models import Intent
 from dss.core.policy.models import Checkpoint
 from dss.core.provider_discovery.models import DiscoveryResult, ProviderCapability
 from dss.core.shared.models import UserTurn
-from dss.core.tool_discovery.models import Tool
 from dss.orchestration.envelope import TurnEnvelope, to_user_turn
 from dss.orchestration.orchestrator import build_components, run_turn
 
@@ -45,9 +42,7 @@ _policies = load_policy_pack(_settings.policy_config_path).for_checkpoint(
     Checkpoint.MODERATION
 )
 
-# Azure OpenAI backs both components. Both share one model here (the design lets a
-# deployment bind each its own). Fail fast at startup if the creds are missing —
-# there is no fallback backend.
+# Azure OpenAI backs both components. Fail fast if the creds are missing.
 _AZURE_ENDPOINT = os.environ.get("AZURE_OPENAI_ENDPOINT")
 _AZURE_KEY = os.environ.get("AZURE_OPENAI_API_KEY")
 _AZURE_DEPLOYMENT = os.environ.get("AZURE_OPENAI_DEPLOYMENT")
@@ -80,21 +75,13 @@ _moderation_llm = _make_llm(
     _settings.moderation_retries,
 )
 
-# The tenant's assistant identity (the Identity config primitive). Hard-coded here;
-# a real deployment loads it from /config.
-_IDENTITY = Identity(
-    name="Kisan Mitra",
-    persona="A concise, friendly agriculture assistant.",
-    boundaries="Answers agriculture questions only.",
-)
-
 
 async def _demo_discover(
     intent: Intent, turn: UserTurn, now: datetime
 ) -> DiscoveryResult:
     """STUB for Provider Discovery. Returns one OnDemand capability per ask so the
-    placeholder planner/executioner/composer have something to run. Swap for the
-    real network adapter (``build_discover_providers``) to make discovery live."""
+    planner has something to plan. Swap for the real network adapter
+    (``build_discover_providers``) to make discovery live."""
 
     capabilities = {
         index: (
@@ -112,27 +99,11 @@ async def _demo_discover(
     )
 
 
-class _EmptyToolIndex:
-    """No MCP tools wired in this harness."""
-
-    def all(self) -> tuple[Tool, ...]:
-        return ()
-
-    def search(self, terms: Sequence[str], limit: int) -> tuple[Tool, ...]:
-        return ()
-
-    def refresh(self, server_id: str) -> None:
-        raise NotImplementedError
-
-
 _components = build_components(
     intent_llm=_intent_llm,
     moderation_llm=_moderation_llm,
     policies=_policies,
     discover_providers=_demo_discover,
-    tool_index=_EmptyToolIndex(),
-    identity=_IDENTITY,
-    enable_review=False,  # optional component left off (design v2 §6.9)
 )
 
 app = FastAPI(title="DSS orchestrator dev harness")
@@ -145,15 +116,6 @@ def health() -> dict[str, str]:
 
 @app.post("/turn")
 async def turn_endpoint(envelope: TurnEnvelope) -> dict:
-    """Run a turn and collect the streamed chunks into one JSON body.
-
-    The real transport is Server-Sent Events (design v2 §2) — one chunk per event
-    on an open connection. This harness buffers them so the result is easy to read
-    with a single curl."""
-
     turn = to_user_turn(envelope, now=datetime.now(UTC))
-    chunks = [
-        chunk.model_dump(mode="json")
-        async for chunk in run_turn(turn, _components, now=datetime.now(UTC))
-    ]
-    return {"channel": turn.channel, "chunks": chunks}
+    result = await run_turn(turn, _components, now=datetime.now(UTC))
+    return result.model_dump(mode="json")

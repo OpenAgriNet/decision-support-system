@@ -71,20 +71,6 @@ The DSS decomposes into the following logical functions. Each has a single purpo
 
 > **Shape distinction.** Skills are injected into the prompt as reasoning guidance. Tools and Provider capabilities are exposed to the LLM as function-call schemas (name + description + input schema) that the LLM may invoke during Planning and execution.
 
-> **The orchestrator (ADR-0006).** These functions are held together by one
-> composed workflow — `orchestration/orchestrator.py::run_turn(turn, components, *, now)`,
-> an async generator that yields channel chunks. Its body *is* the execution order:
-> start moderation, classify, fan out skill/provider/tool discovery, plan (awaiting
-> the moderation verdict at the barrier), gate on the outcome, then execute →
-> compose → [review] → shape. Components never call each other; each is a plain
-> async callable injected via an `OrchestratorComponents` bundle and wired once in
-> `build_components(...)`. Optional components (Response Reviewer) are left unset
-> rather than flagged off; moderation is mandatory. Components not yet built ship as
-> contract-faithful placeholders under `core/<function>/` and drop out behind an
-> unchanged signature. The read-only/side-effecting **barrier** is enforced by
-> control flow: no outside call runs until moderation has cleared, and the three
-> non-answer outcomes short-circuit before execution.
-
 > **Altitude disclaimer.** This is high-level design. The rationale subsections below (§3.0, §3.2) fix *boundaries and direction*, not mechanics. Ordering, seams, and responsibility splits are the decisions being recorded; thresholds, iteration bounds, retry semantics, prompt structure, and schemas are **not** settled here. Every claim below should be re-questioned against real behaviour during implementation, and this document updated when implementation contradicts it. Do not treat these subsections as specifications to code against.
 
 ### 3.0 Intent and moderation run in parallel (ADR-0003)

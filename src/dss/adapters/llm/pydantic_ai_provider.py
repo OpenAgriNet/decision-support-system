@@ -30,14 +30,14 @@ OutputMode = Literal["tool", "native", "prompted"]
 
 
 class PydanticAILLMProvider:
-    """A per-function model binding. ``model`` is any Pydantic AI model id
-    (``"openai:gpt-4o-mini"``) or a configured ``Model`` object; for a custom
-    OpenAI-compatible endpoint pass a configured model with its base URL and set
-    ``output_mode="prompted"`` if it does not support tools."""
+    """A per-function model binding. ``model`` is a configured Pydantic AI ``Model``
+    object — built by one of the ``build_*`` factories below, which own the
+    provider/endpoint wiring. Set ``output_mode="prompted"`` for a model that does
+    not support tools."""
 
     def __init__(
         self,
-        model: str | Model,
+        model: Model,
         *,
         temperature: float = 0.0,
         timeout: float = 5.0,

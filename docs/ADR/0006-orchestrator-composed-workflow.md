@@ -36,11 +36,12 @@ some components declarable optional.
 3. **The barrier is load-bearing.** Everything up to the plan is read-only and
    discardable; from execution onward a Provider call cannot be taken back. No
    side-effecting call may run until moderation has cleared.
-4. **Ship before the fleet is complete.** The workflow must run end-to-end today,
-   with placeholders standing in for unbuilt components behind their design-doc
-   contracts.
-5. **Extend by configuration, not adopter code** (DSS_ARCHITECTURE §4): optional
-   components must be switchable without editing the workflow.
+4. **Ship the skeleton before the fleet is complete.** The workflow must wire the
+   components that exist (intent, moderation, provider discovery, the planner)
+   without stubbing the ones that do not — a placeholder that fetches nothing is
+   untested weight and reads as "done" when it is not.
+5. **Extend by configuration, not adopter code** (dss-design-v2 §4): which
+   components run is decided by composition in Python, not by editing the workflow.
 
 ## 3. Considered Options
 
@@ -57,33 +58,32 @@ some components declarable optional.
 
 **Chosen option: A.**
 
-- **`orchestration/orchestrator.py::run_turn(turn, components, *, now)`** is an
-  async generator yielding `ChannelChunk`s. Its body *is* the pipeline: start
-  moderation, `await classify`, fan out skills/providers/tools with
-  `asyncio.gather`, build the plan (which awaits the moderation verdict at the
-  barrier), gate on the outcome, then execute → compose → [review] → shape.
-- **Components are injected**, as a frozen `OrchestratorComponents` bundle of
-  async callables plus `identity`. `build_components(...)` is the composition
-  root: it binds the real intent/moderation/provider-discovery services to their
-  models and ports and fills the rest with placeholders. Swapping a real
-  implementation in is a one-line change there, never in `run_turn`.
-- **The barrier is enforced by control flow.** The moderation task is handed to
-  the planner as an `Awaitable` and awaited there, at the last moment; the
-  orchestrator then reads the same verdict and, on any non-`PROCEED` outcome or an
-  empty plan, emits **one** terminal chunk and returns — before `execute` is ever
-  called. Only `ANSWERED` streams.
-- **`status_for(decision, plan)`** is the single place the four ways out are
+- **`orchestration/orchestrator.py::run_turn(turn, components, *, now)`** is a plain
+  async function returning a `TurnResult`. Its body *is* the pipeline: run intent
+  and moderation concurrently, gate on the verdict, then discover providers and call
+  the planner. It stops at the planner's result — response composition and channel
+  shaping are separate components, not yet built, and are **not** stubbed, so the
+  function does not yet stream `ChannelChunk`s.
+- **Concurrency is `anyio`, not `asyncio`** (ADR-0005), consistent with the rest of
+  `core`/`adapters` (e.g. `provider_discovery`). Intent and moderation run in one
+  `anyio` task group.
+- **Components are injected**, as a frozen `OrchestratorComponents` bundle of four
+  async callables (classify, moderate, discover_providers, plan). `build_components(...)`
+  is the composition root: it binds the real intent/moderation/provider-discovery
+  services and the planner to their models and ports. Swapping an implementation in
+  is a one-line change there, never in `run_turn`.
+- **The barrier is enforced by the gate.** On any non-`PROCEED` outcome the
+  orchestrator returns immediately — no discovery, no planner, so no outside call —
+  and blanks the classified intent (ADR-0003). Discovery (read-only) and the planner
+  run only past that gate. This replaces the earlier "pass the verdict into the
+  planner as an awaitable" idea: gating up front is simpler and does no read-only
+  work on a refused turn.
+- **The planner owns plan creation *and* execution.** There is no separate
+  executioner step in the code; the planner agent is the single downstream the
+  orchestrator calls, and the only thing that touches the outside world.
+- **`outcome_for(decision, plan)`** is the single place the four ways out are
   decided (design v2 §3, §6.6 table); it is the only component that sees both the
   verdict and the plan.
-- **Optional components are unset, not disabled by a flag inside the workflow.**
-  `review` is `Callable | None`; unbound, it is skipped and a startup log warns
-  that grounding violations will not be detected (design v2 §6.9). Moderation has
-  no such switch — it is mandatory.
-- **Placeholders honour the contracts, not the behaviour.** Each unbuilt component
-  ships as a `core/<function>/` package with the design-doc models and a
-  deterministic stand-in service, clearly marked PLACEHOLDER. They fetch nothing
-  and reason about nothing; they exist so the workflow runs and so the real
-  component drops in behind an unchanged signature.
 
 ### 4.1 Positive Consequences
 
@@ -91,20 +91,17 @@ some components declarable optional.
   the ports below are never reached (tier 3).
 - The barrier and the four outcomes are pinned by tests independent of any
   component's real behaviour.
-- A component team can develop against its `core/<function>/models.py` contract
-  and swap its `service.py` in without touching orchestration.
+- The PR carries no untested placeholder weight: only real components and the
+  planner contract land, so a green build means the wired path works.
 
 ### 4.2 Negative Consequences
 
-- On a rejected turn the fan-out (including a read-only provider-discovery hop)
-  has already run and is thrown away. Accepted per the design's barrier reasoning
-  — read-only work may cross the barrier — and it keeps the common `PROCEED` path
-  off the critical latency of a serial moderation-then-discovery ordering.
-- `run_turn` reuses `asyncio` (`ensure_future`/`gather`) rather than anyio
-  (ADR-0005). The moderation-as-awaitable-passed-to-the-planner pattern is
-  naturally future-shaped, and this matches the existing `orchestration/turn.py`.
-  Revisit if the turn grows structured-concurrency needs (cancellation scopes
-  around Provider calls).
+- `run_turn` does not stream yet — it returns a `TurnResult`, not `ChannelChunk`s —
+  because response composition and channel shaping are deferred to their own
+  components. The streaming shape returns when those land.
+- Gating before discovery means intent∥moderation and discovery are *sequential*
+  rather than fully fanned out. Accepted: it costs a little latency on `PROCEED`
+  turns but does zero read-only work on refused ones, and keeps the barrier obvious.
 
 ## 5. Rejection Rationale
 
@@ -121,26 +118,28 @@ some components declarable optional.
 
 - A component needs to run **conditionally** or the turn needs a **replan loop**
   (composition-local corrective retry, design §5.5) → reconsider Option B.
-- **Resumable streams** (Open #12): buffering claims against `trace_id` changes
-  the composer/channel seam and may change what `run_turn` yields.
-- The terminal (non-`PROCEED`) paths need localized, channel-shaped wording →
-  route them through compose/shape instead of the fixed `_TERMINAL_TEXT`.
+- **Response composition and channel shaping land** → `run_turn` grows the steps
+  after the planner and changes its return to streamed `ChannelChunk`s.
+- **Skills / tool discovery land** → they join the fan-out before the planner, as
+  additional injected callables.
 
 ## 7. Follow-up Actions
 
-- **[Component owners]** Replace each placeholder `core/<function>/service.py`
-  (skills, tool_discovery, planning, execution, composition, channel, review) with
-  the real implementation behind the same signature.
-- **[DSS code owners]** When moderation surfaces partial refusals
-  (`ModerationVerdict.refused` in the design), thread them through the planner's
-  `Plan.refused` into the composer — the field is already carried.
-- **[DSS code owners]** Reflected in `DSS_ARCHITECTURE.md` §3 in this change.
+- **[Component owners]** Build the real planner agent behind `plan_turn`'s
+  signature, and the downstream response-composition and channel components; wire
+  them into `run_turn`/`build_components` as they land.
+- **[DSS code owners]** When moderation surfaces partial refusals, thread them
+  through the planner's `Plan.refused` into composition — the field is already
+  carried.
+- **[DSS code owners]** Reflected in `dss-design-v2.md` §4 in this change
+  (`DSS_ARCHITECTURE.md` is superseded by that doc and is not updated here).
 
 ## 8. Notes
 
-- Builds on ADR-0003: the intent/moderation fan-out is preserved; the orchestrator
-  generalizes it into the full pipeline rather than replacing
-  `orchestration/turn.py::run_turn` (which remains the tested two-way coordinator).
+- Builds on ADR-0003: the intent∥moderation concurrency is preserved (now an `anyio`
+  task group), and a non-`PROCEED` turn still surfaces a blanked `Intent()`. The
+  orchestrator sits alongside `orchestration/turn.py::run_turn` (the tested two-way
+  coordinator) and extends the same idea to discovery + planning.
 - The design's separate `TurnContext` is **not** introduced: the repo already
   folds `session_id`, `transaction_id`, `source_lang`, `target_lang` and `channel`
   onto `UserTurn`, and every core service already takes `UserTurn`. `now` is passed

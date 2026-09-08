@@ -10,7 +10,6 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict
 
 from dss.core.shared.models import Refused
-from dss.core.skills.models import Skill
 
 
 class DomainSchema(BaseModel):
@@ -72,7 +71,6 @@ class Plan(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     steps: tuple[Step, ...] = ()
-    skills: tuple[Skill, ...] = ()  # carried through to the composer prompt
     serves: tuple[int, ...] = ()
     refused: tuple[Refused, ...] = ()
     missing: tuple[MissingInput, ...] = ()
