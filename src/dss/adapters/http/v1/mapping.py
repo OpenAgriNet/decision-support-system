@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-
+from uuid import uuid4
 from dss.adapters.http.v1 import schema
 from dss.core.shared.models import (
     Cause,
@@ -46,10 +46,10 @@ def to_user_turn(body: schema.TurnRequest) -> UserTurn:
         enriched_query=query,
         session_id=body.context.session_id,
         transaction_id = (
-    body.context.transaction_id
-    if body.context.transaction_id is not None
-    else str(uuid4())
-),
+            body.context.transaction_id
+            if body.context.transaction_id is not None
+                else str(uuid4())
+        ),
         source_lang=attributes.source_language,
         target_lang=attributes.target_language,
         channel=attributes.channel,
@@ -122,7 +122,7 @@ def to_turn_context(body: schema.TurnRequest, *, message_id: str) -> TurnContext
     """
 
     return TurnContext(
-        trace_id=body.context.transaction_id,
+        trace_id=body.context.transaction_id or str(uuid4()),
         message_id=body.context.message_id or message_id,
         session_id=body.context.session_id,
     )
