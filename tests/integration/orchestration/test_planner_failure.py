@@ -154,6 +154,55 @@ async def test_the_failure_is_recorded_for_the_evidence() -> None:
     assert failure.retryable is True
 
 
+def _calls_unindexed_then_answers(
+    messages: list[ModelMessage], info: AgentInfo
+) -> ModelResponse:
+    if len(messages) == 1:
+        return ModelResponse(
+            parts=[
+                ToolCallPart(
+                    tool_name="select",
+                    args={
+                        "ask_index": 0,
+                        "resource_id": "res:gj-agri:facility",
+                        "resource_attributes": {},
+                    },
+                )
+            ]
+        )
+    return ModelResponse(parts=[TextPart(content="picked another")])
+
+
+async def test_a_capability_with_no_indexed_schema_gets_a_retry() -> None:
+    """Discovery reports what the network offers; the index is built from the
+    packs on disk, and a skipped pack leaves the index without a @type the
+    network still advertises. That was a raw ``KeyError`` out of the tool,
+    ending the turn — while its two neighbouring guards (unknown resource_id,
+    invented field) both hand the model a ``ModelRetry`` it can act on."""
+
+    unindexed = ProviderCapability(
+        provider_id="gj-agri",
+        provider_name="Gujarat Agriculture Dept",
+        capability="openagrinet:AgricultureFacility",
+        resource_id="res:gj-agri:facility",
+        observed_categories=("Service",),
+    )
+    invocation = _FailingInvocation()
+    deps = _deps(invocation)
+    deps.discovery = DiscoveryResult(
+        answers={}, capabilities={0: (unindexed,)}, failures={}, events=()
+    )
+    agent = build_planner_agent(skills=(_skill_with("select"),))
+
+    with agent.override(model=FunctionModel(_calls_unindexed_then_answers)):
+        result = await agent.run("where can I test soil?", deps=deps)
+
+    # the turn survived, and no provider was called for a capability we
+    # cannot even build a request for
+    assert result.output == "picked another"
+    assert invocation.calls == 0
+
+
 async def test_the_model_is_told_the_call_failed() -> None:
     """It has to know, or it cannot try another candidate or report the gap."""
 

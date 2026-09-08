@@ -19,13 +19,22 @@ def render_candidates_as_markdown(
     *,
     schemas: dict[str, DomainSchema],
 ) -> str:
-    if not candidates:
-        return "No candidates found for this ask."
-
     lines = []
     for candidate in candidates:
-        schema = schemas[candidate.capability]
+        # Skipped rather than raised. Discovery reports what the network
+        # offers; the index is built from the packs on disk, and the two can
+        # disagree — a skipped pack leaves the index without a @type the
+        # network still advertises. Raising here lost the ask's *other*
+        # candidates, which were usable, and this tool touches nothing
+        # external so it must not be able to end a turn. The skipped pack is
+        # already reported at refresh time as SchemaPackSkipped.
+        schema = schemas.get(candidate.capability)
+        if schema is None:
+            continue
         lines.append(f"- {candidate.provider_name}")
         lines.append(f"  resource_id: {candidate.resource_id}")
         lines.append(f"  fields you may set: {', '.join(schema.filterable)}")
+
+    if not lines:
+        return "No candidates found for this ask."
     return "\n".join(lines)

@@ -72,7 +72,20 @@ async def _select(
             f"resource_id {resource_id!r} is not one of ask {ask_index}'s candidates"
         )
 
-    schema = deps.schemas[capability.capability]
+    # A ModelRetry, not a KeyError. Discovery reports what the network
+    # offers; the schema index is built from the packs on disk, and the two
+    # can disagree — a skipped pack leaves the index without a @type the
+    # network still advertises. Without a schema there is nothing to validate
+    # the model's fields against and no way to build a request, but that is a
+    # reason for the model to pick another candidate, not to end the turn.
+    schema = deps.schemas.get(capability.capability)
+    if schema is None:
+        raise ModelRetry(
+            f"no schema is loaded for {capability.capability}, so it cannot be "
+            f"called. Pick another candidate for ask {ask_index}, or report "
+            f"that this ask has no answer."
+        )
+
     try:
         validate_arguments(resource_attributes, schema)
     except InvalidArgument as exc:

@@ -56,3 +56,42 @@ def test_renders_multiple_candidates() -> None:
 def test_no_candidates_says_so() -> None:
     markdown = render_candidates_as_markdown((), schemas=_SCHEMAS)
     assert "no" in markdown.lower()
+
+
+def test_a_candidate_with_no_indexed_schema_is_left_out() -> None:
+    """Discovery reports what the network offers; the schema index is built
+    from the packs on disk. They can disagree — a skipped pack leaves the
+    index without a @type the network still advertises.
+
+    Raising ``KeyError`` on that candidate lost the *other* candidates for
+    the same ask, which were usable. This tool touches nothing external and
+    must not be able to end a turn."""
+
+    unindexed = ProviderCapability(
+        provider_id="gj-agri",
+        provider_name="Gujarat Agriculture Dept",
+        capability="openagrinet:AgricultureFacility",
+        resource_id="res:gj-agri:facility",
+        observed_categories=("Service",),
+    )
+
+    markdown = render_candidates_as_markdown((_MANDI, unindexed), schemas=_SCHEMAS)
+
+    assert "Agmarknet" in markdown
+    assert "Gujarat Agriculture Dept" not in markdown
+
+
+def test_every_candidate_being_unindexed_says_so() -> None:
+    """Otherwise the model gets an empty string and no idea why."""
+
+    unindexed = ProviderCapability(
+        provider_id="gj-agri",
+        provider_name="Gujarat Agriculture Dept",
+        capability="openagrinet:AgricultureFacility",
+        resource_id="res:gj-agri:facility",
+        observed_categories=("Service",),
+    )
+
+    markdown = render_candidates_as_markdown((unindexed,), schemas=_SCHEMAS)
+
+    assert "no" in markdown.lower()
