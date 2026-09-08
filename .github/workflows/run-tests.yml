@@ -1,4 +1,4 @@
-name: CI
+name: Run Tests
 
 on:
   push:
@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  check:
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -29,12 +29,6 @@ jobs:
       - name: Check formatting
         run: uv run ruff format --check .
 
-      # The framework-boundary test lives here. Tier 6 (eval) is excluded by
-      # addopts in pyproject.toml and must never gate a merge.
-      #
-      # Coverage gates at 85%. Note that src/dss is currently all empty
-      # __init__.py files: 0 statements reports as 100%, so this gate is
-      # green for now without proving anything. It starts biting as soon as
-      # the first core service lands.
+      # eval tier is excluded via pyproject.toml addopts.
       - name: Test
         run: uv run pytest --cov=src/dss --cov-report=term-missing --cov-fail-under=85
