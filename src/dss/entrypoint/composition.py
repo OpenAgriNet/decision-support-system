@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import logging
 import warnings
+from collections.abc import Callable
 from datetime import datetime
 
 import anyio
@@ -33,6 +34,7 @@ from dss.adapters.schema_packs.filesystem import FilesystemSchemaPackSource
 from dss.adapters.sinks.file import FileTelemetrySink, FileTurnSink
 from dss.config.identity_loader import load_identity
 from dss.config.policy_loader import load_policy_pack
+from dss.config.schema_pack_fetch import SchemaPackFetchFailed, fetch_packs
 from dss.config.settings import Settings
 from dss.config.skill_loader import load_skills
 from dss.core.intent.models import Intent
@@ -55,6 +57,11 @@ from dss.ports.turn import TurnRunner
 
 logger = logging.getLogger(__name__)
 
+# The startup fetch, as a seam. Injected so a test can supply one that writes
+# fixture packs or asserts it was never called — nothing here should reach
+# GitHub from a test run.
+FetchPacks = Callable[..., tuple[str, ...]]
+
 UNWIRED_URL = (
     "DSS_EVIDENCE_URL is set but posting evidence to an external endpoint is not "
     "implemented — records are being written to {directory} instead. Two things "
@@ -64,7 +71,12 @@ UNWIRED_URL = (
 )
 
 
-def build_runner(settings: Settings, *, client: httpx2.AsyncClient) -> TurnRunner:
+def build_runner(
+    settings: Settings,
+    *,
+    client: httpx2.AsyncClient,
+    fetch: FetchPacks = fetch_packs,
+) -> TurnRunner:
     """Assemble the live runner.
 
     `client` is the caller's: it owns the connection pool, so it is also the
@@ -86,7 +98,9 @@ def build_runner(settings: Settings, *, client: httpx2.AsyncClient) -> TurnRunne
     identity = load_identity()  # bundled default until an adopter mounts one
     skills = load_skills()
 
-    discover, invocation, schemas, schema_context_index = _network(settings, client)
+    discover, invocation, schemas, schema_context_index = _network(
+        settings, client, fetch=fetch
+    )
 
     components = Components(
         discover=discover,
@@ -151,6 +165,8 @@ async def _discovers_nothing(
 def _network(
     settings: Settings,
     client: httpx2.AsyncClient,
+    *,
+    fetch: FetchPacks = fetch_packs,
 ) -> tuple[
     DiscoverProviders, CapabilityInvocation, dict[str, DomainSchema], dict[str, str]
 ]:
@@ -165,8 +181,17 @@ def _network(
     if not settings.network_enabled:
         return _discovers_nothing, _UnwiredInvocation(), {}, {}
 
+    _ensure_schema_packs(settings, fetch=fetch)
     source = FilesystemSchemaPackSource(root=settings.schema_pack_dir)
     cache, packs = anyio.run(_load_schema_packs, source)
+    if not packs:
+        raise ValueError(
+            f"the network is configured but no schema packs loaded from "
+            f"{settings.schema_pack_dir} — refusing to boot, because every turn "
+            f"would come back no_match and look like 'no provider serves this'. "
+            f"Run: uv run python scripts/fetch_schema_packs.py "
+            f"--ref schema-packs-v0.1"
+        )
 
     discovery = build_capability_discovery(
         client=client,
@@ -198,6 +223,33 @@ def _network(
     schemas = _planner_schemas(good)
     schema_context_index = cache.current_schema_context()
     return discover, invocation, schemas, schema_context_index
+
+
+def _ensure_schema_packs(settings: Settings, *, fetch: FetchPacks) -> None:
+    """Fetch the packs once if none are on disk.
+
+    Deliberately no on/off flag. Packs present means no network call at all;
+    packs absent means the run cannot work, so there is no third behaviour to
+    configure. A deployment that mounts them never reaches the fetch.
+
+    The emptiness test mirrors `FilesystemSchemaPackSource._is_pack` rather
+    than asking whether the directory has any entries: a stray `.DS_Store`
+    would read as non-empty, the fetch would be skipped, and the refusal below
+    would then tell you to run the fetch that was skipped.
+
+    A failed fetch is not raised here. The refusal below covers it, and says
+    which directory is empty as well as what to run — more use than a bare
+    HTTP error.
+    """
+
+    directory = settings.schema_pack_dir
+    if directory is None or any(directory.glob("*/*/attributes.yaml")):
+        return
+
+    try:
+        fetch(ref=settings.schema_pack_ref, dest=directory)
+    except SchemaPackFetchFailed as failure:
+        logger.warning("schema pack fetch found nothing: %s", failure)
 
 
 def _planner_schemas(packs: tuple[SchemaPackFiles, ...]) -> dict[str, DomainSchema]:

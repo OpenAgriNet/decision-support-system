@@ -12,6 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import httpx2
+import pytest
 
 from dss.config.settings import Settings
 from dss.core.provider_discovery.models import SchemaPackFiles
@@ -101,6 +102,91 @@ def test_wired_network_builds_the_planner_schemas(tmp_path: Path) -> None:
     # a Direct-answer pack with no `filterable_paths`, so it is (correctly) left
     # out of `schemas` while still resolvable through the context index.
     assert set(schemas) <= set(schema_context_index)
+
+
+def test_the_network_refuses_to_boot_with_no_packs(tmp_path: Path) -> None:
+    """Network on, zero packs: refuse, rather than answer every turn no_match.
+
+    This is the guard that used to live in `network_enabled`'s three-way
+    check. It fires on the real condition — nothing loaded — instead of on a
+    setting being None, so a mounted directory that failed to mount is loud
+    rather than silently indistinguishable from "no provider serves this".
+
+    The message has to name the fetch, because the fix is to run it.
+    """
+
+    empty = tmp_path / "no-packs"
+    empty.mkdir()
+    settings = _settings(
+        tmp_path,
+        discovery_base_url="https://discovery.example/oan",
+        invocation_base_url="https://select.example/oan",
+        schema_pack_dir=empty,
+    )
+
+    def fetches_nothing(**_kwargs) -> tuple[str, ...]:
+        """A ref with no packs on it — what the default ref does today."""
+        return ()
+
+    with pytest.raises(ValueError, match="fetch_schema_packs"):
+        _network(settings, httpx2.AsyncClient(), fetch=fetches_nothing)
+
+
+def test_packs_already_on_disk_are_not_re_fetched(tmp_path: Path) -> None:
+    """Present packs mean no network call at all.
+
+    Otherwise every restart would depend on GitHub being reachable, and
+    `--reload` would fetch on every save — enough to exhaust the API's 60
+    calls an hour. The fake raises rather than returning, so a call cannot
+    pass unnoticed.
+    """
+
+    settings = _settings(
+        tmp_path,
+        discovery_base_url="https://discovery.example/oan",
+        invocation_base_url="https://select.example/oan",
+        schema_pack_dir=SCHEMA_PACKS_FIXTURE_ROOT,
+    )
+
+    def must_not_be_called(**_kwargs) -> tuple[str, ...]:
+        raise AssertionError("fetched with packs already on disk")
+
+    discover, _invocation, _schemas, index = _network(
+        settings, httpx2.AsyncClient(), fetch=must_not_be_called
+    )
+
+    assert discover is not _discovers_nothing
+    assert "openagrinet:MandiPrice" in index
+
+
+def test_build_runner_passes_the_fetch_through(tmp_path: Path) -> None:
+    """`build_runner` is what `create_app` calls, so the seam has to reach it.
+
+    Testing `_network` alone would leave the wiring untested: a fake on one
+    side and a call that never forwards the argument on the other both pass,
+    and the refusal would never fire in the process that matters.
+    """
+
+    empty = tmp_path / "no-packs"
+    empty.mkdir()
+    settings = _settings(
+        tmp_path,
+        discovery_base_url="https://discovery.example/oan",
+        invocation_base_url="https://select.example/oan",
+        schema_pack_dir=empty,
+    )
+
+    calls: list[dict] = []
+
+    def records(**kwargs) -> tuple[str, ...]:
+        calls.append(kwargs)
+        return ()
+
+    with pytest.raises(ValueError, match="fetch_schema_packs"):
+        build_runner(settings, client=httpx2.AsyncClient(), fetch=records)
+
+    # reached the fetch, with the configured ref and destination
+    assert calls == [{"ref": settings.schema_pack_ref, "dest": empty}]
 
 
 def _pack_missing_x_jsonld() -> SchemaPackFiles:
