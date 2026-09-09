@@ -15,7 +15,6 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-from tests.support.fakes import FakeTelemetrySink, FakeTurnSink
 
 from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
 from dss.core.moderation.models import Outcome, ReasonCode
@@ -35,6 +34,7 @@ from dss.core.shared.models import (
     TurnStatus,
 )
 from dss.orchestration.core_runner import CoreRunner
+from tests.support.fakes import FakeTelemetrySink, FakeTurnSink
 
 DELETE_COMMAND = LlmPolicy(
     id="delete-command",

@@ -10,11 +10,10 @@ from __future__ import annotations
 
 import asyncio
 
-from tests.support.fakes import FakeRunner
-
 from dss.core.shared.models import TurnContext, TurnEvent, TurnFinished, UserTurn
 from dss.orchestration.stub_runner import StubRunner
 from dss.ports.turn import TurnRunner
+from tests.support.fakes import FakeRunner
 
 
 def drive(runner: TurnRunner, turn: UserTurn, ctx: TurnContext) -> list[TurnEvent]:

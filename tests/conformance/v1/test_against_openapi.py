@@ -21,7 +21,6 @@ import pytest
 import yaml
 from fastapi.testclient import TestClient
 from jsonschema import Draft202012Validator
-from tests.support.fakes import FakeRunner
 
 from dss.config.settings import Settings
 from dss.core.shared.models import (
@@ -36,6 +35,7 @@ from dss.core.shared.models import (
     TurnStatus,
 )
 from dss.entrypoint.app import build_app
+from tests.support.fakes import FakeRunner
 
 SPEC = Path(__file__).resolve().parents[3] / "docs" / "api-contracts" / "openapi.yaml"
 

@@ -31,6 +31,22 @@ _VERSION = "v0.1"
 # failure quotes this to say where to look — see `raise_for_empty`.
 _PUBLISHED_REF = "schema-packs-v0.1"
 
+# `main` is where the packs are expected to land, so that is what we track —
+# even though it carries only a README today and a default run therefore
+# fails. Failing loudly with the right ref named beats silently reading a
+# pinned branch nobody chose.
+DEFAULT_REF = "main"
+
+# Where the packs go. Anchored to this file, not the working directory: the
+# service is started with `uvicorn --factory` from wherever the operator
+# happens to be, and a relative default would resolve against that.
+#
+# `parents[3]` is the repo root from `src/dss/config/`. That holds for a source
+# checkout, which is what the default is for. An installed wheel puts this
+# module under `site-packages`, where there is no repo root and no
+# `var/` — a deployment sets DSS_SCHEMA_PACK_DIR to a mounted path instead.
+DEFAULT_PACK_DIR = Path(__file__).parents[3] / "var" / "schema-packs"
+
 # The packs the DSS routes against.
 #
 # AgricultureResource is not routed to directly — the other three `$ref` it

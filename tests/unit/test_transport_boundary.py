@@ -20,6 +20,7 @@ import ast
 from pathlib import Path
 
 import pytest
+
 from tests.support.imports import dynamic_import_modules, imported_modules
 
 SRC = Path(__file__).resolve().parents[2] / "src"

@@ -16,6 +16,46 @@ light the whole path up (real planner + composer model calls included).
 So out of the box this exercises the *transport and the flow* and the real
 moderation/intent reasoning — not a provider-backed answer.
 
+## Get the schema packs
+
+The packs describe what a provider can answer — one per capability
+(`MandiPrice`, `WeatherObservation`, …). They live in the
+[`OpenAgriNet/network-specs`](https://github.com/OpenAgriNet/network-specs)
+repo, **not this one**, and nothing clones them. A fresh checkout has none.
+
+```bash
+uv run python scripts/fetch_schema_packs.py --ref schema-packs-v0.1
+```
+
+That writes four packs into `var/schema-packs/` (gitignored):
+`AgricultureResource`, `MandiPrice`, `WeatherObservation`, `KnowledgeAdvisory`.
+
+`AgricultureResource` is not a capability anything routes to. The other three
+`$ref` it for their shared fields, so it has to sit beside them.
+
+**`--ref` is required in practice.** It defaults to `main`, which carries only
+a README, so a default run fetches nothing and exits `1`:
+
+```
+error: no schema packs found on ref 'main' (0 of 4). The published packs are
+on 'schema-packs-v0.1' — re-run with --ref schema-packs-v0.1.
+```
+
+That is deliberate. `main` is where the packs are expected to land; until they
+do, the fetch says so rather than quietly reading a branch nobody chose.
+
+| Flag | Default | Notes |
+|---|---|---|
+| `--ref` | `main` | the network-specs branch or tag. Use `schema-packs-v0.1` today |
+| `--dest` | `var/schema-packs/` | resolved from the repo root, not your working directory |
+
+Set `GITHUB_TOKEN` if you re-run it often — the listing call is capped at 60 an
+hour unauthenticated.
+
+`AgricultureFacility` is deliberately not fetched: none of its examples
+declares `subjectCategories`, which the capability index reads unguarded, so
+the pack would be silently dropped anyway. See `TODO.md`.
+
 ## Start it
 
 ```bash
@@ -220,22 +260,24 @@ status code cannot change, so every later failure is a terminal event instead.
 
 ## Knobs
 
-`src/dss/entrypoint/settings.py`:
+`src/dss/config/settings.py`. Every one takes a `DSS_` prefix as an env var —
+`schema_pack_dir` is `DSS_SCHEMA_PACK_DIR`.
 
 | Setting | Default | Set it to see |
 |---|---|---|
-| `max_concurrent_turns` | `32` | `0` → every turn `429` with `Retry-After` |
 | `max_body_bytes` | `1000000` | something small → `413` (checked *after* gunzip, so a small gzip can still trip it) |
 | `ready` | `True` | `False` → `503` |
 | `dss_release` | `"v1.0.0"` | anything — it is echoed as `context.dss_release` |
 | `discovery_base_url` | unset | the OAN discovery endpoint |
 | `invocation_base_url` | unset | the provider `/select` endpoint |
-| `schema_pack_dir` | unset | a network-specs schema-pack checkout on disk |
+| `schema_pack_dir` | `var/schema-packs/` | another pack checkout, or a mounted path in a container |
 | `discovery_radius_m` | `25000` | how far around the turn's location to look |
 
-The three network settings are all-or-nothing (`Settings.network_enabled`):
-set all of them and discovery + the planner call real providers; leave any
-unset and the turn stays `no_match`. The planner and composer bind their own
+The two base URLs are all-or-nothing (`Settings.network_enabled`): set both and
+discovery + the planner call real providers; leave either unset and the turn
+stays `no_match`. `schema_pack_dir` has a working default, so it is no longer
+part of that gate — but with the network on and no packs loaded, the DSS
+refuses to boot rather than answer every turn `no_match`. Run the fetch above. The planner and composer bind their own
 models (`DSS_PLANNER_MODEL`, `DSS_COMPOSER_MODEL`) — `DSS_STUB_LLM` only stubs
 intent and moderation, so a real provider-backed answer needs both the network
 settings and real model access.
