@@ -73,6 +73,43 @@ class PydanticAILLMProvider:
         return result.output
 
 
+def build_azure_model(
+    deployment: str,
+    *,
+    endpoint: str,
+    api_key: str,
+) -> Model:
+    """The bare Pydantic AI ``Model`` for an Azure OpenAI **v1** deployment via
+    its Responses API.
+
+    Split out from ``build_azure_llm`` because the planner and composer bind a
+    ``Model`` directly (they build their own ``Agent``), while intent and
+    moderation wrap it in a ``PydanticAILLMProvider``. Both need the same
+    endpoint/auth wiring, so it lives here once.
+
+    ``endpoint`` is the v1 base or the full responses URL — e.g.
+    ``https://<res>.services.ai.azure.com/openai/v1`` (a trailing ``/responses`` is
+    trimmed). ``deployment`` is the Azure *deployment id* (no spaces), not a display
+    name. The key is sent both as the ``api-key`` header (Azure key auth) and as a
+    bearer token, so either auth style on the v1 endpoint works. This bypasses
+    pydantic-ai's ``AzureProvider`` (classic ``?api-version=`` API), which the v1
+    GA endpoint rejects.
+    """
+
+    base_url = endpoint.rstrip("/")
+    if base_url.endswith("/responses"):
+        base_url = base_url[: -len("/responses")]
+
+    client = AsyncOpenAI(
+        base_url=base_url,
+        api_key=api_key,
+        default_headers={"api-key": api_key},
+    )
+    return OpenAIResponsesModel(
+        deployment, provider=OpenAIProvider(openai_client=client)
+    )
+
+
 def build_azure_llm(
     deployment: str,
     *,
@@ -86,31 +123,13 @@ def build_azure_llm(
     """An ``LLMProvider`` backed by an Azure OpenAI **v1** deployment via its
     Responses API. Keeps the SDK construction inside the adapter.
 
-    ``endpoint`` is the v1 base or the full responses URL — e.g.
-    ``https://<res>.services.ai.azure.com/openai/v1`` (a trailing ``/responses`` is
-    trimmed). ``deployment`` is the Azure *deployment id* (no spaces), not a display
-    name. The key is sent both as the ``api-key`` header (Azure key auth) and as a
-    bearer token, so either auth style on the v1 endpoint works.
-
     ``output_mode`` defaults to ``"tool"`` — a capable hosted model does structured
     output best via function-calling; switch to ``"native"``/``"prompted"`` if a
     given deployment rejects tools.
     """
 
-    base_url = endpoint.rstrip("/")
-    if base_url.endswith("/responses"):
-        base_url = base_url[: -len("/responses")]
-
-    client = AsyncOpenAI(
-        base_url=base_url,
-        api_key=api_key,
-        default_headers={"api-key": api_key},
-    )
-    model = OpenAIResponsesModel(
-        deployment, provider=OpenAIProvider(openai_client=client)
-    )
     return PydanticAILLMProvider(
-        model,
+        build_azure_model(deployment, endpoint=endpoint, api_key=api_key),
         temperature=temperature,
         timeout=timeout,
         retries=retries,
