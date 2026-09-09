@@ -71,30 +71,6 @@ class Settings(BaseSettings):
     select_attempts: int = Field(3, ge=1)  # 0 would never call the provider
     select_backoff_seconds: float = Field(0.5, ge=0.0)
 
-    # --- Azure OpenAI (gated) ---------------------------------------------
-    # Azure differs from OpenAI in three ways the SDK cannot guess: the calls
-    # go to a per-resource endpoint, the model name is a *deployment id*, and
-    # the key travels in an `api-key` header rather than as a bearer token.
-    # Set both and all four agents are built against the deployment; leave
-    # either unset and the model string's own prefix decides the provider.
-    #
-    # Read here rather than left to the SDK because the SDK only knows
-    # `OPENAI_API_KEY`: an Azure key handed to it goes to api.openai.com and
-    # comes back 401 `invalid_api_key`, which reads as a bad key rather than a
-    # key sent to the wrong service.
-    azure_openai_endpoint: str | None = None
-    azure_openai_api_key: str | None = None
-    # The deployment id serving every agent. Per-agent `DSS_<AGENT>_MODEL`
-    # still wins, so one agent can point at a different deployment.
-    azure_openai_deployment: str | None = None
-
-    @property
-    def azure_enabled(self) -> bool:
-        return (
-            self.azure_openai_endpoint is not None
-            and self.azure_openai_api_key is not None
-        )
-
     # --- provider network wiring (gated) ----------------------------------
     # Discovery and invocation are the only components that leave for the OAN
     # network, and standing them up needs endpoints a local run does not have.

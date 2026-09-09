@@ -25,6 +25,7 @@ from dss.core.planner.prompt import build_planner_prompt, build_user_message
 from dss.core.planner.validation import DomainSchema
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.shared.models import UserTurn
+from dss.observability.trace_log import log_external_response
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
 from dss.ports.invocation import CapabilityInvocation
 
@@ -97,11 +98,15 @@ def build_plan(
         # The enriched query and the history go in the user message, wrapped
         # in markers — the model resolves a subject named in an earlier turn
         # from here (see the provider-invocation skill's guidance).
-        await agent.run(
+        result = await agent.run(
             build_user_message(query=turn.enriched_query, history=turn.history),
             deps=deps,
             model_settings=model_settings,
         )
+        # The planner's own prose is discarded downstream (the composer writes
+        # the answer), but log it so the model's final say is visible next to
+        # the provider calls its `select` tool made.
+        log_external_response("llm.planner", turn.transaction_id, body=result.output)
         # Direct answers too: they need no select call, so they never land in
         # raw_answers, and leaving them out lost an ask the catalog had
         # already answered.

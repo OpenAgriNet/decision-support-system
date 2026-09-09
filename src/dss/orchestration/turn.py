@@ -41,6 +41,7 @@ from dss.core.moderation.service import moderate
 from dss.core.policy.models import Policy
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.shared.models import UserTurn
+from dss.observability.trace_log import bind_request_id, trace_component
 from dss.orchestration.discovery import DiscoverProviders
 from dss.ports.llm import LLMProvider
 
@@ -107,20 +108,30 @@ async def run_turn(
     classified intent and whatever discovery found are discarded.
     """
 
+    # Ambient id for every downstream log line, including adapters that take no
+    # transaction_id (the LLM provider port). Set before the task group so both
+    # child tasks inherit it.
+    bind_request_id(turn.transaction_id)
+
     intent = Intent()
     discovery = _nothing_discovered()
     decision: ModerationDecision | None = None
 
     async def classify_then_discover() -> None:
         nonlocal intent, discovery
-        intent = await classify_intent(turn, intent_llm)
-        discovery = await discover_providers(intent, turn, now=now or datetime.now(UTC))
+        with trace_component("intent", turn.transaction_id):
+            intent = await classify_intent(turn, intent_llm)
+        with trace_component("discovery", turn.transaction_id):
+            discovery = await discover_providers(
+                intent, turn, now=now or datetime.now(UTC)
+            )
 
     async def run_moderation() -> None:
         nonlocal decision
-        decision = await moderate(
-            ModerationContext(turn=turn), policies, moderation_llm
-        )
+        with trace_component("moderation", turn.transaction_id):
+            decision = await moderate(
+                ModerationContext(turn=turn), policies, moderation_llm
+            )
 
     async with anyio.create_task_group() as task_group:
         task_group.start_soon(run_moderation)

@@ -20,6 +20,7 @@ three network settings to light the whole path up.
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import warnings
 from collections.abc import Awaitable, Callable
@@ -123,14 +124,14 @@ def build_runner_with_lifecycle(
             invocation=invocation,
             identity=identity,
             skills=skills,
-            model=_model_for(settings, settings.planner_model),
+            model=_resolve_model(settings.planner_model),
             temperature=settings.planner_temperature,
             timeout_seconds=settings.planner_timeout_seconds,
             retries=settings.planner_retries,
         ),
         compose=build_compose(
             identity=identity,
-            model=_model_for(settings, settings.composer_model),
+            model=_resolve_model(settings.composer_model),
             temperature=settings.composer_temperature,
             timeout_seconds=settings.composer_timeout_seconds,
             retries=settings.composer_retries,
@@ -334,38 +335,6 @@ async def _load_schema_packs(
     return cache, packs
 
 
-def _model_for(settings: Settings, configured: str):
-    """The model every agent binds, Azure-aware.
-
-    Without Azure configured this is the model string, whose own prefix picks
-    the provider — Pydantic AI's syntax, and the SDK finds the key itself.
-
-    With Azure configured it is a built model object instead, because Azure
-    needs three things a string cannot express: a per-resource endpoint, a
-    deployment id in place of a model name, and the key in an `api-key`
-    header.
-
-    `DSS_AZURE_OPENAI_DEPLOYMENT` then serves every agent, since one
-    deployment usually does. Leave it unset to fall back to each agent's own
-    `DSS_<AGENT>_MODEL` as the deployment id, which is how two agents get
-    different deployments.
-    """
-
-    if not settings.azure_enabled:
-        return configured
-
-    # The provider prefix is Pydantic AI's own syntax for picking a provider
-    # from a string. Azure has already been picked by the endpoint, and the
-    # rest is a deployment id — so `openai:gpt-4o-mini` falls back to
-    # `gpt-4o-mini`, which on a v1 endpoint is usually the deployment name.
-    _, _, deployment = configured.rpartition(":")
-    return build_azure_model(
-        settings.azure_openai_deployment or deployment,
-        endpoint=settings.azure_openai_endpoint,
-        api_key=settings.azure_openai_api_key,
-    )
-
-
 def _load_schema_packs_blocking(
     source: FilesystemSchemaPackSource,
 ) -> tuple[SchemaPackCache, tuple[SchemaPackFiles, ...]]:
@@ -395,11 +364,37 @@ def _load_schema_packs_blocking(
     return box["result"]
 
 
+def _resolve_model(model: str):
+    """Turn a component's model string into what Pydantic AI should bind.
+
+    An ``azure:<deployment>`` string is built here into a concrete Responses-API
+    ``Model`` (endpoint + key from the environment, the same ``AZURE_OPENAI_*``
+    vars the SDK reads directly), because pydantic-ai's own ``azure:`` inference
+    routes to the classic ``?api-version=`` provider, which the v1 GA endpoint
+    rejects. The deployment id is the part after ``azure:`` — so per-component
+    bindings (ADR-0004) stay independent. Any other string (``openai:...``) is
+    handed back untouched for pydantic-ai to infer.
+    """
+
+    if not model.startswith("azure:"):
+        return model
+    deployment = model.split(":", 1)[1]
+    try:
+        endpoint = os.environ["AZURE_OPENAI_ENDPOINT"]
+        api_key = os.environ["AZURE_OPENAI_API_KEY"]
+    except KeyError as exc:
+        raise RuntimeError(
+            f"{model!r} needs AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY in "
+            "the environment (they are read by the SDK, not from DSS settings)."
+        ) from exc
+    return build_azure_model(deployment, endpoint=endpoint, api_key=api_key)
+
+
 def _intent_llm(settings: Settings):
     if settings.stub_llm:
         return StubLLM()  # STUB(#83): canned answers, no network
     return PydanticAILLMProvider(
-        _model_for(settings, settings.intent_model),
+        _resolve_model(settings.intent_model),
         temperature=settings.intent_temperature,
         timeout=settings.intent_timeout_seconds,
         retries=settings.intent_retries,
@@ -410,7 +405,7 @@ def _moderation_llm(settings: Settings):
     if settings.stub_llm:
         return StubLLM()
     return PydanticAILLMProvider(
-        _model_for(settings, settings.moderation_model),
+        _resolve_model(settings.moderation_model),
         temperature=settings.moderation_temperature,
         timeout=settings.moderation_timeout_seconds,
         retries=settings.moderation_retries,

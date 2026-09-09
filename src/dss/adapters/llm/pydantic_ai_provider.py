@@ -19,6 +19,7 @@ from pydantic_ai.models import Model
 from pydantic_ai.models.openai import OpenAIResponsesModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
+from dss.observability.trace_log import log_external_response
 from dss.ports.llm import SchemaT
 
 # How the schema is coaxed out of the model. ``tool`` (Pydantic AI's default) asks
@@ -70,7 +71,45 @@ class PydanticAILLMProvider:
             retries=self._retries,
         )
         result = await agent.run(user_query, model_settings=self._model_settings)
+        log_external_response("llm", output_schema=schema.__name__, body=result.output)
         return result.output
+
+
+def build_azure_model(
+    deployment: str,
+    *,
+    endpoint: str,
+    api_key: str,
+) -> Model:
+    """The bare Pydantic AI ``Model`` for an Azure OpenAI **v1** deployment via
+    its Responses API.
+
+    Split out from ``build_azure_llm`` because the planner and composer bind a
+    ``Model`` directly (they build their own ``Agent``), while intent and
+    moderation wrap it in a ``PydanticAILLMProvider``. Both need the same
+    endpoint/auth wiring, so it lives here once.
+
+    ``endpoint`` is the v1 base or the full responses URL — e.g.
+    ``https://<res>.services.ai.azure.com/openai/v1`` (a trailing ``/responses`` is
+    trimmed). ``deployment`` is the Azure *deployment id* (no spaces), not a display
+    name. The key is sent both as the ``api-key`` header (Azure key auth) and as a
+    bearer token, so either auth style on the v1 endpoint works. This bypasses
+    pydantic-ai's ``AzureProvider`` (classic ``?api-version=`` API), which the v1
+    GA endpoint rejects.
+    """
+
+    base_url = endpoint.rstrip("/")
+    if base_url.endswith("/responses"):
+        base_url = base_url[: -len("/responses")]
+
+    client = AsyncOpenAI(
+        base_url=base_url,
+        api_key=api_key,
+        default_headers={"api-key": api_key},
+    )
+    return OpenAIResponsesModel(
+        deployment, provider=OpenAIProvider(openai_client=client)
+    )
 
 
 def build_azure_llm(
@@ -86,12 +125,6 @@ def build_azure_llm(
     """An ``LLMProvider`` backed by an Azure OpenAI **v1** deployment via its
     Responses API. Keeps the SDK construction inside the adapter.
 
-    ``endpoint`` is the v1 base or the full responses URL — e.g.
-    ``https://<res>.services.ai.azure.com/openai/v1`` (a trailing ``/responses`` is
-    trimmed). ``deployment`` is the Azure *deployment id* (no spaces), not a display
-    name. The key is sent both as the ``api-key`` header (Azure key auth) and as a
-    bearer token, so either auth style on the v1 endpoint works.
-
     ``output_mode`` defaults to ``"tool"`` — a capable hosted model does structured
     output best via function-calling; switch to ``"native"``/``"prompted"`` if a
     given deployment rejects tools.
@@ -103,33 +136,4 @@ def build_azure_llm(
         timeout=timeout,
         retries=retries,
         output_mode=output_mode,
-    )
-
-
-def build_azure_model(
-    deployment: str, *, endpoint: str, api_key: str
-) -> OpenAIResponsesModel:
-    """A model bound to an Azure OpenAI v1 deployment.
-
-    Separate from `build_azure_llm` because the planner and composer are
-    Pydantic AI agents that take a model directly, not an `LLMProvider` —
-    so all four agents share this one construction.
-
-    Azure needs three things a model string cannot express: calls go to a
-    per-resource `endpoint`, the model name is a *deployment id*, and the key
-    travels in an `api-key` header. It is also sent as a bearer token, so
-    either auth style on the v1 endpoint works.
-    """
-
-    base_url = endpoint.rstrip("/")
-    if base_url.endswith("/responses"):
-        base_url = base_url[: -len("/responses")]
-
-    client = AsyncOpenAI(
-        base_url=base_url,
-        api_key=api_key,
-        default_headers={"api-key": api_key},
-    )
-    return OpenAIResponsesModel(
-        deployment, provider=OpenAIProvider(openai_client=client)
     )

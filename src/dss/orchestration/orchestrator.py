@@ -59,6 +59,7 @@ from dss.core.shared.models import (
     TurnStatus,
     UserTurn,
 )
+from dss.observability.trace_log import bind_request_id, trace_component
 from dss.orchestration.compose import Compose
 from dss.orchestration.discovery import DiscoverProviders
 from dss.orchestration.plan import Plan
@@ -128,6 +129,7 @@ class Orchestrator:
         self._telemetry = telemetry
 
     async def run(self, turn: UserTurn, ctx: TurnContext) -> AsyncIterator[TurnEvent]:
+        bind_request_id(ctx.trace_id)
         yield TurnStarted()
         self._turns.opened(ctx, turn)
 
@@ -165,11 +167,13 @@ class Orchestrator:
         # the tool, which may be several model round-trips deep.
         verdict = Verdict()
         verdict.set(decision)
-        evidence = await self._components.plan(
-            turn, intent=result.intent, discovery=result.discovery, verdict=verdict
-        )
+        with trace_component("planner", ctx.trace_id):
+            evidence = await self._components.plan(
+                turn, intent=result.intent, discovery=result.discovery, verdict=verdict
+            )
 
-        text = await self._components.compose(evidence, turn=turn)
+        with trace_component("composer", ctx.trace_id):
+            text = await self._components.compose(evidence, turn=turn)
         answer = answer_from_evidence(text, evidence)
         for block in answer.content:
             yield Claim(content=block)

@@ -101,9 +101,12 @@ model access. With Azure:
 ```bash
 DSS_DISCOVERY_BASE_URL=http://127.0.0.1:8078 \
 DSS_INVOCATION_BASE_URL=http://127.0.0.1:8078 \
-DSS_AZURE_OPENAI_ENDPOINT="https://<res>.services.ai.azure.com/openai/v1/responses" \
-DSS_AZURE_OPENAI_API_KEY="<key>" \
-DSS_AZURE_OPENAI_DEPLOYMENT="<deployment id>" \
+DSS_INTENT_MODEL=azure:<deployment id> \
+DSS_MODERATION_MODEL=azure:<deployment id> \
+DSS_PLANNER_MODEL=azure:<deployment id> \
+DSS_COMPOSER_MODEL=azure:<deployment id> \
+AZURE_OPENAI_ENDPOINT="https://<res>.services.ai.azure.com/openai/v1/responses" \
+AZURE_OPENAI_API_KEY="<key>" \
 uv run uvicorn --factory dss.entrypoint.app:create_app --port 8077
 ```
 
@@ -412,25 +415,36 @@ not be there.
 
 ### Azure OpenAI
 
-Azure needs three things a model string cannot express — a per-resource
-endpoint, a deployment id in place of a model name, and the key in an
-`api-key` header — so it has its own settings rather than relying on the SDK:
+An agent goes to Azure when its model string starts `azure:` — the rest is
+the **deployment id**, not a model name:
 
-| Setting | Notes |
+```bash
+DSS_PLANNER_MODEL=azure:gpt-4o-mini
+```
+
+Two environment variables supply the rest, read directly rather than through
+`Settings` because the SDK reads them under the same names:
+
+| Variable | Notes |
 |---|---|
-| `DSS_AZURE_OPENAI_ENDPOINT` | the v1 base or full responses URL; a trailing `/responses` is trimmed |
-| `DSS_AZURE_OPENAI_API_KEY` | the deployment key |
-| `DSS_AZURE_OPENAI_DEPLOYMENT` | one deployment id serving all four agents |
+| `AZURE_OPENAI_ENDPOINT` | the v1 base or full responses URL; a trailing `/responses` is trimmed |
+| `AZURE_OPENAI_API_KEY` | the deployment key |
 
-Set the endpoint **and** the key and all four agents are built against the
-deployment. Leave `DSS_AZURE_OPENAI_DEPLOYMENT` unset and each agent's own
-`DSS_<AGENT>_MODEL` is used as its deployment id — which is how two agents get
-different deployments.
+An `azure:` model with either missing raises at startup, naming both. A model
+string with any other prefix is handed to Pydantic AI untouched — so one agent
+can be on Azure while another is on OpenAI.
 
-A partial config is treated as no Azure config: with only the key set, it
-would be sent to `api.openai.com`, which returns `401 invalid_api_key` — an
-Azure key has no `sk-` prefix, so that reads as a bad key rather than a key
-sent to the wrong service.
+This bypasses Pydantic AI's own `AzureProvider`, which uses the classic
+`?api-version=` API that the v1 GA endpoint rejects.
+
+Two symptoms worth recognising, since neither error says what is actually
+wrong:
+
+- **`401 invalid_api_key`** — an Azure key sent to `api.openai.com`, i.e. the
+  model string has no `azure:` prefix. An Azure key has no `sk-` prefix, so
+  this reads as a bad key rather than a key sent to the wrong service.
+- **`404 DeploymentNotFound`** — the name after `azure:` is not a deployment
+  on that resource. The error quotes the name it tried.
 
 ### Everything else
 
