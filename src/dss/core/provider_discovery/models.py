@@ -6,8 +6,11 @@ Data shapes only. Behaviour lives in service.py.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from datetime import datetime
 from enum import Enum
+
+from dss.core.provider_discovery.schema_fields import FieldSpec
 
 
 @dataclass(frozen=True)
@@ -186,3 +189,8 @@ class SchemaPackFiles:
     profile_json: str
     attributes_yaml: str
     examples_json: tuple[str, ...]
+    # The one derived value here, and it is derived by the reading layer on
+    # purpose: a pack's fields are split across its own `attributes.yaml` and
+    # `AgricultureResource`'s, and resolving that `$ref` needs a path, which
+    # this model does not carry. Empty when the shared file was not readable.
+    flattened_fields: dict[str, FieldSpec] = dataclass_field(default_factory=dict)
