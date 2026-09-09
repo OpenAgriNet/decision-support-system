@@ -64,7 +64,15 @@ UNWIRED_URL = (
 )
 
 
-def build_runner(settings: Settings) -> TurnRunner:
+def build_runner(settings: Settings, *, client: httpx2.AsyncClient) -> TurnRunner:
+    """Assemble the live runner.
+
+    `client` is the caller's: it owns the connection pool, so it is also the
+    only one that can close it. Nothing here keeps a reference — the two
+    network adapters hold it privately — so a client built in this function
+    could never be closed at all.
+    """
+
     if settings.evidence_url:
         warnings.warn(
             UNWIRED_URL.format(directory=settings.evidence_dir),
@@ -78,7 +86,7 @@ def build_runner(settings: Settings) -> TurnRunner:
     identity = load_identity()  # bundled default until an adopter mounts one
     skills = load_skills()
 
-    discover, invocation, schemas, schema_context_index = _network(settings)
+    discover, invocation, schemas, schema_context_index = _network(settings, client)
 
     components = Components(
         discover=discover,
@@ -142,6 +150,7 @@ async def _discovers_nothing(
 
 def _network(
     settings: Settings,
+    client: httpx2.AsyncClient,
 ) -> tuple[
     DiscoverProviders, CapabilityInvocation, dict[str, DomainSchema], dict[str, str]
 ]:
@@ -156,10 +165,6 @@ def _network(
     if not settings.network_enabled:
         return _discovers_nothing, _UnwiredInvocation(), {}, {}
 
-    # Constructed outside the event loop on purpose: the client is used later
-    # from uvicorn's loop, so binding it to the short-lived loop below would
-    # break the first real request. Only the schema-pack read runs in a loop.
-    client = httpx2.AsyncClient(timeout=settings.select_timeout_seconds)
     source = FilesystemSchemaPackSource(root=settings.schema_pack_dir)
     cache, packs = anyio.run(_load_schema_packs, source)
 

@@ -7,6 +7,10 @@ one, which is what keeps the HTTP layer testable against a fake.
 
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator, Callable
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
+
+import httpx2
 from fastapi import FastAPI
 
 from dss.adapters.http.v1 import schema
@@ -22,13 +26,24 @@ DESCRIPTION = (
 )
 
 
-def build_app(*, runner: TurnRunner, settings: Settings) -> FastAPI:
-    """Wire a given runner. Tests pass a fake; `create_app` passes the real one."""
+def build_app(
+    *,
+    runner: TurnRunner,
+    settings: Settings,
+    lifespan: Callable[[FastAPI], AbstractAsyncContextManager[None]] | None = None,
+) -> FastAPI:
+    """Wire a given runner. Tests pass a fake; `create_app` passes the real one.
+
+    `lifespan` is optional because most tests hand in a fake runner that owns
+    nothing to shut down. `create_app` passes one, because it builds the HTTP
+    client and so has to close it.
+    """
 
     app = FastAPI(
         title=TITLE,
         description=DESCRIPTION,
         version=settings.dss_release,
+        lifespan=lifespan,
         # No auth and no CORS by design — only this deployment's own channel
         # services reach this port.
     )
@@ -56,8 +71,35 @@ def _publish_wire_schemas(app: FastAPI) -> None:
     app.openapi = openapi  # type: ignore[method-assign]
 
 
-def create_app() -> FastAPI:
-    """The process entry point — `uvicorn --factory dss.entrypoint.app:create_app`."""
+def create_app(*, client: httpx2.AsyncClient | None = None) -> FastAPI:
+    """The process entry point — `uvicorn --factory dss.entrypoint.app:create_app`.
+
+    Builds the HTTP client the network adapters share and closes it on
+    shutdown. It is built here, not in `build_runner`, because only the
+    builder can close it — see `build_runner`'s docstring.
+
+    Built unconditionally, even when the network is unwired: an `AsyncClient`
+    opens no socket until a request is made, so an unused one costs a single
+    `aclose()` and keeps the `network_enabled` decision in one place.
+
+    `client` is for tests that need to assert it was closed; production passes
+    nothing.
+    """
 
     settings = Settings()
-    return build_app(runner=build_runner(settings), settings=settings)
+    # The timeout lives with construction now. Note it bounds discovery calls
+    # too — one client serves both adapters.
+    http_client = client or httpx2.AsyncClient(timeout=settings.select_timeout_seconds)
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
+        try:
+            yield
+        finally:
+            await http_client.aclose()
+
+    return build_app(
+        runner=build_runner(settings, client=http_client),
+        settings=settings,
+        lifespan=lifespan,
+    )

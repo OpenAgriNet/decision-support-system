@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import httpx2
+
 from dss.config.settings import Settings
 from dss.core.provider_discovery.models import SchemaPackFiles
 from dss.entrypoint.composition import (
@@ -37,14 +39,40 @@ def _settings(tmp_path: Path, **overrides) -> Settings:
 
 
 def test_build_runner_returns_a_turn_runner(tmp_path: Path) -> None:
-    runner = build_runner(_settings(tmp_path))
+    runner = build_runner(_settings(tmp_path), client=httpx2.AsyncClient())
 
     assert isinstance(runner, Orchestrator)
     assert isinstance(runner, TurnRunner)  # satisfies the driving port
 
 
+def test_build_runner_takes_the_client_it_is_given(tmp_path: Path) -> None:
+    """The caller owns the client, so `build_runner` must never make its own.
+
+    Whoever constructs it is the only one who can close it, and nothing here
+    keeps a reference — the adapters hold it privately. Passing it in is what
+    lets `create_app` close it on shutdown.
+    """
+
+    client = httpx2.AsyncClient()
+
+    _discover, invocation, _schemas, _index = _network(
+        _settings(
+            tmp_path,
+            discovery_base_url="https://discovery.example/oan",
+            invocation_base_url="https://select.example/oan",
+            schema_pack_dir=SCHEMA_PACKS_FIXTURE_ROOT,
+        ),
+        client,
+    )
+
+    # the wired invocation adapter got *this* client, not one of its own
+    assert invocation._client is client
+
+
 def test_unwired_network_discovers_nothing(tmp_path: Path) -> None:
-    discover, _invocation, schemas, schema_context_index = _network(_settings(tmp_path))
+    discover, _invocation, schemas, schema_context_index = _network(
+        _settings(tmp_path), httpx2.AsyncClient()
+    )
 
     # the seam is the single unwired function, and the planner's dicts are empty
     assert discover is _discovers_nothing
@@ -60,7 +88,9 @@ def test_wired_network_builds_the_planner_schemas(tmp_path: Path) -> None:
     )
     assert settings.network_enabled
 
-    discover, _invocation, schemas, schema_context_index = _network(settings)
+    discover, _invocation, schemas, schema_context_index = _network(
+        settings, httpx2.AsyncClient()
+    )
 
     # the real client replaced the unwired stand-in...
     assert discover is not _discovers_nothing
@@ -172,7 +202,7 @@ def test_a_skipped_pack_is_logged_for_an_operator_to_see(
     )
 
     with caplog.at_level("WARNING"):
-        _network(settings)
+        _network(settings, httpx2.AsyncClient())
 
     # `SchemaPackSkipped.pack_name` and `.reason` both reach the log — an
     # operator reading it can tell which pack and why, not just "something
