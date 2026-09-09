@@ -128,8 +128,14 @@ Then send the example request:
 curl -s -X POST http://127.0.0.1:8077/v1/turns \
   -H 'Content-Type: application/json' -H 'Accept: application/json' \
   --data-binary @docs/api-contracts/examples/answered_streaming.json \
-  | python3 -m json.tool
+  | python3 -m json.tool --no-ensure-ascii
 ```
+
+`--no-ensure-ascii` matters here: `json.tool` escapes non-ASCII by default, so
+a Hindi answer arrives as a wall of `\uXXXX` and reads like an encoding fault
+in the service. It is not one — the response is UTF-8, from Pydantic's
+`model_dump_json` and served as `charset=utf-8`. Piping to `jq` or nothing at
+all shows the Devanagari.
 
 `DSS_STUB_LLM=true` wires the canned provider, so no API key and no network are
 needed. Drop it and the composition root builds a real Pydantic AI provider from
