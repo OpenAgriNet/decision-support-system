@@ -56,12 +56,46 @@ hour unauthenticated.
 declares `subjectCategories`, which the capability index reads unguarded, so
 the pack would be silently dropped anyway. See `TODO.md`.
 
+## Stand up a fake network
+
+Discovery and invocation leave for the OAN network, which a local build does
+not have. `tools/mock_network/` stands in for it — the same synchronous
+`POST /discover` / `POST /select` contract, no auth:
+
+```bash
+uv run python -m tools.mock_network --port 8078
+```
+
+It reads the same schema packs the DSS reads, so it can only advertise a
+`@type` the DSS can route, and it validates its own response bodies against
+those packs — a body carrying a field no pack declares is refused rather than
+served. `http://127.0.0.1:8078/docs` pokes the two routes by hand.
+
+Scenarios are keyed off the `@type` in the request, so one running mock
+answers a weather question and a mandi question without a restart. Weather is
+wired today: `/discover` returns an `OnDemand` capability, and `/select`
+returns a five-day point forecast with rainfall, temperature and humidity —
+the values a composed answer quotes back.
+
 ## Start it
 
 ```bash
 uv sync
 DSS_STUB_LLM=true uv run uvicorn --factory dss.entrypoint.app:create_app --port 8077
 ```
+
+To reach a provider, point the DSS at the mock and give the planner and
+composer real model access:
+
+```bash
+DSS_DISCOVERY_BASE_URL=http://127.0.0.1:8078 \
+DSS_INVOCATION_BASE_URL=http://127.0.0.1:8078 \
+OPENAI_API_KEY=... \
+uv run uvicorn --factory dss.entrypoint.app:create_app --port 8077
+```
+
+`DSS_STUB_LLM=true` is left off there on purpose: it stubs intent and
+moderation only, so the planner and composer would still need a key.
 
 `DSS_STUB_LLM=true` wires the canned provider, so no API key and no network are
 needed. Drop it and the composition root builds a real Pydantic AI provider from
@@ -262,6 +296,41 @@ status code cannot change, so every later failure is a terminal event instead.
 
 `src/dss/config/settings.py`. Every one takes a `DSS_` prefix as an env var —
 `schema_pack_dir` is `DSS_SCHEMA_PACK_DIR`.
+
+### Per-agent model knobs
+
+Four agents, each binding its own model (ADR-0004), so a local run can point
+one at a bigger model without touching the rest:
+
+| Agent | Model | Temperature | Timeout | Retries |
+|---|---|---|---|---|
+| intent | `DSS_INTENT_MODEL` | `DSS_INTENT_TEMPERATURE` | `DSS_INTENT_TIMEOUT_SECONDS` | `DSS_INTENT_RETRIES` |
+| moderation | `DSS_MODERATION_MODEL` | `DSS_MODERATION_TEMPERATURE` | `DSS_MODERATION_TIMEOUT_SECONDS` | `DSS_MODERATION_RETRIES` |
+| planner | `DSS_PLANNER_MODEL` | `DSS_PLANNER_TEMPERATURE` | `DSS_PLANNER_TIMEOUT_SECONDS` | `DSS_PLANNER_RETRIES` |
+| composer | `DSS_COMPOSER_MODEL` | `DSS_COMPOSER_TEMPERATURE` | `DSS_COMPOSER_TIMEOUT_SECONDS` | `DSS_COMPOSER_RETRIES` |
+
+All models default to `openai:gpt-4o-mini`. Temperatures default to `0.0`
+except the composer's `0.3` — it writes the farmer's answer, where a little
+variation reads better than a fixed phrasing. The planner gets 30s and 3
+retries because it is a loop, and its design leans on `ModelRetry` in three
+places.
+
+Set any of them on the command line, or in a `.env` file:
+
+```bash
+DSS_PLANNER_MODEL=openai:gpt-4o \
+DSS_PLANNER_TEMPERATURE=0.2 \
+uv run uvicorn --factory dss.entrypoint.app:create_app --port 8077
+```
+
+The provider is the model string's prefix — Pydantic AI's own syntax — and the
+API key is read by that SDK from its own environment variable
+(`OPENAI_API_KEY`), not by `Settings`. Note only `pydantic-ai-slim[openai]` is
+installed, so an `anthropic:` or `google:` model needs its extra added to
+`pyproject.toml` first: the setting will accept the string, and the SDK will
+not be there.
+
+### Everything else
 
 | Setting | Default | Set it to see |
 |---|---|---|
