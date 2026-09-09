@@ -33,7 +33,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Request
 
 from tools.mock_network.catalog import requested_types
-from tools.mock_network.validity import fill_in_validity
+from tools.mock_network.validity import fill_in_dates
 
 _RESPONSES = Path(__file__).parent / "responses"
 
@@ -95,7 +95,7 @@ def build_mock_app(*, pack_dir: Path | None = None) -> FastAPI:
         resource = commitment["resources"][0]
         answered = {
             **resource,
-            "resourceAttributes": fill_in_validity(resource["resourceAttributes"]),
+            "resourceAttributes": fill_in_dates(resource["resourceAttributes"]),
         }
         return {
             "context": _echo(body, "on_select"),

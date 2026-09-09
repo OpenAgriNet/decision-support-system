@@ -15,13 +15,13 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from tools.mock_network.validity import NOW, fill_in_validity
+from tools.mock_network.validity import NOW, TODAY, fill_in_dates
 
 _NOW = datetime(2026, 9, 9, 12, 0, tzinfo=UTC)
 
 
 def test_the_placeholder_becomes_a_window_around_now() -> None:
-    filled = fill_in_validity({"validity": {"startsAt": NOW, "endsAt": NOW}}, now=_NOW)
+    filled = fill_in_dates({"validity": {"startsAt": NOW, "endsAt": NOW}}, now=_NOW)
 
     window = filled["validity"]
     assert window["startsAt"] < "2026-09-09T12:00:00" < window["endsAt"]
@@ -36,7 +36,7 @@ def test_a_real_date_is_left_alone() -> None:
 
     fixed = {"validity": {"startsAt": "2020-01-01T00:00:00Z", "endsAt": "2020-01-02"}}
 
-    assert fill_in_validity(fixed, now=_NOW) == fixed
+    assert fill_in_dates(fixed, now=_NOW) == fixed
 
 
 def test_a_body_with_no_validity_is_unchanged() -> None:
@@ -44,7 +44,20 @@ def test_a_body_with_no_validity_is_unchanged() -> None:
 
     body = {"@type": "openagrinet:WeatherObservation", "informationMode": "Direct"}
 
-    assert fill_in_validity(body, now=_NOW) == body
+    assert fill_in_dates(body, now=_NOW) == body
+
+
+def test_a_date_placeholder_becomes_todays_date() -> None:
+    """`arrivalDate` is a date, not a timestamp.
+
+    A mandi price is reported for a day, and the pack types the field as a
+    plain date. Filling it with a full timestamp would answer "what is the
+    price this week" with a value stamped to the microsecond.
+    """
+
+    filled = fill_in_dates({"arrivalDate": TODAY}, now=_NOW)
+
+    assert filled["arrivalDate"] == "2026-09-09"
 
 
 def test_the_window_is_what_the_dss_parses() -> None:
@@ -54,7 +67,7 @@ def test_the_window_is_what_the_dss_parses() -> None:
     would look present and do nothing.
     """
 
-    filled = fill_in_validity({"validity": {"startsAt": NOW, "endsAt": NOW}}, now=_NOW)
+    filled = fill_in_dates({"validity": {"startsAt": NOW, "endsAt": NOW}}, now=_NOW)
 
     window = filled["validity"]
     starts = datetime.fromisoformat(window["startsAt"])

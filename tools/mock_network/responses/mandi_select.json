@@ -16,7 +16,7 @@
           },
           "resources": [
             {
-              "id": "res:agmarknet:mandi-price:lasalgaon:onion",
+              "id": "res:agmarknet:mandi-price:anand:wheat",
               "resourceAttributes": {
                 "@context": "https://raw.githubusercontent.com/OpenAgriNet/network-specs/schema-packs-v0.1/schema/MandiPrice/v0.1/context.jsonld",
                 "@type": "openagrinet:MandiPrice",
@@ -30,23 +30,23 @@
                   "sourceUri": "https://agmarknet.gov.in"
                 },
                 "commodity": {
-                  "name": "Onion",
-                  "code": "ONION"
+                  "code": "1",
+                  "name": "Wheat"
                 },
-                "commodityGroup": "Vegetables",
+                "commodityGroup": "Cereals",
                 "grade": "FAQ",
-                "variety": "Red",
+                "variety": "Lokwan",
                 "market": {
-                  "marketCode": "MH-LASALGAON",
-                  "marketName": "Lasalgaon",
-                  "district": "Nashik",
-                  "state": "Maharashtra"
+                  "marketCode": "GJ-ANAND",
+                  "marketName": "Anand",
+                  "district": "Anand",
+                  "state": "Gujarat"
                 },
-                "arrivalDate": "2026-08-24",
+                "arrivalDate": "{{today}}",
                 "prices": {
-                  "minimum": 1800,
-                  "maximum": 2450,
-                  "modal": 2200,
+                  "minimum": 2320,
+                  "maximum": 2710,
+                  "modal": 2550,
                   "currency": "INR",
                   "unit": "quintal"
                 },
@@ -61,7 +61,7 @@
           "offer": {
             "id": "offer:agmarknet:open-data",
             "resourceIds": [
-              "res:agmarknet:mandi-price:lasalgaon:onion"
+              "res:agmarknet:mandi-price:anand:wheat"
             ],
             "provider": {
               "id": "agmarknet-mock",

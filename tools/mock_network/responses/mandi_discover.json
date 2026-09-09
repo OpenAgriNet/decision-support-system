@@ -36,7 +36,9 @@
             "resourceAttributes": {
               "@type": "openagrinet:MandiPrice",
               "@context": "https://raw.githubusercontent.com/OpenAgriNet/network-specs/schema-packs-v0.1/schema/MandiPrice/v0.1/context.jsonld",
-              "languages": ["en"],
+              "languages": [
+                "en"
+              ],
               "coverageAreas": [
                 {
                   "areaCode": "IN",
@@ -46,18 +48,57 @@
                 },
                 {
                   "type": "Polygon",
-                  "coordinates": [[[68, 6], [98, 6], [98, 38], [68, 38], [68, 6]]]
+                  "coordinates": [
+                    [
+                      [
+                        68,
+                        6
+                      ],
+                      [
+                        98,
+                        6
+                      ],
+                      [
+                        98,
+                        38
+                      ],
+                      [
+                        68,
+                        38
+                      ],
+                      [
+                        68,
+                        6
+                      ]
+                    ]
+                  ]
                 }
               ],
               "historyPeriod": "P1Y",
               "informationMode": "OnDemand",
               "updateFrequency": "P1D",
-              "subjectCategories": ["Market"],
-              "supportedCommodities": [
-                { "code": "2", "name": "Paddy(Common)" },
-                { "code": "78", "name": "Tomato" }
+              "subjectCategories": [
+                "Market"
               ],
-              "supportedPriceFields": ["Minimum", "Maximum", "Modal"],
+              "supportedCommodities": [
+                {
+                  "code": "1",
+                  "name": "Wheat"
+                },
+                {
+                  "code": "2",
+                  "name": "Paddy(Common)"
+                },
+                {
+                  "code": "78",
+                  "name": "Tomato"
+                }
+              ],
+              "supportedPriceFields": [
+                "Minimum",
+                "Maximum",
+                "Modal"
+              ],
               "historicalDataAvailable": true
             }
           }
