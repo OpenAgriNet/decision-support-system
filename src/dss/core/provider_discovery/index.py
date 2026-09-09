@@ -18,10 +18,10 @@ from dss.core.provider_discovery.models import SchemaPackFiles, SchemaPackSkippe
 _ACTION_TYPES = ("Knowledge", "Service")
 
 # The pack is read as data, so any shape defect surfaces as one of these.
-_PACK_DEFECTS = (KeyError, TypeError, ValueError, yaml.YAMLError)
+PACK_DEFECTS = (KeyError, TypeError, ValueError, yaml.YAMLError)
 
 
-def _extract_type_const(attributes_yaml: str, pack_name: str) -> str:
+def extract_type_const(attributes_yaml: str, pack_name: str) -> str:
     """The pack's canonical ``@type``, read from ``x-jsonld``.
 
     A pack declares its type twice. ``x-jsonld."@type"`` is a plain scalar;
@@ -32,6 +32,10 @@ def _extract_type_const(attributes_yaml: str, pack_name: str) -> str:
     ``@context`` sits beside it so both come from the same place. Reading
     ``properties["@type"]["const"]`` raised ``KeyError('const')`` on every
     real pack — the ``const`` is nested inside the ``oneOf``.
+
+    Public: ``entrypoint/composition.py`` reads the same block for the
+    planner's schema dict and must fail the same way — one bad pack skipped,
+    not the whole boot.
     """
 
     return _x_jsonld(attributes_yaml, pack_name)["@type"]
@@ -66,11 +70,11 @@ def build_capability_index(
     skipped: list[SchemaPackSkipped] = []
     for pack in packs:
         try:
-            type_const = _extract_type_const(pack.attributes_yaml, pack.pack_name)
+            type_const = extract_type_const(pack.attributes_yaml, pack.pack_name)
             # sorted: set iteration order varies with PYTHONHASHSEED, and this
             # order reaches the discover request's jsonpath filter.
             categories = sorted(_extract_subject_categories(pack.examples_json))
-        except _PACK_DEFECTS as exc:
+        except PACK_DEFECTS as exc:
             skipped.append(SchemaPackSkipped(pack.pack_name, repr(exc)))
             continue
         for category in categories:
@@ -101,7 +105,7 @@ def build_schema_context_index(
         try:
             x_jsonld = _x_jsonld(pack.attributes_yaml, pack.pack_name)
             index[x_jsonld["@type"]] = x_jsonld["@context"]
-        except _PACK_DEFECTS as exc:
+        except PACK_DEFECTS as exc:
             skipped.append(SchemaPackSkipped(pack.pack_name, repr(exc)))
             continue
     return index, tuple(skipped)

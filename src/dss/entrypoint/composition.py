@@ -19,12 +19,12 @@ three network settings to light the whole path up.
 
 from __future__ import annotations
 
+import logging
 import warnings
 from datetime import datetime
 
 import anyio
 import httpx2
-import yaml
 
 from dss.adapters.invocation.client import HttpCapabilityInvocation
 from dss.adapters.llm.pydantic_ai_provider import PydanticAILLMProvider
@@ -38,6 +38,7 @@ from dss.config.skill_loader import load_skills
 from dss.core.intent.models import Intent
 from dss.core.planner.validation import DomainSchema, parse_domain_schema
 from dss.core.policy.models import Checkpoint
+from dss.core.provider_discovery.index import PACK_DEFECTS, extract_type_const
 from dss.core.provider_discovery.models import DiscoveryResult, SchemaPackFiles
 from dss.core.provider_discovery.schema_pack_cache import SchemaPackCache
 from dss.core.shared.models import UserTurn
@@ -51,6 +52,8 @@ from dss.orchestration.orchestrator import Components, Orchestrator
 from dss.orchestration.plan import build_plan
 from dss.ports.invocation import CapabilityInvocation
 from dss.ports.turn import TurnRunner
+
+logger = logging.getLogger(__name__)
 
 UNWIRED_URL = (
     "DSS_EVIDENCE_URL is set but posting evidence to an external endpoint is not "
@@ -179,6 +182,12 @@ def _network(
         backoff_seconds=settings.select_backoff_seconds,
     )
 
+    for skip in cache.skipped_packs():
+        logger.warning(
+            "schema pack %r left out of the capability index: %s",
+            skip.pack_name,
+            skip.reason,
+        )
     skipped = {skip.pack_name for skip in cache.skipped_packs()}
     good = tuple(pack for pack in packs if pack.pack_name not in skipped)
     schemas = _planner_schemas(good)
@@ -191,19 +200,26 @@ def _planner_schemas(packs: tuple[SchemaPackFiles, ...]) -> dict[str, DomainSche
     advertised @type — not the pack folder name, which differs: the planner
     looks a capability up by `capability.capability` (the @type).
 
-    A pack with no `filterable_paths` is left out rather than fatal: a
-    Direct-answer pack is surfaced by discovery and never `select`ed, so it has
-    no filter surface to validate. The planner already treats a capability with
-    no loaded schema as a `ModelRetry` and moves on, so a missing entry is a
-    handled degradation — not a reason to refuse the whole boot."""
+    A pack with no `filterable_paths`, or one whose `@type` cannot be read at
+    all, is left out rather than fatal: `provider_discovery.index` already
+    treats a malformed pack this way (`PACK_DEFECTS`), because network-specs
+    is an external checkout and one bad pack must not blind every other
+    capability. `extract_type_const` is the same reader that builds the
+    capability index, so the two never disagree on what a pack's @type is."""
 
     schemas: dict[str, DomainSchema] = {}
     for pack in packs:
         try:
             schema = parse_domain_schema(pack)
-        except (KeyError, ValueError):
+            type_const = extract_type_const(pack.attributes_yaml, pack.pack_name)
+        except PACK_DEFECTS as exc:
+            logger.warning(
+                "skipping malformed schema pack %r for the planner: %r",
+                pack.pack_name,
+                exc,
+            )
             continue
-        schemas[_schema_type(pack)] = schema
+        schemas[type_const] = schema
     return schemas
 
 
@@ -214,17 +230,6 @@ async def _load_schema_packs(
     await cache.refresh()
     packs = await source.fetch_packs()
     return cache, packs
-
-
-def _schema_type(pack: SchemaPackFiles) -> str:
-    """The capability @type a pack advertises, from its x-jsonld — the same
-    value discovery resolves and the planner looks the schema up by. Mirrors
-    `provider_discovery.index`, which reads the identical block."""
-
-    schema = yaml.safe_load(pack.attributes_yaml)["components"]["schemas"][
-        pack.pack_name
-    ]
-    return schema["x-jsonld"]["@type"]
 
 
 def _intent_llm(settings: Settings):

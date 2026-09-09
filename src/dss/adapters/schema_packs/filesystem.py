@@ -47,6 +47,12 @@ class FilesystemSchemaPackSource:
         """
         return await anyio.to_thread.run_sync(self._read_all_packs)
 
+    def skipped_packs(self) -> tuple[SchemaPackSkipped, ...]:
+        """Packs the last `fetch_packs` call could not read at all — set as
+        a side effect of that call, mirroring `SchemaPackCache.skipped_packs`
+        one layer up."""
+        return self.skipped
+
     def _is_pack(self, folder: Path) -> bool:
         return any(folder.glob(f"*/{_PACK_MARKER}"))
 
