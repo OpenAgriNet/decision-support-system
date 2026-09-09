@@ -1,15 +1,17 @@
 """Tier 7 — one turn end to end, against a live model.
 
-Run deliberately, not on every commit — it makes real model calls, so it is
-marked `eval`, the one marker `pyproject.toml` keeps out of the default run:
+It makes real model calls, so it runs only when credentials are present and
+skips otherwise — see the `pytestmark` below. To run it:
 
     set -a; source .env; set +a
-    uv run pytest -m eval -q --no-cov -s
+    uv run pytest tests/e2e/test_onion_price.py -q --no-cov -s
 
-Needs `OPENAI_API_KEY` and `OPENAI_BASE_URL` in the environment, not just in
-`.env`: `pydantic-settings` reads that file into `Settings` and never into
-`os.environ`, and the model SDK only reads `os.environ` — hence the `source`
-above. The test skips rather than fails when the key is absent.
+`OPENAI_API_KEY` and `OPENAI_BASE_URL` have to be in the environment, not just
+in `.env`: `pydantic-settings` reads that file into `Settings` and never into
+`os.environ`, and the model SDK only reads `os.environ` — hence the `source`.
+An IDE run configuration needs them in its own environment-variables field for
+the same reason. `OPENAI_BASE_URL` is the base the SDK appends paths to, so it
+ends at `/v1`, not at an endpoint like `/v1/responses`.
 
 Nothing is stubbed but the OAN network. All four model calls — intent,
 moderation, planner and composer — go to a real provider, so this is the only
@@ -55,13 +57,20 @@ from dss.config.settings import Settings
 from dss.entrypoint.app import build_app
 from dss.entrypoint.composition import build_runner
 
-pytestmark = [
-    pytest.mark.eval,
-    pytest.mark.skipif(
-        not os.getenv("OPENAI_API_KEY"),
-        reason="live model test — set OPENAI_API_KEY (a .env file is read too)",
-    ),
-]
+# Gated on the credentials, not on a marker. `pyproject.toml`'s `addopts` carries
+# `-m "not eval"`, so an `eval`-marked test is *deselected* by every plain
+# `pytest` invocation — including the ones IDE run configurations generate, where
+# adding `-m eval` back is fiddly and easy to get silently wrong (a deselected
+# test reports as an empty suite, not as a skip).
+#
+# The credentials gate does the same job more honestly: no key in the
+# environment, no run. CI has none, so it skips there. It runs where someone has
+# deliberately supplied a key — a sourced `.env`, or an IDE run configuration —
+# which is exactly when you want it to.
+pytestmark = pytest.mark.skipif(
+    not os.getenv("OPENAI_API_KEY"),
+    reason="live model test — set OPENAI_API_KEY and OPENAI_BASE_URL",
+)
 
 MODEL = "azure:gpt-5.6-luna"
 QUERY = "what is the price of onion"
@@ -88,6 +97,18 @@ EXPECTED_MODAL = next(
     price["value"]
     for price in _ANSWER["resourceAttributes"]["prices"]
     if price["priceType"] == "Modal"
+)
+
+EXPECTED_MIN = next(
+    price["value"]
+    for price in _ANSWER["resourceAttributes"]["prices"]
+    if price["priceType"] == "Minimum"
+)
+
+EXPECTED_MAX = next(
+    price["value"]
+    for price in _ANSWER["resourceAttributes"]["prices"]
+    if price["priceType"] == "Maximum"
 )
 
 
@@ -243,4 +264,5 @@ def test_a_live_model_answers_the_onion_price(live_app, live_network, a_body) ->
     # Printed so `-s` shows what the model wrote: a drift in tone or length
     # stays visible without an assertion that would be a coin flip.
     print(f"\n  model wrote: {text!r}")
-    assert str(EXPECTED_MODAL) in re.sub(r"[,\s]", "", text), text
+    assert str(EXPECTED_MIN) in re.sub(r"[,\s]", "", text), text
+    assert str(EXPECTED_MAX) in re.sub(r"[,\s]", "", text), text
