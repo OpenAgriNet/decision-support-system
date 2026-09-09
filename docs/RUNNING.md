@@ -434,6 +434,18 @@ An `azure:` model with either missing raises at startup, naming both. A model
 string with any other prefix is handed to Pydantic AI untouched — so one agent
 can be on Azure while another is on OpenAI.
 
+**These two cannot live in `.env`.** `pydantic-settings` reads that file into
+the `Settings` object, not into `os.environ`, and these are read from
+`os.environ` — so a `.env` entry never arrives. Every `DSS_*` setting can go
+in `.env`; these two must be exported:
+
+```bash
+export AZURE_OPENAI_ENDPOINT="https://<res>.services.ai.azure.com/openai/v1"
+export AZURE_OPENAI_API_KEY="<key>"
+```
+
+Also: **do not set `OPENAI_API_VERSION`.** The v1 GA endpoint rejects it.
+
 This bypasses Pydantic AI's own `AzureProvider`, which uses the classic
 `?api-version=` API that the v1 GA endpoint rejects.
 
