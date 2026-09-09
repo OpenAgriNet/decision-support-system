@@ -6,15 +6,21 @@ discovery, the **planner agent** and the **composer** are all wired
 the canned provider answers intent and moderation with no API key, so
 deterministic policies apply and LLM ones do not.
 
-What a local run **cannot** do is answer from a provider: discovery and
-invocation leave for the OAN network, which a local build does not have, so
-they are gated on three settings (see [Knobs](#knobs)). Unset, discovery finds
-nobody, the planner and composer are never reached, and every turn comes back
-`no_match` — the honest outcome without providers. Supply the three settings to
-light the whole path up (real planner + composer model calls included).
+Out of the box, discovery and invocation are unwired — they leave for the OAN
+network, which a local build does not have — so discovery finds nobody, the
+planner and composer are never reached, and every turn comes back `no_match`.
+That exercises the transport and the flow, not a provider-backed answer.
 
-So out of the box this exercises the *transport and the flow* and the real
-moderation/intent reasoning — not a provider-backed answer.
+For a real answer, run the mock network and point the DSS at it. The three
+sections below, in order: get the packs, start the mock, start the DSS. Asked
+in Hindi for wheat prices at Anand, it comes back:
+
+> आनंद मंडी में गेहूं (लोकवन) का उपलब्ध भाव:
+> न्यूनतम 2,320 / अधिकतम 2,710 / सामान्य 2,550 Rs प्रति क्विंटल
+
+citing "Agmarknet Vistaar" — every figure the mock provider's own, so the
+payload crossed intent → moderation → discovery → planner → evidence →
+composer.
 
 ## Get the schema packs
 
@@ -84,18 +90,46 @@ uv sync
 DSS_STUB_LLM=true uv run uvicorn --factory dss.entrypoint.app:create_app --port 8077
 ```
 
-To reach a provider, point the DSS at the mock and give the planner and
-composer real model access:
+To reach a provider, point the DSS at the mock and give all four agents real
+model access. With Azure:
 
 ```bash
 DSS_DISCOVERY_BASE_URL=http://127.0.0.1:8078 \
 DSS_INVOCATION_BASE_URL=http://127.0.0.1:8078 \
-OPENAI_API_KEY=... \
+DSS_AZURE_OPENAI_ENDPOINT="https://<res>.services.ai.azure.com/openai/v1/responses" \
+DSS_AZURE_OPENAI_API_KEY="<key>" \
+DSS_AZURE_OPENAI_DEPLOYMENT="<deployment id>" \
 uv run uvicorn --factory dss.entrypoint.app:create_app --port 8077
 ```
 
-`DSS_STUB_LLM=true` is left off there on purpose: it stubs intent and
-moderation only, so the planner and composer would still need a key.
+Or with OpenAI, where the model strings already name the provider and the SDK
+finds the key itself:
+
+```bash
+DSS_DISCOVERY_BASE_URL=http://127.0.0.1:8078 \
+DSS_INVOCATION_BASE_URL=http://127.0.0.1:8078 \
+OPENAI_API_KEY=sk-... \
+uv run uvicorn --factory dss.entrypoint.app:create_app --port 8077
+```
+
+Two things that will bite:
+
+- **Keep `uv run uvicorn` on the end of the same command.** Environment
+  assignments with nothing after them set shell variables for a command that
+  never runs, and the service then starts without them — which surfaces as
+  `UserError: Set the OPENAI_API_KEY environment variable`.
+- **`DSS_STUB_LLM=true` is left off on purpose.** It stubs intent and
+  moderation only; the planner and composer always build a real model, so a
+  stubbed run still needs credentials once discovery finds a provider.
+
+Then send the example request:
+
+```bash
+curl -s -X POST http://127.0.0.1:8077/v1/turns \
+  -H 'Content-Type: application/json' -H 'Accept: application/json' \
+  --data-binary @docs/api-contracts/examples/answered_streaming.json \
+  | python3 -m json.tool
+```
 
 `DSS_STUB_LLM=true` wires the canned provider, so no API key and no network are
 needed. Drop it and the composition root builds a real Pydantic AI provider from
