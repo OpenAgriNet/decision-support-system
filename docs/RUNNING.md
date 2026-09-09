@@ -330,6 +330,28 @@ installed, so an `anthropic:` or `google:` model needs its extra added to
 `pyproject.toml` first: the setting will accept the string, and the SDK will
 not be there.
 
+### Azure OpenAI
+
+Azure needs three things a model string cannot express — a per-resource
+endpoint, a deployment id in place of a model name, and the key in an
+`api-key` header — so it has its own settings rather than relying on the SDK:
+
+| Setting | Notes |
+|---|---|
+| `DSS_AZURE_OPENAI_ENDPOINT` | the v1 base or full responses URL; a trailing `/responses` is trimmed |
+| `DSS_AZURE_OPENAI_API_KEY` | the deployment key |
+| `DSS_AZURE_OPENAI_DEPLOYMENT` | one deployment id serving all four agents |
+
+Set the endpoint **and** the key and all four agents are built against the
+deployment. Leave `DSS_AZURE_OPENAI_DEPLOYMENT` unset and each agent's own
+`DSS_<AGENT>_MODEL` is used as its deployment id — which is how two agents get
+different deployments.
+
+A partial config is treated as no Azure config: with only the key set, it
+would be sent to `api.openai.com`, which returns `401 invalid_api_key` — an
+Azure key has no `sk-` prefix, so that reads as a bad key rather than a key
+sent to the wrong service.
+
 ### Everything else
 
 | Setting | Default | Set it to see |

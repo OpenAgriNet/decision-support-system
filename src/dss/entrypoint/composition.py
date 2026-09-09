@@ -29,7 +29,10 @@ import anyio
 import httpx2
 
 from dss.adapters.invocation.client import HttpCapabilityInvocation
-from dss.adapters.llm.pydantic_ai_provider import PydanticAILLMProvider
+from dss.adapters.llm.pydantic_ai_provider import (
+    PydanticAILLMProvider,
+    build_azure_model,
+)
 from dss.adapters.llm.stub import StubLLM
 from dss.adapters.schema_packs.filesystem import FilesystemSchemaPackSource
 from dss.adapters.sinks.file import FileTelemetrySink, FileTurnSink
@@ -111,14 +114,14 @@ def build_runner(
             invocation=invocation,
             identity=identity,
             skills=skills,
-            model=settings.planner_model,
+            model=_model_for(settings, settings.planner_model),
             temperature=settings.planner_temperature,
             timeout_seconds=settings.planner_timeout_seconds,
             retries=settings.planner_retries,
         ),
         compose=build_compose(
             identity=identity,
-            model=settings.composer_model,
+            model=_model_for(settings, settings.composer_model),
             temperature=settings.composer_temperature,
             timeout_seconds=settings.composer_timeout_seconds,
             retries=settings.composer_retries,
@@ -306,11 +309,38 @@ async def _refresh_schema_packs(
     return cache, packs
 
 
+def _model_for(settings: Settings, configured: str):
+    """The model every agent binds, Azure-aware.
+
+    Without Azure configured this is the model string, whose own prefix picks
+    the provider — Pydantic AI's syntax, and the SDK finds the key itself.
+
+    With Azure configured it is a built model object instead, because Azure
+    needs three things a string cannot express: a per-resource endpoint, a
+    deployment id in place of a model name, and the key in an `api-key`
+    header.
+
+    `DSS_AZURE_OPENAI_DEPLOYMENT` then serves every agent, since one
+    deployment usually does. Leave it unset to fall back to each agent's own
+    `DSS_<AGENT>_MODEL` as the deployment id, which is how two agents get
+    different deployments.
+    """
+
+    if not settings.azure_enabled:
+        return configured
+
+    return build_azure_model(
+        settings.azure_openai_deployment or configured,
+        endpoint=settings.azure_openai_endpoint,
+        api_key=settings.azure_openai_api_key,
+    )
+
+
 def _intent_llm(settings: Settings):
     if settings.stub_llm:
         return StubLLM()  # STUB(#83): canned answers, no network
     return PydanticAILLMProvider(
-        settings.intent_model,
+        _model_for(settings, settings.intent_model),
         temperature=settings.intent_temperature,
         timeout=settings.intent_timeout_seconds,
         retries=settings.intent_retries,
@@ -321,7 +351,7 @@ def _moderation_llm(settings: Settings):
     if settings.stub_llm:
         return StubLLM()
     return PydanticAILLMProvider(
-        settings.moderation_model,
+        _model_for(settings, settings.moderation_model),
         temperature=settings.moderation_temperature,
         timeout=settings.moderation_timeout_seconds,
         retries=settings.moderation_retries,

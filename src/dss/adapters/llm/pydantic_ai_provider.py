@@ -97,6 +97,30 @@ def build_azure_llm(
     given deployment rejects tools.
     """
 
+    return PydanticAILLMProvider(
+        build_azure_model(deployment, endpoint=endpoint, api_key=api_key),
+        temperature=temperature,
+        timeout=timeout,
+        retries=retries,
+        output_mode=output_mode,
+    )
+
+
+def build_azure_model(
+    deployment: str, *, endpoint: str, api_key: str
+) -> OpenAIResponsesModel:
+    """A model bound to an Azure OpenAI v1 deployment.
+
+    Separate from `build_azure_llm` because the planner and composer are
+    Pydantic AI agents that take a model directly, not an `LLMProvider` —
+    so all four agents share this one construction.
+
+    Azure needs three things a model string cannot express: calls go to a
+    per-resource `endpoint`, the model name is a *deployment id*, and the key
+    travels in an `api-key` header. It is also sent as a bearer token, so
+    either auth style on the v1 endpoint works.
+    """
+
     base_url = endpoint.rstrip("/")
     if base_url.endswith("/responses"):
         base_url = base_url[: -len("/responses")]
@@ -106,13 +130,6 @@ def build_azure_llm(
         api_key=api_key,
         default_headers={"api-key": api_key},
     )
-    model = OpenAIResponsesModel(
+    return OpenAIResponsesModel(
         deployment, provider=OpenAIProvider(openai_client=client)
-    )
-    return PydanticAILLMProvider(
-        model,
-        temperature=temperature,
-        timeout=timeout,
-        retries=retries,
-        output_mode=output_mode,
     )
