@@ -42,12 +42,14 @@ _RESPONSES = Path(__file__).parent / "responses"
 # reports when nothing matches, and a `no_match` at the DSS.
 _DISCOVER_BY_TYPE = {
     "openagrinet:WeatherObservation": "weather_discover.json",
+    "openagrinet:MandiPrice": "mandi_discover.json",
 }
 
 # The provider's answer per capability, keyed the same way. Built from the
 # pack's own `examples/`, so the values are ones the pack says are possible.
 _SELECT_BY_TYPE = {
     "openagrinet:WeatherObservation": "weather_select.json",
+    "openagrinet:MandiPrice": "mandi_select.json",
 }
 
 

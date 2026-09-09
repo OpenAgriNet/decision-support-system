@@ -1,0 +1,78 @@
+{
+  "context": {
+    "action": "on_select",
+    "version": "2.0.0",
+    "networkId": "oan-mock"
+  },
+  "message": {
+    "contract": {
+      "commitments": [
+        {
+          "status": {
+            "descriptor": {
+              "code": "ACTIVE",
+              "name": "Active"
+            }
+          },
+          "resources": [
+            {
+              "id": "res:agmarknet:mandi-price:lasalgaon:onion",
+              "resourceAttributes": {
+                "@context": "https://raw.githubusercontent.com/OpenAgriNet/network-specs/schema-packs-v0.1/schema/MandiPrice/v0.1/context.jsonld",
+                "@type": "openagrinet:MandiPrice",
+                "informationMode": "Direct",
+                "subjectCategories": [
+                  "Market"
+                ],
+                "source": {
+                  "sourceId": "agmarknet-mock",
+                  "sourceName": "Agmarknet Vistaar",
+                  "sourceUri": "https://agmarknet.gov.in"
+                },
+                "commodity": {
+                  "name": "Onion",
+                  "code": "ONION"
+                },
+                "commodityGroup": "Vegetables",
+                "grade": "FAQ",
+                "variety": "Red",
+                "market": {
+                  "marketCode": "MH-LASALGAON",
+                  "marketName": "Lasalgaon",
+                  "district": "Nashik",
+                  "state": "Maharashtra"
+                },
+                "arrivalDate": "2026-08-24",
+                "prices": {
+                  "minimum": 1800,
+                  "maximum": 2450,
+                  "modal": 2200,
+                  "currency": "INR",
+                  "unit": "quintal"
+                },
+                "generatedAt": "2026-08-24T10:30:00Z",
+                "validity": {
+                  "startsAt": "{{now}}",
+                  "endsAt": "{{now}}"
+                }
+              }
+            }
+          ],
+          "offer": {
+            "id": "offer:agmarknet:open-data",
+            "resourceIds": [
+              "res:agmarknet:mandi-price:lasalgaon:onion"
+            ],
+            "provider": {
+              "id": "agmarknet-mock",
+              "descriptor": {
+                "code": "AGMARKNET-01",
+                "name": "Agmarknet Vistaar"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

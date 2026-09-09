@@ -14,6 +14,7 @@ hand.
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -30,17 +31,28 @@ from dss.core.shared.models import UserTurn
 from tools.mock_network.app import build_mock_app
 
 _WEATHER = "openagrinet:WeatherObservation"
+_MANDI = "openagrinet:MandiPrice"
 
-# The pack the mock's weather scenario needs, at its real advertised @context.
-_ATTRIBUTES = """
+_PROFILE = '{"filterable_paths": ["beckn:resourceAttributes.observationType"]}'
+
+
+def _attributes_yaml(pack: str) -> str:
+    """A pack declaring just what the discovery adapter reads from one.
+
+    `x-jsonld` (for the `@context` the request carries) plus
+    `informationMode`, which is what makes a resource a capability rather than
+    a Direct answer.
+    """
+
+    return f"""
 components:
   schemas:
-    WeatherObservation:
+    {pack}:
       type: object
       x-beckn-container: resourceAttributes
       x-jsonld:
-        "@context": "https://openagrinet.github.io/network-specs/schema/WeatherObservation/v0.1/context.jsonld"
-        "@type": openagrinet:WeatherObservation
+        "@context": "https://openagrinet.github.io/network-specs/schema/{pack}/v0.1/context.jsonld"
+        "@type": openagrinet:{pack}
       allOf:
         - type: object
           required: [informationMode]
@@ -50,8 +62,15 @@ components:
               enum: [OnDemand, Direct]
 """
 
-_PROFILE = '{"filterable_paths": ["beckn:resourceAttributes.observationType"]}'
-_EXAMPLE = '{"subjectCategories": ["Weather"]}'
+
+def _write_pack(root: Path, pack: str, category: str) -> None:
+    version = root / pack / "v0.1"
+    (version / "examples").mkdir(parents=True)
+    (version / "attributes.yaml").write_text(_attributes_yaml(pack), encoding="utf-8")
+    (version / "profile.json").write_text(_PROFILE, encoding="utf-8")
+    (version / "examples" / "sample.json").write_text(
+        json.dumps({"subjectCategories": [category]}), encoding="utf-8"
+    )
 
 
 def _planner_attributes(capability: ProviderCapability, model_filled: dict) -> dict:
@@ -87,13 +106,14 @@ def _planner_attributes(capability: ProviderCapability, model_filled: dict) -> d
 
 @pytest.fixture
 def pack_dir(tmp_path: Path) -> Path:
-    """A pack directory of the shape `DSS_SCHEMA_PACK_DIR` points at."""
+    """A pack directory of the shape `DSS_SCHEMA_PACK_DIR` points at.
 
-    version = tmp_path / "WeatherObservation" / "v0.1"
-    (version / "examples").mkdir(parents=True)
-    (version / "attributes.yaml").write_text(_ATTRIBUTES, encoding="utf-8")
-    (version / "profile.json").write_text(_PROFILE, encoding="utf-8")
-    (version / "examples" / "forecast.json").write_text(_EXAMPLE, encoding="utf-8")
+    Both packs the mock serves, so one running mock can be asked for either —
+    which is the point of keying scenarios off `@type`.
+    """
+
+    _write_pack(tmp_path, "WeatherObservation", "Weather")
+    _write_pack(tmp_path, "MandiPrice", "Market")
     return tmp_path
 
 
@@ -147,6 +167,53 @@ async def test_discover_returns_a_capability_the_adapter_maps(
     assert capability.provider_name == "IMD Mausamgram NWP"
     assert capability.resource_id == "res:mausamgram:point-forecast"
     assert capability.observed_categories == ("Weather",)
+
+
+async def test_one_running_mock_answers_either_capability(
+    discovery: HttpCapabilityDiscovery,
+) -> None:
+    """Weather and mandi from the same process, no restart between them.
+
+    This is why scenarios are keyed off `@type` rather than a mode flag: two
+    questions in one session pick different providers, and a mock needing a
+    restart between them could not serve a turn that asks about both.
+    """
+
+    async def provider_for(capability: str) -> str:
+        result = await discovery.discover(
+            ProviderQuery(capabilities=(capability,), languages=("en",), coverage=None),
+            ask_indices=(0,),
+            transaction_id="9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44",
+        )
+        return result.capabilities[0][0].provider_id
+
+    assert await provider_for(_WEATHER) == "mausamgram-mock"
+    assert await provider_for(_MANDI) == "agmarknet-mock"
+
+
+async def test_a_query_naming_two_capabilities_gets_both(
+    discovery: HttpCapabilityDiscovery,
+) -> None:
+    """One ask can resolve to two `@type`s, and both must come back.
+
+    `('Crop', 'Knowledge')` does exactly this against the real packs — it maps
+    to AgricultureResource and KnowledgeAdvisory — so the DSS ORs them into
+    one predicate. Answering only the first would make the turn partially
+    answered for no reason a log would explain.
+    """
+
+    result = await discovery.discover(
+        ProviderQuery(
+            capabilities=(_WEATHER, _MANDI), languages=("en",), coverage=None
+        ),
+        ask_indices=(0,),
+        transaction_id="9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44",
+    )
+
+    assert {c.provider_id for c in result.capabilities[0]} == {
+        "mausamgram-mock",
+        "agmarknet-mock",
+    }
 
 
 async def test_select_returns_the_values_the_composer_will_quote(
@@ -250,18 +317,10 @@ async def test_a_type_the_mock_does_not_serve_finds_nobody(
     The pack has to be present for this to be reachable at all: the request
     builder reads `@context` from the schema-context index, so a `@type` the
     DSS does not know about raises there and never reaches the wire. So this
-    adds a second pack the mock deliberately does not serve.
+    adds a real pack — KnowledgeAdvisory — that the mock has no scenario for.
     """
 
-    mandi = pack_dir / "MandiPrice" / "v0.1"
-    (mandi / "examples").mkdir(parents=True)
-    (mandi / "attributes.yaml").write_text(
-        _ATTRIBUTES.replace("WeatherObservation", "MandiPrice"), encoding="utf-8"
-    )
-    (mandi / "profile.json").write_text(_PROFILE, encoding="utf-8")
-    (mandi / "examples" / "onion.json").write_text(
-        '{"subjectCategories": ["Market"]}', encoding="utf-8"
-    )
+    _write_pack(pack_dir, "KnowledgeAdvisory", "Crop")
 
     cache = SchemaPackCache(FilesystemSchemaPackSource(root=pack_dir))
     await cache.refresh()
@@ -275,7 +334,9 @@ async def test_a_type_the_mock_does_not_serve_finds_nobody(
 
     result = await discovery.discover(
         ProviderQuery(
-            capabilities=("openagrinet:MandiPrice",), languages=("en",), coverage=None
+            capabilities=("openagrinet:KnowledgeAdvisory",),
+            languages=("en",),
+            coverage=None,
         ),
         ask_indices=(0,),
         transaction_id="9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44",
