@@ -87,6 +87,11 @@ select = [
 # LLMProvider port is implemented here against Pydantic AI. core/ stays clean —
 # the AST boundary test in tests/unit/test_framework_boundary.py only guards core/.
 "src/dss/adapters/**/*.py" = ["TID251"]
+# Schema-pack fixtures embed real YAML, and a `$ref` is one unbreakable path
+# (`../../AgricultureResource/v0.1/attributes.yaml#/components/schemas/...`).
+# The line limit is for readable Python; wrapping a path to satisfy it would
+# make the fixture stop being the shape the packs actually ship.
+"tests/unit/core/provider_discovery/test_schema_fields.py" = ["E501"]
 
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 "pydantic_ai".msg = "Only src/dss/orchestration may import Pydantic AI. core/ must stay framework-agnostic — depend on ports/ instead."
