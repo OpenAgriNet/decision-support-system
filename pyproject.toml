@@ -82,7 +82,7 @@ select = [
 [tool.ruff.lint.isort]
 # `scripts/` is ours but is not packaged (only `src/dss` ships), so isort has
 # no way to infer it and files it under third-party beside pytest.
-known-first-party = ["dss", "scripts", "tests"]
+known-first-party = ["dss", "scripts", "tests", "tools"]
 
 [tool.ruff.lint.per-file-ignores]
 "src/dss/orchestration/**/*.py" = ["TID251"]
