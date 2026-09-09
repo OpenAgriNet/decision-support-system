@@ -130,11 +130,44 @@
   still resolve to the same `@type` set and dedupe to one query. Whether the
   per-ask dict is the right response shape at all is the real question.
 
-- **network-specs checkout.** Nothing clones or pulls the pinned commit onto
-  disk — `FilesystemSchemaPackSource` assumes a checkout already exists at a
-  configured path. Also need a way to trigger a re-checkout together with
-  `SchemaPackCache.refresh()` (likely a cron-driven endpoint). Tracked as
-  assumption #8 in the plan doc.
+- **network-specs refresh.** `scripts/fetch_schema_packs.py` now pulls the
+  packs onto disk, and the composition root fetches once when the directory is
+  empty (#21). What is still missing is a way to *re-*fetch on a running
+  service, together with `SchemaPackCache.refresh()` — likely a cron-driven
+  endpoint. Tracked as assumption #8 in the plan doc.
+
+- **`subjectCategories` is read unguarded.** `index.py:_extract_subject_categories`
+  does `json.loads(example)["subjectCategories"]`. The field is *optional* in
+  `AgricultureResource`, so a valid pack that omits it raises `KeyError`, which
+  `PACK_DEFECTS` catches — the pack is silently skipped and never reaches the
+  capability index. AgricultureFacility is exactly this case: none of its five
+  examples declares the field, so facility queries can never route. The pack is
+  valid; the extractor should use `.get(..., ())`.
+
+- **`SubjectCategory` is narrower than the packs'.** The DSS enum has five
+  values (`Crop, Livestock, Weather, Market, Scheme`); the packs' has seven,
+  adding `Practice` and `Facility`. A pack advertising either can never be
+  asked for, because intent cannot produce that category.
+
+- **`_ACTION_TYPES` makes the Knowledge/Service axis inert.** `index.py` indexes
+  every pack under *both* action types, so `interaction_type` narrows nothing
+  and only `subject_categories` selects a capability. Explains why an OBSERVE
+  ask can resolve an advisory pack.
+
+- **Spatial filter targets a field the sample catalogs lack.** The DSS sends
+  `targets: "$.catalogs[*].provider.availableAt[*].geo"`, but the real
+  `on_discover` samples put coverage on
+  `resources[*].resourceAttributes.coverageAreas[*]` and carry no
+  `provider.availableAt`. If the network filters spatially on what the DSS
+  names, such a provider would never match a located query. Found while
+  building the mock network (#21).
+
+- **`schemas.openagrinet.global` does not resolve.** DNS fails. It appears in
+  test fixtures (`test_planner_select_tool.py`) and in `taxonomy.` form inside
+  `subjectId` values; the real packs declare
+  `openagrinet.github.io/network-specs/...`, which does resolve. Nothing
+  dereferences either at runtime, so this is fixture/reality drift rather than
+  a live fault.
 
 ## Stubs pending real implementations
 
