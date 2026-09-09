@@ -50,9 +50,12 @@ def test_the_real_composition_writes_evidence_where_configured(tmp_path, monkeyp
         "/v1/turns", json=body, headers={"Accept": "application/json"}
     )
 
-    # Assert the outcome, not just that files appeared: a stub missing an answer
-    # for moderation's verdict schema fails closed and turns every turn into
-    # `moderation_unavailable`, with the evidence files still written.
-    assert response.json()["message"]["outcome"]["status"] == "answered"
+    # `no_match`, not `answered`: the real orchestrator runs intent, moderation
+    # and discovery, but the OAN network is not wired in a local build, so
+    # discovery finds nobody and the planner/composer are never reached. That is
+    # the honest outcome without providers — and it is not the failed-closed
+    # `moderation_unavailable`, so it still proves moderation PROCEEDED and the
+    # whole real pipeline ran and wrote its evidence.
+    assert response.json()["message"]["outcome"]["status"] == "no_match"
     assert (tmp_path / "telemetry.jsonl").exists()
     assert (tmp_path / "turns.jsonl").exists()

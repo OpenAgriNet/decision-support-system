@@ -42,19 +42,25 @@
   `orchestration/`, the framework's vocabulary cannot hide behind a port)
   while undermining ADR-0006.
 
-- **Wire `plan()` and `compose()` into `run_turn`.** The orchestrator runs
-  intent, moderation and discovery today and returns `TurnResult`. Both
-  remaining components exist and are tested, but nothing calls them in
-  sequence, so no turn produces an answer end to end yet. This is also where
-  `Verdict` gets set from moderation's decision — the barrier is proven in
-  tests but not yet exercised in a real turn. `TurnResult` becomes the
-  composed response when this lands.
+- **DONE — `plan()` and `compose()` are wired into the live runner.**
+  `orchestration/orchestrator.py:Orchestrator` is now the `TurnRunner`
+  `composition.build_runner` returns: intent, moderation and discovery
+  (delegated to `run_turn`), then the planner agent → `Evidence` → the
+  composer, streamed as events. `Verdict` is set from moderation's decision
+  before the planner runs. Discovery + invocation are gated on the three
+  network settings (`Settings.network_enabled`); unset, a turn is `no_match`
+  and the planner/composer are never reached. `core_runner.CoreRunner` is
+  superseded and no longer wired — remove it (and its stub `core/channel`
+  `compose`) once nothing references it.
 - **A tier 7 smoke test.** `UserTurn` → text, with the network and LLM
-  stubbed. Blocked on the wiring above.
-- **The select timeout setting is inert.** `DSS_SELECT_TIMEOUT_SECONDS`
-  exists and defaults to 5s, but nothing in `src/` constructs the
-  `httpx2.AsyncClient` — callers pass one in. It gets applied at the
-  composition root, which does not exist yet.
+  stubbed. `tests/unit/entrypoint/test_app.py` covers the no-network
+  (`no_match`) path today; a provider-backed variant needs a recorded
+  discovery/select fixture end to end.
+- **The select timeout setting now applies at the composition root.** The
+  wired branch of `composition._network` constructs the shared
+  `httpx2.AsyncClient` with `DSS_SELECT_TIMEOUT_SECONDS`. Still open: the
+  client is never closed on shutdown (no lifespan hook), so a durable
+  deployment leaks it — wire it into the app lifespan.
 - **The composer belongs in `core/`.** It lives in `orchestration/compose.py`
   because it calls Pydantic AI directly: `LLMProvider` only offers
   `structured()`, and prose is not a schema. Adding a `text()` method to that

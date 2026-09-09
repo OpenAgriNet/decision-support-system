@@ -1,11 +1,20 @@
 # Running the DSS locally
 
-`POST /v1/turns` works end to end today. **Moderation and intent are real** (merged from provider discovery); only the
-model behind them and the composer are stubbed. With `DSS_STUB_LLM=true` the
-canned provider answers both, so deterministic policies apply and LLM ones do
-not, and the composer returns fixed English sentences whatever you ask.
+`POST /v1/turns` runs the real pipeline end to end: intent, moderation,
+discovery, the **planner agent** and the **composer** are all wired
+(`orchestration/orchestrator.py` is the live runner). With `DSS_STUB_LLM=true`
+the canned provider answers intent and moderation with no API key, so
+deterministic policies apply and LLM ones do not.
 
-So this is for exercising the *transport and the flow*, not the answers.
+What a local run **cannot** do is answer from a provider: discovery and
+invocation leave for the OAN network, which a local build does not have, so
+they are gated on three settings (see [Knobs](#knobs)). Unset, discovery finds
+nobody, the planner and composer are never reached, and every turn comes back
+`no_match` — the honest outcome without providers. Supply the three settings to
+light the whole path up (real planner + composer model calls included).
+
+So out of the box this exercises the *transport and the flow* and the real
+moderation/intent reasoning — not a provider-backed answer.
 
 ## Start it
 
@@ -219,6 +228,17 @@ status code cannot change, so every later failure is a terminal event instead.
 | `max_body_bytes` | `1000000` | something small → `413` (checked *after* gunzip, so a small gzip can still trip it) |
 | `ready` | `True` | `False` → `503` |
 | `dss_release` | `"v1.0.0"` | anything — it is echoed as `context.dss_release` |
+| `discovery_base_url` | unset | the OAN discovery endpoint |
+| `invocation_base_url` | unset | the provider `/select` endpoint |
+| `schema_pack_dir` | unset | a network-specs schema-pack checkout on disk |
+| `discovery_radius_m` | `25000` | how far around the turn's location to look |
+
+The three network settings are all-or-nothing (`Settings.network_enabled`):
+set all of them and discovery + the planner call real providers; leave any
+unset and the turn stays `no_match`. The planner and composer bind their own
+models (`DSS_PLANNER_MODEL`, `DSS_COMPOSER_MODEL`) — `DSS_STUB_LLM` only stubs
+intent and moderation, so a real provider-backed answer needs both the network
+settings and real model access.
 
 ## What is fake, and where to swap it
 
@@ -229,8 +249,13 @@ Every stub is marked `STUB(#nn)` in the source. Grep for it.
 | the canned answer | `adapters/llm/stub.py` | a real `LLM` adapter |
 | the deny word list | `core/moderation/service.py` | #82 policy evaluator |
 | the fixed prompt | `core/intent/service.py` | #83 real prompt |
-| the fixed sentences | `core/channel/service.py` | #84 composer + reviewer |
 | the in-memory turn record | `adapters/sinks/memory.py` | #85 durable store |
+
+The composer is no longer fixed sentences: `orchestration/compose.py` writes
+the answer from the planner's `Evidence`. It is only reached once the network
+is wired (otherwise the turn is `no_match`). The old stub `compose` in
+`core/channel/service.py` and `core_runner.CoreRunner` are superseded by the
+orchestrator and no longer on the live path.
 
 Swapping any of them is a one-line change in
 `src/dss/entrypoint/composition.py` — the only file that names concrete classes.

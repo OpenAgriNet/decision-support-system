@@ -69,6 +69,40 @@ class Settings(BaseSettings):
     select_attempts: int = Field(3, ge=1)  # 0 would never call the provider
     select_backoff_seconds: float = Field(0.5, ge=0.0)
 
+    # --- provider network wiring (gated) ----------------------------------
+    # Discovery and invocation are the only components that leave for the OAN
+    # network, and standing them up needs infrastructure a local run does not
+    # have: a discovery endpoint, a /select endpoint, and a schema-pack
+    # checkout on disk. All three are optional so the app boots without them —
+    # unset, discovery finds nobody, the planner and composer never run, and a
+    # turn still gets intent + moderation (both real LLM calls). Set all three
+    # (`network_enabled`) to light up the real end-to-end path.
+    discovery_base_url: str | None = None
+    invocation_base_url: str | None = None  # the provider /select endpoint
+    schema_pack_dir: Path | None = None
+    # How far around the turn's location to look for a provider. Only consulted
+    # once the network is wired and the turn carries a geometry.
+    discovery_radius_m: int = Field(25_000, ge=0)
+    # Envelope routing ids the /select adapter stamps on each provider call.
+    network_sender_id: str = "dss"
+    network_receiver_id: str = "oan"
+
+    @property
+    def network_enabled(self) -> bool:
+        """Whether the real discovery + invocation path is fully configured.
+
+        All three or none: a half-set network (a discovery URL but no schema
+        packs to resolve capabilities against, say) would fail every turn deep
+        in the planner rather than at startup. Better to treat a partial config
+        as unwired and answer intent + moderation than to boot a runner that
+        cannot plan."""
+
+        return (
+            self.discovery_base_url is not None
+            and self.invocation_base_url is not None
+            and self.schema_pack_dir is not None
+        )
+
     # Where the adopter policy pack is mounted. Unset → use the bundled defaults;
     # set-but-missing → raise (see policy_loader), never boot on a different config.
     policy_config_path: Path | None = None
