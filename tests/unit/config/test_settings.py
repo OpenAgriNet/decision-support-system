@@ -14,6 +14,48 @@ def test_defaults() -> None:
     assert settings.moderation_model == "openai:gpt-4o-mini"
 
 
+def test_the_pack_directory_default_ignores_the_working_directory(
+    monkeypatch, tmp_path
+) -> None:
+    """`uvicorn --factory` is started from wherever the operator happens to be.
+
+    A relative default would resolve against that, so the same command finds
+    the packs from the repo root and not from anywhere else. Anchored to the
+    module's own location instead.
+    """
+
+    monkeypatch.chdir(tmp_path)
+
+    directory = Settings().schema_pack_dir
+
+    assert directory is not None
+    assert directory.is_absolute()
+    assert directory.parts[-2:] == ("var", "schema-packs")
+
+
+def test_the_two_base_urls_are_what_enable_the_network() -> None:
+    """The gate is the two URLs, not three settings.
+
+    It used to require `schema_pack_dir` too, so that a discovery URL with no
+    packs to resolve capabilities against read as unwired rather than failing
+    deep in the planner. That setting now has a working default and is never
+    unset, so the check moved: with the network on and no packs *loaded*, the
+    composition root refuses to boot. Which fires on the real condition
+    instead of on a proxy for it.
+    """
+
+    assert not Settings().network_enabled  # neither URL set
+
+    half = Settings(discovery_base_url="https://discovery.example/oan")
+    assert not half.network_enabled
+
+    both = Settings(
+        discovery_base_url="https://discovery.example/oan",
+        invocation_base_url="https://select.example/oan",
+    )
+    assert both.network_enabled
+
+
 def test_the_planner_and_composer_bind_their_own_models() -> None:
     """ADR-0004: each component binds its own model. The planner and composer
     were the two that did not — they took whatever a caller passed and set no
