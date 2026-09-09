@@ -102,9 +102,9 @@ UserWarning: DSS_EVIDENCE_URL is set but posting evidence to an external
 endpoint is not implemented — records are being written to var/evidence instead.
 ```
 
-Two things have to be settled before it can be wired: which HTTP client (this
-repo has none as a runtime dependency; the provider-discovery branch uses
-`httpx2`), and **what an unreachable endpoint should do to a turn.** The turn
+Two things have to be settled before it can be wired: which HTTP client (the
+provider-discovery and invocation adapters use `httpx`), and **what an
+unreachable endpoint should do to a turn.** The turn
 sink is required, so on today's rules a failed write fails the turn — which would
 make every turn depend on the evidence API being up. That is a real decision, not
 a detail.
@@ -175,7 +175,7 @@ no violation, so `delete-command` — an `llm` policy in the default pack — le
 everything through. Deterministic policies (`profanity-filter`) still work,
 because they are word checks and need no model. To exercise a real refusal you
 need a real provider, or a test with its own fake:
-`tests/integration/orchestration/test_core_runner.py` does exactly that.
+`tests/integration/orchestration/test_orchestrator.py` does exactly that.
 
 
 Put any of `illegal`, `illegally`, `gold loan`, `weapon` in the question. This is
@@ -254,8 +254,9 @@ Every stub is marked `STUB(#nn)` in the source. Grep for it.
 The composer is no longer fixed sentences: `orchestration/compose.py` writes
 the answer from the planner's `Evidence`. It is only reached once the network
 is wired (otherwise the turn is `no_match`). The old stub `compose` in
-`core/channel/service.py` and `core_runner.CoreRunner` are superseded by the
-orchestrator and no longer on the live path.
+`core/channel/service.py` and `CoreRunner` have been removed — the orchestrator
+is the only runner, and `core/channel/service.py` now just shapes the answer
+(`answer_from_evidence`, `no_match_answer`).
 
 Swapping any of them is a one-line change in
 `src/dss/entrypoint/composition.py` — the only file that names concrete classes.

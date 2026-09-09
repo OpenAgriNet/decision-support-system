@@ -11,9 +11,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import httpx
+
 from dss.config.settings import Settings
 from dss.core.provider_discovery.models import SchemaPackFiles
 from dss.entrypoint.composition import (
+    _aclose_for,
     _discovers_nothing,
     _network,
     _planner_schemas,
@@ -44,11 +47,15 @@ def test_build_runner_returns_a_turn_runner(tmp_path: Path) -> None:
 
 
 def test_unwired_network_discovers_nothing(tmp_path: Path) -> None:
-    discover, _invocation, schemas, schema_context_index = _network(_settings(tmp_path))
+    discover, _invocation, schemas, schema_context_index, client = _network(
+        _settings(tmp_path)
+    )
 
     # the seam is the single unwired function, and the planner's dicts are empty
     assert discover is _discovers_nothing
     assert schemas == {} and schema_context_index == {}
+    # nothing was opened, so there is nothing to close
+    assert client is None
 
 
 def test_wired_network_builds_the_planner_schemas(tmp_path: Path) -> None:
@@ -60,10 +67,11 @@ def test_wired_network_builds_the_planner_schemas(tmp_path: Path) -> None:
     )
     assert settings.network_enabled
 
-    discover, _invocation, schemas, schema_context_index = _network(settings)
+    discover, _invocation, schemas, schema_context_index, client = _network(settings)
 
     # the real client replaced the unwired stand-in...
     assert discover is not _discovers_nothing
+    assert client is not None  # opened for the process; the lifespan closes it
     # ...the schema packs loaded: the context index is keyed by the advertised
     # @type, which differs from the "MandiPrice" pack folder name.
     assert "openagrinet:MandiPrice" in schema_context_index
@@ -179,3 +187,20 @@ def test_a_skipped_pack_is_logged_for_an_operator_to_see(
     # was skipped" (see `SchemaPackSkipped`'s docstring: "has to reach an
     # operator rather than pass silently").
     assert any("Broken" in record.message for record in caplog.records)
+
+
+async def test_aclose_for_closes_the_shared_client() -> None:
+    client = httpx.AsyncClient()
+    assert not client.is_closed
+
+    await _aclose_for(client)()
+
+    # the lifespan closes the process's one client on shutdown, releasing its
+    # connection pool rather than leaking it
+    assert client.is_closed
+
+
+async def test_aclose_for_none_is_a_safe_noop() -> None:
+    # the unwired path opens no client, so the lifespan's close must still be
+    # callable without a client to close
+    await _aclose_for(None)()

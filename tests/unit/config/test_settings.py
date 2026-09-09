@@ -7,8 +7,15 @@ import pytest
 from dss.config.settings import Settings
 
 
+# `_env_file=None` on the tests that assert code defaults: `Settings` loads a
+# `.env` (env_prefix `DSS_`), which is developer-local and git-ignored, so a
+# `.env` setting e.g. `DSS_INTENT_MODEL` would make a "defaults" test assert
+# that developer's config instead of the code default. Disabling the dotenv
+# source pins these to the values declared in `settings.py`. Tests that use
+# `monkeypatch.setenv` are testing the override path and read the environment on
+# purpose.
 def test_defaults() -> None:
-    settings = Settings()
+    settings = Settings(_env_file=None)
     assert settings.moderation_temperature == 0.0
     assert settings.intent_model == "openai:gpt-4o-mini"
     assert settings.moderation_model == "openai:gpt-4o-mini"
@@ -20,7 +27,7 @@ def test_the_planner_and_composer_bind_their_own_models() -> None:
     temperature, timeout or retries at all, while intent and moderation read
     all three from here."""
 
-    settings = Settings()
+    settings = Settings(_env_file=None)
 
     assert settings.planner_model
     assert settings.planner_temperature == 0.0
@@ -47,7 +54,7 @@ def test_provider_call_timeout_and_retries_have_defaults() -> None:
     """A slow provider must not block a turn indefinitely, and a transient
     failure gets more than one chance. Both configurable per deployment."""
 
-    settings = Settings()
+    settings = Settings(_env_file=None)
 
     assert settings.select_timeout_seconds == 5.0
     assert settings.select_attempts == 3

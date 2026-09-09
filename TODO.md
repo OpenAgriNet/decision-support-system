@@ -49,18 +49,21 @@
   composer, streamed as events. `Verdict` is set from moderation's decision
   before the planner runs. Discovery + invocation are gated on the three
   network settings (`Settings.network_enabled`); unset, a turn is `no_match`
-  and the planner/composer are never reached. `core_runner.CoreRunner` is
-  superseded and no longer wired — remove it (and its stub `core/channel`
-  `compose`) once nothing references it.
+  and the planner/composer are never reached. **`CoreRunner` and the stub
+  `core/channel` `compose` have now been removed** — the orchestrator is the
+  only runner.
 - **A tier 7 smoke test.** `UserTurn` → text, with the network and LLM
   stubbed. `tests/unit/entrypoint/test_app.py` covers the no-network
   (`no_match`) path today; a provider-backed variant needs a recorded
   discovery/select fixture end to end.
-- **The select timeout setting now applies at the composition root.** The
+- **DONE — the select client is opened and closed with the process.** The
   wired branch of `composition._network` constructs the shared
-  `httpx2.AsyncClient` with `DSS_SELECT_TIMEOUT_SECONDS`. Still open: the
-  client is never closed on shutdown (no lifespan hook), so a durable
-  deployment leaks it — wire it into the app lifespan.
+  `httpx.AsyncClient` with `DSS_SELECT_TIMEOUT_SECONDS`, and
+  `build_runner_with_lifecycle` hands `create_app` an `aclose` the FastAPI
+  lifespan calls on shutdown, so the connection pool is released rather than
+  leaked. The one-time schema-pack read runs on a worker thread because
+  `uvicorn --factory` calls the app factory from inside its event loop, where
+  `anyio.run` would raise "Already running asyncio in this thread".
 - **The composer belongs in `core/`.** It lives in `orchestration/compose.py`
   because it calls Pydantic AI directly: `LLMProvider` only offers
   `structured()`, and prose is not a schema. Adding a `text()` method to that
@@ -147,10 +150,9 @@
   record what it was asked so a test can assert _that_ a stage ran, or that a
   stage was skipped.
 
-- **STUB(#84) — `core/channel/compose.py`.** Delete `_SOURCE` and the fixed
-  answer sentences (`compose()`'s hardcoded wheat-price blocks) together with
-  the real composer. Sources belong to the evidence a plan gathered, not to
-  this module — a hardcoded provider here would silently outlive the stub and
-  start citing a source no turn actually consulted. The real composer writes
-  one claim per ask (`intent.asks`) from the evidence a plan gathered, and
-  writes in `target_lang` for the channel; this ignores both.
+- **DONE — STUB(#84) removed from `core/channel/service.py`.** The stub
+  `compose()` and its hardcoded `_SOURCE`/wheat-price blocks are gone; the real
+  composer is `orchestration/compose.py` (`Evidence` → prose), and
+  `core/channel/service.py` now only does the deterministic shaping
+  (`answer_from_evidence`, `no_match_answer`). Still open: per-ask claims and
+  sub-sentence citation spans — `answer_from_evidence` emits one block today.

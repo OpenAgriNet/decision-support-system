@@ -6,7 +6,7 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-import httpx2
+import httpx
 
 from dss.adapters.schema_packs.filesystem import FilesystemSchemaPackSource
 from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
@@ -44,10 +44,10 @@ async def test_the_wired_adapter_resolves_a_query() -> None:
     )
     await schema_pack_cache.refresh()
 
-    def handler(request: httpx2.Request) -> httpx2.Response:
-        return httpx2.Response(200, json=ON_DISCOVER_RESPONSE)
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=ON_DISCOVER_RESPONSE)
 
-    async with httpx2.AsyncClient(transport=httpx2.MockTransport(handler)) as client:
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         discovery = build_capability_discovery(
             client=client,
             base_url="https://discovery-network-vistaar.da.gov.in/oan",
@@ -70,10 +70,10 @@ async def test_the_wired_discover_providers_bakes_in_radius() -> None:
     )
     await schema_pack_cache.refresh()
 
-    def handler(request: httpx2.Request) -> httpx2.Response:
-        return httpx2.Response(200, json=ON_DISCOVER_RESPONSE)
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=ON_DISCOVER_RESPONSE)
 
-    async with httpx2.AsyncClient(transport=httpx2.MockTransport(handler)) as client:
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         discovery = build_capability_discovery(
             client=client,
             base_url="https://discovery-network-vistaar.da.gov.in/oan",
@@ -127,13 +127,13 @@ async def test_run_turn_can_call_the_composed_discover_providers() -> None:
     passed both suites while failing every real turn.
     """
 
-    def handler(request: httpx2.Request) -> httpx2.Response:
-        return httpx2.Response(200, json=ON_DISCOVER_RESPONSE)
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=ON_DISCOVER_RESPONSE)
 
     cache = SchemaPackCache(FilesystemSchemaPackSource(root=SCHEMA_PACKS_FIXTURE_ROOT))
     await cache.refresh()
 
-    async with httpx2.AsyncClient(transport=httpx2.MockTransport(handler)) as client:
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         discover_providers = build_discover_providers(
             build_capability_discovery(
                 client=client,

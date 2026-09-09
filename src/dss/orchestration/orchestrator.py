@@ -28,8 +28,6 @@ tested there. This runner adds what the transport needs on top: the planner
 and composer, the event stream, the evidence writes, and the mapping from a
 turn's findings to a contract outcome.
 
-This replaces the stub answer `core_runner.CoreRunner` streamed: same
-`TurnRunner` seam, but a real planner and composer instead of a fixed price.
 Nothing side-effecting runs until moderation has cleared — the planner is
 reached only on `PROCEED`, and its own `select` tool waits on the `Verdict`
 before it touches a provider.
@@ -79,8 +77,7 @@ _STATUS_FOR = {
 # STUB(#86): no component reports confidence yet. The contract requires the
 # field, so the runner supplies a number per status. Note these are not
 # comparable — a refusal's certainty and an answer's certainty measure
-# different things, which is the open question behind the field. (Kept in step
-# with `core_runner._STUB_CONFIDENCE` until that runner is retired.)
+# different things, which is the open question behind the field.
 _STUB_CONFIDENCE = {
     TurnStatus.ANSWERED: 92,
     TurnStatus.PARTIALLY_ANSWERED: 74,
