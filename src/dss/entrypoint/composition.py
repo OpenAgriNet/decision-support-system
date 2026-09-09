@@ -329,8 +329,13 @@ def _model_for(settings: Settings, configured: str):
     if not settings.azure_enabled:
         return configured
 
+    # The provider prefix is Pydantic AI's own syntax for picking a provider
+    # from a string. Azure has already been picked by the endpoint, and the
+    # rest is a deployment id — so `openai:gpt-4o-mini` falls back to
+    # `gpt-4o-mini`, which on a v1 endpoint is usually the deployment name.
+    _, _, deployment = configured.rpartition(":")
     return build_azure_model(
-        settings.azure_openai_deployment or configured,
+        settings.azure_openai_deployment or deployment,
         endpoint=settings.azure_openai_endpoint,
         api_key=settings.azure_openai_api_key,
     )
