@@ -46,17 +46,32 @@ async def _no_discovery(intent, turn, *, now):
     return DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
 
 
-def test_the_core_runner_satisfies_the_port(a_turn, a_context):
+async def _unreached_plan(turn, *, intent, discovery, verdict):
+    """With `_no_discovery` nobody serves the ask, so the orchestrator answers
+    NO_MATCH before the planner runs — this must never be called."""
+
+    raise AssertionError("the planner ran despite an empty discovery")
+
+
+async def _unreached_compose(evidence, *, turn):
+    raise AssertionError("the composer ran despite an empty discovery")
+
+
+def test_the_orchestrator_satisfies_the_port(a_turn, a_context):
     from dss.adapters.llm.stub import StubLLM
     from dss.adapters.sinks.memory import MemoryTurnSink
     from dss.adapters.sinks.stdout import StdoutTelemetrySink
-    from dss.orchestration.core_runner import CoreRunner
+    from dss.orchestration.orchestrator import Components, Orchestrator
 
-    runner = CoreRunner(
+    runner = Orchestrator(
         intent_llm=StubLLM(),
         moderation_llm=StubLLM(),
         policies=[],
-        discover_providers=_no_discovery,
+        components=Components(
+            discover=_no_discovery,
+            plan=_unreached_plan,
+            compose=_unreached_compose,
+        ),
         turns=MemoryTurnSink(),
         telemetry=StdoutTelemetrySink(),
     )

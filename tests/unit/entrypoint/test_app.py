@@ -4,8 +4,32 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from tests.support.fakes import FakeRunner
 
 from dss.entrypoint.app import create_app
+
+
+def test_create_app_closes_the_network_client_on_shutdown(monkeypatch) -> None:
+    """The lifespan releases what `build_runner_with_lifecycle` handed it. A
+    real deployment's `httpx2.AsyncClient` would otherwise leak its connection
+    pool past shutdown — here the close is a spy, so the wiring is what's under
+    test, not httpx."""
+
+    closed: list[bool] = []
+
+    async def _aclose() -> None:
+        closed.append(True)
+
+    monkeypatch.setattr(
+        "dss.entrypoint.app.build_runner_with_lifecycle",
+        lambda settings: (FakeRunner([]), _aclose),
+    )
+
+    # Entering and leaving the TestClient context runs startup then shutdown.
+    with TestClient(create_app()):
+        assert closed == [], "not closed while the server is up"
+
+    assert closed == [True], "closed exactly once, on shutdown"
 
 
 def test_create_app_builds_an_application_serving_the_turn_route(tmp_path, monkeypatch):

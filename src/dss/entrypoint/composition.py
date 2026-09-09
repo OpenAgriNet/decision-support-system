@@ -20,7 +20,9 @@ three network settings to light the whole path up.
 from __future__ import annotations
 
 import logging
+import threading
 import warnings
+from collections.abc import Awaitable, Callable
 from datetime import datetime
 
 import anyio
@@ -65,6 +67,26 @@ UNWIRED_URL = (
 
 
 def build_runner(settings: Settings) -> TurnRunner:
+    """The runner alone, for callers that do not own the network client's
+    lifecycle (tests, and anything running the unwired path). The process entry
+    point uses `build_runner_with_lifecycle` so it can close the client on
+    shutdown."""
+
+    runner, _aclose = build_runner_with_lifecycle(settings)
+    return runner
+
+
+def build_runner_with_lifecycle(
+    settings: Settings,
+) -> tuple[TurnRunner, Callable[[], Awaitable[None]]]:
+    """The runner and a coroutine that releases what it holds.
+
+    The wired network path opens one shared `httpx2.AsyncClient` for the whole
+    process — discovery and invocation both call through it — and `aclose`
+    closes it on shutdown. Unwired, nothing is opened and `aclose` is a no-op.
+    `app.create_app` drives this from the FastAPI lifespan so the client is
+    closed once, when the server stops, rather than leaked."""
+
     if settings.evidence_url:
         warnings.warn(
             UNWIRED_URL.format(directory=settings.evidence_dir),
@@ -78,7 +100,7 @@ def build_runner(settings: Settings) -> TurnRunner:
     identity = load_identity()  # bundled default until an adopter mounts one
     skills = load_skills()
 
-    discover, invocation, schemas, schema_context_index = _network(settings)
+    discover, invocation, schemas, schema_context_index, client = _network(settings)
 
     components = Components(
         discover=discover,
@@ -102,7 +124,7 @@ def build_runner(settings: Settings) -> TurnRunner:
         ),
     )
 
-    return Orchestrator(
+    runner = Orchestrator(
         intent_llm=_intent_llm(settings),
         moderation_llm=_moderation_llm(settings),
         policies=policies,
@@ -110,6 +132,7 @@ def build_runner(settings: Settings) -> TurnRunner:
         turns=FileTurnSink(settings.turns_path),
         telemetry=FileTelemetrySink(settings.telemetry_path),
     )
+    return runner, _aclose_for(client)
 
 
 # --- discovery + invocation (gated) --------------------------------------
@@ -143,25 +166,30 @@ async def _discovers_nothing(
 def _network(
     settings: Settings,
 ) -> tuple[
-    DiscoverProviders, CapabilityInvocation, dict[str, DomainSchema], dict[str, str]
+    DiscoverProviders,
+    CapabilityInvocation,
+    dict[str, DomainSchema],
+    dict[str, str],
+    httpx2.AsyncClient | None,
 ]:
     """Wire discovery + invocation, or return the unwired stand-ins.
 
-    Returns everything the planner needs that varies with the network: the
+    Returns everything the planner needs that varies with the network — the
     per-turn `discover` callable, the `invocation` port, and the two schema
-    dicts the planner validates and routes against. Unwired, the dicts are
-    empty and discovery finds nobody — both harmless, because the planner is
-    never reached."""
+    dicts the planner validates and routes against — plus the shared HTTP
+    client whose lifecycle the caller owns (`None` when unwired). Unwired, the
+    dicts are empty and discovery finds nobody — all harmless, because the
+    planner is never reached."""
 
     if not settings.network_enabled:
-        return _discovers_nothing, _UnwiredInvocation(), {}, {}
+        return _discovers_nothing, _UnwiredInvocation(), {}, {}, None
 
-    # Constructed outside the event loop on purpose: the client is used later
-    # from uvicorn's loop, so binding it to the short-lived loop below would
-    # break the first real request. Only the schema-pack read runs in a loop.
+    # The client is constructed here, not in the loop below: it is used later
+    # from uvicorn's loop for real requests, so binding it to the throwaway
+    # startup loop would break the first one.
     client = httpx2.AsyncClient(timeout=settings.select_timeout_seconds)
     source = FilesystemSchemaPackSource(root=settings.schema_pack_dir)
-    cache, packs = anyio.run(_load_schema_packs, source)
+    cache, packs = _load_schema_packs_blocking(source)
 
     discovery = build_capability_discovery(
         client=client,
@@ -192,7 +220,29 @@ def _network(
     good = tuple(pack for pack in packs if pack.pack_name not in skipped)
     schemas = _planner_schemas(good)
     schema_context_index = cache.current_schema_context()
-    return discover, invocation, schemas, schema_context_index
+    return discover, invocation, schemas, schema_context_index, client
+
+
+async def _aclose_nothing() -> None:
+    """The unwired path opened no client, so there is nothing to release."""
+
+    return None
+
+
+def _aclose_for(
+    client: httpx2.AsyncClient | None,
+) -> Callable[[], Awaitable[None]]:
+    """A single coroutine that closes the shared client, or a no-op when there
+    is none. Keeping the shape identical either way means the lifespan does not
+    branch on whether the network was wired."""
+
+    if client is None:
+        return _aclose_nothing
+
+    async def aclose() -> None:
+        await client.aclose()
+
+    return aclose
 
 
 def _planner_schemas(packs: tuple[SchemaPackFiles, ...]) -> dict[str, DomainSchema]:
@@ -230,6 +280,35 @@ async def _load_schema_packs(
     await cache.refresh()
     packs = await source.fetch_packs()
     return cache, packs
+
+
+def _load_schema_packs_blocking(
+    source: FilesystemSchemaPackSource,
+) -> tuple[SchemaPackCache, tuple[SchemaPackFiles, ...]]:
+    """Load the packs once, synchronously, from `build_runner`'s sync context.
+
+    The read is async (`SchemaPackCache.refresh`), but `uvicorn --factory` calls
+    the app factory from *inside* its event loop, so `anyio.run` here would
+    raise "Already running asyncio in this thread". Running it on a fresh thread
+    gives the read its own loop without touching the caller's. It is one-time
+    startup I/O returning plain data — no loop-bound object escapes the thread,
+    and the shared client is created on the caller's thread, not this one."""
+
+    box: dict[str, tuple[SchemaPackCache, tuple[SchemaPackFiles, ...]]] = {}
+    error: dict[str, BaseException] = {}
+
+    def _run() -> None:
+        try:
+            box["result"] = anyio.run(_load_schema_packs, source)
+        except BaseException as exc:  # noqa: BLE001 - re-raised on the caller's thread
+            error["error"] = exc
+
+    thread = threading.Thread(target=_run, name="dss-schema-pack-load")
+    thread.start()
+    thread.join()
+    if error:
+        raise error["error"]
+    return box["result"]
 
 
 def _intent_llm(settings: Settings):
