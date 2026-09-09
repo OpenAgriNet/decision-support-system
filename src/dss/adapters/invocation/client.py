@@ -24,6 +24,7 @@ from dss.core.provider_discovery.models import (
     FailureClass,
     ProviderCapability,
 )
+from dss.observability.trace_log import log_external_response
 
 # Defined on the port, not here: a failed select is part of the contract, so
 # a caller can catch it without importing this adapter. Re-exported because
@@ -182,6 +183,13 @@ class HttpCapabilityInvocation:
             response = await self._client.post(
                 f"{self._base_url}/select", json=request_body
             )
+            log_external_response(
+                "invocation",
+                transaction_id,
+                status=response.status_code,
+                capability=capability.capability,
+                body=response.text,
+            )
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             status_code = exc.response.status_code
@@ -192,6 +200,13 @@ class HttpCapabilityInvocation:
                 exc.response.text,
             ) from exc
         except httpx.HTTPError as exc:
+            log_external_response(
+                "invocation",
+                transaction_id,
+                status="transport_error",
+                capability=capability.capability,
+                error=str(exc),
+            )
             raise SelectFailed(
                 capability.capability,
                 NO_STATUS_CODE,
