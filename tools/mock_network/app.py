@@ -30,9 +30,10 @@ import json
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 
 from tools.mock_network.catalog import requested_types
+from tools.mock_network.validity import fill_in_validity
 
 _RESPONSES = Path(__file__).parent / "responses"
 
@@ -41,6 +42,12 @@ _RESPONSES = Path(__file__).parent / "responses"
 # reports when nothing matches, and a `no_match` at the DSS.
 _DISCOVER_BY_TYPE = {
     "openagrinet:WeatherObservation": "weather_discover.json",
+}
+
+# The provider's answer per capability, keyed the same way. Built from the
+# pack's own `examples/`, so the values are ones the pack says are possible.
+_SELECT_BY_TYPE = {
+    "openagrinet:WeatherObservation": "weather_select.json",
 }
 
 
@@ -67,7 +74,49 @@ def build_mock_app(*, pack_dir: Path | None = None) -> FastAPI:
             "message": {"catalogs": catalogs},
         }
 
+    @app.post("/select")
+    async def select(request: Request) -> dict[str, Any]:
+        body = await request.json()
+        capability = _selected_type(body)
+        filename = _SELECT_BY_TYPE.get(capability or "")
+        if filename is None:
+            # A capability the mock has no answer for. 404, which the DSS
+            # classifies as TRANSIENT and retries — the same thing a provider
+            # that has gone away looks like.
+            raise HTTPException(
+                status_code=404,
+                detail=f"the mock serves no answer for {capability!r}",
+            )
+
+        recorded = _load(filename)
+        commitment = recorded["message"]["contract"]["commitments"][0]
+        resource = commitment["resources"][0]
+        answered = {
+            **resource,
+            "resourceAttributes": fill_in_validity(resource["resourceAttributes"]),
+        }
+        return {
+            "context": _echo(body, "on_select"),
+            "message": {
+                "contract": {"commitments": [{**commitment, "resources": [answered]}]}
+            },
+        }
+
     return app
+
+
+def _selected_type(body: dict[str, Any]) -> str | None:
+    """The `@type` the DSS is selecting, out of the request it sent.
+
+    One commitment, one resource — that is what `build_select_request` emits,
+    and reading past it would invent a case the DSS cannot produce.
+    """
+
+    try:
+        commitment = body["message"]["contract"]["commitments"][0]
+        return commitment["resources"][0]["resourceAttributes"]["@type"]
+    except (KeyError, IndexError, TypeError):
+        return None
 
 
 def _load(filename: str) -> dict[str, Any]:
