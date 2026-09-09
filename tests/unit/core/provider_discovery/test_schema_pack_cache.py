@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from dss.core.provider_discovery import schema_pack_cache
-from dss.core.provider_discovery.models import SchemaPackFiles
+from dss.core.provider_discovery.models import SchemaPackFiles, SchemaPackSkipped
 from dss.core.provider_discovery.schema_pack_cache import SchemaPackCache
 
 MANDI_PRICE_ATTRIBUTES = """
@@ -30,14 +30,18 @@ MANDI_PRICE_PACK = SchemaPackFiles(
 
 
 class _FakeSource:
-    def __init__(self, packs=(), *, fail=False):
+    def __init__(self, packs=(), *, fail=False, skipped=()):
         self.packs = packs
         self.fail = fail
+        self._skipped = skipped
 
     async def fetch_packs(self):
         if self.fail:
             raise RuntimeError("network-specs unreachable")
         return self.packs
+
+    def skipped_packs(self):
+        return self._skipped
 
 
 async def test_refresh_populates_an_empty_cache() -> None:
@@ -116,6 +120,23 @@ async def test_a_clean_refresh_reports_no_skipped_packs() -> None:
     await cache.refresh()
 
     assert cache.skipped_packs() == ()
+
+
+async def test_a_pack_the_source_itself_could_not_read_is_also_exposed() -> None:
+    """A pack can be skipped one layer below index-building — the source
+    itself may refuse to read it (two version dirs, a missing file) before
+    `build_capability_index` ever sees it. That skip must reach
+    `skipped_packs()` too, not disappear because it happened earlier.
+    """
+    source = _FakeSource(
+        packs=(MANDI_PRICE_PACK,),
+        skipped=(SchemaPackSkipped("Broken", "expected exactly one version"),),
+    )
+    cache = SchemaPackCache(source)
+
+    await cache.refresh()
+
+    assert [s.pack_name for s in cache.skipped_packs()] == ["Broken"]
 
 
 async def test_a_later_clean_refresh_clears_an_earlier_skip() -> None:

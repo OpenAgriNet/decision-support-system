@@ -45,7 +45,15 @@ class SchemaPackCache:
         # from what's left.
         _, index_skips = build_capability_index(packs)
         _, context_skips = build_schema_context_index(packs)
-        skipped = {skip.pack_name: skip for skip in (*context_skips, *index_skips)}
+        # The source itself may have already refused to read a pack (two
+        # version dirs, a missing file) before it ever reached `packs` — that
+        # skip happened one layer below index-building and must not
+        # disappear just because it happened earlier.
+        source_skips = self._source.skipped_packs()
+        skipped = {
+            skip.pack_name: skip
+            for skip in (*source_skips, *context_skips, *index_skips)
+        }
         good = tuple(pack for pack in packs if pack.pack_name not in skipped)
 
         index, _ = build_capability_index(good)
