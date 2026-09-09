@@ -1,0 +1,11 @@
+{
+  "id": "https://schemas.openagrinet.global/schema/MandiPrice/v0.1",
+  "name": "Mandi Price Attributes",
+  "version": "0.1.0",
+  "included_schemas": ["MandiPrice"],
+  "filterable_paths": [
+    "beckn:resourceAttributes.commodity.code",
+    "beckn:resourceAttributes.market.marketCode",
+    "beckn:resourceAttributes.market.state"
+  ]
+}

@@ -1,0 +1,23 @@
+# Trimmed from the real MandiPrice/v0.1/attributes.yaml, keeping the shape
+# the index actually reads. `x-jsonld` holds the canonical @type and @context;
+# `properties["@type"]` declares the type again as a oneOf, because the schema
+# also permits an array containing the canonical type.
+components:
+  schemas:
+    MandiPrice:
+      type: object
+      x-beckn-container: resourceAttributes
+      x-jsonld:
+        "@context": "https://schemas.openagrinet.global/schema/MandiPrice/v0.1/context.jsonld"
+        "@type": openagrinet:MandiPrice
+      allOf:
+        - $ref: "../../AgricultureResource/v0.1/attributes.yaml#/components/schemas/AgricultureResource"
+        - type: object
+          properties:
+            "@type":
+              oneOf:
+                - type: string
+                  const: openagrinet:MandiPrice
+                - type: array
+                  contains:
+                    const: openagrinet:MandiPrice
