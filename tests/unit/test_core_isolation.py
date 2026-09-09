@@ -45,7 +45,6 @@ OUTWARD_PACKAGES = (
 IMPURE_MODULES = frozenset(
     {
         "httpx",
-        "httpx2",
         "requests",
         "aiohttp",
         "urllib",

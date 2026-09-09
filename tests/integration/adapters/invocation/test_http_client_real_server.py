@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import httpx2
+import httpx
 import pytest
 from pytest_httpserver import HTTPServer
 
@@ -38,7 +38,7 @@ async def test_select_against_a_real_local_server(httpserver: HTTPServer) -> Non
         select_response
     )
 
-    async with httpx2.AsyncClient() as client:
+    async with httpx.AsyncClient() as client:
         invocation = HttpCapabilityInvocation(
             client=client,
             base_url=_base_url(httpserver),
@@ -61,7 +61,7 @@ async def test_a_real_429_response_raises_selectfailed(httpserver: HTTPServer) -
         {"error": "rate limited"}, status=429
     )
 
-    async with httpx2.AsyncClient() as client:
+    async with httpx.AsyncClient() as client:
         invocation = HttpCapabilityInvocation(
             client=client,
             base_url=_base_url(httpserver),

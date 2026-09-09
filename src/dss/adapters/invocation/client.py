@@ -12,7 +12,7 @@ from typing import Any
 from uuid import uuid4
 
 import anyio
-import httpx2
+import httpx
 
 from dss.adapters.network_common import (
     NO_STATUS_CODE,
@@ -119,7 +119,7 @@ class HttpCapabilityInvocation:
 
     def __init__(
         self,
-        client: httpx2.AsyncClient,
+        client: httpx.AsyncClient,
         base_url: str,
         sender_id: str,
         receiver_id: str,
@@ -183,7 +183,7 @@ class HttpCapabilityInvocation:
                 f"{self._base_url}/select", json=request_body
             )
             response.raise_for_status()
-        except httpx2.HTTPStatusError as exc:
+        except httpx.HTTPStatusError as exc:
             status_code = exc.response.status_code
             raise SelectFailed(
                 capability.capability,
@@ -191,7 +191,7 @@ class HttpCapabilityInvocation:
                 classify_status_code(status_code),
                 exc.response.text,
             ) from exc
-        except httpx2.HTTPError as exc:
+        except httpx.HTTPError as exc:
             raise SelectFailed(
                 capability.capability,
                 NO_STATUS_CODE,

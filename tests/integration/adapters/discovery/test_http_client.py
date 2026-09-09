@@ -1,6 +1,6 @@
 """Contract tests for HttpCapabilityDiscovery — the real network hop.
 
-Uses httpx2.MockTransport so no real socket is ever opened, per tier 2's
+Uses httpx.MockTransport so no real socket is ever opened, per tier 2's
 'recorded fixture or local test server, never live network calls' rule.
 """
 
@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import httpx2
+import httpx
 
 from dss.adapters.discovery.client import HttpCapabilityDiscovery
 from dss.core.provider_discovery.models import FailureClass, ProviderQuery
@@ -30,17 +30,15 @@ class _FakeSchemaPackCache:
         return self._schema_context_index
 
 
-def _client_returning(
-    response_body: dict, status_code: int = 200
-) -> httpx2.AsyncClient:
-    def handler(request: httpx2.Request) -> httpx2.Response:
-        return httpx2.Response(status_code, json=response_body)
+def _client_returning(response_body: dict, status_code: int = 200) -> httpx.AsyncClient:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(status_code, json=response_body)
 
-    return httpx2.AsyncClient(transport=httpx2.MockTransport(handler))
+    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
 
 
 def _discovery(
-    client: httpx2.AsyncClient, schema_pack_cache=None
+    client: httpx.AsyncClient, schema_pack_cache=None
 ) -> HttpCapabilityDiscovery:
     if schema_pack_cache is None:
         schema_pack_cache = _FakeSchemaPackCache(
@@ -74,12 +72,12 @@ async def test_discover_sends_the_given_transaction_id() -> None:
     it must be whatever the Experience layer supplied, not one we invent."""
     sent_bodies = []
 
-    def handler(request: httpx2.Request) -> httpx2.Response:
+    def handler(request: httpx.Request) -> httpx.Response:
         sent_bodies.append(json.loads(request.content))
         on_discover = json.loads((FIXTURES / "discover_response.json").read_text())
-        return httpx2.Response(200, json=on_discover)
+        return httpx.Response(200, json=on_discover)
 
-    client = httpx2.AsyncClient(transport=httpx2.MockTransport(handler))
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     discovery = _discovery(client)
     query = ProviderQuery(
         capabilities=("openagrinet:WeatherObservation",),
@@ -161,10 +159,10 @@ async def test_a_response_that_cannot_be_mapped_is_returned_as_a_defect() -> Non
 
 
 async def test_a_body_that_is_not_json_is_returned_as_a_defect() -> None:
-    def handler(request: httpx2.Request) -> httpx2.Response:
-        return httpx2.Response(200, text="<html>gateway splash page</html>")
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text="<html>gateway splash page</html>")
 
-    discovery = _discovery(httpx2.AsyncClient(transport=httpx2.MockTransport(handler)))
+    discovery = _discovery(httpx.AsyncClient(transport=httpx.MockTransport(handler)))
     query = ProviderQuery(
         capabilities=("openagrinet:WeatherObservation",),
         languages=("hi",),
@@ -183,10 +181,10 @@ async def test_a_connection_error_is_returned_as_a_failure() -> None:
     from a non-2xx status, but still returned as data, not raised.
     """
 
-    def handler(request: httpx2.Request) -> httpx2.Response:
-        raise httpx2.ConnectError("connection refused", request=request)
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused", request=request)
 
-    client = httpx2.AsyncClient(transport=httpx2.MockTransport(handler))
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     discovery = _discovery(client)
     query = ProviderQuery(
         capabilities=("openagrinet:WeatherObservation",),

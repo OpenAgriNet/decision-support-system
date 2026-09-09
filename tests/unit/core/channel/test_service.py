@@ -1,44 +1,20 @@
-"""Response composition — how the answer is written for the channel."""
+"""Tier 1 — the deterministic channel shaping.
+
+The prose-writing composer lives in `orchestration/compose.py` (it needs an
+LLM); what stays here is the fixed no-match reply. `answer_from_evidence` has
+its own test alongside this one.
+"""
 
 from __future__ import annotations
 
-import pytest
-
-from dss.adapters.llm.stub import StubLLM
-from dss.core.channel.service import compose
-from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
+from dss.core.channel.service import NO_MATCH_TEXT, no_match_answer
 
 
-@pytest.fixture
-def intent():
-    return Intent(
-        asks=(
-            Ask(
-                agriculture_subjects="wheat",
-                subject_categories=SubjectCategory.MARKET,
-                interaction_type=InteractionType.OBSERVE,
-            ),
-        ),
-        confidence=0.9,
-    )
+def test_no_match_answer_has_one_block_and_no_sources() -> None:
+    answer = no_match_answer()
 
-
-async def test_an_answer_has_at_least_one_block(a_turn, intent):
-    answer = await compose(a_turn(), intent, llm=StubLLM())
-
-    assert answer.content
-
-
-async def test_every_cited_source_id_is_one_the_answer_declares(a_turn, intent):
-    """A block citing a source the answer does not list would render a footnote
-    marker pointing at nothing."""
-
-    answer = await compose(a_turn(), intent, llm=StubLLM())
-
-    declared = {source.id for source in answer.sources}
-    cited = {
-        source_id
-        for block in answer.content
-        for source_id in getattr(block, "source_ids", ())
-    }
-    assert cited <= declared
+    assert len(answer.content) == 1
+    assert answer.content[0].text == NO_MATCH_TEXT
+    # nothing was consulted, so nothing is cited
+    assert answer.sources == ()
+    assert answer.content[0].source_ids == ()

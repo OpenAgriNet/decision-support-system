@@ -6,7 +6,7 @@ from datetime import datetime
 from functools import partial
 from typing import Protocol
 
-import httpx2
+import httpx
 
 from dss.adapters.discovery.client import HttpCapabilityDiscovery, SchemaContextSource
 from dss.core.intent.models import Intent
@@ -20,7 +20,7 @@ from dss.ports.discovery import CapabilityDiscovery
 
 
 def build_capability_discovery(
-    client: httpx2.AsyncClient,
+    client: httpx.AsyncClient,
     base_url: str,
     schema_pack_cache: SchemaContextSource,
 ) -> HttpCapabilityDiscovery:

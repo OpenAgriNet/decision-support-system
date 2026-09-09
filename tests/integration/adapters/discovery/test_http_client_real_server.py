@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import httpx2
+import httpx
 from pytest_httpserver import HTTPServer
 
 from dss.adapters.discovery.client import HttpCapabilityDiscovery
@@ -45,7 +45,7 @@ async def test_discover_against_a_real_local_server(httpserver: HTTPServer) -> N
     on_discover = json.loads((FIXTURES / "discover_response.json").read_text())
     httpserver.expect_request("/discover", method="POST").respond_with_json(on_discover)
 
-    async with httpx2.AsyncClient() as client:
+    async with httpx.AsyncClient() as client:
         discovery = HttpCapabilityDiscovery(
             client=client,
             base_url=_base_url(httpserver),
@@ -69,7 +69,7 @@ async def test_a_real_429_response_is_returned_as_a_failure(
         {"error": "rate limited"}, status=429
     )
 
-    async with httpx2.AsyncClient() as client:
+    async with httpx.AsyncClient() as client:
         discovery = HttpCapabilityDiscovery(
             client=client,
             base_url=_base_url(httpserver),

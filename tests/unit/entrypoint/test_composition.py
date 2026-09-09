@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import warnings
 
-import httpx2
 import pytest
 
 from dss.config.settings import Settings
@@ -28,7 +27,7 @@ def test_a_configured_url_is_not_silently_ignored(tmp_path):
     )
 
     with pytest.warns(UserWarning, match="not implemented"):
-        build_runner(settings, client=httpx2.AsyncClient())
+        build_runner(settings)
 
 
 def test_no_warning_when_no_url_is_configured(tmp_path):
@@ -36,4 +35,4 @@ def test_no_warning_when_no_url_is_configured(tmp_path):
 
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        build_runner(settings, client=httpx2.AsyncClient())
+        build_runner(settings)

@@ -7,16 +7,16 @@ one, which is what keeps the HTTP layer testable against a fake.
 
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator, Callable
-from contextlib import AbstractAsyncContextManager, asynccontextmanager
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
-import httpx2
 from fastapi import FastAPI
+from starlette.types import Lifespan
 
 from dss.adapters.http.v1 import schema
 from dss.adapters.http.v1.router import turn_router
 from dss.config.settings import Settings
-from dss.entrypoint.composition import build_runner
+from dss.entrypoint.composition import build_runner_with_lifecycle
 from dss.ports.turn import TurnRunner
 
 TITLE = "Decision Support System"
@@ -30,13 +30,12 @@ def build_app(
     *,
     runner: TurnRunner,
     settings: Settings,
-    lifespan: Callable[[FastAPI], AbstractAsyncContextManager[None]] | None = None,
+    lifespan: Lifespan[FastAPI] | None = None,
 ) -> FastAPI:
     """Wire a given runner. Tests pass a fake; `create_app` passes the real one.
 
-    `lifespan` is optional because most tests hand in a fake runner that owns
-    nothing to shut down. `create_app` passes one, because it builds the HTTP
-    client and so has to close it.
+    `lifespan` is optional so tests can mount a fake runner with no resources to
+    release; `create_app` passes one that closes the network client on shutdown.
     """
 
     app = FastAPI(
@@ -71,35 +70,20 @@ def _publish_wire_schemas(app: FastAPI) -> None:
     app.openapi = openapi  # type: ignore[method-assign]
 
 
-def create_app(*, client: httpx2.AsyncClient | None = None) -> FastAPI:
-    """The process entry point — `uvicorn --factory dss.entrypoint.app:create_app`.
-
-    Builds the HTTP client the network adapters share and closes it on
-    shutdown. It is built here, not in `build_runner`, because only the
-    builder can close it — see `build_runner`'s docstring.
-
-    Built unconditionally, even when the network is unwired: an `AsyncClient`
-    opens no socket until a request is made, so an unused one costs a single
-    `aclose()` and keeps the `network_enabled` decision in one place.
-
-    `client` is for tests that need to assert it was closed; production passes
-    nothing.
-    """
+def create_app() -> FastAPI:
+    """The process entry point — `uvicorn --factory dss.entrypoint.app:create_app`."""
 
     settings = Settings()
-    # The timeout lives with construction now. Note it bounds discovery calls
-    # too — one client serves both adapters.
-    http_client = client or httpx2.AsyncClient(timeout=settings.select_timeout_seconds)
+    runner, aclose = build_runner_with_lifecycle(settings)
 
     @asynccontextmanager
-    async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        # Startup is nothing to do; the client was opened at wiring time. On
+        # shutdown, release it — a leaked `httpx.AsyncClient` holds its
+        # connection pool open past the process's intent to stop.
         try:
             yield
         finally:
-            await http_client.aclose()
+            await aclose()
 
-    return build_app(
-        runner=build_runner(settings, client=http_client),
-        settings=settings,
-        lifespan=lifespan,
-    )
+    return build_app(runner=runner, settings=settings, lifespan=lifespan)

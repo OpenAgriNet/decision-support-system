@@ -11,7 +11,7 @@ one failure.
 
 from __future__ import annotations
 
-import httpx2
+import httpx
 import pytest
 
 from dss.adapters.invocation.client import HttpCapabilityInvocation, SelectFailed
@@ -38,11 +38,11 @@ class _CountingHandler:
         self._fail_times = fail_times
         self.calls = 0
 
-    def __call__(self, request: httpx2.Request) -> httpx2.Response:
+    def __call__(self, request: httpx.Request) -> httpx.Response:
         self.calls += 1
         if self.calls <= self._fail_times:
-            return httpx2.Response(self._status_code, json={"error": "simulated"})
-        return httpx2.Response(
+            return httpx.Response(self._status_code, json={"error": "simulated"})
+        return httpx.Response(
             200,
             json={
                 "message": {
@@ -68,7 +68,7 @@ class _CountingHandler:
 
 def _invocation(handler: _CountingHandler, **kwargs) -> HttpCapabilityInvocation:
     return HttpCapabilityInvocation(
-        client=httpx2.AsyncClient(transport=httpx2.MockTransport(handler)),
+        client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
         base_url="https://provider-network-vistaar.da.gov.in/oan",
         sender_id="seeker-network-vistaar.da.gov.in",
         receiver_id="provider-network-vistaar.da.gov.in",

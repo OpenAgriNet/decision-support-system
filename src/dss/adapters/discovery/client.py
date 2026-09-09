@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from typing import Any, Protocol
 from uuid import uuid4
 
-import httpx2
+import httpx
 
 from dss.adapters.network_common import (
     NO_STATUS_CODE,
@@ -224,7 +224,7 @@ class HttpCapabilityDiscovery:
 
     def __init__(
         self,
-        client: httpx2.AsyncClient,
+        client: httpx.AsyncClient,
         base_url: str,
         schema_pack_cache: SchemaContextSource,
     ) -> None:
@@ -247,11 +247,11 @@ class HttpCapabilityDiscovery:
                 f"{self._base_url}/discover", json=request_body
             )
             response.raise_for_status()
-        except httpx2.HTTPStatusError as exc:
+        except httpx.HTTPStatusError as exc:
             return _failure_result(
                 query, ask_indices, exc.response.status_code, exc.response.text
             )
-        except httpx2.HTTPError as exc:
+        except httpx.HTTPError as exc:
             return _failure_result(query, ask_indices, NO_STATUS_CODE, str(exc))
         try:
             return map_discover_response(response.json(), ask_indices)

@@ -11,12 +11,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import httpx2
+import httpx
 import pytest
 
 from dss.config.settings import Settings
 from dss.core.provider_discovery.models import SchemaPackFiles
 from dss.entrypoint.composition import (
+    _aclose_for,
     _discovers_nothing,
     _network,
     _planner_schemas,
@@ -40,44 +41,22 @@ def _settings(tmp_path: Path, **overrides) -> Settings:
 
 
 def test_build_runner_returns_a_turn_runner(tmp_path: Path) -> None:
-    runner = build_runner(_settings(tmp_path), client=httpx2.AsyncClient())
+    runner = build_runner(_settings(tmp_path))
 
     assert isinstance(runner, Orchestrator)
     assert isinstance(runner, TurnRunner)  # satisfies the driving port
 
 
-def test_build_runner_takes_the_client_it_is_given(tmp_path: Path) -> None:
-    """The caller owns the client, so `build_runner` must never make its own.
-
-    Whoever constructs it is the only one who can close it, and nothing here
-    keeps a reference — the adapters hold it privately. Passing it in is what
-    lets `create_app` close it on shutdown.
-    """
-
-    client = httpx2.AsyncClient()
-
-    _discover, invocation, _schemas, _index = _network(
-        _settings(
-            tmp_path,
-            discovery_base_url="https://discovery.example/oan",
-            invocation_base_url="https://select.example/oan",
-            schema_pack_dir=SCHEMA_PACKS_FIXTURE_ROOT,
-        ),
-        client,
-    )
-
-    # the wired invocation adapter got *this* client, not one of its own
-    assert invocation._client is client
-
-
 def test_unwired_network_discovers_nothing(tmp_path: Path) -> None:
-    discover, _invocation, schemas, schema_context_index = _network(
-        _settings(tmp_path), httpx2.AsyncClient()
+    discover, _invocation, schemas, schema_context_index, client = _network(
+        _settings(tmp_path)
     )
 
     # the seam is the single unwired function, and the planner's dicts are empty
     assert discover is _discovers_nothing
     assert schemas == {} and schema_context_index == {}
+    # nothing was opened, so there is nothing to close
+    assert client is None
 
 
 def test_wired_network_builds_the_planner_schemas(tmp_path: Path) -> None:
@@ -89,12 +68,11 @@ def test_wired_network_builds_the_planner_schemas(tmp_path: Path) -> None:
     )
     assert settings.network_enabled
 
-    discover, _invocation, schemas, schema_context_index = _network(
-        settings, httpx2.AsyncClient()
-    )
+    discover, _invocation, schemas, schema_context_index, client = _network(settings)
 
     # the real client replaced the unwired stand-in...
     assert discover is not _discovers_nothing
+    assert client is not None  # opened for the process; the lifespan closes it
     # ...the schema packs loaded: the context index is keyed by the advertised
     # @type, which differs from the "MandiPrice" pack folder name.
     assert "openagrinet:MandiPrice" in schema_context_index
@@ -129,7 +107,7 @@ def test_the_network_refuses_to_boot_with_no_packs(tmp_path: Path) -> None:
         return ()
 
     with pytest.raises(ValueError, match="fetch_schema_packs"):
-        _network(settings, httpx2.AsyncClient(), fetch=fetches_nothing)
+        _network(settings, fetch=fetches_nothing)
 
 
 async def test_the_runner_builds_inside_a_running_event_loop(tmp_path: Path) -> None:
@@ -152,7 +130,7 @@ async def test_the_runner_builds_inside_a_running_event_loop(tmp_path: Path) -> 
         schema_pack_dir=SCHEMA_PACKS_FIXTURE_ROOT,
     )
 
-    runner = build_runner(settings, client=httpx2.AsyncClient())
+    runner = build_runner(settings)
 
     assert isinstance(runner, Orchestrator)
 
@@ -176,8 +154,8 @@ def test_packs_already_on_disk_are_not_re_fetched(tmp_path: Path) -> None:
     def must_not_be_called(**_kwargs) -> tuple[str, ...]:
         raise AssertionError("fetched with packs already on disk")
 
-    discover, _invocation, _schemas, index = _network(
-        settings, httpx2.AsyncClient(), fetch=must_not_be_called
+    discover, _invocation, _schemas, index, _client = _network(
+        settings, fetch=must_not_be_called
     )
 
     assert discover is not _discovers_nothing
@@ -208,7 +186,7 @@ def test_build_runner_passes_the_fetch_through(tmp_path: Path) -> None:
         return ()
 
     with pytest.raises(ValueError, match="fetch_schema_packs"):
-        build_runner(settings, client=httpx2.AsyncClient(), fetch=records)
+        build_runner(settings, fetch=records)
 
     # reached the fetch, with the configured ref and destination
     assert calls == [{"ref": settings.schema_pack_ref, "dest": empty}]
@@ -313,10 +291,27 @@ def test_a_skipped_pack_is_logged_for_an_operator_to_see(
     )
 
     with caplog.at_level("WARNING"):
-        _network(settings, httpx2.AsyncClient())
+        _network(settings)
 
     # `SchemaPackSkipped.pack_name` and `.reason` both reach the log — an
     # operator reading it can tell which pack and why, not just "something
     # was skipped" (see `SchemaPackSkipped`'s docstring: "has to reach an
     # operator rather than pass silently").
     assert any("Broken" in record.message for record in caplog.records)
+
+
+async def test_aclose_for_closes_the_shared_client() -> None:
+    client = httpx.AsyncClient()
+    assert not client.is_closed
+
+    await _aclose_for(client)()
+
+    # the lifespan closes the process's one client on shutdown, releasing its
+    # connection pool rather than leaking it
+    assert client.is_closed
+
+
+async def test_aclose_for_none_is_a_safe_noop() -> None:
+    # the unwired path opens no client, so the lifespan's close must still be
+    # callable without a client to close
+    await _aclose_for(None)()

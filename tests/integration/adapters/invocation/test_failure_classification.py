@@ -6,7 +6,7 @@ discover already uses.
 
 from __future__ import annotations
 
-import httpx2
+import httpx
 import pytest
 
 from dss.adapters.invocation.client import HttpCapabilityInvocation, SelectFailed
@@ -22,10 +22,10 @@ CAPABILITY = ProviderCapability(
 
 
 def _invocation_returning_status(status_code: int) -> HttpCapabilityInvocation:
-    def handler(request: httpx2.Request) -> httpx2.Response:
-        return httpx2.Response(status_code, json={"error": "simulated"})
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(status_code, json={"error": "simulated"})
 
-    client = httpx2.AsyncClient(transport=httpx2.MockTransport(handler))
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     return HttpCapabilityInvocation(
         client=client,
         base_url="https://provider-network-vistaar.da.gov.in/oan",
@@ -36,10 +36,10 @@ def _invocation_returning_status(status_code: int) -> HttpCapabilityInvocation:
 
 
 def _invocation_raising_connection_error() -> HttpCapabilityInvocation:
-    def handler(request: httpx2.Request) -> httpx2.Response:
-        raise httpx2.ConnectError("connection refused", request=request)
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused", request=request)
 
-    client = httpx2.AsyncClient(transport=httpx2.MockTransport(handler))
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     return HttpCapabilityInvocation(
         client=client,
         base_url="https://provider-network-vistaar.da.gov.in/oan",
@@ -87,11 +87,11 @@ async def test_a_connection_error_raises_selectfailed_transient() -> None:
 
 
 def _invocation_returning_body(body: dict) -> HttpCapabilityInvocation:
-    def handler(request: httpx2.Request) -> httpx2.Response:
-        return httpx2.Response(200, json=body)
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=body)
 
     return HttpCapabilityInvocation(
-        client=httpx2.AsyncClient(transport=httpx2.MockTransport(handler)),
+        client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
         base_url="https://provider-network-vistaar.da.gov.in/oan",
         sender_id="seeker-network-vistaar.da.gov.in",
         receiver_id="provider-network-vistaar.da.gov.in",
@@ -140,13 +140,13 @@ async def test_a_malformed_200_is_not_retried() -> None:
 
     calls = 0
 
-    def handler(request: httpx2.Request) -> httpx2.Response:
+    def handler(request: httpx.Request) -> httpx.Response:
         nonlocal calls
         calls += 1
-        return httpx2.Response(200, json={"message": {}})
+        return httpx.Response(200, json={"message": {}})
 
     invocation = HttpCapabilityInvocation(
-        client=httpx2.AsyncClient(transport=httpx2.MockTransport(handler)),
+        client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
         base_url="https://provider-network-vistaar.da.gov.in/oan",
         sender_id="seeker-network-vistaar.da.gov.in",
         receiver_id="provider-network-vistaar.da.gov.in",
