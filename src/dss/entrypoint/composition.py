@@ -22,6 +22,7 @@ from __future__ import annotations
 import logging
 import warnings
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
 import anyio
@@ -183,7 +184,7 @@ def _network(
 
     _ensure_schema_packs(settings, fetch=fetch)
     source = FilesystemSchemaPackSource(root=settings.schema_pack_dir)
-    cache, packs = anyio.run(_load_schema_packs, source)
+    cache, packs = _load_schema_packs(source)
     if not packs:
         raise ValueError(
             f"the network is configured but no schema packs loaded from "
@@ -280,7 +281,23 @@ def _planner_schemas(packs: tuple[SchemaPackFiles, ...]) -> dict[str, DomainSche
     return schemas
 
 
-async def _load_schema_packs(
+def _load_schema_packs(
+    source: FilesystemSchemaPackSource,
+) -> tuple[SchemaPackCache, tuple[SchemaPackFiles, ...]]:
+    """Read the packs and build the capability index.
+
+    Blocking, because `build_runner` is part of app construction. The pack
+    source is an async port — so a serving caller can offload the disk read to
+    a thread — and this drives it on a worker thread of its own, since the
+    thread calling the factory may already be running a loop:
+    `uvicorn --factory` invokes it from inside `Server.serve()`.
+    """
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(anyio.run, _refresh_schema_packs, source).result()
+
+
+async def _refresh_schema_packs(
     source: FilesystemSchemaPackSource,
 ) -> tuple[SchemaPackCache, tuple[SchemaPackFiles, ...]]:
     cache = SchemaPackCache(source)

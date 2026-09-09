@@ -132,6 +132,31 @@ def test_the_network_refuses_to_boot_with_no_packs(tmp_path: Path) -> None:
         _network(settings, httpx2.AsyncClient(), fetch=fetches_nothing)
 
 
+async def test_the_runner_builds_inside_a_running_event_loop(tmp_path: Path) -> None:
+    """`uvicorn --factory` calls `create_app` from inside its own loop.
+
+    `config.load()` runs in `Server.serve()`, so the factory is invoked with a
+    loop already running. Reading the packs with `anyio.run` therefore raised
+    `RuntimeError: Already running asyncio in this thread` — the first real
+    turn against a wired network could never start.
+
+    An `async` test is the whole point: every other test here calls
+    `build_runner` synchronously, where `anyio.run` is free to start a loop,
+    so all of them passed while the documented start command was broken.
+    """
+
+    settings = _settings(
+        tmp_path,
+        discovery_base_url="https://discovery.example/oan",
+        invocation_base_url="https://select.example/oan",
+        schema_pack_dir=SCHEMA_PACKS_FIXTURE_ROOT,
+    )
+
+    runner = build_runner(settings, client=httpx2.AsyncClient())
+
+    assert isinstance(runner, Orchestrator)
+
+
 def test_packs_already_on_disk_are_not_re_fetched(tmp_path: Path) -> None:
     """Present packs mean no network call at all.
 
