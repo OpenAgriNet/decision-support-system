@@ -11,7 +11,7 @@ from dss.entrypoint.app import create_app
 
 def test_create_app_closes_the_network_client_on_shutdown(monkeypatch) -> None:
     """The lifespan releases what `build_runner_with_lifecycle` handed it. A
-    real deployment's `httpx2.AsyncClient` would otherwise leak its connection
+    real deployment's `httpx.AsyncClient` would otherwise leak its connection
     pool past shutdown — here the close is a spy, so the wiring is what's under
     test, not httpx."""
 

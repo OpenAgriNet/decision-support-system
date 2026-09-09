@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-import httpx2
+import httpx
 import pytest
 
 from dss.adapters.discovery.client import HttpCapabilityDiscovery
@@ -21,10 +21,10 @@ class _FakeSchemaPackCache:
 
 
 def _discovery_returning_status(status_code: int) -> HttpCapabilityDiscovery:
-    def handler(request: httpx2.Request) -> httpx2.Response:
-        return httpx2.Response(status_code, json={"error": "simulated"})
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(status_code, json={"error": "simulated"})
 
-    client = httpx2.AsyncClient(transport=httpx2.MockTransport(handler))
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     return HttpCapabilityDiscovery(
         client=client,
         base_url="https://discovery-network-vistaar.da.gov.in/oan",
@@ -33,10 +33,10 @@ def _discovery_returning_status(status_code: int) -> HttpCapabilityDiscovery:
 
 
 def _discovery_raising_connection_error() -> HttpCapabilityDiscovery:
-    def handler(request: httpx2.Request) -> httpx2.Response:
-        raise httpx2.ConnectError("connection refused", request=request)
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused", request=request)
 
-    client = httpx2.AsyncClient(transport=httpx2.MockTransport(handler))
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     return HttpCapabilityDiscovery(
         client=client,
         base_url="https://discovery-network-vistaar.da.gov.in/oan",

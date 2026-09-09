@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import httpx2
+import httpx
 
 from dss.config.settings import Settings
 from dss.core.provider_discovery.models import SchemaPackFiles
@@ -190,7 +190,7 @@ def test_a_skipped_pack_is_logged_for_an_operator_to_see(
 
 
 async def test_aclose_for_closes_the_shared_client() -> None:
-    client = httpx2.AsyncClient()
+    client = httpx.AsyncClient()
     assert not client.is_closed
 
     await _aclose_for(client)()

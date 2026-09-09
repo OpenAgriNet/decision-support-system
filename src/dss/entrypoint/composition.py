@@ -26,7 +26,7 @@ from collections.abc import Awaitable, Callable
 from datetime import datetime
 
 import anyio
-import httpx2
+import httpx
 
 from dss.adapters.invocation.client import HttpCapabilityInvocation
 from dss.adapters.llm.pydantic_ai_provider import PydanticAILLMProvider
@@ -81,7 +81,7 @@ def build_runner_with_lifecycle(
 ) -> tuple[TurnRunner, Callable[[], Awaitable[None]]]:
     """The runner and a coroutine that releases what it holds.
 
-    The wired network path opens one shared `httpx2.AsyncClient` for the whole
+    The wired network path opens one shared `httpx.AsyncClient` for the whole
     process — discovery and invocation both call through it — and `aclose`
     closes it on shutdown. Unwired, nothing is opened and `aclose` is a no-op.
     `app.create_app` drives this from the FastAPI lifespan so the client is
@@ -170,7 +170,7 @@ def _network(
     CapabilityInvocation,
     dict[str, DomainSchema],
     dict[str, str],
-    httpx2.AsyncClient | None,
+    httpx.AsyncClient | None,
 ]:
     """Wire discovery + invocation, or return the unwired stand-ins.
 
@@ -187,7 +187,7 @@ def _network(
     # The client is constructed here, not in the loop below: it is used later
     # from uvicorn's loop for real requests, so binding it to the throwaway
     # startup loop would break the first one.
-    client = httpx2.AsyncClient(timeout=settings.select_timeout_seconds)
+    client = httpx.AsyncClient(timeout=settings.select_timeout_seconds)
     source = FilesystemSchemaPackSource(root=settings.schema_pack_dir)
     cache, packs = _load_schema_packs_blocking(source)
 
@@ -230,7 +230,7 @@ async def _aclose_nothing() -> None:
 
 
 def _aclose_for(
-    client: httpx2.AsyncClient | None,
+    client: httpx.AsyncClient | None,
 ) -> Callable[[], Awaitable[None]]:
     """A single coroutine that closes the shared client, or a no-op when there
     is none. Keeping the shape identical either way means the lifespan does not

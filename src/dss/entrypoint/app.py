@@ -79,7 +79,7 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         # Startup is nothing to do; the client was opened at wiring time. On
-        # shutdown, release it — a leaked `httpx2.AsyncClient` holds its
+        # shutdown, release it — a leaked `httpx.AsyncClient` holds its
         # connection pool open past the process's intent to stop.
         try:
             yield

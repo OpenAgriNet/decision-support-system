@@ -58,7 +58,7 @@
   discovery/select fixture end to end.
 - **DONE — the select client is opened and closed with the process.** The
   wired branch of `composition._network` constructs the shared
-  `httpx2.AsyncClient` with `DSS_SELECT_TIMEOUT_SECONDS`, and
+  `httpx.AsyncClient` with `DSS_SELECT_TIMEOUT_SECONDS`, and
   `build_runner_with_lifecycle` hands `create_app` an `aclose` the FastAPI
   lifespan calls on shutdown, so the connection pool is released rather than
   leaked. The one-time schema-pack read runs on a worker thread because

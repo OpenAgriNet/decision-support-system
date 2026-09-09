@@ -102,9 +102,9 @@ UserWarning: DSS_EVIDENCE_URL is set but posting evidence to an external
 endpoint is not implemented — records are being written to var/evidence instead.
 ```
 
-Two things have to be settled before it can be wired: which HTTP client (this
-repo has none as a runtime dependency; the provider-discovery branch uses
-`httpx2`), and **what an unreachable endpoint should do to a turn.** The turn
+Two things have to be settled before it can be wired: which HTTP client (the
+provider-discovery and invocation adapters use `httpx`), and **what an
+unreachable endpoint should do to a turn.** The turn
 sink is required, so on today's rules a failed write fails the turn — which would
 make every turn depend on the evidence API being up. That is a real decision, not
 a detail.
