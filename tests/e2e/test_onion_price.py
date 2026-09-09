@@ -21,16 +21,21 @@ because a real provider would not return a value we can assert on.
 intent, so the outbound requests stand in for it, and they are stronger
 evidence:
 
-- `/discover`'s jsonpath filter naming `openagrinet:MandiPrice` can only happen
-  if intent resolved `subject_categories=Market` with `interaction_type=observe`
-  — that is the only pair the schema-pack index maps to that capability.
-- `/select`'s `resourceAttributes.commodity.code` carrying onion can only happen
-  if the planner read "onion" out of the farmer's sentence and matched it to a
-  field the pack declares filterable.
+- `/discover`'s jsonpath filter naming the capability can only happen if intent
+  resolved `subject_categories=Market` with `interaction_type=observe` — that is
+  the only pair the schema-pack index maps to it.
+- `/select`'s commodity carrying onion can only happen if the planner read
+  "onion" out of the farmer's sentence and matched it to a field the pack
+  declares filterable.
 
-**The sentinel.** `_SENTINEL_MODAL` is deliberately not a plausible onion price.
-A realistic number would leave "the composer echoed our data" indistinguishable
-from "the model recited something it already knew".
+**The sentinel.** The modal price in `fixtures/select_response.json` is
+deliberately not a plausible onion price. A realistic number would leave "the
+composer echoed our data" indistinguishable from "the model recited something it
+already knew".
+
+Everything the fake network returns lives in `fixtures/`, and the values this
+test expects are read back out of those files rather than restated here — so a
+fixture edit cannot leave the assertions describing something else.
 """
 
 from __future__ import annotations
@@ -61,136 +66,66 @@ pytestmark = [
 MODEL = "azure:gpt-5.6-luna"
 QUERY = "what is the price of onion"
 
-SCHEMA_PACKS = Path(__file__).parent / "fixtures" / "network-specs" / "schema"
+FIXTURES = Path(__file__).parent / "fixtures"
+SCHEMA_PACKS = FIXTURES / "network-specs" / "schema"
 
-CAPABILITY = "openagrinet:MandiPrice"
-PROVIDER_ID = "agmarknet"
-RESOURCE_ID = "res:agmarknet:daily-price"
 
-# Not a plausible onion price. See the module docstring.
-_SENTINEL_MODAL = 2847
-_SENTINEL_MIN = 2801
-_SENTINEL_MAX = 2893
+def _load(name: str) -> dict[str, Any]:
+    return json.loads((FIXTURES / name).read_text(encoding="utf-8"))
 
-_CONTEXT_URL = (
-    "https://schemas.openagrinet.global/schema/MandiPrice/v0.1/context.jsonld"
+
+DISCOVER_RESPONSE = _load("discover_response.json")
+SELECT_RESPONSE = _load("select_response.json")
+
+# Read from the fixtures, not restated: what discovery advertises is what the
+# assertions below expect, by construction.
+_RESOURCE = DISCOVER_RESPONSE["message"]["catalogs"][0]["resources"][0]
+CAPABILITY = _RESOURCE["resourceAttributes"]["@type"]
+PROVIDER_ID = DISCOVER_RESPONSE["message"]["catalogs"][0]["provider"]["id"]
+
+_ANSWER = SELECT_RESPONSE["message"]["contract"]["commitments"][0]["resources"][0]
+EXPECTED_MODAL = next(
+    price["value"]
+    for price in _ANSWER["resourceAttributes"]["prices"]
+    if price["priceType"] == "Modal"
 )
 
 
-def _discover_response() -> dict[str, Any]:
-    return {
-        "context": {"action": "on_discover", "version": "2.0.0"},
-        "message": {
-            "catalogs": [
-                {
-                    "id": "cat:agmarknet:mandi-price",
-                    "descriptor": {"code": "AGMARKNET-01", "name": "Agmarknet"},
-                    "provider": {
-                        "id": PROVIDER_ID,
-                        "descriptor": {"code": "AGMARKNET-01", "name": "Agmarknet"},
-                        "availableAt": [
-                            {
-                                "geo": {
-                                    "type": "Polygon",
-                                    "coordinates": [
-                                        [
-                                            [68.1, 8.0],
-                                            [97.4, 8.0],
-                                            [97.4, 37.1],
-                                            [68.1, 37.1],
-                                            [68.1, 8.0],
-                                        ]
-                                    ],
-                                }
-                            }
-                        ],
-                    },
-                    "resources": [
-                        {
-                            "id": RESOURCE_ID,
-                            "descriptor": {"name": "Daily mandi price"},
-                            "resourceAttributes": {
-                                "@context": _CONTEXT_URL,
-                                "@type": CAPABILITY,
-                                "informationMode": "OnDemand",
-                                "subjectCategories": ["Market"],
-                            },
-                        }
-                    ],
-                }
-            ]
-        },
-    }
+def _commodity_code(select_body: dict[str, Any]) -> str | None:
+    """Read the commodity from either shape the DSS may send.
 
+    Tolerant on purpose, and it should not have to be. A pack's
+    `filterable_paths` are dotted JSON paths
+    (`beckn:resourceAttributes.commodity.code`) describing a *nested* document,
+    but `describe_capability` shows the model those dotted strings and nothing
+    converts what comes back. `validate_arguments` accepts both, because
+    `_flatten` reduces the nested form to the same dotted path — so the DSS
+    emits `{"commodity": {"code": ...}}` or `{"commodity.code": ...}` depending
+    on which the model picked, and a provider expecting the Beckn shape would
+    only understand one.
 
-def _select_response() -> dict[str, Any]:
-    return {
-        "context": {"action": "on_select", "version": "2.0.0"},
-        "message": {
-            "contract": {
-                "commitments": [
-                    {
-                        "status": {"descriptor": {"code": "ACTIVE", "name": "Active"}},
-                        "resources": [
-                            {
-                                "id": "res:agmarknet:price:2026-08-26",
-                                "resourceAttributes": {
-                                    "@context": _CONTEXT_URL,
-                                    "@type": CAPABILITY,
-                                    "informationMode": "Direct",
-                                    "subjectCategories": ["Market"],
-                                    "commodity": {"code": "ONION", "name": "Onion"},
-                                    "market": {
-                                        "marketCode": "MH-LASALGAON-01",
-                                        "marketName": "Lasalgaon",
-                                        "state": "Maharashtra",
-                                    },
-                                    "arrivalDate": "2026-08-26",
-                                    "prices": [
-                                        {
-                                            "priceType": "Minimum",
-                                            "unit": "INR/quintal",
-                                            "value": _SENTINEL_MIN,
-                                        },
-                                        {
-                                            "priceType": "Modal",
-                                            "unit": "INR/quintal",
-                                            "value": _SENTINEL_MODAL,
-                                        },
-                                        {
-                                            "priceType": "Maximum",
-                                            "unit": "INR/quintal",
-                                            "value": _SENTINEL_MAX,
-                                        },
-                                    ],
-                                },
-                            }
-                        ],
-                        "offer": {
-                            "id": "offer:agmarknet:open-data",
-                            "resourceIds": ["res:agmarknet:price:2026-08-26"],
-                            "provider": {
-                                "id": PROVIDER_ID,
-                                "descriptor": {
-                                    "code": "AGMARKNET-01",
-                                    "name": "Agmarknet",
-                                },
-                            },
-                        },
-                    }
-                ]
-            }
-        },
-    }
+    Live runs have produced both. A real provider is not going to be this
+    forgiving; normalising the model's dotted keys back into nested objects
+    before the call is the fix, and it belongs in
+    `resource_attributes.build_resource_attributes`.
+    """
+
+    attributes = select_body["message"]["contract"]["commitments"][0]["resources"][0][
+        "resourceAttributes"
+    ]
+    nested = attributes.get("commodity")
+    if isinstance(nested, dict) and "code" in nested:
+        return nested["code"]
+    flat = attributes.get("commodity.code")
+    return flat if isinstance(flat, str) else None
 
 
 class _Network:
-    """Records what the DSS sent, and answers conditionally.
+    """The OAN network adapter, faked. Records what the DSS sent.
 
-    A handler rather than `respond_with_json`, because the response depends on
-    the request: `/select` must only produce a price when the planner actually
-    asked for onion. Answering regardless would let a planner that ignored the
-    query still pass.
+    Handlers rather than `respond_with_json`, because each response depends on
+    the request: answering regardless would let a model that ignored the query
+    still pass.
     """
 
     def __init__(self) -> None:
@@ -202,56 +137,27 @@ class _Network:
         self.discover_requests.append(body)
         expression = body["message"]["intent"]["filters"]["expression"]
         if CAPABILITY not in expression:
-            return Response(
-                json.dumps({"message": {"catalogs": []}}), content_type="text/json"
-            )
-        return Response(
-            json.dumps(_discover_response()), content_type="application/json"
-        )
+            return self._json({"message": {"catalogs": []}})
+        return self._json(DISCOVER_RESPONSE)
 
     def select(self, request: Request) -> Response:
         body = json.loads(request.get_data())
         self.select_requests.append(body)
-        commodity = self._commodity_code(body)
+        commodity = _commodity_code(body)
         if commodity is None or "onion" not in commodity.lower():
             # 400, not 404: `classify_status_code` treats only 400/401/403 as a
             # defect, so a 404 would be retried three times before failing —
             # slow, and wrong about whose fault it is.
-            return Response(
-                json.dumps({"error": f"this provider serves onion, not {commodity!r}"}),
-                status=400,
-                content_type="application/json",
+            return self._json(
+                {"error": f"this provider serves onion, not {commodity!r}"}, status=400
             )
-        return Response(json.dumps(_select_response()), content_type="application/json")
+        return self._json(SELECT_RESPONSE)
 
     @staticmethod
-    def _commodity_code(body: dict[str, Any]) -> str | None:
-        """Read the commodity from either shape the DSS may send.
-
-        Tolerant on purpose, and it should not have to be. A pack's
-        `filterable_paths` are dotted JSON paths
-        (`beckn:resourceAttributes.commodity.code`) describing a *nested*
-        document, but `describe_capability` shows the model those dotted
-        strings and nothing converts what comes back. `validate_arguments`
-        accepts both, because `_flatten` reduces the nested form to the same
-        dotted path — so the DSS emits `{"commodity": {"code": ...}}` or
-        `{"commodity.code": ...}` depending on which the model picked, and a
-        provider expecting the Beckn shape would only understand one.
-
-        This run of the live model chose the flat form. A real provider is not
-        going to be this forgiving; normalising the model's dotted keys back
-        into nested objects before the call is the fix, and it belongs in
-        `resource_attributes.build_resource_attributes`.
-        """
-
-        attributes = body["message"]["contract"]["commitments"][0]["resources"][0][
-            "resourceAttributes"
-        ]
-        nested = attributes.get("commodity")
-        if isinstance(nested, dict) and "code" in nested:
-            return nested["code"]
-        flat = attributes.get("commodity.code")
-        return flat if isinstance(flat, str) else None
+    def _json(body: dict[str, Any], status: int = 200) -> Response:
+        return Response(
+            json.dumps(body), status=status, content_type="application/json"
+        )
 
 
 @pytest.fixture
@@ -264,6 +170,8 @@ def live_network(httpserver: HTTPServer) -> _Network:
 
 @pytest.fixture
 def live_app(httpserver: HTTPServer, live_network: _Network, tmp_path: Path):
+    """The shipped application, assembled by the real `build_runner`."""
+
     base_url = httpserver.url_for("").rstrip("/")
     settings = Settings(
         stub_llm=False,  # every model call is real
@@ -279,12 +187,12 @@ def live_app(httpserver: HTTPServer, live_network: _Network, tmp_path: Path):
     return build_app(runner=build_runner(settings), settings=settings)
 
 
-def test_a_live_model_answers_the_onion_price(live_app, live_network, a_body) -> None:
-    response = TestClient(live_app).post(
+def _ask(client: TestClient, a_body, query: str):
+    return client.post(
         "/v1/turns",
         json=a_body(
             message__input=[
-                {"role": "user", "content": [{"type": "text", "text": QUERY}]}
+                {"role": "user", "content": [{"type": "text", "text": query}]}
             ],
             message__attributes={
                 "sourceLanguage": "en",
@@ -294,6 +202,10 @@ def test_a_live_model_answers_the_onion_price(live_app, live_network, a_body) ->
         ),
         headers={"Accept": "application/json"},
     )
+
+
+def test_a_live_model_answers_the_onion_price(live_app, live_network, a_body) -> None:
+    response = _ask(TestClient(live_app), a_body, QUERY)
 
     assert response.status_code == 200
     message = response.json()["message"]
@@ -313,10 +225,8 @@ def test_a_live_model_answers_the_onion_price(live_app, live_network, a_body) ->
 
     # The planner read "onion" out of the sentence and put it in a field the
     # pack declares filterable. The server would have answered 400 otherwise.
-    # Read through `_commodity_code`, which tolerates both shapes the DSS may
-    # send — see its docstring; that tolerance is covering a real defect.
     assert live_network.select_requests, "the provider was never called"
-    commodity = _Network._commodity_code(live_network.select_requests[0])
+    commodity = _commodity_code(live_network.select_requests[0])
     assert commodity and "onion" in commodity.lower(), commodity
 
     # `/select` went to the provider `/discover` offered, not one the model
@@ -328,11 +238,9 @@ def test_a_live_model_answers_the_onion_price(live_app, live_network, a_body) ->
 
     # The composer wrote the provider's number, not its own. Digits only —
     # wording, currency placement and thousands separators are the model's
-    # choice and asserting them would make this a coin flip.
+    # choice, and asserting them would make this a coin flip.
     text = " ".join(block.get("text", "") for block in message["content"])
-    # Printed because tier 6 is diagnostic: `-s` shows what the model wrote, so
-    # a drift in tone or length is visible without adding an assertion that
-    # would make the test a coin flip.
+    # Printed so `-s` shows what the model wrote: a drift in tone or length
+    # stays visible without an assertion that would be a coin flip.
     print(f"\n  model wrote: {text!r}")
-    digits = re.sub(r"[,\s]", "", text)
-    assert str(_SENTINEL_MODAL) in digits, text
+    assert str(EXPECTED_MODAL) in re.sub(r"[,\s]", "", text), text

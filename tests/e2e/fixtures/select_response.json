@@ -1,0 +1,57 @@
+{
+  "context": {
+    "action": "on_select",
+    "version": "2.0.0"
+  },
+  "message": {
+    "contract": {
+      "commitments": [
+        {
+          "status": {
+            "descriptor": {
+              "code": "ACTIVE",
+              "name": "Active"
+            }
+          },
+          "resources": [
+            {
+              "id": "res:agmarknet:price:2026-08-26",
+              "resourceAttributes": {
+                "@context": "https://schemas.openagrinet.global/schema/MandiPrice/v0.1/context.jsonld",
+                "@type": "openagrinet:MandiPrice",
+                "informationMode": "Direct",
+                "subjectCategories": ["Market"],
+                "commodity": {
+                  "code": "ONION",
+                  "name": "Onion"
+                },
+                "market": {
+                  "marketCode": "MH-LASALGAON-01",
+                  "marketName": "Lasalgaon",
+                  "state": "Maharashtra"
+                },
+                "arrivalDate": "2026-08-26",
+                "prices": [
+                  {"priceType": "Minimum", "unit": "INR/quintal", "value": 2801},
+                  {"priceType": "Modal", "unit": "INR/quintal", "value": 2847},
+                  {"priceType": "Maximum", "unit": "INR/quintal", "value": 2893}
+                ]
+              }
+            }
+          ],
+          "offer": {
+            "id": "offer:agmarknet:open-data",
+            "resourceIds": ["res:agmarknet:price:2026-08-26"],
+            "provider": {
+              "id": "agmarknet",
+              "descriptor": {
+                "code": "AGMARKNET-01",
+                "name": "Agmarknet"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
