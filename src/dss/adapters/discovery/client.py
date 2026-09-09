@@ -26,6 +26,7 @@ from dss.core.provider_discovery.models import (
     ProviderCapability,
     ProviderQuery,
 )
+from dss.observability.trace_log import log_external_response
 
 
 def _failure_result(
@@ -246,12 +247,22 @@ class HttpCapabilityDiscovery:
             response = await self._client.post(
                 f"{self._base_url}/discover", json=request_body
             )
+            log_external_response(
+                "discovery",
+                transaction_id,
+                status=response.status_code,
+                capabilities=",".join(query.capabilities),
+                body=response.text,
+            )
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             return _failure_result(
                 query, ask_indices, exc.response.status_code, exc.response.text
             )
         except httpx.HTTPError as exc:
+            log_external_response(
+                "discovery", transaction_id, status="transport_error", error=str(exc)
+            )
             return _failure_result(query, ask_indices, NO_STATUS_CODE, str(exc))
         try:
             return map_discover_response(response.json(), ask_indices)

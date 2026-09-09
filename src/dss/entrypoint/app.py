@@ -7,6 +7,9 @@ one, which is what keeps the HTTP layer testable against a fake.
 
 from __future__ import annotations
 
+import logging
+import os
+import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -70,9 +73,33 @@ def _publish_wire_schemas(app: FastAPI) -> None:
     app.openapi = openapi  # type: ignore[method-assign]
 
 
+def _configure_logging() -> None:
+    """Make the app's own loggers (`dss.*`, incl. `dss.trace`) show up.
+
+    uvicorn configures its loggers but leaves ours at the root default, so
+    INFO lines from the pipeline would be swallowed. Give the `dss` logger its
+    own handler at `DSS_LOG_LEVEL` (default INFO) and stop propagation so lines
+    are not also emitted by the root handler. Idempotent — safe if `create_app`
+    is called more than once (tests, reload).
+    """
+
+    level = os.environ.get("DSS_LOG_LEVEL", "INFO").upper()
+    dss_logger = logging.getLogger("dss")
+    dss_logger.setLevel(level)
+    if not any(getattr(h, "_dss_handler", False) for h in dss_logger.handlers):
+        handler = logging.StreamHandler(sys.stderr)
+        handler.setFormatter(
+            logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s")
+        )
+        handler._dss_handler = True  # type: ignore[attr-defined]
+        dss_logger.addHandler(handler)
+    dss_logger.propagate = False
+
+
 def create_app() -> FastAPI:
     """The process entry point — `uvicorn --factory dss.entrypoint.app:create_app`."""
 
+    _configure_logging()
     settings = Settings()
     runner, aclose = build_runner_with_lifecycle(settings)
 

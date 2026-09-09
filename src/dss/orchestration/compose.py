@@ -29,6 +29,7 @@ from dss.core.planner.markers import (
 )
 from dss.core.planner.models import Evidence, Identity
 from dss.core.shared.models import UserTurn
+from dss.observability.trace_log import log_external_response
 
 _SYSTEM_PROMPT = """You are {name}, {persona}
 
@@ -132,6 +133,7 @@ def build_compose(
             + wrap_as_data(_render_evidence(evidence), RETRIEVED_DATA)
         )
         result = await agent.run(user_message, model_settings=model_settings)
+        log_external_response("llm.composer", turn.transaction_id, body=result.output)
         return result.output
 
     return compose
