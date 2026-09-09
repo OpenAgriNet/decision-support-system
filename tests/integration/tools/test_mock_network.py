@@ -314,13 +314,17 @@ async def test_a_type_the_mock_does_not_serve_finds_nobody(
     An empty catalog, not an error — what the real network reports when no
     provider matches, and the path a `no_match` turn takes.
 
+    `AgricultureResource` is the real case: it is the shared-fields base every
+    pack `$ref`s, not a capability a provider advertises, but the capability
+    index registers it anyway (see TODO.md) so a Crop question asks for it. The
+    mock has nothing to answer with, which is what the network would say too.
+
     The pack has to be present for this to be reachable at all: the request
     builder reads `@context` from the schema-context index, so a `@type` the
-    DSS does not know about raises there and never reaches the wire. So this
-    adds a real pack — KnowledgeAdvisory — that the mock has no scenario for.
+    DSS does not know about raises there and never reaches the wire.
     """
 
-    _write_pack(pack_dir, "KnowledgeAdvisory", "Crop")
+    _write_pack(pack_dir, "AgricultureResource", "Crop")
 
     cache = SchemaPackCache(FilesystemSchemaPackSource(root=pack_dir))
     await cache.refresh()
@@ -334,7 +338,7 @@ async def test_a_type_the_mock_does_not_serve_finds_nobody(
 
     result = await discovery.discover(
         ProviderQuery(
-            capabilities=("openagrinet:KnowledgeAdvisory",),
+            capabilities=("openagrinet:AgricultureResource",),
             languages=("en",),
             coverage=None,
         ),

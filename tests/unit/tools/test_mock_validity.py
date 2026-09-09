@@ -47,6 +47,19 @@ def test_a_body_with_no_validity_is_unchanged() -> None:
     assert fill_in_dates(body, now=_NOW) == body
 
 
+def test_a_top_level_timestamp_placeholder_is_filled() -> None:
+    """`issuedAt` is a timestamp beside `validity`, not inside it.
+
+    An advisory carries when it was issued as well as how long it holds, and
+    the recorded example was issued in June — so served verbatim it reads as
+    three-month-old advice.
+    """
+
+    filled = fill_in_dates({"issuedAt": NOW}, now=_NOW)
+
+    assert filled["issuedAt"] == "2026-09-09T12:00:00+00:00"
+
+
 def test_a_date_placeholder_becomes_todays_date() -> None:
     """`arrivalDate` is a date, not a timestamp.
 

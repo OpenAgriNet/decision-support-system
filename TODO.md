@@ -169,6 +169,18 @@
   dereferences either at runtime, so this is fixture/reality drift rather than
   a live fault.
 
+## Transport
+
+- **SSE streams the transport, not the content.** `orchestrator.run` awaits
+  `compose(...)` in full, then splits the finished text and yields one `Claim`
+  per block — so a client gets `turn.created` at once, then nothing for the
+  length of the whole pipeline, then every `claim.completed` and
+  `turn.completed` together. Progressive delivery would mean the composer
+  yielding as the model produces text (Pydantic AI's `run_stream`), which
+  changes the `Compose` port, the orchestrator's loop, and what a
+  `claim.completed` denotes. Worth doing for a farmer on a slow model; not a
+  fault today, but "streaming" reads as a promise the endpoint does not keep.
+
 ## Stubs pending real implementations
 
 - **STUB(#83) — `adapters/llm/stub_llm.py`.** Delete this module once a real

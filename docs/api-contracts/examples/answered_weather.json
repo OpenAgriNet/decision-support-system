@@ -1,10 +1,10 @@
 {
   "context": {
     "id": "api.dss.turn",
-    "timestamp": "2026-09-04T08:00:00Z",
-    "sessionId": "conv_8f3a1c",
-    "transactionId": "txn_9f2c1a8e",
-    "messageId": "msg_mandi_wheat_01",
+    "timestamp": "2026-09-09T08:00:00Z",
+    "sessionId": "conv_7b2e4d",
+    "transactionId": "txn_4c8a2f61",
+    "messageId": "msg_weather_forecast_01",
     "version": "1.0.0"
   },
   "message": {
@@ -14,7 +14,7 @@
         "content": [
           {
             "type": "text",
-            "text": "What is the price of wheat at Anand mandi this week?"
+            "text": "Will it rain in Nashik over the next five days?"
           }
         ]
       }
@@ -22,13 +22,13 @@
     "attributes": {
       "channel": "web",
       "location": {
-        "region": "IN-GJ",
-        "area": "Anand",
+        "region": "IN-MH",
+        "area": "Nashik",
         "geometry": {
           "type": "Point",
           "coordinates": [
-            72.93,
-            22.56
+            73.7898,
+            19.9975
           ]
         }
       },

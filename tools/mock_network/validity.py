@@ -37,6 +37,11 @@ TODAY = "{{today}}"
 _BEFORE = timedelta(hours=1)
 _AFTER = timedelta(hours=12)
 
+# Timestamps that sit beside `validity` rather than inside it: when a resource
+# was produced, as distinct from how long it holds. A recorded example carries
+# the day it was written, so an advisory issued in June reads as stale advice.
+_TIMESTAMP_FIELDS = ("issuedAt", "generatedAt", "observedAt", "modelRunAt")
+
 
 def fill_in_dates(
     attributes: dict[str, Any], *, now: datetime | None = None
@@ -59,6 +64,10 @@ def fill_in_dates(
 
     if filled.get("arrivalDate") == TODAY:
         filled["arrivalDate"] = moment.date().isoformat()
+
+    for field in _TIMESTAMP_FIELDS:
+        if filled.get(field) == NOW:
+            filled[field] = moment.isoformat()
 
     window = attributes.get("validity")
     if isinstance(window, dict):

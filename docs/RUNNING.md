@@ -13,14 +13,13 @@ That exercises the transport and the flow, not a provider-backed answer.
 
 For a real answer, run the mock network and point the DSS at it. The three
 sections below, in order: get the packs, start the mock, start the DSS. Asked
-in Hindi for wheat prices at Anand, it comes back:
+for wheat prices at Anand, it comes back with the minimum, maximum and modal
+price per quintal for Wheat (Lokwan) at Anand mandi, citing "Agmarknet
+Vistaar" — every figure the mock provider's own, so the payload crossed
+intent → moderation → discovery → planner → evidence → composer.
 
-> आनंद मंडी में गेहूं (लोकवन) का उपलब्ध भाव:
-> न्यूनतम 2,320 / अधिकतम 2,710 / सामान्य 2,550 Rs प्रति क्विंटल
-
-citing "Agmarknet Vistaar" — every figure the mock provider's own, so the
-payload crossed intent → moderation → discovery → planner → evidence →
-composer.
+Set `targetLanguage` to `hi` in the request and the same answer arrives in
+Hindi, which is how the channel's language handling gets exercised.
 
 ## Get the schema packs
 
@@ -69,8 +68,14 @@ not have. `tools/mock_network/` stands in for it — the same synchronous
 `POST /discover` / `POST /select` contract, no auth:
 
 ```bash
-uv run python -m tools.mock_network --port 8078
+uv run python -m tools.mock_network --port 8078 --reload
 ```
+
+**Use `--reload` while adding scenarios.** The `@type`-to-response map is read
+at import, so a mock started before a new scenario existed returns an empty
+catalog for it — discovery then finds nobody and the turn comes back
+`no_match`, with nothing to say the mock is simply out of date. `--reload`
+restarts it when a source or response file changes.
 
 It reads the same schema packs the DSS reads, so it can only advertise a
 `@type` the DSS can route, and it validates its own response bodies against
@@ -131,11 +136,35 @@ curl -s -X POST http://127.0.0.1:8077/v1/turns \
   | python3 -m json.tool --no-ensure-ascii
 ```
 
-`--no-ensure-ascii` matters here: `json.tool` escapes non-ASCII by default, so
-a Hindi answer arrives as a wall of `\uXXXX` and reads like an encoding fault
-in the service. It is not one — the response is UTF-8, from Pydantic's
-`model_dump_json` and served as `charset=utf-8`. Piping to `jq` or nothing at
-all shows the Devanagari.
+The mock serves two capabilities, and which one answers is decided by the
+question — intent picks a subject category, discovery resolves that to a
+`@type`, and the mock keys its scenarios off that. So the same running pair
+answers either, with no restart:
+
+| Request body | Routes to | Answer carries |
+|---|---|---|
+| `answered_streaming.json` | `openagrinet:MandiPrice` | wheat prices at Anand, from Agmarknet Vistaar |
+| `answered_weather.json` | `openagrinet:WeatherObservation` | five-day rainfall and temperature for Nashik, from IMD Mausamgram NWP |
+| `answered_advisory.json` | `openagrinet:KnowledgeAdvisory` | cotton establishment guidance, from Krishi Vigyan Kendra Advisory Service |
+
+A question intent classifies into a category the mock does not serve comes
+back `no_match` — which is the honest answer, and worth telling apart from a
+wiring fault. Two places to look, in order:
+
+- **`var/evidence/telemetry.jsonl`** records the intent stage's outcome, so
+  you can see which subject category was chosen. Wrong category means the
+  intent prompt, not the network.
+- **The mock's log** shows whether `/discover` was called at all. Called and
+  still `no_match` means the `@type` asked for has no scenario — which
+  includes the case where the mock is running older code than the scenario
+  files (see `--reload` above).
+
+Both examples ask in English. Change `targetLanguage` to `hi` and the answer
+comes back in Hindi — and then `--no-ensure-ascii` matters, because
+`json.tool` escapes non-ASCII by default, so the answer arrives as a wall of
+`\uXXXX` and reads like an encoding fault in the service. It is not one: the
+response is UTF-8, from Pydantic's `model_dump_json` and served as
+`charset=utf-8`. Piping to `jq`, or not piping at all, shows the Devanagari.
 
 `DSS_STUB_LLM=true` wires the canned provider, so no API key and no network are
 needed. Drop it and the composition root builds a real Pydantic AI provider from
@@ -265,6 +294,17 @@ event: turn.completed    sequenceNumber 4   outcome.status "answered"
 ```
 
 The contract sets `sequenceNumber` minimum 1, so the stream is 1-based.
+
+**The claims are not progressive.** `turn.created` arrives at once, then
+nothing for the length of the whole pipeline, then every `claim.completed` and
+`turn.completed` together — the orchestrator awaits the composed text in full
+before splitting it into blocks. So `-N` shows you the frames as they are sent,
+which is not the same as watching an answer being written. Recorded in
+`TODO.md` under Transport.
+
+Note also that once the first byte is written the status cannot change, so a
+failure after `turn.created` arrives as a `turn.failed` event inside a `200`.
+A 200 is not by itself evidence the turn succeeded.
 
 The `traceId` in every frame body is the one from your `traceparent`. Omit that
 header and the DSS mints one — a turn always has an evidence key.

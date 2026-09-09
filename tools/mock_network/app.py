@@ -27,6 +27,7 @@ against `discover_providers`:
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -40,9 +41,15 @@ _RESPONSES = Path(__file__).parent / "responses"
 # Which recorded catalog answers which capability. A `@type` with no entry is
 # a provider nobody serves — an empty catalog, which is what the real network
 # reports when nothing matches, and a `no_match` at the DSS.
+# `AgricultureResource` is deliberately absent. It is the shared-fields base
+# every pack `$ref`s, not a capability a provider advertises — it only appears
+# as a requested `@type` because the capability index registers it (see
+# TODO.md). A Crop question therefore asks for it and gets nothing, which is
+# also what a real network would answer.
 _DISCOVER_BY_TYPE = {
     "openagrinet:WeatherObservation": "weather_discover.json",
     "openagrinet:MandiPrice": "mandi_discover.json",
+    "openagrinet:KnowledgeAdvisory": "advisory_discover.json",
 }
 
 # The provider's answer per capability, keyed the same way. Built from the
@@ -50,6 +57,7 @@ _DISCOVER_BY_TYPE = {
 _SELECT_BY_TYPE = {
     "openagrinet:WeatherObservation": "weather_select.json",
     "openagrinet:MandiPrice": "mandi_select.json",
+    "openagrinet:KnowledgeAdvisory": "advisory_select.json",
 }
 
 
@@ -142,3 +150,14 @@ def _echo(body: dict[str, Any], action: str) -> dict[str, Any]:
         "messageId": sent.get("messageId"),
         "timestamp": sent.get("timestamp"),
     }
+
+
+def build_from_env() -> FastAPI:
+    """The app, with the pack directory taken from the environment.
+
+    `uvicorn --reload` needs an import string rather than a built app, so it
+    cannot be handed a `pack_dir` argument.
+    """
+
+    directory = os.environ.get("DSS_SCHEMA_PACK_DIR")
+    return build_mock_app(pack_dir=Path(directory) if directory else None)

@@ -17,6 +17,7 @@ that can disagree.
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 
 import uvicorn
@@ -38,7 +39,31 @@ def main(argv: list[str] | None = None) -> None:
             f"(default: {DEFAULT_PACK_DIR})"
         ),
     )
+    parser.add_argument(
+        "--reload",
+        action="store_true",
+        help=(
+            "restart on a source or response-file change. Worth it while "
+            "adding scenarios: the routing map is read at import, so a mock "
+            "started before a new scenario existed answers an empty catalog "
+            "and the turn comes back no_match with nothing to say why"
+        ),
+    )
     args = parser.parse_args(argv)
+
+    if args.reload:
+        # `uvicorn --reload` needs an import string rather than an app object,
+        # so the pack directory travels by environment.
+        os.environ.setdefault("DSS_SCHEMA_PACK_DIR", str(args.pack_dir))
+        uvicorn.run(
+            "tools.mock_network.app:build_from_env",
+            factory=True,
+            host=args.host,
+            port=args.port,
+            reload=True,
+            reload_dirs=["tools/mock_network"],
+        )
+        return
 
     uvicorn.run(build_mock_app(pack_dir=args.pack_dir), host=args.host, port=args.port)
 
