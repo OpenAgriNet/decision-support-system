@@ -163,6 +163,31 @@ def trace_component(component: str, request_id: str | None = None) -> Iterator[N
         )
 
 
+def log_event(
+    component: str,
+    request_id: str | None = None,
+    *,
+    event: str,
+    **fields: Any,
+) -> None:
+    """Log one notable thing a component decided, on the same greppable key.
+
+    For a decision worth seeing on its own, not just as a span: `enter`/`exit`
+    say a component ran, this says what it did. Unlike the external-service
+    helpers there is no body and nothing goes to DEBUG, so **only pass fields
+    that are safe at INFO** — config and catalog values, never the farmer's
+    words (CONVENTIONS.md).
+    """
+
+    parts = [
+        f"request_id={_rid(request_id)}",
+        f"component={component}",
+        f"event={event}",
+    ]
+    parts.extend(f"{key}={value}" for key, value in fields.items())
+    logger.info(" ".join(parts))
+
+
 def log_external_request(
     service: str,
     request_id: str | None = None,
