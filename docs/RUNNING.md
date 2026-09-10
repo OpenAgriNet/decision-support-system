@@ -83,10 +83,9 @@ those packs — a body carrying a field no pack declares is refused rather than
 served. `http://127.0.0.1:8078/docs` pokes the two routes by hand.
 
 Scenarios are keyed off the `@type` in the request, so one running mock
-answers a weather question and a mandi question without a restart. Weather is
-wired today: `/discover` returns an `OnDemand` capability, and `/select`
-returns a five-day point forecast with rainfall, temperature and humidity —
-the values a composed answer quotes back.
+answers any of the three without a restart — weather, mandi price, and a crop
+advisory. Each `/discover` returns an `OnDemand` capability and each `/select`
+returns the values a composed answer quotes back.
 
 ## Start it
 
@@ -139,7 +138,7 @@ curl -s -X POST http://127.0.0.1:8077/v1/turns \
   | python3 -m json.tool --no-ensure-ascii
 ```
 
-The mock serves two capabilities, and which one answers is decided by the
+The mock serves three capabilities, and which one answers is decided by the
 question — intent picks a subject category, discovery resolves that to a
 `@type`, and the mock keys its scenarios off that. So the same running pair
 answers either, with no restart:
@@ -162,7 +161,7 @@ wiring fault. Two places to look, in order:
   includes the case where the mock is running older code than the scenario
   files (see `--reload` above).
 
-Both examples ask in English. Change `targetLanguage` to `hi` and the answer
+All three examples ask in English. Change `targetLanguage` to `hi` and the answer
 comes back in Hindi — and then `--no-ensure-ascii` matters, because
 `json.tool` escapes non-ASCII by default, so the answer arrives as a wall of
 `\uXXXX` and reads like an encoding fault in the service. It is not one: the
@@ -478,6 +477,57 @@ refuses to boot rather than answer every turn `no_match`. Run the fetch above. T
 models (`DSS_PLANNER_MODEL`, `DSS_COMPOSER_MODEL`) — `DSS_STUB_LLM` only stubs
 intent and moderation, so a real provider-backed answer needs both the network
 settings and real model access.
+
+## Tracing
+
+Agent runs become OpenTelemetry spans when `OTEL_EXPORTER_OTLP_ENDPOINT` is
+set — which agent ran, how long, how many tokens, which tool it called, where
+it failed. Unset, nothing is instrumented and nothing is exported, which is
+the default for a local run.
+
+```bash
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 \
+uv run uvicorn --factory dss.entrypoint.app:create_app --port 8077
+```
+
+The endpoint is the standard OTEL variable, so it points at a local Collector,
+Langfuse's OTLP endpoint, or anything else — the service does not care.
+`send_to_logfire=False` is fixed: logfire is used for its instrumentation of
+Pydantic AI, not as a destination.
+
+**Something has to be listening.** With nothing on the other end, one agent run
+produces half a dozen `Transient error … Connection refused … retrying`
+warnings from the OTLP exporter, for traces and metrics both — the exporter
+being honest rather than tracing being broken, but it buries the rest of the
+log. So leave the endpoint unset unless you have a collector, which is its
+default.
+
+`docker-compose.yml` carries one, behind a profile so a plain `up` skips it:
+
+```bash
+docker compose --profile tracing up -d
+```
+
+It prints every span it receives to its own log (`otel/collector.yaml`), which
+is how you see that message bodies really are absent. From inside the compose
+network the DSS reaches it as `http://otel-collector:4318`; the published port
+is for a DSS running on the host instead.
+
+To see the spans with no container at all, the tests read them back in memory:
+
+```bash
+uv run pytest tests/integration/adapters/observability/ -v --no-cov
+```
+
+**Message content is suppressed.** A span carries roles, part types, token
+counts and latency, but not the farmer's query or the composed answer.
+`DSS_ARCHITECTURE.md` §6.1 does not permit "prompts containing personal data"
+or raw conversations in traces, and Pydantic AI includes both by default.
+
+`DSS_TRACE_INCLUDE_MESSAGE_CONTENT=true` turns them on, and logs a warning
+saying not to do that in a deployment. It is for a laptop, where seeing the
+prompt is the point. Only a literal `true` counts — `1` and `yes` read as off,
+so a typo cannot enable it.
 
 ## What is fake, and where to swap it
 

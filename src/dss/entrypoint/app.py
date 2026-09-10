@@ -18,6 +18,7 @@ from starlette.types import Lifespan
 
 from dss.adapters.http.v1 import schema
 from dss.adapters.http.v1.router import turn_router
+from dss.adapters.observability.tracing import configure_tracing
 from dss.config.settings import Settings
 from dss.entrypoint.composition import build_runner_with_lifecycle
 from dss.ports.turn import TurnRunner
@@ -100,6 +101,7 @@ def create_app() -> FastAPI:
     """The process entry point — `uvicorn --factory dss.entrypoint.app:create_app`."""
 
     _configure_logging()
+    configure_tracing()
     settings = Settings()
     runner, aclose = build_runner_with_lifecycle(settings)
 

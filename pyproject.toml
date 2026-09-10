@@ -19,6 +19,11 @@ dependencies = [
     # runtime dependency rather than one client for prod and another for tests.
     "httpx>=0.28.1",
     "pydantic-ai-slim[openai]>=2.33.0",
+    # Pydantic AI's OpenTelemetry instrumentation, imported by
+    # adapters/observability/tracing.py. Runtime rather than dev: `create_app`
+    # calls it. Not a destination — `send_to_logfire=False`; traces go to
+    # whatever OTEL_EXPORTER_OTLP_ENDPOINT names.
+    "logfire>=3.0.0",
     # Settings binding for the moderation LLM knobs and config paths (spec 0002).
     "pydantic-settings>=2.5.0",
     # The policy loader deserialises the mounted YAML pack (spec 0003), and the
@@ -43,11 +48,6 @@ dev = [
     "pytest-cov>=7.1.0",
     "ruff>=0.16.4",
     "jsonschema>=4.26.0",
-    # logfire ships Pydantic AI's OpenTelemetry instrumentation and exports
-    # traces to a self-hosted Langfuse via standard OTEL_* env vars. fastapi and
-    # uvicorn moved to runtime dependencies when ADR-0006 made FastAPI the
-    # committed entrypoint.
-    "logfire>=3.0.0",
     "pytest-httpserver>=1.1.5",
 ]
 
@@ -93,6 +93,9 @@ known-first-party = ["dss", "scripts", "tests", "tools"]
 # LLMProvider port is implemented here against Pydantic AI. core/ stays clean —
 # the AST boundary test in tests/unit/test_framework_boundary.py only guards core/.
 "src/dss/adapters/**/*.py" = ["TID251"]
+# And the tests for those adapters: a test of Pydantic AI's instrumentation
+# has to import it to assert what a span carries.
+"tests/integration/adapters/**/*.py" = ["TID251"]
 # Schema-pack fixtures embed real YAML, and a `$ref` is one unbreakable path
 # (`../../AgricultureResource/v0.1/attributes.yaml#/components/schemas/...`).
 # The line limit is for readable Python; wrapping a path to satisfy it would
