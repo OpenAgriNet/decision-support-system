@@ -18,6 +18,16 @@ def test_intent_defaults_are_empty() -> None:
     intent = Intent()
     assert intent.asks == ()
     assert intent.confidence == 0.0
+    # Most turns name no place. Absent has to be representable: it is the
+    # common case, and it is what leaves the turn without a spatial filter.
+    assert intent.place_name is None
+
+
+def test_intent_carries_the_place_the_farmer_named() -> None:
+    """One place per turn, not one per ask — "wheat price in Pune and will it
+    rain?" is two asks about a single location."""
+
+    assert Intent(place_name="Pune").place_name == "Pune"
 
 
 def test_intent_carries_asks_and_confidence() -> None:

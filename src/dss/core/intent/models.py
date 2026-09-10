@@ -60,3 +60,9 @@ class Intent(BaseModel):
 
     asks: tuple[Ask, ...] = ()
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    # The place the farmer named ("Pune"), in English, or None when they named
+    # none. It sits on the Intent rather than on an Ask because a turn is
+    # grounded in one location however many asks it holds. Only the words —
+    # resolving them to a coordinate is the AreaLookup port's job, since a
+    # model asked for lat/lon invents plausible ones.
+    place_name: str | None = None

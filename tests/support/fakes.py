@@ -11,6 +11,7 @@ from collections.abc import AsyncIterator, Sequence
 
 from dss.core.shared.errors import ProviderUnavailable
 from dss.core.shared.models import TurnContext, TurnEvent, UserTurn
+from dss.ports.area_lookup import AreaMatch
 
 
 class FakeRunner:
@@ -67,3 +68,25 @@ class FakeTurnSink:
         if self.fail_on == "closed":
             raise RuntimeError("turn store unreachable")
         self.closed_with.append(finished)
+
+
+class FakeAreaLookup:
+    """An `AreaLookup` over a name → matches dict, for tests that need a place
+    name to resolve (or deliberately not to).
+
+    Defaults to empty, which is the honest double for the many discovery tests
+    that pass an explicit geometry or none at all: they never consult it, and an
+    empty index makes an accidental consultation resolve to nothing rather than
+    to a coincidentally-correct point.
+    """
+
+    def __init__(self, matches: dict[str, list[AreaMatch]] | None = None) -> None:
+        self._matches = matches or {}
+        self.calls: list[tuple[str, str | None]] = []
+
+    def resolve(self, name: str, region: str | None = None) -> list[AreaMatch]:
+        self.calls.append((name, region))
+        found = self._matches.get(" ".join(name.split()).lower(), [])
+        if region is None:
+            return list(found)
+        return [match for match in found if match.region == region]

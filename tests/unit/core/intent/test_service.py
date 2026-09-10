@@ -86,3 +86,15 @@ def test_prompt_lists_categories_and_interaction_types() -> None:
 
 def test_prompt_without_history_has_no_conversation_section() -> None:
     assert "Conversation so far" not in build_intent_prompt([])
+
+
+def test_prompt_asks_for_the_place_name_in_english() -> None:
+    """The district index is English-only, so a Marathi or Hindi turn resolves
+    only if the model transliterates. Asserting the field is named and English
+    is demanded — not the wording, which is free to change.
+    """
+
+    prompt = build_intent_prompt([])
+
+    assert "place_name" in prompt
+    assert "English" in prompt

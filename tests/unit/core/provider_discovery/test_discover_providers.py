@@ -24,6 +24,7 @@ from dss.core.provider_discovery.models import (
 )
 from dss.core.provider_discovery.service import discover_providers
 from dss.core.shared.models import UserTurn
+from tests.support.fakes import FakeAreaLookup
 
 NOW = datetime(2026, 8, 26, 12, 0, 0, tzinfo=UTC)
 
@@ -87,6 +88,7 @@ async def test_a_single_ask_resolves_and_returns_the_discovery_result() -> None:
         turn,
         discovery=discovery,
         schema_pack_cache=schema_pack_cache,
+        area_lookup=FakeAreaLookup(),
         radius_m=25000,
         now=NOW,
     )
@@ -116,6 +118,7 @@ async def test_an_unresolved_ask_never_calls_discover() -> None:
         turn,
         discovery=discovery,
         schema_pack_cache=schema_pack_cache,
+        area_lookup=FakeAreaLookup(),
         radius_m=25000,
         now=NOW,
     )
@@ -194,6 +197,7 @@ async def test_a_failing_query_does_not_prevent_a_sibling_from_succeeding() -> N
         turn,
         discovery=discovery,
         schema_pack_cache=schema_pack_cache,
+        area_lookup=FakeAreaLookup(),
         radius_m=25000,
         now=NOW,
     )
@@ -268,6 +272,7 @@ async def test_an_adapter_that_raises_takes_the_whole_turn_down() -> None:
             _turn(),
             discovery=discovery,
             schema_pack_cache=schema_pack_cache,
+            area_lookup=FakeAreaLookup(),
             radius_m=25000,
             now=NOW,
         )
@@ -297,6 +302,7 @@ async def test_two_asks_sharing_a_pair_dedupe_to_one_query() -> None:
         turn,
         discovery=discovery,
         schema_pack_cache=schema_pack_cache,
+        area_lookup=FakeAreaLookup(),
         radius_m=25000,
         now=NOW,
     )
@@ -344,6 +350,7 @@ async def test_an_expired_answer_with_no_fallback_is_dropped() -> None:
         turn,
         discovery=discovery,
         schema_pack_cache=schema_pack_cache,
+        area_lookup=FakeAreaLookup(),
         radius_m=25000,
         now=NOW,
     )
@@ -387,6 +394,7 @@ async def test_an_expired_answer_with_an_on_demand_sibling_records_a_fallback() 
         turn,
         discovery=discovery,
         schema_pack_cache=schema_pack_cache,
+        area_lookup=FakeAreaLookup(),
         radius_m=25000,
         now=NOW,
     )
@@ -437,6 +445,7 @@ async def test_a_non_expired_answer_is_kept() -> None:
         turn,
         discovery=discovery,
         schema_pack_cache=schema_pack_cache,
+        area_lookup=FakeAreaLookup(),
         radius_m=25000,
         now=NOW,
     )
@@ -483,6 +492,7 @@ async def test_an_answer_whose_window_has_not_opened_is_dropped() -> None:
         _turn(),
         discovery=discovery,
         schema_pack_cache=schema_pack_cache,
+        area_lookup=FakeAreaLookup(),
         radius_m=25000,
         now=NOW,
     )
@@ -525,6 +535,7 @@ async def test_an_answer_with_no_validity_is_kept() -> None:
         turn,
         discovery=discovery,
         schema_pack_cache=schema_pack_cache,
+        area_lookup=FakeAreaLookup(),
         radius_m=25000,
         now=NOW,
     )
@@ -563,6 +574,7 @@ async def test_a_capability_matching_the_index_has_no_divergence_event() -> None
         turn,
         discovery=discovery,
         schema_pack_cache=schema_pack_cache,
+        area_lookup=FakeAreaLookup(),
         radius_m=25000,
         now=NOW,
     )
@@ -601,6 +613,7 @@ async def test_a_capability_with_a_category_outside_the_index_diverges() -> None
         turn,
         discovery=discovery,
         schema_pack_cache=schema_pack_cache,
+        area_lookup=FakeAreaLookup(),
         radius_m=25000,
         now=NOW,
     )
@@ -644,6 +657,7 @@ async def test_a_direct_answer_with_a_diverging_category_is_flagged() -> None:
         turn,
         discovery=discovery,
         schema_pack_cache=schema_pack_cache,
+        area_lookup=FakeAreaLookup(),
         radius_m=25000,
         now=NOW,
     )
@@ -692,6 +706,7 @@ async def test_an_expired_answer_is_not_also_reported_as_diverging() -> None:
         _turn(),
         discovery=discovery,
         schema_pack_cache=schema_pack_cache,
+        area_lookup=FakeAreaLookup(),
         radius_m=25000,
         now=NOW,
     )
@@ -734,6 +749,7 @@ async def test_a_live_answer_that_diverges_is_still_reported() -> None:
         _turn(),
         discovery=discovery,
         schema_pack_cache=schema_pack_cache,
+        area_lookup=FakeAreaLookup(),
         radius_m=25000,
         now=NOW,
     )
@@ -766,6 +782,7 @@ async def test_an_empty_catalog_result_emits_ask_unservable() -> None:
         turn,
         discovery=discovery,
         schema_pack_cache=schema_pack_cache,
+        area_lookup=FakeAreaLookup(),
         radius_m=25000,
         now=NOW,
     )
@@ -807,6 +824,7 @@ async def test_a_failed_ask_emits_ask_discovery_failed_not_unservable() -> None:
         turn,
         discovery=discovery,
         schema_pack_cache=schema_pack_cache,
+        area_lookup=FakeAreaLookup(),
         radius_m=25000,
         now=NOW,
     )
@@ -838,6 +856,7 @@ async def test_an_unresolved_ask_does_not_also_emit_ask_unservable() -> None:
         turn,
         discovery=discovery,
         schema_pack_cache=schema_pack_cache,
+        area_lookup=FakeAreaLookup(),
         radius_m=25000,
         now=NOW,
     )
@@ -870,6 +889,7 @@ async def test_a_resolved_answer_does_not_emit_ask_unservable() -> None:
         turn,
         discovery=discovery,
         schema_pack_cache=schema_pack_cache,
+        area_lookup=FakeAreaLookup(),
         radius_m=25000,
         now=NOW,
     )

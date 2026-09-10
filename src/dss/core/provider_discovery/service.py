@@ -24,6 +24,7 @@ from dss.core.provider_discovery.models import (
     ProviderQuery,
 )
 from dss.core.shared.models import UserTurn
+from dss.ports.area_lookup import AreaLookup
 from dss.ports.discovery import CapabilityDiscovery
 
 # The network's own horizontal axis is Knowledge/Service (network-specs'
@@ -52,10 +53,44 @@ def resolve_capability_type(
     return types, None
 
 
-def _coverage(turn: UserTurn, radius_m: int) -> Coverage | None:
-    if turn.location is None or turn.location.geometry is None:
+def coverage_for(
+    turn: UserTurn,
+    intent: Intent,
+    *,
+    lookup: AreaLookup,
+    radius_m: int,
+) -> Coverage | None:
+    """Where to search, or ``None`` when the turn names nowhere resolvable.
+
+    Coordinates the client sent are used as-is and the lookup is left alone —
+    they are already what the spatial filter needs, and a name could only
+    contradict them.
+    """
+
+    if turn.location is not None and turn.location.geometry is not None:
+        lon, lat = turn.location.geometry.coordinates
+        return Coverage(lat=lat, lon=lon, radius_m=radius_m)
+
+    # The client's own `area` before the classifier's `place_name`: one is the
+    # caller asserting where the farmer is (typically a district it captured on
+    # an earlier turn and now repeats), the other is inferred from the query.
+    area = turn.location.area if turn.location is not None else None
+    name = area or intent.place_name
+    if name is None:
         return None
-    lon, lat = turn.location.geometry.coordinates
+
+    region = turn.location.region if turn.location is not None else None
+    matches = lookup.resolve(name, region)
+    # Exactly one, or nothing. A village name resolves to nothing because the
+    # index holds districts only.
+    # TODO(#19): three district names (Bilaspur, Hamirpur, Pratapgarh) resolve
+    # to two districts each, and with no region to narrow them this drops the
+    # spatial filter. Naming both states back to the farmer would resolve it;
+    # that needs a region code -> state name map the CSV does not carry yet.
+    if len(matches) != 1:
+        return None
+
+    lon, lat = matches[0].geometry.coordinates
     return Coverage(lat=lat, lon=lon, radius_m=radius_m)
 
 
@@ -307,6 +342,7 @@ async def discover_providers(
     *,
     discovery: CapabilityDiscovery,
     schema_pack_cache: CapabilityIndexSource,
+    area_lookup: AreaLookup,
     radius_m: int,
     now: datetime,
 ) -> DiscoveryResult:
@@ -320,7 +356,7 @@ async def discover_providers(
     """
 
     languages = (turn.target_lang,)
-    coverage = _coverage(turn, radius_m)
+    coverage = coverage_for(turn, intent, lookup=area_lookup, radius_m=radius_m)
     index = schema_pack_cache.current()
 
     queries_to_asks, ask_capabilities, unresolved_asks, events = _build_queries(
