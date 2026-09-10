@@ -11,6 +11,11 @@
   classifier having already said `Scheme`. Not wired yet (#34)
 - ADR-0007: scheme names resolved deterministically at intent time, as a
   pre-discovery hint rather than a governed-code source (#34)
+- Scheme enrichment wired into the turn, between intent and discovery, with a
+  `trace_component("enrichment")` span and a `scheme_resolved` trace line per
+  match; `Orchestrator` now requires a catalog (#35)
+- `log_event` trace helper for a decision a component made, as distinct from
+  the enter/exit span saying it ran (#35)
 - Python project scaffolding: `pyproject.toml`, package layout, ruff, pytest (#57)
 - Framework-boundary enforcement — `core/` cannot import `pydantic_ai` or
   `pydantic_graph`, checked by ruff and by an AST test (#57)
