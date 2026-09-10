@@ -1,0 +1,93 @@
+{
+  "context": {
+    "action": "on_select",
+    "version": "2.0.0",
+    "networkId": "oan-mock"
+  },
+  "message": {
+    "contract": {
+      "commitments": [
+        {
+          "status": {
+            "descriptor": {
+              "code": "ACTIVE",
+              "name": "Active"
+            }
+          },
+          "resources": [
+            {
+              "id": "res:kvk:crop-advisory:cotton",
+              "resourceAttributes": {
+                "@context": "https://openagrinet.github.io/network-specs/schema/KnowledgeAdvisory/v0.1/context.jsonld",
+                "@type": "openagrinet:KnowledgeAdvisory",
+                "informationMode": "Direct",
+                "subjectCategories": [
+                  "Crop"
+                ],
+                "agricultureSubjects": [
+                  {
+                    "subjectId": "https://taxonomy.openagrinet.global/crops/cotton",
+                    "descriptor": {
+                      "code": "COTTON",
+                      "name": "Cotton"
+                    }
+                  }
+                ],
+                "languages": [
+                  "en",
+                  "hi"
+                ],
+                "topics": [
+                  "Early-season cotton management"
+                ],
+                "coverageAreas": [
+                  {
+                    "codeScheme": "ISO-3166-2",
+                    "areaCode": "IN-MH",
+                    "areaLevel": "State"
+                  }
+                ],
+                "issuedAt": "{{now}}",
+                "validity": {
+                  "startsAt": "{{now}}",
+                  "endsAt": "{{now}}"
+                },
+                "recommendations": [
+                  {
+                    "message": "Inspect the field twice each week during establishment and replace failed seedlings promptly.",
+                    "language": "en",
+                    "priority": "Normal",
+                    "actions": [
+                      "Inspect seedlings"
+                    ]
+                  }
+                ],
+                "supportingResourceIds": [
+                  "resource:knowledge:cotton-establishment-guide:1.0.0"
+                ],
+                "rationale": "The recommendation follows the reviewed cotton establishment guide for the applicable growing period.",
+                "source": {
+                  "sourceId": "kvk-advisory-mock",
+                  "sourceName": "Krishi Vigyan Kendra Advisory Service"
+                }
+              }
+            }
+          ],
+          "offer": {
+            "id": "offer:kvk:open-data",
+            "resourceIds": [
+              "res:kvk:crop-advisory:cotton"
+            ],
+            "provider": {
+              "id": "kvk-advisory-mock",
+              "descriptor": {
+                "code": "KVK-ADVISORY-01",
+                "name": "Krishi Vigyan Kendra Advisory Service"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

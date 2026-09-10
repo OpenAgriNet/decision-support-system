@@ -15,7 +15,6 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
-from tests.support.fakes import FakeRunner
 
 from dss.adapters.http.v1 import schema
 from dss.config.settings import Settings
@@ -28,6 +27,7 @@ from dss.core.shared.models import (
     TurnStatus,
 )
 from dss.entrypoint.app import build_app
+from tests.support.fakes import FakeRunner
 
 CAMEL_REQUEST = {
     "context": {

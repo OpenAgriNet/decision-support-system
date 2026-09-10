@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from tests.support.fakes import FakeRunner
 
 from dss.entrypoint.app import create_app
+from tests.support.fakes import FakeRunner
 
 
 def test_create_app_closes_the_network_client_on_shutdown(monkeypatch) -> None:

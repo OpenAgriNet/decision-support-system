@@ -16,6 +16,8 @@ from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from dss.config.schema_pack_fetch import DEFAULT_PACK_DIR, DEFAULT_REF
+
 
 class Settings(BaseSettings):
     # extra="ignore": a real deployment's .env also carries non-DSS vars the LLM
@@ -71,15 +73,23 @@ class Settings(BaseSettings):
 
     # --- provider network wiring (gated) ----------------------------------
     # Discovery and invocation are the only components that leave for the OAN
-    # network, and standing them up needs infrastructure a local run does not
-    # have: a discovery endpoint, a /select endpoint, and a schema-pack
-    # checkout on disk. All three are optional so the app boots without them —
-    # unset, discovery finds nobody, the planner and composer never run, and a
-    # turn still gets intent + moderation (both real LLM calls). Set all three
-    # (`network_enabled`) to light up the real end-to-end path.
+    # network, and standing them up needs endpoints a local run does not have.
+    # Both are optional so the app boots without them — unset, discovery finds
+    # nobody, the planner and composer never run, and a turn still gets intent
+    # + moderation (both real LLM calls). Set both (`network_enabled`) to light
+    # up the real end-to-end path.
     discovery_base_url: str | None = None
     invocation_base_url: str | None = None  # the provider /select endpoint
-    schema_pack_dir: Path | None = None
+    # Defaulted, unlike the two URLs: the packs are fetched to a known place
+    # (`scripts/fetch_schema_packs.py`), so every checkout has one. Anchored to
+    # the module rather than the working directory — `uvicorn --factory` is
+    # started from wherever the operator is. A container has no repo root, so a
+    # deployment sets DSS_SCHEMA_PACK_DIR to its mounted path.
+    schema_pack_dir: Path | None = DEFAULT_PACK_DIR
+    # Which network-specs ref the startup fetch reads when the directory above
+    # is empty. `main` carries only a README today, so a fetch on the default
+    # fails loudly naming the ref that has them.
+    schema_pack_ref: str = DEFAULT_REF
     # How far around the turn's location to look for a provider. Only consulted
     # once the network is wired and the turn carries a geometry.
     discovery_radius_m: int = Field(25_000, ge=0)
@@ -89,18 +99,21 @@ class Settings(BaseSettings):
 
     @property
     def network_enabled(self) -> bool:
-        """Whether the real discovery + invocation path is fully configured.
+        """Whether the real discovery + invocation path is configured.
 
-        All three or none: a half-set network (a discovery URL but no schema
-        packs to resolve capabilities against, say) would fail every turn deep
-        in the planner rather than at startup. Better to treat a partial config
-        as unwired and answer intent + moderation than to boot a runner that
-        cannot plan."""
+        Both URLs or neither: with only one, a turn would fail deep in the
+        planner rather than at startup. Better to treat a partial config as
+        unwired and answer intent + moderation than to boot a runner that
+        cannot plan.
+
+        `schema_pack_dir` was a third condition until it gained a default, at
+        which point it could never be unset and the check became a proxy for
+        something it no longer measured. The guard moved to where it fires on
+        the real condition: with the network on and no packs *loaded*, the
+        composition root refuses to boot."""
 
         return (
-            self.discovery_base_url is not None
-            and self.invocation_base_url is not None
-            and self.schema_pack_dir is not None
+            self.discovery_base_url is not None and self.invocation_base_url is not None
         )
 
     # Where the adopter policy pack is mounted. Unset → use the bundled defaults;

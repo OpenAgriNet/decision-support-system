@@ -1,0 +1,199 @@
+openapi: 3.1.1
+info:
+  title: OpenAgriNet - Mandi Price Attributes
+  version: 0.1.0
+  description: >
+    Attributes for mandi prices that may be obtained on demand or supplied
+    directly. Combines with AgricultureResource through allOf and attaches
+    through resourceAttributes.
+
+components:
+  schemas:
+    MandiPrice:
+      type: object
+      x-beckn-container: resourceAttributes
+      x-jsonld:
+        "@context": "https://openagrinet.github.io/network-specs/schema/MandiPrice/v0.1/context.jsonld"
+        "@type": openagrinet:MandiPrice
+      allOf:
+        - $ref: "../../AgricultureResource/v0.1/attributes.yaml#/components/schemas/AgricultureResourceFields"
+        - type: object
+          required: ["@type"]
+          properties:
+            subjectCategories:
+              allOf:
+                - $ref: "../../AgricultureResource/v0.1/attributes.yaml#/components/schemas/AgricultureResourceFields/properties/subjectCategories"
+                - type: array
+                  description: Required broad classification for this pack. It must include Market.
+                  contains:
+                    const: Market
+            "@type":
+              oneOf:
+                - type: string
+                  const: openagrinet:MandiPrice
+                - type: array
+                  minItems: 2
+                  uniqueItems: true
+                  contains:
+                    const: openagrinet:MandiPrice
+                  items:
+                    oneOf:
+                      - const: openagrinet:MandiPrice
+                      - type: string
+                        minLength: 1
+                        not:
+                          pattern: "^openagrinet:"
+              description: Canonical OAN type, optionally accompanied by Provider-defined JSON-LD types.
+            supportedCommodities:
+              type: array
+              minItems: 1
+              uniqueItems: true
+              description: Commodities for which the Provider can supply prices on demand.
+              items:
+                $ref: "../../AgricultureResource/v0.1/attributes.yaml#/components/schemas/IdentifiedDescriptor"
+              x-jsonld-id: "openagrinet:supportedCommodities"
+            supportedPriceFields:
+              type: array
+              minItems: 1
+              uniqueItems: true
+              description: Price values the Provider can return on demand.
+              items:
+                type: string
+                enum: [Minimum, Maximum, Modal]
+              x-jsonld-id: "openagrinet:supportedPriceFields"
+            historicalDataAvailable:
+              type: boolean
+              description: Whether historical price records can be requested.
+              x-jsonld-id: "openagrinet:historicalDataAvailable"
+            historyPeriod:
+              type: string
+              format: duration
+              description: Maximum available historical period expressed as an ISO 8601 duration.
+              x-jsonld-id: "openagrinet:historyPeriod"
+            updateFrequency:
+              type: string
+              format: duration
+              description: Expected refresh interval for current prices.
+              x-jsonld-id: "openagrinet:updateFrequency"
+            source:
+              allOf:
+                - $ref: "../../AgricultureResource/v0.1/attributes.yaml#/components/schemas/SourceReference"
+              description: Authoritative upstream source of the market information.
+              x-jsonld-id: "openagrinet:source"
+            commodity:
+              allOf:
+                - $ref: "../../AgricultureResource/v0.1/attributes.yaml#/components/schemas/IdentifiedDescriptor"
+              description: Commodity for which the price was observed.
+              x-jsonld-id: "openagrinet:commodity"
+            commodityGroup:
+              type: string
+              minLength: 1
+              description: Governed commodity group supplied by the source.
+              x-jsonld-id: "openagrinet:commodityGroup"
+            grade:
+              type: string
+              minLength: 1
+              description: Market grade reported by the source.
+              x-jsonld-id: "openagrinet:grade"
+            variety:
+              type: string
+              minLength: 1
+              description: Commodity variety reported by the source.
+              x-jsonld-id: "openagrinet:variety"
+            market:
+              type: object
+              required: [marketName]
+              description: Market or APMC to which the price observation applies.
+              properties:
+                marketCode:
+                  type: string
+                  minLength: 1
+                  description: Governed market code when available.
+                  x-jsonld-id: "openagrinet:marketCode"
+                marketName:
+                  type: string
+                  minLength: 1
+                  description: Market or APMC name.
+                  x-jsonld-id: "openagrinet:marketName"
+                district:
+                  type: string
+                  minLength: 1
+                  description: District name or governed code.
+                  x-jsonld-id: "openagrinet:district"
+                state:
+                  type: string
+                  minLength: 1
+                  description: State name or governed code.
+                  x-jsonld-id: "openagrinet:state"
+                location:
+                  allOf:
+                    - $ref: "../../AgricultureResource/v0.1/attributes.yaml#/components/schemas/CompleteGeoJSONGeometry"
+                  description: GeoJSON geometry of the market when available; Point coordinates use longitude, latitude order.
+                  x-jsonld-id: "openagrinet:location"
+              additionalProperties: false
+              x-jsonld-id: "openagrinet:market"
+            arrivalDate:
+              type: string
+              format: date
+              description: Date for which the market arrival and prices apply.
+              x-jsonld-id: "openagrinet:arrivalDate"
+            prices:
+              type: object
+              required: [currency, unit]
+              anyOf:
+                - required: [minimum]
+                - required: [maximum]
+                - required: [modal]
+              description: Normalized minimum, maximum, and modal prices.
+              properties:
+                minimum:
+                  type: number
+                  minimum: 0
+                  description: Minimum reported price.
+                  x-jsonld-id: "openagrinet:minimumPrice"
+                maximum:
+                  type: number
+                  minimum: 0
+                  description: Maximum reported price.
+                  x-jsonld-id: "openagrinet:maximumPrice"
+                modal:
+                  type: number
+                  minimum: 0
+                  description: Most frequently reported or representative price.
+                  x-jsonld-id: "openagrinet:modalPrice"
+                currency:
+                  type: string
+                  pattern: "^[A-Z]{3}$"
+                  description: ISO 4217 currency code.
+                  x-jsonld-id: "openagrinet:currency"
+                unit:
+                  type: string
+                  minLength: 1
+                  description: Governed unit to which each price applies.
+                  x-jsonld-id: "openagrinet:unit"
+              additionalProperties: false
+              x-jsonld-id: "openagrinet:prices"
+            generatedAt:
+              type: string
+              format: date-time
+              description: Time at which the normalized observation was produced.
+              x-jsonld-id: "openagrinet:generatedAt"
+            validity:
+              allOf:
+                - $ref: "../../AgricultureResource/v0.1/attributes.yaml#/components/schemas/TimePeriod"
+              description: Period during which a current price snapshot should be treated as applicable.
+              x-jsonld-id: "openagrinet:validity"
+        - if:
+            properties:
+              informationMode:
+                const: OnDemand
+            required: [informationMode]
+          then:
+            required: [supportedCommodities, supportedPriceFields]
+        - if:
+            properties:
+              informationMode:
+                const: Direct
+            required: [informationMode]
+          then:
+            required: [source, commodity, market, arrivalDate, prices, generatedAt]

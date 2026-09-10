@@ -56,7 +56,7 @@ dev = [
 # ---------------------------------------------------------------------------
 [tool.ruff]
 line-length = 88
-src = ["src", "tests"]
+src = ["src", "tests", "scripts"]
 target-version = "py313"
 # Docs contain illustrative Python in fenced blocks whose alignment is
 # deliberate. Formatting them rewrites the prose's meaning, so they are excluded.
@@ -80,6 +80,11 @@ select = [
 # pulls pydantic-graph as a *core* dependency under a separate top-level import
 # name, so banning only pydantic_ai would leave core/ able to import the graph
 # library.
+[tool.ruff.lint.isort]
+# `scripts/` is ours but is not packaged (only `src/dss` ships), so isort has
+# no way to infer it and files it under third-party beside pytest.
+known-first-party = ["dss", "scripts", "tests", "tools"]
+
 [tool.ruff.lint.per-file-ignores]
 "src/dss/orchestration/**/*.py" = ["TID251"]
 "tests/integration/orchestration/**/*.py" = ["TID251"]
@@ -88,6 +93,11 @@ select = [
 # LLMProvider port is implemented here against Pydantic AI. core/ stays clean —
 # the AST boundary test in tests/unit/test_framework_boundary.py only guards core/.
 "src/dss/adapters/**/*.py" = ["TID251"]
+# Schema-pack fixtures embed real YAML, and a `$ref` is one unbreakable path
+# (`../../AgricultureResource/v0.1/attributes.yaml#/components/schemas/...`).
+# The line limit is for readable Python; wrapping a path to satisfy it would
+# make the fixture stop being the shape the packs actually ship.
+"tests/unit/core/provider_discovery/test_schema_fields.py" = ["E501"]
 
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 "pydantic_ai".msg = "Only src/dss/orchestration may import Pydantic AI. core/ must stay framework-agnostic — depend on ports/ instead."

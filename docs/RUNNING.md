@@ -6,15 +6,87 @@ discovery, the **planner agent** and the **composer** are all wired
 the canned provider answers intent and moderation with no API key, so
 deterministic policies apply and LLM ones do not.
 
-What a local run **cannot** do is answer from a provider: discovery and
-invocation leave for the OAN network, which a local build does not have, so
-they are gated on three settings (see [Knobs](#knobs)). Unset, discovery finds
-nobody, the planner and composer are never reached, and every turn comes back
-`no_match` — the honest outcome without providers. Supply the three settings to
-light the whole path up (real planner + composer model calls included).
+Out of the box, discovery and invocation are unwired — they leave for the OAN
+network, which a local build does not have — so discovery finds nobody, the
+planner and composer are never reached, and every turn comes back `no_match`.
+That exercises the transport and the flow, not a provider-backed answer.
 
-So out of the box this exercises the *transport and the flow* and the real
-moderation/intent reasoning — not a provider-backed answer.
+For a real answer, run the mock network and point the DSS at it. The three
+sections below, in order: get the packs, start the mock, start the DSS. Asked
+for wheat prices at Anand, it comes back with the minimum, maximum and modal
+price per quintal for Wheat (Lokwan) at Anand mandi, citing "Agmarknet
+Vistaar" — every figure the mock provider's own, so the payload crossed
+intent → moderation → discovery → planner → evidence → composer.
+
+Set `targetLanguage` to `hi` in the request and the same answer arrives in
+Hindi, which is how the channel's language handling gets exercised.
+
+## Get the schema packs
+
+The packs describe what a provider can answer — one per capability
+(`MandiPrice`, `WeatherObservation`, …). They live in the
+[`OpenAgriNet/network-specs`](https://github.com/OpenAgriNet/network-specs)
+repo, **not this one**, and nothing clones them. A fresh checkout has none.
+
+```bash
+uv run python scripts/fetch_schema_packs.py --ref schema-packs-v0.1
+```
+
+That writes four packs into `var/schema-packs/` (gitignored):
+`AgricultureResource`, `MandiPrice`, `WeatherObservation`, `KnowledgeAdvisory`.
+
+`AgricultureResource` is not a capability anything routes to. The other three
+`$ref` it for their shared fields, so it has to sit beside them.
+
+**`--ref` is required in practice.** It defaults to `main`, which carries only
+a README, so a default run fetches nothing and exits `1`:
+
+```
+error: no schema packs found on ref 'main' (0 of 4). The published packs are
+on 'schema-packs-v0.1' — re-run with --ref schema-packs-v0.1.
+```
+
+That is deliberate. `main` is where the packs are expected to land; until they
+do, the fetch says so rather than quietly reading a branch nobody chose.
+
+| Flag | Default | Notes |
+|---|---|---|
+| `--ref` | `main` | the network-specs branch or tag. Use `schema-packs-v0.1` today |
+| `--dest` | `var/schema-packs/` | resolved from the repo root, not your working directory |
+
+Set `GITHUB_TOKEN` if you re-run it often — the listing call is capped at 60 an
+hour unauthenticated.
+
+`AgricultureFacility` is deliberately not fetched: none of its examples
+declares `subjectCategories`, which the capability index reads unguarded, so
+the pack would be silently dropped anyway. See `TODO.md`.
+
+## Stand up a fake network
+
+Discovery and invocation leave for the OAN network, which a local build does
+not have. `tools/mock_network/` stands in for it — the same synchronous
+`POST /discover` / `POST /select` contract, no auth:
+
+```bash
+uv run python -m tools.mock_network --port 8078 --reload
+```
+
+**Use `--reload` while adding scenarios.** The `@type`-to-response map is read
+at import, so a mock started before a new scenario existed returns an empty
+catalog for it — discovery then finds nobody and the turn comes back
+`no_match`, with nothing to say the mock is simply out of date. `--reload`
+restarts it when a source or response file changes.
+
+It reads the same schema packs the DSS reads, so it can only advertise a
+`@type` the DSS can route, and it validates its own response bodies against
+those packs — a body carrying a field no pack declares is refused rather than
+served. `http://127.0.0.1:8078/docs` pokes the two routes by hand.
+
+Scenarios are keyed off the `@type` in the request, so one running mock
+answers a weather question and a mandi question without a restart. Weather is
+wired today: `/discover` returns an `OnDemand` capability, and `/select`
+returns a five-day point forecast with rainfall, temperature and humidity —
+the values a composed answer quotes back.
 
 ## Start it
 
@@ -22,6 +94,80 @@ moderation/intent reasoning — not a provider-backed answer.
 uv sync
 DSS_STUB_LLM=true uv run uvicorn --factory dss.entrypoint.app:create_app --port 8077
 ```
+
+To reach a provider, point the DSS at the mock and give all four agents real
+model access. With Azure:
+
+```bash
+DSS_DISCOVERY_BASE_URL=http://127.0.0.1:8078 \
+DSS_INVOCATION_BASE_URL=http://127.0.0.1:8078 \
+DSS_INTENT_MODEL=azure:<deployment id> \
+DSS_MODERATION_MODEL=azure:<deployment id> \
+DSS_PLANNER_MODEL=azure:<deployment id> \
+DSS_COMPOSER_MODEL=azure:<deployment id> \
+AZURE_OPENAI_ENDPOINT="https://<res>.services.ai.azure.com/openai/v1/responses" \
+AZURE_OPENAI_API_KEY="<key>" \
+uv run uvicorn --factory dss.entrypoint.app:create_app --port 8077
+```
+
+Or with OpenAI, where the model strings already name the provider and the SDK
+finds the key itself:
+
+```bash
+DSS_DISCOVERY_BASE_URL=http://127.0.0.1:8078 \
+DSS_INVOCATION_BASE_URL=http://127.0.0.1:8078 \
+OPENAI_API_KEY=sk-... \
+uv run uvicorn --factory dss.entrypoint.app:create_app --port 8077
+```
+
+Two things that will bite:
+
+- **Keep `uv run uvicorn` on the end of the same command.** Environment
+  assignments with nothing after them set shell variables for a command that
+  never runs, and the service then starts without them — which surfaces as
+  `UserError: Set the OPENAI_API_KEY environment variable`.
+- **`DSS_STUB_LLM=true` is left off on purpose.** It stubs intent and
+  moderation only; the planner and composer always build a real model, so a
+  stubbed run still needs credentials once discovery finds a provider.
+
+Then send the example request:
+
+```bash
+curl -s -X POST http://127.0.0.1:8077/v1/turns \
+  -H 'Content-Type: application/json' -H 'Accept: application/json' \
+  --data-binary @docs/api-contracts/examples/answered_streaming.json \
+  | python3 -m json.tool --no-ensure-ascii
+```
+
+The mock serves two capabilities, and which one answers is decided by the
+question — intent picks a subject category, discovery resolves that to a
+`@type`, and the mock keys its scenarios off that. So the same running pair
+answers either, with no restart:
+
+| Request body | Routes to | Answer carries |
+|---|---|---|
+| `answered_streaming.json` | `openagrinet:MandiPrice` | wheat prices at Anand, from Agmarknet Vistaar |
+| `answered_weather.json` | `openagrinet:WeatherObservation` | five-day rainfall and temperature for Nashik, from IMD Mausamgram NWP |
+| `answered_advisory.json` | `openagrinet:KnowledgeAdvisory` | cotton establishment guidance, from Krishi Vigyan Kendra Advisory Service |
+
+A question intent classifies into a category the mock does not serve comes
+back `no_match` — which is the honest answer, and worth telling apart from a
+wiring fault. Two places to look, in order:
+
+- **`var/evidence/telemetry.jsonl`** records the intent stage's outcome, so
+  you can see which subject category was chosen. Wrong category means the
+  intent prompt, not the network.
+- **The mock's log** shows whether `/discover` was called at all. Called and
+  still `no_match` means the `@type` asked for has no scenario — which
+  includes the case where the mock is running older code than the scenario
+  files (see `--reload` above).
+
+Both examples ask in English. Change `targetLanguage` to `hi` and the answer
+comes back in Hindi — and then `--no-ensure-ascii` matters, because
+`json.tool` escapes non-ASCII by default, so the answer arrives as a wall of
+`\uXXXX` and reads like an encoding fault in the service. It is not one: the
+response is UTF-8, from Pydantic's `model_dump_json` and served as
+`charset=utf-8`. Piping to `jq`, or not piping at all, shows the Devanagari.
 
 `DSS_STUB_LLM=true` wires the canned provider, so no API key and no network are
 needed. Drop it and the composition root builds a real Pydantic AI provider from
@@ -152,6 +298,17 @@ event: turn.completed    sequenceNumber 4   outcome.status "answered"
 
 The contract sets `sequenceNumber` minimum 1, so the stream is 1-based.
 
+**The claims are not progressive.** `turn.created` arrives at once, then
+nothing for the length of the whole pipeline, then every `claim.completed` and
+`turn.completed` together — the orchestrator awaits the composed text in full
+before splitting it into blocks. So `-N` shows you the frames as they are sent,
+which is not the same as watching an answer being written. Recorded in
+`TODO.md` under Transport.
+
+Note also that once the first byte is written the status cannot change, so a
+failure after `turn.created` arrives as a `turn.failed` event inside a `200`.
+A 200 is not by itself evidence the turn succeeded.
+
 The `traceId` in every frame body is the one from your `traceparent`. Omit that
 header and the DSS mints one — a turn always has an evidence key.
 
@@ -220,22 +377,104 @@ status code cannot change, so every later failure is a terminal event instead.
 
 ## Knobs
 
-`src/dss/entrypoint/settings.py`:
+`src/dss/config/settings.py`. Every one takes a `DSS_` prefix as an env var —
+`schema_pack_dir` is `DSS_SCHEMA_PACK_DIR`.
+
+### Per-agent model knobs
+
+Four agents, each binding its own model (ADR-0004), so a local run can point
+one at a bigger model without touching the rest:
+
+| Agent | Model | Temperature | Timeout | Retries |
+|---|---|---|---|---|
+| intent | `DSS_INTENT_MODEL` | `DSS_INTENT_TEMPERATURE` | `DSS_INTENT_TIMEOUT_SECONDS` | `DSS_INTENT_RETRIES` |
+| moderation | `DSS_MODERATION_MODEL` | `DSS_MODERATION_TEMPERATURE` | `DSS_MODERATION_TIMEOUT_SECONDS` | `DSS_MODERATION_RETRIES` |
+| planner | `DSS_PLANNER_MODEL` | `DSS_PLANNER_TEMPERATURE` | `DSS_PLANNER_TIMEOUT_SECONDS` | `DSS_PLANNER_RETRIES` |
+| composer | `DSS_COMPOSER_MODEL` | `DSS_COMPOSER_TEMPERATURE` | `DSS_COMPOSER_TIMEOUT_SECONDS` | `DSS_COMPOSER_RETRIES` |
+
+All models default to `openai:gpt-4o-mini`. Temperatures default to `0.0`
+except the composer's `0.3` — it writes the farmer's answer, where a little
+variation reads better than a fixed phrasing. The planner gets 30s and 3
+retries because it is a loop, and its design leans on `ModelRetry` in three
+places.
+
+Set any of them on the command line, or in a `.env` file:
+
+```bash
+DSS_PLANNER_MODEL=openai:gpt-4o \
+DSS_PLANNER_TEMPERATURE=0.2 \
+uv run uvicorn --factory dss.entrypoint.app:create_app --port 8077
+```
+
+The provider is the model string's prefix — Pydantic AI's own syntax — and the
+API key is read by that SDK from its own environment variable
+(`OPENAI_API_KEY`), not by `Settings`. Note only `pydantic-ai-slim[openai]` is
+installed, so an `anthropic:` or `google:` model needs its extra added to
+`pyproject.toml` first: the setting will accept the string, and the SDK will
+not be there.
+
+### Azure OpenAI
+
+An agent goes to Azure when its model string starts `azure:` — the rest is
+the **deployment id**, not a model name:
+
+```bash
+DSS_PLANNER_MODEL=azure:gpt-4o-mini
+```
+
+Two environment variables supply the rest, read directly rather than through
+`Settings` because the SDK reads them under the same names:
+
+| Variable | Notes |
+|---|---|
+| `AZURE_OPENAI_ENDPOINT` | the v1 base or full responses URL; a trailing `/responses` is trimmed |
+| `AZURE_OPENAI_API_KEY` | the deployment key |
+
+An `azure:` model with either missing raises at startup, naming both. A model
+string with any other prefix is handed to Pydantic AI untouched — so one agent
+can be on Azure while another is on OpenAI.
+
+**These two cannot live in `.env`.** `pydantic-settings` reads that file into
+the `Settings` object, not into `os.environ`, and these are read from
+`os.environ` — so a `.env` entry never arrives. Every `DSS_*` setting can go
+in `.env`; these two must be exported:
+
+```bash
+export AZURE_OPENAI_ENDPOINT="https://<res>.services.ai.azure.com/openai/v1"
+export AZURE_OPENAI_API_KEY="<key>"
+```
+
+Also: **do not set `OPENAI_API_VERSION`.** The v1 GA endpoint rejects it.
+
+This bypasses Pydantic AI's own `AzureProvider`, which uses the classic
+`?api-version=` API that the v1 GA endpoint rejects.
+
+Two symptoms worth recognising, since neither error says what is actually
+wrong:
+
+- **`401 invalid_api_key`** — an Azure key sent to `api.openai.com`, i.e. the
+  model string has no `azure:` prefix. An Azure key has no `sk-` prefix, so
+  this reads as a bad key rather than a key sent to the wrong service.
+- **`404 DeploymentNotFound`** — the name after `azure:` is not a deployment
+  on that resource. The error quotes the name it tried.
+
+### Everything else
 
 | Setting | Default | Set it to see |
 |---|---|---|
-| `max_concurrent_turns` | `32` | `0` → every turn `429` with `Retry-After` |
 | `max_body_bytes` | `1000000` | something small → `413` (checked *after* gunzip, so a small gzip can still trip it) |
 | `ready` | `True` | `False` → `503` |
 | `dss_release` | `"v1.0.0"` | anything — it is echoed as `context.dss_release` |
 | `discovery_base_url` | unset | the OAN discovery endpoint |
 | `invocation_base_url` | unset | the provider `/select` endpoint |
-| `schema_pack_dir` | unset | a network-specs schema-pack checkout on disk |
+| `schema_pack_dir` | `var/schema-packs/` | another pack checkout, or a mounted path in a container |
 | `discovery_radius_m` | `25000` | how far around the turn's location to look |
 
-The three network settings are all-or-nothing (`Settings.network_enabled`):
-set all of them and discovery + the planner call real providers; leave any
-unset and the turn stays `no_match`. The planner and composer bind their own
+The two base URLs are all-or-nothing (`Settings.network_enabled`): set both and
+discovery + the planner call real providers; leave either unset and the turn
+stays `no_match`. `schema_pack_dir` has a working default, so it is no longer
+part of that gate — but with the network on and no packs loaded, the DSS
+refuses to boot rather than answer every turn `no_match`. Run the fetch above. The planner and composer bind their own
 models (`DSS_PLANNER_MODEL`, `DSS_COMPOSER_MODEL`) — `DSS_STUB_LLM` only stubs
 intent and moderation, so a real provider-backed answer needs both the network
 settings and real model access.

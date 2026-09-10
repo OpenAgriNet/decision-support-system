@@ -21,7 +21,9 @@ dist/
 .coverage
 htmlcov/
 # tests/
-# Evidence written by a local run (docs/RUNNING.md)
+# Written by a local run, not source: evidence JSONL (docs/RUNNING.md) and the
+# schema packs `scripts/fetch_schema_packs.py` downloads. The packs come from
+# the network-specs repo — fetched, never committed here.
 var/
 
 # Local scratch — handoffs, notes, anything not for review

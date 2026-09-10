@@ -20,7 +20,14 @@ from pathlib import Path
 
 import anyio.to_thread
 
+from dss.core.provider_discovery.index import PACK_DEFECTS
 from dss.core.provider_discovery.models import SchemaPackFiles, SchemaPackSkipped
+from dss.core.provider_discovery.schema_fields import flatten_fields
+
+# The one pack every other pack's cross-file `$ref` points at. Read once per
+# load and passed to the flattener, because a pack's fields are split between
+# its own attributes.yaml and this one.
+_SHARED_PACK = "AgricultureResource"
 
 # What makes a folder a pack: the file naming its @type. Without it there is
 # no capability to index, so the folder is something else and is passed over.
@@ -33,6 +40,25 @@ _PACK_MARKER = "attributes.yaml"
 # index.py's rule: one bad pack in an external checkout must not blind every
 # other capability.
 _PACK_DEFECTS = (OSError, ValueError)
+
+
+def _flattened(
+    attributes_yaml: str, *, pack_name: str, shared_yaml: str | None
+) -> dict:
+    """The pack's resolved fields, or empty if the schema will not resolve.
+
+    Deliberately not a pack defect. The capability index needs only
+    `x-jsonld`, which is read separately, so a pack whose field definitions
+    are unreadable still routes — it just cannot report what its fields are.
+    Raising here would turn a partial loss into a total one.
+    """
+
+    try:
+        return flatten_fields(
+            attributes_yaml, pack_name=pack_name, shared_yaml=shared_yaml
+        )
+    except PACK_DEFECTS:
+        return {}
 
 
 class FilesystemSchemaPackSource:
@@ -59,17 +85,35 @@ class FilesystemSchemaPackSource:
     def _read_all_packs(self) -> tuple[SchemaPackFiles, ...]:
         packs: list[SchemaPackFiles] = []
         skipped: list[SchemaPackSkipped] = []
+        shared_yaml = self._read_shared()
         for folder in sorted(self._root.iterdir()):
             if not folder.is_dir() or not self._is_pack(folder):
                 continue
             try:
-                packs.append(self._read_pack(folder))
+                packs.append(self._read_pack(folder, shared_yaml=shared_yaml))
             except _PACK_DEFECTS as exc:
                 skipped.append(SchemaPackSkipped(folder.name, str(exc)))
         self.skipped = tuple(skipped)
         return tuple(packs)
 
-    def _read_pack(self, pack_dir: Path) -> SchemaPackFiles:
+    def _read_shared(self) -> str | None:
+        """`AgricultureResource`'s attributes.yaml, or None if it is absent.
+
+        Absent is not an error: a checkout narrowed to one pack still loads,
+        and a pack whose `$ref` cannot be followed simply reports the fields
+        it declares itself.
+        """
+
+        try:
+            found = next(self._root.glob(f"{_SHARED_PACK}/*/{_PACK_MARKER}"))
+        except StopIteration:
+            return None
+        try:
+            return found.read_text(encoding="utf-8")
+        except OSError:
+            return None
+
+    def _read_pack(self, pack_dir: Path, *, shared_yaml: str | None) -> SchemaPackFiles:
         versions = [d for d in pack_dir.iterdir() if d.is_dir()]
         if len(versions) != 1:
             raise ValueError(
@@ -91,4 +135,7 @@ class FilesystemSchemaPackSource:
             profile_json=profile_json,
             attributes_yaml=attributes_yaml,
             examples_json=examples_json,
+            flattened_fields=_flattened(
+                attributes_yaml, pack_name=pack_dir.name, shared_yaml=shared_yaml
+            ),
         )

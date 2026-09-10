@@ -9,6 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from dss.adapters.schema_packs.filesystem import FilesystemSchemaPackSource
+from dss.core.provider_discovery.schema_fields import FieldSpec
 
 FIXTURE_ROOT = Path(__file__).parent / "fixtures" / "network-specs" / "schema"
 
@@ -35,6 +36,64 @@ def _write_pack(root: Path, name: str, version: str = "v0.1") -> Path:
     (version_dir / "attributes.yaml").write_text(f"openagrinet:{name}\n")
     (version_dir / "profile.json").write_text('{"version": "0.1.0"}')
     return version_dir
+
+
+_SHARED_ATTRIBUTES = """
+components:
+  schemas:
+    AgricultureResourceFields:
+      type: object
+      required: [informationMode]
+      properties:
+        informationMode:
+          type: string
+          enum: [OnDemand, Direct]
+"""
+
+_PACK_ATTRIBUTES = """
+components:
+  schemas:
+    Sample:
+      type: object
+      allOf:
+        - $ref: "../../AgricultureResource/v0.1/attributes.yaml\
+#/components/schemas/AgricultureResourceFields"
+        - type: object
+          properties:
+            variety:
+              type: string
+"""
+
+
+async def test_a_packs_fields_arrive_already_resolved(tmp_path: Path) -> None:
+    """The adapter flattens while it still has paths.
+
+    `flatten_fields` needs the file a pack's cross-file `$ref` points at, and
+    only the reading layer knows where that is — `SchemaPackFiles` carries
+    text, not paths. So resolving happens here, and downstream gets the fields
+    without ever seeing the shared file.
+    """
+
+    shared = tmp_path / "AgricultureResource" / "v0.1"
+    shared.mkdir(parents=True)
+    (shared / "attributes.yaml").write_text(_SHARED_ATTRIBUTES)
+    (shared / "profile.json").write_text("{}")
+
+    pack = tmp_path / "Sample" / "v0.1"
+    pack.mkdir(parents=True)
+    (pack / "attributes.yaml").write_text(_PACK_ATTRIBUTES)
+    (pack / "profile.json").write_text("{}")
+
+    packs = await FilesystemSchemaPackSource(root=tmp_path).fetch_packs()
+
+    sample = next(p for p in packs if p.pack_name == "Sample")
+    # the inherited field and the pack's own, in one map
+    assert sample.flattened_fields == {
+        "informationMode": FieldSpec(
+            type="string", required=True, enum=("OnDemand", "Direct")
+        ),
+        "variety": FieldSpec(type="string", required=False, enum=()),
+    }
 
 
 async def test_a_folder_that_is_not_a_pack_is_ignored(tmp_path: Path) -> None:
