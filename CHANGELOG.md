@@ -20,6 +20,12 @@
 - Dev-only harnesses under `examples/`: a FastAPI `POST /moderate` server for curl
   testing and Logfire→OpenTelemetry export to a self-hosted Langfuse (not the
   committed entrypoint; that needs an ADR) (#57)
+- District index for the `/discover` spatial filter: a place the farmer names
+  ("I am from Pune") is extracted by intent as `Intent.place_name` and resolved
+  to a district centroid through the new `AreaLookup` port and a checked-in
+  784-row CSV, so a turn that carries no coordinates still gets a spatial
+  filter. A turn with no resolvable location asks the farmer which district
+  they are in (`requires_input`) instead of answering from nowhere (#19)
 
 ### Fixed
 - `Settings()` no longer raises when `.env` carries non-DSS vars the LLM SDK and
