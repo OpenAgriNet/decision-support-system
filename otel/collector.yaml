@@ -1,0 +1,29 @@
+# A collector that prints what arrives. For looking at spans locally; a
+# deployment replaces this file with one that forwards somewhere.
+#
+# Only traces. The DSS emits metrics too (Pydantic AI counts tokens), but
+# nothing here reads them yet and a pipeline with no consumer is noise — see
+# the discovery-service's own collector for the shape a real metrics pipeline
+# takes.
+receivers:
+  otlp:
+    protocols:
+      http:
+        # 0.0.0.0, not localhost: the DSS reaches this from another container.
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+
+exporters:
+  debug:
+    # `detailed` prints every attribute, which is the point of running this at
+    # all — including seeing that message bodies are absent.
+    verbosity: detailed
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]

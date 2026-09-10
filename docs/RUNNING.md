@@ -495,6 +495,30 @@ Langfuse's OTLP endpoint, or anything else — the service does not care.
 `send_to_logfire=False` is fixed: logfire is used for its instrumentation of
 Pydantic AI, not as a destination.
 
+**Something has to be listening.** With nothing on the other end, one agent run
+produces half a dozen `Transient error … Connection refused … retrying`
+warnings from the OTLP exporter, for traces and metrics both — the exporter
+being honest rather than tracing being broken, but it buries the rest of the
+log. So leave the endpoint unset unless you have a collector, which is its
+default.
+
+`docker-compose.yml` carries one, behind a profile so a plain `up` skips it:
+
+```bash
+docker compose --profile tracing up -d
+```
+
+It prints every span it receives to its own log (`otel/collector.yaml`), which
+is how you see that message bodies really are absent. From inside the compose
+network the DSS reaches it as `http://otel-collector:4318`; the published port
+is for a DSS running on the host instead.
+
+To see the spans with no container at all, the tests read them back in memory:
+
+```bash
+uv run pytest tests/integration/adapters/observability/ -v --no-cov
+```
+
 **Message content is suppressed.** A span carries roles, part types, token
 counts and latency, but not the farmer's query or the composed answer.
 `DSS_ARCHITECTURE.md` §6.1 does not permit "prompts containing personal data"
