@@ -5,6 +5,7 @@ Data shapes only. Behaviour lives in service.py.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from datetime import datetime
@@ -47,6 +48,19 @@ class ProviderCapability:
     # than sent: the real select request names a provider by id and name only.
     # Optional because only `name` appears in every fixture.
     provider_code: str | None = None
+    # The resource's own advertised vocabulary, verbatim from on_discover
+    # ("supportedCommodities": [{"code": "78", "name": "Tomato"}, ...]). The
+    # planner shows it to the model, which otherwise has to invent a code and
+    # has nothing to check it against.
+    #
+    # An opaque map, not named fields: which fields a resource advertises is
+    # pack-specific — MandiPrice names supportedCommodities, another pack
+    # names something else — and one pack's vocabulary must not enter a type
+    # four packs share. Same stance as DiscoveredAnswer.attributes.
+    #
+    # Mapping rather than dict: the dataclass is frozen, and a dict field
+    # would still let a caller mutate what the network said.
+    advertised: Mapping[str, object] = dataclass_field(default_factory=dict)
 
 
 @dataclass(frozen=True)

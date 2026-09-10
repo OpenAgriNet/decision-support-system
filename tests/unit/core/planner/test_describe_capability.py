@@ -47,6 +47,71 @@ def test_renders_each_candidates_filterable_fields() -> None:
     assert "subjectCategories" in markdown
 
 
+def test_renders_what_a_candidate_advertises() -> None:
+    """The model has to write a commodity code it cannot invent. The provider
+    advertises its own vocabulary in the catalog, so show it — otherwise the
+    model guesses, and nothing between here and the provider checks the value.
+
+    Both the code and the name: the code alone is unusable, and the name alone
+    is what the model already had from the farmer.
+    """
+
+    mandi = ProviderCapability(
+        provider_id="agmarknet",
+        provider_name="Agmarknet",
+        capability="openagrinet:MandiPrice",
+        resource_id="res:agmarknet:daily-price",
+        observed_categories=("Market",),
+        advertised={
+            "supportedCommodities": [
+                {"code": "1", "name": "Wheat"},
+                {"code": "78", "name": "Tomato"},
+            ]
+        },
+    )
+
+    markdown = render_candidates_as_markdown((mandi,), schemas=_SCHEMAS)
+
+    assert "supportedCommodities" in markdown
+    assert "78" in markdown
+    assert "Tomato" in markdown
+
+
+def test_a_scalar_advertised_field_is_left_out() -> None:
+    """A resource advertises two different kinds of thing side by side: a
+    vocabulary the model may choose from (``supportedCommodities``), and a
+    fact about the provider (``historyPeriod: P1Y``,
+    ``historicalDataAvailable: true``).
+
+    Only the first is a set of values a ``select`` call may carry. Listing the
+    second under a heading that promises values the provider serves invited
+    the model to send ``historicalDataAvailable`` as a filter — and the
+    real MandiPrice catalog advertises three such scalars to two vocabularies.
+
+    A list is the signal, not a field-name prefix: ``supported*`` is
+    MandiPrice's own naming, and no other pack is bound by it.
+    """
+
+    mandi = ProviderCapability(
+        provider_id="agmarknet",
+        provider_name="Agmarknet",
+        capability="openagrinet:MandiPrice",
+        resource_id="res:agmarknet:daily-price",
+        observed_categories=("Market",),
+        advertised={
+            "supportedCommodities": [{"code": "78", "name": "Tomato"}],
+            "historyPeriod": "P1Y",
+            "historicalDataAvailable": True,
+        },
+    )
+
+    markdown = render_candidates_as_markdown((mandi,), schemas=_SCHEMAS)
+
+    assert "supportedCommodities" in markdown
+    assert "historyPeriod" not in markdown
+    assert "historicalDataAvailable" not in markdown
+
+
 def test_renders_multiple_candidates() -> None:
     markdown = render_candidates_as_markdown((_MANDI, _KNOWLEDGE), schemas=_SCHEMAS)
     assert "Agmarknet" in markdown
