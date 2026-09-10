@@ -59,6 +59,46 @@ def test_a_provider_with_no_descriptor_code_maps_to_none() -> None:
     assert result.capabilities[0][0].provider_code is None
 
 
+def test_a_resources_advertised_attributes_are_kept() -> None:
+    """A provider advertises its own vocabulary in the catalog — MandiPrice
+    names supportedCommodities, another pack names something else. Discarding
+    it left the model guessing a commodity code with nothing to check it
+    against.
+
+    Kept as an opaque map, not as named fields: the DSS does not know what any
+    pack advertises, and one pack's vocabulary must not enter a type four
+    packs share.
+    """
+
+    response = {
+        "message": {
+            "catalogs": [
+                {
+                    "provider": {"id": "p", "descriptor": {"name": "P"}},
+                    "resources": [
+                        {
+                            "id": "r",
+                            "resourceAttributes": {
+                                "@type": "openagrinet:MandiPrice",
+                                "informationMode": "OnDemand",
+                                "supportedCommodities": [
+                                    {"code": "78", "name": "Tomato"}
+                                ],
+                            },
+                        }
+                    ],
+                }
+            ]
+        }
+    }
+
+    result = map_discover_response(response, ask_indices=(0,))
+
+    assert result.capabilities[0][0].advertised == {
+        "supportedCommodities": [{"code": "78", "name": "Tomato"}]
+    }
+
+
 def test_the_same_result_is_keyed_under_every_ask_index() -> None:
     response = json.loads((FIXTURES / "discover_response.json").read_text())
 

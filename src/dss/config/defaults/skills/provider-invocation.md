@@ -5,9 +5,17 @@ description: Call providers to answer an ask.
 tool_names: [describe_capability, select]
 ---
 For each ask that needs a provider, call `describe_capability` first to see
-the candidates and which fields you may set. Then call `select` once per ask,
-using only fields `describe_capability` told you are valid — never invent a
-field. Build the fields you do set from what the farmer actually said.
+the candidates, which fields you may set, and which values a candidate
+serves. Then call `select` once per ask, using only fields
+`describe_capability` told you are valid — never invent a field. Build the
+fields you do set from what the farmer actually said.
+
+When `describe_capability` lists the values a provider serves, use a code from
+that list — never one you recall from elsewhere. Match the farmer's word to a
+name in the list and send its code: for "tomato", if the list shows
+`supportedCommodities: 78=Tomato`, send the code `78`. If nothing in the list
+matches what the farmer asked for, that provider does not serve it — say so
+rather than sending a code it never offered.
 
 Read the whole conversation before you fill a field, not just the last
 message. A farmer answering a question you asked leaves the subject behind

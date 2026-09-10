@@ -86,6 +86,36 @@ _DIRECT = "Direct"
 _DISCOVER_VERSION = "2.0.0"
 
 
+# Beckn-level fields every resource carries, whatever its pack. What is left
+# after removing them is the pack's own advertised vocabulary — the codes and
+# values the model needs and cannot invent.
+#
+# A skip-list rather than a read of the pack's own `discovery_fields`: that
+# list lives in profile.json, which this adapter cannot reach without a new
+# index threaded through two layers. These keys are Beckn-level and rarely
+# change, while the advertised fields change often — so the rare failure is
+# the one that needs a code edit.
+_STRUCTURAL_ATTRIBUTES = frozenset(
+    {
+        "@type",
+        "@context",
+        "informationMode",
+        "subjectCategories",
+        "languages",
+        "coverageAreas",
+        "validity",
+    }
+)
+
+
+def _advertised(attributes: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: value
+        for key, value in attributes.items()
+        if key not in _STRUCTURAL_ATTRIBUTES
+    }
+
+
 def _capabilities_from_catalog(catalog: dict[str, Any]) -> list[ProviderCapability]:
     provider = catalog["provider"]
     capabilities = []
@@ -101,6 +131,7 @@ def _capabilities_from_catalog(catalog: dict[str, Any]) -> list[ProviderCapabili
                 resource_id=resource["id"],
                 observed_categories=tuple(attributes.get("subjectCategories", ())),
                 provider_code=provider["descriptor"].get("code"),
+                advertised=_advertised(attributes),
             )
         )
     return capabilities
