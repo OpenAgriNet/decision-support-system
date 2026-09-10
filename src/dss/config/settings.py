@@ -138,6 +138,13 @@ class Settings(BaseSettings):
     # raises, same as the policy pack.
     schemes_config_path: Path | None = None
 
+    # How close a farmer's spelling has to be to an alias to count as that
+    # alias ("makna" for "makhana"). Tried only after every exact lookup has
+    # missed, and only against an ask's own extracted subject. `None` turns
+    # similarity matching off entirely; the floor is deliberately not 0, which
+    # would match anything against anything.
+    scheme_fuzzy_threshold: float | None = Field(0.85, gt=0.5, le=1.0)
+
     # --- HTTP entrypoint (ADR-0006) ---------------------------------------
     # The concrete build that served the turn, echoed as `context.version`.
     dss_release: str = "v1.0.0"

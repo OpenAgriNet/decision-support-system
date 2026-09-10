@@ -25,12 +25,19 @@ class Scheme(BaseModel):
 class SchemeMatch(BaseModel):
     """One alias hit. ``matched_alias`` is the *normalized* text that matched,
     not the farmer's raw words — it is what a trace needs to explain why this
-    scheme was chosen."""
+    scheme was chosen.
+
+    ``fuzzy`` says the alias was reached by similarity rather than by being
+    what the farmer typed. Worth carrying separately: an exact hit needs no
+    explanation, and a wrong *fuzzy* hit is the failure this whole mechanism
+    can produce, so a trace has to be able to tell them apart.
+    """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     scheme: Scheme
     matched_alias: str
+    fuzzy: bool = False
 
 
 class SchemeResolution(BaseModel):

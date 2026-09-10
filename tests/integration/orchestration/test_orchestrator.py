@@ -198,6 +198,7 @@ def _build(
         moderation_llm=_FakeModerationLLM(violated=violated),
         policies=list(policies),
         scheme_catalog=FakeSchemeCatalog(),
+        scheme_fuzzy_threshold=None,
         components=Components(
             discover=_FakeDiscovery(discovery), plan=plan, compose=compose
         ),

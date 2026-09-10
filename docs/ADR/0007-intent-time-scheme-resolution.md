@@ -111,9 +111,13 @@ Supporting choices, each following from the above:
   authors an ask — it refines what was found. If this proves to matter,
   option 3 narrowed to the 13 canonical *names* (~200 tokens, no extra round
   trip) is the intended next step, not a tool call.
-- Matching is exact after normalization. Misspellings ("makna") need the
-  `difflib` fallback in issue #37, which is scoped to the extracted subject
-  only.
+- Misspellings ("makna") are handled by a `difflib` similarity fallback
+  (#37), tried only after every exact lookup has missed and only against an
+  ask's own extracted subject — never the raw query, where a long sentence
+  scores meaninglessly against a two-word alias. `DSS_SCHEME_FUZZY_THRESHOLD`
+  configures it and `None` turns it off; the floor is above 0, which would
+  otherwise match anything against anything. A match records whether it was
+  exact or fuzzy, because a wrong fuzzy hit is the failure this can produce.
 - Normalization lives in `core/` and is imported by the adapter, so the index
   and the lookup cannot drift. Its tokenizer is a character scan rather than a
   `\W` regex split, because Unicode marks are not word characters and a

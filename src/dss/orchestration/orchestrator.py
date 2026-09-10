@@ -126,6 +126,7 @@ class Orchestrator:
         moderation_llm: LLMProvider,
         policies: Sequence[Policy],
         scheme_catalog: SchemeCatalog,
+        scheme_fuzzy_threshold: float | None,
         components: Components,
         turns: TurnSink,
         telemetry: TelemetrySink,
@@ -142,6 +143,7 @@ class Orchestrator:
         # about. Defaulting here would make a wiring mistake and a missing
         # mount look identical.
         self._scheme_catalog = scheme_catalog
+        self._scheme_fuzzy_threshold = scheme_fuzzy_threshold
         self._components = components
         self._turns = turns
         self._telemetry = telemetry
@@ -174,6 +176,7 @@ class Orchestrator:
                 policies=self._policies,
                 discover_providers=self._components.discover,
                 scheme_catalog=self._scheme_catalog,
+                scheme_fuzzy_threshold=self._scheme_fuzzy_threshold,
             )
             decision = result.decision
             self._note("moderation", ctx, decision.outcome.value)
