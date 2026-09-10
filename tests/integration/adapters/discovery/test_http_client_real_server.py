@@ -54,6 +54,7 @@ async def test_discover_against_a_real_local_server(httpserver: HTTPServer) -> N
         )
         query = ProviderQuery(
             capabilities=("openagrinet:WeatherObservation",),
+            subject_category="Weather",
             languages=("hi",),
             coverage=None,
         )
@@ -78,6 +79,7 @@ async def test_a_real_429_response_is_returned_as_a_failure(
         )
         query = ProviderQuery(
             capabilities=("openagrinet:WeatherObservation",),
+            subject_category="Weather",
             languages=("hi",),
             coverage=None,
         )
@@ -103,6 +105,7 @@ async def test_the_outbound_request_is_logged(httpserver: HTTPServer, caplog) ->
             )
             query = ProviderQuery(
                 capabilities=("openagrinet:WeatherObservation",),
+                subject_category="Weather",
                 languages=("hi",),
                 coverage=None,
             )

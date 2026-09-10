@@ -45,7 +45,10 @@ def _discovery_raising_connection_error() -> HttpCapabilityDiscovery:
 
 
 QUERY = ProviderQuery(
-    capabilities=("openagrinet:MandiPrice",), languages=("hi",), coverage=None
+    capabilities=("openagrinet:MandiPrice",),
+    subject_category="Market",
+    languages=("hi",),
+    coverage=None,
 )
 
 
@@ -106,6 +109,7 @@ async def test_a_failed_call_produces_empty_answers_and_capabilities() -> None:
 async def test_a_query_with_two_capabilities_gets_a_failure_entry_each() -> None:
     two_capability_query = ProviderQuery(
         capabilities=("openagrinet:MandiPrice", "openagrinet:MarketIntelligence"),
+        subject_category="Market",
         languages=("hi",),
         coverage=None,
     )

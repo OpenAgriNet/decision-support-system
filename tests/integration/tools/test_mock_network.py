@@ -153,7 +153,12 @@ async def test_discover_returns_a_capability_the_adapter_maps(
     """
 
     result = await discovery.discover(
-        ProviderQuery(capabilities=(_WEATHER,), languages=("en",), coverage=None),
+        ProviderQuery(
+            capabilities=(_WEATHER,),
+            subject_category="Weather",
+            languages=("en",),
+            coverage=None,
+        ),
         ask_indices=(0,),
         transaction_id="9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44",
     )
@@ -181,7 +186,12 @@ async def test_one_running_mock_answers_either_capability(
 
     async def provider_for(capability: str) -> str:
         result = await discovery.discover(
-            ProviderQuery(capabilities=(capability,), languages=("en",), coverage=None),
+            ProviderQuery(
+                capabilities=(capability,),
+                subject_category="Weather",
+                languages=("en",),
+                coverage=None,
+            ),
             ask_indices=(0,),
             transaction_id="9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44",
         )
@@ -204,7 +214,10 @@ async def test_a_query_naming_two_capabilities_gets_both(
 
     result = await discovery.discover(
         ProviderQuery(
-            capabilities=(_WEATHER, _MANDI), languages=("en",), coverage=None
+            capabilities=(_WEATHER, _MANDI),
+            subject_category="Weather",
+            languages=("en",),
+            coverage=None,
         ),
         ask_indices=(0,),
         transaction_id="9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44",
@@ -339,6 +352,7 @@ async def test_a_type_the_mock_does_not_serve_finds_nobody(
     result = await discovery.discover(
         ProviderQuery(
             capabilities=("openagrinet:AgricultureResource",),
+            subject_category="Weather",
             languages=("en",),
             coverage=None,
         ),

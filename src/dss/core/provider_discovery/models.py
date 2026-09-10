@@ -28,6 +28,11 @@ class ProviderQuery:
     """
 
     capabilities: tuple[str, ...]
+    # The Ask's subject category ("Weather"), which the JSONPath filter matches
+    # on. `capabilities` carries the resolved @type values alongside it: those
+    # name the envelope's `schemaContext`, which is what pins the query to a
+    # specific resource type, so the filter itself does not repeat them.
+    subject_category: str
     languages: tuple[str, ...]
     coverage: Coverage | None
 
