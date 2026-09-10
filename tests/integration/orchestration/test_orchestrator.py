@@ -24,6 +24,8 @@ from dss.core.policy.models import (
 from dss.core.provider_discovery.models import DiscoveryResult, ProviderCapability
 from dss.core.shared.models import (
     Claim,
+    Geometry,
+    Location,
     RefusalBlock,
     TextBlock,
     TurnContext,
@@ -33,6 +35,8 @@ from dss.core.shared.models import (
     UserTurn,
 )
 from dss.orchestration.orchestrator import Components, Orchestrator
+from dss.ports.area_lookup import AreaMatch
+from tests.support.fakes import FakeAreaLookup
 
 DELETE_COMMAND = LlmPolicy(
     id="delete-command",
@@ -54,7 +58,23 @@ CAPABILITY = ProviderCapability(
 )
 
 
-def _turn(query: str = "What is the wheat price?") -> UserTurn:
+_PUNE = Location(geometry=Geometry(coordinates=[74.067998, 18.571118]))
+_PUNE_MATCH = AreaMatch(
+    name="Pune",
+    region="IN-MH",
+    geometry=Geometry(coordinates=[74.067998, 18.571118]),
+)
+
+
+def _turn(
+    query: str = "What is the wheat price?",
+    *,
+    location: Location | None = _PUNE,
+) -> UserTurn:
+    """Located by default. Most tests here are about what happens *after* a
+    location is known, and an unlocated turn now stops at the district
+    question — so they would all stop testing what they were written for."""
+
     return UserTurn(
         original_query=query,
         enriched_query=query,
@@ -63,6 +83,7 @@ def _turn(query: str = "What is the wheat price?") -> UserTurn:
         source_lang="en",
         target_lang="en",
         channel="web",
+        location=location,
     )
 
 
@@ -181,12 +202,14 @@ def _build(
         ),
         turns=turns,
         telemetry=_Telemetry(),
+        area_lookup=FakeAreaLookup({"pune": [_PUNE_MATCH]}),
+        discovery_radius_m=25_000,
     )
     return orch, turns
 
 
-async def _collect(orch: Orchestrator):
-    return [event async for event in orch.run(_turn(), _ctx())]
+async def _collect(orch: Orchestrator, turn: UserTurn | None = None):
+    return [event async for event in orch.run(turn or _turn(), _ctx())]
 
 
 async def test_a_served_ask_is_answered_end_to_end() -> None:
@@ -247,6 +270,29 @@ async def test_nobody_serving_is_no_match_without_planning() -> None:
 
     assert events[-1].outcome.status is TurnStatus.NO_MATCH
     # no candidate → the planner and composer are never spent
+    assert plan.calls == 0 and compose.calls == 0
+
+
+async def test_an_unlocated_turn_asks_for_a_district() -> None:
+    """No coordinates, no area, and the classifier found no place name: there is
+    nowhere to search, so ask the farmer instead of discovering, planning and
+    composing an answer that could not be local to them.
+    """
+
+    plan = _FakePlan(_ANSWERED_EVIDENCE)
+    compose = _FakeCompose("unused")
+    orch, _ = _build(
+        intent=_one_ask(), discovery=_served_discovery(), plan=plan, compose=compose
+    )
+
+    events = await _collect(orch, _turn(location=None))
+
+    finished = events[-1]
+    assert finished.outcome.status is TurnStatus.REQUIRES_INPUT
+    assert "district" in finished.content[0].text.lower()
+    # discovery ran and was discarded — read-only and cheap, and it already
+    # starts before moderation clears the turn. What matters is that the planner
+    # and composer, which cost real model calls, never ran.
     assert plan.calls == 0 and compose.calls == 0
 
 

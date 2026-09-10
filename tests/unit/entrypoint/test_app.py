@@ -74,12 +74,12 @@ def test_the_real_composition_writes_evidence_where_configured(tmp_path, monkeyp
         "/v1/turns", json=body, headers={"Accept": "application/json"}
     )
 
-    # `no_match`, not `answered`: the real orchestrator runs intent, moderation
-    # and discovery, but the OAN network is not wired in a local build, so
-    # discovery finds nobody and the planner/composer are never reached. That is
-    # the honest outcome without providers — and it is not the failed-closed
-    # `moderation_unavailable`, so it still proves moderation PROCEEDED and the
-    # whole real pipeline ran and wrote its evidence.
-    assert response.json()["message"]["outcome"]["status"] == "no_match"
+    # `requires_input`, not `answered`: the real orchestrator runs intent and
+    # moderation, but this body carries no location and "Wheat price?" names no
+    # place, so there is nowhere to search and the turn asks for a district
+    # before discovery. It is not the failed-closed `moderation_unavailable`, so
+    # it still proves moderation PROCEEDED and the real pipeline ran and wrote
+    # its evidence.
+    assert response.json()["message"]["outcome"]["status"] == "requires_input"
     assert (tmp_path / "telemetry.jsonl").exists()
     assert (tmp_path / "turns.jsonl").exists()

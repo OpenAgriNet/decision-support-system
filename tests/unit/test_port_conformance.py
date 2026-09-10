@@ -13,7 +13,7 @@ import asyncio
 from dss.core.shared.models import TurnContext, TurnEvent, TurnFinished, UserTurn
 from dss.orchestration.stub_runner import StubRunner
 from dss.ports.turn import TurnRunner
-from tests.support.fakes import FakeRunner
+from tests.support.fakes import FakeAreaLookup, FakeRunner
 
 
 def drive(runner: TurnRunner, turn: UserTurn, ctx: TurnContext) -> list[TurnEvent]:
@@ -73,6 +73,10 @@ def test_the_orchestrator_satisfies_the_port(a_turn, a_context):
         ),
         turns=MemoryTurnSink(),
         telemetry=StdoutTelemetrySink(),
+        # Empty: this test is about the port contract, not about where the turn
+        # searches. Whichever way the turn ends, it ends in a TurnFinished.
+        area_lookup=FakeAreaLookup(),
+        discovery_radius_m=25_000,
     )
 
     events = drive(runner, a_turn(), a_context)
