@@ -25,7 +25,7 @@ from dss.core.planner.prompt import build_planner_prompt, build_user_message
 from dss.core.planner.validation import DomainSchema
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.shared.models import UserTurn
-from dss.observability.trace_log import log_external_response
+from dss.observability.trace_log import log_external_request, log_external_response
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
 from dss.ports.invocation import CapabilityInvocation
 
@@ -76,16 +76,19 @@ def build_plan(
         discovery: DiscoveryResult,
         verdict: Verdict,
     ) -> Evidence:
+        # Named rather than passed inline so the request log below can carry
+        # the prompt the agent was actually built with.
+        system_prompt = build_planner_prompt(
+            identity=identity,
+            skills=skills,
+            answers=discovery.answers,
+            template=prompt_template,
+        )
         agent = build_planner_agent(
             skills=skills,
             model=model,
             retries=retries,
-            system_prompt=build_planner_prompt(
-                identity=identity,
-                skills=skills,
-                answers=discovery.answers,
-                template=prompt_template,
-            ),
+            system_prompt=system_prompt,
         )
         deps = PlannerDeps(
             turn=turn,
@@ -98,8 +101,21 @@ def build_plan(
         # The enriched query and the history go in the user message, wrapped
         # in markers — the model resolves a subject named in an earlier turn
         # from here (see the provider-invocation skill's guidance).
+        user_message = build_user_message(
+            query=turn.enriched_query, history=turn.history
+        )
+        # The loop's opening request. Its tool calls are logged by the tools
+        # themselves (`invocation` request/response pairs), so this is the
+        # prompt the model started from, not every round trip.
+        log_external_request(
+            "llm.planner",
+            turn.transaction_id,
+            model=model.model_name,
+            tools=len(skills),
+            body={"system_prompt": system_prompt, "user_message": user_message},
+        )
         result = await agent.run(
-            build_user_message(query=turn.enriched_query, history=turn.history),
+            user_message,
             deps=deps,
             model_settings=model_settings,
         )

@@ -19,7 +19,7 @@ from pydantic_ai.models import Model
 from pydantic_ai.models.openai import OpenAIResponsesModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
-from dss.observability.trace_log import log_external_response
+from dss.observability.trace_log import log_external_request, log_external_response
 from dss.ports.llm import SchemaT
 
 # How the schema is coaxed out of the model. ``tool`` (Pydantic AI's default) asks
@@ -69,6 +69,15 @@ class PydanticAILLMProvider:
             output_type=self._output_type(schema),
             system_prompt=system_prompt,
             retries=self._retries,
+        )
+        # `model_name`, not the `Model` object: its repr carries the whole
+        # provider and client, which buries the line it is meant to label.
+        log_external_request(
+            "llm",
+            model=self._model.model_name,
+            output_schema=schema.__name__,
+            output_mode=self._output_mode,
+            body={"system_prompt": system_prompt, "user_query": user_query},
         )
         result = await agent.run(user_query, model_settings=self._model_settings)
         log_external_response("llm", output_schema=schema.__name__, body=result.output)
