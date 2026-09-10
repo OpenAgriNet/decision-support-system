@@ -26,7 +26,10 @@ from dss.core.provider_discovery.models import (
     ProviderCapability,
     ProviderQuery,
 )
-from dss.observability.trace_log import log_external_response
+from dss.observability.trace_log import (
+    log_external_request,
+    log_external_response,
+)
 
 
 def _failure_result(
@@ -273,6 +276,13 @@ class HttpCapabilityDiscovery:
             message_id=str(uuid4()),
             transaction_id=transaction_id,
             timestamp=datetime.now(UTC).isoformat(),
+        )
+        log_external_request(
+            "discovery",
+            transaction_id,
+            endpoint=f"{self._base_url}/discover",
+            capabilities=",".join(query.capabilities),
+            body=request_body,
         )
         try:
             response = await self._client.post(

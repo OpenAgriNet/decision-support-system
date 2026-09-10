@@ -8,6 +8,7 @@ mock transport cannot prove, since it never leaves the process.
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
 import httpx
@@ -74,3 +75,31 @@ async def test_a_real_429_response_raises_selectfailed(httpserver: HTTPServer) -
             await invocation.select(CAPABILITY, {}, transaction_id="txn-test")
 
     assert exc_info.value.status_code == 429
+
+
+async def test_the_outbound_request_is_logged(httpserver: HTTPServer, caplog) -> None:
+    """Same gap as /discover: the response was logged, the request was not."""
+
+    select_response = json.loads((FIXTURES / "select_response.json").read_text())
+    httpserver.expect_request("/select", method="POST").respond_with_json(
+        select_response
+    )
+
+    with caplog.at_level(logging.INFO, logger="dss.trace"):
+        async with httpx.AsyncClient() as client:
+            invocation = HttpCapabilityInvocation(
+                client=client,
+                base_url=_base_url(httpserver),
+                sender_id="seeker-network-vistaar.da.gov.in",
+                receiver_id="provider-network-vistaar.da.gov.in",
+            )
+
+            await invocation.select(
+                CAPABILITY,
+                {"@type": "openagrinet:WeatherObservation"},
+                transaction_id="txn-test",
+            )
+
+    assert "external=invocation event=request" in caplog.text
+    assert "/select" in caplog.text
+    assert "request_id=txn-test" in caplog.text

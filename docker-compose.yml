@@ -6,15 +6,34 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    # Nothing here is `${VAR:?...}`. That form fails while the file is being
+    # *parsed*, so one unset variable stopped compose reading the file at all —
+    # no `config`, and no starting the collector below on its own. The DSS
+    # already refuses to boot on what it genuinely needs, and says what is
+    # wrong when it does: an `azure:` model with no endpoint names both
+    # variables, and the network configured with no schema packs names the
+    # directory and the fetch command. Those beat a parse error.
     environment:
+      # All four agents (ADR-0004). The part after `azure:` is the deployment
+      # id; any other prefix is handed to Pydantic AI as-is.
       DSS_INTENT_MODEL: ${DSS_INTENT_MODEL:-azure:gpt-5.6-luna}
       DSS_MODERATION_MODEL: ${DSS_MODERATION_MODEL:-azure:gpt-5.6-luna}
-      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:?set AZURE_OPENAI_ENDPOINT in .env}
-      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:?set AZURE_OPENAI_API_KEY in .env}
+      DSS_PLANNER_MODEL: ${DSS_PLANNER_MODEL:-azure:gpt-5.6-luna}
+      DSS_COMPOSER_MODEL: ${DSS_COMPOSER_MODEL:-azure:gpt-5.6-luna}
+      # Read from the environment by the model adapter, not through Settings.
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:-}
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
-      DSS_INVOCATION_BASE_URL: ${DSS_INVOCATION_BASE_URL:?set DSS_INVOCATION_BASE_URL in .env}
-      DSS_DISCOVERY_BASE_URL: ${DSS_DISCOVERY_BASE_URL:?set DSS_DISCOVERY_BASE_URL in .env}
-      DSS_SCHEMA_PACK_DIR: ${DSS_SCHEMA_PACK_DIR:?set DSS_SCHEMA_PACK_DIR in .env}
+      DSS_INVOCATION_BASE_URL: ${DSS_INVOCATION_BASE_URL:-}
+      DSS_DISCOVERY_BASE_URL: ${DSS_DISCOVERY_BASE_URL:-}
+      # The published packs are on this tag, not on `main` — the settings
+      # default is `main`, which carries none, so a container that does not
+      # set this fetches nothing and then dies on the missing directory.
+      DSS_SCHEMA_PACK_REF: ${DSS_SCHEMA_PACK_REF:-schema-packs-v0.1}
+      # Read straight from os.environ by app.py, not through Settings, so it
+      # has to be named here to reach the container at all. DEBUG is what puts
+      # the /discover and /select request bodies in the log.
+      DSS_LOG_LEVEL: ${DSS_LOG_LEVEL:-INFO}
     ports:
       - "127.0.0.1:${DSS_HOST_PORT:-8077}:8077"
     healthcheck:

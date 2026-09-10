@@ -5,15 +5,22 @@ One place so the format is uniform and greppable. Every line carries a
 so a whole turn's path across components and services joins on one key
 (``grep "request_id=<id>"``).
 
-Two things get logged:
+Three things get logged:
 
 - **Component span** — ``trace_component(name)`` logs ``event=enter`` on the way
   in and ``event=exit`` on the way out, with ``elapsed_ms`` and whether it left
   by returning or raising. Wrap the call at its orchestration seam, so ``core/``
   services stay logging-free and pure.
+- **External request** — ``log_external_request(service, ...)`` logs a call on
+  its way out, at the ``/discover`` and ``/select`` call sites. Its ``body``
+  goes to DEBUG rather than INFO: a request body carries the farmer's query
+  verbatim, and §6.2's sink-level redaction interceptor is not built yet.
 - **External response** — ``log_external_response(service, ...)`` logs what a
   provider or model handed back. The user asked for *every* external response,
   so this is called at each LLM and network call site.
+
+Request and response share ``service`` and ``request_id`` and differ only by
+``event=``, so one call's two halves read in order under one grep.
 
 Everything goes to the ``dss.trace`` logger at INFO; raise or lower that one
 logger to tune verbosity without touching the rest of the app. Bodies can be
@@ -87,6 +94,39 @@ def trace_component(component: str, request_id: str | None = None) -> Iterator[N
             component,
             status,
             elapsed_ms,
+        )
+
+
+def log_external_request(
+    service: str,
+    request_id: str | None = None,
+    *,
+    body: Any = None,
+    **fields: Any,
+) -> None:
+    """Log one request on its way out to an external service.
+
+    The mirror of `log_external_response`: same ``service`` names, same
+    ``request_id``, and ``event=request`` against its ``event=response`` — so
+    one turn's outbound and inbound lines join on one key and read in call
+    order.
+
+    The body is logged at DEBUG while the rest of the line is INFO. A request
+    body carries the farmer's query verbatim, and the redaction interceptor
+    §6.2 puts at the sink does not exist yet — so the shape of a call is
+    always visible and its words are opt-in, by lowering the ``dss.trace``
+    logger.
+    """
+
+    parts = [f"request_id={_rid(request_id)}", f"external={service}", "event=request"]
+    parts.extend(f"{key}={value}" for key, value in fields.items())
+    logger.info(" ".join(parts))
+    if body is not None:
+        logger.debug(
+            "request_id=%s external=%s event=request_body body=%s",
+            _rid(request_id),
+            service,
+            _as_text(body),
         )
 
 
