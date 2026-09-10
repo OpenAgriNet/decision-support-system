@@ -6,7 +6,11 @@ from __future__ import annotations
 
 from dss.core.enrichment.models import Scheme
 from dss.core.enrichment.normalize import alias_key
-from dss.core.enrichment.service import find_scheme, resolve_scheme_subjects
+from dss.core.enrichment.service import (
+    find_scheme,
+    find_similar_scheme,
+    resolve_scheme_subjects,
+)
 from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
 
 MAKHANA = Scheme(
@@ -274,3 +278,93 @@ def test_a_bare_commodity_word_cannot_override_because_it_is_not_an_alias() -> N
 
     assert resolution.intent == intent
     assert "makhana" not in ALIASES
+
+
+# --- the fuzzy fallback (#37) ----------------------------------------------
+
+
+def test_a_misspelled_subject_resolves_above_the_threshold() -> None:
+    """`makna` for `makhana scheme` — the good-to-have this exists for."""
+
+    intent = Intent(asks=(_ask("makna scheme"),))
+
+    resolution = resolve_scheme_subjects(
+        intent, "tell me about makna scheme", ALIASES, fuzzy_threshold=0.8
+    )
+
+    assert resolution.intent.asks[0].agriculture_subjects == MAKHANA.name
+    assert resolution.matches[0].fuzzy is True
+
+
+def test_fuzzy_matching_is_off_unless_a_threshold_is_given() -> None:
+    intent = Intent(asks=(_ask("makna scheme"),))
+
+    resolution = resolve_scheme_subjects(intent, "makna scheme", ALIASES)
+
+    assert resolution.intent == intent
+
+
+def test_an_unrelated_word_does_not_resolve() -> None:
+    intent = Intent(asks=(_ask("tractor subsidy"),))
+
+    resolution = resolve_scheme_subjects(
+        intent, "tractor subsidy", ALIASES, fuzzy_threshold=0.8
+    )
+
+    assert resolution.matches == ()
+
+
+def test_the_threshold_is_honoured() -> None:
+    """Same input, two thresholds: the number configured is the number used."""
+
+    intent = Intent(asks=(_ask("makna scheme"),))
+
+    assert resolve_scheme_subjects(
+        intent, "makna scheme", ALIASES, fuzzy_threshold=0.8
+    ).matches
+    assert not resolve_scheme_subjects(
+        intent, "makna scheme", ALIASES, fuzzy_threshold=0.99
+    ).matches
+
+
+def test_an_exact_match_never_reaches_the_fallback() -> None:
+    """Exactness is reported, because a wrong *fuzzy* hit is the failure this
+    mechanism can produce and a trace has to tell the two apart."""
+
+    intent = Intent(asks=(_ask("makhana scheme"),))
+
+    resolution = resolve_scheme_subjects(
+        intent, "makhana scheme", ALIASES, fuzzy_threshold=0.8
+    )
+
+    assert resolution.matches[0].fuzzy is False
+
+
+def test_fuzzy_never_runs_against_the_raw_query() -> None:
+    """A long sentence scores poorly against a two-word alias, so the ratio
+    would be meaningless — and a non-scheme ask must stay unconvertible."""
+
+    intent = Intent(
+        asks=(_ask("wheat", SubjectCategory.MARKET, InteractionType.OBSERVE),),
+    )
+
+    resolution = resolve_scheme_subjects(
+        intent,
+        "what about the makna scheme and wheat",
+        ALIASES,
+        fuzzy_threshold=0.8,
+    )
+
+    assert resolution.intent == intent
+
+
+def test_find_similar_scheme_reports_the_alias_it_landed_on() -> None:
+    match = find_similar_scheme("makna scheme", ALIASES, 0.8)
+
+    assert match is not None
+    assert match.matched_alias == "makhana scheme"
+    assert match.fuzzy is True
+
+
+def test_find_similar_scheme_on_an_empty_catalog_is_none() -> None:
+    assert find_similar_scheme("makna scheme", {}, 0.8) is None

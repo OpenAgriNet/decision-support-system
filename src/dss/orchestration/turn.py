@@ -65,7 +65,12 @@ def _nothing_discovered() -> DiscoveryResult:
     return DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
 
 
-def _enrich(intent: Intent, turn: UserTurn, catalog: SchemeCatalog | None) -> Intent:
+def _enrich(
+    intent: Intent,
+    turn: UserTurn,
+    catalog: SchemeCatalog | None,
+    fuzzy_threshold: float | None,
+) -> Intent:
     """Resolve any scheme the turn names to its official name.
 
     Between intent and discovery because it can only be either: it needs the
@@ -85,7 +90,12 @@ def _enrich(intent: Intent, turn: UserTurn, catalog: SchemeCatalog | None) -> In
     if catalog is None:
         return intent
 
-    resolution = resolve_scheme_subjects(intent, turn.original_query, catalog.aliases())
+    resolution = resolve_scheme_subjects(
+        intent,
+        turn.original_query,
+        catalog.aliases(),
+        fuzzy_threshold=fuzzy_threshold,
+    )
     for match in resolution.matches:
         log_event(
             "enrichment",
@@ -93,6 +103,9 @@ def _enrich(intent: Intent, turn: UserTurn, catalog: SchemeCatalog | None) -> In
             event="scheme_resolved",
             alias=match.matched_alias,
             scheme_code=match.scheme.code,
+            # A wrong *fuzzy* hit is the failure this can produce, so the
+            # trace has to say which kind of match it was.
+            fuzzy=match.fuzzy,
         )
     return resolution.intent
 
@@ -127,6 +140,7 @@ async def run_turn(
     policies: Sequence[Policy],
     discover_providers: DiscoverProviders,
     scheme_catalog: SchemeCatalog | None = None,
+    scheme_fuzzy_threshold: float | None = None,
     now: datetime | None = None,
 ) -> TurnResult:
     """Classify intent, moderate the turn, and find who can answer it.
@@ -154,7 +168,7 @@ async def run_turn(
         with trace_component("intent", turn.transaction_id):
             intent = await classify_intent(turn, intent_llm)
         with trace_component("enrichment", turn.transaction_id):
-            intent = _enrich(intent, turn, scheme_catalog)
+            intent = _enrich(intent, turn, scheme_catalog, scheme_fuzzy_threshold)
         with trace_component("discovery", turn.transaction_id):
             discovery = await discover_providers(
                 intent, turn, now=now or datetime.now(UTC)

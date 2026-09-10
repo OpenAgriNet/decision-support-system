@@ -67,6 +67,7 @@ def test_the_orchestrator_satisfies_the_port(a_turn, a_context):
         moderation_llm=StubLLM(),
         policies=[],
         scheme_catalog=FakeSchemeCatalog(),
+        scheme_fuzzy_threshold=None,
         components=Components(
             discover=_no_discovery,
             plan=_unreached_plan,

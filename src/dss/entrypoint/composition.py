@@ -155,6 +155,7 @@ def build_runner_with_lifecycle(
         moderation_llm=_moderation_llm(settings),
         policies=policies,
         scheme_catalog=scheme_catalog,
+        scheme_fuzzy_threshold=settings.scheme_fuzzy_threshold,
         components=components,
         turns=FileTurnSink(settings.turns_path),
         telemetry=FileTelemetrySink(settings.telemetry_path),

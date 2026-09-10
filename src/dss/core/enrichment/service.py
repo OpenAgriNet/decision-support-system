@@ -19,13 +19,20 @@ normalized and built once at boot.
 
 from __future__ import annotations
 
+import difflib
 from collections.abc import Mapping
 
 from dss.core.enrichment.models import Scheme, SchemeMatch, SchemeResolution
-from dss.core.enrichment.normalize import normalize_tokens
+from dss.core.enrichment.normalize import alias_key, normalize_tokens
 from dss.core.intent.models import Ask, Intent, SubjectCategory
 
 AliasIndex = Mapping[str, Scheme]
+
+# Off unless a threshold is supplied. `None` rather than a module default so
+# there is exactly one place the number lives — `Settings` — and a caller that
+# forgot to pass it gets exact matching rather than a second, invisible
+# default that disagrees with the configured one.
+NO_FUZZY_MATCHING = None
 
 
 def find_scheme(text: str, aliases: AliasIndex) -> SchemeMatch | None:
@@ -55,7 +62,33 @@ def find_scheme(text: str, aliases: AliasIndex) -> SchemeMatch | None:
     return None
 
 
-def _resolve_ask(ask: Ask, query: str, aliases: AliasIndex) -> SchemeMatch | None:
+def find_similar_scheme(
+    text: str, aliases: AliasIndex, threshold: float
+) -> SchemeMatch | None:
+    """The closest alias to ``text`` above ``threshold``, if any.
+
+    For a misspelling — "makna" for "makhana". Compares the *whole* normalized
+    text against whole aliases, so it is one comparison set per call: running
+    it over every token span instead would multiply both the cost and the
+    chances of a wrong hit, and a misspelling is what the classifier extracts
+    as the subject anyway.
+
+    ``difflib`` rather than ``rapidfuzz``: at this catalog's size the speed
+    difference is unmeasurable and a C extension is not worth a dependency.
+    """
+
+    key = alias_key(text)
+    if not key or not aliases:
+        return None
+    closest = difflib.get_close_matches(key, aliases, n=1, cutoff=threshold)
+    if not closest:
+        return None
+    return SchemeMatch(scheme=aliases[closest[0]], matched_alias=closest[0], fuzzy=True)
+
+
+def _resolve_ask(
+    ask: Ask, query: str, aliases: AliasIndex, threshold: float | None
+) -> SchemeMatch | None:
     """The scheme this ask names, if any.
 
     The classifier's own ``agriculture_subjects`` is tried first because it is
@@ -81,11 +114,21 @@ def _resolve_ask(ask: Ask, query: str, aliases: AliasIndex) -> SchemeMatch | Non
             return match
     if ask.subject_categories is not SubjectCategory.SCHEME:
         return None
-    return find_scheme(query, aliases)
+    match = find_scheme(query, aliases)
+    if match is not None or threshold is None or not ask.agriculture_subjects:
+        return match
+    # Last resort, and only against the ask's own subject: the farmer may have
+    # misspelled the scheme. Never against the query — a long sentence scores
+    # poorly against a two-word alias, so the ratio would be meaningless.
+    return find_similar_scheme(ask.agriculture_subjects, aliases, threshold)
 
 
 def resolve_scheme_subjects(
-    intent: Intent, query: str, aliases: AliasIndex
+    intent: Intent,
+    query: str,
+    aliases: AliasIndex,
+    *,
+    fuzzy_threshold: float | None = NO_FUZZY_MATCHING,
 ) -> SchemeResolution:
     """Rewrite a matched ask's subject to its canonical scheme name, and its
     category to ``Scheme``.
@@ -107,6 +150,10 @@ def resolve_scheme_subjects(
     ``interaction_type`` is left alone: a mis-categorised ask usually still
     has the right verb ("how do I *apply* for PKVY" is an ``act`` either way).
 
+    ``fuzzy_threshold`` opts into similarity matching for misspellings, tried
+    only after every exact lookup has missed and only against an ask's own
+    extracted subject. Unset, matching is exact.
+
     Never adds, removes or reorders asks, and never touches ``confidence``:
     this refines what the classifier found, it does not classify. A scheme ask
     with no catalog entry is left carrying the farmer's own words — an
@@ -116,7 +163,7 @@ def resolve_scheme_subjects(
     resolved: list[Ask] = []
     matches: list[SchemeMatch] = []
     for ask in intent.asks:
-        match = _resolve_ask(ask, query, aliases)
+        match = _resolve_ask(ask, query, aliases, fuzzy_threshold)
         if match is None:
             resolved.append(ask)
             continue

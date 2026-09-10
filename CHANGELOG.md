@@ -23,6 +23,10 @@
   the classifier — `subject_categories` is the only thing discovery routes on,
   and the classifier does not know "PKVY" names a scheme. A non-scheme ask is
   matched on its own extracted subject only, never the shared query (#36)
+- `difflib` similarity fallback for a misspelled scheme name, after every
+  exact lookup misses and only against an ask's extracted subject.
+  `DSS_SCHEME_FUZZY_THRESHOLD` (default 0.85, `None` to disable); a match now
+  reports whether it was exact or fuzzy (#37)
 - Python project scaffolding: `pyproject.toml`, package layout, ruff, pytest (#57)
 - Framework-boundary enforcement — `core/` cannot import `pydantic_ai` or
   `pydantic_graph`, checked by ruff and by an AST test (#57)
