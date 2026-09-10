@@ -9,6 +9,7 @@ prove, since it never leaves the process.
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
 import httpx
@@ -84,3 +85,30 @@ async def test_a_real_429_response_is_returned_as_a_failure(
         result = await discovery.discover(query, ask_indices=(0,), transaction_id="t1")
 
     assert result.failures[0][0].status_code == 429
+
+
+async def test_the_outbound_request_is_logged(httpserver: HTTPServer, caplog) -> None:
+    """The response has always been logged; the request had no line at all, so
+    a turn's log showed what came back with no record of what was asked."""
+
+    on_discover = json.loads((FIXTURES / "discover_response.json").read_text())
+    httpserver.expect_request("/discover", method="POST").respond_with_json(on_discover)
+
+    with caplog.at_level(logging.INFO, logger="dss.trace"):
+        async with httpx.AsyncClient() as client:
+            discovery = HttpCapabilityDiscovery(
+                client=client,
+                base_url=_base_url(httpserver),
+                schema_pack_cache=SCHEMA_PACK_CACHE,
+            )
+            query = ProviderQuery(
+                capabilities=("openagrinet:WeatherObservation",),
+                languages=("hi",),
+                coverage=None,
+            )
+
+            await discovery.discover(query, ask_indices=(0,), transaction_id="t1")
+
+    assert "external=discovery event=request" in caplog.text
+    assert "/discover" in caplog.text
+    assert "request_id=t1" in caplog.text

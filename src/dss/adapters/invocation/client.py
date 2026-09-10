@@ -24,7 +24,10 @@ from dss.core.provider_discovery.models import (
     FailureClass,
     ProviderCapability,
 )
-from dss.observability.trace_log import log_external_response
+from dss.observability.trace_log import (
+    log_external_request,
+    log_external_response,
+)
 
 # Defined on the port, not here: a failed select is part of the contract, so
 # a caller can catch it without importing this adapter. Re-exported because
@@ -178,6 +181,13 @@ class HttpCapabilityInvocation:
             message_id=str(uuid4()),
             transaction_id=transaction_id,
             timestamp=datetime.now(UTC).isoformat(),
+        )
+        log_external_request(
+            "invocation",
+            transaction_id,
+            endpoint=f"{self._base_url}/select",
+            capability=capability.capability,
+            body=request_body,
         )
         try:
             response = await self._client.post(
