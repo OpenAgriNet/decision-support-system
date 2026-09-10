@@ -131,6 +131,13 @@ class Settings(BaseSettings):
     # set-but-missing → raise (see policy_loader), never boot on a different config.
     policy_config_path: Path | None = None
 
+    # Where the tenant's scheme catalog CSV is mounted (issue #34). Unlike the
+    # policy pack, nothing ships in the image: which schemes a deployment
+    # serves is the tenant's decision, so unset → no catalog, scheme
+    # enrichment is inert, and the loader warns once at boot. Set-but-missing
+    # raises, same as the policy pack.
+    schemes_config_path: Path | None = None
+
     # --- HTTP entrypoint (ADR-0006) ---------------------------------------
     # The concrete build that served the turn, echoed as `context.version`.
     dss_release: str = "v1.0.0"
