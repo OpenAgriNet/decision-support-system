@@ -10,6 +10,26 @@ from typing import Any
 
 import pytest
 
+from dss.config.settings import Settings
+
+
+@pytest.fixture(autouse=True)
+def _settings_ignore_dotenv(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep a developer's `.env` out of the suite.
+
+    `Settings` reads `.env` from the working directory, so anyone with one —
+    and `docs/RUNNING.md` tells you to make one — turns eight tests red for
+    reasons unrelated to their change. Every one of them constructs
+    `Settings()` expecting the network unset, which is only true on a machine
+    with no local config.
+
+    Autouse rather than opt-in: a test that forgot it would pass on CI and
+    fail on a laptop, which is the worst way round.
+    """
+
+    monkeypatch.setitem(Settings.model_config, "env_file", None)
+
+
 _TEXT = "What is the mandi price of wheat this week?"
 _TRANSACTION = "9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44"
 
