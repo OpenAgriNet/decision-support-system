@@ -184,6 +184,51 @@
   `claim.completed` denotes. Worth doing for a farmer on a slow model; not a
   fault today, but "streaming" reads as a promise the endpoint does not keep.
 
+## Testing
+
+- **Tier 7 needs its own workflow.** `tests/e2e/test_onion_price.py` drives one
+  turn through the assembled app against a real model — the only test that
+  answers "does a real model actually drive this pipeline". `run-tests.yml`
+  excludes it by path (`--ignore=tests/e2e`), so nothing runs it anywhere. If it
+  is worth having, something has to run it on a cadence; a skip that nobody
+  looks at lets the live path rot for weeks while CI stays green.
+
+  Points that matter more than the YAML:
+
+  - **`workflow_dispatch` + `schedule`, not `pull_request`.** A live model costs
+    money and fails for reasons a contributor cannot fix (rate limits, an
+    outage), so it must not block a merge — the stance the tier table already
+    takes for tier 6.
+  - **A GitHub `environment`** keeps the credentials out of the default secret
+    scope and can require a reviewer before a run spends anything.
+  - **`--no-cov`.** Coverage on a one-test run is noise, and
+    `--cov-fail-under=85` would fail the job.
+  - **Never add these secrets to `run-tests.yml`.** The path exclusion is the
+    only thing standing between a repo secret and a billable call on every pull
+    request.
+  - Wire a notification for a scheduled failure, or the job fails into a tab
+    nobody opens.
+  - Still open: whether the fake network (`pytest-httpserver`) is enough for a
+    scheduled run, or whether it should point at a staging network adapter.
+    Those are different tests with different failure meanings.
+
+- **The test's skip guard names a variable it does not use.** `MODEL` is
+  `azure:gpt-5.6-luna`, which `composition._resolve_model` builds from
+  `AZURE_OPENAI_ENDPOINT` / `AZURE_OPENAI_API_KEY`, but the `skipif` checks
+  `OPENAI_API_KEY`. Only a local-run annoyance now that CI excludes the folder
+  by path — set the one and the test runs, then fails asking for the others.
+  Gate on what the chosen model actually needs.
+
+- **`.env` cannot carry the model credentials, but `.env.example` implies it
+  can.** `pydantic-settings` reads `.env` into the `Settings` object, never into
+  `os.environ`, and the SDK reads only `os.environ` — so an `OPENAI_API_KEY`
+  line in `.env` reaches neither the SDK nor the test's own `skipif`.
+  `docs/RUNNING.md` says this for the Azure pair; `.env.example` lists
+  `OPENAI_API_KEY` / `OPENAI_ENDPOINT` under "For e2e tests" without the
+  caveat, so anyone copying it gets a silently skipped test. Also
+  `OPENAI_ENDPOINT` is not a name any SDK reads — the OpenAI SDK reads
+  `OPENAI_BASE_URL`.
+
 ## Stubs pending real implementations
 
 - **STUB(#83) — `adapters/llm/stub_llm.py`.** Delete this module once a real

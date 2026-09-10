@@ -29,6 +29,10 @@ jobs:
       - name: Check formatting
         run: uv run ruff format --check .
 
-      # eval tier is excluded via pyproject.toml addopts.
+      # Two tiers are deliberately not run here:
+      #   - tier 6 (eval) is excluded by `-m "not eval"` in pyproject.toml addopts.
+      #   - tier 7 (tests/e2e) calls a real model, so it is excluded by path.
       - name: Test
-        run: uv run pytest --cov=src/dss --cov-report=term-missing --cov-fail-under=85
+        run: >
+          uv run pytest --ignore=tests/e2e
+          --cov=src/dss --cov-report=term-missing --cov-fail-under=85
