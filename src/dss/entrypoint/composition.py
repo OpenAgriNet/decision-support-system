@@ -37,6 +37,7 @@ from dss.adapters.llm.pydantic_ai_provider import (
 )
 from dss.adapters.llm.stub import StubLLM
 from dss.adapters.schema_packs.filesystem import FilesystemSchemaPackSource
+from dss.adapters.scheme_catalog.csv_file import load_scheme_catalog
 from dss.adapters.sinks.file import FileTelemetrySink, FileTurnSink
 from dss.config.identity_loader import load_identity
 from dss.config.policy_loader import load_policy_pack
@@ -118,6 +119,10 @@ def build_runner_with_lifecycle(
     # skipped it would only surface the problem as missing spatial filters much
     # later. Read once here — every turn shares this index.
     area_lookup = CsvAreaLookup.load(settings.district_csv_path)
+    # The scheme catalog is the other way round: nothing ships, because which
+    # schemes a deployment serves is the tenant's call. Unset is inert and the
+    # loader says so.
+    scheme_catalog = load_scheme_catalog(settings.schemes_config_path)
 
     discover, invocation, schemas, schema_context_index, client = _network(
         settings, area_lookup=area_lookup, fetch=fetch
@@ -149,6 +154,7 @@ def build_runner_with_lifecycle(
         intent_llm=_intent_llm(settings),
         moderation_llm=_moderation_llm(settings),
         policies=policies,
+        scheme_catalog=scheme_catalog,
         components=components,
         turns=FileTurnSink(settings.turns_path),
         telemetry=FileTelemetrySink(settings.telemetry_path),
