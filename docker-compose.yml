@@ -12,7 +12,7 @@ services:
       AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:?set AZURE_OPENAI_ENDPOINT in .env}
       AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:?set AZURE_OPENAI_API_KEY in .env}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
-      DSS_INVOCATION_BASE_URL :${DSS_INVOCATION_BASE_URL:?set DSS_INVOCATION_BASE_URL in .env}
+      DSS_INVOCATION_BASE_URL: ${DSS_INVOCATION_BASE_URL:?set DSS_INVOCATION_BASE_URL in .env}
       DSS_DISCOVERY_BASE_URL: ${DSS_DISCOVERY_BASE_URL:?set DSS_DISCOVERY_BASE_URL in .env}
       DSS_SCHEMA_PACK_DIR: ${DSS_SCHEMA_PACK_DIR:?set DSS_SCHEMA_PACK_DIR in .env}
     ports:
@@ -22,4 +22,30 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+
+  # Somewhere for the spans to go. Behind a profile, so the default `up` does
+  # not start it:
+  #
+  #     docker compose --profile tracing up -d
+  #
+  # Only worth starting when you want to look. Nothing listening on the
+  # endpoint means the DSS's exporter retries loudly and buries the rest of
+  # the log — so leave OTEL_EXPORTER_OTLP_ENDPOINT unset otherwise, which is
+  # its default.
+  otel-collector:
+    profiles: [tracing]
+    image: otel/opentelemetry-collector-contrib:${OTEL_COLLECTOR_TAG:-latest}
+    # Printing to its own log is the whole job here. A deployment replaces
+    # this with a config that forwards to Langfuse or wherever else, which is
+    # why the config is a mounted file rather than baked in.
+    command:
+      - --config=/etc/otel/collector.yaml
+    volumes:
+      - ./otel/collector.yaml:/etc/otel/collector.yaml:ro
+    ports:
+      # OTLP/HTTP. The DSS reaches it as http://otel-collector:4318 from
+      # inside the compose network; the published port is for a DSS running on
+      # the host instead.
+      - "127.0.0.1:${OTEL_HOST_PORT:-4318}:4318"
     restart: unless-stopped
