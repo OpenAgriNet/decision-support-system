@@ -56,6 +56,7 @@ async def test_discover_posts_to_the_discover_endpoint_and_maps_the_response() -
     discovery = _discovery(_client_returning(on_discover))
     query = ProviderQuery(
         capabilities=("openagrinet:WeatherObservation",),
+        subject_category="Weather",
         languages=("hi",),
         coverage=None,
     )
@@ -81,6 +82,7 @@ async def test_discover_sends_the_given_transaction_id() -> None:
     discovery = _discovery(client)
     query = ProviderQuery(
         capabilities=("openagrinet:WeatherObservation",),
+        subject_category="Weather",
         languages=("hi",),
         coverage=None,
     )
@@ -102,6 +104,7 @@ async def test_a_refreshed_cache_is_reflected_without_rewiring() -> None:
     discovery = _discovery(_client_returning(on_discover), schema_pack_cache=cache)
     query = ProviderQuery(
         capabilities=("openagrinet:WeatherObservation",),
+        subject_category="Weather",
         languages=("hi",),
         coverage=None,
     )
@@ -123,6 +126,7 @@ async def test_a_non_2xx_response_is_returned_as_a_failure() -> None:
     )
     query = ProviderQuery(
         capabilities=("openagrinet:WeatherObservation",),
+        subject_category="Weather",
         languages=("hi",),
         coverage=None,
     )
@@ -143,6 +147,7 @@ async def test_a_response_that_cannot_be_mapped_is_returned_as_a_defect() -> Non
     discovery = _discovery(_client_returning({"message": {"catalogs": [{}]}}))
     query = ProviderQuery(
         capabilities=("openagrinet:WeatherObservation",),
+        subject_category="Weather",
         languages=("hi",),
         coverage=None,
     )
@@ -165,6 +170,7 @@ async def test_a_body_that_is_not_json_is_returned_as_a_defect() -> None:
     discovery = _discovery(httpx.AsyncClient(transport=httpx.MockTransport(handler)))
     query = ProviderQuery(
         capabilities=("openagrinet:WeatherObservation",),
+        subject_category="Weather",
         languages=("hi",),
         coverage=None,
     )
@@ -188,6 +194,7 @@ async def test_a_connection_error_is_returned_as_a_failure() -> None:
     discovery = _discovery(client)
     query = ProviderQuery(
         capabilities=("openagrinet:WeatherObservation",),
+        subject_category="Weather",
         languages=("hi",),
         coverage=None,
     )

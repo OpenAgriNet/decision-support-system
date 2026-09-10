@@ -14,15 +14,18 @@
       "textSearch": "weather forecast rain next five days",
       "filters": {
         "type": "jsonpath",
-        "expression": "$.catalogs[*].resources[*] ? (@.resourceAttributes.\"@type\" == \"openagrinet:WeatherObservation\")"
+        "expression": "$.catalogs[*].resources[*] ? (@.resourceAttributes.subjectCategories[*] == \"Weather\")"
       },
       "spatial": [
         {
           "op": "S_DWITHIN",
-          "targets": "$.catalogs[*].provider.availableAt[*].geo",
+          "targets": "$.catalogs[*].resources[*].resourceAttributes.coverageAreas[*]",
           "geometry": {
             "type": "Point",
-            "coordinates": [73.7898, 19.9975]
+            "coordinates": [
+              73.7898,
+              19.9975
+            ]
           },
           "distanceMeters": 250000,
           "quantifier": "ANY",

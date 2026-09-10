@@ -72,7 +72,10 @@ def _query_for_ask(
     if not types:
         return None, event
     return ProviderQuery(
-        capabilities=types, languages=languages, coverage=coverage
+        capabilities=types,
+        subject_category=ask.subject_categories.value,
+        languages=languages,
+        coverage=coverage,
     ), None
 
 

@@ -18,11 +18,16 @@ from dss.core.provider_discovery.models import ProviderQuery
 from tools.mock_network.catalog import requested_types
 
 
-def _real_request(*capabilities: str) -> dict:
+def _real_request(*capabilities: str, subject_category: str = "Weather") -> dict:
     """A discover body built by the DSS's own builder."""
 
     return build_discover_request(
-        ProviderQuery(capabilities=capabilities, languages=("en",), coverage=None),
+        ProviderQuery(
+            capabilities=capabilities,
+            subject_category=subject_category,
+            languages=("en",),
+            coverage=None,
+        ),
         schema_context_index={
             c: f"https://example.test/{c.split(':')[-1]}/v0.1/context.jsonld"
             for c in capabilities
@@ -40,7 +45,7 @@ def test_one_requested_type_is_read_back() -> None:
 
 
 def test_several_requested_types_are_all_read_back() -> None:
-    """The DSS ORs them into one predicate when an ask spans capabilities.
+    """The DSS names one `schemaContext` per capability when an ask spans several.
 
     Reading only the first would make the mock answer half a question, and the
     turn would come back partially answered for no reason a log would explain.
@@ -54,12 +59,12 @@ def test_several_requested_types_are_all_read_back() -> None:
     )
 
 
-def test_a_request_with_no_filter_asks_for_nothing() -> None:
-    """A malformed or filter-less body yields none rather than raising.
+def test_a_request_with_no_schema_context_asks_for_nothing() -> None:
+    """A malformed body yields none rather than raising.
 
     The mock is a dev tool: answering nothing is a `no_match`, which is
     readable. A traceback in the mock's log while the DSS reports a provider
     defect is two puzzles instead of one.
     """
 
-    assert requested_types({"message": {}}) == ()
+    assert requested_types({"context": {}}) == ()

@@ -24,3 +24,10 @@
 ### Fixed
 - `Settings()` no longer raises when `.env` carries non-DSS vars the LLM SDK and
   Langfuse read directly (`OPENAI_API_KEY`, `OTEL_*`) — `extra="ignore"` (#57)
+- `/discover` now matches its spatial filter against
+  `resources[*].resourceAttributes.coverageAreas[*]` — where a resource
+  *applies* — instead of `provider.availableAt[*].geo`, the provider's own
+  location, which wrongly excluded a provider serving a district it is not
+  based in. The JSONPath filter matches `subjectCategories` rather than
+  `@type`, since the envelope's `schemaContext` already names the resolved
+  type (#19)

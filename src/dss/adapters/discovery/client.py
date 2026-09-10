@@ -195,13 +195,21 @@ def _schema_context_urls(
     ]
 
 
-def _jsonpath_filter(capabilities: tuple[str, ...]) -> dict[str, str]:
-    predicate = " || ".join(
-        f'@.resourceAttributes."@type" == "{capability}"' for capability in capabilities
-    )
+def _jsonpath_filter(subject_category: str) -> dict[str, str]:
+    """Match resources by `subjectCategories`, not by `@type`.
+
+    The envelope's `schemaContext` already names the resolved @type, so that is
+    what pins the query to a specific resource type. Repeating it here only
+    narrowed the match to providers that also publish `@type` on every
+    resource, for no gain.
+    """
+
     return {
         "type": "jsonpath",
-        "expression": f"$.catalogs[*].resources[*] ? ({predicate})",
+        "expression": (
+            "$.catalogs[*].resources[*] ? "
+            f'(@.resourceAttributes.subjectCategories[*] == "{subject_category}")'
+        ),
     }
 
 
@@ -211,7 +219,11 @@ def _spatial_filter(query: ProviderQuery) -> list[dict[str, Any]]:
     return [
         {
             "op": "S_DWITHIN",
-            "targets": "$.catalogs[*].provider.availableAt[*].geo",
+            # Where the *resource* applies, not where the provider's office is
+            # (`provider.availableAt[*].geo`, which this used to target): a
+            # provider based in one district can serve another, so filtering on
+            # their own location excluded them wrongly.
+            "targets": "$.catalogs[*].resources[*].resourceAttributes.coverageAreas[*]",
             "geometry": {
                 "type": "Point",
                 "coordinates": [query.coverage.lon, query.coverage.lat],
@@ -230,7 +242,7 @@ def build_discover_request(
     transaction_id: str,
     timestamp: str,
 ) -> dict[str, Any]:
-    intent: dict[str, Any] = {"filters": _jsonpath_filter(query.capabilities)}
+    intent: dict[str, Any] = {"filters": _jsonpath_filter(query.subject_category)}
     spatial = _spatial_filter(query)
     if spatial:
         intent["spatial"] = spatial

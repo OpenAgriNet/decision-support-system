@@ -55,6 +55,7 @@ async def test_the_wired_adapter_resolves_a_query() -> None:
         )
         query = ProviderQuery(
             capabilities=("openagrinet:MandiPrice",),
+            subject_category="Market",
             languages=("hi",),
             coverage=None,
         )

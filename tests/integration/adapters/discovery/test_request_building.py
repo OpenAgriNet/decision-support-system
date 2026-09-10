@@ -22,6 +22,7 @@ SCHEMA_BASE_URL = "https://schemas.openagrinet.global/schema"
 def test_builds_the_envelope_from_given_ids_and_timestamp() -> None:
     query = ProviderQuery(
         capabilities=("openagrinet:WeatherObservation",),
+        subject_category="Weather",
         languages=("hi",),
         coverage=None,
     )
@@ -44,6 +45,7 @@ def test_builds_the_envelope_from_given_ids_and_timestamp() -> None:
 def test_schema_context_is_built_from_the_capability_index() -> None:
     query = ProviderQuery(
         capabilities=("openagrinet:WeatherObservation",),
+        subject_category="Weather",
         languages=("hi",),
         coverage=None,
     )
@@ -62,9 +64,14 @@ def test_schema_context_is_built_from_the_capability_index() -> None:
     ]
 
 
-def test_the_jsonpath_filter_matches_a_single_type() -> None:
+def test_the_jsonpath_filter_matches_the_subject_category() -> None:
+    """The filter matches `subjectCategories`, not `@type` — `schemaContext` is
+    what names the resolved type (see the test above), so repeating it here
+    would only exclude providers that omit `@type` on a resource."""
+
     query = ProviderQuery(
         capabilities=("openagrinet:WeatherObservation",),
+        subject_category="Weather",
         languages=("hi",),
         coverage=None,
     )
@@ -81,41 +88,14 @@ def test_the_jsonpath_filter_matches_a_single_type() -> None:
     assert filters["type"] == "jsonpath"
     assert filters["expression"] == (
         "$.catalogs[*].resources[*] ? "
-        '(@.resourceAttributes."@type" == "openagrinet:WeatherObservation")'
-    )
-
-
-def test_the_jsonpath_filter_ors_together_multiple_types() -> None:
-    """Unverified against a real multi-@type discover call."""
-    index = {
-        "openagrinet:MandiPrice": ("MandiPrice", "v0.1"),
-        "openagrinet:MarketIntelligence": ("MarketIntelligence", "v0.1"),
-    }
-    query = ProviderQuery(
-        capabilities=("openagrinet:MandiPrice", "openagrinet:MarketIntelligence"),
-        languages=("hi",),
-        coverage=None,
-    )
-
-    request = build_discover_request(
-        query,
-        schema_context_index=index,
-        message_id="m",
-        transaction_id="t",
-        timestamp="2026-08-26T06:11:58.004Z",
-    )
-
-    filters = request["message"]["intent"]["filters"]
-    assert filters["expression"] == (
-        "$.catalogs[*].resources[*] ? "
-        '(@.resourceAttributes."@type" == "openagrinet:MandiPrice" || '
-        '@.resourceAttributes."@type" == "openagrinet:MarketIntelligence")'
+        '(@.resourceAttributes.subjectCategories[*] == "Weather")'
     )
 
 
 def test_no_coverage_means_no_spatial_filter() -> None:
     query = ProviderQuery(
         capabilities=("openagrinet:WeatherObservation",),
+        subject_category="Weather",
         languages=("hi",),
         coverage=None,
     )
@@ -134,6 +114,7 @@ def test_no_coverage_means_no_spatial_filter() -> None:
 def test_coverage_becomes_an_s_dwithin_spatial_filter() -> None:
     query = ProviderQuery(
         capabilities=("openagrinet:WeatherObservation",),
+        subject_category="Weather",
         languages=("hi",),
         coverage=Coverage(lat=19.9975, lon=73.7898, radius_m=250000),
     )
@@ -156,6 +137,7 @@ def test_coverage_becomes_an_s_dwithin_spatial_filter() -> None:
 def test_textsearch_is_never_included() -> None:
     query = ProviderQuery(
         capabilities=("openagrinet:WeatherObservation",),
+        subject_category="Weather",
         languages=("hi",),
         coverage=None,
     )
