@@ -61,7 +61,7 @@ The DSS is an **Experience Layer module** used when an interaction requires inte
 
 The DSS decomposes into the following logical functions. Each has a single purpose. They are listed in execution order, except that functions 1 and 2 run **concurrently** on this branch (§3.0, ADR-0003).
 
-1. **Intent recognition and enrichment** converts the request into a structured capability need without binding it to a channel, resolving references against previous historical context. Enrichment may run in the same LLM call as intent recognition or as a separate step; the choice is an implementation decision. *As implemented on this branch, intent classification decomposes the turn into `asks` (each a `subject_categories` + `interaction_type` + optional `agriculture_subjects`) plus a `confidence` (§5.2), and runs independently of moderation.*
+1. **Intent recognition and enrichment** converts the request into a structured capability need without binding it to a channel, resolving references against previous historical context. Enrichment may run in the same LLM call as intent recognition or as a separate step; the choice is an implementation decision. *As implemented on this branch, intent classification decomposes the turn into `asks` (each a `subject_categories` + `interaction_type` + optional `agriculture_subjects`) plus a `confidence` (§5.2), and runs independently of moderation. Enrichment is a *separate, deterministic step* rather than part of the classifier's LLM call: it resolves a scheme named colloquially ("makhana scheme", "PKVY") to the official scheme name against a tenant-mounted catalog, between classification and provider discovery (§5.2, ADR-0007).*
 2. **Moderation and policy checks** decide whether an interaction may proceed. Runs in parallel with (1), judging the raw query with history as context (§3.0).
 3. **Skill discovery** selects the smallest relevant set of permitted skills for the interaction.
 4. **Persona and context composition** applies configured behaviour and only the context permitted for the interaction.
@@ -237,6 +237,20 @@ The DSS uses **intent-based routing**: extract an intent once, then match unifor
 }
 ```
 `interaction_type` names what the farmer wants done — **advise** (explain/guide), **observe** (look up a value/record/status), **act** (book, apply, submit, update, escalate). A turn holding several needs ("wheat price and will it rain?") yields several asks. The layered-extraction cache pipeline below remains directional; this branch implements the LLM-classifier axis only, run in parallel with moderation.
+
+**Scheme enrichment (as implemented on this branch — ADR-0007).** Between classification and discovery, `core/enrichment/service.py::resolve_scheme_subjects` rewrites a scheme ask's `agriculture_subjects` to the official scheme name, matched against a **scheme catalog** the tenant mounts as CSV (`DSS_SCHEMES_CONFIG_PATH`; nothing ships in the image). It is deterministic — a lookup, not a model call — and matches the longest whole-token **alias** span, trying the ask's own subject before the raw query.
+
+This is a **pre-discovery hint, not a governed-code source.** Routing uses `subject_categories` alone (§5.2), so what canonicalization buys is a subject the planner can build a request from and the composer can name back to the farmer. Governed codes still come only from a provider's own advertised vocabulary via `describe_capability` (§5.4). Two consequences worth carrying forward: the catalog must hold no bare commodity words (`makhana` as an alias makes "makhana price" a scheme ask) and nothing in the code enforces that; and enrichment never *creates* an ask, so a scheme the classifier did not recognise at all stays unresolved.
+
+**Domain language.** Terms used precisely throughout this document and the code:
+
+| Term | Meaning |
+|---|---|
+| **Ask** | One thing a turn wants: a `subject_categories` + `interaction_type` + optional `agriculture_subjects`. A turn may hold several. |
+| **Scheme catalog** | The tenant-mounted list of government schemes the deployment serves — `scheme_code`, `scheme_name`, `scheme_aliases`. Tenant-owned domain data, not operator config. |
+| **Alias** | One way a farmer might name a scheme ("PKVY", "organic farming scheme"). Indexed normalized; must be scheme-distinctive, never a bare commodity word. |
+| **Canonicalize** | Replace an ask's free-text subject with the catalog's official scheme name, *without* changing what kind of ask it is. |
+| **Governed code** | A value a provider advertises as one it serves (`supportedCommodities: 78=Tomato`). Comes from the network, never from DSS config. |
 
 **Layered extraction (v1 direction).** Each layer is cheaper than the next; the pipeline stops at the first layer that returns a confident intent. The layers, in order:
 
