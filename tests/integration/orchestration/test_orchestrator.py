@@ -36,7 +36,7 @@ from dss.core.shared.models import (
 )
 from dss.orchestration.orchestrator import Components, Orchestrator
 from dss.ports.area_lookup import AreaMatch
-from tests.support.fakes import FakeAreaLookup
+from tests.support.fakes import FakeAreaLookup, FakeSchemeCatalog
 
 DELETE_COMMAND = LlmPolicy(
     id="delete-command",
@@ -197,6 +197,7 @@ def _build(
         intent_llm=_FakeIntentLLM(intent),
         moderation_llm=_FakeModerationLLM(violated=violated),
         policies=list(policies),
+        scheme_catalog=FakeSchemeCatalog(),
         components=Components(
             discover=_FakeDiscovery(discovery), plan=plan, compose=compose
         ),

@@ -4,7 +4,9 @@ objects and returns plain objects.
 
 Order is code, not config. What this function does *is* the sequence.
 
-Three components so far: intent, moderation, provider discovery. Intent and
+Four components so far: intent, scheme enrichment, moderation, provider
+discovery. Enrichment sits between intent and discovery — it needs the
+classified asks, and discovery routes on what it leaves behind. Intent and
 moderation are independent — moderation judges harm on the raw query, intent
 classifies capability need, and neither consumes the other's output — so they
 run concurrently (ADR-0003) and the turn's latency is the slower of the two
@@ -30,6 +32,7 @@ from datetime import UTC, datetime
 import anyio
 from pydantic import BaseModel, ConfigDict
 
+from dss.core.enrichment.service import resolve_scheme_subjects
 from dss.core.intent.models import Intent
 from dss.core.intent.service import classify_intent
 from dss.core.moderation.models import (
@@ -41,9 +44,14 @@ from dss.core.moderation.service import moderate
 from dss.core.policy.models import Policy
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.shared.models import UserTurn
-from dss.observability.trace_log import bind_request_id, trace_component
+from dss.observability.trace_log import (
+    bind_request_id,
+    log_event,
+    trace_component,
+)
 from dss.orchestration.discovery import DiscoverProviders
 from dss.ports.llm import LLMProvider
+from dss.ports.scheme_catalog import SchemeCatalog
 
 
 def _nothing_discovered() -> DiscoveryResult:
@@ -59,6 +67,38 @@ def _nothing_discovered() -> DiscoveryResult:
     """
 
     return DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
+
+
+def _enrich(intent: Intent, turn: UserTurn, catalog: SchemeCatalog | None) -> Intent:
+    """Resolve any scheme the turn names to its official name.
+
+    Between intent and discovery because it can only be either: it needs the
+    classified asks, and discovery routes on what it leaves behind.
+
+    Every resolution is logged. The rewrite is otherwise invisible — the ask
+    that reaches discovery no longer holds the words the farmer used — and
+    when a catalog entry is wrong, this line is what says which alias did it.
+    Only catalog-authored text is logged: `matched_alias` is a key from the
+    index, not the farmer's phrasing, so nothing here is PII.
+
+    ``None`` means no catalog was mounted, which is a real deployment state
+    (nothing ships in the image) rather than a mistake — the turn proceeds
+    with the farmer's own words.
+    """
+
+    if catalog is None:
+        return intent
+
+    resolution = resolve_scheme_subjects(intent, turn.original_query, catalog.aliases())
+    for match in resolution.matches:
+        log_event(
+            "enrichment",
+            turn.transaction_id,
+            event="scheme_resolved",
+            alias=match.matched_alias,
+            scheme_code=match.scheme.code,
+        )
+    return resolution.intent
 
 
 class TurnResult(BaseModel):
@@ -90,6 +130,7 @@ async def run_turn(
     moderation_llm: LLMProvider,
     policies: Sequence[Policy],
     discover_providers: DiscoverProviders,
+    scheme_catalog: SchemeCatalog | None = None,
     now: datetime | None = None,
 ) -> TurnResult:
     """Classify intent, moderate the turn, and find who can answer it.
@@ -121,6 +162,8 @@ async def run_turn(
         nonlocal intent, discovery
         with trace_component("intent", turn.transaction_id):
             intent = await classify_intent(turn, intent_llm)
+        with trace_component("enrichment", turn.transaction_id):
+            intent = _enrich(intent, turn, scheme_catalog)
         with trace_component("discovery", turn.transaction_id):
             discovery = await discover_providers(
                 intent, turn, now=now or datetime.now(UTC)

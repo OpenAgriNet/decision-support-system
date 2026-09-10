@@ -9,9 +9,30 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Sequence
 
+from dss.core.enrichment.models import Scheme
+from dss.core.enrichment.normalize import alias_key
 from dss.core.shared.errors import ProviderUnavailable
 from dss.core.shared.models import TurnContext, TurnEvent, UserTurn
 from dss.ports.area_lookup import AreaMatch
+
+
+class FakeSchemeCatalog:
+    """Satisfies `ports.scheme_catalog.SchemeCatalog` from a plain mapping of
+    alias text to scheme name.
+
+    Normalizes its keys with the real `alias_key`, because a fake that indexed
+    them differently would let a test pass on a lookup the adapter could never
+    serve. Default-empty, which is the unmounted-catalog case.
+    """
+
+    def __init__(self, schemes: dict[str, str] | None = None) -> None:
+        self._aliases = {
+            alias_key(alias): Scheme(code=alias_key(alias), name=name)
+            for alias, name in (schemes or {}).items()
+        }
+
+    def aliases(self):
+        return self._aliases
 
 
 class FakeRunner:

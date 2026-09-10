@@ -71,6 +71,7 @@ from dss.orchestration.plan import Plan
 from dss.orchestration.turn import run_turn
 from dss.ports.area_lookup import AreaLookup
 from dss.ports.llm import LLMProvider
+from dss.ports.scheme_catalog import SchemeCatalog
 from dss.ports.sinks import TelemetrySink, TurnSink
 
 # A moderation outcome is not a turn status: `CLARIFY` means the DSS understood
@@ -123,6 +124,7 @@ class Orchestrator:
         intent_llm: LLMProvider,
         moderation_llm: LLMProvider,
         policies: Sequence[Policy],
+        scheme_catalog: SchemeCatalog,
         components: Components,
         turns: TurnSink,
         telemetry: TelemetrySink,
@@ -132,6 +134,13 @@ class Orchestrator:
         self._intent_llm = intent_llm
         self._moderation_llm = moderation_llm
         self._policies = policies
+        # Required, not optional. `run_turn` accepts no catalog because a pure
+        # function should not demand wiring a test does not care about; the
+        # composition root has no such excuse, and an unmounted catalog is
+        # already representable — as an empty one, which the loader warns
+        # about. Defaulting here would make a wiring mistake and a missing
+        # mount look identical.
+        self._scheme_catalog = scheme_catalog
         self._components = components
         self._turns = turns
         self._telemetry = telemetry
@@ -152,6 +161,7 @@ class Orchestrator:
             moderation_llm=self._moderation_llm,
             policies=self._policies,
             discover_providers=self._components.discover,
+            scheme_catalog=self._scheme_catalog,
         )
         decision = result.decision
         self._note("moderation", ctx, decision.outcome.value)
