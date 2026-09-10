@@ -16,6 +16,13 @@
   match; `Orchestrator` now requires a catalog (#35)
 - `log_event` trace helper for a decision a component made, as distinct from
   the enter/exit span saying it ran (#35)
+
+
+### Changed
+- An alias hit now sets an ask's `subject_categories` to `Scheme`, overriding
+  the classifier — `subject_categories` is the only thing discovery routes on,
+  and the classifier does not know "PKVY" names a scheme. A non-scheme ask is
+  matched on its own extracted subject only, never the shared query (#36)
 - Python project scaffolding: `pyproject.toml`, package layout, ruff, pytest (#57)
 - Framework-boundary enforcement — `core/` cannot import `pydantic_ai` or
   `pydantic_graph`, checked by ruff and by an AST test (#57)

@@ -98,9 +98,11 @@ Supporting choices, each following from the above:
 - **The catalog must contain no bare commodity words, and nothing in the code
   enforces that.** `makhana` and `foxnut` were listed as aliases in the source
   document and are wrong: with `makhana` in the catalog, "makhana price in
-  Patna mandi" resolves to a scheme. Issue #36 removes the category gate that
-  currently masks this, at which point the constraint becomes load-bearing.
-  A guard was considered and declined — the catalog is tenant-authored domain
+  Patna mandi" resolves to a scheme. This became load-bearing in #36, which
+  removed the category gate: an alias hit now overrides the classifier's
+  category, and the one structural guard left is that a non-scheme ask is
+  judged on its own extracted subject and never on the shared raw query.
+  A guard on the catalog itself was considered and declined — the catalog is tenant-authored domain
   data and the tenant owns its correctness (architecture doc §4.2 puts adopter
   config validation in the adopter's CI). The trace event on every resolution
   is the only breadcrumb when it goes wrong.

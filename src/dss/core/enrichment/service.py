@@ -62,28 +62,50 @@ def _resolve_ask(ask: Ask, query: str, aliases: AliasIndex) -> SchemeMatch | Non
     the only text that belongs to *this* ask: the raw query is shared by every
     ask in the turn, so searching it first would give both asks of "tell me
     about PKVY and the makhana scheme" whichever match happened to be longest.
-    The query is the fallback, for when the classifier extracted a phrase the
-    catalog does not list ("makhana") from a query that spells one out
-    ("makhana scheme").
+
+    The raw query is a fallback **only for an ask already categorised as a
+    scheme** — for when the classifier extracted a phrase the catalog does not
+    list ("makhana") from a query that spells one out ("makhana scheme").
+
+    That restriction is what makes overriding the category safe. A match now
+    rewrites an ask's category, so letting a non-scheme ask fall back to the
+    shared query would let one scheme mention anywhere in a turn convert every
+    other ask in it: "wheat price and the makhana scheme" would turn the wheat
+    market lookup into a scheme ask. A non-scheme ask is therefore judged on
+    its own extracted subject and nothing else.
     """
 
     if ask.agriculture_subjects:
         match = find_scheme(ask.agriculture_subjects, aliases)
         if match is not None:
             return match
+    if ask.subject_categories is not SubjectCategory.SCHEME:
+        return None
     return find_scheme(query, aliases)
 
 
 def resolve_scheme_subjects(
     intent: Intent, query: str, aliases: AliasIndex
 ) -> SchemeResolution:
-    """Rewrite every scheme ask's subject to its canonical scheme name.
+    """Rewrite a matched ask's subject to its canonical scheme name, and its
+    category to ``Scheme``.
 
-    Only asks the classifier already categorised as ``Scheme`` are touched.
-    That gate is what keeps "makhana scheme price in patna mandi" a market
-    lookup: the query names a scheme, but the ask is not one, so nothing is
-    rewritten. Issue #36 removes the gate once the catalog is trusted to hold
-    no bare commodity words.
+    The category override is the point. ``subject_categories`` is the only
+    thing provider discovery routes on, and the classifier does not know that
+    "PKVY" or "dhan dhaanya" names a scheme — so a mis-categorised ask is sent
+    to the wrong capability type and no later step can recover it. An alias
+    hit is better evidence than the classifier's guess.
+
+    This is safe **only because every alias in the catalog is
+    scheme-distinctive.** A bare commodity word would convert crop and market
+    asks wholesale: with ``makhana`` listed, "makhana price in patna mandi"
+    becomes a scheme ask. Nothing here enforces that — the catalog is
+    tenant-authored domain data (ADR-0007 §5) — so the restriction on the
+    query fallback in ``_resolve_ask`` is the one structural guard, and the
+    trace line in ``orchestration/turn.py`` is the only breadcrumb.
+
+    ``interaction_type`` is left alone: a mis-categorised ask usually still
+    has the right verb ("how do I *apply* for PKVY" is an ``act`` either way).
 
     Never adds, removes or reorders asks, and never touches ``confidence``:
     this refines what the classifier found, it does not classify. A scheme ask
@@ -94,17 +116,18 @@ def resolve_scheme_subjects(
     resolved: list[Ask] = []
     matches: list[SchemeMatch] = []
     for ask in intent.asks:
-        match = (
-            _resolve_ask(ask, query, aliases)
-            if ask.subject_categories is SubjectCategory.SCHEME
-            else None
-        )
+        match = _resolve_ask(ask, query, aliases)
         if match is None:
             resolved.append(ask)
             continue
         matches.append(match)
         resolved.append(
-            ask.model_copy(update={"agriculture_subjects": match.scheme.name})
+            ask.model_copy(
+                update={
+                    "agriculture_subjects": match.scheme.name,
+                    "subject_categories": SubjectCategory.SCHEME,
+                }
+            )
         )
 
     if not matches:

@@ -98,8 +98,9 @@ def test_canonicalizes_the_subject_of_a_scheme_ask() -> None:
 
 
 def test_leaves_a_non_scheme_ask_alone() -> None:
-    """The category gate. `makhana scheme` is in the query, but the classifier
-    called this a market lookup, so the price ask must not be rewritten."""
+    """`makhana scheme` is in the query, but this ask is a market lookup and a
+    non-scheme ask is judged on its own subject only — and `makhana` alone is
+    not an alias, by design."""
 
     intent = Intent(
         asks=(_ask("makhana", SubjectCategory.MARKET, InteractionType.OBSERVE),),
@@ -202,3 +203,74 @@ def test_does_not_synthesise_an_ask_on_an_empty_intent() -> None:
 
     assert resolution.intent.asks == ()
     assert resolution.matches == ()
+
+
+# --- the category override --------------------------------------------------
+
+
+def test_an_alias_hit_overrides_a_wrong_category() -> None:
+    """The classifier does not know `dhan dhaanya` names a scheme, and
+    `subject_categories` is the only thing discovery routes on — so an alias
+    hit is better evidence than its guess."""
+
+    intent = Intent(
+        asks=(_ask("paramparagat krishi vikas yojana", SubjectCategory.CROP),),
+        confidence=0.6,
+    )
+
+    resolution = resolve_scheme_subjects(intent, "how do i farm organically", ALIASES)
+
+    ask = resolution.intent.asks[0]
+    assert ask.subject_categories is SubjectCategory.SCHEME
+    assert ask.agriculture_subjects == PKVY.name
+
+
+def test_a_non_scheme_ask_is_not_rescued_by_the_shared_query() -> None:
+    """The guard that makes the override safe. The query is shared by every
+    ask, so a scheme mentioned anywhere in the turn must not convert the
+    others: the wheat lookup stays a market ask."""
+
+    intent = Intent(
+        asks=(
+            _ask("wheat", SubjectCategory.MARKET, InteractionType.OBSERVE),
+            _ask("makhana"),
+        ),
+    )
+
+    resolution = resolve_scheme_subjects(
+        intent, "wheat price and the makhana scheme", ALIASES
+    )
+
+    wheat, scheme = resolution.intent.asks
+    assert wheat.subject_categories is SubjectCategory.MARKET
+    assert wheat.agriculture_subjects == "wheat"
+    assert scheme.agriculture_subjects == MAKHANA.name
+    assert len(resolution.matches) == 1
+
+
+def test_interaction_type_survives_a_category_override() -> None:
+    """A mis-categorised ask usually still has the right verb."""
+
+    intent = Intent(
+        asks=(_ask("PKVY", SubjectCategory.CROP, InteractionType.ACT),),
+    )
+
+    ask = resolve_scheme_subjects(intent, "how do i apply", ALIASES).intent.asks[0]
+
+    assert ask.subject_categories is SubjectCategory.SCHEME
+    assert ask.interaction_type is InteractionType.ACT
+
+
+def test_a_bare_commodity_word_cannot_override_because_it_is_not_an_alias() -> None:
+    """The catalog holds no bare commodity words, which is what keeps a price
+    query a price query. This test states the constraint the override rests
+    on — the code does not enforce it (ADR-0007 §5)."""
+
+    intent = Intent(
+        asks=(_ask("makhana", SubjectCategory.MARKET, InteractionType.OBSERVE),),
+    )
+
+    resolution = resolve_scheme_subjects(intent, "makhana price in patna", ALIASES)
+
+    assert resolution.intent == intent
+    assert "makhana" not in ALIASES
