@@ -26,9 +26,15 @@ evidence:
 - `/discover`'s jsonpath filter naming the capability can only happen if intent
   resolved `subject_categories=Market` with `interaction_type=observe` — that is
   the only pair the schema-pack index maps to it.
-- `/select`'s commodity carrying onion can only happen if the planner read
-  "onion" out of the farmer's sentence and matched it to a field the pack
-  declares filterable.
+- `/select` carrying the commodity *code* `23` can only happen if the planner
+  read "onion" out of the farmer's sentence, matched it to `23=Onion` among the
+  three entries `describe_capability` advertised, and sent the provider's own
+  identifier rather than the English word. Two decoys make a correct match mean
+  something.
+
+There are two tests: the same turn over `Accept: application/json` and over
+`Accept: text/event-stream`. Each is a live turn, so running the file costs two
+sets of model calls.
 
 **The sentinel.** The modal price in `fixtures/select_response.json` is
 deliberately not a plausible onion price. A realistic number would leave "the
@@ -91,6 +97,20 @@ SELECT_RESPONSE = _load("select_response.json")
 _RESOURCE = DISCOVER_RESPONSE["message"]["catalogs"][0]["resources"][0]
 CAPABILITY = _RESOURCE["resourceAttributes"]["@type"]
 PROVIDER_ID = DISCOVER_RESPONSE["message"]["catalogs"][0]["provider"]["id"]
+
+# The vocabulary the fixture advertises, and the code onion sits under.
+#
+# The planner is told to match the farmer's word to a *name* in this list and
+# send that entry's *code* — never a code it recalls from elsewhere
+# (`config/defaults/skills/provider-invocation.md`). So `23` reaching `/select`
+# is the assertion: the model read "onion", found `23=Onion` among three
+# entries, and sent the provider's own identifier rather than the English word.
+#
+# Wheat and Tomato are decoys. With one entry, sending it would prove nothing.
+_ADVERTISED = _RESOURCE["resourceAttributes"]["supportedCommodities"]
+ONION_CODE = next(
+    entry["code"] for entry in _ADVERTISED if entry["name"].lower() == "onion"
+)
 
 _ANSWER = SELECT_RESPONSE["message"]["contract"]["commitments"][0]["resources"][0]
 EXPECTED_MODAL = next(
@@ -165,12 +185,18 @@ class _Network:
         body = json.loads(request.get_data())
         self.select_requests.append(body)
         commodity = _commodity_code(body)
-        if commodity is None or "onion" not in commodity.lower():
+        if commodity != ONION_CODE:
             # 400, not 404: `classify_status_code` treats only 400/401/403 as a
             # defect, so a 404 would be retried three times before failing —
             # slow, and wrong about whose fault it is.
             return self._json(
-                {"error": f"this provider serves onion, not {commodity!r}"}, status=400
+                {
+                    "error": (
+                        f"this provider serves commodity {ONION_CODE!r}, "
+                        f"not {commodity!r}"
+                    )
+                },
+                status=400,
             )
         return self._json(SELECT_RESPONSE)
 
@@ -208,21 +234,43 @@ def live_app(httpserver: HTTPServer, live_network: _Network, tmp_path: Path):
     return build_app(runner=build_runner(settings), settings=settings)
 
 
+def _turn_body(a_body, query: str) -> dict[str, Any]:
+    return a_body(
+        message__input=[{"role": "user", "content": [{"type": "text", "text": query}]}],
+        message__attributes={
+            "sourceLanguage": "en",
+            "targetLanguage": "en",
+            "channel": "web",
+        },
+    )
+
+
 def _ask(client: TestClient, a_body, query: str):
     return client.post(
         "/v1/turns",
-        json=a_body(
-            message__input=[
-                {"role": "user", "content": [{"type": "text", "text": query}]}
-            ],
-            message__attributes={
-                "sourceLanguage": "en",
-                "targetLanguage": "en",
-                "channel": "web",
-            },
-        ),
+        json=_turn_body(a_body, query),
         headers={"Accept": "application/json"},
     )
+
+
+def _frames(stream: str) -> list[tuple[str, dict[str, Any]]]:
+    """Parse an SSE body into ``(event name, decoded data)`` pairs.
+
+    Splitting on a blank line is safe because the payload is JSON: a newline
+    inside the model's prose is escaped to ``\\n`` and cannot end a frame. That
+    is one of the things this test exists to confirm — see its assertions.
+    """
+
+    parsed = []
+    for block in stream.strip().split("\n\n"):
+        lines = block.split("\n")
+        parsed.append(
+            (
+                lines[0].removeprefix("event: "),
+                json.loads(lines[1].removeprefix("data: ")),
+            )
+        )
+    return parsed
 
 
 def test_a_live_model_answers_the_onion_price(live_app, live_network, a_body) -> None:
@@ -248,7 +296,11 @@ def test_a_live_model_answers_the_onion_price(live_app, live_network, a_body) ->
     # pack declares filterable. The server would have answered 400 otherwise.
     assert live_network.select_requests, "the provider was never called"
     commodity = _commodity_code(live_network.select_requests[0])
-    assert commodity and "onion" in commodity.lower(), commodity
+    assert commodity == ONION_CODE, (
+        f"expected the advertised code {ONION_CODE!r} for Onion, got {commodity!r} — "
+        f"the model must match the farmer's word to a name in {_ADVERTISED} "
+        "and send that entry's code"
+    )
 
     # `/select` went to the provider `/discover` offered, not one the model
     # invented.
@@ -266,3 +318,71 @@ def test_a_live_model_answers_the_onion_price(live_app, live_network, a_body) ->
     print(f"\n  model wrote: {text!r}")
     assert str(EXPECTED_MIN) in re.sub(r"[,\s]", "", text), text
     assert str(EXPECTED_MAX) in re.sub(r"[,\s]", "", text), text
+
+
+def test_the_same_turn_streams_as_sse(live_app, live_network, a_body) -> None:
+    """The same turn over `Accept: text/event-stream`.
+
+    Tier 3 already pins the frame names and the sequence numbers
+    (`test_turn_route.py`), but against a fake runner whose claim carries canned
+    text. What only this tier can show is a *model's* prose surviving the
+    framing: the answer holds a currency symbol and may hold newlines, and an
+    SSE frame is delimited by a blank line — so an unescaped payload would split
+    one frame into two and the stream would not parse at all.
+    """
+
+    with TestClient(live_app) as client:
+        with client.stream(
+            "POST",
+            "/v1/turns",
+            json=_turn_body(a_body, QUERY),
+            headers={"Accept": "text/event-stream"},
+        ) as response:
+            assert response.status_code == 200
+            assert response.headers["content-type"].startswith("text/event-stream")
+            raw = "".join(response.iter_text())
+
+    # Parsing at all is the first assertion: `_frames` splits on a blank line,
+    # so a raw newline in the prose would surface here as a JSON error.
+    events = _frames(raw)
+    print(f"\n  frames: {[name for name, _ in events]}")
+
+    assert [name for name, _ in events] == [
+        "turn.created",
+        "claim.completed",
+        "turn.completed",
+    ]
+    # `turn.completed`, not `turn.failed` — the terminal name is chosen from the
+    # real outcome, and only UNAVAILABLE is a failed turn (`sse._terminal_name`).
+    assert events[-1][1]["message"]["outcome"]["status"] == "answered"
+
+    # One counter per turn, starting at 1 (the contract's minimum).
+    assert [frame["context"]["sequenceNumber"] for _, frame in events] == [1, 2, 3]
+
+    # Every frame files the turn under the same ids, so a client can join them.
+    trace_ids = {frame["context"]["traceId"] for _, frame in events}
+    assert len(trace_ids) == 1, trace_ids
+
+    # The claim frame carries what the model actually wrote, intact through
+    # JSON encoding and SSE framing.
+    claim = next(frame for name, frame in events if name == "claim.completed")
+    text = " ".join(block.get("text", "") for block in claim["message"]["content"])
+    print(f"  streamed: {text!r}")
+    assert str(EXPECTED_MIN) in re.sub(r"[,\s]", "", text), text
+    assert str(EXPECTED_MAX) in re.sub(r"[,\s]", "", text), text
+
+    # A non-ASCII character round-tripped rather than being mangled or escaped
+    # into a literal `\uXXXX` the client would have to decode itself.
+    assert text == text.encode("utf-8").decode("utf-8")
+
+    # The terminal frame carries the sources, and every citation in the claim
+    # resolves against them — the same referential check the JSON test makes,
+    # but across two frames rather than one body.
+    listed = {source["id"] for source in events[-1][1]["message"]["sources"]}
+    cited = {
+        annotation["sourceId"]
+        for block in claim["message"]["content"]
+        for annotation in block.get("annotations", ())
+    }
+    assert cited, "the streamed answer cited nothing"
+    assert cited <= listed, f"cited {cited - listed}, listed {listed}"
