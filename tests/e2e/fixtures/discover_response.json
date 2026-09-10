@@ -1,0 +1,46 @@
+{
+  "context": {
+    "action": "on_discover",
+    "version": "2.0.0"
+  },
+  "message": {
+    "catalogs": [
+      {
+        "id": "cat:agmarknet:mandi-price",
+        "descriptor": {
+          "code": "AGMARKNET-01",
+          "name": "Agmarknet"
+        },
+        "provider": {
+          "id": "agmarknet",
+          "descriptor": {
+            "code": "AGMARKNET-01",
+            "name": "Agmarknet"
+          },
+          "availableAt": [
+            {
+              "geo": {
+                "type": "Polygon",
+                "coordinates": [[[68.1, 8.0], [97.4, 8.0], [97.4, 37.1], [68.1, 37.1], [68.1, 8.0]]]
+              }
+            }
+          ]
+        },
+        "resources": [
+          {
+            "id": "res:agmarknet:daily-price",
+            "descriptor": {
+              "name": "Daily mandi price"
+            },
+            "resourceAttributes": {
+              "@context": "https://schemas.openagrinet.global/schema/MandiPrice/v0.1/context.jsonld",
+              "@type": "openagrinet:MandiPrice",
+              "informationMode": "OnDemand",
+              "subjectCategories": ["Market"]
+            }
+          }
+        ]
+      }
+    ]
+  }
+}
