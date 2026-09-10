@@ -3,6 +3,14 @@
 ## [Unreleased]
 
 ### Added
+- Scheme catalog: a `SchemeCatalog` port over a tenant-mounted CSV
+  (`scheme_code,scheme_name,scheme_aliases`), indexed by normalized alias at
+  boot. Nothing ships in the image; unset is inert plus a warning (#34)
+- `core/enrichment`: resolves a scheme ask's `agriculture_subjects` to the
+  official scheme name by longest whole-token alias span, gated on the
+  classifier having already said `Scheme`. Not wired yet (#34)
+- ADR-0007: scheme names resolved deterministically at intent time, as a
+  pre-discovery hint rather than a governed-code source (#34)
 - Python project scaffolding: `pyproject.toml`, package layout, ruff, pytest (#57)
 - Framework-boundary enforcement — `core/` cannot import `pydantic_ai` or
   `pydantic_graph`, checked by ruff and by an AST test (#57)
