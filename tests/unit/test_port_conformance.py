@@ -13,7 +13,7 @@ import asyncio
 from dss.core.shared.models import TurnContext, TurnEvent, TurnFinished, UserTurn
 from dss.orchestration.stub_runner import StubRunner
 from dss.ports.turn import TurnRunner
-from tests.support.fakes import FakeAreaLookup, FakeRunner
+from tests.support.fakes import FakeAreaLookup, FakeRunner, FakeSchemeCatalog
 
 
 def drive(runner: TurnRunner, turn: UserTurn, ctx: TurnContext) -> list[TurnEvent]:
@@ -66,6 +66,7 @@ def test_the_orchestrator_satisfies_the_port(a_turn, a_context):
         intent_llm=StubLLM(),
         moderation_llm=StubLLM(),
         policies=[],
+        scheme_catalog=FakeSchemeCatalog(),
         components=Components(
             discover=_no_discovery,
             plan=_unreached_plan,
