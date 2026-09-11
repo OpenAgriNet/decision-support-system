@@ -78,6 +78,9 @@ def build_select_request(
                             {
                                 "id": resource_id,
                                 "resourceAttributes": resource_attributes,
+                                "quantity": {
+                                    "count": 1
+                                }
                             }
                         ],
                         "offer": {
