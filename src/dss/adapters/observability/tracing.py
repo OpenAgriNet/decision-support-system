@@ -88,7 +88,16 @@ def configure_tracing() -> None:
     # Pydantic AI, not as a destination. Where traces go is the OTLP endpoint's
     # business, and shipping them to a third-party SaaS is not a decision this
     # module should make silently.
-    logfire.configure(send_to_logfire=False, console=False)
+    # `scrubbing=False`: logfire's default scrubber redacts any attribute whose
+    # key matches a sensitive-name pattern, and `langfuse.session.id` matches on
+    # "session" — the id arrived at Langfuse as the literal string
+    # "[Scrubbed due to 'session']", so filtering by session found nothing.
+    #
+    # Turning it off is consistent with the rest of this deployment rather than
+    # a new exposure: `include_content` already puts the query and the answer in
+    # the span, so a scrubber over the id attributes was protecting nothing that
+    # was not already there.
+    logfire.configure(send_to_logfire=False, console=False, scrubbing=False)
     Agent.instrument_all(settings)
     logger.info("tracing on, exporting to %s", os.environ[_ENDPOINT])
 
