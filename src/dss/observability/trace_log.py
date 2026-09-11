@@ -28,7 +28,7 @@ large and may contain farmer-facing content — see CONVENTIONS.md on PII before
 shipping these lines to a broad-retention sink.
 
 ``request_id`` need not be passed everywhere: it is stashed in a context
-variable at the top of the turn (``bind_request_id``), so an adapter with no
+variable at the top of the turn (``bind_turn_ids``), so an adapter with no
 ``transaction_id`` in hand (the LLM provider port takes none) still tags its
 line correctly. Anyio copies the context into each child task, so the id set
 before the intent/moderation task group reaches both branches.
@@ -44,20 +44,44 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import Any
 
+from opentelemetry import trace
+
 logger = logging.getLogger("dss.trace")
 
 _request_id: ContextVar[str] = ContextVar("dss_request_id", default="-")
+_message_id: ContextVar[str] = ContextVar("dss_message_id", default="-")
+_session_id: ContextVar[str] = ContextVar("dss_session_id", default="-")
+
+# What an id renders as when there isn't one. `-` rather than an empty value or
+# OpenTelemetry's all-zeros id: a zeroed trace id looks like a real one in a
+# grep until you stop and count the characters.
+_ABSENT = "-"
 
 # Bodies over this are clipped so one line stays readable; the clip length is
 # generous because the whole point here is to see what came back.
 _MAX_BODY = 8000
 
 
-def bind_request_id(request_id: str) -> None:
-    """Make ``request_id`` the ambient id for everything downstream in this
-    turn's context (and its child tasks). Called once at the top of a turn."""
+def bind_turn_ids(
+    request_id: str,
+    *,
+    message_id: str | None = None,
+    session_id: str | None = None,
+) -> None:
+    """Make this turn's ids ambient for everything downstream in its context
+    (and its child tasks). Called once at the top of a turn.
+
+    ``request_id`` is the turn's ``transactionId``. ``message_id`` and
+    ``session_id`` are the other two the caller filters on; they are keyword
+    arguments and default to absent because only the orchestrator holds a
+    ``TurnContext`` carrying all three.
+    """
 
     _request_id.set(request_id)
+    if message_id is not None:
+        _message_id.set(message_id)
+    if session_id is not None:
+        _session_id.set(session_id)
 
 
 def current_request_id() -> str:
@@ -66,6 +90,40 @@ def current_request_id() -> str:
 
 def _rid(request_id: str | None) -> str:
     return request_id if request_id is not None else _request_id.get()
+
+
+def current_otel_ids() -> tuple[str, str]:
+    """The active span's trace and span ids, as the hex Langfuse displays.
+
+    Read from the *current* span rather than the turn's root, so a line logged
+    inside a Pydantic AI agent run points at that agent's span and not at the
+    turn — paste it into Langfuse and you land where the line was written.
+
+    Both are ``-`` when nothing is recording: no OTLP endpoint, so no exporter,
+    so no span context. That is every test and every local run.
+    """
+
+    context = trace.get_current_span().get_span_context()
+    if not context.is_valid:
+        return _ABSENT, _ABSENT
+    return format(context.trace_id, "032x"), format(context.span_id, "016x")
+
+
+def _ids(request_id: str | None = None) -> str:
+    """The id prefix every trace line opens with.
+
+    ``request_id`` stays first and keeps its meaning, so greps written against
+    the old format still match. The rest are appended: ``trace_id`` and
+    ``span_id`` are the OpenTelemetry hex ids, the same strings Langfuse shows,
+    so one line joins a log to a span without a search.
+    """
+
+    trace_id, span_id = current_otel_ids()
+    return (
+        f"request_id={_rid(request_id)} "
+        f"trace_id={trace_id} span_id={span_id} "
+        f"message_id={_message_id.get()} session_id={_session_id.get()}"
+    )
 
 
 @contextmanager
@@ -77,9 +135,8 @@ def trace_component(component: str, request_id: str | None = None) -> Iterator[N
             intent = await classify_intent(turn, llm)
     """
 
-    rid = _rid(request_id)
     start = time.monotonic()
-    logger.info("request_id=%s component=%s event=enter", rid, component)
+    logger.info("%s component=%s event=enter", _ids(request_id), component)
     status = "ok"
     try:
         yield
@@ -88,9 +145,12 @@ def trace_component(component: str, request_id: str | None = None) -> Iterator[N
         raise
     finally:
         elapsed_ms = (time.monotonic() - start) * 1000
+        # Rendered again rather than reused from the enter line: the ids are
+        # read from the *current* span, and the wrapped work may have opened
+        # and closed one of its own. Exit belongs to the span it exits into.
         logger.info(
-            "request_id=%s component=%s event=exit status=%s elapsed_ms=%.1f",
-            rid,
+            "%s component=%s event=exit status=%s elapsed_ms=%.1f",
+            _ids(request_id),
             component,
             status,
             elapsed_ms,
@@ -118,13 +178,13 @@ def log_external_request(
     logger.
     """
 
-    parts = [f"request_id={_rid(request_id)}", f"external={service}", "event=request"]
+    parts = [_ids(request_id), f"external={service}", "event=request"]
     parts.extend(f"{key}={value}" for key, value in fields.items())
     logger.info(" ".join(parts))
     if body is not None:
         logger.debug(
-            "request_id=%s external=%s event=request_body body=%s",
-            _rid(request_id),
+            "%s external=%s event=request_body body=%s",
+            _ids(request_id),
             service,
             _as_text(body),
         )
@@ -146,13 +206,18 @@ def log_external_response(
     ``key=value`` for anything worth pinning next to it (schema, capability).
     """
 
-    parts = [f"request_id={_rid(request_id)}", f"external={service}", "event=response"]
+    parts = [_ids(request_id), f"external={service}", "event=response"]
     if status is not None:
         parts.append(f"status={status}")
     parts.extend(f"{key}={value}" for key, value in fields.items())
-    if body is not None:
-        parts.append(f"body={_as_text(body)}")
     logger.info(" ".join(parts))
+    if body is not None:
+        logger.debug(
+            "%s external=%s event=response_body body=%s",
+            _ids(request_id),
+            service,
+            _as_text(body),
+        )
 
 
 def _as_text(body: Any) -> str:

@@ -23,6 +23,8 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
 
@@ -89,3 +91,41 @@ def configure_tracing() -> None:
     logfire.configure(send_to_logfire=False, console=False)
     Agent.instrument_all(settings)
     logger.info("tracing on, exporting to %s", os.environ[_ENDPOINT])
+
+
+@contextmanager
+def turn_span(*, trace_id: str, message_id: str, session_id: str) -> Iterator[None]:
+    """The span every one of a turn's other spans hangs off.
+
+    Pydantic AI opens its own spans inside `Agent.run()` and the DSS does not
+    own them, so the turn's ids cannot be set on them directly. They go on a
+    parent span opened around the whole turn instead, which Langfuse reads as
+    the trace root — and a root's attributes are what its trace is filed under.
+
+    `langfuse.session.id` is the one Langfuse promotes to a first-class
+    Session, so `sessionId` filters and groups in the UI. `transactionId` and
+    `messageId` have no native field and go to trace metadata: the same string
+    you grep for in the log, found through the metadata filter rather than the
+    id box.
+
+    Absent an OTLP endpoint there is no real tracer provider, so this is a
+    no-op that costs a function call — which is every test and every local run
+    without tracing configured.
+
+    Lives here rather than in `orchestration/` so that package imports no
+    telemetry SDK. When this grows past one function it should become a proper
+    port under `ports/`, with this as its OpenTelemetry adapter.
+    """
+
+    from opentelemetry import trace
+
+    tracer = trace.get_tracer("dss.orchestration")
+    with tracer.start_as_current_span(
+        "dss.turn",
+        attributes={
+            "langfuse.session.id": session_id,
+            "langfuse.trace.metadata.transaction_id": trace_id,
+            "langfuse.trace.metadata.message_id": message_id,
+        },
+    ):
+        yield

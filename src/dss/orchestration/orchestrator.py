@@ -38,6 +38,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
 
+from dss.adapters.observability.tracing import turn_span
 from dss.core.channel.models import ComposedAnswer
 from dss.core.channel.service import (
     answer_from_evidence,
@@ -64,7 +65,7 @@ from dss.core.shared.models import (
     TurnStatus,
     UserTurn,
 )
-from dss.observability.trace_log import bind_request_id, trace_component
+from dss.observability.trace_log import bind_turn_ids, trace_component
 from dss.orchestration.compose import Compose
 from dss.orchestration.discovery import DiscoverProviders
 from dss.orchestration.plan import Plan
@@ -139,82 +140,96 @@ class Orchestrator:
         self._discovery_radius_m = discovery_radius_m
 
     async def run(self, turn: UserTurn, ctx: TurnContext) -> AsyncIterator[TurnEvent]:
-        bind_request_id(ctx.trace_id)
-        yield TurnStarted()
-        self._turns.opened(ctx, turn)
-
-        # Intent ∥ moderation, discovery chained off intent, and the barrier —
-        # all owned by `run_turn`. It blanks intent and discovery on any
-        # non-PROCEED outcome, so a refused turn surfaces neither.
-        result = await run_turn(
-            turn,
-            intent_llm=self._intent_llm,
-            moderation_llm=self._moderation_llm,
-            policies=self._policies,
-            discover_providers=self._components.discover,
+        bind_turn_ids(
+            ctx.trace_id, message_id=ctx.message_id, session_id=ctx.session_id
         )
-        decision = result.decision
-        self._note("moderation", ctx, decision.outcome.value)
-
-        if decision.outcome is not Outcome.PROCEED:
-            yield self._finish(ctx, _refused(decision))
-            return
-
-        self._note("intent", ctx, _classified(result.intent))
-
-        # Nowhere to search: the turn carried no coordinates, no area, and the
-        # classifier found no place name the area index could resolve. Ask for a
-        # district rather than answer from nowhere.
-        #
-        # Checked here rather than inside `run_turn`, which would have to skip
-        # the discover call to act on it. Discovery is read-only and already
-        # allowed to be wasted (it starts before moderation has cleared the
-        # turn), so letting it run and discarding it costs one cheap call and
-        # keeps the decision in one place.
-        if (
-            coverage_for(
-                turn,
-                result.intent,
-                lookup=self._area_lookup,
-                radius_m=self._discovery_radius_m,
-            )
-            is None
+        # Opened around the whole turn so every span Pydantic AI makes inside it
+        # — intent, moderation, planner, composer — lands under one trace with
+        # the ids on its root. `run` is an async generator, so the span stays
+        # open across the yields and closes when the consumer is done with it.
+        with turn_span(
+            trace_id=ctx.trace_id,
+            message_id=ctx.message_id,
+            session_id=ctx.session_id,
         ):
-            yield self._finish(
-                ctx,
-                (outcome_for(TurnStatus.REQUIRES_INPUT), needs_district_answer()),
+            yield TurnStarted()
+            self._turns.opened(ctx, turn)
+
+            # Intent ∥ moderation, discovery chained off intent, and the barrier —
+            # all owned by `run_turn`. It blanks intent and discovery on any
+            # non-PROCEED outcome, so a refused turn surfaces neither.
+            result = await run_turn(
+                turn,
+                intent_llm=self._intent_llm,
+                moderation_llm=self._moderation_llm,
+                policies=self._policies,
+                discover_providers=self._components.discover,
             )
-            return
+            decision = result.decision
+            self._note("moderation", ctx, decision.outcome.value)
 
-        # Nobody can serve the ask: no provider is reachable for it, so there is
-        # nothing for the planner to call and nothing for the composer to write
-        # from. Answer NO_MATCH here rather than spend a planner and composer
-        # round-trip to arrive at the same empty-handed place.
-        if _nobody_serves(result.discovery):
-            yield self._finish(
-                ctx, (outcome_for(TurnStatus.NO_MATCH), no_match_answer())
-            )
-            return
+            if decision.outcome is not Outcome.PROCEED:
+                yield self._finish(ctx, _refused(decision))
+                return
 
-        # Past the barrier: the decision cleared, so the planner's `select` tool
-        # is free to call providers. The `Verdict` is how that clearance reaches
-        # the tool, which may be several model round-trips deep.
-        verdict = Verdict()
-        verdict.set(decision)
-        with trace_component("planner", ctx.trace_id):
-            evidence = await self._components.plan(
-                turn, intent=result.intent, discovery=result.discovery, verdict=verdict
-            )
+            self._note("intent", ctx, _classified(result.intent))
 
-        with trace_component("composer", ctx.trace_id):
-            text = await self._components.compose(evidence, turn=turn)
-        answer = answer_from_evidence(text, evidence)
-        for block in answer.content:
-            yield Claim(content=block)
-        self._note("channel", ctx, str(len(answer.content)))
+            # Nowhere to search: the turn carried no coordinates, no area, and the
+            # classifier found no place name the area index could resolve. Ask for a
+            # district rather than answer from nowhere.
+            #
+            # Checked here rather than inside `run_turn`, which would have to skip
+            # the discover call to act on it. Discovery is read-only and already
+            # allowed to be wasted (it starts before moderation has cleared the
+            # turn), so letting it run and discarding it costs one cheap call and
+            # keeps the decision in one place.
+            if (
+                coverage_for(
+                    turn,
+                    result.intent,
+                    lookup=self._area_lookup,
+                    radius_m=self._discovery_radius_m,
+                )
+                is None
+            ):
+                yield self._finish(
+                    ctx,
+                    (outcome_for(TurnStatus.REQUIRES_INPUT), needs_district_answer()),
+                )
+                return
 
-        status, cause = _status_for(evidence, result.intent)
-        yield self._finish(ctx, (outcome_for(status, cause), answer))
+            # Nobody can serve the ask: no provider is reachable for it, so there is
+            # nothing for the planner to call and nothing for the composer to write
+            # from. Answer NO_MATCH here rather than spend a planner and composer
+            # round-trip to arrive at the same empty-handed place.
+            if _nobody_serves(result.discovery):
+                yield self._finish(
+                    ctx, (outcome_for(TurnStatus.NO_MATCH), no_match_answer())
+                )
+                return
+
+            # Past the barrier: the decision cleared, so the planner's `select` tool
+            # is free to call providers. The `Verdict` is how that clearance reaches
+            # the tool, which may be several model round-trips deep.
+            verdict = Verdict()
+            verdict.set(decision)
+            with trace_component("planner", ctx.trace_id):
+                evidence = await self._components.plan(
+                    turn,
+                    intent=result.intent,
+                    discovery=result.discovery,
+                    verdict=verdict,
+                )
+
+            with trace_component("composer", ctx.trace_id):
+                text = await self._components.compose(evidence, turn=turn)
+            answer = answer_from_evidence(text, evidence)
+            for block in answer.content:
+                yield Claim(content=block)
+            self._note("channel", ctx, str(len(answer.content)))
+
+            status, cause = _status_for(evidence, result.intent)
+            yield self._finish(ctx, (outcome_for(status, cause), answer))
 
     def _finish(
         self, ctx: TurnContext, resolved: tuple[TurnOutcome, ComposedAnswer]
