@@ -53,6 +53,7 @@ from fastapi.testclient import TestClient
 from pytest_httpserver import HTTPServer
 from werkzeug.wrappers import Request, Response
 
+from dss.adapters.observability.tracing import configure_tracing
 from dss.config.settings import Settings
 from dss.entrypoint.app import build_app
 from dss.entrypoint.composition import build_runner
@@ -73,7 +74,15 @@ pytestmark = pytest.mark.skipif(
 )
 
 MODEL = "azure:gpt-5.6-luna"
-QUERY = "what is the price of onion"
+# The district is in the sentence rather than in `attributes.location`.
+# Overriding `attributes` drops the fixture's location block, and a turn with
+# no location at all stops at `requires_input` before discovery. Supplying
+# coordinates instead makes the planner filter on those and drop the commodity,
+# which is what the provider actually needs — so the place goes where a farmer
+# would put it, and the classifier resolves it through the area index. Nashik
+# is the district the fixture's Lasalgaon market sits in, so the answer is not
+# also narrating a region mismatch.
+QUERY = "what is the price of onion in Nashik"
 
 FIXTURES = Path(__file__).parent / "fixtures"
 SCHEMA_PACKS = FIXTURES / "network-specs" / "schema"
@@ -90,6 +99,10 @@ SELECT_RESPONSE = _load("select_response.json")
 # assertions below expect, by construction.
 _RESOURCE = DISCOVER_RESPONSE["message"]["catalogs"][0]["resources"][0]
 CAPABILITY = _RESOURCE["resourceAttributes"]["@type"]
+# What the jsonpath filter matches on. `_jsonpath_filter` pins resources by
+# `subjectCategories` and leaves the @type to the envelope's `schemaContext`,
+# so the capability never appears in the expression.
+SUBJECT_CATEGORY = _RESOURCE["resourceAttributes"]["subjectCategories"][0]
 PROVIDER_ID = DISCOVER_RESPONSE["message"]["catalogs"][0]["provider"]["id"]
 
 _ANSWER = SELECT_RESPONSE["message"]["contract"]["commitments"][0]["resources"][0]
@@ -156,8 +169,12 @@ class _Network:
     def discover(self, request: Request) -> Response:
         body = json.loads(request.get_data())
         self.discover_requests.append(body)
-        expression = body["message"]["intent"]["filters"]["expression"]
-        if CAPABILITY not in expression:
+        # The capability rides in `context.schemaContext` as
+        # "<pack context url>#<@type>"; the expression only carries the subject
+        # category. Guarding on the expression meant this fake answered every
+        # real request with an empty catalog.
+        schema_context = " ".join(body["context"]["schemaContext"])
+        if CAPABILITY not in schema_context:
             return self._json({"message": {"catalogs": []}})
         return self._json(DISCOVER_RESPONSE)
 
@@ -193,6 +210,14 @@ def live_network(httpserver: HTTPServer) -> _Network:
 def live_app(httpserver: HTTPServer, live_network: _Network, tmp_path: Path):
     """The shipped application, assembled by the real `build_runner`."""
 
+    # Tracing, when an endpoint is configured. `build_app` does not call
+    # `configure_tracing` — only `create_app` does — so a test run exports
+    # nothing however the environment is set. Opt-in rather than automatic: a
+    # default-on version would write every CI run into the same store used to
+    # read production turns, carrying real model output with `include_content`.
+    if os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT"):
+        configure_tracing()
+
     base_url = httpserver.url_for("").rstrip("/")
     settings = Settings(
         stub_llm=False,  # every model call is real
@@ -205,7 +230,15 @@ def live_app(httpserver: HTTPServer, live_network: _Network, tmp_path: Path):
         schema_pack_dir=SCHEMA_PACKS,
         evidence_dir=tmp_path,
     )
-    return build_app(runner=build_runner(settings), settings=settings)
+    app = build_app(runner=build_runner(settings), settings=settings)
+    yield app
+
+    if os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT"):
+        # BatchSpanProcessor exports on a timer and pytest exits first, so the
+        # spans would be dropped on the floor without this.
+        from opentelemetry import trace as _otel
+
+        _otel.get_tracer_provider().force_flush()
 
 
 def _ask(client: TestClient, a_body, query: str):
@@ -239,10 +272,14 @@ def test_a_live_model_answers_the_onion_price(live_app, live_network, a_body) ->
     # capability in the schema-pack index, so the filter naming it proves the
     # classification.
     assert live_network.discover_requests, "discovery never ran"
-    expression = live_network.discover_requests[0]["message"]["intent"]["filters"][
-        "expression"
-    ]
-    assert CAPABILITY in expression, expression
+    request = live_network.discover_requests[0]
+    # The resolved @type, which is what proves the classification: only
+    # `Market` + `observe` reaches this capability in the schema-pack index.
+    schema_context = " ".join(request["context"]["schemaContext"])
+    assert CAPABILITY in schema_context, schema_context
+    # And the filter, which pins resources by subject category.
+    expression = request["message"]["intent"]["filters"]["expression"]
+    assert SUBJECT_CATEGORY in expression, expression
 
     # The planner read "onion" out of the sentence and put it in a field the
     # pack declares filterable. The server would have answered 400 otherwise.
