@@ -54,12 +54,17 @@ def test_interaction_type_values() -> None:
 
 
 def test_subject_category_values() -> None:
+    """`Facility` is here because `AgricultureFacility` requires it; `Practice`
+    is the network's seventh category and is deliberately absent until a pack
+    serves it."""
+
     assert {c.value for c in SubjectCategory} == {
         "Crop",
         "Livestock",
         "Weather",
         "Market",
         "Scheme",
+        "Facility",
     }
 
 

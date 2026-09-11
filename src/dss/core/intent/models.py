@@ -32,6 +32,14 @@ class SubjectCategory(StrEnum):
     WEATHER = "Weather"
     MARKET = "Market"
     SCHEME = "Scheme"
+    # The network's own enum (AgricultureResource `subjectCategories`) carries
+    # `Practice` alongside this one. Only `Facility` is here, because only it has
+    # a pack: `AgricultureFacility` *requires* `subjectCategories` to include
+    # `Facility`, so the capability index keys it under a category intent could
+    # not produce — a warehouse ask resolved to nothing with the pack sitting on
+    # disk. Adding `Practice` before something serves it would only widen what
+    # the classifier can emit and nothing can answer.
+    FACILITY = "Facility"
 
 
 class Ask(BaseModel):
