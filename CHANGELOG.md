@@ -28,6 +28,16 @@
   they are in (`requires_input`) instead of answering from nowhere (#19)
 
 ### Fixed
+- `select` now carries the farmer's own subject as a free-text filter instead of
+  a label copied out of the provider's catalog. `describe_capability` showed
+  every advertised list under "this provider serves only these values", so
+  KnowledgeAdvisory's `topics` — which the pack declares as free text the caller
+  composes — read as a closed enum, and "can i grow potato" / "i want to grow in
+  pune" went out as `topics: ["Crop establishment"]` rather than `["Potato in
+  Pune"]`. A field advertised under a path the pack declares filterable is the
+  provider describing its own content, and is no longer shown as a vocabulary;
+  the `provider-invocation` skill now says a settable field with no listed
+  values is free text to write from the conversation. See ADR-0007 (#96)
 - `Settings()` no longer raises when `.env` carries non-DSS vars the LLM SDK and
   Langfuse read directly (`OPENAI_API_KEY`, `OTEL_*`) — `extra="ignore"` (#57)
 - `/discover` now matches its spatial filter against
