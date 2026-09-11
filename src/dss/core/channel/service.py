@@ -29,6 +29,25 @@ def no_match_answer() -> ComposedAnswer:
     return ComposedAnswer(content=(TextBlock(text=NO_MATCH_TEXT),))
 
 
+# Asks for a *district* by name, not "where are you from?". The area lookup
+# holds districts only, so an open question invites a village or a city and the
+# next turn fails to resolve for the same reason.
+NEEDS_DISTRICT_TEXT = (
+    "Which district are you in? I need it to find information for your area."
+)
+
+
+def needs_district_answer() -> ComposedAnswer:
+    """What the farmer reads when the turn has no location to search around.
+
+    Deterministic like `no_match_answer`, and for the same reason: asking a
+    fixed question needs no model. Shares that function's caveat — the real
+    version writes in `target_lang` and for the channel.
+    """
+
+    return ComposedAnswer(content=(TextBlock(text=NEEDS_DISTRICT_TEXT),))
+
+
 def _to_wire_source(source: EvidenceSource) -> Source:
     """`Evidence` and the wire both name a `Source`, but they are different
     types living either side of the core: the planner's carries what the loop

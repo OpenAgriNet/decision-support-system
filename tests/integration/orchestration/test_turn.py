@@ -30,7 +30,7 @@ from dss.core.provider_discovery.models import (
     DiscoveryResult,
     ProviderCapability,
 )
-from dss.core.shared.models import UserTurn
+from dss.core.shared.models import Geometry, Location, UserTurn
 from dss.orchestration.turn import run_turn
 
 PROFANITY = WordCheckPolicy(
@@ -54,7 +54,14 @@ DELETE_COMMAND = LlmPolicy(
 )
 
 
-def _turn(query: str) -> UserTurn:
+_PUNE = Location(geometry=Geometry(coordinates=[74.067998, 18.571118]))
+
+
+def _turn(query: str, *, location: Location | None = _PUNE) -> UserTurn:
+    """Located by default: these tests are about intent, moderation and
+    discovery, and an unlocated turn now skips discovery to ask for a
+    district."""
+
     return UserTurn(
         original_query=query,
         enriched_query=query,
@@ -63,6 +70,7 @@ def _turn(query: str) -> UserTurn:
         source_lang="en",
         target_lang="en",
         channel="web",
+        location=location,
     )
 
 

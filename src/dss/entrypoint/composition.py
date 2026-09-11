@@ -29,6 +29,7 @@ from datetime import datetime
 import anyio
 import httpx
 
+from dss.adapters.area_lookup.csv_lookup import CsvAreaLookup
 from dss.adapters.invocation.client import HttpCapabilityInvocation
 from dss.adapters.llm.pydantic_ai_provider import (
     PydanticAILLMProvider,
@@ -57,6 +58,7 @@ from dss.orchestration.discovery import (
 )
 from dss.orchestration.orchestrator import Components, Orchestrator
 from dss.orchestration.plan import build_plan
+from dss.ports.area_lookup import AreaLookup
 from dss.ports.invocation import CapabilityInvocation
 from dss.ports.turn import TurnRunner
 
@@ -111,9 +113,14 @@ def build_runner_with_lifecycle(
     )
     identity = load_identity()  # bundled default until an adopter mounts one
     skills = load_skills()
+    # Loaded before the network gate, and unconditionally: the file is checked
+    # in, so an unreadable one is a broken build either way, and a boot that
+    # skipped it would only surface the problem as missing spatial filters much
+    # later. Read once here — every turn shares this index.
+    area_lookup = CsvAreaLookup.load(settings.district_csv_path)
 
     discover, invocation, schemas, schema_context_index, client = _network(
-        settings, fetch=fetch
+        settings, area_lookup=area_lookup, fetch=fetch
     )
 
     components = Components(
@@ -145,6 +152,8 @@ def build_runner_with_lifecycle(
         components=components,
         turns=FileTurnSink(settings.turns_path),
         telemetry=FileTelemetrySink(settings.telemetry_path),
+        area_lookup=area_lookup,
+        discovery_radius_m=settings.discovery_radius_m,
     )
     return runner, _aclose_for(client)
 
@@ -180,6 +189,7 @@ async def _discovers_nothing(
 def _network(
     settings: Settings,
     *,
+    area_lookup: AreaLookup,
     fetch: FetchPacks = fetch_packs,
 ) -> tuple[
     DiscoverProviders,
@@ -225,6 +235,7 @@ def _network(
     discover = build_discover_providers(
         discovery=discovery,
         schema_pack_cache=cache,
+        area_lookup=area_lookup,
         radius_m=settings.discovery_radius_m,
     )
     invocation = HttpCapabilityInvocation(

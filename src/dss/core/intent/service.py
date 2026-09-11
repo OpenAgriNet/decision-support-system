@@ -52,6 +52,12 @@ def build_intent_prompt(history: Sequence[ConversationMessage]) -> str:
         "Also return an overall confidence in [0, 1].",
         "If the query is a follow-up ('And potato?', 'Is it safe to use?'), "
         "resolve it against the conversation before classifying.",
+        "",
+        "place_name: the place the user says they are in or asks about, "
+        "written in English (transliterate: 'मी पुण्याहून' -> 'Pune'). "
+        "Return the place only — no district/taluka/village word, no state, "
+        "no coordinates. Use null if no place is named; do not guess one from "
+        "the crop, the language, or the conversation's subject.",
     ]
     lines += _render_history(history)
     return "\n".join(lines)

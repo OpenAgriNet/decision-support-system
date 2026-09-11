@@ -39,7 +39,11 @@ from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
 
 from dss.core.channel.models import ComposedAnswer
-from dss.core.channel.service import answer_from_evidence, no_match_answer
+from dss.core.channel.service import (
+    answer_from_evidence,
+    needs_district_answer,
+    no_match_answer,
+)
 from dss.core.intent.models import Intent
 from dss.core.moderation.messages import messages_for
 from dss.core.moderation.models import ModerationDecision, Outcome
@@ -47,6 +51,7 @@ from dss.core.planner.models import Evidence, Verdict
 from dss.core.planner.sufficiency import unserved_asks
 from dss.core.policy.models import Policy
 from dss.core.provider_discovery.models import DiscoveryResult
+from dss.core.provider_discovery.service import coverage_for
 from dss.core.shared.models import (
     Cause,
     Claim,
@@ -64,6 +69,7 @@ from dss.orchestration.compose import Compose
 from dss.orchestration.discovery import DiscoverProviders
 from dss.orchestration.plan import Plan
 from dss.orchestration.turn import run_turn
+from dss.ports.area_lookup import AreaLookup
 from dss.ports.llm import LLMProvider
 from dss.ports.sinks import TelemetrySink, TurnSink
 
@@ -120,6 +126,8 @@ class Orchestrator:
         components: Components,
         turns: TurnSink,
         telemetry: TelemetrySink,
+        area_lookup: AreaLookup,
+        discovery_radius_m: int,
     ) -> None:
         self._intent_llm = intent_llm
         self._moderation_llm = moderation_llm
@@ -127,6 +135,8 @@ class Orchestrator:
         self._components = components
         self._turns = turns
         self._telemetry = telemetry
+        self._area_lookup = area_lookup
+        self._discovery_radius_m = discovery_radius_m
 
     async def run(self, turn: UserTurn, ctx: TurnContext) -> AsyncIterator[TurnEvent]:
         bind_request_id(ctx.trace_id)
@@ -151,6 +161,30 @@ class Orchestrator:
             return
 
         self._note("intent", ctx, _classified(result.intent))
+
+        # Nowhere to search: the turn carried no coordinates, no area, and the
+        # classifier found no place name the area index could resolve. Ask for a
+        # district rather than answer from nowhere.
+        #
+        # Checked here rather than inside `run_turn`, which would have to skip
+        # the discover call to act on it. Discovery is read-only and already
+        # allowed to be wasted (it starts before moderation has cleared the
+        # turn), so letting it run and discarding it costs one cheap call and
+        # keeps the decision in one place.
+        if (
+            coverage_for(
+                turn,
+                result.intent,
+                lookup=self._area_lookup,
+                radius_m=self._discovery_radius_m,
+            )
+            is None
+        ):
+            yield self._finish(
+                ctx,
+                (outcome_for(TurnStatus.REQUIRES_INPUT), needs_district_answer()),
+            )
+            return
 
         # Nobody can serve the ask: no provider is reachable for it, so there is
         # nothing for the planner to call and nothing for the composer to write

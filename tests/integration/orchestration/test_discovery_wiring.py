@@ -12,12 +12,13 @@ from dss.adapters.schema_packs.filesystem import FilesystemSchemaPackSource
 from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
 from dss.core.provider_discovery.models import ProviderQuery
 from dss.core.provider_discovery.schema_pack_cache import SchemaPackCache
-from dss.core.shared.models import UserTurn
+from dss.core.shared.models import Geometry, Location, UserTurn
 from dss.orchestration.discovery import (
     build_capability_discovery,
     build_discover_providers,
 )
 from dss.orchestration.turn import run_turn
+from tests.support.fakes import FakeAreaLookup
 
 SCHEMA_PACKS_FIXTURE_ROOT = (
     Path(__file__).parents[1]
@@ -81,7 +82,10 @@ async def test_the_wired_discover_providers_bakes_in_radius() -> None:
             schema_pack_cache=schema_pack_cache,
         )
         discover_providers = build_discover_providers(
-            discovery=discovery, schema_pack_cache=schema_pack_cache, radius_m=25000
+            discovery=discovery,
+            schema_pack_cache=schema_pack_cache,
+            area_lookup=FakeAreaLookup(),
+            radius_m=25000,
         )
         ask = Ask(
             subject_categories=SubjectCategory.MARKET,
@@ -142,6 +146,7 @@ async def test_run_turn_can_call_the_composed_discover_providers() -> None:
                 schema_pack_cache=cache,
             ),
             cache,
+            FakeAreaLookup(),
             50_000,
         )
 
@@ -154,6 +159,11 @@ async def test_run_turn_can_call_the_composed_discover_providers() -> None:
                 source_lang="en",
                 target_lang="en",
                 channel="web",
+                # Located, so discovery actually runs: this test is about the
+                # wired adapter being reached, not about the district question.
+                location=Location(
+                    geometry=Geometry(coordinates=[74.067998, 18.571118])
+                ),
             ),
             intent_llm=_FakeIntentLLM(
                 Intent(
