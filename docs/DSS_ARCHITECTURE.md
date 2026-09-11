@@ -302,6 +302,14 @@ v1 therefore plans fresh every turn and **instruments plan-shape recurrence**, s
 
 ### 6.1 PII posture -- Needs more discussions.
 
+> **The current deployment deviates from this section, deliberately.** Tracing
+> runs with `DSS_TRACE_INCLUDE_MESSAGE_CONTENT=true`, so spans carry the
+> farmer's query and the composed answer verbatim, and §6.2's redaction
+> interceptor is not built (§8). ADR-0007 records why, and the conditions that
+> bound it: the trace store is self-hosted inside the adopter's account, 5-day
+> retention, not publicly reachable, and off by default. Read that ADR before
+> treating the paragraphs below as describing what is deployed.
+
 **Shared DSS processing does not receive raw personal data.** Personal payloads required by a declared Provider capability follow the protected direct Experience-to-Provider path and are not inserted into prompts, tool registries, shared context stores, logs, traces, or analytics.
 
 - A **Provider-scoped subject reference** — opaque to everyone except the intended Provider — may be transported by Experience and both network adapter edges without being persisted or logged by intermediaries.
@@ -315,7 +323,7 @@ Any DPG code path that writes to durable storage — logs, traces, telemetry pay
 - **Baseline rules ship with DSS.** Phone / mobile numbers and Aadhaar-like patterns covered out of the box.
 - **Adopter-extensible.** Adopters declare additional patterns (farmer IDs, land-record numbers, coordinates precise enough to identify a plot, jurisdiction-specific identifiers) via mounted config.
 - **Redaction vs pseudonymisation.** Baseline is redaction (`phone=***`). Adopters may opt fields into pseudonymisation (`phone=usr_a1b2c3`) when stable trace-correlation across a session is needed without leaking the raw value.
-- **Consequence.** Persisted artifacts observable by the DPG — Langfuse traces, application logs, telemetry, on-disk error dumps — never contain raw PII. Correlation across a session is preserved through pseudonymous tokens where declared.
+- **Consequence, once built.** Persisted artifacts observable by the DPG — Langfuse traces, application logs, telemetry, on-disk error dumps — never contain raw PII. Correlation across a session is preserved through pseudonymous tokens where declared. **This is the target, not the present state**: the interceptor does not exist (§8), and the deployed tracing described in ADR-0007 writes message content to spans without it. Application logs are the one part already honoured — external request *and* response bodies go to DEBUG, so an INFO-level deployment logs the shape of a call and not its words.
 
 Concrete redaction-interceptor design (library integration vs sink processor, wire format for pseudonymisation tokens, adopter rule schema, per-sink coverage) is a v1 implementation detail — tracked in §8.
 
@@ -379,7 +387,7 @@ DSS-scoped, deferred to v1 design and later governance:
 - **Router scope.** Whether Skills go through the same Router as tools/Providers.
 - **Voice-channel specifics.** Concurrent moderation patterns and voice-specific latency budgets.
 - **Registry of MCP tool schemas.** Currently spec/docs contracts only; promote to Schema Registry later if cross-adopter interop needs emerge.
-- **Redaction interceptor implementation.** §6.2 fixes the PII posture and sink-layer enforcement model. Open: library integration vs sink processor, pseudonymisation-token wire format, adopter rule-schema shape, per-sink coverage.
+- **Redaction interceptor implementation.** §6.2 fixes the PII posture and sink-layer enforcement model. Open: library integration vs sink processor, pseudonymisation-token wire format, adopter rule-schema shape, per-sink coverage. **Now load-bearing rather than theoretical:** ADR-0007 ships tracing that records message content with no redaction in front of it, bounded only by self-hosting and 5-day retention. The OpenTelemetry span processor in front of the OTLP exporter is the sink §6.2 describes, and is where this should land.
 - **Request envelope `history` typing.** Concrete `TurnHistoryEntry` shape (roles, tool-call trace inclusion, redaction posture) deferred.
 - **`UserDetails` extensibility.** Whether tenant-specific profile fields (farmer ID, region, land size) attach through an open `extra` dict on `UserDetails` or route through Context Providers projecting from a separate `user_context` payload. Leaning toward the latter.
 - **PII posture — DSS envelope and forwarding rules.** The DPG architecture prescribes "shared DSS processing does not receive raw personal data" (Posture A). This repo's §5.1 envelope currently carries `user_id` and `phone`, and §6.2 implies raw PII may transit DSS with sink-layer redaction as the primary control (Posture B). Open questions: (1) which fields belong on `UserTurn` — session/interaction IDs and Provider-scoped opaque references only, or also raw identifiers? (2) does the DSS see free-text `query` when the query itself carries PII (names, addresses spoken by the user), and if so, is pre-DSS scrubbing an Experience-layer responsibility or a DSS one? (3) if PII may enter DSS in-flight, do we need per-Provider forwarding allowlists (which fields flow to which capability) in addition to sink-layer redaction? (4) how does personalisation ("Hi Ramesh…") work when DSS can't see the name — templated response with post-DSS substitution by the participating deployment, or opaque user-segment tokens? Needs discussion before v1 envelope is locked.
