@@ -95,9 +95,12 @@ def _rid(request_id: str | None) -> str:
 def current_otel_ids() -> tuple[str, str]:
     """The active span's trace and span ids, as the hex Langfuse displays.
 
-    Read from the *current* span rather than the turn's root, so a line logged
-    inside a Pydantic AI agent run points at that agent's span and not at the
-    turn — paste it into Langfuse and you land where the line was written.
+    Read from the *current* span. In practice that is the turn's root on every
+    line today: `trace_component` logs around the work rather than opening a
+    span of its own, and the adapters log after an agent run has returned, so
+    Pydantic AI's spans are never current when a line is written. `trace_id`
+    therefore joins a log to its trace exactly; `span_id` identifies the turn,
+    not the component. Giving `trace_component` a real span would sharpen it.
 
     Both are ``-`` when nothing is recording: no OTLP endpoint, so no exporter,
     so no span context. That is every test and every local run.
