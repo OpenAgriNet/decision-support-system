@@ -21,7 +21,30 @@
             {
               "geo": {
                 "type": "Polygon",
-                "coordinates": [[[68.1, 8.0], [97.4, 8.0], [97.4, 37.1], [68.1, 37.1], [68.1, 8.0]]]
+                "coordinates": [
+                  [
+                    [
+                      68.1,
+                      8.0
+                    ],
+                    [
+                      97.4,
+                      8.0
+                    ],
+                    [
+                      97.4,
+                      37.1
+                    ],
+                    [
+                      68.1,
+                      37.1
+                    ],
+                    [
+                      68.1,
+                      8.0
+                    ]
+                  ]
+                ]
               }
             }
           ]
@@ -36,7 +59,24 @@
               "@context": "https://schemas.openagrinet.global/schema/MandiPrice/v0.1/context.jsonld",
               "@type": "openagrinet:MandiPrice",
               "informationMode": "OnDemand",
-              "subjectCategories": ["Market"]
+              "subjectCategories": [
+                "Market"
+              ],
+              "supportedCommodities": [
+                {
+                  "code": "1",
+                  "name": "Wheat"
+                },
+                {
+                  "code": "23",
+                  "name": "Onion"
+                },
+                {
+                  "code": "78",
+                  "name": "Tomato"
+                }
+              ],
+              "historyPeriod": "P1Y"
             }
           }
         ]
