@@ -9,14 +9,20 @@ This drives a real recorded ``on_discover`` response through both, with no
 doubles between them, and asserts the provider's advertised values come out
 the far end — which is the whole point of keeping them.
 
-The fixture is WeatherObservation, not MandiPrice: the commodity case is what
+Two recorded catalogs, because the renderer now makes two distinct decisions.
+WeatherObservation covers what must reach the model: the commodity case is what
 prompted the work, but nothing here is commodity-specific, and a pack whose
 vocabulary is plain strings rather than code/name pairs proves it.
+KnowledgeAdvisory covers what must not — its ``topics`` is the provider
+describing its own content under a filterable path.
 
-Recorded data rather than a hand-written one on purpose. The first run of this
-file failed on ``geographicGranularity: ["Point"]`` — a single-element list
-that is not a vocabulary at all, which neither side's own fixtures contained.
-That case is now asserted as-is; see the test that names it.
+Recorded data rather than hand-written on purpose, and it has earned its keep
+twice. The first run of this file failed on ``geographicGranularity: ["Point"]``
+— a single-element list that is not a vocabulary at all, which neither side's
+own fixtures contained; that case is asserted as-is below. Later, a first
+attempt at the ``topics`` fix keyed on item shape and was caught here by
+``supportedParameters: ["Rainfall", "Temperature"]`` — a genuine vocabulary of
+bare strings that the shape rule would have thrown away.
 """
 
 from __future__ import annotations
@@ -87,18 +93,64 @@ def test_a_single_element_list_is_rendered_even_when_it_is_not_a_vocabulary() ->
     data, not what may be asked for — but it arrives as a list, and the
     renderer's rule is that a list is a vocabulary.
 
-    Asserted rather than fixed, deliberately. Telling the two apart needs an
-    authority on which advertised fields are filterable; the pack has one
-    (``profile.json``), but reaching it from here means a new index threaded
-    through the adapter — the same cost that made a skip-list the choice in
-    ``client.py``. The accepted cost is one extra rendered line the model may
-    read as filterable.
+    Asserted rather than fixed, deliberately, and still true now that the
+    renderer does consult the pack's filterable paths: that test catches a
+    field advertised *under* a filterable path (``topics``), and
+    ``geographicGranularity`` governs no filter at all, so nothing names it.
+    Catching it needs the opposite authority — which advertised fields are a
+    vocabulary *for* something — and no pack declares that today.
 
-    This test exists so that cost stays visible. If a pack ever advertises
-    something misleading enough to matter, this is the assertion that has to
-    change, and the comment above says what it would take.
+    The accepted cost is one extra rendered line the model may read as
+    filterable. This test exists so that cost stays visible; if a pack ever
+    advertises something misleading enough to matter, this is the assertion
+    that has to change.
     """
 
     markdown = _rendered()
 
     assert "geographicGranularity: Point" in markdown
+
+
+_ADVISORY = DomainSchema(
+    type="KnowledgeAdvisory",
+    filterable=("topics", "agricultureSubjects[].subjectId", "languages"),
+)
+
+
+def _rendered_advisory() -> str:
+    response = json.loads((FIXTURES / "discover_response_advisory.json").read_text())
+    result = map_discover_response(response, ask_indices=(0,))
+    return render_candidates_as_markdown(
+        result.capabilities[0],
+        schemas={"openagrinet:KnowledgeAdvisory": _ADVISORY},
+    )
+
+
+def test_content_advertised_under_a_filterable_path_does_not_reach_the_model() -> None:
+    """The other half of the rule, on a second recorded catalog.
+
+    ``topics`` is the pack's own filterable path, and this resource advertises
+    under it — it is saying what it holds so it can be found, not enumerating
+    what may be asked for. Shown as a vocabulary, the model answered "can i
+    grow potato" with this provider's ``Crop establishment``.
+
+    A second fixture rather than an assertion on the weather one: weather
+    advertises no such field, so only this catalog exercises the case.
+    """
+
+    markdown = _rendered_advisory()
+
+    assert "Crop establishment" not in markdown
+    assert "Nutrient management" not in markdown
+    assert "topics" in markdown  # still offered as a field the model may set
+
+
+def test_a_vocabulary_beside_it_still_reaches_the_model() -> None:
+    """Same resource, same response: dropping ``topics`` must not take the crop
+    vocabulary with it. ``agricultureSubjects`` sits under the filterable
+    ``agricultureSubjects[].subjectId``, which an exact match leaves alone."""
+
+    markdown = _rendered_advisory()
+
+    assert "agricultureSubjects" in markdown
+    assert "COTTON" in markdown

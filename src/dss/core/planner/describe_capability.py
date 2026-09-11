@@ -10,8 +10,9 @@ off the wire. They are rendered unwrapped anyway, unlike
 ``render_answer_as_markdown``'s marker-wrapped answers, because this is a tool
 result rather than prompt content and the model must read it as instructions
 about what it may send. That is a deliberate narrowing of the "provider text
-is data" rule, and it holds only while what is rendered stays a short
-vocabulary — see the note on ``_render_advertised``.
+is data" rule, and it holds only because what reaches here is a short
+vocabulary of governed values — never the provider's descriptive prose. The
+test that keeps it that way is in ``_describes_own_content``.
 """
 
 from __future__ import annotations
@@ -35,19 +36,56 @@ def _render_item(item: object) -> str:
     return str(item)
 
 
-def _render_advertised(advertised: Mapping[str, object]) -> list[str]:
+def _describes_own_content(field: str, filterable: tuple[str, ...]) -> bool:
+    """Whether an advertised field is the provider describing what it holds,
+    rather than a vocabulary the model must choose from.
+
+    The signal is the field's own name. A vocabulary and the filter it governs
+    are two different things — the vocabulary is the filter's domain — so a
+    catalog names them differently: ``supportedCommodities`` for the filter
+    ``commodity.code``, ``supportedParameters`` for ``parameters``. When a
+    resource instead advertises under the *very path you would filter on*, it
+    is publishing its own content at that path so it can be found by it, not
+    enumerating what may be asked for.
+
+    ``topics`` is the case that matters. The pack declares it as a bare array
+    of strings with no ``enum``, lists it in ``discovery_fields`` and
+    ``indexable_paths``, and expects the caller to *compose* the filter from
+    what the farmer said. Rendering the provider's own topics under a heading
+    promising the values it serves made the model answer "can i grow potato"
+    with that provider's ``Crop establishment``.
+
+    Shape is not the signal: WeatherObservation's ``supportedParameters:
+    ["Rainfall", "Temperature"]`` is a genuine vocabulary made of bare
+    strings, and the model cannot invent those either.
+
+    Exact match, not a path prefix. ``agricultureSubjects`` sits under the
+    filterable ``agricultureSubjects[].subjectId`` and is a real vocabulary,
+    while ``commodity`` would sit under ``commodity.code`` and would not be —
+    the prefix cannot tell them apart, and only the exact case has been seen
+    on the wire. A provider that advertises content under a compound path's
+    head is the case this does not catch; it would render one extra line.
+    """
+
+    return field in filterable
+
+
+def _render_advertised(
+    advertised: Mapping[str, object], filterable: tuple[str, ...]
+) -> list[str]:
     """The provider's own vocabularies, one line per advertised list.
 
-    Only lists. A resource advertises two kinds of thing side by side: a set
-    of values the model may choose from (``supportedCommodities``), and a fact
-    about the provider (``historyPeriod: P1Y``, ``historicalDataAvailable:
-    true``). Only the first can appear in a ``select`` call, and the real
-    MandiPrice catalog carries three of the second to two of the first — so
-    rendering both put mostly unusable text under a heading promising values
-    the provider serves.
+    Only lists. A resource advertises a set of values the model may choose
+    from (``supportedCommodities``) alongside facts about itself
+    (``historyPeriod: P1Y``, ``historicalDataAvailable: true``). Only the
+    first can appear in a ``select`` call, and the real MandiPrice catalog
+    carries three of the second to two of the first — so rendering both put
+    mostly unusable text under a heading promising values the provider serves.
 
     A list is the signal rather than a ``supported*`` prefix: that prefix is
-    MandiPrice's own naming and binds no other pack.
+    MandiPrice's own naming and binds no other pack. It only separates a
+    vocabulary from a scalar fact, though — separating it from the provider's
+    own content is ``_describes_own_content``'s job.
 
     ``str()`` on an unrecognised item rather than raising. This is network
     data of unknown shape — a pack may advertise something never seen here —
@@ -58,7 +96,9 @@ def _render_advertised(advertised: Mapping[str, object]) -> list[str]:
     vocabularies = {
         field: value
         for field, value in advertised.items()
-        if isinstance(value, list) and value
+        if isinstance(value, list)
+        and value
+        and not _describes_own_content(field, filterable)
     }
     if not vocabularies:
         return []
@@ -91,7 +131,7 @@ def render_candidates_as_markdown(
         lines.append(f"- {candidate.provider_name}")
         lines.append(f"  resource_id: {candidate.resource_id}")
         lines.append(f"  fields you may set: {', '.join(schema.filterable)}")
-        lines.extend(_render_advertised(candidate.advertised))
+        lines.extend(_render_advertised(candidate.advertised, schema.filterable))
 
     if not lines:
         return "No candidates found for this ask."
