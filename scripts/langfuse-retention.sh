@@ -6,12 +6,12 @@
 # every raw ingested event. Expiring only the first leaves the whole history in
 # blob storage, which is the worse half to keep — see ADR-0007 §4.
 #
-#     ./scripts/langfuse-retention.sh            # 5 days, the default
-#     RETENTION_DAYS=30 ./scripts/langfuse-retention.sh
+#     ./scripts/langfuse-retention.sh            # 30 days, the default
+#     RETENTION_DAYS=5 ./scripts/langfuse-retention.sh
 #
 set -euo pipefail
 
-RETENTION_DAYS="${RETENTION_DAYS:-5}"
+RETENTION_DAYS="${RETENTION_DAYS:-30}"
 COMPOSE_PROJECT="${COMPOSE_PROJECT:-decision-support-system}"
 CLICKHOUSE_USER="${CLICKHOUSE_USER:-clickhouse}"
 CLICKHOUSE_PASSWORD="${CLICKHOUSE_PASSWORD:-clickhouse}"

@@ -1,4 +1,4 @@
-# ADR-0007: Self-Hosted Langfuse for LLM Tracing
+# ADR-0007: Langfuse for LLM Tracing
 
 - **Status:** ACCEPTED
 - **Date:** 2026-09-11
@@ -94,10 +94,14 @@ that are each unambiguous. An operator therefore searches metadata for a
 
 **Message content is recorded, without redaction.** See §5.
 
-**Retention is 5 days**, applied as a ClickHouse TTL and a matching MinIO
-lifecycle rule. Short retention is a control in its own right given the
-preceding paragraph, and it is the reason the storage footprint is small enough
-to share one host.
+**Retention is 30 days**, applied as a ClickHouse TTL and a matching MinIO
+lifecycle rule, both from one idempotent script with the window as a variable.
+
+Retention is doing real work here, not just bounding disk — it is one of the
+four things standing in for the redaction interceptor (§5). 30 days is long
+enough to investigate a complaint that took a week to reach anyone, and it is
+30 days of farmers' words rather than 5. That trade was made deliberately in
+review; a deployment that wants the tighter bound sets `RETENTION_DAYS=5`.
 
 ## 5. PII posture: an explicit, bounded deviation from §6.1
 
@@ -111,7 +115,8 @@ recorded here rather than left implicit.**
 What bounds it:
 
 - **The store is inside the adopter's account.** No third-party processor.
-- **Retention is 5 days** in both ClickHouse and the blob store.
+- **Retention is 30 days** in both ClickHouse and the blob store, and a
+  deployment can shorten it with one variable.
 - **Access is not public.** Langfuse's own authentication, and the host is not
   open to the internet.
 - **It is one environment variable.** Only a literal `"true"` opts in; unset is
@@ -140,8 +145,9 @@ eventually need attention. The vendor describes its own compose file as suited
 to "a single VM without high availability, scaling, or backups", which is what
 this deployment is.
 
-**Bad.** Traces carry personal data for 5 days, under §5's conditions. The
-control that was supposed to prevent this does not exist yet.
+**Bad.** Traces carry personal data for 30 days, under §5's conditions. The
+control that was supposed to prevent this does not exist yet, and 30 days is
+six times the window first proposed.
 
 **Neutral.** `logfire` remains a dependency for its Pydantic AI instrumentation
 with `send_to_logfire=False`. Its default scrubber is disabled: it redacts
