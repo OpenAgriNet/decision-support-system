@@ -17,6 +17,16 @@ name in the list and send its code: for "tomato", if the list shows
 matches what the farmer asked for, that provider does not serve it — say so
 rather than sending a code it never offered.
 
+A field you may set that has no listed values is free text: the provider
+published no vocabulary for it, so there is nothing to match against. Write it
+yourself, from what the farmer asked — never from anything the provider
+published elsewhere. Name the subject and, when they gave one, the place, in
+English: "can i grow potato" then "i want to grow in pune" is `topics:
+["Potato in Pune"]`. Send that phrase and nothing else — no broad category
+alongside it. And never decide a provider cannot serve the ask because the
+farmer's subject was not among the values it published; a free-text field has
+no such list to be absent from.
+
 Read the whole conversation before you fill a field, not just the last
 message. A farmer answering a question you asked leaves the subject behind
 in an earlier message: "Can I get advisory for potato" ... "I am from Pune"
