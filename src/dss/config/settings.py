@@ -105,7 +105,7 @@ class Settings(BaseSettings):
     # `uvicorn --factory` starts from wherever the operator is.
     district_csv_path: Path = DEFAULT_DISTRICT_CSV
     # Envelope routing ids the /select adapter stamps on each provider call.
-    network_sender_id: str = "dss"
+    network_sender_id: str = "consumer.oan.dev"
     network_receiver_id: str = "oan"
 
     @property
