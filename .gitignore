@@ -28,3 +28,6 @@ var/
 
 # Local scratch — handoffs, notes, anything not for review
 .scratchpad/
+
+# Langfuse stack env template — the real .env.langfuse is ignored above.
+!.env.langfuse.example
