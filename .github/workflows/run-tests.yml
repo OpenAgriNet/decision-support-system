@@ -47,5 +47,9 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          # Named explicitly: without it the action sends no slug and Codecov has
+          # to resolve the repo from the token alone, which fails opaquely
+          # ("Repository not found") when the token and repo disagree.
+          slug: ${{ github.repository }}
           files: ./coverage.xml
           fail_ci_if_error: true
