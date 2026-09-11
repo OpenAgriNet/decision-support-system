@@ -29,7 +29,7 @@ from dss.core.planner.markers import (
 )
 from dss.core.planner.models import Evidence, Identity
 from dss.core.shared.models import UserTurn
-from dss.observability.trace_log import log_external_response
+from dss.observability.trace_log import log_external_request, log_external_response
 
 _SYSTEM_PROMPT = """You are {name}, {persona}
 
@@ -118,15 +118,16 @@ def build_compose(
     model_settings = {"temperature": temperature, "timeout": timeout_seconds}
 
     async def compose(evidence: Evidence, *, turn: UserTurn) -> str:
+        # Named rather than passed inline so the request log below can carry
+        # the prompt the agent was actually built with.
+        system_prompt = _SYSTEM_PROMPT.format(
+            name=identity.name,
+            persona=identity.persona,
+            boundaries=identity.boundaries,
+            target_lang=turn.target_lang,
+        )
         agent: Agent[None, str] = Agent(
-            model,
-            system_prompt=_SYSTEM_PROMPT.format(
-                name=identity.name,
-                persona=identity.persona,
-                boundaries=identity.boundaries,
-                target_lang=turn.target_lang,
-            ),
-            retries=retries,
+            model, system_prompt=system_prompt, retries=retries
         )
         # The question and the provider's values, wrapped as data — a
         # provider's text is third-party and must never read as instructions,
@@ -135,6 +136,15 @@ def build_compose(
             wrap_as_data(turn.enriched_query, QUESTION)
             + "\n\n"
             + wrap_as_data(_render_evidence(evidence), RETRIEVED_DATA)
+        )
+        log_external_request(
+            "llm.composer",
+            turn.transaction_id,
+            model=model.model_name,
+            target_lang=turn.target_lang,
+            results=len(evidence.results),
+            failed=len(evidence.failed),
+            body={"system_prompt": system_prompt, "user_message": user_message},
         )
         result = await agent.run(user_message, model_settings=model_settings)
         log_external_response("llm.composer", turn.transaction_id, body=result.output)
