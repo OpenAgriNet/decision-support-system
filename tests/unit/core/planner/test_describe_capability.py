@@ -160,3 +160,127 @@ def test_every_candidate_being_unindexed_says_so() -> None:
     markdown = render_candidates_as_markdown((unindexed,), schemas=_SCHEMAS)
 
     assert "no" in markdown.lower()
+
+
+def test_a_field_advertised_under_a_filterable_path_is_left_out() -> None:
+    """A provider's ``topics`` is it describing what it holds, not a vocabulary.
+
+    The pack declares ``topics`` as a bare array of strings with no ``enum``,
+    indexes it, and expects the caller to compose the filter from what the
+    farmer said. Rendering it under "this provider serves only these values"
+    told the model otherwise, and the model answered "can i grow potato" by
+    sending back the provider's own ``Crop establishment`` instead of the
+    farmer's subject.
+
+    The name is the signal: a vocabulary governs a filter and is named apart
+    from it (``supportedCommodities`` for ``commodity.code``), so a resource
+    advertising under the very path you would filter on is publishing content,
+    not an enum.
+    """
+
+    knowledge = ProviderCapability(
+        provider_id="krishi-kb",
+        provider_name="Krishi Knowledge Base",
+        capability="openagrinet:KnowledgeAdvisory",
+        resource_id="res:krishi-kb:crop-advisory",
+        observed_categories=("Crop",),
+        advertised={"topics": ["Crop establishment", "Package of practices"]},
+    )
+
+    markdown = render_candidates_as_markdown((knowledge,), schemas=_SCHEMAS)
+
+    assert "Crop establishment" not in markdown
+    assert "Package of practices" not in markdown
+    assert "serves only these values" not in markdown
+    # still settable — it is one of the pack's filterable paths
+    assert "topics" in markdown
+
+
+def test_a_vocabulary_of_plain_strings_is_still_rendered() -> None:
+    """Shape is not the signal. WeatherObservation advertises
+    ``supportedParameters: ["Rainfall", "Temperature"]`` — bare strings, but a
+    genuine vocabulary the model cannot invent, governing the filterable
+    ``parameters``.
+
+    Dropping every plain-string list would have taken it away. This is the
+    assertion that says so.
+    """
+
+    weather = ProviderCapability(
+        provider_id="imd",
+        provider_name="IMD",
+        capability="openagrinet:WeatherObservation",
+        resource_id="res:imd:forecast",
+        observed_categories=("Weather",),
+        advertised={"supportedParameters": ["Rainfall", "Temperature"]},
+    )
+    schemas = {
+        "openagrinet:WeatherObservation": DomainSchema(
+            type="WeatherObservation", filterable=("observationType", "parameters")
+        )
+    }
+
+    markdown = render_candidates_as_markdown((weather,), schemas=schemas)
+
+    assert "supportedParameters: Rainfall, Temperature" in markdown
+
+
+def test_a_vocabulary_under_a_compound_filterable_path_is_still_rendered() -> None:
+    """``agricultureSubjects`` sits under the filterable
+    ``agricultureSubjects[].subjectId``, so a prefix match would drop it — but
+    it is a real crop vocabulary the model resolves the farmer's word against.
+
+    Matching is exact for this reason. How the entry renders is a separate
+    matter: ``_render_item`` only unpacks a top-level ``code``, so a nested
+    descriptor falls through to ``str``. That wart is not this test's subject;
+    being present is.
+    """
+
+    knowledge = ProviderCapability(
+        provider_id="krishi-kb",
+        provider_name="Krishi Knowledge Base",
+        capability="openagrinet:KnowledgeAdvisory",
+        resource_id="res:krishi-kb:crop-advisory",
+        observed_categories=("Crop",),
+        advertised={
+            "agricultureSubjects": [
+                {
+                    "subjectId": "https://taxonomy.openagrinet.global/crops/cotton",
+                    "descriptor": {"code": "COTTON", "name": "Cotton"},
+                }
+            ]
+        },
+    )
+    schemas = {
+        "openagrinet:KnowledgeAdvisory": DomainSchema(
+            type="KnowledgeAdvisory",
+            filterable=("topics", "agricultureSubjects[].subjectId"),
+        )
+    }
+
+    markdown = render_candidates_as_markdown((knowledge,), schemas=schemas)
+
+    assert "agricultureSubjects" in markdown
+    assert "COTTON" in markdown
+
+
+def test_a_vocabulary_is_kept_while_self_described_content_is_dropped() -> None:
+    """Both on one candidate — the real KnowledgeAdvisory catalog carries
+    exactly this pair."""
+
+    knowledge = ProviderCapability(
+        provider_id="krishi-kb",
+        provider_name="Krishi Knowledge Base",
+        capability="openagrinet:KnowledgeAdvisory",
+        resource_id="res:krishi-kb:crop-advisory",
+        observed_categories=("Crop",),
+        advertised={
+            "supportedCrops": [{"code": "COTTON", "name": "Cotton"}],
+            "topics": ["Crop establishment"],
+        },
+    )
+
+    markdown = render_candidates_as_markdown((knowledge,), schemas=_SCHEMAS)
+
+    assert "COTTON=Cotton" in markdown
+    assert "Crop establishment" not in markdown

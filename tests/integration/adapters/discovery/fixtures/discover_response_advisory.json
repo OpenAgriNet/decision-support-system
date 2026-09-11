@@ -1,0 +1,70 @@
+{
+  "context": {
+    "action": "on_discover",
+    "version": "2.0.0",
+    "networkId": "oan-mock"
+  },
+  "message": {
+    "catalogs": [
+      {
+        "id": "cat-krishi-advisory",
+        "descriptor": {
+          "code": "KVK-ADVISORY-01",
+          "name": "Krishi Vigyan Kendra crop advisories",
+          "shortDesc": "Agronomic advice by crop and growth stage"
+        },
+        "isActive": true,
+        "provider": {
+          "id": "kvk-advisory-mock",
+          "descriptor": {
+            "code": "KVK-ADVISORY-01",
+            "name": "Krishi Vigyan Kendra Advisory Service"
+          }
+        },
+        "resources": [
+          {
+            "id": "res:kvk:crop-advisory",
+            "descriptor": {
+              "code": "CROP-ADVISORY",
+              "name": "Crop advisory",
+              "shortDesc": "Actionable guidance for a named crop"
+            },
+            "resourceAttributes": {
+              "@context": "https://openagrinet.github.io/network-specs/schema/KnowledgeAdvisory/v0.1/context.jsonld",
+              "@type": "openagrinet:KnowledgeAdvisory",
+              "informationMode": "OnDemand",
+              "subjectCategories": [
+                "Crop"
+              ],
+              "agricultureSubjects": [
+                {
+                  "subjectId": "https://taxonomy.openagrinet.global/crops/cotton",
+                  "descriptor": {
+                    "code": "COTTON",
+                    "name": "Cotton"
+                  }
+                }
+              ],
+              "languages": [
+                "en",
+                "hi"
+              ],
+              "topics": [
+                "Crop establishment",
+                "Nutrient management",
+                "Pest management"
+              ],
+              "coverageAreas": [
+                {
+                  "codeScheme": "ISO-3166-1",
+                  "areaCode": "IN",
+                  "areaLevel": "Country"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  }
+}
