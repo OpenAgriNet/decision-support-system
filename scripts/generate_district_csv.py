@@ -42,6 +42,11 @@ FIELDNAMES: tuple[str, ...] = (
     "region",
     "latitude",
     "longitude",
+    # Other names a farmer may use for the district, `;`-separated
+    # ("Bangalore;Bangalore City"). Hand-maintained in `districts.csv` — the LGD
+    # snapshot carries none — so a regeneration reads the existing file and
+    # carries them across rather than blanking the column.
+    "aliases",
 )
 
 
@@ -74,7 +79,31 @@ def _state_name_by_lgd_code(rows: list[dict[str, str]]) -> dict[str, str]:
     }
 
 
-def districts(rows: list[dict[str, str]]) -> list[dict[str, str]]:
+def existing_aliases(dest: Path) -> dict[tuple[str, str], str]:
+    """Aliases already in the generated file, keyed by `(area_name, region)`.
+
+    The LGD snapshot has no alias data — the column is hand-maintained in
+    `districts.csv` itself. Reading it back means a regeneration against a
+    newer snapshot keeps them, instead of silently blanking the column.
+
+    A district that disappears from the snapshot takes its aliases with it,
+    which is the intended behaviour: an alias for a district that no longer
+    exists cannot resolve to anything.
+    """
+
+    if not dest.is_file():
+        return {}
+    with dest.open(newline="", encoding="utf-8") as handle:
+        return {
+            (row["area_name"], row["region"]): row["aliases"]
+            for row in csv.DictReader(handle)
+            if row.get("aliases")
+        }
+
+
+def districts(
+    rows: list[dict[str, str]], aliases: dict[tuple[str, str], str] | None = None
+) -> list[dict[str, str]]:
     """The district rows, each carrying an ISO 3166-2 region.
 
     Raises if a district's state will not resolve — every one of the 784 in the
@@ -82,6 +111,7 @@ def districts(rows: list[dict[str, str]]) -> list[dict[str, str]]:
     the region column would be quietly wrong.
     """
 
+    aliases = aliases or {}
     iso_by_name = _iso_by_state_name(rows)
     state_by_code = _state_name_by_lgd_code(rows)
 
@@ -102,6 +132,7 @@ def districts(rows: list[dict[str, str]]) -> list[dict[str, str]]:
                 "region": region,
                 "latitude": row["latitude"],
                 "longitude": row["longitude"],
+                "aliases": aliases.get((row["area_name"], region), ""),
             }
         )
 
@@ -135,7 +166,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"no such snapshot: {args.source}", file=sys.stderr)
         return 1
 
-    rows = districts(_read_rows(args.source))
+    rows = districts(_read_rows(args.source), existing_aliases(args.dest))
     write(rows, args.dest)
     print(f"wrote {len(rows)} districts to {args.dest}")
     return 0

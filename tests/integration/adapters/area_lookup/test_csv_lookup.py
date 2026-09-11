@@ -14,7 +14,7 @@ from dss.adapters.area_lookup.csv_lookup import CsvAreaLookup, DistrictCsvUnusab
 from dss.core.shared.models import Geometry
 from dss.ports.area_lookup import AreaMatch
 
-HEADER = "area_code,area_name,region,latitude,longitude\n"
+HEADER = "area_code,area_name,region,latitude,longitude,aliases\n"
 
 
 def _write(tmp_path: Path, *rows: str) -> Path:
@@ -30,7 +30,7 @@ def test_resolves_a_district_name_to_its_coordinates(tmp_path: Path) -> None:
     the Arabian Sea and still look like a plausible pair of numbers.
     """
 
-    path = _write(tmp_path, "490,Pune,IN-MH,18.571118,74.067998")
+    path = _write(tmp_path, "490,Pune,IN-MH,18.571118,74.067998,")
 
     lookup = CsvAreaLookup.load(path)
 
@@ -49,7 +49,7 @@ def test_matches_the_name_regardless_of_case_and_padding(tmp_path: Path) -> None
     caller's — that string is what a follow-up question would show the farmer.
     """
 
-    path = _write(tmp_path, "490,Pune,IN-MH,18.571118,74.067998")
+    path = _write(tmp_path, "490,Pune,IN-MH,18.571118,74.067998,")
 
     lookup = CsvAreaLookup.load(path)
 
@@ -59,8 +59,8 @@ def test_matches_the_name_regardless_of_case_and_padding(tmp_path: Path) -> None
 
 # The two real Bilaspurs, verbatim from the generated CSV. One of exactly three
 # district names in India that collide (also Hamirpur, Pratapgarh).
-_BILASPUR_CT = "375,Bilaspur,IN-CT,22.179960,82.115906"
-_BILASPUR_HP = "15,Bilaspur,IN-HP,31.370997,76.670218"
+_BILASPUR_CT = "375,Bilaspur,IN-CT,22.179960,82.115906,"
+_BILASPUR_HP = "15,Bilaspur,IN-HP,31.370997,76.670218,"
 
 
 def test_reports_every_match_when_a_name_is_ambiguous(tmp_path: Path) -> None:
@@ -96,7 +96,7 @@ def test_returns_no_match_for_a_name_the_index_does_not_carry(tmp_path: Path) ->
     caller to ask the farmer which district they are in.
     """
 
-    path = _write(tmp_path, "490,Pune,IN-MH,18.571118,74.067998")
+    path = _write(tmp_path, "490,Pune,IN-MH,18.571118,74.067998,")
 
     lookup = CsvAreaLookup.load(path)
 
@@ -126,3 +126,69 @@ def test_a_file_with_no_districts_refuses_to_load(tmp_path: Path) -> None:
 
     with pytest.raises(DistrictCsvUnusable):
         CsvAreaLookup.load(path)
+
+
+def test_an_alias_resolves_to_its_district(tmp_path: Path) -> None:
+    """A farmer saying "Bangalore" means Bengaluru Urban.
+
+    No string algorithm derives one name from the other — the link is
+    historical, so it is data in the `aliases` column rather than a match rule.
+    The official name comes back, not the alias: that is the string a follow-up
+    question would show the farmer.
+    """
+
+    path = _write(
+        tmp_path,
+        "525,Bengaluru Urban,IN-KA,12.951773,77.593709,Bangalore;Bangalore City",
+    )
+
+    lookup = CsvAreaLookup.load(path)
+
+    assert [match.name for match in lookup.resolve("Bangalore")] == ["Bengaluru Urban"]
+    assert [match.name for match in lookup.resolve("bangalore city")] == [
+        "Bengaluru Urban"
+    ]
+
+
+def test_a_bare_name_falls_back_to_the_districts_that_qualify_it(
+    tmp_path: Path,
+) -> None:
+    """ "Bengaluru" is no district's full name — three districts qualify it.
+
+    Exact match alone returned nothing, so a farmer who named their city was
+    asked for a district they had just given.
+    """
+
+    path = _write(
+        tmp_path,
+        "525,Bengaluru Urban,IN-KA,12.951773,77.593709,",
+        "526,Bengaluru Rural,IN-KA,13.200000,77.600000,",
+        "490,Pune,IN-MH,18.571118,74.067998,",
+    )
+
+    lookup = CsvAreaLookup.load(path)
+
+    assert {match.name for match in lookup.resolve("Bengaluru")} == {
+        "Bengaluru Urban",
+        "Bengaluru Rural",
+    }
+
+
+def test_an_exact_match_wins_over_a_longer_name_that_starts_with_it(
+    tmp_path: Path,
+) -> None:
+    """ "Mumbai" is a district *and* a prefix of "Mumbai Suburban".
+
+    The exact one wins alone, so naming a real district is never turned into a
+    question about which of two was meant.
+    """
+
+    path = _write(
+        tmp_path,
+        "519,Mumbai,IN-MH,18.940000,72.830000,",
+        "518,Mumbai Suburban,IN-MH,19.100000,72.870000,",
+    )
+
+    lookup = CsvAreaLookup.load(path)
+
+    assert [match.name for match in lookup.resolve("Mumbai")] == ["Mumbai"]

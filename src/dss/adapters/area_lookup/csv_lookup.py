@@ -60,6 +60,13 @@ class CsvAreaLookup:
                         ),
                     )
                     by_name.setdefault(_key(match.name), []).append(match)
+                    # Aliases index to the same match, so "Bangalore" and
+                    # "Bengaluru Urban" answer identically. `.get` rather than
+                    # `[...]`: an index generated before the column existed is
+                    # still readable, just without aliases.
+                    for alias in (row.get("aliases") or "").split(";"):
+                        if alias.strip():
+                            by_name.setdefault(_key(alias), []).append(match)
         # KeyError and ValueError cover a renamed column and an unparseable
         # coordinate — both leave a partial index that would resolve some names
         # and silently miss others.
@@ -80,8 +87,27 @@ class CsvAreaLookup:
             )
         return cls({name: tuple(matches) for name, matches in by_name.items()})
 
+    def _qualified_by(self, wanted: str) -> tuple[AreaMatch, ...]:
+        """Districts whose name begins with `wanted` as a whole word.
+
+        "Bengaluru" names no district on its own; three qualify it (Urban,
+        Rural, South). Whole-word, so "Pun" does not reach "Pune" — a partial
+        word is a typo, and this must not turn one into a confident answer.
+        """
+
+        prefix = f"{wanted} "
+        found: list[AreaMatch] = []
+        for key, matches in self._by_name.items():
+            if key.startswith(prefix):
+                found.extend(matches)
+        return tuple(found)
+
     def resolve(self, name: str, region: str | None = None) -> list[AreaMatch]:
-        matches = self._by_name.get(_key(name), ())
+        wanted = _key(name)
+        # Exact first, and alone: "Mumbai" is a district *and* the start of
+        # "Mumbai Suburban", so falling back here would turn a resolved name
+        # into an ambiguous one.
+        matches = self._by_name.get(wanted) or self._qualified_by(wanted)
         if region is None:
             return list(matches)
         # A region that matches nothing narrows to empty rather than falling
