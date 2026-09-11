@@ -42,14 +42,46 @@ def build_intent_prompt(history: Sequence[ConversationMessage]) -> str:
         "several (e.g. 'wheat price and will it rain?' is two asks).",
         "Each ask has:",
         f"- subject_categories: exactly one of [{categories}].",
+        "    Crop — growing a plant: sowing, pests, disease, irrigation, yield.",
+        "    Livestock — animals: cattle, poultry, feed, animal health.",
+        "    Weather — rain, temperature, forecast, a season's outlook.",
+        "    Market — what something sells for: mandi prices, rates, arrivals.",
+        "    Scheme — a government programme: eligibility, benefits, applying.",
+        "    Facility — a physical place with a service: a warehouse, cold "
+        "storage, a soil lab, a mandi yard. Where to take something, or where "
+        "one is.",
+        "  Pick by what the answer is about, not by which word appears. "
+        "'Is my wheat insured under PMFBY' is Scheme, not Crop.",
         f"- interaction_type: one of [{interactions}] — advise to explain/guide, "
         "observe to look up a value/record/status, act to perform an action "
         "(book, apply, submit, update, escalate).",
+        "  advise wants a recommendation the assistant reasons out; observe "
+        "wants a fact someone already holds; act changes something in the "
+        "world. Asking *how* to apply is advise; asking to *be* applied is act.",
         "- agriculture_subjects: the free-text specific named "
         "(e.g. 'potato', 'PM-KISAN'); null when the category needs none "
         "(e.g. 'will it rain?').",
+        "  Copy the user's own words. Do not translate a scheme's name, expand "
+        "an acronym, or correct a spelling — a later step matches this against "
+        "what each provider advertises, and needs what was actually said.",
         "",
-        "Also return an overall confidence in [0, 1].",
+        "Examples:",
+        "  'what is the onion rate at Lasalgaon' -> one ask: Market / observe / "
+        "'onion'.",
+        "  'am I eligible for PM-KISAN' -> one ask: Scheme / observe / "
+        "'PM-KISAN'. Eligibility is a fact about the user, not advice.",
+        "  'how do I apply for PM-KISAN' -> one ask: Scheme / advise / "
+        "'PM-KISAN'. Explaining the steps is advice; only submitting is act.",
+        "  'my cotton leaves are curling' -> one ask: Crop / advise / 'cotton'. "
+        "A problem description is still a request for guidance.",
+        "  'tomato price and when should I spray' -> two asks: Market / observe "
+        "/ 'tomato', and Crop / advise / 'tomato'.",
+        "",
+        "Also return an overall confidence in [0, 1]: how sure you are that "
+        "these asks are what the user meant. Below about 0.5 the turn may be "
+        "refused, so use a low value when the query is too vague to place "
+        "rather than guessing a category to look decisive. Returning no asks "
+        "is a valid answer when nothing here is about agriculture.",
         "If the query is a follow-up ('And potato?', 'Is it safe to use?'), "
         "resolve it against the conversation before classifying.",
         "",

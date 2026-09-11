@@ -98,3 +98,38 @@ def test_prompt_asks_for_the_place_name_in_english() -> None:
 
     assert "place_name" in prompt
     assert "English" in prompt
+
+
+def test_prompt_glosses_every_category() -> None:
+    """A bare category list left the model guessing which bucket an ask falls
+    in. Each name carries a line saying what belongs in it — asserted per
+    category so adding one to the enum without a gloss fails here.
+    """
+
+    prompt = build_intent_prompt([])
+
+    for category in SubjectCategory:
+        assert f"{category.value} —" in prompt, category.value
+
+
+def test_prompt_separates_looking_a_fact_up_from_asking_for_advice() -> None:
+    """The two cases a live model got wrong: eligibility read as advice, and
+    "how do I apply" read as an action. Both now have a worked example, so the
+    distinction is pinned rather than left to the model's reading of one word.
+    """
+
+    prompt = build_intent_prompt([])
+
+    assert "am I eligible for PM-KISAN" in prompt
+    assert "how do I apply for PM-KISAN" in prompt
+
+
+def test_prompt_keeps_the_subject_in_the_user_s_own_words() -> None:
+    """`agriculture_subjects` is matched downstream against what a provider
+    advertises (`describe_capability`), so an expanded acronym or a corrected
+    spelling is worse than the original.
+    """
+
+    prompt = build_intent_prompt([])
+
+    assert "Copy the user's own words" in prompt
