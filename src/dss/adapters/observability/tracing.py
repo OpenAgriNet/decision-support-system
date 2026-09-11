@@ -72,6 +72,20 @@ def configure_tracing() -> None:
     if not tracing_enabled():
         return
 
+    endpoint = os.environ[_ENDPOINT]
+    if not endpoint.startswith(("http://", "https://")):
+        # Without a scheme the exporter fails once per batch, forever, with
+        # `No connection adapters were found` — a line about the URL rather
+        # than about the missing `http://`, buried in the export loop rather
+        # than raised at startup. Say it once, at the top, in those terms.
+        logger.error(
+            "%s is %r, which has no scheme. Exports will fail with 'No "
+            "connection adapters were found'. Prefix it with http:// or "
+            "https:// — and note the OTLP/HTTP port is 4318, not 4317.",
+            _ENDPOINT,
+            endpoint,
+        )
+
     settings = instrumentation_settings()
     if settings.include_content:
         logger.warning(
@@ -99,7 +113,7 @@ def configure_tracing() -> None:
     # was not already there.
     logfire.configure(send_to_logfire=False, console=False, scrubbing=False)
     Agent.instrument_all(settings)
-    logger.info("tracing on, exporting to %s", os.environ[_ENDPOINT])
+    logger.info("tracing on, exporting to %s", endpoint)
 
 
 @contextmanager
