@@ -16,8 +16,7 @@ services:
         condition: service_healthy
       clickhouse:
         condition: service_healthy
-    ports:
-      - 127.0.0.1:3030:3030
+    # Not published: the web container reaches the worker over this network.
     environment: &langfuse-worker-env
       NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
       DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/postgres} # CHANGEME
@@ -110,7 +109,12 @@ services:
     restart: always
     depends_on: *langfuse-depends-on
     ports:
-      - 3000:3000
+      # 127.0.0.1, not the original 0.0.0.0. With message content recorded
+      # (ADR-0007 §5) an unbound 3000 would put the farmer's queries on the
+      # public interface. nginx-proxy-manager reaches this over `oan-edge` by
+      # service name and terminates TLS; the published port is only so a
+      # tunnelled `localhost:3000` still works.
+      - 127.0.0.1:3000:3000
     environment:
       <<: *langfuse-worker-env
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-mysecret} # CHANGEME
@@ -144,9 +148,11 @@ services:
     volumes:
       - langfuse_clickhouse_data:/var/lib/clickhouse
       - langfuse_clickhouse_logs:/var/log/clickhouse-server
-    ports:
-      - 127.0.0.1:8123:8123
-      - 127.0.0.1:9000:9000
+    # Not published: only the other Langfuse containers talk to ClickHouse,
+    # over this network by service name. The host's 8123 and 9000 are already
+    # taken (HyperDX's ClickHouse, knowledge-provider's MinIO), so binding them
+    # fails the whole `up`. `docker exec <container> clickhouse-client` is the
+    # way in when you need one.
     healthcheck:
       test: wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1
       interval: 5s
@@ -163,9 +169,8 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-miniosecret} # CHANGEME
-    ports:
-      - 9090:9000
-      - 127.0.0.1:9091:9001
+    # Not published — and note the original bound 9090 to 0.0.0.0, not
+    # localhost, which would have put this MinIO's API on the public interface.
     volumes:
       - langfuse_minio_data:/data
     healthcheck:
@@ -182,8 +187,7 @@ services:
     command: >
       --requirepass ${REDIS_AUTH:-myredissecret}
       --maxmemory-policy noeviction
-    ports:
-      - 127.0.0.1:6379:6379
+    # Not published: internal to this project.
     volumes:
       - langfuse_redis_data:/data
     healthcheck:
@@ -206,8 +210,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-postgres}
       TZ: UTC
       PGTZ: UTC
-    ports:
-      - 127.0.0.1:5432:5432
+    # Not published: internal to this project, and the host's 5432 is one
+    # `up` away from colliding with another service's Postgres.
     volumes:
       - langfuse_postgres_data:/var/lib/postgresql/data
 
@@ -223,9 +227,16 @@ volumes:
   langfuse_redis_data:
     driver: local
 
-# Shared with the DSS's own compose project so the two resolve each other by
-# service name. See the note in docker-compose.yml.
+# `oan-edge` already exists on the deployment host and the DSS is already on
+# it, so naming it as this project's default network is all it takes for
+# `langfuse-web` to resolve from the DSS container — and for
+# nginx-proxy-manager, also on this network, to reach the UI.
+#
+# Locally, where it does not exist yet:
+#
+#     docker network create oan-edge
+#
 networks:
   default:
-    name: oan
+    name: oan-edge
     external: true

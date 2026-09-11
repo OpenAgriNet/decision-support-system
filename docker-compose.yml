@@ -76,16 +76,3 @@ services:
       # the host instead.
       - "127.0.0.1:${OTEL_HOST_PORT:-4318}:4318"
     restart: unless-stopped
-
-# Each compose project otherwise gets its own bridge network, and container DNS
-# only resolves names within a network — so `langfuse-web` would not resolve
-# from this container even with both files on the same host. Naming the default
-# network makes every service in both projects join one, with no per-service
-# edits to the vendor's file.
-#
-#     docker network create oan
-#
-networks:
-  default:
-    name: oan
-    external: true
