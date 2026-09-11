@@ -1,4 +1,8 @@
 # decision-support-system
+
+[![codecov](https://codecov.io/gh/OpenAgriNet/decision-support-system/branch/main/graph/badge.svg?token=5D3QJ4STZM)](https://codecov.io/gh/OpenAgriNet/decision-support-system)
+[![Security](https://github.com/OpenAgriNet/decision-support-system/actions/workflows/security.yml/badge.svg?branch=main)](https://github.com/OpenAgriNet/decision-support-system/actions/workflows/security.yml)
+
 A reasoning runtime that interprets user queries and delivers curated answers from across network provider sources.
 
 ## Run it
