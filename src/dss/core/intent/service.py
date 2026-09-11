@@ -47,6 +47,9 @@ def build_intent_prompt(history: Sequence[ConversationMessage]) -> str:
         "    Weather — rain, temperature, forecast, a season's outlook.",
         "    Market — what something sells for: mandi prices, rates, arrivals.",
         "    Scheme — a government programme: eligibility, benefits, applying.",
+        "    Facility — a physical place with a service: a warehouse, cold "
+        "storage, a soil lab, a mandi yard. Where to take something, or where "
+        "one is.",
         "  Pick by what the answer is about, not by which word appears. "
         "'Is my wheat insured under PMFBY' is Scheme, not Crop.",
         f"- interaction_type: one of [{interactions}] — advise to explain/guide, "
