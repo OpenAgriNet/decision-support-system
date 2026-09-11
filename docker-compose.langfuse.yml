@@ -222,3 +222,10 @@ volumes:
     driver: local
   langfuse_redis_data:
     driver: local
+
+# Shared with the DSS's own compose project so the two resolve each other by
+# service name. See the note in docker-compose.yml.
+networks:
+  default:
+    name: oan
+    external: true

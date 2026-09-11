@@ -24,6 +24,14 @@ services:
       AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:-}
       AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      # Without these three the container exports nothing useful: no auth means
+      # 401 on every batch, and no content means spans that say what ran but not
+      # what was asked. Setting the endpoint alone is the easy mistake.
+      OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS:-}
+      # Pydantic AI counts tokens as metrics and Langfuse discards them.
+      OTEL_METRICS_EXPORTER: ${OTEL_METRICS_EXPORTER:-none}
+      # Only a literal "true" opts in. See ADR-0007 §5 before turning it on.
+      DSS_TRACE_INCLUDE_MESSAGE_CONTENT: ${DSS_TRACE_INCLUDE_MESSAGE_CONTENT:-}
       DSS_INVOCATION_BASE_URL: ${DSS_INVOCATION_BASE_URL:-}
       DSS_DISCOVERY_BASE_URL: ${DSS_DISCOVERY_BASE_URL:-}
       # The published packs are on this tag, not on `main` — the settings
@@ -68,3 +76,16 @@ services:
       # the host instead.
       - "127.0.0.1:${OTEL_HOST_PORT:-4318}:4318"
     restart: unless-stopped
+
+# Each compose project otherwise gets its own bridge network, and container DNS
+# only resolves names within a network — so `langfuse-web` would not resolve
+# from this container even with both files on the same host. Naming the default
+# network makes every service in both projects join one, with no per-service
+# edits to the vendor's file.
+#
+#     docker network create oan
+#
+networks:
+  default:
+    name: oan
+    external: true
