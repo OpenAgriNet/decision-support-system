@@ -172,6 +172,7 @@ def build_planner_agent(
 
     agent: Agent[PlannerDeps, str] = Agent(
         model,
+        name="planner",
         deps_type=PlannerDeps,
         system_prompt=system_prompt,
         retries=retries,

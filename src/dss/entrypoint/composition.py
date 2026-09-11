@@ -406,6 +406,7 @@ def _intent_llm(settings: Settings):
         return StubLLM()  # STUB(#83): canned answers, no network
     return PydanticAILLMProvider(
         _resolve_model(settings.intent_model),
+        name="intent-classifier",
         temperature=settings.intent_temperature,
         timeout=settings.intent_timeout_seconds,
         retries=settings.intent_retries,
@@ -417,6 +418,7 @@ def _moderation_llm(settings: Settings):
         return StubLLM()
     return PydanticAILLMProvider(
         _resolve_model(settings.moderation_model),
+        name="moderator",
         temperature=settings.moderation_temperature,
         timeout=settings.moderation_timeout_seconds,
         retries=settings.moderation_retries,

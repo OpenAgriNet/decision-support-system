@@ -120,6 +120,7 @@ def build_compose(
     async def compose(evidence: Evidence, *, turn: UserTurn) -> str:
         agent: Agent[None, str] = Agent(
             model,
+            name="composer",
             system_prompt=_SYSTEM_PROMPT.format(
                 name=identity.name,
                 persona=identity.persona,

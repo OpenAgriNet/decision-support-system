@@ -73,6 +73,7 @@ def _live_llm() -> PydanticAILLMProvider:
     settings = Settings()
     return PydanticAILLMProvider(
         _resolve_model(settings.intent_model),
+        name="intent-classifier",
         temperature=settings.intent_temperature,
         timeout=settings.intent_timeout_seconds,
         retries=settings.intent_retries,
