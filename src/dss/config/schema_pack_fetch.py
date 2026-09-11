@@ -59,7 +59,13 @@ DEFAULT_PACK_DIR = Path(__file__).parents[3] / "var" / "schema-packs"
 # `subjectCategories`, which `provider_discovery.index` reads unguarded, so the
 # pack is skipped as defective and never reaches the capability index. See
 # TODO.md.
-PACKS = ("AgricultureResource", "MandiPrice", "WeatherObservation", "KnowledgeAdvisory")
+PACKS = (
+    "AgricultureResource",
+    "MandiPrice",
+    "WeatherObservation",
+    "KnowledgeAdvisory",
+    "AgricultureFacility",
+)
 
 # What the loader needs. Absent either, the pack is not on this ref.
 _ESSENTIAL_FILES = ("attributes.yaml", "profile.json")
