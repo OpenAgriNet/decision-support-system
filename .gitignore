@@ -19,6 +19,7 @@ dist/
 .pytest_cache/
 .ruff_cache/
 .coverage
+coverage.xml
 htmlcov/
 # tests/
 # Written by a local run, not source: evidence JSONL (docs/RUNNING.md) and the
