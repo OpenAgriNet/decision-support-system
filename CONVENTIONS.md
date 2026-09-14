@@ -97,6 +97,19 @@ fix/38-translation-empty-target-lang
 Issue number makes commits grep-able: `git log --grep="#42"`.
 Scopes are optional — add one only when the repo grows large enough that filtering by area is genuinely useful. Don't define them speculatively.
 
+**Body: bullet points, 3–5 lines, one line each.** No prose paragraphs. Reasoning that needs more than five bullets belongs in an ADR or the PR body, not in `git log`. No trailers — no `Co-Authored-By`, no tool attribution.
+
+```
+fix: stop showing a provider's own content as a vocabulary [#96]
+
+- `describe_capability` rendered every advertised list as "serves only these values".
+- Right for a governed vocabulary, wrong for a resource publishing its own content.
+- The renderer now drops an advertised field whose name matches a filterable path.
+- Both cases asserted in tier 2.
+```
+
+**Keep it minimal.** The subject line is usually the whole message. Add a body only when *why* is not obvious from the diff, and keep it to a couple of lines — reasoning that needs more than that belongs in an ADR or the PR body, not in `git log`. No trailers: no `Co-Authored-By`, no tool attribution.
+
 | Type | When | Version impact |
 |---|---|---|
 | feat | New capability | MINOR |
