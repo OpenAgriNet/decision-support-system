@@ -268,7 +268,7 @@ def test_interaction_type_survives_a_category_override() -> None:
 def test_a_bare_commodity_word_cannot_override_because_it_is_not_an_alias() -> None:
     """The catalog holds no bare commodity words, which is what keeps a price
     query a price query. This test states the constraint the override rests
-    on — the code does not enforce it (ADR-0007 §5)."""
+    on — the code does not enforce it (ADR-0008 §5)."""
 
     intent = Intent(
         asks=(_ask("makhana", SubjectCategory.MARKET, InteractionType.OBSERVE),),

@@ -9,7 +9,7 @@
 - `core/enrichment`: resolves a scheme ask's `agriculture_subjects` to the
   official scheme name by longest whole-token alias span, gated on the
   classifier having already said `Scheme`. Not wired yet (#34)
-- ADR-0007: scheme names resolved deterministically at intent time, as a
+- ADR-0008: scheme names resolved deterministically at intent time, as a
   pre-discovery hint rather than a governed-code source (#34)
 - Scheme enrichment wired into the turn, between intent and discovery, with a
   `trace_component("enrichment")` span and a `scheme_resolved` trace line per
@@ -19,7 +19,7 @@
 - A scheme ask is now discovered on its subject category alone when the
   capability index resolves no `@type` — no published schema pack declares
   `Scheme`, so `/discover` was never called for one. The request carries the
-  jsonpath filter and omits `schemaContext`; ADR-0008 (#52)
+  jsonpath filter and omits `schemaContext`; ADR-0009 (#52)
 
 
 ### Changed

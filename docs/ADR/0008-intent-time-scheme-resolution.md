@@ -1,4 +1,4 @@
-# ADR-0007: Resolve Scheme Names Deterministically at Intent Time
+# ADR-0008: Resolve Scheme Names Deterministically at Intent Time
 
 - **Status:** ACCEPTED
 - **Date:** 2026-09-10
