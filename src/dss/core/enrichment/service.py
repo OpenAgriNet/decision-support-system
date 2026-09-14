@@ -99,7 +99,7 @@ def resolve_scheme_subjects(
 
     The override is the point: discovery routes on ``subject_categories``
     alone, and an alias hit beats a classifier that does not know "PKVY" names
-    a scheme. Safe only because every alias is scheme-distinctive (ADR-0007
+    a scheme. Safe only because every alias is scheme-distinctive (ADR-0008
     §5: tenant-enforced). ``interaction_type``, ask order and ``confidence``
     are untouched; an unlisted scheme keeps the farmer's words.
     """

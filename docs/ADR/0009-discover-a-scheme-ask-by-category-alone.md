@@ -1,4 +1,4 @@
-# ADR-0008: Discover a Scheme Ask by Subject Category Alone
+# ADR-0009: Discover a Scheme Ask by Subject Category Alone
 
 - **Status:** ACCEPTED
 - **Date:** 2026-09-14
@@ -9,7 +9,7 @@
 ## 1. Context and Problem Statement
 
 A scheme ask never reached the network. "How can i apply for PMKMY" classified
-correctly, resolved correctly (ADR-0007), and then stopped:
+correctly, resolved correctly (ADR-0008), and then stopped:
 
 ```
 intent      → Ask(subject='PMKMY', category=Scheme, interaction=advise) conf=0.99
@@ -74,7 +74,7 @@ The request that leaves is the filter and the spatial constraint:
 ```
 
 Option 2 asserts a `@type` no pack connects to `Scheme`, which is the DSS
-inventing network vocabulary — the same thing ADR-0007 §1 refuses for scheme
+inventing network vocabulary — the same thing ADR-0008 §1 refuses for scheme
 codes. Option 3 turns our own index holes silent: every other category has a
 pack, so an empty entry there is a defect and `CapabilityUnresolved` should
 keep firing. Option 4 leaves a shipped category permanently unanswerable on
