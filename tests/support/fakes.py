@@ -17,12 +17,11 @@ from dss.ports.area_lookup import AreaMatch
 
 
 class FakeSchemeCatalog:
-    """Satisfies `ports.scheme_catalog.SchemeCatalog` from a plain mapping of
-    alias text to scheme name.
+    """A `SchemeCatalog` over an alias-text → scheme-name mapping.
 
-    Normalizes its keys with the real `alias_key`, because a fake that indexed
-    them differently would let a test pass on a lookup the adapter could never
-    serve. Default-empty, which is the unmounted-catalog case.
+    Keys are normalized with the real `alias_key`, so a fake cannot pass a
+    lookup the CSV adapter could never serve. Default-empty is the
+    unmounted-catalog case.
     """
 
     def __init__(self, schemes: dict[str, str] | None = None) -> None:

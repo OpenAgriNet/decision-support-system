@@ -10,10 +10,8 @@ from dss.core.intent.models import Intent
 class Scheme(BaseModel):
     """One government scheme as the catalog knows it.
 
-    ``code`` is the catalog's stable row key. Nothing reads it at runtime yet
-    — the resolved ``Ask`` carries only ``name`` — but names and aliases get
-    edited and the code is what a future mapping onto the network's own
-    governed vocabulary would key on, so it is carried rather than dropped.
+    ``code`` is the catalog's stable row key. Nothing reads it yet, but names
+    and aliases get edited, so it is carried rather than dropped.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -23,14 +21,10 @@ class Scheme(BaseModel):
 
 
 class SchemeMatch(BaseModel):
-    """One alias hit. ``matched_alias`` is the *normalized* text that matched,
-    not the farmer's raw words — it is what a trace needs to explain why this
-    scheme was chosen.
-
-    ``fuzzy`` says the alias was reached by similarity rather than by being
-    what the farmer typed. Worth carrying separately: an exact hit needs no
-    explanation, and a wrong *fuzzy* hit is the failure this whole mechanism
-    can produce, so a trace has to be able to tell them apart.
+    """One alias hit. ``matched_alias`` is the normalized text that matched,
+    not the farmer's raw words. ``fuzzy`` marks a similarity hit — the one
+    failure this mechanism can produce, so a trace must tell it from an exact
+    one.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -43,9 +37,8 @@ class SchemeMatch(BaseModel):
 class SchemeResolution(BaseModel):
     """The enriched intent and what was matched to produce it.
 
-    The matches are returned rather than only logged because the rewrite is
-    otherwise invisible: the ``Ask`` that comes out no longer contains the
-    words the farmer used, and something has to be able to say why.
+    Matches are returned, not only logged: the ``Ask`` that comes out no
+    longer holds the farmer's words, and something has to say why.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)

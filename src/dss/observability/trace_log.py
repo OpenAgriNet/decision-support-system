@@ -172,11 +172,9 @@ def log_event(
 ) -> None:
     """Log one notable thing a component decided, on the same greppable key.
 
-    For a decision worth seeing on its own, not just as a span: `enter`/`exit`
-    say a component ran, this says what it did. Unlike the external-service
-    helpers there is no body and nothing goes to DEBUG, so **only pass fields
-    that are safe at INFO** — config and catalog values, never the farmer's
-    words (CONVENTIONS.md).
+    `enter`/`exit` say a component ran; this says what it did. Nothing here
+    goes to DEBUG, so pass only fields safe at INFO — config and catalog
+    values, never the farmer's words (CONVENTIONS.md).
     """
 
     parts = [

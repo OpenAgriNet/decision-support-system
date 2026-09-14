@@ -73,18 +73,10 @@ def _enrich(
 ) -> Intent:
     """Resolve any scheme the turn names to its official name.
 
-    Between intent and discovery because it can only be either: it needs the
-    classified asks, and discovery routes on what it leaves behind.
-
-    Every resolution is logged. The rewrite is otherwise invisible — the ask
-    that reaches discovery no longer holds the words the farmer used — and
-    when a catalog entry is wrong, this line is what says which alias did it.
-    Only catalog-authored text is logged: `matched_alias` is a key from the
-    index, not the farmer's phrasing, so nothing here is PII.
-
-    ``None`` means no catalog was mounted, which is a real deployment state
-    (nothing ships in the image) rather than a mistake — the turn proceeds
-    with the farmer's own words.
+    Every resolution is logged because the rewrite is otherwise invisible: the
+    ask reaching discovery no longer holds the farmer's words. Only
+    catalog-authored text is logged, so nothing here is PII. ``None`` is a
+    real deployment state — no catalog mounted, farmer's words kept.
     """
 
     if catalog is None:
@@ -103,8 +95,7 @@ def _enrich(
             event="scheme_resolved",
             alias=match.matched_alias,
             scheme_code=match.scheme.code,
-            # A wrong *fuzzy* hit is the failure this can produce, so the
-            # trace has to say which kind of match it was.
+            # A wrong fuzzy hit is the failure this can produce.
             fuzzy=match.fuzzy,
         )
     return resolution.intent
