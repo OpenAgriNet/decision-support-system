@@ -36,12 +36,15 @@ jobs:
             curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b bin
           fi
 
-      # Report-only, does not fail the build.
-      - name: Trivy dependency scan (report)
+      # Gates the build: the README carries a Security badge, and a green badge
+      # has to mean "no fixable HIGH/CRITICAL CVEs", not merely "the scan ran".
+      # --ignore-unfixed keeps the gate actionable — it only fires when an
+      # upgrade is actually available.
+      - name: Trivy dependency scan
         run: |
           ./bin/trivy fs \
             --scanners vuln \
-            --exit-code 0 \
+            --exit-code 1 \
             --severity HIGH,CRITICAL \
             --ignore-unfixed \
             --no-progress \

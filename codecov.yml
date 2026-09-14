@@ -1,0 +1,30 @@
+# Codecov configuration.
+#
+# Two coverage gates run on every PR, each with a distinct job:
+#   - pytest's --cov-fail-under=85 (.github/workflows/run-tests.yml) is the
+#     absolute floor. It also runs locally, so a drop is visible before a push.
+#   - the `project` status below is the ratchet: it compares against main and
+#     fails on erosion the fixed floor would let through (e.g. 92% -> 87%).
+#
+# `paths` is scoped to src/ to match --cov=src/dss exactly, so the two gates can
+# never disagree. It also means a docs-only or config-only PR changes no src/
+# coverage and passes untouched, while a PR that slips one untested src/ file in
+# alongside doc edits is still caught.
+#
+# tools/, scripts/, and examples/ are deliberately unmeasured: tools/mock_network
+# is a test double, and scripts/ and examples/ are not runnable in CI (they hit
+# the network or boot a server). Measuring them would drag the total down and
+# force a weaker floor on the code that actually ships.
+coverage:
+  status:
+    project:
+      default:
+        target: auto # baseline is main
+        threshold: 2% # tolerate a 2% dip, fail beyond it
+        paths:
+          - "src/"
+    # No patch gate: coverage is judged on the repo total, not on the diff.
+    patch: false
+
+comment:
+  layout: "reach, diff, flags, files"

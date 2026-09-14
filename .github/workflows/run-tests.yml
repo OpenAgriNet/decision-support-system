@@ -35,4 +35,21 @@ jobs:
       - name: Test
         run: >
           uv run pytest --ignore=tests/e2e
-          --cov=src/dss --cov-report=term-missing --cov-fail-under=85
+          --cov=src/dss --cov-report=term-missing --cov-report=xml
+          --cov-fail-under=85
+
+      # pytest writes coverage.xml before it checks the threshold, so the report
+      # exists even when the gate trips. `!cancelled()` uploads it anyway: a
+      # failing build is exactly when the line-by-line report is most useful.
+      # The job still fails — this only makes the report survive the failure.
+      - name: Upload coverage to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          # Named explicitly: without it the action sends no slug and Codecov has
+          # to resolve the repo from the token alone, which fails opaquely
+          # ("Repository not found") when the token and repo disagree.
+          slug: ${{ github.repository }}
+          files: ./coverage.xml
+          fail_ci_if_error: true
