@@ -1,18 +1,9 @@
-"""Reads the scheme catalog from a tenant-mounted CSV file (issue #34).
+"""Reads the scheme catalog from a tenant-mounted CSV (issue #34).
 
-CSV rather than YAML, against the repo's own config house style, because this
-one file is domain data owned by an agriculture officer rather than an
-operator: scheme lists already live in spreadsheets, and one row per scheme
-reviews cleanly in a pull request. The columns are
-``scheme_code,scheme_name,scheme_aliases``, aliases separated by ``|``.
-
-Nothing ships in the image. A national scheme list is still a tenant's
-decision — a Maharashtra deployment and a Bihar one want different subsets and
-their own state schemes — so an unmounted catalog is a real state, and one the
-loader warns about rather than papering over.
-
-Mirrors ``config/policy_loader.py`` on failure: a configured path that is not
-there raises rather than silently falling back to a different configuration.
+Columns: ``scheme_code,scheme_name,scheme_aliases``, aliases ``|``-separated.
+CSV rather than the repo's YAML house style because this is domain data owned
+by an agriculture officer, whose scheme lists already live in spreadsheets.
+Nothing ships in the image; a missing configured path raises, as in `policy_loader`.
 """
 
 from __future__ import annotations
@@ -40,14 +31,14 @@ UNSET_CATALOG = (
 
 
 class MalformedSchemeCatalog(Exception):
-    """The catalog file will not load. Raised at boot, never at turn time —
-    a tenant's typo should stop a deployment, not degrade one farmer's answer.
+    """The catalog file will not load. Raised at boot, never at turn time: a
+    tenant's typo should stop a deployment, not degrade one farmer's answer.
     """
 
 
 class CsvSchemeCatalog:
-    """Satisfies `ports.scheme_catalog.SchemeCatalog`. Holds the finished
-    index; the file was read once, by `load_scheme_catalog`."""
+    """A `SchemeCatalog` over a finished index, read once by
+    `load_scheme_catalog`."""
 
     def __init__(self, aliases: Mapping[str, Scheme]) -> None:
         self._aliases = dict(aliases)
@@ -102,8 +93,8 @@ def _scheme_from(row: dict[str, str], *, source: str, number: int) -> Scheme:
 def _alias_texts(row: dict[str, str], scheme: Scheme) -> list[str]:
     """The alias column plus the scheme's own name, blanks dropped.
 
-    Blank entries are skipped rather than rejected: a trailing `|` is a
-    spreadsheet artefact, not a mistake worth refusing to boot over.
+    A trailing `|` is a spreadsheet artefact, not a mistake worth refusing to
+    boot over.
     """
 
     listed = (row.get(_ALIASES) or "").split(_ALIAS_SEPARATOR)
@@ -120,12 +111,8 @@ def _claim(
 ) -> None:
     """Record one alias, refusing a key two different schemes both claim.
 
-    A repeat within one scheme is harmless — the official name is often also
-    listed as an alias — but across schemes it is unresolvable: `find_scheme`
-    breaks ties by span length, which says nothing about which scheme was
-    meant. That is a different judgement from an alias being *questionable*
-    (a bare commodity word like `makhana`, which the catalog's author is
-    trusted to keep out); this one has no correct answer at all.
+    A repeat within one scheme is harmless; across schemes it has no correct
+    answer, since `find_scheme` breaks ties by span length.
     """
 
     if not key:

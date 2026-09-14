@@ -136,12 +136,9 @@ class Orchestrator:
         self._intent_llm = intent_llm
         self._moderation_llm = moderation_llm
         self._policies = policies
-        # Required, not optional. `run_turn` accepts no catalog because a pure
-        # function should not demand wiring a test does not care about; the
-        # composition root has no such excuse, and an unmounted catalog is
-        # already representable — as an empty one, which the loader warns
-        # about. Defaulting here would make a wiring mistake and a missing
-        # mount look identical.
+        # Required, not optional. An unmounted catalog is already
+        # representable as an empty one, so defaulting here would make a
+        # wiring mistake and a missing mount look identical.
         self._scheme_catalog = scheme_catalog
         self._scheme_fuzzy_threshold = scheme_fuzzy_threshold
         self._components = components

@@ -1,8 +1,8 @@
 """Tier 3 — scheme enrichment wired into the turn.
 
-Real ``run_turn`` control flow; the ports below it are faked. What this proves
-is the *placement*: enrichment runs after intent and the resolved subject is
-what discovery is handed. The resolver's own rules are tier 1.
+Real ``run_turn``, faked ports below it. Proves *placement*: enrichment runs
+after intent and discovery is handed the resolved subject. The resolver's own
+rules are tier 1.
 """
 
 from __future__ import annotations

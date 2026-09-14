@@ -120,8 +120,7 @@ def build_runner_with_lifecycle(
     # later. Read once here — every turn shares this index.
     area_lookup = CsvAreaLookup.load(settings.district_csv_path)
     # The scheme catalog is the other way round: nothing ships, because which
-    # schemes a deployment serves is the tenant's call. Unset is inert and the
-    # loader says so.
+    # schemes a deployment serves is the tenant's call.
     scheme_catalog = load_scheme_catalog(settings.schemes_config_path)
 
     discover, invocation, schemas, schema_context_index, client = _network(
