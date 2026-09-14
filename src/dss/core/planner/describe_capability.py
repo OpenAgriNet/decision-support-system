@@ -40,31 +40,16 @@ def _describes_own_content(field: str, filterable: tuple[str, ...]) -> bool:
     """Whether an advertised field is the provider describing what it holds,
     rather than a vocabulary the model must choose from.
 
-    The signal is the field's own name. A vocabulary and the filter it governs
-    are two different things — the vocabulary is the filter's domain — so a
-    catalog names them differently: ``supportedCommodities`` for the filter
-    ``commodity.code``, ``supportedParameters`` for ``parameters``. When a
-    resource instead advertises under the *very path you would filter on*, it
-    is publishing its own content at that path so it can be found by it, not
-    enumerating what may be asked for.
+    The name is the signal: a vocabulary is named apart from the filter it
+    governs (``supportedCommodities`` for ``commodity.code``), so advertising
+    under the very path you would filter on means publishing content, not
+    enumerating choices. ``topics`` is the case that bit.
 
-    ``topics`` is the case that matters. The pack declares it as a bare array
-    of strings with no ``enum``, lists it in ``discovery_fields`` and
-    ``indexable_paths``, and expects the caller to *compose* the filter from
-    what the farmer said. Rendering the provider's own topics under a heading
-    promising the values it serves made the model answer "can i grow potato"
-    with that provider's ``Crop establishment``.
-
-    Shape is not the signal: WeatherObservation's ``supportedParameters:
-    ["Rainfall", "Temperature"]`` is a genuine vocabulary made of bare
-    strings, and the model cannot invent those either.
-
-    Exact match, not a path prefix. ``agricultureSubjects`` sits under the
-    filterable ``agricultureSubjects[].subjectId`` and is a real vocabulary,
-    while ``commodity`` would sit under ``commodity.code`` and would not be —
-    the prefix cannot tell them apart, and only the exact case has been seen
-    on the wire. A provider that advertises content under a compound path's
-    head is the case this does not catch; it would render one extra line.
+    Shape is not the signal — ``supportedParameters: ["Rainfall"]`` is a real
+    vocabulary of bare strings. Exact match, not prefix: it cannot separate
+    ``agricultureSubjects`` (a vocabulary under a compound filterable path)
+    from a content field under one, and only the exact case is seen on the
+    wire. See ADR-0007.
     """
 
     return field in filterable
