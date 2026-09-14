@@ -32,6 +32,17 @@ from dss.observability.trace_log import (
 )
 
 
+def _failed_labels(query: ProviderQuery) -> tuple[str, ...]:
+    """What a failure of this query is reported against.
+
+    Normally the @types asked for. A category-only query (#52) has none, and
+    an empty tuple would report no failure at all — a 500 would read as
+    "nobody serves this", so the category stands in for the type.
+    """
+
+    return query.capabilities or (query.subject_category,)
+
+
 def _failure_result(
     query: ProviderQuery,
     ask_indices: tuple[int, ...],
@@ -46,7 +57,7 @@ def _failure_result(
             failure_class=failure_class,
             detail=detail,
         )
-        for capability in query.capabilities
+        for capability in _failed_labels(query)
     )
     return DiscoveryResult(
         answers={index: () for index in ask_indices},
@@ -70,7 +81,7 @@ def _malformed_result(
             failure_class=FailureClass.DEFECT,
             detail=detail,
         )
-        for capability in query.capabilities
+        for capability in _failed_labels(query)
     )
     return DiscoveryResult(
         answers={index: () for index in ask_indices},
@@ -247,19 +258,22 @@ def build_discover_request(
     if spatial:
         intent["spatial"] = spatial
 
-    return {
-        "context": {
-            "action": "discover",
-            "version": _DISCOVER_VERSION,
-            "messageId": message_id,
-            "transactionId": transaction_id,
-            "timestamp": timestamp,
-            "schemaContext": _schema_context_urls(
-                query.capabilities, schema_context_index
-            ),
-        },
-        "message": {"intent": intent},
+    context: dict[str, Any] = {
+        "action": "discover",
+        "version": _DISCOVER_VERSION,
+        "messageId": message_id,
+        "transactionId": transaction_id,
+        "timestamp": timestamp,
     }
+    # Omitted, not sent empty, when no @type resolved (#52): the contract takes
+    # either the filter or schemaContext, and `[]` would assert that no schema
+    # applies rather than that none was named.
+    if query.capabilities:
+        context["schemaContext"] = _schema_context_urls(
+            query.capabilities, schema_context_index
+        )
+
+    return {"context": context, "message": {"intent": intent}}
 
 
 class HttpCapabilityDiscovery:

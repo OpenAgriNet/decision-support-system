@@ -8,7 +8,7 @@ from typing import Protocol
 
 import anyio
 
-from dss.core.intent.models import Ask, Intent, InteractionType
+from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
 from dss.core.provider_discovery.models import (
     AskDiscoveryFailed,
     AskUnservable,
@@ -94,6 +94,15 @@ def coverage_for(
     return Coverage(lat=lat, lon=lon, radius_m=radius_m)
 
 
+# Categories that are discovered on the category alone when the index resolves
+# no @type. A scheme ask is otherwise dropped before the network sees it: no
+# published pack declares `Scheme` in its examples, which is where the index
+# gets its categories, so ("Scheme", *) has no entry and never will until one
+# does (#52). The jsonpath filter matches `subjectCategories`, so the query is
+# well-formed without a @type — only `schemaContext` goes unnamed.
+_DISCOVERABLE_WITHOUT_CAPABILITY_TYPE = frozenset({SubjectCategory.SCHEME})
+
+
 def _query_for_ask(
     ask: Ask,
     languages: tuple[str, ...],
@@ -104,7 +113,10 @@ def _query_for_ask(
     types, event = resolve_capability_type(
         ask.subject_categories.value, action_type, index
     )
-    if not types:
+    if (
+        not types
+        and ask.subject_categories not in _DISCOVERABLE_WITHOUT_CAPABILITY_TYPE
+    ):
         return None, event
     return ProviderQuery(
         capabilities=types,

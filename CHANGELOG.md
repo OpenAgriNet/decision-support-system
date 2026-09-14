@@ -16,6 +16,10 @@
   match; `Orchestrator` now requires a catalog (#35)
 - `log_event` trace helper for a decision a component made, as distinct from
   the enter/exit span saying it ran (#35)
+- A scheme ask is now discovered on its subject category alone when the
+  capability index resolves no `@type` — no published schema pack declares
+  `Scheme`, so `/discover` was never called for one. The request carries the
+  jsonpath filter and omits `schemaContext`; ADR-0008 (#52)
 
 
 ### Changed
