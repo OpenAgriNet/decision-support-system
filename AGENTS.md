@@ -22,6 +22,8 @@ Do not duplicate architecture, domain model, or design-decision detail here — 
 - Dependency injection: Pydantic
 - Package manager: uv
 - Test framework: pytest
+- Tracing: OpenTelemetry over OTLP, into self-hosted Langfuse (ADR-0007). Nothing
+  imports `langfuse` — the endpoint is the seam, so another backend is a config change.
 
 ## Build & Run
 Install: `uv sync`

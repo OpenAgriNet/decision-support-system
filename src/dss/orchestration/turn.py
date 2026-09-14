@@ -41,7 +41,7 @@ from dss.core.moderation.service import moderate
 from dss.core.policy.models import Policy
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.shared.models import UserTurn
-from dss.observability.trace_log import bind_request_id, trace_component
+from dss.observability.trace_log import trace_component
 from dss.orchestration.discovery import DiscoverProviders
 from dss.ports.llm import LLMProvider
 
@@ -107,11 +107,6 @@ async def run_turn(
     Moderation still gates the result: if the turn does not proceed, both the
     classified intent and whatever discovery found are discarded.
     """
-
-    # Ambient id for every downstream log line, including adapters that take no
-    # transaction_id (the LLM provider port). Set before the task group so both
-    # child tasks inherit it.
-    bind_request_id(turn.transaction_id)
 
     intent = Intent()
     discovery = _nothing_discovered()

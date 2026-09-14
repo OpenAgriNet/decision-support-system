@@ -1278,8 +1278,20 @@ trimmed, no markers.
     ordering story. Nothing in the DSS ranks anything today. Also unresolved: **who** selects.
     **6.4** says the planner picks; **6.5** puts the choice in a `provider_selector` port. Those
     cannot both be true.
-11. **What may telemetry hold, and for how long?** Farmer content reaches the sinks. Open: the
-    retention window, masking before write, who may query it, and whether reads are audited.
+11. **What may telemetry hold, and for how long?** Farmer content reaches the sinks. Open:
+    masking before write, who may query it, and whether reads are audited.
+
+    **Partly answered, and worth reading as a decision rather than a default.** ADR-0007 ships
+    tracing into a self-hosted Langfuse with `DSS_TRACE_INCLUDE_MESSAGE_CONTENT=true`, so spans
+    carry the farmer's query and the composed answer verbatim. The redaction interceptor that
+    was supposed to sit in front of that does not exist. What bounds it instead: the store is
+    inside the adopter's own account, the retention window is 30 days in both ClickHouse and
+    blob storage, the UI is not publicly reachable, and it is off unless a deployment sets that
+    variable to a literal `"true"`.
+
+    So the retention window is settled and masking is not. When masking is built it belongs in
+    front of the OTLP exporter, as a span processor — that is the sink layer, and it is the one
+    place every write passes through.
 12. **Can a dropped stream be resumed?** Not today. The known pattern is to buffer each claim
     against `trace_id` as it is emitted, so generation finishes whether anyone is listening and
     any replica can serve the rest on reconnect. Matters most on voice, where a dropped call

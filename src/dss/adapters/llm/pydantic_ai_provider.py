@@ -40,12 +40,14 @@ class PydanticAILLMProvider:
         self,
         model: Model,
         *,
+        name: str,
         temperature: float = 0.0,
         timeout: float = 5.0,
         retries: int = 1,
         output_mode: OutputMode = "tool",
     ) -> None:
         self._model = model
+        self._name = name
         self._retries = retries
         self._output_mode = output_mode
         self._model_settings = {"temperature": temperature, "timeout": timeout}
@@ -64,8 +66,12 @@ class PydanticAILLMProvider:
         user_query: str,
         schema: type[SchemaT],
     ) -> SchemaT:
+        # `name` is what Langfuse labels the span. Without it every agent in a
+        # trace reads "agent run", and a turn's waterfall is four identical rows
+        # you have to expand one by one to tell apart.
         agent: Agent[None, SchemaT] = Agent(
             self._model,
+            name=self._name,
             output_type=self._output_type(schema),
             system_prompt=system_prompt,
             retries=self._retries,
@@ -115,6 +121,7 @@ def build_azure_model(
 def build_azure_llm(
     deployment: str,
     *,
+    name: str,
     endpoint: str,
     api_key: str,
     temperature: float = 0.0,
@@ -132,6 +139,7 @@ def build_azure_llm(
 
     return PydanticAILLMProvider(
         build_azure_model(deployment, endpoint=endpoint, api_key=api_key),
+        name=name,
         temperature=temperature,
         timeout=timeout,
         retries=retries,
