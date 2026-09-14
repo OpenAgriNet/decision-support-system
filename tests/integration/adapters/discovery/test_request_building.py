@@ -151,3 +151,30 @@ def test_textsearch_is_never_included() -> None:
     )
 
     assert "textSearch" not in request["message"]["intent"]
+
+
+def test_a_query_with_no_resolved_type_filters_on_the_category_alone() -> None:
+    """A scheme query names no `@type` — no pack declares `Scheme` — so the
+    jsonpath filter is the whole query and `schemaContext` is left out
+    rather than sent empty (#52)."""
+
+    query = ProviderQuery(
+        capabilities=(),
+        subject_category="Scheme",
+        languages=("en",),
+        coverage=None,
+    )
+
+    request = build_discover_request(
+        query,
+        schema_context_index=SCHEMA_CONTEXT_INDEX,
+        message_id="m",
+        transaction_id="t",
+        timestamp="2026-09-14T06:11:58.004Z",
+    )
+
+    assert "schemaContext" not in request["context"]
+    assert request["message"]["intent"]["filters"]["expression"] == (
+        "$.catalogs[*].resources[*] ? "
+        '(@.resourceAttributes.subjectCategories[*] == "Scheme")'
+    )

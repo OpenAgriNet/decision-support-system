@@ -103,7 +103,7 @@ async def test_a_single_ask_resolves_and_returns_the_discovery_result() -> None:
 
 async def test_an_unresolved_ask_never_calls_discover() -> None:
     ask = Ask(
-        subject_categories=SubjectCategory.SCHEME,
+        subject_categories=SubjectCategory.FACILITY,
         interaction_type=InteractionType.ACT,
     )
     intent = Intent(asks=(ask,), confidence=0.7)
@@ -127,7 +127,7 @@ async def test_an_unresolved_ask_never_calls_discover() -> None:
     assert result.answers == {0: ()}
     assert result.capabilities == {0: ()}
     assert result.failures == {0: ()}
-    assert result.events == (CapabilityUnresolved("Scheme", "Service"),)
+    assert result.events == (CapabilityUnresolved("Facility", "Service"),)
 
 
 class _PartiallyFailingDiscovery:
@@ -841,7 +841,7 @@ async def test_a_failed_ask_emits_ask_discovery_failed_not_unservable() -> None:
 
 async def test_an_unresolved_ask_does_not_also_emit_ask_unservable() -> None:
     ask = Ask(
-        subject_categories=SubjectCategory.SCHEME,
+        subject_categories=SubjectCategory.FACILITY,
         interaction_type=InteractionType.ACT,
     )
     intent = Intent(asks=(ask,), confidence=0.7)
@@ -861,7 +861,7 @@ async def test_an_unresolved_ask_does_not_also_emit_ask_unservable() -> None:
         now=NOW,
     )
 
-    assert result.events == (CapabilityUnresolved("Scheme", "Service"),)
+    assert result.events == (CapabilityUnresolved("Facility", "Service"),)
 
 
 async def test_a_resolved_answer_does_not_emit_ask_unservable() -> None:
@@ -895,3 +895,92 @@ async def test_a_resolved_answer_does_not_emit_ask_unservable() -> None:
     )
 
     assert result.events == ()
+
+
+async def test_a_scheme_ask_is_discovered_on_its_category_alone() -> None:
+    """No schema pack declares `Scheme`, so the index resolves no `@type` — and
+    the ask still reaches the network, filtered on the category (#52)."""
+
+    ask = Ask(
+        agriculture_subjects="Pradhan Mantri Kisan Maandhan Yojana",
+        subject_categories=SubjectCategory.SCHEME,
+        interaction_type=InteractionType.ADVISE,
+    )
+    discovery = _FakeDiscovery(
+        DiscoveryResult(
+            answers={0: ()}, capabilities={0: ()}, failures={0: ()}, events=()
+        )
+    )
+
+    await discover_providers(
+        Intent(asks=(ask,), confidence=0.9),
+        _turn(),
+        discovery=discovery,
+        schema_pack_cache=_FakeSchemaPackCache({}),
+        area_lookup=FakeAreaLookup(),
+        radius_m=25000,
+        now=NOW,
+    )
+
+    assert len(discovery.calls) == 1
+    query, ask_indices, _ = discovery.calls[0]
+    assert query.subject_category == "Scheme"
+    assert query.capabilities == ()
+    assert ask_indices == (0,)
+
+
+async def test_an_unresolvable_non_scheme_ask_is_still_never_discovered() -> None:
+    """The category-only query is the scheme exception, not a general fallback:
+    every other category has a pack, so an empty index entry is our own
+    mapping's hole and the event says so."""
+
+    ask = Ask(
+        subject_categories=SubjectCategory.MARKET,
+        interaction_type=InteractionType.OBSERVE,
+    )
+    discovery = _FakeDiscovery(
+        DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
+    )
+
+    result = await discover_providers(
+        Intent(asks=(ask,), confidence=0.9),
+        _turn(),
+        discovery=discovery,
+        schema_pack_cache=_FakeSchemaPackCache({}),
+        area_lookup=FakeAreaLookup(),
+        radius_m=25000,
+        now=NOW,
+    )
+
+    assert discovery.calls == []
+    assert CapabilityUnresolved("Market", "Service") in result.events
+
+
+async def test_a_scheme_ask_uses_resolved_types_once_a_pack_declares_them() -> None:
+    """The category-only query is a fallback, not a rule: a pack that declares
+    `Scheme` names its `@type` in `schemaContext` like any other."""
+
+    ask = Ask(
+        subject_categories=SubjectCategory.SCHEME,
+        interaction_type=InteractionType.ADVISE,
+    )
+    discovery = _FakeDiscovery(
+        DiscoveryResult(
+            answers={0: ()}, capabilities={0: ()}, failures={0: ()}, events=()
+        )
+    )
+
+    await discover_providers(
+        Intent(asks=(ask,), confidence=0.9),
+        _turn(),
+        discovery=discovery,
+        schema_pack_cache=_FakeSchemaPackCache(
+            {("Scheme", "Knowledge"): ("openagrinet:SchemeAdvisory",)}
+        ),
+        area_lookup=FakeAreaLookup(),
+        radius_m=25000,
+        now=NOW,
+    )
+
+    query, _, _ = discovery.calls[0]
+    assert query.capabilities == ("openagrinet:SchemeAdvisory",)

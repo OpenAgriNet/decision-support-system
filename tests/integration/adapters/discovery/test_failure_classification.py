@@ -134,3 +134,30 @@ async def test_a_failure_is_keyed_under_every_ask_index() -> None:
     )
 
     assert result.failures[0] == result.failures[2]
+
+
+async def test_a_failed_category_only_query_is_still_reported() -> None:
+    """Failures are listed per capability, and a scheme query has none — so the
+    subject category stands in, or a 500 would read as "nobody serves it" (#52).
+    """
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, text="upstream is down")
+
+    query = ProviderQuery(
+        capabilities=(),
+        subject_category="Scheme",
+        languages=("en",),
+        coverage=None,
+    )
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        discovery = HttpCapabilityDiscovery(
+            client=client,
+            base_url="http://network.test",
+            schema_pack_cache=_FakeSchemaPackCache(),
+        )
+        result = await discovery.discover(query, (0,), transaction_id="t")
+
+    assert len(result.failures[0]) == 1
+    assert result.failures[0][0].capability == "Scheme"
+    assert result.failures[0][0].status_code == 500
