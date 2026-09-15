@@ -89,14 +89,35 @@ def _flatten_value(value: object, *, path: str) -> list[str]:
     if isinstance(value, dict):
         return _flatten(value, prefix=f"{path}.")
     if isinstance(value, list):
+        # `[]` only where the pack writes it: on a list *of objects*, whose
+        # inner fields it spells `supportedCommodities[].code`. Without the
+        # marker those flattened to `supportedCommodities.code`, which matches
+        # no filterable path — the correct nested shape was rejected, and the
+        # model learned to send the path string itself as a key instead.
+        #
+        # A list of plain values keeps the bare path (`topics`), which is what
+        # the pack writes for a free-text list and what `or [path]` returns.
         nested = [
             nested_path
             for item in value
-            for nested_path in _flatten_value(item, path=path)
+            for nested_path in _flatten_value(
+                item, path=f"{path}[]" if isinstance(item, dict) else path
+            )
         ]
         # a list of plain values flattens to the list's own path
         return nested or [path]
     return [path]
+
+
+def _nest_example(key: str) -> dict:
+    """The shape a path-shaped key should have been, for the retry message."""
+
+    head, _, tail = key.partition(".")
+    if not tail:
+        return {key: "..."}
+    if head.endswith("[]"):
+        return {head[:-2]: [_nest_example(tail)]}
+    return {head: _nest_example(tail)}
 
 
 def _check_is_array(path: str, value: object, schema: DomainSchema) -> None:
@@ -144,6 +165,17 @@ def validate_arguments(resource_attributes: dict, schema: DomainSchema) -> None:
     """Raise ``InvalidArgument`` if a key path in ``resource_attributes`` is
     not one of the schema's ``filterable`` paths, holds a scalar where the
     pack asks for a list, or holds a value the pack does not list."""
+
+    # A key is a field name, never a path. `{"market.marketName": "Pune"}` is
+    # the model copying the prompt's notation instead of nesting, and it
+    # arrives beside the real `market` object rather than narrowing it.
+    for key in resource_attributes:
+        if "." in key or "[]" in key:
+            raise InvalidArgument(
+                f"{key!r} is a path, not a field name. Send the nested "
+                f"structure instead: "
+                f"{json.dumps(_nest_example(key))}"
+            )
 
     for path in _flatten(resource_attributes):
         if path not in schema.filterable:

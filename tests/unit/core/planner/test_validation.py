@@ -73,7 +73,10 @@ def test_an_invented_field_inside_a_list_is_rejected() -> None:
 
     schema = DomainSchema(type="KnowledgeAdvisory", filterable=("topics",))
 
-    with pytest.raises(InvalidArgument, match="topics.evil"):
+    # `topics[].evil`, not `topics.evil`: the `[]` is how a pack spells a path
+    # inside a list of objects, and the flattened path has to use the same
+    # notation or it matches nothing.
+    with pytest.raises(InvalidArgument, match=r"topics\[\].evil"):
         validate_arguments({"topics": [{"evil": "x"}]}, schema)
 
 
@@ -188,3 +191,56 @@ def test_a_bad_value_inside_a_list_is_rejected() -> None:
         validate_arguments(
             {"supportedFacilityTypes": ["Warehouse", "krishi kendra"]}, schema
         )
+
+
+def test_the_correct_nested_shape_for_a_list_field_is_accepted() -> None:
+    """`profile.json` writes a list-of-objects path as
+    `supportedCommodities[].code`, meaning "inside each item of that array".
+    The model sends the real structure, and `_flatten` has to spell the path it
+    walks the same way.
+
+    It used to drop the marker and produce `supportedCommodities.code`, which
+    matched nothing — so the correct shape was rejected, the model retried, and
+    it learned to send the path string itself as a key. That passed validation
+    and reached the provider as `{"supportedCommodities[].code": "23"}`.
+    """
+
+    schema = DomainSchema(
+        type="MandiPrice",
+        filterable=("supportedCommodities[].code", "market.marketName"),
+    )
+
+    validate_arguments({"supportedCommodities": [{"code": "23"}]}, schema)
+
+
+@pytest.mark.parametrize(
+    ("key", "value", "nested"),
+    [
+        ("supportedCommodities[].code", "23", '{"supportedCommodities": [{"code"'),
+        ("market.marketName", "Pune", '{"market": {"marketName"'),
+    ],
+    ids=["inside-a-list", "inside-an-object"],
+)
+def test_a_filterable_path_used_as_a_key_is_rejected(
+    key: str, value: str, nested: str
+) -> None:
+    """A key is a field name, never a path — the model copying the prompt's
+    notation verbatim instead of nesting.
+
+    Both spellings, because they take different branches: one carries `[]` and
+    a dot, the other only a dot. One real select carried both at once, each
+    sitting beside the object it was meant to narrow rather than narrowing it.
+
+    The message names the shape it should have been, so the retry has
+    something to copy rather than a rule to infer.
+    """
+
+    schema = DomainSchema(
+        type="MandiPrice",
+        filterable=("supportedCommodities[].code", "market.marketName"),
+    )
+
+    with pytest.raises(InvalidArgument) as raised:
+        validate_arguments({key: value}, schema)
+
+    assert nested in str(raised.value)
