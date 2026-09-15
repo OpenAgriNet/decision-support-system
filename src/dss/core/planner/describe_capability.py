@@ -96,6 +96,30 @@ def _render_advertised(
     ]
 
 
+def _render_allowed_values(schema: DomainSchema) -> list[str]:
+    """The values a field may take, for the filterable fields that fix them.
+
+    Kept apart from the advertised block above: that is what one provider
+    happens to serve, this is what the pack allows anyone to send. Both can
+    apply to the same field, and the pack's list is the wider of the two.
+
+    Only filterable fields, because the rest cannot be sent anyway and
+    listing them invites the model to try.
+    """
+
+    fixed = {
+        field: schema.field_enums[field]
+        for field in schema.filterable
+        if schema.field_enums.get(field)
+    }
+    if not fixed:
+        return []
+    return [
+        "  these fields take only these values:",
+        *(f"    {field}: {', '.join(values)}" for field, values in fixed.items()),
+    ]
+
+
 def render_candidates_as_markdown(
     candidates: tuple[ProviderCapability, ...],
     *,
@@ -116,6 +140,7 @@ def render_candidates_as_markdown(
         lines.append(f"- {candidate.provider_name}")
         lines.append(f"  resource_id: {candidate.resource_id}")
         lines.append(f"  fields you may set: {', '.join(schema.filterable)}")
+        lines.extend(_render_allowed_values(schema))
         lines.extend(_render_advertised(candidate.advertised, schema.filterable))
 
     if not lines:
