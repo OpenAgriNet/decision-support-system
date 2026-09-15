@@ -56,6 +56,16 @@
   they are in (`requires_input`) instead of answering from nowhere (#19)
 
 ### Fixed
+- The planner prompt now marks a field that takes a list. The model wrote
+  `"modal, minimum, maximum"` for `supportedPriceFields`, which the pack types
+  `array<string>`; validation could only reject it, and the retry carried no
+  more information than the first attempt, so the budget ran out and the turn
+  ended `unavailable` (#55)
+- A `select` narrowing an advertised *object* now merges into it instead of
+  replacing it, with the advertised value winning a conflict. The model set the
+  two `market` fields `profile.json` offers and the rest of the object went
+  with them — including `marketName` — and it wrote the district from the
+  question into `marketCode` (#55)
 - Three more `select` defects, each behind the last. `_flatten` dropped the `[]`
   a pack writes for a path inside an array, so the *correct* nested shape was
   rejected (`'parameters.parameter' is not a filterable field`) — every weather

@@ -120,6 +120,27 @@ def _render_allowed_values(schema: DomainSchema) -> list[str]:
     ]
 
 
+def _render_settable(schema: DomainSchema) -> str:
+    """The settable field names, with `(list)` on the ones that take a list.
+
+    Only that distinction. The model wrote `"modal, minimum, maximum"` for a
+    field the pack types `array<string>`, and validation could only reject it —
+    the retry said the same thing the first attempt did, so the model guessed
+    wrong again until its budget ran out and the turn ended `unavailable`.
+
+    Naming the type of every field would bury the one that matters: a scalar
+    field reads as a scalar already, and a dotted path (`market.marketCode`)
+    says its own shape.
+    """
+
+    return ", ".join(
+        f"{path} (list)"
+        if schema.field_types.get(path.split(".")[0], "").startswith("array")
+        else path
+        for path in schema.filterable
+    )
+
+
 def render_candidates_as_markdown(
     candidates: tuple[ProviderCapability, ...],
     *,
@@ -139,7 +160,7 @@ def render_candidates_as_markdown(
             continue
         lines.append(f"- {candidate.provider_name}")
         lines.append(f"  resource_id: {candidate.resource_id}")
-        lines.append(f"  fields you may set: {', '.join(schema.filterable)}")
+        lines.append(f"  fields you may set: {_render_settable(schema)}")
         lines.extend(_render_allowed_values(schema))
         lines.extend(_render_advertised(candidate.advertised, schema.filterable))
 

@@ -66,6 +66,15 @@ def _narrowed(model_value: object, advertised_value: object) -> object:
     call to refuse, not ours to drop without saying so.
     """
 
+    if isinstance(model_value, dict) and isinstance(advertised_value, dict):
+        # Merged, with the advertised value winning every conflict. The model
+        # names one part of the object — the fields `profile.json` offers — and
+        # replacing the whole thing lost `marketName`, `district` and the
+        # market's own coordinates. On a key both supply, the advertisement is
+        # a fact about the resource and the model's is a guess: one wrote
+        # `marketCode: "Sholapur"`, the district from the question, where the
+        # provider had published `1806`.
+        return {**model_value, **advertised_value}
     if not isinstance(model_value, list) or not isinstance(advertised_value, list):
         return model_value
     narrowed = []
