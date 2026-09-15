@@ -373,3 +373,65 @@ def test_an_item_matching_nothing_advertised_is_sent_as_written() -> None:
     )
 
     assert resource_attributes["supportedCommodities"] == [{"code": "99"}]
+
+
+def test_a_scalar_list_is_left_alone() -> None:
+    """`supportedPriceFields` is a list of plain strings, not of objects. There
+    are no items to select between, so the model's value stands."""
+
+    resource_attributes = build_resource_attributes(
+        capability=_capability(
+            advertised={"supportedPriceFields": ["Minimum", "Maximum", "Modal"]}
+        ),
+        turn=_turn(location=None),
+        model_filled={"supportedPriceFields": ["Modal"]},
+        schema_context_index=_SCHEMA_CONTEXT_INDEX,
+        filterable=("supportedPriceFields",),
+    )
+
+    assert resource_attributes["supportedPriceFields"] == ["Modal"]
+
+
+def test_a_non_list_value_is_left_alone() -> None:
+    """`market` is an object on both sides, not a list — selection does not
+    apply, and the model's narrowing merges as a plain override."""
+
+    resource_attributes = build_resource_attributes(
+        capability=_capability(advertised={"market": {"marketCode": "1806"}}),
+        turn=_turn(location=None),
+        model_filled={"market": {"marketCode": "1171"}},
+        schema_context_index=_SCHEMA_CONTEXT_INDEX,
+        filterable=("market.marketCode",),
+    )
+
+    assert resource_attributes["market"] == {"marketCode": "1171"}
+
+
+def test_a_mixed_advertised_list_skips_what_it_cannot_match() -> None:
+    """`coverageAreas` is the shape that forces this: its items are either an
+    area reference or a bare GeoJSON geometry, and a provider may send a list
+    holding values of neither shape.
+
+    A selector cannot match a non-object, so those items are passed over rather
+    than raising — this is network data of unknown shape, and a select must not
+    fail on a field it was only echoing.
+    """
+
+    resource_attributes = build_resource_attributes(
+        capability=_capability(
+            advertised={
+                "supportedCommodities": [
+                    "Onion",
+                    {"code": "23", "name": "Onion"},
+                ]
+            }
+        ),
+        turn=_turn(location=None),
+        model_filled={"supportedCommodities": [{"code": "23"}]},
+        schema_context_index=_SCHEMA_CONTEXT_INDEX,
+        filterable=("supportedCommodities[].code",),
+    )
+
+    assert resource_attributes["supportedCommodities"] == [
+        {"code": "23", "name": "Onion"}
+    ]
