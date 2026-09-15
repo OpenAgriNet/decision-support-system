@@ -270,3 +270,168 @@ def test_nothing_outside_the_filterable_set_reaches_the_request() -> None:
     structural = {"@context", "@type", "informationMode", "subjectCategories"}
     unexpected = set(resource_attributes) - set(filterable) - structural
     assert not unexpected, f"non-filterable fields reached the request: {unexpected}"
+
+
+def test_a_discovered_location_wins_over_the_turns_geometry() -> None:
+    """Where a pack's `location` identifies the resource rather than the query,
+    the advertised value stands.
+
+    `AgricultureFacility.location` says so in words — "verified facility
+    geometry ... do not populate it with the search origin or another inferred
+    point". Sending the farmer's coordinates there would claim the facility is
+    wherever they happen to be asking from.
+    """
+
+    facility_geometry = {"geo": {"type": "Point", "coordinates": [72.83, 18.94]}}
+
+    resource_attributes = build_resource_attributes(
+        capability=_capability(advertised={"location": facility_geometry}),
+        turn=_turn(location=Location(geometry=Geometry(coordinates=[74.06, 18.57]))),
+        model_filled={},
+        schema_context_index=_SCHEMA_CONTEXT_INDEX,
+        filterable=("location",),
+    )
+
+    assert resource_attributes["location"] == facility_geometry
+
+
+def test_the_turns_geometry_fills_a_location_nobody_supplied() -> None:
+    """An OnDemand weather resource advertises no `location` — there is no
+    fixed point until someone asks — so the turn's geometry is what says which
+    place the forecast is for."""
+
+    resource_attributes = build_resource_attributes(
+        capability=_capability(advertised={"supportedParameters": ["Rainfall"]}),
+        turn=_turn(location=Location(geometry=Geometry(coordinates=[74.06, 18.57]))),
+        model_filled={},
+        schema_context_index=_SCHEMA_CONTEXT_INDEX,
+        filterable=("location", "supportedParameters"),
+    )
+
+    assert resource_attributes["location"] == {
+        "geo": {"type": "Point", "coordinates": [74.06, 18.57]}
+    }
+
+
+def test_narrowing_an_advertised_list_keeps_the_whole_item() -> None:
+    """The model names which advertised item it wants, not a replacement for it.
+
+    It can only send the filterable field — `supportedCommodities[].code` — so
+    replacing the list outright dropped every other part of the item, and the
+    provider got `{"code": "23"}` where it had advertised
+    `{"code": "23", "name": "Onion"}`.
+    """
+
+    resource_attributes = build_resource_attributes(
+        capability=_capability(
+            advertised={
+                "supportedCommodities": [
+                    {"code": "10", "name": "Groundnut"},
+                    {"code": "23", "name": "Onion"},
+                ]
+            }
+        ),
+        turn=_turn(location=None),
+        model_filled={"supportedCommodities": [{"code": "23"}]},
+        schema_context_index=_SCHEMA_CONTEXT_INDEX,
+        filterable=("supportedCommodities[].code",),
+    )
+
+    assert resource_attributes["supportedCommodities"] == [
+        {"code": "23", "name": "Onion"}
+    ]
+
+
+def test_an_authored_list_is_not_matched_against_anything() -> None:
+    """`parameters` is never advertised — no pack carries it on an OnDemand
+    resource — so the model composes it from the question and there is nothing
+    to select from. It passes through as written."""
+
+    resource_attributes = build_resource_attributes(
+        capability=_capability(advertised={"supportedParameters": ["Rainfall"]}),
+        turn=_turn(location=None),
+        model_filled={"parameters": [{"parameter": "Rainfall"}]},
+        schema_context_index=_SCHEMA_CONTEXT_INDEX,
+        filterable=("parameters[].parameter", "supportedParameters"),
+    )
+
+    assert resource_attributes["parameters"] == [{"parameter": "Rainfall"}]
+
+
+def test_an_item_matching_nothing_advertised_is_sent_as_written() -> None:
+    """The model named something the provider did not advertise. That is the
+    provider's call to refuse, not ours to drop silently."""
+
+    resource_attributes = build_resource_attributes(
+        capability=_capability(
+            advertised={"supportedCommodities": [{"code": "23", "name": "Onion"}]}
+        ),
+        turn=_turn(location=None),
+        model_filled={"supportedCommodities": [{"code": "99"}]},
+        schema_context_index=_SCHEMA_CONTEXT_INDEX,
+        filterable=("supportedCommodities[].code",),
+    )
+
+    assert resource_attributes["supportedCommodities"] == [{"code": "99"}]
+
+
+def test_a_scalar_list_is_left_alone() -> None:
+    """`supportedPriceFields` is a list of plain strings, not of objects. There
+    are no items to select between, so the model's value stands."""
+
+    resource_attributes = build_resource_attributes(
+        capability=_capability(
+            advertised={"supportedPriceFields": ["Minimum", "Maximum", "Modal"]}
+        ),
+        turn=_turn(location=None),
+        model_filled={"supportedPriceFields": ["Modal"]},
+        schema_context_index=_SCHEMA_CONTEXT_INDEX,
+        filterable=("supportedPriceFields",),
+    )
+
+    assert resource_attributes["supportedPriceFields"] == ["Modal"]
+
+
+def test_a_non_list_value_is_left_alone() -> None:
+    """`market` is an object on both sides, not a list — selection does not
+    apply, and the model's narrowing merges as a plain override."""
+
+    resource_attributes = build_resource_attributes(
+        capability=_capability(advertised={"market": {"marketCode": "1806"}}),
+        turn=_turn(location=None),
+        model_filled={"market": {"marketCode": "1171"}},
+        schema_context_index=_SCHEMA_CONTEXT_INDEX,
+        filterable=("market.marketCode",),
+    )
+
+    assert resource_attributes["market"] == {"marketCode": "1171"}
+
+
+def test_a_mixed_advertised_list_skips_what_it_cannot_match() -> None:
+    """`coverageAreas` is the shape that forces this: its items are either an
+    area reference or a bare GeoJSON geometry, and a provider may send a list
+    holding values of neither shape.
+
+    A selector cannot match a non-object, so those items are passed over rather
+    than raising — this is network data of unknown shape, and a select must not
+    fail on a field it was only echoing.
+    """
+
+    resource_attributes = build_resource_attributes(
+        capability=_capability(
+            advertised={
+                "supportedCommodities": [
+                    "Onion",
+                    {"code": "23", "name": "Onion"},
+                ]
+            }
+        ),
+        turn=_turn(location=None),
+        model_filled={"supportedCommodities": [{"code": "23"}]},
+        schema_context_index=_SCHEMA_CONTEXT_INDEX,
+        filterable=("supportedCommodities[].code",),
+    )
+
+    assert resource_attributes["supportedCommodities"] == [
+        {"code": "23", "name": "Onion"}
+    ]

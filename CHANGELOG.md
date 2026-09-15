@@ -56,6 +56,16 @@
   they are in (`requires_input`) instead of answering from nowhere (#19)
 
 ### Fixed
+- Three more `select` defects, each behind the last. `_flatten` dropped the `[]`
+  a pack writes for a path inside an array, so the *correct* nested shape was
+  rejected (`'parameters.parameter' is not a filterable field`) — every weather
+  select cost a wasted model round trip, and the model learned to send the path
+  string itself as a key, which passed and reached the provider. The turn's
+  geometry no longer overrides a `location` the provider advertised, since a
+  pack's `location` is sometimes the resource's own identity rather than the
+  query. And the model's list now selects from the advertised one rather than
+  replacing it, so a narrowed item keeps the fields the model could not send
+  (#55)
 - `select` now sends the attributes `/discover` returned as the base of the
   request, with the model's values narrowing them, instead of rebuilding the
   object from scratch. MandiPrice requires `market.marketName` but does not

@@ -35,6 +35,47 @@ def _location_field(turn: UserTurn) -> dict | None:
     }
 
 
+def _matching_advertised(selector: dict, advertised: list) -> dict | None:
+    """The advertised item the model's selector names, or ``None``.
+
+    Matched on whatever keys the selector carries, so no field name is
+    hardcoded: MandiPrice identifies a commodity by ``code`` and
+    KnowledgeAdvisory a subject by ``subjectId``, and neither is named here.
+    """
+
+    for item in advertised:
+        if not isinstance(item, dict):
+            continue
+        if all(item.get(key) == value for key, value in selector.items()):
+            return item
+    return None
+
+
+def _narrowed(model_value: object, advertised_value: object) -> object:
+    """The model's list read as a selection from the advertised one.
+
+    The model can only send the filterable field — `supportedCommodities[].code`
+    — so treating its list as a replacement dropped the rest of each item, and
+    the provider got `{"code": "23"}` where it had advertised
+    `{"code": "23", "name": "Onion"}`.
+
+    Only where both sides are lists of objects. A field the provider never
+    advertised (`parameters`, which no pack carries on an OnDemand resource) has
+    nothing to select from, and the model's own value stands. So does an item
+    matching nothing advertised: naming something unavailable is the provider's
+    call to refuse, not ours to drop without saying so.
+    """
+
+    if not isinstance(model_value, list) or not isinstance(advertised_value, list):
+        return model_value
+    narrowed = []
+    for selector in model_value:
+        if not isinstance(selector, dict):
+            return model_value
+        narrowed.append(_matching_advertised(selector, advertised_value) or selector)
+    return narrowed
+
+
 def build_resource_attributes(
     *,
     capability: ProviderCapability,
@@ -62,9 +103,19 @@ def build_resource_attributes(
         "subjectCategories": list(capability.observed_categories),
     }
 
+    # A fallback, not a structural field. An OnDemand weather resource
+    # advertises no `location` — there is no fixed point until someone asks —
+    # so the turn's geometry is what says which place the forecast is for.
+    #
+    # It must not override, though: where a pack's `location` identifies the
+    # resource rather than the query, the advertised value is the right one.
+    # `AgricultureFacility.location` says so in words — "do not populate it
+    # with the search origin or another inferred point" — and substituting
+    # there would claim the facility sits wherever the farmer is asking from.
+    fallback: dict = {}
     location = _location_field(turn)
     if location is not None:
-        structural["location"] = location
+        fallback["location"] = location
 
     # Three layers, each overriding the one before.
     #
@@ -92,4 +143,8 @@ def build_resource_attributes(
         for field, value in capability.advertised.items()
         if field in allowed
     }
-    return {**echoed, **model_filled, **structural}
+    narrowed = {
+        field: _narrowed(value, echoed[field]) if field in echoed else value
+        for field, value in model_filled.items()
+    }
+    return {**fallback, **echoed, **narrowed, **structural}
