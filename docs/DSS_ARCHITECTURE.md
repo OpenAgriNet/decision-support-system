@@ -106,8 +106,6 @@ When the LLM decides to invoke:
 
 The asymmetry between a local tool and a network hop is resolved **below** the LLM: selection preference (prefer in-network, fall back to Provider) is declarative configuration, not something the model reasons about.
 
-**What the model is told a capability accepts (ADR-0007).** A discovered resource carries two different kinds of non-structural attribute, and only one is an instruction to the model. A *governed vocabulary* names values the model cannot invent (`supportedCommodities: 78=Tomato`) and is shown to it as a closed list. A resource advertising under a path the pack itself declares **filterable** — `topics` on KnowledgeAdvisory — is instead describing its own content so it can be found by it; that reaches the model as nothing, and the field is composed from the farmer's own words. Showing the second as the first made the planner answer a potato question with a provider's own `Crop establishment`.
-
 ### 3.2 The planner / composition seam
 
 Responsibility splits at one line: **the planner owns sufficiency, composition owns presentation.**
