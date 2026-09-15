@@ -124,3 +124,16 @@ def test_a_scalar_where_the_pack_declares_an_array_is_rejected() -> None:
 
     with pytest.raises(InvalidArgument, match="supportedFacilityTypes"):
         validate_arguments({"supportedFacilityTypes": "KrishiVigyanKendra"}, schema)
+
+
+def test_a_list_for_an_array_field_is_accepted() -> None:
+    """What a correct model sends. Without this the array check could reject
+    every valid list and the suite would still pass."""
+
+    schema = DomainSchema(
+        type="AgricultureFacility",
+        filterable=("supportedFacilityTypes",),
+        field_types={"supportedFacilityTypes": "array<string>"},
+    )
+
+    validate_arguments({"supportedFacilityTypes": ["KrishiVigyanKendra"]}, schema)
