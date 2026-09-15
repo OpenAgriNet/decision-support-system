@@ -1,0 +1,76 @@
+{
+  "@context": {
+    "openagrinet": "https://openagrinet.github.io/network-specs/vocab#",
+    "rdfs": "http://www.w3.org/2000/01/rdf-schema#"
+  },
+  "@graph": [
+    {
+      "@id": "openagrinet:AgricultureResource",
+      "@type": "rdfs:Class",
+      "rdfs:label": "Agriculture Resource",
+      "rdfs:comment": "Shared agriculture attributes attached to a Beckn Resource."
+    },
+    {
+      "@id": "openagrinet:informationMode",
+      "@type": "rdfs:Property",
+      "rdfs:label": "information mode",
+      "rdfs:comment": "Whether obtaining specific information requires a Provider invocation or the Resource already contains or directly references that information."
+    },
+    {
+      "@id": "openagrinet:subjectCategories",
+      "@type": "rdfs:Property",
+      "rdfs:label": "subject categories",
+      "rdfs:comment": "Broad agriculture categories used to classify a Resource for discovery."
+    },
+    {
+      "@id": "openagrinet:AgricultureSubjectReference",
+      "@type": "rdfs:Class",
+      "rdfs:label": "Agriculture Subject Reference",
+      "rdfs:comment": "Stable reference to a governed agriculture subject and its Beckn descriptor."
+    },
+    { "@id": "openagrinet:agricultureSubjects", "@type": "rdfs:Property", "rdfs:label": "agriculture subjects" },
+    { "@id": "openagrinet:subjectId", "@type": "rdfs:Property", "rdfs:label": "subject identifier" },
+    {
+      "@id": "openagrinet:languages",
+      "@type": "rdfs:Property",
+      "rdfs:label": "languages",
+      "rdfs:comment": "BCP 47 languages supported by or present in a Resource."
+    },
+    {
+      "@id": "openagrinet:coverageAreas",
+      "@type": "rdfs:Property",
+      "rdfs:label": "coverage areas",
+      "rdfs:comment": "Geographic areas within which a Resource applies, represented by an administrative area reference or a Beckn GeoJSON geometry."
+    },
+    { "@id": "openagrinet:AdministrativeAreaReference", "@type": "rdfs:Class", "rdfs:label": "Administrative Area Reference" },
+    { "@id": "openagrinet:areaCodeScheme", "@type": "rdfs:Property", "rdfs:label": "area code scheme" },
+    { "@id": "openagrinet:areaCode", "@type": "rdfs:Property", "rdfs:label": "area code" },
+    { "@id": "openagrinet:areaLevel", "@type": "rdfs:Property", "rdfs:label": "area level" },
+    { "@id": "openagrinet:areaName", "@type": "rdfs:Property", "rdfs:label": "area name" },
+    {
+      "@id": "openagrinet:sourceId",
+      "@type": "rdfs:Property",
+      "rdfs:label": "source identifier"
+    },
+    {
+      "@id": "openagrinet:sourceName",
+      "@type": "rdfs:Property",
+      "rdfs:label": "source name"
+    },
+    {
+      "@id": "openagrinet:sourceUri",
+      "@type": "rdfs:Property",
+      "rdfs:label": "source URI"
+    },
+    {
+      "@id": "openagrinet:startsAt",
+      "@type": "rdfs:Property",
+      "rdfs:label": "starts at"
+    },
+    {
+      "@id": "openagrinet:endsAt",
+      "@type": "rdfs:Property",
+      "rdfs:label": "ends at"
+    }
+  ]
+}

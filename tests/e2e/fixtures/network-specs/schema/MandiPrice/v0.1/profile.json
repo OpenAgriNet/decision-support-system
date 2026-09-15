@@ -1,11 +1,79 @@
 {
-  "id": "https://schemas.openagrinet.global/schema/MandiPrice/v0.1",
+  "id": "https://openagrinet.github.io/network-specs/schema/MandiPrice/v0.1",
   "name": "Mandi Price Attributes",
   "version": "0.1.0",
-  "included_schemas": ["MandiPrice"],
-  "filterable_paths": [
-    "beckn:resourceAttributes.commodity.code",
+  "protocol_version": "2.0",
+  "semantic_model": "generalised",
+  "included_schemas": [
+    "MandiPrice"
+  ],
+  "discovery_fields": [
+    "informationMode",
+    "subjectCategories",
+    "supportedCommodities",
+    "market",
+    "supportedPriceFields",
+    "historicalDataAvailable",
+    "historyPeriod",
+    "updateFrequency",
+    "coverageAreas"
+  ],
+  "result_fields": [
+    "supportedCommodities",
+    "commodityGroup",
+    "grade",
+    "variety",
+    "market",
+    "arrivalDate",
+    "prices",
+    "generatedAt",
+    "validity",
+    "source"
+  ],
+  "indexable_paths": [
+    "beckn:resourceAttributes.informationMode",
+    "beckn:resourceAttributes.subjectCategories",
+    "beckn:resourceAttributes.supportedCommodities[].code",
+    "beckn:resourceAttributes.supportedPriceFields",
+    "beckn:resourceAttributes.commodityGroup",
+    "beckn:resourceAttributes.variety",
     "beckn:resourceAttributes.market.marketCode",
-    "beckn:resourceAttributes.market.state"
-  ]
+    "beckn:resourceAttributes.market.marketName",
+    "beckn:resourceAttributes.market.district",
+    "beckn:resourceAttributes.market.state",
+    "beckn:resourceAttributes.market.location.geo",
+    "beckn:resourceAttributes.arrivalDate",
+    "beckn:resourceAttributes.generatedAt"
+  ],
+  "filterable_paths": [
+    "beckn:resourceAttributes.informationMode",
+    "beckn:resourceAttributes.subjectCategories",
+    "beckn:resourceAttributes.supportedCommodities[].code",
+    "beckn:resourceAttributes.supportedPriceFields",
+    "beckn:resourceAttributes.commodityGroup",
+    "beckn:resourceAttributes.variety",
+    "beckn:resourceAttributes.market.marketCode",
+    "beckn:resourceAttributes.market.marketName",
+    "beckn:resourceAttributes.market.district",
+    "beckn:resourceAttributes.market.state",
+    "beckn:resourceAttributes.market.location.geo",
+    "beckn:resourceAttributes.arrivalDate"
+  ],
+  "sortable_paths": [
+    "beckn:resourceAttributes.arrivalDate",
+    "beckn:resourceAttributes.prices.modal"
+  ],
+  "privacy_notes": [],
+  "beckn_dependencies": {
+    "Catalog": "2.2",
+    "Provider": "2.1",
+    "Resource": "2.0",
+    "Attributes": "2.0",
+    "Descriptor": "2.1",
+    "Location": "2.0",
+    "GeoJSONGeometry": "2.0",
+    "Address": "2.0"
+  },
+  "interaction_type": "Observe",
+  "outcome_type": "openagrinet:MandiPrice"
 }

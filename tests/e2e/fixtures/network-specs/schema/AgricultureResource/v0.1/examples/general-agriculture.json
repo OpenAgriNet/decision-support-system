@@ -1,0 +1,20 @@
+{
+  "@context": "https://openagrinet.github.io/network-specs/schema/AgricultureResource/v0.1/context.jsonld",
+  "@type": "openagrinet:AgricultureResource",
+  "informationMode": "OnDemand",
+  "subjectCategories": [
+    "Crop",
+    "Livestock"
+  ],
+  "languages": [
+    "en",
+    "hi"
+  ],
+  "coverageAreas": [
+    {
+      "codeScheme": "ISO-3166-1",
+      "areaCode": "IN",
+      "areaLevel": "Country"
+    }
+  ]
+}

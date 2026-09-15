@@ -1,0 +1,51 @@
+{
+  "id": "https://openagrinet.github.io/network-specs/schema/AgricultureResource/v0.1",
+  "name": "Agriculture Resource Attributes",
+  "version": "0.1.0",
+  "protocol_version": "2.0",
+  "semantic_model": "generalised",
+  "included_schemas": [
+    "AgricultureResource"
+  ],
+  "discovery_fields": [
+    "informationMode",
+    "subjectCategories",
+    "agricultureSubjects",
+    "languages",
+    "coverageAreas"
+  ],
+  "indexable_paths": [
+    "beckn:resourceAttributes.informationMode",
+    "beckn:resourceAttributes.subjectCategories",
+    "beckn:resourceAttributes.agricultureSubjects[].subjectId",
+    "beckn:resourceAttributes.agricultureSubjects[].descriptor.code",
+    "beckn:resourceAttributes.agricultureSubjects[].descriptor.name",
+    "beckn:resourceAttributes.languages",
+    "beckn:resourceAttributes.coverageAreas[].codeScheme",
+    "beckn:resourceAttributes.coverageAreas[].areaCode",
+    "beckn:resourceAttributes.coverageAreas[].areaLevel",
+    "beckn:resourceAttributes.coverageAreas[].type",
+    "beckn:resourceAttributes.coverageAreas[].bbox",
+    "beckn:resourceAttributes.coverageAreas[].coordinates"
+  ],
+  "filterable_paths": [
+    "beckn:resourceAttributes.informationMode",
+    "beckn:resourceAttributes.subjectCategories",
+    "beckn:resourceAttributes.agricultureSubjects[].subjectId",
+    "beckn:resourceAttributes.agricultureSubjects[].descriptor.code",
+    "beckn:resourceAttributes.languages",
+    "beckn:resourceAttributes.coverageAreas[].codeScheme",
+    "beckn:resourceAttributes.coverageAreas[].areaCode",
+    "beckn:resourceAttributes.coverageAreas[].areaLevel",
+    "beckn:resourceAttributes.coverageAreas[].type"
+  ],
+  "sortable_paths": [],
+  "privacy_notes": [],
+  "beckn_dependencies": {
+    "Catalog": "2.2",
+    "Provider": "2.1",
+    "Resource": "2.0",
+    "Attributes": "2.0",
+    "Descriptor": "2.1"
+  }
+}

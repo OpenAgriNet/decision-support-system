@@ -1,0 +1,28 @@
+{
+  "@context": "https://openagrinet.github.io/network-specs/schema/MandiPrice/v0.1/context.jsonld",
+  "@type": "openagrinet:MandiPrice",
+  "informationMode": "Direct",
+  "subjectCategories": [
+    "Market"
+  ],
+  "source": {
+    "sourceId": "source:state-market-board",
+    "sourceName": "State Market Board"
+  },
+  "supportedCommodities": [
+    {
+      "name": "Cotton",
+      "code": "COTTON"
+    }
+  ],
+  "market": {
+    "marketName": "Akola"
+  },
+  "arrivalDate": "2026-08-25",
+  "prices": {
+    "modal": 7350,
+    "currency": "INR",
+    "unit": "quintal"
+  },
+  "generatedAt": "2026-08-25T10:45:00Z"
+}

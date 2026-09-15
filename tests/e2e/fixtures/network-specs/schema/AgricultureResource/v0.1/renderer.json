@@ -1,0 +1,8 @@
+{
+  "schema": "AgricultureResource",
+  "version": "0.1.0",
+  "card_template": "{{informationMode}} | Categories: {{subjectCategories}} | Agriculture subjects: {{agricultureSubjects}} | Languages: {{languages}}",
+  "detail_template": "Information mode: {{informationMode}}\nSubject categories: {{subjectCategories}}\nAgriculture subjects: {{agricultureSubjects}}\nLanguages: {{languages}}\nCoverage: {{coverageAreas}}",
+  "html": "<div class=\"oan-agriculture-resource\"><strong>{{informationMode}}</strong><span>{{subjectCategories}}</span><span>{{agricultureSubjects}}</span><span>{{languages}}</span></div>",
+  "html_detail": "<div class=\"oan-agriculture-resource-detail\"><p><strong>Information mode:</strong> {{informationMode}}</p><p><strong>Subject categories:</strong> {{subjectCategories}}</p><p><strong>Agriculture subjects:</strong> {{agricultureSubjects}}</p><p><strong>Languages:</strong> {{languages}}</p><p><strong>Coverage:</strong> {{coverageAreas}}</p></div>"
+}

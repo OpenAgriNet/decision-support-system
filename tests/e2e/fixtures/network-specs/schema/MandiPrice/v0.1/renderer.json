@@ -1,3 +1,8 @@
 {
-  "_comment": "must be ignored by the adapter"
+  "schema": "MandiPrice",
+  "version": "0.1.0",
+  "card_template": "{{informationMode}} | {{supportedCommodities}} | {{market}} | {{prices}}",
+  "detail_template": "Mode: {{informationMode}}\nSupported commodities: {{supportedCommodities}}\nMarket: {{market}}\nArrival date: {{arrivalDate}}\nMinimum: {{prices.minimum}}\nMaximum: {{prices.maximum}}\nModal: {{prices.modal}} {{prices.currency}}/{{prices.unit}}",
+  "html": "<div class=\"oan-mandi-price\"><strong>{{informationMode}}</strong><span>{{supportedCommodities}} · {{market}} · {{prices}}</span></div>",
+  "html_detail": "<div class=\"oan-mandi-price-detail\"><p><strong>Mode:</strong> {{informationMode}}</p><p><strong>Supported commodities:</strong> {{supportedCommodities}}</p><p><strong>Market:</strong> {{market}}</p><p><strong>Arrival date:</strong> {{arrivalDate}}</p><p><strong>Price range:</strong> {{prices.minimum}}-{{prices.maximum}} {{prices.currency}}/{{prices.unit}}</p></div>"
 }
