@@ -311,3 +311,65 @@ def test_the_turns_geometry_fills_a_location_nobody_supplied() -> None:
     assert resource_attributes["location"] == {
         "geo": {"type": "Point", "coordinates": [74.06, 18.57]}
     }
+
+
+def test_narrowing_an_advertised_list_keeps_the_whole_item() -> None:
+    """The model names which advertised item it wants, not a replacement for it.
+
+    It can only send the filterable field — `supportedCommodities[].code` — so
+    replacing the list outright dropped every other part of the item, and the
+    provider got `{"code": "23"}` where it had advertised
+    `{"code": "23", "name": "Onion"}`.
+    """
+
+    resource_attributes = build_resource_attributes(
+        capability=_capability(
+            advertised={
+                "supportedCommodities": [
+                    {"code": "10", "name": "Groundnut"},
+                    {"code": "23", "name": "Onion"},
+                ]
+            }
+        ),
+        turn=_turn(location=None),
+        model_filled={"supportedCommodities": [{"code": "23"}]},
+        schema_context_index=_SCHEMA_CONTEXT_INDEX,
+        filterable=("supportedCommodities[].code",),
+    )
+
+    assert resource_attributes["supportedCommodities"] == [
+        {"code": "23", "name": "Onion"}
+    ]
+
+
+def test_an_authored_list_is_not_matched_against_anything() -> None:
+    """`parameters` is never advertised — no pack carries it on an OnDemand
+    resource — so the model composes it from the question and there is nothing
+    to select from. It passes through as written."""
+
+    resource_attributes = build_resource_attributes(
+        capability=_capability(advertised={"supportedParameters": ["Rainfall"]}),
+        turn=_turn(location=None),
+        model_filled={"parameters": [{"parameter": "Rainfall"}]},
+        schema_context_index=_SCHEMA_CONTEXT_INDEX,
+        filterable=("parameters[].parameter", "supportedParameters"),
+    )
+
+    assert resource_attributes["parameters"] == [{"parameter": "Rainfall"}]
+
+
+def test_an_item_matching_nothing_advertised_is_sent_as_written() -> None:
+    """The model named something the provider did not advertise. That is the
+    provider's call to refuse, not ours to drop silently."""
+
+    resource_attributes = build_resource_attributes(
+        capability=_capability(
+            advertised={"supportedCommodities": [{"code": "23", "name": "Onion"}]}
+        ),
+        turn=_turn(location=None),
+        model_filled={"supportedCommodities": [{"code": "99"}]},
+        schema_context_index=_SCHEMA_CONTEXT_INDEX,
+        filterable=("supportedCommodities[].code",),
+    )
+
+    assert resource_attributes["supportedCommodities"] == [{"code": "99"}]
