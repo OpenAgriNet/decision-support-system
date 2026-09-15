@@ -73,6 +73,22 @@ def _write_pack(root: Path, pack: str, category: str) -> None:
     )
 
 
+# WeatherObservation's filterable paths. The pack also advertises
+# `forecastHorizon` and `updateFrequency` — facts about the provider, not
+# filters — and they are deliberately absent, so a select never sends them.
+_WEATHER_FILTERABLE = (
+    "informationMode",
+    "subjectCategories",
+    "supportedObservationTypes",
+    "supportedParameters",
+    "geographicGranularities",
+    "observationType",
+    "source.sourceId",
+    "location",
+    "parameters[].parameter",
+)
+
+
 def _planner_attributes(capability: ProviderCapability, model_filled: dict) -> dict:
     """`resourceAttributes` as the planner builds them.
 
@@ -101,6 +117,7 @@ def _planner_attributes(capability: ProviderCapability, model_filled: dict) -> d
                 "WeatherObservation/v0.1/context.jsonld"
             )
         },
+        filterable=_WEATHER_FILTERABLE,
     )
 
 

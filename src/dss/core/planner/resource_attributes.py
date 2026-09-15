@@ -41,6 +41,7 @@ def build_resource_attributes(
     turn: UserTurn,
     model_filled: dict,
     schema_context_index: dict[str, str],
+    filterable: tuple[str, ...],
 ) -> dict:
     """Build the full resourceAttributes object: structural fields first, the
     model's fields merged on top — but structural fields always win.
@@ -65,15 +66,30 @@ def build_resource_attributes(
     if location is not None:
         structural["location"] = location
 
-    # Three layers, each overriding the one before. The discovered attributes
-    # are the base: a provider judges a `select` against the resource it
-    # advertised, and fields it requires are not always ones `profile.json`
-    # lists as filterable — `market.marketName` is required by the MandiPrice
-    # schema and absent from its filterable paths, so the model could not
-    # supply it and every call was rejected. Echoing what discovery returned
-    # carries those through without the model having to guess them.
+    # Three layers, each overriding the one before.
+    #
+    # The discovered attributes are the base: a provider judges a `select`
+    # against the resource it advertised, and what it requires is not always
+    # what `profile.json` lists as filterable — MandiPrice requires
+    # `market.marketName` and never offers it, so the model could not supply it
+    # and every call was rejected. Echoing the discovered `market` object
+    # carries the required part through without the model guessing it.
+    #
+    # Only the *filterable* ones, matched on the top-level name so a whole
+    # object rides along with the parts inside it. A resource advertises two
+    # kinds of thing side by side: values a caller may filter on (`market`,
+    # `supportedCommodities`) and facts about the provider (`forecastHorizon:
+    # P5D`, `updateFrequency: PT12H`). Sending a fact back states it as a
+    # filter criterion it never was, and a pack declaring
+    # `additionalProperties: false` rejects the call for it.
     #
     # The model's values replace a discovered one outright rather than merging
     # into it: the provider advertises every commodity it serves, and the
     # farmer asked about one, so `supportedCommodities` narrows to that one.
-    return {**capability.advertised, **model_filled, **structural}
+    allowed = {path.split(".")[0].split("[")[0] for path in filterable}
+    echoed = {
+        field: value
+        for field, value in capability.advertised.items()
+        if field in allowed
+    }
+    return {**echoed, **model_filled, **structural}
