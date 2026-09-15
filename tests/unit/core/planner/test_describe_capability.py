@@ -351,3 +351,28 @@ def test_allowed_values_are_listed_only_for_filterable_fields() -> None:
 
     assert "KrishiVigyanKendra" in markdown
     assert "OnDemand" not in markdown
+
+
+def test_a_list_field_says_it_takes_a_list() -> None:
+    """The model guessed a scalar for an array field and the provider rejected
+    the call, because the prompt named the field and never its type.
+
+    Validation catches it, but only by spending a retry — and the retry carries
+    no more information than the first attempt did, so the model can guess
+    wrong again until the budget runs out and the turn ends `unavailable`.
+    """
+
+    schema = DomainSchema(
+        type="MandiPrice",
+        filterable=("supportedPriceFields", "arrivalDate"),
+        field_types={"supportedPriceFields": "array<string>", "arrivalDate": "string"},
+    )
+
+    markdown = render_candidates_as_markdown(
+        (_MANDI,), schemas={_MANDI.capability: schema}
+    )
+
+    assert "supportedPriceFields (list)" in markdown
+    # A scalar field is named on its own — noting the type of everything would
+    # bury the one distinction that matters.
+    assert "arrivalDate," in markdown or markdown.rstrip().endswith("arrivalDate")

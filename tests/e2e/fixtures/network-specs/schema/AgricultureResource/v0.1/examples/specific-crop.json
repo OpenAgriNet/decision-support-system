@@ -1,0 +1,50 @@
+{
+  "@context": "https://openagrinet.github.io/network-specs/schema/AgricultureResource/v0.1/context.jsonld",
+  "@type": "openagrinet:AgricultureResource",
+  "informationMode": "Direct",
+  "subjectCategories": [
+    "Crop"
+  ],
+  "agricultureSubjects": [
+    {
+      "subjectId": "https://taxonomy.openagrinet.global/crops/cotton",
+      "descriptor": {
+        "code": "COTTON",
+        "name": "Cotton"
+      }
+    }
+  ],
+  "languages": [
+    "en",
+    "hi"
+  ],
+  "coverageAreas": [
+    {
+      "type": "Polygon",
+      "coordinates": [
+        [
+          [
+            75.0,
+            19.0
+          ],
+          [
+            76.0,
+            19.0
+          ],
+          [
+            76.0,
+            20.0
+          ],
+          [
+            75.0,
+            20.0
+          ],
+          [
+            75.0,
+            19.0
+          ]
+        ]
+      ]
+    }
+  ]
+}

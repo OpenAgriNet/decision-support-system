@@ -1,3 +1,38 @@
 {
-  "_comment": "must be ignored by the adapter"
+  "@context": {
+    "openagrinet": "https://openagrinet.github.io/network-specs/vocab#",
+    "rdfs": "http://www.w3.org/2000/01/rdf-schema#"
+  },
+  "@graph": [
+    {
+      "@id": "openagrinet:MandiPrice",
+      "@type": "rdfs:Class",
+      "rdfs:label": "Mandi Price",
+      "rdfs:comment": "Mandi prices that may be obtained on demand or supplied directly."
+    },
+    { "@id": "openagrinet:supportedCommodities", "@type": "rdfs:Property", "rdfs:label": "supported commodities" },
+    { "@id": "openagrinet:supportedPriceFields", "@type": "rdfs:Property", "rdfs:label": "supported price fields" },
+    { "@id": "openagrinet:historicalDataAvailable", "@type": "rdfs:Property", "rdfs:label": "historical data available" },
+    { "@id": "openagrinet:historyPeriod", "@type": "rdfs:Property", "rdfs:label": "history period" },
+    { "@id": "openagrinet:updateFrequency", "@type": "rdfs:Property", "rdfs:label": "update frequency" },
+    { "@id": "openagrinet:source", "@type": "rdfs:Property", "rdfs:label": "source" },
+    { "@id": "openagrinet:commodityGroup", "@type": "rdfs:Property", "rdfs:label": "commodity group" },
+    { "@id": "openagrinet:grade", "@type": "rdfs:Property", "rdfs:label": "grade" },
+    { "@id": "openagrinet:variety", "@type": "rdfs:Property", "rdfs:label": "variety" },
+    { "@id": "openagrinet:market", "@type": "rdfs:Property", "rdfs:label": "market" },
+    { "@id": "openagrinet:marketCode", "@type": "rdfs:Property", "rdfs:label": "market code" },
+    { "@id": "openagrinet:marketName", "@type": "rdfs:Property", "rdfs:label": "market name" },
+    { "@id": "openagrinet:district", "@type": "rdfs:Property", "rdfs:label": "district" },
+    { "@id": "openagrinet:state", "@type": "rdfs:Property", "rdfs:label": "state" },
+    { "@id": "openagrinet:location", "@type": "rdfs:Property", "rdfs:label": "location" },
+    { "@id": "openagrinet:arrivalDate", "@type": "rdfs:Property", "rdfs:label": "arrival date" },
+    { "@id": "openagrinet:prices", "@type": "rdfs:Property", "rdfs:label": "prices" },
+    { "@id": "openagrinet:minimumPrice", "@type": "rdfs:Property", "rdfs:label": "minimum price" },
+    { "@id": "openagrinet:maximumPrice", "@type": "rdfs:Property", "rdfs:label": "maximum price" },
+    { "@id": "openagrinet:modalPrice", "@type": "rdfs:Property", "rdfs:label": "modal price" },
+    { "@id": "openagrinet:currency", "@type": "rdfs:Property", "rdfs:label": "currency" },
+    { "@id": "openagrinet:unit", "@type": "rdfs:Property", "rdfs:label": "unit" },
+    { "@id": "openagrinet:generatedAt", "@type": "rdfs:Property", "rdfs:label": "generated at" },
+    { "@id": "openagrinet:validity", "@type": "rdfs:Property", "rdfs:label": "validity" }
+  ]
 }

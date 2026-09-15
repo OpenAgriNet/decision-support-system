@@ -65,15 +65,21 @@ from dss.entrypoint.composition import build_runner
 #
 # The credentials gate does the same job more honestly: no key in the
 # environment, no run. CI has none, so it skips there. It runs where someone has
-# deliberately supplied a key — a sourced `.env`, or an IDE run configuration —
-# which is exactly when you want it to.
+# deliberately supplied a key — an export, or an IDE run configuration — which
+# is exactly when you want it to.
+#
+# `AZURE_OPENAI_API_KEY` first, because `MODEL` below names an Azure deployment:
+# the gate used to check `OPENAI_API_KEY` alone, so an Azure-bound developer
+# could never open it and the test silently skipped for everyone.
 pytestmark = pytest.mark.skipif(
-    not os.getenv("OPENAI_API_KEY"),
-    reason="live model test — set OPENAI_API_KEY and OPENAI_BASE_URL",
+    not (os.getenv("AZURE_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")),
+    reason="live model test — export AZURE_OPENAI_API_KEY and "
+    "AZURE_OPENAI_ENDPOINT (MODEL below is an Azure deployment), or "
+    "OPENAI_API_KEY for a deployment bound the other way",
 )
 
 MODEL = "azure:gpt-5.6-luna"
-QUERY = "what is the price of onion"
+QUERY = "What is the price of Onion at Sholapur mandi this week?"
 
 FIXTURES = Path(__file__).parent / "fixtures"
 SCHEMA_PACKS = FIXTURES / "network-specs" / "schema"
@@ -91,6 +97,14 @@ SELECT_RESPONSE = _load("select_response.json")
 _RESOURCE = DISCOVER_RESPONSE["message"]["catalogs"][0]["resources"][0]
 CAPABILITY = _RESOURCE["resourceAttributes"]["@type"]
 PROVIDER_ID = DISCOVER_RESPONSE["message"]["catalogs"][0]["provider"]["id"]
+SUBJECT_CATEGORY = _RESOURCE["resourceAttributes"]["subjectCategories"][0]
+# Read from the fixture: what the provider advertises is what the select has to
+# name. A code, not a word — `supportedCommodities` carries governed codes.
+ONION_CODE = next(
+    commodity["code"]
+    for commodity in _RESOURCE["resourceAttributes"]["supportedCommodities"]
+    if commodity["name"] == "Onion"
+)
 
 _ANSWER = SELECT_RESPONSE["message"]["contract"]["commitments"][0]["resources"][0]
 EXPECTED_MODAL = next(
@@ -113,32 +127,24 @@ EXPECTED_MAX = next(
 
 
 def _commodity_code(select_body: dict[str, Any]) -> str | None:
-    """Read the commodity from either shape the DSS may send.
+    """The commodity code the select asks for.
 
-    Tolerant on purpose, and it should not have to be. A pack's
-    `filterable_paths` are dotted JSON paths
-    (`beckn:resourceAttributes.commodity.code`) describing a *nested* document,
-    but `describe_capability` shows the model those dotted strings and nothing
-    converts what comes back. `validate_arguments` accepts both, because
-    `_flatten` reduces the nested form to the same dotted path — so the DSS
-    emits `{"commodity": {"code": ...}}` or `{"commodity.code": ...}` depending
-    on which the model picked, and a provider expecting the Beckn shape would
-    only understand one.
-
-    Live runs have produced both. A real provider is not going to be this
-    forgiving; normalising the model's dotted keys back into nested objects
-    before the call is the fix, and it belongs in
-    `resource_attributes.build_resource_attributes`.
+    Read from `supportedCommodities`, the only commodity field the pack still
+    offers — `commodity` was removed from MandiPrice, so a select narrows the
+    advertised list instead of naming a separate field. A stale reader here
+    found nothing and answered 400 for every call.
     """
 
     attributes = select_body["message"]["contract"]["commitments"][0]["resources"][0][
         "resourceAttributes"
     ]
-    nested = attributes.get("commodity")
-    if isinstance(nested, dict) and "code" in nested:
-        return nested["code"]
-    flat = attributes.get("commodity.code")
-    return flat if isinstance(flat, str) else None
+    commodities = attributes.get("supportedCommodities")
+    if not isinstance(commodities, list) or len(commodities) != 1:
+        # More than one means nothing was narrowed: the advertisement came
+        # back whole, and the provider cannot tell which was wanted.
+        return None
+    first = commodities[0]
+    return first.get("code") if isinstance(first, dict) else None
 
 
 class _Network:
@@ -156,8 +162,13 @@ class _Network:
     def discover(self, request: Request) -> Response:
         body = json.loads(request.get_data())
         self.discover_requests.append(body)
+        # The filter matches on `subjectCategories`, and `schemaContext` is
+        # what names the @type — checking the expression for the @type stopped
+        # matching when the filter changed, and this answered an empty catalog
+        # for every query, which reads as `no_match`.
         expression = body["message"]["intent"]["filters"]["expression"]
-        if CAPABILITY not in expression:
+        context = " ".join(body["context"].get("schemaContext", ()))
+        if SUBJECT_CATEGORY not in expression or CAPABILITY not in context:
             return self._json({"message": {"catalogs": []}})
         return self._json(DISCOVER_RESPONSE)
 
@@ -165,12 +176,20 @@ class _Network:
         body = json.loads(request.get_data())
         self.select_requests.append(body)
         commodity = _commodity_code(body)
-        if commodity is None or "onion" not in commodity.lower():
+        if commodity != ONION_CODE:
             # 400, not 404: `classify_status_code` treats only 400/401/403 as a
             # defect, so a 404 would be retried three times before failing —
             # slow, and wrong about whose fault it is.
             return self._json(
-                {"error": f"this provider serves onion, not {commodity!r}"}, status=400
+                {
+                    "error": f"this provider serves onion, not {commodity!r}",
+                    # Echoed so a failing run says what was actually sent
+                    # rather than only what was missing.
+                    "received": body["message"]["contract"]["commitments"][0][
+                        "resources"
+                    ][0]["resourceAttributes"],
+                },
+                status=400,
             )
         return self._json(SELECT_RESPONSE)
 
@@ -219,6 +238,19 @@ def _ask(client: TestClient, a_body, query: str):
                 "sourceLanguage": "en",
                 "targetLanguage": "en",
                 "channel": "web",
+                # Sholapur — where the market is and where the farmer is
+                # asking from. Without it the turn stops at the district
+                # question and never reaches a provider, which is right for a
+                # located ask and wrong for this test.
+                "location": {
+                    "region": "IN-MH",
+                    "area": "Sholapur",
+                    "geometry": {
+                        "type": "Point",
+                        "coordinates": [75.01386945, 17.89374094],
+                    },
+                },
+                "response": {"maxCharacters": 1200},
             },
         ),
         headers={"Accept": "application/json"},
@@ -231,24 +263,42 @@ def test_a_live_model_answers_the_onion_price(live_app, live_network, a_body) ->
     assert response.status_code == 200
     message = response.json()["message"]
 
+    # Printed before the first assertion: when the provider refuses, the body
+    # it refused is the only thing that explains why.
+    if live_network.select_requests:
+        print(
+            "\n  select sent: "
+            + json.dumps(
+                live_network.select_requests[-1]["message"]["contract"]["commitments"][
+                    0
+                ]["resources"][0]["resourceAttributes"],
+                indent=2,
+            )
+        )
+
     # Moderation let an ordinary price question through. A refusal would have
     # stopped the turn before discovery.
     assert message["outcome"]["status"] == "answered", message["outcome"]
 
-    # Intent, read off the wire: only `Market` + `observe` resolves to this
-    # capability in the schema-pack index, so the filter naming it proves the
+    # Intent, read off the wire. The filter matches the subject category and
+    # `schemaContext` names the resolved @type — only `Market` + `observe`
+    # reaches this capability in the schema-pack index, so the pair proves the
     # classification.
     assert live_network.discover_requests, "discovery never ran"
-    expression = live_network.discover_requests[0]["message"]["intent"]["filters"][
-        "expression"
+    discover = live_network.discover_requests[0]
+    expression = discover["message"]["intent"]["filters"]["expression"]
+    assert SUBJECT_CATEGORY in expression, expression
+    assert CAPABILITY in " ".join(discover["context"]["schemaContext"]), discover[
+        "context"
     ]
-    assert CAPABILITY in expression, expression
 
     # The planner read "onion" out of the sentence and put it in a field the
     # pack declares filterable. The server would have answered 400 otherwise.
     assert live_network.select_requests, "the provider was never called"
     commodity = _commodity_code(live_network.select_requests[0])
-    assert commodity and "onion" in commodity.lower(), commodity
+    # The planner read "onion" out of the sentence and narrowed the advertised
+    # list to its code. The server would have answered 400 otherwise.
+    assert commodity == ONION_CODE, commodity
 
     # `/select` went to the provider `/discover` offered, not one the model
     # invented.
@@ -256,6 +306,29 @@ def test_a_live_model_answers_the_onion_price(live_app, live_network, a_body) ->
         "offer"
     ]
     assert offer["provider"]["id"] == PROVIDER_ID
+
+    # What the discovered resource said about itself survives the round trip.
+    # Each of these was wrong against a real provider while this test passed,
+    # because the fixture used to advertise nothing but @type — so the select
+    # body had nothing to carry through and nothing to get wrong.
+    sent = live_network.select_requests[0]["message"]["contract"]["commitments"][0][
+        "resources"
+    ][0]["resourceAttributes"]
+
+    # The resource *is* Akluj APMC. A select names a commodity and a date; it
+    # does not restate which market, and must not overwrite it — the model
+    # wrote the district from the question into `marketName`.
+    assert sent["market"] == _RESOURCE["resourceAttributes"]["market"], sent["market"]
+
+    # The model may only send `code`, so the advertised item travels whole.
+    assert sent["supportedCommodities"] == [{"code": "23", "name": "Onion"}], sent[
+        "supportedCommodities"
+    ]
+
+    # Facts about the provider are not filters, and no filterable_path names
+    # them.
+    for fact in ("historyPeriod", "updateFrequency", "historicalDataAvailable"):
+        assert fact not in sent, fact
 
     # The composer wrote the provider's number, not its own. Digits only —
     # wording, currency placement and thousands separators are the model's

@@ -392,19 +392,23 @@ def test_a_scalar_list_is_left_alone() -> None:
     assert resource_attributes["supportedPriceFields"] == ["Modal"]
 
 
-def test_a_non_list_value_is_left_alone() -> None:
-    """`market` is an object on both sides, not a list — selection does not
-    apply, and the model's narrowing merges as a plain override."""
+def test_a_value_of_a_different_kind_is_left_alone() -> None:
+    """Neither selection nor merging applies when the two sides are not the
+    same kind of thing. The model's value stands, and the provider judges it.
+
+    A provider publishing a scalar where the model sends an object is the
+    network disagreeing with itself; a select must not raise over it.
+    """
 
     resource_attributes = build_resource_attributes(
-        capability=_capability(advertised={"market": {"marketCode": "1806"}}),
+        capability=_capability(advertised={"commodityGroup": "Vegetables"}),
         turn=_turn(location=None),
-        model_filled={"market": {"marketCode": "1171"}},
+        model_filled={"commodityGroup": {"code": "VEG"}},
         schema_context_index=_SCHEMA_CONTEXT_INDEX,
-        filterable=("market.marketCode",),
+        filterable=("commodityGroup",),
     )
 
-    assert resource_attributes["market"] == {"marketCode": "1171"}
+    assert resource_attributes["commodityGroup"] == {"code": "VEG"}
 
 
 def test_a_mixed_advertised_list_skips_what_it_cannot_match() -> None:
@@ -435,3 +439,41 @@ def test_a_mixed_advertised_list_skips_what_it_cannot_match() -> None:
     assert resource_attributes["supportedCommodities"] == [
         {"code": "23", "name": "Onion"}
     ]
+
+
+def test_narrowing_an_advertised_object_merges_into_it() -> None:
+    """The model names one part of an object, not a replacement for it.
+
+    It wrote `{"market": {"marketCode": ..., "state": ...}}` — the two fields
+    `profile.json` offers — and the whole advertised object went with it,
+    losing `marketName`, `district` and the market's own coordinates. The
+    resource *is* Akluj APMC; a select says which commodity and when.
+    """
+
+    resource_attributes = build_resource_attributes(
+        capability=_capability(
+            advertised={
+                "market": {
+                    "marketName": "Akluj APMC",
+                    "marketCode": "1806",
+                    "district": "Sholapur",
+                    "state": "Maharashtra",
+                }
+            }
+        ),
+        turn=_turn(location=None),
+        # "Sholapur" is the district, written into a field holding the
+        # market's code — a real model wrote exactly this. The advertised value
+        # wins: an advertised field is a fact about the resource, the model's
+        # is a guess, and the resource is Akluj APMC either way.
+        model_filled={"market": {"marketCode": "Sholapur"}},
+        schema_context_index=_SCHEMA_CONTEXT_INDEX,
+        filterable=("market.marketCode", "market.state"),
+    )
+
+    assert resource_attributes["market"] == {
+        "marketName": "Akluj APMC",
+        "marketCode": "1806",
+        "district": "Sholapur",
+        "state": "Maharashtra",
+    }

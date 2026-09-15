@@ -20,28 +20,47 @@
                 "@context": "https://schemas.openagrinet.global/schema/MandiPrice/v0.1/context.jsonld",
                 "@type": "openagrinet:MandiPrice",
                 "informationMode": "Direct",
-                "subjectCategories": ["Market"],
-                "commodity": {
-                  "code": "ONION",
-                  "name": "Onion"
-                },
+                "subjectCategories": [
+                  "Market"
+                ],
                 "market": {
-                  "marketCode": "MH-LASALGAON-01",
-                  "marketName": "Lasalgaon",
+                  "marketCode": "1806",
+                  "marketName": "Akluj APMC",
+                  "district": "Sholapur",
                   "state": "Maharashtra"
                 },
                 "arrivalDate": "2026-08-26",
                 "prices": [
-                  {"priceType": "Minimum", "unit": "INR/quintal", "value": 2801},
-                  {"priceType": "Modal", "unit": "INR/quintal", "value": 2847},
-                  {"priceType": "Maximum", "unit": "INR/quintal", "value": 2893}
+                  {
+                    "priceType": "Minimum",
+                    "unit": "INR/quintal",
+                    "value": 2801
+                  },
+                  {
+                    "priceType": "Modal",
+                    "unit": "INR/quintal",
+                    "value": 2847
+                  },
+                  {
+                    "priceType": "Maximum",
+                    "unit": "INR/quintal",
+                    "value": 2893
+                  }
+                ],
+                "supportedCommodities": [
+                  {
+                    "code": "23",
+                    "name": "Onion"
+                  }
                 ]
               }
             }
           ],
           "offer": {
             "id": "offer:agmarknet:open-data",
-            "resourceIds": ["res:agmarknet:price:2026-08-26"],
+            "resourceIds": [
+              "res:agmarknet:price:2026-08-26"
+            ],
             "provider": {
               "id": "agmarknet",
               "descriptor": {

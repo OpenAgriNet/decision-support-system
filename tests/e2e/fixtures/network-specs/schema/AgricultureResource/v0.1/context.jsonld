@@ -1,0 +1,47 @@
+{
+  "@context": [
+    "https://schema.beckn.io/GeoJSONGeometry/v2.0/context.jsonld",
+    {
+      "@version": 1.1,
+      "schema": "https://schema.org/",
+      "openagrinet": "https://openagrinet.github.io/network-specs/vocab#",
+      "AgricultureResource": "openagrinet:AgricultureResource",
+      "informationMode": "openagrinet:informationMode",
+      "subjectCategories": {
+        "@id": "openagrinet:subjectCategories",
+        "@container": "@set"
+      },
+      "agricultureSubjects": {
+        "@id": "openagrinet:agricultureSubjects",
+        "@container": "@set"
+      },
+      "AgricultureSubjectReference": "openagrinet:AgricultureSubjectReference",
+      "subjectId": {
+        "@id": "openagrinet:subjectId",
+        "@type": "@id"
+      },
+      "descriptor": {
+        "@id": "https://schema.beckn.io/descriptor",
+        "@context": "https://schema.beckn.io/Descriptor/v2.1/context.jsonld"
+      },
+      "languages": {
+        "@id": "openagrinet:languages",
+        "@container": "@set"
+      },
+      "coverageAreas": {
+        "@id": "openagrinet:coverageAreas",
+        "@container": "@set"
+      },
+      "AdministrativeAreaReference": "openagrinet:AdministrativeAreaReference",
+      "codeScheme": "openagrinet:areaCodeScheme",
+      "areaCode": "openagrinet:areaCode",
+      "areaLevel": "openagrinet:areaLevel",
+      "areaName": "openagrinet:areaName",
+      "sourceId": "openagrinet:sourceId",
+      "sourceName": "openagrinet:sourceName",
+      "sourceUri": "openagrinet:sourceUri",
+      "startsAt": "openagrinet:startsAt",
+      "endsAt": "openagrinet:endsAt"
+    }
+  ]
+}

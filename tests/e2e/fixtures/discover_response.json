@@ -21,7 +21,30 @@
             {
               "geo": {
                 "type": "Polygon",
-                "coordinates": [[[68.1, 8.0], [97.4, 8.0], [97.4, 37.1], [68.1, 37.1], [68.1, 8.0]]]
+                "coordinates": [
+                  [
+                    [
+                      68.1,
+                      8.0
+                    ],
+                    [
+                      97.4,
+                      8.0
+                    ],
+                    [
+                      97.4,
+                      37.1
+                    ],
+                    [
+                      68.1,
+                      37.1
+                    ],
+                    [
+                      68.1,
+                      8.0
+                    ]
+                  ]
+                ]
               }
             }
           ]
@@ -36,7 +59,71 @@
               "@context": "https://schemas.openagrinet.global/schema/MandiPrice/v0.1/context.jsonld",
               "@type": "openagrinet:MandiPrice",
               "informationMode": "OnDemand",
-              "subjectCategories": ["Market"]
+              "subjectCategories": [
+                "Market"
+              ],
+              "market": {
+                "state": "Maharashtra",
+                "district": "Sholapur",
+                "location": {
+                  "geo": {
+                    "type": "Point",
+                    "coordinates": [
+                      75.01386945,
+                      17.89374094
+                    ]
+                  }
+                },
+                "marketCode": "1806",
+                "marketName": "Akluj APMC"
+              },
+              "source": {
+                "sourceId": "agmarknet",
+                "sourceUri": "https://agmarknet.gov.in/",
+                "sourceName": "Agmarknet Vistaar"
+              },
+              "languages": [
+                "en",
+                "hi",
+                "mr"
+              ],
+              "coverageAreas": [
+                {
+                  "type": "Point",
+                  "coordinates": [
+                    75.01386945,
+                    17.89374094
+                  ]
+                },
+                {
+                  "areaCode": "IN-MH",
+                  "areaName": "Maharashtra",
+                  "areaLevel": "State",
+                  "codeScheme": "ISO-3166-2"
+                }
+              ],
+              "historyPeriod": "P1Y",
+              "updateFrequency": "P1D",
+              "historicalDataAvailable": true,
+              "supportedCommodities": [
+                {
+                  "code": "10",
+                  "name": "Groundnut"
+                },
+                {
+                  "code": "23",
+                  "name": "Onion"
+                },
+                {
+                  "code": "24",
+                  "name": "Potato"
+                }
+              ],
+              "supportedPriceFields": [
+                "Minimum",
+                "Maximum",
+                "Modal"
+              ]
             }
           }
         ]
