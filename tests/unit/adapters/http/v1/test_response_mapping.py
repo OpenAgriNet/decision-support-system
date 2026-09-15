@@ -226,3 +226,86 @@ def test_the_offsets_are_code_points_not_bytes(ctx):
     annotation = frame.message.content[0].annotations[0]
     assert annotation.end_index == len(text)
     assert annotation.end_index < len(text.encode("utf-8"))
+
+
+def test_an_annotation_names_the_source_it_cites(ctx, answered):
+    """`sourceName` and `url` are denormalised onto the citation so a caller
+    reads it without joining, and so a streamed claim can name its source
+    before `message.sources` arrives in the terminal frame."""
+
+    frame = mapping.to_terminal_frame(
+        answered, ctx, now=NOW, seq=None, response_id=RESPONSE_ID
+    )
+
+    annotation = frame.message.content[0].annotations[0]
+    assert annotation.source_id == "src_1"
+    assert annotation.source_name == "Agmarknet"
+
+
+def test_an_annotation_carries_the_sources_url(ctx):
+    finished = TurnFinished(
+        outcome=TurnOutcome(status=TurnStatus.ANSWERED, confidence=92),
+        content=(TextBlock(text="Rs 2,275.", source_ids=("src_1",)),),
+        sources=(
+            Source(
+                id="src_1",
+                name="Agmarknet",
+                kind=SourceKind.PROVIDER,
+                url="https://agmarknet.gov.in",
+            ),
+        ),
+    )
+
+    frame = mapping.to_terminal_frame(
+        finished, ctx, now=NOW, seq=None, response_id=RESPONSE_ID
+    )
+
+    assert frame.message.content[0].annotations[0].url == "https://agmarknet.gov.in"
+
+
+def test_a_claim_frame_names_its_source_too(ctx, answered):
+    """The claim arrives before the terminal frame, so a caller cannot join on
+    `sourceId` yet — the name has to travel with the claim."""
+
+    frame = mapping.to_claim_frame(
+        Claim(content=answered.content[0], sources=answered.sources),
+        ctx,
+        now=NOW,
+        seq=1,
+        response_id=RESPONSE_ID,
+    )
+
+    assert frame.message.content[0].annotations[0].source_name == "Agmarknet"
+
+
+def test_a_claim_with_no_sources_still_cites_by_id(ctx, answered):
+    frame = mapping.to_claim_frame(
+        Claim(content=answered.content[0]),
+        ctx,
+        now=NOW,
+        seq=1,
+        response_id=RESPONSE_ID,
+    )
+
+    annotation = frame.message.content[0].annotations[0]
+    assert annotation.source_id == "src_1"
+    assert annotation.source_name is None
+
+
+def test_an_unresolved_source_id_keeps_the_citation_unnamed(ctx):
+    """A block citing an id no source carries is a defect, but dropping the
+    citation would hide the claim's provenance marker as well as the bug."""
+
+    finished = TurnFinished(
+        outcome=TurnOutcome(status=TurnStatus.ANSWERED, confidence=92),
+        content=(TextBlock(text="Rs 2,275.", source_ids=("src_9",)),),
+        sources=(Source(id="src_1", name="Agmarknet", kind=SourceKind.PROVIDER),),
+    )
+
+    frame = mapping.to_terminal_frame(
+        finished, ctx, now=NOW, seq=None, response_id=RESPONSE_ID
+    )
+
+    annotation = frame.message.content[0].annotations[0]
+    assert annotation.source_id == "src_9"
+    assert (annotation.source_name, annotation.url) == (None, None)

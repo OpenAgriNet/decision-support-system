@@ -242,11 +242,17 @@ class TurnStarted(BaseModel):
 
 
 class Claim(BaseModel):
-    """One reviewed block, ready to present. Emitted as it is produced."""
+    """One reviewed block, ready to present. Emitted as it is produced.
+
+    ``sources`` is what the block's citations resolve against — carried here
+    because a claim is streamed before the terminal frame, so a caller has
+    nothing to join a bare id to yet.
+    """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     content: OutputContent
+    sources: tuple[Source, ...] = ()
 
 
 class TurnFinished(BaseModel):

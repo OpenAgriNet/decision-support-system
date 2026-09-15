@@ -56,6 +56,11 @@
   they are in (`requires_input`) instead of answering from nowhere (#19)
 
 ### Fixed
+- Citations now carry `sourceName` and `url`. Both were declared in the
+  contract — `Annotation.sourceName` even ships an example — and never
+  populated, so every annotation reached a caller as a bare `sourceId`. On the
+  SSE path that id resolved against nothing until `turn.completed` arrived, so
+  `Claim` now carries the sources its citations resolve against (#59)
 - `sources[]` now names who authored the data, from the response's own
   `resourceAttributes.source`, rather than the network participant that served
   it — a provider relaying IMD cites IMD, falling back to its own name when the

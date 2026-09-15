@@ -235,7 +235,7 @@ class Orchestrator:
                 text = await self._components.compose(evidence, turn=turn)
             answer = answer_from_evidence(text, evidence)
             for block in answer.content:
-                yield Claim(content=block)
+                yield Claim(content=block, sources=answer.sources)
             self._note("channel", ctx, str(len(answer.content)))
 
             status, cause = _status_for(evidence, result.intent)
