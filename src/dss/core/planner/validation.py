@@ -1,9 +1,11 @@
 """Validates the model's ``resource_attributes`` against a pack.
 
-Two checks. The name must be one the pack declares as filterable. And a
-field the pack types as an array must get a list, not a single value —
-the model wrote one bare string for a list field and the provider rejected
-the whole call.
+Three checks, each one a select the provider rejected:
+
+- the name must be one the pack declares as filterable;
+- a field the pack types as an array must get a list, not a single value;
+- a field with a fixed set of values must get one of them, not the
+  farmer's own words.
 
 No "required minimum" check — ``profile.json`` has no ``required_filters``
 key (design doc Open #3, unresolved network-wide); that stays open, not
@@ -38,6 +40,9 @@ class DomainSchema(BaseModel):
     # the pack's fields could not be read. Then only the name check runs, as
     # before — a pack we cannot read the types of is not a fatal pack.
     field_types: Mapping[str, str] = {}
+    # The allowed values of each field that has a fixed set. Most fields have
+    # none, so a missing entry means "anything goes", not "nothing allowed".
+    field_enums: Mapping[str, tuple[str, ...]] = {}
 
 
 def parse_domain_schema(pack: SchemaPackFiles) -> DomainSchema:
@@ -56,6 +61,9 @@ def parse_domain_schema(pack: SchemaPackFiles) -> DomainSchema:
         # Already resolved by the reading layer, which merged the pack's own
         # fields with the shared file's. Nothing is re-read here.
         field_types={path: spec.type for path, spec in pack.flattened_fields.items()},
+        field_enums={
+            path: spec.enum for path, spec in pack.flattened_fields.items() if spec.enum
+        },
     )
 
 
@@ -109,10 +117,33 @@ def _check_is_array(path: str, value: object, schema: DomainSchema) -> None:
     )
 
 
+def _check_is_allowed(path: str, value: object, schema: DomainSchema) -> None:
+    """Reject a value the pack does not list.
+
+    Checks each item of a list, because an array's enum sits on its items —
+    ``supportedFacilityTypes`` is the four facility types, not four lists.
+
+    A field with no enum is skipped: most fields are free text, so a missing
+    entry means anything goes.
+    """
+
+    allowed = schema.field_enums.get(path)
+    if not allowed:
+        return
+    given = value if isinstance(value, list) else [value]
+    for item in given:
+        if item in allowed:
+            continue
+        raise InvalidArgument(
+            f"{item!r} is not a value {path!r} of {schema.type} takes. "
+            f"Use one of: {', '.join(allowed)}"
+        )
+
+
 def validate_arguments(resource_attributes: dict, schema: DomainSchema) -> None:
-    """Raise ``InvalidArgument`` if any key path in ``resource_attributes`` is
-    not one of the schema's ``filterable`` paths, or holds a scalar where the
-    pack asks for a list."""
+    """Raise ``InvalidArgument`` if a key path in ``resource_attributes`` is
+    not one of the schema's ``filterable`` paths, holds a scalar where the
+    pack asks for a list, or holds a value the pack does not list."""
 
     for path in _flatten(resource_attributes):
         if path not in schema.filterable:
@@ -125,3 +156,4 @@ def validate_arguments(resource_attributes: dict, schema: DomainSchema) -> None:
     # nested path's type is not read here.
     for field, value in resource_attributes.items():
         _check_is_array(field, value, schema)
+        _check_is_allowed(field, value, schema)

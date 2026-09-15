@@ -284,3 +284,70 @@ def test_a_vocabulary_is_kept_while_self_described_content_is_dropped() -> None:
 
     assert "COTTON=Cotton" in markdown
     assert "Crop establishment" not in markdown
+
+
+def test_a_fields_allowed_values_are_rendered() -> None:
+    """The model is told field names but never what a field may hold, so it
+    wrote the farmer's words ("krishi kendra") for a field that takes one of
+    four governed values, and the provider rejected the select.
+
+    Unlike an advertised vocabulary, these come from the schema pack, not off
+    the wire — the same DSS-controlled source as the field names beside them.
+    """
+
+    facility = ProviderCapability(
+        provider_id="pocra",
+        provider_name="PoCRA",
+        capability="openagrinet:AgricultureFacility",
+        resource_id="res:pocra:facility-search",
+        observed_categories=("Facility",),
+    )
+    schemas = {
+        "openagrinet:AgricultureFacility": DomainSchema(
+            type="AgricultureFacility",
+            filterable=("facilityType",),
+            field_enums={"facilityType": ("KrishiVigyanKendra", "Warehouse")},
+        )
+    }
+
+    markdown = render_candidates_as_markdown((facility,), schemas=schemas)
+
+    assert "KrishiVigyanKendra" in markdown
+    assert "Warehouse" in markdown
+
+
+def test_no_heading_when_no_field_fixes_its_values() -> None:
+    """Most packs fix nothing, so the heading must not appear empty — an
+    empty "takes only these values" reads as "takes nothing"."""
+
+    markdown = render_candidates_as_markdown((_KNOWLEDGE,), schemas=_SCHEMAS)
+
+    assert "these fields take only these values" not in markdown
+
+
+def test_allowed_values_are_listed_only_for_filterable_fields() -> None:
+    """A pack fixes the values of fields the model cannot send either. Listing
+    those invites it to try a field that is not on offer."""
+
+    facility = ProviderCapability(
+        provider_id="pocra",
+        provider_name="PoCRA",
+        capability="openagrinet:AgricultureFacility",
+        resource_id="res:pocra:facility-search",
+        observed_categories=("Facility",),
+    )
+    schemas = {
+        "openagrinet:AgricultureFacility": DomainSchema(
+            type="AgricultureFacility",
+            filterable=("facilityType",),
+            field_enums={
+                "facilityType": ("KrishiVigyanKendra",),
+                "informationMode": ("OnDemand", "Direct"),
+            },
+        )
+    }
+
+    markdown = render_candidates_as_markdown((facility,), schemas=schemas)
+
+    assert "KrishiVigyanKendra" in markdown
+    assert "OnDemand" not in markdown
