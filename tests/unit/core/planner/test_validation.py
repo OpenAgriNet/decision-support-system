@@ -137,3 +137,54 @@ def test_a_list_for_an_array_field_is_accepted() -> None:
     )
 
     validate_arguments({"supportedFacilityTypes": ["KrishiVigyanKendra"]}, schema)
+
+
+def test_a_value_outside_the_packs_enum_is_rejected() -> None:
+    """The model wrote the farmer's own words for a field with a fixed set of
+    values, and the provider rejected the select. The name was right and the
+    value was a string, so neither existing check saw it."""
+
+    schema = DomainSchema(
+        type="AgricultureFacility",
+        filterable=("facilityType",),
+        field_types={"facilityType": "string"},
+        field_enums={"facilityType": ("KrishiVigyanKendra", "Warehouse")},
+    )
+
+    with pytest.raises(InvalidArgument, match="KrishiVigyanKendra"):
+        validate_arguments({"facilityType": "krishi kendra"}, schema)
+
+
+def test_an_allowed_value_passes_on_its_own_and_inside_a_list() -> None:
+    """What a correct model sends. An array's enum sits on its items, so the
+    check reads each item — without this it could reject every valid list."""
+
+    schema = DomainSchema(
+        type="AgricultureFacility",
+        filterable=("facilityType", "supportedFacilityTypes"),
+        field_types={"supportedFacilityTypes": "array<string>"},
+        field_enums={
+            "facilityType": ("KrishiVigyanKendra", "Warehouse"),
+            "supportedFacilityTypes": ("KrishiVigyanKendra", "Warehouse"),
+        },
+    )
+
+    validate_arguments({"facilityType": "KrishiVigyanKendra"}, schema)
+    validate_arguments({"supportedFacilityTypes": ["Warehouse"]}, schema)
+
+
+def test_a_bad_value_inside_a_list_is_rejected() -> None:
+    """The enum of an array applies to its items, so one wrong entry among
+    good ones must still fail."""
+
+    schema = DomainSchema(
+        type="AgricultureFacility",
+        filterable=("supportedFacilityTypes",),
+        field_types={"supportedFacilityTypes": "array<string>"},
+        field_enums={"supportedFacilityTypes": ("KrishiVigyanKendra", "Warehouse")},
+    )
+
+    with pytest.raises(InvalidArgument, match="krishi kendra"):
+        validate_arguments(
+            {"supportedFacilityTypes": ["Warehouse", "krishi kendra"]}, schema
+        )
