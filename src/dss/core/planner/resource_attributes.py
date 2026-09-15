@@ -18,11 +18,20 @@ _ON_DEMAND = "OnDemand"
 
 
 def _location_field(turn: UserTurn) -> dict | None:
+    """A Beckn ``Location``, which carries the geometry under ``geo``.
+
+    Every pack's ``location`` resolves to ``CompleteLocation``, an
+    ``allOf`` over Beckn's ``Location`` that makes ``geo`` required. The
+    geometry is therefore nested, not the value of ``location`` itself.
+    """
+
     if turn.location is None or turn.location.geometry is None:
         return None
     return {
-        "type": turn.location.geometry.type,
-        "coordinates": turn.location.geometry.coordinates,
+        "geo": {
+            "type": turn.location.geometry.type,
+            "coordinates": turn.location.geometry.coordinates,
+        }
     }
 
 

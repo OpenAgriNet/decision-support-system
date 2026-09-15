@@ -68,6 +68,12 @@ def test_omits_location_when_turn_has_none() -> None:
 
 
 def test_includes_location_from_turn_geometry() -> None:
+    """`location` is a Beckn Location, which wraps the geometry under `geo`.
+
+    A bare GeoJSON Point here is rejected: every pack's `location` resolves
+    to `CompleteLocation`, whose `geo` is required.
+    """
+
     location = Location(geometry=Geometry(coordinates=[72.93, 22.56]))
     resource_attributes = build_resource_attributes(
         capability=_capability(),
@@ -77,8 +83,7 @@ def test_includes_location_from_turn_geometry() -> None:
     )
 
     assert resource_attributes["location"] == {
-        "type": "Point",
-        "coordinates": [72.93, 22.56],
+        "geo": {"type": "Point", "coordinates": [72.93, 22.56]}
     }
 
 

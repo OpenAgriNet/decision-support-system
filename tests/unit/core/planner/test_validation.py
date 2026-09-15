@@ -1,9 +1,10 @@
-"""Tier 1 — validating the model's resource_attributes against a pack's
-filterable paths.
+"""Tier 1 — validating the model's resource_attributes against a pack.
+
+Two checks: the field name must be one the pack declares as filterable, and
+a field the pack types as an array must get a list.
 
 No "required minimum" check here — profile.json has no required_filters key
-(design doc Open #3, unresolved network-wide). This only catches an invented
-field the pack never declared as filterable.
+(design doc Open #3, unresolved network-wide).
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from dss.core.planner.validation import (
     validate_arguments,
 )
 from dss.core.provider_discovery.models import SchemaPackFiles
+from dss.core.provider_discovery.schema_fields import FieldSpec
 
 _MANDI_PROFILE = json.dumps(
     {
@@ -82,3 +84,56 @@ def test_a_list_of_plain_values_is_still_accepted() -> None:
     schema = DomainSchema(type="KnowledgeAdvisory", filterable=("topics",))
 
     validate_arguments({"topics": ["soil advisory", "pest management"]}, schema)
+
+
+def test_parse_domain_schema_carries_the_packs_field_types() -> None:
+    """The types are already resolved on the pack. Without this they never
+    reach the validator, and the array check has nothing to check against."""
+
+    pack = SchemaPackFiles(
+        pack_name="AgricultureFacility",
+        version="0.1",
+        profile_json=json.dumps(
+            {
+                "included_schemas": ["AgricultureFacility"],
+                "filterable_paths": ["beckn:resourceAttributes.supportedFacilityTypes"],
+            }
+        ),
+        attributes_yaml="",
+        examples_json=(),
+        flattened_fields={
+            "supportedFacilityTypes": FieldSpec(type="array<string>", required=False)
+        },
+    )
+
+    schema = parse_domain_schema(pack)
+
+    assert schema.field_types == {"supportedFacilityTypes": "array<string>"}
+
+
+def test_a_scalar_where_the_pack_declares_an_array_is_rejected() -> None:
+    """The model wrote ``"KrishiVigyanKendra"`` for a field the pack declares
+    as ``array<string>``, and the provider rejected the select. The name was
+    right, so a name-only check passed it straight through to the network."""
+
+    schema = DomainSchema(
+        type="AgricultureFacility",
+        filterable=("supportedFacilityTypes",),
+        field_types={"supportedFacilityTypes": "array<string>"},
+    )
+
+    with pytest.raises(InvalidArgument, match="supportedFacilityTypes"):
+        validate_arguments({"supportedFacilityTypes": "KrishiVigyanKendra"}, schema)
+
+
+def test_a_list_for_an_array_field_is_accepted() -> None:
+    """What a correct model sends. Without this the array check could reject
+    every valid list and the suite would still pass."""
+
+    schema = DomainSchema(
+        type="AgricultureFacility",
+        filterable=("supportedFacilityTypes",),
+        field_types={"supportedFacilityTypes": "array<string>"},
+    )
+
+    validate_arguments({"supportedFacilityTypes": ["KrishiVigyanKendra"]}, schema)

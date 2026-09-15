@@ -1,15 +1,19 @@
-"""Validates the model's ``resource_attributes`` against a pack's filterable
-paths.
+"""Validates the model's ``resource_attributes`` against a pack.
 
-Only catches an invented field the pack never declared as filterable. No
-"required minimum" check — ``profile.json`` has no ``required_filters`` key
-(design doc Open #3, unresolved network-wide); that stays open, not
+Two checks. The name must be one the pack declares as filterable. And a
+field the pack types as an array must get a list, not a single value —
+the model wrote one bare string for a list field and the provider rejected
+the whole call.
+
+No "required minimum" check — ``profile.json`` has no ``required_filters``
+key (design doc Open #3, unresolved network-wide); that stays open, not
 improvised here.
 """
 
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 
 from pydantic import BaseModel, ConfigDict
 
@@ -30,6 +34,10 @@ class DomainSchema(BaseModel):
 
     type: str
     filterable: tuple[str, ...]
+    # The type of each field, read from the pack's attributes.yaml. Empty when
+    # the pack's fields could not be read. Then only the name check runs, as
+    # before — a pack we cannot read the types of is not a fatal pack.
+    field_types: Mapping[str, str] = {}
 
 
 def parse_domain_schema(pack: SchemaPackFiles) -> DomainSchema:
@@ -42,7 +50,13 @@ def parse_domain_schema(pack: SchemaPackFiles) -> DomainSchema:
         path.removeprefix(_BECKN_RESOURCE_ATTRIBUTES_PREFIX)
         for path in profile["filterable_paths"]
     )
-    return DomainSchema(type=pack.pack_name, filterable=filterable)
+    return DomainSchema(
+        type=pack.pack_name,
+        filterable=filterable,
+        # Already resolved by the reading layer, which merged the pack's own
+        # fields with the shared file's. Nothing is re-read here.
+        field_types={path: spec.type for path, spec in pack.flattened_fields.items()},
+    )
 
 
 def _flatten(data: dict, prefix: str = "") -> list[str]:
@@ -77,9 +91,28 @@ def _flatten_value(value: object, *, path: str) -> list[str]:
     return [path]
 
 
+def _check_is_array(path: str, value: object, schema: DomainSchema) -> None:
+    """Reject a scalar where the pack asks for a list.
+
+    Only this one direction is checked. "It is a list" is a clear rule. The
+    other types are not: reading them right means following each `$ref`, and
+    a wrong guess rejects a body the provider would have taken.
+    """
+
+    if not schema.field_types.get(path, "").startswith("array"):
+        return
+    if isinstance(value, list):
+        return
+    raise InvalidArgument(
+        f"{path!r} of {schema.type} is {schema.field_types[path]}, "
+        f"so it takes a list — got {value!r}. Wrap it: [{value!r}]"
+    )
+
+
 def validate_arguments(resource_attributes: dict, schema: DomainSchema) -> None:
     """Raise ``InvalidArgument`` if any key path in ``resource_attributes`` is
-    not one of the schema's ``filterable`` paths."""
+    not one of the schema's ``filterable`` paths, or holds a scalar where the
+    pack asks for a list."""
 
     for path in _flatten(resource_attributes):
         if path not in schema.filterable:
@@ -87,3 +120,8 @@ def validate_arguments(resource_attributes: dict, schema: DomainSchema) -> None:
                 f"{path!r} is not a filterable field of {schema.type} "
                 f"(filterable: {schema.filterable})"
             )
+
+    # Top level only. `field_types` is keyed by the pack's own paths, and a
+    # nested path's type is not read here.
+    for field, value in resource_attributes.items():
+        _check_is_array(field, value, schema)
