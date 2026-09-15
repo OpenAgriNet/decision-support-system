@@ -28,7 +28,7 @@ def _resource_attributes() -> dict:
         "@context": "https://schemas.openagrinet.global/schema/WeatherObservation/v0.1/context.jsonld",
         "@type": "openagrinet:WeatherObservation",
         "subjectCategories": ["Weather"],
-        "location": {"type": "Point", "coordinates": [73.7898, 19.9975]},
+        "location": {"geo": {"type": "Point", "coordinates": [73.7898, 19.9975]}},
     }
 
 

@@ -26,8 +26,10 @@
                 "@type": "openagrinet:WeatherObservation",
                 "subjectCategories": ["Weather"],
                 "location": {
-                  "type": "Point",
-                  "coordinates": [73.7898, 19.9975]
+                  "geo": {
+                    "type": "Point",
+                    "coordinates": [73.7898, 19.9975]
+                  }
                 }
               }
             }
