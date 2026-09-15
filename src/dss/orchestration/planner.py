@@ -99,6 +99,7 @@ async def _select(
         turn=deps.turn,
         model_filled=resource_attributes,
         schema_context_index=deps.schema_context_index,
+        filterable=schema.filterable,
     )
 
     try:

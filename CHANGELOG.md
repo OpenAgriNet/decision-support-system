@@ -56,6 +56,11 @@
   they are in (`requires_input`) instead of answering from nowhere (#19)
 
 ### Fixed
+- `select` now sends the attributes `/discover` returned as the base of the
+  request, with the model's values narrowing them, instead of rebuilding the
+  object from scratch. MandiPrice requires `market.marketName` but does not
+  list it as filterable, so the model could not supply it and every call was
+  rejected `SCH_SCHEMA_VALIDATION_FAILED` (#55)
 - `select` now carries the farmer's own subject as a free-text filter instead of
   a label copied out of the provider's catalog. `describe_capability` showed
   every advertised list under "this provider serves only these values", so
