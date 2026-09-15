@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from dss.adapters.network_common import classify_status_code, extract_validity, to_utc
+from dss.adapters.network_common import (
+    classify_status_code,
+    extract_source_reference,
+    extract_validity,
+    to_utc,
+)
 from dss.core.provider_discovery.models import FailureClass
 
 
@@ -53,3 +58,53 @@ def test_classify_status_code_treats_everything_else_as_transient(
     status_code: int,
 ) -> None:
     assert classify_status_code(status_code) == FailureClass.TRANSIENT
+
+
+def test_extract_source_reference_returns_none_when_absent() -> None:
+    """`source` is optional on every pack that declares it."""
+
+    assert extract_source_reference({}) is None
+
+
+def test_extract_source_reference_reads_all_three_fields() -> None:
+    source = extract_source_reference(
+        {
+            "source": {
+                "sourceId": "agmarknet-mock",
+                "sourceName": "Agmarknet Vistaar",
+                "sourceUri": "https://agmarknet.gov.in",
+            }
+        }
+    )
+
+    assert source == ("agmarknet-mock", "Agmarknet Vistaar", "https://agmarknet.gov.in")
+
+
+def test_extract_source_reference_tolerates_the_optional_fields() -> None:
+    """Only `sourceId` is required by SourceReference."""
+
+    assert extract_source_reference({"source": {"sourceId": "mausamgram"}}) == (
+        "mausamgram",
+        None,
+        None,
+    )
+
+
+@pytest.mark.parametrize(
+    "uri",
+    [
+        "urn:openagrinet:source:agmarknet",
+        "did:web:agmarknet.gov.in",
+        "openagrinet:sourceId",
+        "ftp://agmarknet.gov.in/prices",
+        "",
+    ],
+)
+def test_a_source_uri_a_farmer_cannot_open_is_dropped(uri: str) -> None:
+    """`sourceUri` is typed `format: uri`, so it may be a JSON-LD identifier
+    rather than a page. `Source.url` is farmer-visible, so only http(s) passes."""
+
+    assert (
+        extract_source_reference({"source": {"sourceId": "s", "sourceUri": uri}})[2]
+        is None
+    )

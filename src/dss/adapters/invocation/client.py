@@ -17,6 +17,7 @@ import httpx
 from dss.adapters.network_common import (
     NO_STATUS_CODE,
     classify_status_code,
+    extract_source_reference,
     extract_validity,
 )
 from dss.core.provider_discovery.models import (
@@ -106,6 +107,11 @@ def map_select_response(
     commitment = response["message"]["contract"]["commitments"][0]
     resource = commitment["resources"][0]
     attributes = resource["resourceAttributes"]
+    source_id, source_name, source_url = extract_source_reference(attributes) or (
+        None,
+        None,
+        None,
+    )
     return DiscoveredAnswer(
         provider_id=provider_id,
         provider_name=provider_name,
@@ -113,6 +119,9 @@ def map_select_response(
         resource_id=resource["id"],
         attributes=attributes,
         validity=extract_validity(attributes),
+        source_id=source_id,
+        source_name=source_name,
+        source_url=source_url,
     )
 
 

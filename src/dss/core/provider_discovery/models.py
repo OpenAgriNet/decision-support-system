@@ -87,6 +87,13 @@ class DiscoveredAnswer:
     resource_id: str
     attributes: dict[str, object]
     validity: Validity | None
+    # Who authored the data, from `resourceAttributes.source`. Not the same as
+    # the provider: one relaying IMD still cites IMD. All optional — `source`
+    # is optional on every pack that declares it, and `sourceUri` is dropped
+    # here unless it is http(s), since a farmer cannot open a JSON-LD id.
+    source_id: str | None = None
+    source_name: str | None = None
+    source_url: str | None = None
 
 
 @dataclass(frozen=True)

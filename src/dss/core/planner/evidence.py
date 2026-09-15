@@ -47,13 +47,18 @@ def assemble_evidence(
     different things to tell a farmer.
 
     Sources are numbered ``"1"``, ``"2"``, … in first-seen order, one per
-    distinct provider: a provider answering two asks is one citable source,
-    which is how the composer will cite it. ``url`` is always ``None`` —
-    discovery carries no provider URL, and mining a pack's own ``source``
-    block for one is a follow-up.
+    ``(provider, originator)`` pair:
+
+    - A source is named by who authored the data, not who served it — a
+      provider relaying IMD cites IMD, falling back to its own name.
+    - Keyed on the pair, so one provider relaying two originators is two
+      sources; ``sourceId`` is provider-scoped, so two providers relaying one
+      originator stay two.
+    - ``kind`` stays ``PROVIDER``: it says how the DSS reached the fact, which
+      is not what ``name`` says.
     """
 
-    source_id_by_provider: dict[str, str] = {}
+    source_id_by_origin: dict[tuple[str, str | None], str] = {}
     sources: list[Source] = []
     results: list[Result] = []
 
@@ -64,16 +69,17 @@ def assemble_evidence(
     ]
 
     for ask_index, answer in [*direct, *raw_answers]:
-        source_id = source_id_by_provider.get(answer.provider_id)
+        origin = (answer.provider_id, answer.source_id)
+        source_id = source_id_by_origin.get(origin)
         if source_id is None:
             source_id = str(len(sources) + 1)
-            source_id_by_provider[answer.provider_id] = source_id
+            source_id_by_origin[origin] = source_id
             sources.append(
                 Source(
                     id=source_id,
-                    name=answer.provider_name,
+                    name=answer.source_name or answer.provider_name,
                     kind=SourceKind.PROVIDER,
-                    url=None,
+                    url=answer.source_url,
                 )
             )
         results.append(

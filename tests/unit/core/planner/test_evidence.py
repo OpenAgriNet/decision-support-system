@@ -48,11 +48,7 @@ KNOWLEDGE_ADVISORY = DiscoveredAnswer(
                 "priority": "Normal",
             }
         ],
-        # Some packs carry their own provenance inside resourceAttributes,
-        # sourceUri included. Assembly does not read it: Source.name comes
-        # from the DiscoveredAnswer's provider_name, which every capability
-        # has, and Source.url stays None. Mining a per-pack source block for
-        # a citation URL is a follow-up, not something to guess at here.
+        # Stays in `attributes` as well as promoted — Result.data is verbatim.
         "source": {
             "sourceId": "participant:agriculture-knowledge-provider",
             "sourceName": "Agriculture Knowledge Provider",
@@ -60,6 +56,9 @@ KNOWLEDGE_ADVISORY = DiscoveredAnswer(
         },
     },
     validity=None,
+    source_id="participant:agriculture-knowledge-provider",
+    source_name="Agriculture Knowledge Provider",
+    source_url="https://knowledge.example.org",
 )
 
 WEATHER_OBSERVATION = DiscoveredAnswer(
@@ -80,6 +79,8 @@ WEATHER_OBSERVATION = DiscoveredAnswer(
         ],
     },
     validity=None,
+    source_id="mausamgram",
+    source_name="IMD Mausamgram NWP",
 )
 
 AGRICULTURE_FACILITY = DiscoveredAnswer(
@@ -101,6 +102,8 @@ AGRICULTURE_FACILITY = DiscoveredAnswer(
         },
     },
     validity=None,
+    source_id="provider:agriculture-common-services",
+    source_name="Agriculture Common Services Provider",
 )
 
 PRICE_ASK = Ask(
@@ -131,9 +134,9 @@ def test_one_answer_becomes_one_source_and_one_result(
     assert len(evidence.sources) == 1
     source = evidence.sources[0]
     assert source.id == "1"
-    assert source.name == answer.provider_name
+    assert source.name == (answer.source_name or answer.provider_name)
     assert source.kind is SourceKind.PROVIDER
-    assert source.url is None
+    assert source.url == answer.source_url
 
     assert len(evidence.results) == 1
     result = evidence.results[0]
@@ -183,8 +186,8 @@ def test_two_providers_are_numbered_in_first_seen_order() -> None:
     )
 
     assert [(source.id, source.name) for source in evidence.sources] == [
-        ("1", "Agmarknet"),
-        ("2", "Krishi Knowledge Base"),
+        ("1", "Agmarknet"),  # no source block — falls back to the provider
+        ("2", "Agriculture Knowledge Provider"),
     ]
     assert [result.source_id for result in evidence.results] == ["1", "2"]
 
@@ -255,3 +258,104 @@ def test_failures_are_carried_onto_the_evidence() -> None:
 
     assert evidence.failed == (failure,)
     assert evidence.sufficient is False
+
+
+def test_the_originator_outranks_the_provider_that_served_it() -> None:
+    """A provider may relay someone else's data: the farmer is told who
+    produced the fact, not which participant it arrived through."""
+
+    evidence = assemble_evidence([(0, WEATHER_OBSERVATION)], intent=_intent(PRICE_ASK))
+
+    assert evidence.sources[0].name == "IMD Mausamgram NWP"
+    assert WEATHER_OBSERVATION.provider_name == "Automatic Weather Station Network"
+
+
+def test_a_source_uri_becomes_the_citation_url() -> None:
+    evidence = assemble_evidence(
+        [(0, KNOWLEDGE_ADVISORY)], intent=_intent(ADVISORY_ASK)
+    )
+
+    assert evidence.sources[0].url == "https://knowledge.example.org"
+
+
+def test_an_answer_without_a_source_block_falls_back_to_the_provider() -> None:
+    """`source` is optional on every pack that declares it, so the provider
+    name stays the floor — a citation is never left blank."""
+
+    evidence = assemble_evidence([(0, MANDI_PRICE)], intent=_intent(PRICE_ASK))
+
+    assert evidence.sources[0].name == "Agmarknet"
+    assert evidence.sources[0].url is None
+
+
+def test_one_provider_relaying_two_originators_is_two_sources() -> None:
+    """Keying on the provider alone let the first answer name both, so the
+    second ask's results cited the wrong organisation."""
+
+    relayed = DiscoveredAnswer(
+        provider_id=WEATHER_OBSERVATION.provider_id,
+        provider_name=WEATHER_OBSERVATION.provider_name,
+        capability=WEATHER_OBSERVATION.capability,
+        resource_id="res:aws-network:observation:pune",
+        attributes={"parameters": []},
+        validity=None,
+        source_id="skymet",
+        source_name="Skymet",
+    )
+
+    evidence = assemble_evidence(
+        [(0, WEATHER_OBSERVATION), (1, relayed)],
+        intent=_intent(PRICE_ASK, ADVISORY_ASK),
+    )
+
+    assert [(s.id, s.name) for s in evidence.sources] == [
+        ("1", "IMD Mausamgram NWP"),
+        ("2", "Skymet"),
+    ]
+    assert [result.source_id for result in evidence.results] == ["1", "2"]
+
+
+def test_two_providers_relaying_one_originator_stay_two_sources() -> None:
+    """`sourceId` is provider-scoped — nothing in the network makes it
+    globally unique — so merging across providers would assert an identity
+    the DSS cannot verify."""
+
+    other_provider = DiscoveredAnswer(
+        provider_id="imd-direct",
+        provider_name="IMD Direct",
+        capability=WEATHER_OBSERVATION.capability,
+        resource_id="res:imd-direct:observation:pune",
+        attributes={"parameters": []},
+        validity=None,
+        source_id=WEATHER_OBSERVATION.source_id,
+        source_name=WEATHER_OBSERVATION.source_name,
+    )
+
+    evidence = assemble_evidence(
+        [(0, WEATHER_OBSERVATION), (1, other_provider)],
+        intent=_intent(PRICE_ASK, ADVISORY_ASK),
+    )
+
+    assert [s.id for s in evidence.sources] == ["1", "2"]
+    assert [s.name for s in evidence.sources] == ["IMD Mausamgram NWP"] * 2
+
+
+def test_the_same_originator_twice_from_one_provider_is_one_source() -> None:
+    second = DiscoveredAnswer(
+        provider_id=WEATHER_OBSERVATION.provider_id,
+        provider_name=WEATHER_OBSERVATION.provider_name,
+        capability=WEATHER_OBSERVATION.capability,
+        resource_id="res:aws-network:observation:nashik",
+        attributes={"parameters": []},
+        validity=None,
+        source_id=WEATHER_OBSERVATION.source_id,
+        source_name=WEATHER_OBSERVATION.source_name,
+    )
+
+    evidence = assemble_evidence(
+        [(0, WEATHER_OBSERVATION), (1, second)],
+        intent=_intent(PRICE_ASK, ADVISORY_ASK),
+    )
+
+    assert [s.id for s in evidence.sources] == ["1"]
+    assert [result.source_id for result in evidence.results] == ["1", "1"]

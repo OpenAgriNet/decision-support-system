@@ -293,3 +293,51 @@ def test_a_naive_timestamp_is_read_as_utc_with_its_time_untouched() -> None:
     assert validity is not None
     assert validity.starts_at == datetime(2026, 8, 26, 6, 30, tzinfo=UTC)
     assert validity.ends_at == datetime(2026, 8, 26, 18, 45, tzinfo=UTC)
+
+
+def test_a_direct_resources_source_block_is_promoted() -> None:
+    """A Direct answer never reaches `/select`, so it has to be named by the
+    same rule here or one `sources[]` array mixes two naming schemes."""
+
+    response = json.loads((FIXTURES / "discover_response_direct.json").read_text())
+
+    answer = map_discover_response(response, ask_indices=(0,)).answers[0][0]
+
+    assert answer.source_id == "source:agmarknet"
+    assert answer.source_name == "AGMARKNET"
+    assert answer.source_url is None
+
+
+def test_a_direct_resource_relaying_another_source_keeps_both_names() -> None:
+    """The fixture's provider and source happen to share a name. This is the
+    case that matters: an aggregator citing someone else's data."""
+
+    response = json.loads((FIXTURES / "discover_response_direct.json").read_text())
+    catalog = response["message"]["catalogs"][0]
+    catalog["provider"]["descriptor"]["name"] = "Krishi Knowledge Base"
+    catalog["resources"][0]["resourceAttributes"]["source"] = {
+        "sourceId": "source:agmarknet",
+        "sourceName": "AGMARKNET",
+        "sourceUri": "https://agmarknet.gov.in",
+    }
+
+    answer = map_discover_response(response, ask_indices=(0,)).answers[0][0]
+
+    assert answer.provider_name == "Krishi Knowledge Base"
+    assert answer.source_name == "AGMARKNET"
+    assert answer.source_url == "https://agmarknet.gov.in"
+
+
+def test_a_direct_resource_without_a_source_block_maps_to_none() -> None:
+    response = json.loads((FIXTURES / "discover_response_direct.json").read_text())
+    del response["message"]["catalogs"][0]["resources"][0]["resourceAttributes"][
+        "source"
+    ]
+
+    answer = map_discover_response(response, ask_indices=(0,)).answers[0][0]
+
+    assert (answer.source_id, answer.source_name, answer.source_url) == (
+        None,
+        None,
+        None,
+    )
