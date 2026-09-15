@@ -16,6 +16,7 @@ import httpx
 from dss.adapters.network_common import (
     NO_STATUS_CODE,
     classify_status_code,
+    extract_source_reference,
     extract_validity,
 )
 from dss.core.provider_discovery.models import (
@@ -158,6 +159,11 @@ def _answers_from_catalog(catalog: dict[str, Any]) -> list[DiscoveredAnswer]:
         attributes = resource["resourceAttributes"]
         if attributes.get("informationMode") != _DIRECT:
             continue
+        source_id, source_name, source_url = extract_source_reference(attributes) or (
+            None,
+            None,
+            None,
+        )
         answers.append(
             DiscoveredAnswer(
                 provider_id=provider["id"],
@@ -166,6 +172,9 @@ def _answers_from_catalog(catalog: dict[str, Any]) -> list[DiscoveredAnswer]:
                 resource_id=resource["id"],
                 attributes=attributes,
                 validity=extract_validity(attributes),
+                source_id=source_id,
+                source_name=source_name,
+                source_url=source_url,
             )
         )
     return answers

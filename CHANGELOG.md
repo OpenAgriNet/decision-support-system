@@ -56,6 +56,12 @@
   they are in (`requires_input`) instead of answering from nowhere (#19)
 
 ### Fixed
+- `sources[]` now names who authored the data, from the response's own
+  `resourceAttributes.source`, rather than the network participant that served
+  it — a provider relaying IMD cites IMD, falling back to its own name when the
+  block is absent. `sourceUri` becomes `Source.url` when it is http(s), which
+  was previously always `null`. Sources key on `(provider, originator)`, so one
+  provider relaying two originators is now two citable sources (#58)
 - The turn's geometry is no longer added as a top-level `location` to a pack
   that declares none. Seven of the eight packs do not — MandiPrice names only
   `market.location.geo`, the market's own coordinates — so a mandi select
