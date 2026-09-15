@@ -215,3 +215,31 @@ def test_a_real_pack_flattens_to_the_fields_both_wire_calls_need() -> None:
     }
 
     assert fields == inherited | own
+
+
+def test_a_field_wrapped_in_all_of_resolves_to_what_it_refs() -> None:
+    """`facilityType` is `allOf: [$ref: FacilityType]`, and the ref carries
+    the type and the allowed values.
+
+    `_fields_of` followed a bare `$ref` but never dissolved an `allOf`, so the
+    field came out `object` with no enum. The planner then had nothing saying
+    it is a string from a fixed set, wrote the farmer's own words
+    ("krishi kendra"), and the provider rejected the select.
+    """
+
+    fields = flatten_fields(
+        _real("AgricultureFacility"),
+        pack_name="AgricultureFacility",
+        shared_yaml=_real("AgricultureResource"),
+    )
+
+    assert fields["facilityType"] == FieldSpec(
+        type="string",
+        required=False,
+        enum=(
+            "CustomHiringCentre",
+            "KrishiVigyanKendra",
+            "Warehouse",
+            "SoilTestingFacility",
+        ),
+    )

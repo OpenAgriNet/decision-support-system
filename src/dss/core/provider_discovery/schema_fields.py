@@ -170,7 +170,11 @@ def _fields_of(
     for name, raw in schema.get("properties", {}).items():
         if not isinstance(raw, dict):
             continue
-        definition, _ = _follow(raw, home=home, shared=shared)
+        # `_merge_all_of`, not `_follow`: a field is often written as
+        # `allOf: [$ref: X]` so it can carry its own description beside the
+        # ref. `_follow` sees no top-level `$ref` there and returns the
+        # wrapper untouched, which types the field `object` with no enum.
+        definition = _merge_all_of(raw, home=home, shared=shared)
         fields[name] = FieldSpec(
             type=_type_of(definition, home=home, shared=shared),
             required=name in required,
