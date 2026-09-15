@@ -103,3 +103,38 @@ async def test_the_outbound_request_is_logged(httpserver: HTTPServer, caplog) ->
     assert "external=invocation event=request" in caplog.text
     assert "/select" in caplog.text
     assert "request_id=txn-test" in caplog.text
+
+
+async def test_select_names_the_discovered_resource_id(httpserver: HTTPServer) -> None:
+    """The id must be the one /discover published, not a fresh one.
+
+    A provider resolves `resources[0].id` against its own catalog to know
+    which resource is being selected. An invented id resolves to nothing, so
+    the call is rejected however well-formed the rest of the body is.
+    """
+
+    select_response = json.loads((FIXTURES / "select_response.json").read_text())
+    httpserver.expect_request("/select", method="POST").respond_with_json(
+        select_response
+    )
+
+    async with httpx.AsyncClient() as client:
+        invocation = HttpCapabilityInvocation(
+            client=client,
+            base_url=_base_url(httpserver),
+            sender_id="seeker-network-vistaar.da.gov.in",
+            receiver_id="provider-network-vistaar.da.gov.in",
+        )
+
+        await invocation.select(
+            CAPABILITY,
+            {"@type": "openagrinet:WeatherObservation"},
+            transaction_id="txn-test",
+        )
+
+    sent = json.loads(httpserver.log[0][0].get_data())
+    commitment = sent["message"]["contract"]["commitments"][0]
+
+    assert commitment["resources"][0]["id"] == CAPABILITY.resource_id
+    # the offer points at the same resource — a mismatch is unresolvable too
+    assert commitment["offer"]["resourceIds"] == [CAPABILITY.resource_id]

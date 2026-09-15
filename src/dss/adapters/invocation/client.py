@@ -100,7 +100,8 @@ def map_select_response(
     response: dict[str, Any], *, provider_id: str, provider_name: str
 ) -> DiscoveredAnswer:
     """The provider may assign its own resource id in the response — distinct
-    from the fresh id we sent in the request."""
+    from the discovered id we named in the request. A search resource answers
+    with one id per result found, not the id that was selected."""
 
     commitment = response["message"]["contract"]["commitments"][0]
     resource = commitment["resources"][0]
@@ -176,7 +177,7 @@ class HttpCapabilityInvocation:
         request_body = build_select_request(
             capability,
             resource_attributes,
-            resource_id=str(uuid4()),
+            resource_id=capability.resource_id,
             sender_id=self._sender_id,
             receiver_id=self._receiver_id,
             message_id=str(uuid4()),
