@@ -62,9 +62,19 @@ def build_resource_attributes(
         "subjectCategories": list(capability.observed_categories),
     }
 
+    # A fallback, not a structural field. An OnDemand weather resource
+    # advertises no `location` — there is no fixed point until someone asks —
+    # so the turn's geometry is what says which place the forecast is for.
+    #
+    # It must not override, though: where a pack's `location` identifies the
+    # resource rather than the query, the advertised value is the right one.
+    # `AgricultureFacility.location` says so in words — "do not populate it
+    # with the search origin or another inferred point" — and substituting
+    # there would claim the facility sits wherever the farmer is asking from.
+    fallback: dict = {}
     location = _location_field(turn)
     if location is not None:
-        structural["location"] = location
+        fallback["location"] = location
 
     # Three layers, each overriding the one before.
     #
@@ -92,4 +102,4 @@ def build_resource_attributes(
         for field, value in capability.advertised.items()
         if field in allowed
     }
-    return {**echoed, **model_filled, **structural}
+    return {**fallback, **echoed, **model_filled, **structural}

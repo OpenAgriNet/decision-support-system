@@ -270,3 +270,44 @@ def test_nothing_outside_the_filterable_set_reaches_the_request() -> None:
     structural = {"@context", "@type", "informationMode", "subjectCategories"}
     unexpected = set(resource_attributes) - set(filterable) - structural
     assert not unexpected, f"non-filterable fields reached the request: {unexpected}"
+
+
+def test_a_discovered_location_wins_over_the_turns_geometry() -> None:
+    """Where a pack's `location` identifies the resource rather than the query,
+    the advertised value stands.
+
+    `AgricultureFacility.location` says so in words — "verified facility
+    geometry ... do not populate it with the search origin or another inferred
+    point". Sending the farmer's coordinates there would claim the facility is
+    wherever they happen to be asking from.
+    """
+
+    facility_geometry = {"geo": {"type": "Point", "coordinates": [72.83, 18.94]}}
+
+    resource_attributes = build_resource_attributes(
+        capability=_capability(advertised={"location": facility_geometry}),
+        turn=_turn(location=Location(geometry=Geometry(coordinates=[74.06, 18.57]))),
+        model_filled={},
+        schema_context_index=_SCHEMA_CONTEXT_INDEX,
+        filterable=("location",),
+    )
+
+    assert resource_attributes["location"] == facility_geometry
+
+
+def test_the_turns_geometry_fills_a_location_nobody_supplied() -> None:
+    """An OnDemand weather resource advertises no `location` — there is no
+    fixed point until someone asks — so the turn's geometry is what says which
+    place the forecast is for."""
+
+    resource_attributes = build_resource_attributes(
+        capability=_capability(advertised={"supportedParameters": ["Rainfall"]}),
+        turn=_turn(location=Location(geometry=Geometry(coordinates=[74.06, 18.57]))),
+        model_filled={},
+        schema_context_index=_SCHEMA_CONTEXT_INDEX,
+        filterable=("location", "supportedParameters"),
+    )
+
+    assert resource_attributes["location"] == {
+        "geo": {"type": "Point", "coordinates": [74.06, 18.57]}
+    }
