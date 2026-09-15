@@ -340,3 +340,20 @@ async def test_all_calls_failing_is_unavailable() -> None:
         finished.outcome.cause is not None
         and finished.outcome.cause.value == "provider_unavailable"
     )
+
+
+async def test_a_streamed_claim_carries_the_sources_it_cites() -> None:
+    """A claim is streamed before the terminal frame, so a caller has nothing
+    to join a bare `sourceId` to until the turn ends."""
+
+    orch, _ = _build(
+        intent=_one_ask(),
+        discovery=_served_discovery(),
+        plan=_FakePlan(_ANSWERED_EVIDENCE),
+        compose=_FakeCompose("Wheat is 2,275 Rs [1]."),
+    )
+
+    events = await _collect(orch)
+
+    claims = [event for event in events if isinstance(event, Claim)]
+    assert [source.name for source in claims[0].sources] == ["Agmarknet"]

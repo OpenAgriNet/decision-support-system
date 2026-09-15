@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
 from uuid import uuid4
 
@@ -14,6 +15,7 @@ from dss.core.shared.models import (
     Location,
     OutputContent,
     RefusalBlock,
+    Source,
     TextBlock,
     TurnContext,
     TurnFinished,
@@ -151,7 +153,7 @@ def to_claim_frame(
 ) -> schema.TurnResponse:
     return schema.TurnResponse(
         context=_response_context(ctx, now=now, seq=seq, response_id=response_id),
-        message=schema.ResponseMessage(content=[_block(claim.content)]),
+        message=schema.ResponseMessage(content=[_block(claim.content, claim.sources)]),
     )
 
 
@@ -171,7 +173,7 @@ def to_terminal_frame(
                 confidence=finished.outcome.confidence,
                 cause=finished.outcome.cause.value if finished.outcome.cause else None,
             ),
-            content=[_block(b) for b in finished.content],
+            content=[_block(b, finished.sources) for b in finished.content],
             sources=[
                 schema.Source(id=s.id, name=s.name, kind=s.kind.value, url=s.url)
                 for s in finished.sources
@@ -211,13 +213,19 @@ def _error(outcome: TurnOutcome) -> schema.TurnError | None:
     )
 
 
-def _block(content: OutputContent) -> schema.OutputText | schema.OutputRefusal:
+def _block(
+    content: OutputContent, sources: Sequence[Source]
+) -> schema.OutputText | schema.OutputRefusal:
     if isinstance(content, RefusalBlock):
         return schema.OutputRefusal(text=content.text)
-    return schema.OutputText(text=content.text, annotations=_annotations(content))
+    return schema.OutputText(
+        text=content.text, annotations=_annotations(content, sources)
+    )
 
 
-def _annotations(block: TextBlock) -> list[schema.Annotation]:
+def _annotations(
+    block: TextBlock, sources: Sequence[Source]
+) -> list[schema.Annotation]:
     """Render a block's citations as contract annotations.
 
     A block cites its sources as a whole, so each annotation spans the whole
@@ -227,10 +235,25 @@ def _annotations(block: TextBlock) -> list[schema.Annotation]:
 
     When real sub-span citations arrive, `TextBlock` grows an annotations field
     and this stops synthesising.
+
+    `sourceName` and `url` are denormalised onto each citation so a streamed
+    claim names its source before `message.sources` arrives. An id that
+    resolves to nothing still cites: the bare id shows the defect, where a
+    dropped annotation would hide the claim's provenance with it.
     """
 
+    by_id = {source.id: source for source in sources}
     end = len(block.text)  # code points — see schema.Annotation
-    return [
-        schema.Annotation(source_id=source_id, start_index=0, end_index=end)
-        for source_id in block.source_ids
-    ]
+    annotations = []
+    for source_id in block.source_ids:
+        cited = by_id.get(source_id)
+        annotations.append(
+            schema.Annotation(
+                source_id=source_id,
+                start_index=0,
+                end_index=end,
+                source_name=cited.name if cited else None,
+                url=cited.url if cited else None,
+            )
+        )
+    return annotations

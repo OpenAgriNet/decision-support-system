@@ -55,5 +55,5 @@ class StubRunner:
     async def run(self, turn: UserTurn, ctx: TurnContext) -> AsyncIterator[TurnEvent]:
         yield TurnStarted()
         for block in _CONTENT:
-            yield Claim(content=block)
+            yield Claim(content=block, sources=_SOURCES)
         yield self.ANSWER
