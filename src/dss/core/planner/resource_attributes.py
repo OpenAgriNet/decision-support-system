@@ -65,4 +65,15 @@ def build_resource_attributes(
     if location is not None:
         structural["location"] = location
 
-    return {**model_filled, **structural}
+    # Three layers, each overriding the one before. The discovered attributes
+    # are the base: a provider judges a `select` against the resource it
+    # advertised, and fields it requires are not always ones `profile.json`
+    # lists as filterable — `market.marketName` is required by the MandiPrice
+    # schema and absent from its filterable paths, so the model could not
+    # supply it and every call was rejected. Echoing what discovery returned
+    # carries those through without the model having to guess them.
+    #
+    # The model's values replace a discovered one outright rather than merging
+    # into it: the provider advertises every commodity it serves, and the
+    # farmer asked about one, so `supportedCommodities` narrows to that one.
+    return {**capability.advertised, **model_filled, **structural}

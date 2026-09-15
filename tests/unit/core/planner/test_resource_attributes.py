@@ -18,13 +18,14 @@ _SCHEMA_CONTEXT_INDEX = {
 _SCHEMA_BASE_URL = "https://schemas.openagrinet.global/schema"
 
 
-def _capability() -> ProviderCapability:
+def _capability(advertised: dict | None = None) -> ProviderCapability:
     return ProviderCapability(
         provider_id="agmarknet",
         provider_name="Agmarknet",
         capability="openagrinet:MandiPrice",
         resource_id="res:agmarknet:daily-price",
         observed_categories=("Market",),
+        advertised=advertised or {},
     )
 
 
@@ -107,3 +108,66 @@ def test_model_filled_cannot_override_a_structural_field() -> None:
     )
 
     assert resource_attributes["@type"] == "openagrinet:MandiPrice"
+
+
+def test_the_discovered_attributes_are_echoed_back() -> None:
+    """A /select is judged against the resource the provider advertised, so
+    what discovery returned is the base of the request rather than a set of
+    values to rebuild from scratch.
+
+    `market` is the case that forced this: its schema requires `marketName`,
+    which `profile.json` never lists as filterable, so the model could not
+    supply it and the provider rejected every call. Echoing the discovered
+    object carries it through untouched.
+    """
+
+    resource_attributes = build_resource_attributes(
+        capability=_capability(
+            advertised={
+                "market": {
+                    "marketName": "Rahuri APMC",
+                    "district": "338",
+                    "state": "MH",
+                },
+                "supportedPriceFields": ["Minimum", "Maximum", "Modal"],
+            }
+        ),
+        turn=_turn(location=None),
+        model_filled={},
+        schema_context_index=_SCHEMA_CONTEXT_INDEX,
+    )
+
+    assert resource_attributes["market"] == {
+        "marketName": "Rahuri APMC",
+        "district": "338",
+        "state": "MH",
+    }
+    assert resource_attributes["supportedPriceFields"] == [
+        "Minimum",
+        "Maximum",
+        "Modal",
+    ]
+
+
+def test_the_model_narrows_a_discovered_list() -> None:
+    """The provider advertises every commodity it serves; the farmer asked
+    about one. The model's value replaces the advertised list rather than
+    adding to it, so the call asks for Onion alone."""
+
+    resource_attributes = build_resource_attributes(
+        capability=_capability(
+            advertised={
+                "supportedCommodities": [
+                    {"code": "23", "name": "Onion"},
+                    {"code": "78", "name": "Tomato"},
+                ]
+            }
+        ),
+        turn=_turn(location=None),
+        model_filled={"supportedCommodities": [{"code": "23", "name": "Onion"}]},
+        schema_context_index=_SCHEMA_CONTEXT_INDEX,
+    )
+
+    assert resource_attributes["supportedCommodities"] == [
+        {"code": "23", "name": "Onion"}
+    ]
