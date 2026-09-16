@@ -193,19 +193,21 @@ def test_a_real_pack_flattens_to_the_fields_both_wire_calls_need() -> None:
         ),
         "supportedCommodities": FieldSpec(type="array<object>", required=False),
         "historicalDataAvailable": FieldSpec(type="boolean", required=False),
+        # A string field the pack gives a `format`. `type` alone reads the
+        # same as free text, and the model wrote "this week" for `arrivalDate`.
+        "arrivalDate": FieldSpec(type="string", required=False, format="date"),
+        "generatedAt": FieldSpec(type="string", required=False, format="date-time"),
+        "historyPeriod": FieldSpec(type="string", required=False, format="duration"),
+        "updateFrequency": FieldSpec(type="string", required=False, format="duration"),
         # The rest are optional and carry no enum, so listing them one by one
         # says nothing the type does not. Still asserted, so a field that
         # vanishes or changes type still fails.
         **{
             name: FieldSpec(type="string", required=False)
             for name in (
-                "historyPeriod",
-                "updateFrequency",
                 "commodityGroup",
                 "grade",
                 "variety",
-                "arrivalDate",
-                "generatedAt",
             )
         },
         **{
@@ -243,3 +245,32 @@ def test_a_field_wrapped_in_all_of_resolves_to_what_it_refs() -> None:
             "SoilTestingFacility",
         ),
     )
+
+
+def test_a_field_records_the_format_the_pack_declares() -> None:
+    """`type` alone does not say enough. `arrivalDate` is a `string` like 85
+    other fields, and `format: date` is the half that says an ISO date rather
+    than free text — the model wrote "this week" and the provider refused it.
+    """
+
+    fields = flatten_fields(
+        """
+components:
+  schemas:
+    MandiPrice:
+      allOf:
+        - type: object
+          properties:
+            arrivalDate:
+              type: string
+              format: date
+            variety:
+              type: string
+""",
+        pack_name="MandiPrice",
+        shared_yaml=None,
+    )
+
+    assert fields["arrivalDate"].format == "date"
+    # A plain string carries none, so nothing is claimed about it.
+    assert fields["variety"].format is None

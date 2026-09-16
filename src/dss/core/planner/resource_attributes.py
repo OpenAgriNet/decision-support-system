@@ -92,6 +92,7 @@ def build_resource_attributes(
     model_filled: dict,
     schema_context_index: dict[str, str],
     filterable: tuple[str, ...],
+    declared: tuple[str, ...] = (),
 ) -> dict:
     """Build the full resourceAttributes object: structural fields first, the
     model's fields merged on top — but structural fields always win.
@@ -125,12 +126,18 @@ def build_resource_attributes(
 
     fallback: dict = {}
     location = _location_field(turn)
-    # Only where the pack declares one. Seven of the eight packs have no
-    # top-level `location` — MandiPrice names `market.location.geo`, the
-    # market's own coordinates — and adding one anyway sent an undeclared
-    # field that read as a duplicate of `market.location`. The farmer's
-    # coordinates already reach the network as `/discover`'s spatial filter.
-    if location is not None and "location" in allowed:
+    # Only where the pack declares the field. Not "where it is filterable":
+    # `AgricultureFacility` declares `location` and leaves it out of
+    # `filterable_paths`, because it is the search origin rather than a filter
+    # over advertised values — its own resource says to "invoke this Resource
+    # with a fulfillment stop carrying a Point location". Gating on the filter
+    # list dropped it, and a "krishi kendra near me" search had no point to
+    # search around.
+    #
+    # MandiPrice declares none — it names `market.location`, the market's own
+    # coordinates — so nothing is added there and the farmer's location reaches
+    # the network as `/discover`'s spatial filter.
+    if location is not None and "location" in declared:
         fallback["location"] = location
 
     # Three layers, each overriding the one before.

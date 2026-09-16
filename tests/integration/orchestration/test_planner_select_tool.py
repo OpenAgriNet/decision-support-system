@@ -20,9 +20,10 @@ from dss.core.planner.models import Skill, Verdict
 from dss.core.planner.validation import DomainSchema
 from dss.core.provider_discovery.models import (
     DiscoveredAnswer,
+    DiscoveryResult,
     ProviderCapability,
 )
-from dss.core.shared.models import UserTurn
+from dss.core.shared.models import Geometry, Location, UserTurn
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
 
 CAPABILITY = ProviderCapability(
@@ -202,3 +203,89 @@ async def test_an_invalid_argument_gets_a_retry() -> None:
     assert result.output == "corrected"
     assert len(invocation.calls) == 1
     assert invocation.calls[0]["commodity"] == {"code": "PADDY"}
+
+
+async def test_a_facility_select_carries_the_search_origin() -> None:
+    """The seam, not either side of it.
+
+    `build_resource_attributes` decides on the fields a pack *declares*, and
+    the tool has to hand it those — not the *filterable* list, which omits
+    `location` for AgricultureFacility because the search origin is not a
+    filter over advertised values.
+
+    A unit test picks that tuple by hand and so agrees with whatever it was
+    given. Driving the real tool is what catches the tool passing the wrong
+    one, which is how "krishi kendra near me" reached the provider with no
+    point to search around.
+    """
+
+    facility = ProviderCapability(
+        provider_id="pocra",
+        provider_name="PoCRA, Government of Maharashtra",
+        capability="openagrinet:AgricultureFacility",
+        resource_id="resource:agriculture-facility:pocra:facility-search",
+        observed_categories=("Facility",),
+        advertised={"supportedFacilityTypes": ["KrishiVigyanKendra"]},
+    )
+    schemas = {
+        "openagrinet:AgricultureFacility": DomainSchema(
+            type="AgricultureFacility",
+            filterable=("supportedFacilityTypes", "facilityType"),
+            # `location` is declared and deliberately absent above.
+            field_types={
+                "supportedFacilityTypes": "array<string>",
+                "facilityType": "string",
+                "location": "object",
+            },
+        )
+    }
+
+    invocation = _FakeInvocation()
+    deps = _deps(invocation)
+    deps.discovery = DiscoveryResult(
+        answers={}, capabilities={0: (facility,)}, failures={}, events=()
+    )
+    deps.schemas = schemas
+    deps.schema_context_index = {
+        "openagrinet:AgricultureFacility": (
+            "https://openagrinet.github.io/network-specs/schema/"
+            "AgricultureFacility/v0.1/context.jsonld"
+        )
+    }
+    deps.turn = UserTurn(
+        original_query="what are the krishi kendra near me?",
+        enriched_query="what are the krishi kendra near me?",
+        transaction_id="txn-1",
+        session_id="s-1",
+        source_lang="en",
+        target_lang="en",
+        channel="web",
+        location=Location(geometry=Geometry(coordinates=[73.7898, 19.9975])),
+    )
+
+    def call_select(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        if len(messages) == 1:
+            return ModelResponse(
+                parts=[
+                    ToolCallPart(
+                        tool_name="select",
+                        args={
+                            "ask_index": 0,
+                            "resource_id": facility.resource_id,
+                            "resource_attributes": {
+                                "facilityType": "KrishiVigyanKendra"
+                            },
+                        },
+                    )
+                ]
+            )
+        return ModelResponse(parts=[TextPart(content="Found two nearby.")])
+
+    agent = build_planner_agent(skills=[_skill_with("select")])
+    with agent.override(model=FunctionModel(call_select)):
+        await agent.run("find a krishi kendra", deps=deps)
+
+    assert invocation.calls, "select was never called"
+    assert invocation.calls[0]["location"] == {
+        "geo": {"type": "Point", "coordinates": [73.7898, 19.9975]}
+    }

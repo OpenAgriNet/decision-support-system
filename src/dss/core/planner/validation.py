@@ -40,6 +40,10 @@ class DomainSchema(BaseModel):
     # the pack's fields could not be read. Then only the name check runs, as
     # before — a pack we cannot read the types of is not a fatal pack.
     field_types: Mapping[str, str] = {}
+    # JSON Schema's `format`, for the fields that declare one. `type` alone
+    # reads the same for `arrivalDate` as for free text, and the model wrote
+    # "this week" where the pack asks for an ISO date.
+    field_formats: Mapping[str, str] = {}
     # The allowed values of each field that has a fixed set. Most fields have
     # none, so a missing entry means "anything goes", not "nothing allowed".
     field_enums: Mapping[str, tuple[str, ...]] = {}
@@ -63,6 +67,11 @@ def parse_domain_schema(pack: SchemaPackFiles) -> DomainSchema:
         field_types={path: spec.type for path, spec in pack.flattened_fields.items()},
         field_enums={
             path: spec.enum for path, spec in pack.flattened_fields.items() if spec.enum
+        },
+        field_formats={
+            path: spec.format
+            for path, spec in pack.flattened_fields.items()
+            if spec.format
         },
     )
 

@@ -376,3 +376,28 @@ def test_a_list_field_says_it_takes_a_list() -> None:
     # A scalar field is named on its own — noting the type of everything would
     # bury the one distinction that matters.
     assert "arrivalDate," in markdown or markdown.rstrip().endswith("arrivalDate")
+
+
+def test_a_date_field_says_it_takes_a_date() -> None:
+    """The model wrote the farmer's own words — "this week" — for a field the
+    pack types `string` with `format: date`.
+
+    `string` reads the same as free text, so the prompt gave it no reason to
+    write `2026-09-16`. It is the only settable field across the eight packs
+    that carries a format, and the one a mandi question naturally sets.
+    """
+
+    schema = DomainSchema(
+        type="MandiPrice",
+        filterable=("arrivalDate", "variety"),
+        field_types={"arrivalDate": "string", "variety": "string"},
+        field_formats={"arrivalDate": "date"},
+    )
+
+    markdown = render_candidates_as_markdown(
+        (_MANDI,), schemas={_MANDI.capability: schema}
+    )
+
+    assert "arrivalDate (date)" in markdown
+    # A field with no format is named on its own.
+    assert "variety (" not in markdown

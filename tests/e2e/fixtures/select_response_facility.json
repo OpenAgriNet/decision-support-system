@@ -1,0 +1,67 @@
+{
+  "context": {
+    "action": "on_select",
+    "version": "2.0.0",
+    "transactionId": "9a29e7bc-acf7-4307-bb95-9228df514229",
+    "messageId": "c0ffee00-0000-4000-8000-000000000001",
+    "timestamp": "2026-09-16T05:16:07Z"
+  },
+  "message": {
+    "contract": {
+      "commitments": [
+        {
+          "status": {
+            "descriptor": {
+              "code": "ACTIVE",
+              "name": "active"
+            }
+          },
+          "resources": [
+            {
+              "id": "resource:agriculture-facility:kvk-nashik",
+              "resourceAttributes": {
+                "@context": "https://openagrinet.github.io/network-specs/schema/AgricultureFacility/v0.1/context.jsonld",
+                "@type": "openagrinet:AgricultureFacility",
+                "informationMode": "Direct",
+                "subjectCategories": [
+                  "Facility"
+                ],
+                "facilityName": "Krishi Vigyan Kendra, Nashik",
+                "facilityType": "KrishiVigyanKendra",
+                "location": {
+                  "geo": {
+                    "type": "Point",
+                    "coordinates": [
+                      73.7749,
+                      20.0112
+                    ]
+                  }
+                },
+                "address": {
+                  "addressLocality": "Nashik",
+                  "addressRegion": "IN-MH",
+                  "postalCode": "422003"
+                },
+                "contact": {
+                  "phone": "+91-253-2311111"
+                }
+              }
+            }
+          ],
+          "offer": {
+            "id": "offer:open-data",
+            "resourceIds": [
+              "resource:agriculture-facility:kvk-nashik"
+            ],
+            "provider": {
+              "id": "pocra",
+              "descriptor": {
+                "name": "PoCRA, Government of Maharashtra"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

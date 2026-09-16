@@ -67,11 +67,16 @@
   block is absent. `sourceUri` becomes `Source.url` when it is http(s), which
   was previously always `null`. Sources key on `(provider, originator)`, so one
   provider relaying two originators is now two citable sources (#58)
-- The turn's geometry is no longer added as a top-level `location` to a pack
-  that declares none. Seven of the eight packs do not — MandiPrice names only
-  `market.location.geo`, the market's own coordinates — so a mandi select
-  carried an undeclared field that read as a duplicate of `market.location`
+- The planner prompt now marks a field by the `format` its pack declares, as it
+  already did for a list. `arrivalDate` is a `string` like every free-text
+  field and `format: date` is what separates them; the model wrote "this week"
   (#55)
+- The turn's geometry reaches a `location` the pack *declares*, rather than one
+  it lists as filterable. `AgricultureFacility` declares it and leaves it out
+  of `filterable_paths` — the search origin is not a filter over advertised
+  values — so "krishi kendra near me" reached the provider with no point to
+  search around. MandiPrice still gets none: it names `market.location`, the
+  market's own coordinates (#55)
 - The planner prompt now marks a field that takes a list. The model wrote
   `"modal, minimum, maximum"` for `supportedPriceFields`, which the pack types
   `array<string>`; validation could only reject it, and the retry carried no

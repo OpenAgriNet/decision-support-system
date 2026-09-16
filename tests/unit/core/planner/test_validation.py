@@ -244,3 +244,37 @@ def test_a_filterable_path_used_as_a_key_is_rejected(
         validate_arguments({key: value}, schema)
 
     assert nested in str(raised.value)
+
+
+def test_the_schema_carries_the_format_a_pack_declares() -> None:
+    """`field_types` says `string` for `arrivalDate` and for free text alike.
+    The format is what separates them, and the planner needs it to say so."""
+
+    pack = SchemaPackFiles(
+        pack_name="MandiPrice",
+        version="v0.1",
+        profile_json=json.dumps(
+            {"filterable_paths": ["beckn:resourceAttributes.arrivalDate"]}
+        ),
+        attributes_yaml="""
+components:
+  schemas:
+    MandiPrice:
+      allOf:
+        - type: object
+          properties:
+            "@type":
+              const: openagrinet:MandiPrice
+            arrivalDate:
+              type: string
+              format: date
+""",
+        examples_json=(),
+        flattened_fields={
+            "arrivalDate": FieldSpec(type="string", required=False, format="date")
+        },
+    )
+
+    schema = parse_domain_schema(pack)
+
+    assert schema.field_formats == {"arrivalDate": "date"}
