@@ -393,3 +393,38 @@ def test_a_filterable_path_needing_answer_only_siblings_is_not_offered() -> None
         "parameters[] is result data — the pack requires a unit and a "
         "measurement on every entry, which a request cannot supply"
     )
+
+
+def test_a_pack_whose_yaml_will_not_parse_still_offers_its_paths() -> None:
+    """An unreadable `attributes.yaml` must not empty `filterable`.
+
+    The reading layer already treats a pack it cannot parse as usable but
+    unenriched — `_flattened` swallows the same error and returns no fields —
+    and this check has to match, or one malformed file in an external checkout
+    would silently stop a whole capability from being selectable.
+
+    The cost is that `parameters[]` comes back for that pack: nothing can be
+    read about its items, so nothing can be dropped. That is the safe
+    direction — a path offered wrongly is refused by the provider, while a
+    path withheld wrongly answers nothing at all.
+    """
+
+    pack = SchemaPackFiles(
+        pack_name="WeatherObservation",
+        version="0.1",
+        profile_json=json.dumps(
+            {
+                "included_schemas": ["WeatherObservation"],
+                "filterable_paths": [
+                    "beckn:resourceAttributes.parameters[].values.sum",
+                    "beckn:resourceAttributes.location.geo",
+                ],
+            }
+        ),
+        attributes_yaml="a: [1, 2",  # unterminated flow sequence
+        examples_json=(),
+    )
+
+    schema = parse_domain_schema(pack)
+
+    assert schema.filterable == ("parameters[].values.sum", "location.geo")
