@@ -252,6 +252,15 @@ def _check_is_allowed(path: str, value: object, schema: DomainSchema) -> None:
     for item in given:
         if item in allowed:
             continue
+        if item is None:
+            # `_value_at` yields one value per item of a list, so an item that
+            # simply lacks the field arrives as `None`. Naming `None` as the
+            # bad value describes something the model never wrote; what it has
+            # to do is put the field on every item.
+            raise InvalidArgument(
+                f"every item of {path.split('[]')[0]!r} of {schema.type} needs "
+                f"{path.rsplit('.', 1)[-1]!r}. Use one of: {', '.join(allowed)}"
+            )
         raise InvalidArgument(
             f"{item!r} is not a value {path!r} of {schema.type} takes. "
             f"Use one of: {', '.join(allowed)}"

@@ -453,3 +453,26 @@ def test_a_pack_whose_yaml_will_not_parse_still_offers_its_paths() -> None:
     schema = parse_domain_schema(pack)
 
     assert schema.filterable == ("parameters[].values.sum", "location.geo")
+
+
+def test_an_item_missing_the_field_says_so_rather_than_naming_none() -> None:
+    """One item of a list carries the field and another does not.
+
+    `_value_at` yields one value per item, so the absent one resolves to
+    `None` and reaches the enum check — which reported `None is not a value
+    'supportedCommodities[].code' takes`. The model cannot act on that: it did
+    not send `None`, it sent an item with no `code` at all, and a retry naming
+    a value it never wrote is the kind of misleading error that taught it the
+    wrong shape before.
+    """
+
+    schema = DomainSchema(
+        type="MandiPrice",
+        filterable=("supportedCommodities[].code", "supportedCommodities[].name"),
+        field_enums={"supportedCommodities[].code": ("23", "24")},
+    )
+
+    with pytest.raises(InvalidArgument, match="every item"):
+        validate_arguments(
+            {"supportedCommodities": [{"code": "23"}, {"name": "Onion"}]}, schema
+        )
