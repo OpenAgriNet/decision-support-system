@@ -121,9 +121,16 @@ def build_resource_attributes(
     # `AgricultureFacility.location` says so in words — "do not populate it
     # with the search origin or another inferred point" — and substituting
     # there would claim the facility sits wherever the farmer is asking from.
+    allowed = {path.split(".")[0].split("[")[0] for path in filterable}
+
     fallback: dict = {}
     location = _location_field(turn)
-    if location is not None:
+    # Only where the pack declares one. Seven of the eight packs have no
+    # top-level `location` — MandiPrice names `market.location.geo`, the
+    # market's own coordinates — and adding one anyway sent an undeclared
+    # field that read as a duplicate of `market.location`. The farmer's
+    # coordinates already reach the network as `/discover`'s spatial filter.
+    if location is not None and "location" in allowed:
         fallback["location"] = location
 
     # Three layers, each overriding the one before.
@@ -146,7 +153,6 @@ def build_resource_attributes(
     # The model's values replace a discovered one outright rather than merging
     # into it: the provider advertises every commodity it serves, and the
     # farmer asked about one, so `supportedCommodities` narrows to that one.
-    allowed = {path.split(".")[0].split("[")[0] for path in filterable}
     echoed = {
         field: value
         for field, value in capability.advertised.items()

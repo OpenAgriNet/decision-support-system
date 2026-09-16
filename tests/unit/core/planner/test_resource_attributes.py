@@ -90,8 +90,12 @@ def test_omits_location_when_turn_has_none() -> None:
 def test_includes_location_from_turn_geometry() -> None:
     """`location` is a Beckn Location, which wraps the geometry under `geo`.
 
-    A bare GeoJSON Point here is rejected: every pack's `location` resolves
-    to `CompleteLocation`, whose `geo` is required.
+    A bare GeoJSON Point here is rejected: a pack's `location` resolves to
+    `CompleteLocation`, whose `geo` is required.
+
+    WeatherObservation's paths, because it is the one pack that declares a
+    top-level `location` — an OnDemand forecast has no fixed point until
+    someone asks, so the turn's geometry is what names the place.
     """
 
     location = Location(geometry=Geometry(coordinates=[72.93, 22.56]))
@@ -100,7 +104,7 @@ def test_includes_location_from_turn_geometry() -> None:
         turn=_turn(location=location),
         model_filled={},
         schema_context_index=_SCHEMA_CONTEXT_INDEX,
-        filterable=_MANDI_FILTERABLE,
+        filterable=("location.geo", "supportedParameters"),
     )
 
     assert resource_attributes["location"] == {
@@ -477,3 +481,25 @@ def test_narrowing_an_advertised_object_merges_into_it() -> None:
         "district": "Sholapur",
         "state": "Maharashtra",
     }
+
+
+def test_the_turns_geometry_is_not_sent_to_a_pack_without_a_location() -> None:
+    """Seven of the eight packs declare no top-level `location`. MandiPrice
+    names only `market.location.geo` — the market's own coordinates.
+
+    The fallback added one regardless, so a mandi select carried an undeclared
+    field that read as a duplicate of `market.location`, and a pack declaring
+    `additionalProperties: false` would refuse the call for it. The farmer's
+    coordinates already reach the network as `/discover`'s spatial filter.
+    """
+
+    resource_attributes = build_resource_attributes(
+        capability=_capability(advertised={"market": {"marketCode": "1806"}}),
+        turn=_turn(location=Location(geometry=Geometry(coordinates=[74.06, 18.57]))),
+        model_filled={},
+        schema_context_index=_SCHEMA_CONTEXT_INDEX,
+        # MandiPrice's own paths: a market location, and no top-level one.
+        filterable=("market.marketCode", "market.location.geo"),
+    )
+
+    assert "location" not in resource_attributes
