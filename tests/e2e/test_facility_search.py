@@ -28,6 +28,7 @@ from werkzeug import Request, Response
 from dss.config.settings import Settings
 from dss.entrypoint.app import build_app
 from dss.entrypoint.composition import build_runner
+from tests.e2e.pack_gate import pack_rejection
 
 pytestmark = pytest.mark.skipif(
     not (os.getenv("AZURE_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")),
@@ -101,6 +102,13 @@ class _Network:
     def select(self, request: Request) -> Response:
         body = json.loads(request.get_data())
         self.select_requests.append(body)
+        # The pack's own schema first, so a malformed select is refused whether
+        # or not the origin check below anticipated that malformation.
+        rejection = pack_rejection(
+            body, root=SCHEMA_PACKS, pack_name="AgricultureFacility"
+        )
+        if rejection is not None:
+            return rejection
         origin = _search_origin(body)
         if origin is None:
             # 400, not 404: `classify_status_code` treats only 400/401/403 as a

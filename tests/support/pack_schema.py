@@ -89,6 +89,12 @@ def resource_schema(root: Path, pack_name: str) -> tuple[dict, Registry, set[str
     The shared `AgricultureResource` file is registered under the *relative* URI
     the packs actually write (`../../AgricultureResource/v0.1/attributes.yaml`),
     because that is the string `jsonschema` will look up.
+
+    The schema returned is a `$ref` **into** the pack document rather than the
+    sub-schema itself. A pack's own local refs (`#/components/schemas/
+    FacilityType`, which `AgricultureFacility` uses and `WeatherObservation`
+    does not) resolve against whatever the validator was handed as its root, so
+    handing it the sub-schema made those point at nothing.
     """
 
     unchecked: set[str] = set()
@@ -115,7 +121,12 @@ def resource_schema(root: Path, pack_name: str) -> tuple[dict, Registry, set[str
 
     schemas = document["components"]["schemas"]
     # The pack's own resource schema is the one named after the pack.
-    schema = schemas.get(pack_name) or next(iter(schemas.values()))
+    name = pack_name if pack_name in schemas else next(iter(schemas))
+    # The document, with the pack's schema spliced in at the top level. The
+    # validator treats whatever it is handed as the root that `#/` resolves
+    # against, so the document has to *be* the schema for a pack's own local
+    # refs to find their targets.
+    schema = {**document, **schemas[name]}
     return schema, registry, unchecked
 
 
@@ -130,6 +141,8 @@ def validate_resource_attributes(
     """
 
     schema, registry, unchecked = resource_schema(root, pack_name)
+    # `registry` carries the pack document under the empty URI, so the `$ref`
+    # in `schema` and any local ref inside the pack both resolve against it.
     validator = Draft202012Validator(schema, registry=registry)
     errors = tuple(
         f"{'.'.join(str(part) for part in error.absolute_path) or '<root>'}: "

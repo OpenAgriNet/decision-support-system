@@ -56,6 +56,7 @@ from werkzeug.wrappers import Request, Response
 from dss.config.settings import Settings
 from dss.entrypoint.app import build_app
 from dss.entrypoint.composition import build_runner
+from tests.e2e.pack_gate import pack_rejection
 
 # Gated on the credentials, not on a marker. `pyproject.toml`'s `addopts` carries
 # `-m "not eval"`, so an `eval`-marked test is *deselected* by every plain
@@ -175,6 +176,11 @@ class _Network:
     def select(self, request: Request) -> Response:
         body = json.loads(request.get_data())
         self.select_requests.append(body)
+        # The pack's own schema first, so a malformed select is refused whether
+        # or not the commodity check below anticipated that malformation.
+        rejection = pack_rejection(body, root=SCHEMA_PACKS, pack_name="MandiPrice")
+        if rejection is not None:
+            return rejection
         commodity = _commodity_code(body)
         if commodity != ONION_CODE:
             # 400, not 404: `classify_status_code` treats only 400/401/403 as a
