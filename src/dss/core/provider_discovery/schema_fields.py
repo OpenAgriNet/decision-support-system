@@ -37,6 +37,10 @@ class FieldSpec:
     type: str
     required: bool
     enum: tuple[str, ...] = field(default=())
+    # JSON Schema's `format`, when the pack declares one. `type` alone does not
+    # say enough: `arrivalDate` is a `string` like 85 other fields, and
+    # `format: date` is the half that says an ISO date rather than free text.
+    format: str | None = None
 
 
 def flatten_fields(
@@ -179,6 +183,7 @@ def _fields_of(
             type=_type_of(definition, home=home, shared=shared),
             required=name in required,
             enum=_enum_of(definition, home=home, shared=shared),
+            format=definition.get("format"),
         )
     return fields
 

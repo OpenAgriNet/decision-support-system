@@ -133,12 +133,22 @@ def _render_settable(schema: DomainSchema) -> str:
     says its own shape.
     """
 
-    return ", ".join(
-        f"{path} (list)"
-        if schema.field_types.get(path.split(".")[0], "").startswith("array")
-        else path
-        for path in schema.filterable
-    )
+    return ", ".join(f"{path}{_hint(path, schema)}" for path in schema.filterable)
+
+
+def _hint(path: str, schema: DomainSchema) -> str:
+    """`(list)` or `(date)` — what the name alone does not say.
+
+    A field's `format` is the other half of its type: `arrivalDate` is a
+    `string` like every free-text field, and `date` is what says an ISO date
+    rather than "this week", which is what the model wrote.
+    """
+
+    field = path.split(".")[0]
+    if schema.field_types.get(field, "").startswith("array"):
+        return " (list)"
+    declared = schema.field_formats.get(field)
+    return f" ({declared})" if declared else ""
 
 
 def render_candidates_as_markdown(
