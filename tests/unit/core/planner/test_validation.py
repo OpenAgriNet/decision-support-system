@@ -221,6 +221,31 @@ def test_a_bad_value_inside_a_list_is_rejected() -> None:
         )
 
 
+def test_a_bad_value_is_rejected_when_it_is_not_the_last_field() -> None:
+    """The enum check ran against whichever field the *previous* loop ended on,
+    not the path it was iterating.
+
+    Every other enum test here sends a single-key dict, where the leaked name
+    happens to equal the current path — so the check appeared to work while
+    reading the wrong field. With two fields, a bad value on any but the last
+    one reached the provider.
+    """
+
+    schema = DomainSchema(
+        type="AgricultureFacility",
+        filterable=("facilityType", "informationMode"),
+        field_enums={
+            "facilityType": ("KrishiVigyanKendra", "Warehouse"),
+            "informationMode": ("OnDemand", "Direct"),
+        },
+    )
+
+    with pytest.raises(InvalidArgument, match="krishi kendra"):
+        validate_arguments(
+            {"facilityType": "krishi kendra", "informationMode": "OnDemand"}, schema
+        )
+
+
 def test_the_correct_nested_shape_for_a_list_field_is_accepted() -> None:
     """`profile.json` writes a list-of-objects path as
     `supportedCommodities[].code`, meaning "inside each item of that array".
@@ -428,3 +453,59 @@ def test_a_pack_whose_yaml_will_not_parse_still_offers_its_paths() -> None:
     schema = parse_domain_schema(pack)
 
     assert schema.filterable == ("parameters[].values.sum", "location.geo")
+
+
+def test_an_item_missing_the_field_says_so_rather_than_naming_none() -> None:
+    """One item of a list carries the field and another does not.
+
+    `_value_at` yields one value per item, so the absent one resolves to
+    `None` and reaches the enum check — which reported `None is not a value
+    'supportedCommodities[].code' takes`. The model cannot act on that: it did
+    not send `None`, it sent an item with no `code` at all, and a retry naming
+    a value it never wrote is the kind of misleading error that taught it the
+    wrong shape before.
+    """
+
+    schema = DomainSchema(
+        type="MandiPrice",
+        filterable=("supportedCommodities[].code", "supportedCommodities[].name"),
+        field_enums={"supportedCommodities[].code": ("23", "24")},
+    )
+
+    with pytest.raises(InvalidArgument, match="every item"):
+        validate_arguments(
+            {"supportedCommodities": [{"code": "23"}, {"name": "Onion"}]}, schema
+        )
+
+
+def test_one_key_sent_as_both_a_scalar_and_a_list_is_rejected() -> None:
+    """The model wrote `descriptor` two ways in one list: a bare word in the
+    first item, a list of objects in the second.
+
+    `_flatten` walks the richer item and emits the deeper path, so the scalar
+    item has no list to descend — `_value_at` yields `None` for it. What
+    settles the body is the shallower path: `supportedCommodities[].descriptor`
+    is not filterable, so the name check refuses before that `None` reaches
+    the enum check.
+
+    Worth pinning because the shape is one a model produces — the same key
+    filled inconsistently across items — and because the walk touches a guard
+    nothing else exercises.
+    """
+
+    schema = DomainSchema(
+        type="MandiPrice",
+        filterable=("supportedCommodities[].descriptor[].code",),
+        field_enums={"supportedCommodities[].descriptor[].code": ("23", "24")},
+    )
+
+    with pytest.raises(InvalidArgument, match=r"supportedCommodities\[\].descriptor"):
+        validate_arguments(
+            {
+                "supportedCommodities": [
+                    {"descriptor": "Onion"},
+                    {"descriptor": [{"code": "23"}]},
+                ]
+            },
+            schema,
+        )

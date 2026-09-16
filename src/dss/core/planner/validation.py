@@ -252,10 +252,61 @@ def _check_is_allowed(path: str, value: object, schema: DomainSchema) -> None:
     for item in given:
         if item in allowed:
             continue
+        if item is None:
+            # `_value_at` yields one value per item of a list, so an item that
+            # simply lacks the field arrives as `None`. Naming `None` as the
+            # bad value describes something the model never wrote; what it has
+            # to do is put the field on every item.
+            raise InvalidArgument(
+                f"every item of {path.split('[]')[0]!r} of {schema.type} needs "
+                f"{path.rsplit('.', 1)[-1]!r}. Use one of: {', '.join(allowed)}"
+            )
         raise InvalidArgument(
             f"{item!r} is not a value {path!r} of {schema.type} takes. "
             f"Use one of: {', '.join(allowed)}"
         )
+
+
+def _value_at(data: object, path: str) -> object:
+    """The value ``_flatten`` found at ``path``.
+
+    Walks the same notation ``_flatten`` writes: ``.`` descends into an
+    object, ``[]`` marks a list whose items are descended into. A ``[]``
+    segment yields the values of every item, flattened, because the enum
+    applies to each — `supportedCommodities[].code` is one code per item, and
+    checking only the first would let a later bad one through.
+
+    Returns ``None`` for a path that is not present. `_flatten` produced the
+    path from this same data, so that means a list of plain values whose
+    own path stands in for its items, and those are checked as the list.
+
+    Two guards below cannot change what ``validate_arguments`` decides, so no
+    test pins them and they show as uncovered:
+
+    - the empty-path return: ``_flatten`` never emits a bare ``[]`` with no
+      tail, so ``path`` is never empty here.
+    - the non-list container, for a body holding the same key as a scalar in
+      one item and a list of objects in another
+      (``{"a": [{"b": "x"}, {"b": [{"c": 1}]}]}``). Calling ``_value_at``
+      directly on the deep path does reach it, but ``validate_arguments``
+      never does: the deep path is only walked when the shallow one is *not*
+      filterable, and then the shallow path fails the name check before any
+      value is read. With both filterable, ``stop_at`` ends the walk at the
+      shallow one. ``test_one_key_sent_as_both_a_scalar_and_a_list_is_rejected``
+      pins that outcome.
+    """
+
+    if not path:  # pragma: no cover - see docstring
+        return data
+    head, _, tail = path.partition(".")
+    if head.endswith("[]"):
+        container = data.get(head[:-2]) if isinstance(data, dict) else None
+        if not isinstance(container, list):  # pragma: no cover - see docstring
+            return None
+        return [_value_at(item, tail) for item in container]
+    if not isinstance(data, dict) or head not in data:
+        return None
+    return _value_at(data[head], tail) if tail else data[head]
 
 
 def validate_arguments(resource_attributes: dict, schema: DomainSchema) -> None:
@@ -289,4 +340,8 @@ def validate_arguments(resource_attributes: dict, schema: DomainSchema) -> None:
                 f"(filterable: {schema.filterable})"
             )
 
-        _check_is_allowed(field, value, schema)
+        # The value at *this* path. Reading the loop variables above instead
+        # checked whichever field that loop ended on, so with more than one
+        # field a bad value on any but the last reached the provider — and
+        # every enum test sent a single-key dict, where the two coincide.
+        _check_is_allowed(path, _value_at(resource_attributes, path), schema)
