@@ -1,0 +1,467 @@
+{
+  "info": {
+    "_postman_id": "af5b37e2-7421-4d58-8b04-3592de8e85b3",
+    "name": "DSS Turn API",
+    "description": "Decision Support System (DSS) turn API.\n\nOne endpoint handles text, image, streaming, and non-streaming turns.\nThe `Accept` header selects JSON or SSE; it does not change the operation.\n\nAuthoritative prose contract: `docs/api-contracts/api-contract.md`.\nFile input is not supported in v1.\n",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "49403017",
+    "_collection_link": "https://go.postman.co/collection/49403017-af5b37e2-7421-4d58-8b04-3592de8e85b3?source=collection_link"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "function hex(byteLen) {",
+          "    let s = '';",
+          "    for (let i = 0; i < byteLen; i++) {",
+          "        s += Math.floor(Math.random() * 256).toString(16).padStart(2, '0');",
+          "    }",
+          "    return s;",
+          "}",
+          "",
+          "function uuidv4() {",
+          "    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {",
+          "        const r = Math.floor(Math.random() * 16);",
+          "        const v = c === 'x' ? r : (r & 0x3) | 0x8;",
+          "        return v.toString(16);",
+          "    });",
+          "}",
+          "",
+          "const traceId = hex(16);",
+          "const spanId = hex(8);",
+          "pm.collectionVariables.set('traceparent', `00-${traceId}-${spanId}-01`);",
+          "pm.collectionVariables.set('transactionId', uuidv4());",
+          "pm.collectionVariables.set('messageId', uuidv4());"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "v1",
+      "item": [
+        {
+          "name": "turns",
+          "item": [
+            {
+              "name": "mandi",
+              "item": [
+                {
+                  "name": "non streaming turn",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "traceparent",
+                        "value": "{{traceparent}}",
+                        "description": "W3C trace context. DSS starts its server span from this and echoes the trace id as `context.traceId`."
+                      },
+                      {
+                        "key": "tracestate",
+                        "value": "string",
+                        "description": "Optional vendor-specific W3C trace state."
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      },
+                      {
+                        "key": "Accept",
+                        "value": "application/json"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n    \"context\": {\n        \"id\": \"api.dss.turn\",\n        \"timestamp\": \"2026-09-09T08:00:00Z\",\n        \"sessionId\": \"f4f8217b-6896-48ea-8ee1-6681f34daa85\",\n        \"transactionId\": \"{{transactionId}}\",\n        \"messageId\": \"{{messageId}}\",\n        \"version\": \"1.0.0\"\n    },\n    \"message\": {\n        \"input\": [\n            {\n                \"role\": \"user\",\n                \"content\": [\n                    {\n                        \"type\": \"text\",\n                        \"text\": \"What is the price of Onion at Nashik mandi this week?\"\n                    }\n                ]\n            }\n        ],\n        \"attributes\": {\n            \"channel\": \"web\",\n            \"location\": {\n                \"region\": \"IN-MH\",\n                \"area\": \"Nashik\",\n                \"geometry\": {\n                    \"type\": \"Point\",\n                    \"coordinates\": [\n                        73.7898,\n                        19.9975\n                    ]\n                }\n            },\n            \"response\": {\n                \"maxCharacters\": 1200\n            },\n            \"sourceLanguage\": \"en\",\n            \"targetLanguage\": \"en\"\n        },\n        \"userContext\": [\n            {\n                \"type\": \"identity\",\n                \"userId\": \"usr_9921\"\n            }\n        ]\n    }\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/v1/turns",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "v1",
+                        "turns"
+                      ]
+                    },
+                    "description": "Send one turn. A valid turn that DSS handles returns 200 whatever the\ndomain result — a safe rejection, no match, or a request for more\ninformation is still a 200. The domain result is in `message.outcome`.\n\nWith `Accept: text/event-stream` the response is an SSE stream whose\nterminal event carries the same canonical turn object. Once the stream\nhas opened with 200, failures are reported by a terminal `turn.failed`\nevent; the HTTP status cannot change.\n"
+                  },
+                  "response": []
+                },
+                {
+                  "name": "streaming",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "traceparent",
+                        "value": "{{traceparent}}",
+                        "description": "W3C trace context. DSS starts its server span from this and echoes the trace id as `context.traceId`."
+                      },
+                      {
+                        "key": "tracestate",
+                        "value": "string",
+                        "description": "Optional vendor-specific W3C trace state."
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      },
+                      {
+                        "key": "Accept",
+                        "value": "text/event-stream"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n    \"context\": {\n        \"id\": \"api.dss.turn\",\n        \"timestamp\": \"2026-09-09T08:00:00Z\",\n        \"sessionId\": \"f4f8217b-6896-48ea-8ee1-6681f34daa85\",\n        \"transactionId\": \"{{transactionId}}\",\n        \"messageId\": \"{{messageId}}\",\n        \"version\": \"1.0.0\"\n    },\n    \"message\": {\n        \"input\": [\n            {\n                \"role\": \"user\",\n                \"content\": [\n                    {\n                        \"type\": \"text\",\n                        \"text\": \"What is the price of Onion at Nashik mandi this week?\"\n                    }\n                ]\n            }\n        ],\n        \"attributes\": {\n            \"channel\": \"web\",\n            \"location\": {\n                \"region\": \"IN-MH\",\n                \"area\": \"Nashik\",\n                \"geometry\": {\n                    \"type\": \"Point\",\n                    \"coordinates\": [\n                        73.7898,\n                        19.9975\n                    ]\n                }\n            },\n            \"response\": {\n                \"maxCharacters\": 1200\n            },\n            \"sourceLanguage\": \"en\",\n            \"targetLanguage\": \"en\"\n        },\n        \"userContext\": [\n            {\n                \"type\": \"identity\",\n                \"userId\": \"usr_9921\"\n            }\n        ]\n    }\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/v1/turns",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "v1",
+                        "turns"
+                      ]
+                    },
+                    "description": "Send one turn. A valid turn that DSS handles returns 200 whatever the\ndomain result — a safe rejection, no match, or a request for more\ninformation is still a 200. The domain result is in `message.outcome`.\n\nWith `Accept: text/event-stream` the response is an SSE stream whose\nterminal event carries the same canonical turn object. Once the stream\nhas opened with 200, failures are reported by a terminal `turn.failed`\nevent; the HTTP status cannot change.\n"
+                  },
+                  "response": []
+                }
+              ]
+            },
+            {
+              "name": "weather",
+              "item": [
+                {
+                  "name": "non streaming",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "traceparent",
+                        "value": "{{traceparent}}",
+                        "description": "W3C trace context. DSS starts its server span from this and echoes the trace id as `context.traceId`."
+                      },
+                      {
+                        "key": "tracestate",
+                        "value": "string",
+                        "description": "Optional vendor-specific W3C trace state."
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      },
+                      {
+                        "key": "Accept",
+                        "value": "application/json"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"context\": {\n    \"id\": \"api.dss.turn\",\n    \"timestamp\": \"2026-09-09T08:00:00Z\",\n    \"sessionId\": \"7d4c0dd3-3138-40e6-8566-534763558b8d\",\n    \"transactionId\": \"{{transactionId}}\",\n    \"messageId\": \"{{messageId}}\",\n    \"version\": \"1.0.0\"\n  },\n   \"message\": {\n    \"input\": [\n      {\n        \"role\": \"user\",\n        \"content\": [\n          {\n            \"type\": \"text\",\n            \"text\": \"Is it going to rain today in Nashik?\"\n          }\n        ]\n      }\n    ],\n    \"attributes\": {\n      \"channel\": \"web\",\n      \"location\": {\n        \"region\": \"IN-MH\",\n        \"area\": \"Nashik\",\n        \"geometry\": {\n          \"type\": \"Point\",\n          \"coordinates\": [\n            73.7898,\n            19.9975\n          ]\n        }\n      },\n      \"response\": {\n        \"maxCharacters\": 1200\n      },\n      \"sourceLanguage\": \"en\",\n      \"targetLanguage\": \"en\"\n    },\n    \"userContext\": [\n      {\n        \"type\": \"identity\",\n        \"userId\": \"usr_9921\"\n      }\n    ]\n  }\n}\n",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/v1/turns",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "v1",
+                        "turns"
+                      ]
+                    },
+                    "description": "Send one turn. A valid turn that DSS handles returns 200 whatever the\ndomain result — a safe rejection, no match, or a request for more\ninformation is still a 200. The domain result is in `message.outcome`.\n\nWith `Accept: text/event-stream` the response is an SSE stream whose\nterminal event carries the same canonical turn object. Once the stream\nhas opened with 200, failures are reported by a terminal `turn.failed`\nevent; the HTTP status cannot change.\n"
+                  },
+                  "response": []
+                },
+                {
+                  "name": "streaming",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "traceparent",
+                        "value": "{{traceparent}}",
+                        "description": "W3C trace context. DSS starts its server span from this and echoes the trace id as `context.traceId`."
+                      },
+                      {
+                        "key": "tracestate",
+                        "value": "string",
+                        "description": "Optional vendor-specific W3C trace state."
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      },
+                      {
+                        "key": "Accept",
+                        "value": "text/event-stream"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"context\": {\n    \"id\": \"api.dss.turn\",\n    \"timestamp\": \"2026-09-09T08:00:00Z\",\n    \"sessionId\": \"7d4c0dd3-3138-40e6-8566-534763558b8d\",\n    \"transactionId\": \"{{transactionId}}\",\n    \"messageId\": \"{{messageId}}\",\n    \"version\": \"1.0.0\"\n  },\n   \"message\": {\n    \"input\": [\n      {\n        \"role\": \"user\",\n        \"content\": [\n          {\n            \"type\": \"text\",\n            \"text\": \"Is it going to rain today in Nashik?\"\n          }\n        ]\n      }\n    ],\n    \"attributes\": {\n      \"channel\": \"web\",\n      \"location\": {\n        \"region\": \"IN-MH\",\n        \"area\": \"Nashik\",\n        \"geometry\": {\n          \"type\": \"Point\",\n          \"coordinates\": [\n            73.7898,\n            19.9975\n          ]\n        }\n      },\n      \"response\": {\n        \"maxCharacters\": 1200\n      },\n      \"sourceLanguage\": \"en\",\n      \"targetLanguage\": \"en\"\n    },\n    \"userContext\": [\n      {\n        \"type\": \"identity\",\n        \"userId\": \"usr_9921\"\n      }\n    ]\n  }\n}\n",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/v1/turns",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "v1",
+                        "turns"
+                      ]
+                    },
+                    "description": "Send one turn. A valid turn that DSS handles returns 200 whatever the\ndomain result — a safe rejection, no match, or a request for more\ninformation is still a 200. The domain result is in `message.outcome`.\n\nWith `Accept: text/event-stream` the response is an SSE stream whose\nterminal event carries the same canonical turn object. Once the stream\nhas opened with 200, failures are reported by a terminal `turn.failed`\nevent; the HTTP status cannot change.\n"
+                  },
+                  "response": []
+                }
+              ]
+            },
+            {
+              "name": "knowledge-advisory",
+              "item": [
+                {
+                  "name": "non-streaming-turn",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "traceparent",
+                        "value": "{{traceparent}}",
+                        "description": "W3C trace context. DSS starts its server span from this and echoes the trace id as `context.traceId`."
+                      },
+                      {
+                        "key": "tracestate",
+                        "value": "string",
+                        "description": "Optional vendor-specific W3C trace state."
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      },
+                      {
+                        "key": "Accept",
+                        "value": "application/json"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"context\": {\n    \"id\": \"api.dss.turn\",\n    \"timestamp\": \"2026-09-09T08:00:00Z\",\n    \"sessionId\": \"68a3872f-3f0d-4cf6-99a3-a350132a0080\",\n    \"transactionId\": \"{{transactionId}}\",\n    \"messageId\": \"{{messageId}}\",\n    \"version\": \"1.0.0\"\n  },\n  \"message\": {\n    \"input\": [\n      {\n        \"role\": \"user\",\n        \"content\": [\n          {\n            \"type\": \"text\",\n            \"text\": \"Tell me about growing mango in dry soil\"\n          }\n        ]\n      }\n    ],\n    \"attributes\": {\n      \"channel\": \"web\",\n      \"location\": {\n        \"region\": \"IN-MH\",\n        \"area\": \"Nashik\",\n        \"geometry\": {\n          \"type\": \"Point\",\n          \"coordinates\": [\n            73.7898,\n            19.9975\n          ]\n        }\n      },\n      \"response\": {\n        \"maxCharacters\": 1200\n      },\n      \"sourceLanguage\": \"en\",\n      \"targetLanguage\": \"en\"\n    },\n    \"userContext\": [\n      {\n        \"type\": \"identity\",\n        \"userId\": \"usr_9921\"\n      }\n    ]\n  }\n}\n",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/v1/turns",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "v1",
+                        "turns"
+                      ]
+                    },
+                    "description": "Send one turn. A valid turn that DSS handles returns 200 whatever the\ndomain result — a safe rejection, no match, or a request for more\ninformation is still a 200. The domain result is in `message.outcome`.\n\nWith `Accept: text/event-stream` the response is an SSE stream whose\nterminal event carries the same canonical turn object. Once the stream\nhas opened with 200, failures are reported by a terminal `turn.failed`\nevent; the HTTP status cannot change.\n"
+                  },
+                  "response": []
+                },
+                {
+                  "name": "streaming",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "traceparent",
+                        "value": "{{traceparent}}",
+                        "description": "W3C trace context. DSS starts its server span from this and echoes the trace id as `context.traceId`."
+                      },
+                      {
+                        "key": "tracestate",
+                        "value": "string",
+                        "description": "Optional vendor-specific W3C trace state."
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      },
+                      {
+                        "key": "Accept",
+                        "value": "text/event-stream"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"context\": {\n    \"id\": \"api.dss.turn\",\n    \"timestamp\": \"2026-09-09T08:00:00Z\",\n    \"sessionId\": \"68a3872f-3f0d-4cf6-99a3-a350132a0080\",\n    \"transactionId\": \"{{transactionId}}\",\n    \"messageId\": \"{{messageId}}\",\n    \"version\": \"1.0.0\"\n  },\n  \"message\": {\n    \"input\": [\n      {\n        \"role\": \"user\",\n        \"content\": [\n          {\n            \"type\": \"text\",\n            \"text\": \"Tell me about growing mango in dry soil\"\n          }\n        ]\n      }\n    ],\n    \"attributes\": {\n      \"channel\": \"web\",\n      \"location\": {\n        \"region\": \"IN-MH\",\n        \"area\": \"Nashik\",\n        \"geometry\": {\n          \"type\": \"Point\",\n          \"coordinates\": [\n            73.7898,\n            19.9975\n          ]\n        }\n      },\n      \"response\": {\n        \"maxCharacters\": 1200\n      },\n      \"sourceLanguage\": \"en\",\n      \"targetLanguage\": \"en\"\n    },\n    \"userContext\": [\n      {\n        \"type\": \"identity\",\n        \"userId\": \"usr_9921\"\n      }\n    ]\n  }\n}\n",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/v1/turns",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "v1",
+                        "turns"
+                      ]
+                    },
+                    "description": "Send one turn. A valid turn that DSS handles returns 200 whatever the\ndomain result — a safe rejection, no match, or a request for more\ninformation is still a 200. The domain result is in `message.outcome`.\n\nWith `Accept: text/event-stream` the response is an SSE stream whose\nterminal event carries the same canonical turn object. Once the stream\nhas opened with 200, failures are reported by a terminal `turn.failed`\nevent; the HTTP status cannot change.\n"
+                  },
+                  "response": []
+                }
+              ]
+            },
+            {
+              "name": "facility-type",
+              "item": [
+                {
+                  "name": "non streaming",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "traceparent",
+                        "value": "{{traceparent}}",
+                        "description": "W3C trace context. DSS starts its server span from this and echoes the trace id as `context.traceId`."
+                      },
+                      {
+                        "key": "tracestate",
+                        "value": "string",
+                        "description": "Optional vendor-specific W3C trace state."
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      },
+                      {
+                        "key": "Accept",
+                        "value": "application/json"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"context\": {\n    \"id\": \"api.dss.turn\",\n    \"timestamp\": \"2026-09-09T08:00:00Z\",\n    \"sessionId\": \"4542fb8b-22f0-409c-8bc7-6dfcc61111ba\",\n    \"transactionId\": \"{{transactionId}}\",\n    \"messageId\": \"{{messageId}}\",\n    \"version\": \"1.0.0\"\n  },\n  \"message\": {\n    \"input\": [\n      {\n        \"role\": \"user\",\n        \"content\": [\n          {\n            \"type\": \"text\",\n            \"text\": \"What are the krishi kendra near me?\"\n          }\n        ]\n      }\n    ],\n    \"attributes\": {\n      \"channel\": \"web\",\n      \"location\": {\n        \"region\": \"IN-MH\",\n        \"area\": \"Nashik\",\n        \"geometry\": {\n          \"type\": \"Point\",\n          \"coordinates\": [\n            73.7898,\n            19.9975\n          ]\n        }\n      },\n      \"response\": {\n        \"maxCharacters\": 1200\n      },\n      \"sourceLanguage\": \"en\",\n      \"targetLanguage\": \"en\"\n    },\n    \"userContext\": [\n      {\n        \"type\": \"identity\",\n        \"userId\": \"usr_9921\"\n      }\n    ]\n  }\n}\n",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/v1/turns",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "v1",
+                        "turns"
+                      ]
+                    },
+                    "description": "Send one turn. A valid turn that DSS handles returns 200 whatever the\ndomain result — a safe rejection, no match, or a request for more\ninformation is still a 200. The domain result is in `message.outcome`.\n\nWith `Accept: text/event-stream` the response is an SSE stream whose\nterminal event carries the same canonical turn object. Once the stream\nhas opened with 200, failures are reported by a terminal `turn.failed`\nevent; the HTTP status cannot change.\n"
+                  },
+                  "response": []
+                },
+                {
+                  "name": "streaming",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "traceparent",
+                        "value": "{{traceparent}}",
+                        "description": "W3C trace context. DSS starts its server span from this and echoes the trace id as `context.traceId`."
+                      },
+                      {
+                        "key": "tracestate",
+                        "value": "string",
+                        "description": "Optional vendor-specific W3C trace state."
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      },
+                      {
+                        "key": "Accept",
+                        "value": "text/event-stream"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"context\": {\n    \"id\": \"api.dss.turn\",\n    \"timestamp\": \"2026-09-09T08:00:00Z\",\n    \"sessionId\": \"4542fb8b-22f0-409c-8bc7-6dfcc61111ba\",\n    \"transactionId\": \"{{transactionId}}\",\n    \"messageId\": \"{{messageId}}\",\n    \"version\": \"1.0.0\"\n  },\n  \"message\": {\n    \"input\": [\n      {\n        \"role\": \"user\",\n        \"content\": [\n          {\n            \"type\": \"text\",\n            \"text\": \"What are the krishi kendra near me?\"\n          }\n        ]\n      }\n    ],\n    \"attributes\": {\n      \"channel\": \"web\",\n      \"location\": {\n        \"region\": \"IN-MH\",\n        \"area\": \"Nashik\",\n        \"geometry\": {\n          \"type\": \"Point\",\n          \"coordinates\": [\n            73.7898,\n            19.9975\n          ]\n        }\n      },\n      \"response\": {\n        \"maxCharacters\": 1200\n      },\n      \"sourceLanguage\": \"en\",\n      \"targetLanguage\": \"en\"\n    },\n    \"userContext\": [\n      {\n        \"type\": \"identity\",\n        \"userId\": \"usr_9921\"\n      }\n    ]\n  }\n}\n",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/v1/turns",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "v1",
+                        "turns"
+                      ]
+                    },
+                    "description": "Send one turn. A valid turn that DSS handles returns 200 whatever the\ndomain result — a safe rejection, no match, or a request for more\ninformation is still a 200. The domain result is in `message.outcome`.\n\nWith `Accept: text/event-stream` the response is an SSE stream whose\nterminal event carries the same canonical turn object. Once the stream\nhas opened with 200, failures are reported by a terminal `turn.failed`\nevent; the HTTP status cannot change.\n"
+                  },
+                  "response": []
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "traceparent",
+      "value": ""
+    },
+    {
+      "key": "transactionId",
+      "value": ""
+    },
+    {
+      "key": "messageId",
+      "value": ""
+    },
+    {
+      "key": "baseUrl",
+      "value": "https://dss.internal"
+    }
+  ]
+}
