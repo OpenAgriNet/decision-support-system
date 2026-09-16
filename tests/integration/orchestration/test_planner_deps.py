@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
 from dss.core.planner.models import Verdict
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.shared.models import UserTurn
@@ -32,9 +33,25 @@ class _UnusedInvocation:
         raise AssertionError("select must not be called in this test")
 
 
+def _intent(category: SubjectCategory = SubjectCategory.MARKET) -> Intent:
+    """One ask at index 0 — the only index these tests' discovery uses."""
+
+    return Intent(
+        asks=(
+            Ask(
+                agriculture_subjects="paddy",
+                subject_categories=category,
+                interaction_type=InteractionType.OBSERVE,
+            ),
+        ),
+        confidence=1.0,
+    )
+
+
 def test_planner_deps_starts_with_an_empty_accumulator() -> None:
     deps = PlannerDeps(
         turn=_turn(),
+        intent=_intent(),
         discovery=_discovery_result(),
         schemas={},
         schema_context_index={},

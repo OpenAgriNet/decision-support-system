@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from pydantic_ai import Agent, ModelRetry, RunContext
 from pydantic_ai.models import Model
 
+from dss.core.intent.models import Intent
 from dss.core.moderation.models import Outcome
 from dss.core.planner.describe_capability import render_candidates_as_markdown
 from dss.core.planner.lookup import find_capability
@@ -38,6 +39,9 @@ class PlannerDeps:
     to ``agent.run(deps=...)`` — tools read it via ``RunContext.deps``."""
 
     turn: UserTurn
+    # The ask an `ask_index` names, so `select` can state the category that was
+    # asked about rather than the one the provider advertised.
+    intent: Intent
     discovery: DiscoveryResult
     schemas: dict[str, DomainSchema]
     schema_context_index: dict[str, str]
@@ -96,6 +100,9 @@ async def _select(
 
     full_attributes = build_resource_attributes(
         capability=capability,
+        # Safe by here: `find_capability` has already matched `ask_index`
+        # against discovery, which is keyed off these same asks.
+        subject_category=deps.intent.asks[ask_index].subject_categories.value,
         turn=deps.turn,
         model_filled=resource_attributes,
         schema_context_index=deps.schema_context_index,

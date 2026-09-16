@@ -23,6 +23,11 @@
 
 
 ### Changed
+- `/select` now sends the ask's own `subjectCategories` instead of echoing back
+  the ones the discovered resource advertised, so both hops of an ask agree on
+  what was asked — a scheme ask no longer reaches a provider labelled `Crop`,
+  and the empty array an unlabelled resource used to produce is unreachable.
+  ADR-0010 (#96)
 - An alias hit now sets an ask's `subject_categories` to `Scheme`, overriding
   the classifier — `subject_categories` is the only thing discovery routes on,
   and the classifier does not know "PKVY" names a scheme. A non-scheme ask is

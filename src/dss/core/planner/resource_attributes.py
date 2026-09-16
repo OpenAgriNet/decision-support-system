@@ -1,10 +1,11 @@
 """Assembles resourceAttributes for a /select call.
 
-Structural fields (@context, @type, subjectCategories, location) come from
-discovery data and the turn — never from the model. The model's own
-resource_attributes (a resolved commodity code, topics, ...) merge on top,
-but cannot override a structural field: the model chooses the capability by
-resource_id, not by rewriting @type after the fact.
+Structural fields (@context, @type, subjectCategories, location) come from the
+schema pack, the ask and the turn — never from the model, and never from the
+discover response. The model's own resource_attributes (a resolved commodity
+code, topics, ...) merge on top, but cannot override a structural field: the
+model chooses the capability by resource_id, not by rewriting @type after the
+fact.
 """
 
 from __future__ import annotations
@@ -88,6 +89,7 @@ def _narrowed(model_value: object, advertised_value: object) -> object:
 def build_resource_attributes(
     *,
     capability: ProviderCapability,
+    subject_category: str,
     turn: UserTurn,
     model_filled: dict,
     schema_context_index: dict[str, str],
@@ -96,6 +98,9 @@ def build_resource_attributes(
 ) -> dict:
     """Build the full resourceAttributes object: structural fields first, the
     model's fields merged on top — but structural fields always win.
+
+    ``subject_category`` is the ask's own category, the same value ``/discover``
+    filtered on, so both hops of one ask agree on what was asked.
 
     ``@context`` is the URL the pack declares, taken verbatim rather than
     rebuilt from a base URL and the pack's name and version.
@@ -106,11 +111,18 @@ def build_resource_attributes(
     select.
     """
 
+    # `subjectCategories` states the ask, not the advertisement. Echoing the
+    # resource's own categories back from the discover response said nothing
+    # about what was wanted: a resource advertising `["Crop", "Practice"]`
+    # returned both, and a scheme ask discovered on its category alone
+    # (ADR-0009) selected such a resource as a crop question. The ask carries
+    # exactly one category, so this is always a one-item list — and never the
+    # empty one a resource with no advertised categories used to produce.
     structural: dict = {
         "@context": schema_context_index[capability.capability],
         "@type": capability.capability,
         "informationMode": _ON_DEMAND,
-        "subjectCategories": list(capability.observed_categories),
+        "subjectCategories": [subject_category],
     }
 
     # Where the turn says the question is about. An OnDemand resource
