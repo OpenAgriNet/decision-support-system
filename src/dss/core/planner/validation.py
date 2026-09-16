@@ -279,6 +279,18 @@ def _value_at(data: object, path: str) -> object:
     Returns ``None`` for a path that is not present. `_flatten` produced the
     path from this same data, so that means a list of plain values whose
     own path stands in for its items, and those are checked as the list.
+
+    Two guards below are unreachable from ``validate_arguments`` and stay as
+    defence only; they are deliberately untested, because reaching them needs
+    inputs the caller cannot produce:
+
+    - the empty-path return, because ``_flatten`` never emits a bare ``[]``
+      with no tail;
+    - the non-list container, because a ``[]`` segment over a scalar makes
+      ``_flatten`` emit the *shallower* path for that item. Either that path
+      is not filterable and the name check rejects the body first, or it is
+      filterable and ``stop_at`` keeps the deeper path from being walked at
+      all. The two conditions cannot both hold.
     """
 
     if not path:
