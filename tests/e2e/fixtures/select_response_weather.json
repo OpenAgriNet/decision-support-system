@@ -1,0 +1,76 @@
+{
+  "context": {
+    "action": "on_select",
+    "version": "2.0.0",
+    "transactionId": "3c67dc05-6ba2-4ab4-bb7c-377e16a5ab5b",
+    "messageId": "d0d0d0d0-0000-4000-8000-000000000002",
+    "timestamp": "2026-09-16T07:00:00Z"
+  },
+  "message": {
+    "contract": {
+      "commitments": [
+        {
+          "status": {
+            "descriptor": {
+              "code": "ACTIVE",
+              "name": "active"
+            }
+          },
+          "resources": [
+            {
+              "id": "resource:weather-observation:mausamgram:2026-09-16",
+              "resourceAttributes": {
+                "@context": "https://openagrinet.github.io/network-specs/schema/WeatherObservation/v0.1/context.jsonld",
+                "@type": "openagrinet:WeatherObservation",
+                "informationMode": "Direct",
+                "subjectCategories": [
+                  "Weather"
+                ],
+                "observationType": "Forecast",
+                "source": {
+                  "sourceId": "mausamgram",
+                  "sourceUri": "https://mausamgram.imd.gov.in/",
+                  "sourceName": "IMD Mausamgram NWP"
+                },
+                "location": {
+                  "geo": {
+                    "type": "Point",
+                    "coordinates": [
+                      73.7898,
+                      19.9975
+                    ]
+                  }
+                },
+                "validity": {
+                  "startsAt": "2026-09-16T00:00:00+05:30",
+                  "endsAt": "2026-09-16T23:59:59+05:30"
+                },
+                "parameters": [
+                  {
+                    "parameter": "Rainfall",
+                    "unit": "mm",
+                    "values": {
+                      "sum": 18.4
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "offer": {
+            "id": "offer:open-data",
+            "resourceIds": [
+              "resource:weather-observation:mausamgram:2026-09-16"
+            ],
+            "provider": {
+              "id": "mausamgram",
+              "descriptor": {
+                "name": "IMD Mausamgram"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

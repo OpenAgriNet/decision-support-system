@@ -536,3 +536,28 @@ def test_the_turns_geometry_reaches_a_pack_that_declares_a_location() -> None:
     assert resource_attributes["location"] == {
         "geo": {"type": "Point", "coordinates": [73.7898, 19.9975]}
     }
+
+
+def test_the_turns_location_wins_over_the_models() -> None:
+    """The model wrote `{"geo": "Nashik"}` — a place name where the schema
+    requires a GeoJSON geometry — and the provider refused the call.
+
+    The turn already carried the point, resolved from the farmer's own words by
+    the district lookup. The model has no way to turn a name into coordinates,
+    so its value here can only be worse than the one it replaced.
+    """
+
+    resource_attributes = build_resource_attributes(
+        capability=_capability(),
+        turn=_turn(
+            location=Location(geometry=Geometry(coordinates=[73.7898, 19.9975]))
+        ),
+        model_filled={"location": {"geo": "Nashik"}},
+        schema_context_index=_SCHEMA_CONTEXT_INDEX,
+        filterable=("location.geo", "supportedParameters"),
+        declared=("location", "supportedParameters"),
+    )
+
+    assert resource_attributes["location"] == {
+        "geo": {"type": "Point", "coordinates": [73.7898, 19.9975]}
+    }

@@ -1,0 +1,200 @@
+openapi: 3.1.1
+info:
+  title: OpenAgriNet - Weather Observation Attributes
+  version: 0.1.0
+  description: >
+    Attributes for weather information that may be obtained on demand or
+    supplied directly. Combines with AgricultureResource through allOf and
+    attaches through resourceAttributes.
+
+components:
+  schemas:
+    WeatherObservation:
+      type: object
+      x-beckn-container: resourceAttributes
+      x-jsonld:
+        "@context": "https://openagrinet.github.io/network-specs/schema/WeatherObservation/v0.1/context.jsonld"
+        "@type": openagrinet:WeatherObservation
+      allOf:
+        - $ref: "../../AgricultureResource/v0.1/attributes.yaml#/components/schemas/AgricultureResourceFields"
+        - type: object
+          required: ["@type"]
+          properties:
+            subjectCategories:
+              allOf:
+                - $ref: "../../AgricultureResource/v0.1/attributes.yaml#/components/schemas/AgricultureResourceFields/properties/subjectCategories"
+                - type: array
+                  description: Required broad classification for this pack. It must include Weather.
+                  contains:
+                    const: Weather
+            "@type":
+              oneOf:
+                - type: string
+                  const: openagrinet:WeatherObservation
+                - type: array
+                  minItems: 2
+                  uniqueItems: true
+                  contains:
+                    const: openagrinet:WeatherObservation
+                  items:
+                    oneOf:
+                      - const: openagrinet:WeatherObservation
+                      - type: string
+                        minLength: 1
+                        not:
+                          pattern: "^openagrinet:"
+              description: Canonical OAN type, optionally accompanied by Provider-defined JSON-LD types.
+            supportedObservationTypes:
+              type: array
+              minItems: 1
+              uniqueItems: true
+              description: Observation forms the Provider can return on demand.
+              items:
+                type: string
+                enum: [Observation, Forecast]
+              x-jsonld-id: "openagrinet:supportedObservationTypes"
+            supportedParameters:
+              type: array
+              minItems: 1
+              uniqueItems: true
+              description: Weather parameters the Provider can return on demand.
+              items:
+                type: string
+                enum: [Rainfall, Temperature, Humidity, WindSpeed, WindDirection, SoilMoisture, Evapotranspiration, Alert]
+              x-jsonld-id: "openagrinet:supportedParameters"
+            forecastHorizon:
+              type: string
+              format: duration
+              description: Maximum forecast horizon available on demand, expressed as an ISO 8601 duration.
+              x-jsonld-id: "openagrinet:forecastHorizon"
+            updateFrequency:
+              type: string
+              format: duration
+              description: Expected refresh interval for the available information.
+              x-jsonld-id: "openagrinet:updateFrequency"
+            geographicGranularities:
+              type: array
+              minItems: 1
+              uniqueItems: true
+              description: Geographic granularities at which the Provider can return information.
+              items:
+                type: string
+                enum: [Point, Village, Block, District, State]
+              x-jsonld-id: "openagrinet:geographicGranularities"
+            observationType:
+              type: string
+              enum: [Observation, Forecast]
+              description: Whether the Resource reports measured or forecast conditions.
+              x-jsonld-id: "openagrinet:observationType"
+            source:
+              allOf:
+                - $ref: "../../AgricultureResource/v0.1/attributes.yaml#/components/schemas/SourceReference"
+              description: Authoritative upstream source of the weather information.
+              x-jsonld-id: "openagrinet:source"
+            location:
+              allOf:
+                - $ref: "../../AgricultureResource/v0.1/attributes.yaml#/components/schemas/CompleteLocation"
+              description: Beckn Location to which the observation or forecast applies. Its geo member carries the required GeoJSON geometry; Point coordinates use longitude, latitude order.
+              x-jsonld-id: "openagrinet:location"
+            generatedAt:
+              type: string
+              format: date-time
+              description: Time at which the record was generated.
+              x-jsonld-id: "openagrinet:generatedAt"
+            observedAt:
+              type: string
+              format: date-time
+              description: Time at which measured conditions were observed. Required when observationType is Observation.
+              x-jsonld-id: "openagrinet:observedAt"
+            modelRunAt:
+              type: string
+              format: date-time
+              description: Model run time from which a forecast was produced.
+              x-jsonld-id: "openagrinet:modelRunAt"
+            validity:
+              allOf:
+                - $ref: "../../AgricultureResource/v0.1/attributes.yaml#/components/schemas/TimePeriod"
+              description: Period for which the reported conditions apply.
+              x-jsonld-id: "openagrinet:validity"
+            parameters:
+              type: array
+              minItems: 1
+              description: Measured or forecast weather parameters and their statistical values.
+              items:
+                type: object
+                required: [parameter, values, unit]
+                properties:
+                  parameter:
+                    type: string
+                    enum: [Rainfall, Temperature, Humidity, WindSpeed, WindDirection, SoilMoisture, Evapotranspiration, Alert]
+                    description: Weather parameter represented by this entry.
+                    x-jsonld-id: "openagrinet:parameter"
+                  values:
+                    type: object
+                    minProperties: 1
+                    description: One or more values for the parameter under the same unit, location, applicable period, and source context.
+                    properties:
+                      instantaneous:
+                        type: [number, string, boolean]
+                        description: Numeric, coded, or Boolean value at an instant, or an otherwise unaggregated value.
+                        x-jsonld-id: "openagrinet:instantaneous"
+                      minimum:
+                        type: number
+                        description: Lowest numeric value over the applicable period.
+                        x-jsonld-id: "openagrinet:minimum"
+                      maximum:
+                        type: number
+                        description: Highest numeric value over the applicable period.
+                        x-jsonld-id: "openagrinet:maximum"
+                      mean:
+                        type: number
+                        description: Arithmetic mean over the applicable period.
+                        x-jsonld-id: "openagrinet:mean"
+                      sum:
+                        type: number
+                        description: Accumulated numeric total over the applicable period.
+                        x-jsonld-id: "openagrinet:sum"
+                    additionalProperties: false
+                    x-jsonld-id: "openagrinet:values"
+                  unit:
+                    type: string
+                    minLength: 1
+                    description: Governed unit code shared by the values, or `1` when they are unitless.
+                    x-jsonld-id: "openagrinet:unit"
+                additionalProperties: false
+              x-jsonld-id: "openagrinet:parameters"
+        - if:
+            properties:
+              informationMode:
+                const: OnDemand
+            required: [informationMode]
+          then:
+            required: [supportedObservationTypes, supportedParameters, geographicGranularities]
+        - if:
+            properties:
+              informationMode:
+                const: Direct
+            required: [informationMode]
+          then:
+            required: [observationType, source, location, generatedAt, parameters]
+        - if:
+            properties:
+              informationMode:
+                const: Direct
+              observationType:
+                const: Observation
+            required: [informationMode, observationType]
+          then:
+            required: [observedAt]
+        - if:
+            properties:
+              informationMode:
+                const: Direct
+              observationType:
+                const: Forecast
+            required: [informationMode, observationType]
+          then:
+            required: [modelRunAt, validity]
+            properties:
+              validity:
+                $ref: "../../AgricultureResource/v0.1/attributes.yaml#/components/schemas/ClosedTimePeriod"

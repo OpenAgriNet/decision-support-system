@@ -1,0 +1,32 @@
+{
+  "@context": "https://openagrinet.github.io/network-specs/schema/WeatherObservation/v0.1/context.jsonld",
+  "@type": "openagrinet:WeatherObservation",
+  "informationMode": "OnDemand",
+  "subjectCategories": [
+    "Weather"
+  ],
+  "supportedObservationTypes": [
+    "Observation",
+    "Forecast"
+  ],
+  "supportedParameters": [
+    "Rainfall",
+    "Temperature",
+    "Humidity",
+    "WindSpeed"
+  ],
+  "forecastHorizon": "P10D",
+  "updateFrequency": "PT1H",
+  "geographicGranularities": [
+    "Point",
+    "District"
+  ],
+  "coverageAreas": [
+    {
+      "codeScheme": "ISO-3166-1",
+      "areaCode": "IN",
+      "areaLevel": "Country",
+      "areaName": "India"
+    }
+  ]
+}

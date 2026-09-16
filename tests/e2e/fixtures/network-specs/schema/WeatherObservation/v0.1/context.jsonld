@@ -1,0 +1,55 @@
+{
+  "@context": [
+    "https://openagrinet.github.io/network-specs/schema/AgricultureResource/v0.1/context.jsonld",
+    {
+      "@version": 1.1,
+      "openagrinet": "https://openagrinet.github.io/network-specs/vocab#",
+      "WeatherObservation": "openagrinet:WeatherObservation",
+      "supportedObservationTypes": {
+        "@id": "openagrinet:supportedObservationTypes",
+        "@container": "@set"
+      },
+      "supportedParameters": {
+        "@id": "openagrinet:supportedParameters",
+        "@container": "@set"
+      },
+      "forecastHorizon": "openagrinet:forecastHorizon",
+      "updateFrequency": "openagrinet:updateFrequency",
+      "geographicGranularities": {
+        "@id": "openagrinet:geographicGranularities",
+        "@container": "@set"
+      },
+      "observationType": "openagrinet:observationType",
+      "source": "openagrinet:source",
+      "location": {
+        "@id": "openagrinet:location",
+        "@context": {
+          "geo": {
+            "@id": "beckn:geo",
+            "@context": "https://schema.beckn.io/GeoJSONGeometry/v2.0/context.jsonld"
+          },
+          "address": {
+            "@id": "beckn:address",
+            "@context": "https://schema.beckn.io/Address/v2.0/context.jsonld"
+          }
+        }
+      },
+      "generatedAt": "openagrinet:generatedAt",
+      "observedAt": "openagrinet:observedAt",
+      "modelRunAt": "openagrinet:modelRunAt",
+      "validity": "openagrinet:validity",
+      "parameters": {
+        "@id": "openagrinet:parameters",
+        "@container": "@set"
+      },
+      "parameter": "openagrinet:parameter",
+      "values": "openagrinet:values",
+      "instantaneous": "openagrinet:instantaneous",
+      "minimum": "openagrinet:minimum",
+      "maximum": "openagrinet:maximum",
+      "mean": "openagrinet:mean",
+      "sum": "openagrinet:sum",
+      "unit": "openagrinet:unit"
+    }
+  ]
+}

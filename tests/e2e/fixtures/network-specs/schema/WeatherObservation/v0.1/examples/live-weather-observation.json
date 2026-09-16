@@ -1,0 +1,55 @@
+{
+  "@context": "https://openagrinet.github.io/network-specs/schema/WeatherObservation/v0.1/context.jsonld",
+  "@type": "openagrinet:WeatherObservation",
+  "informationMode": "Direct",
+  "subjectCategories": [
+    "Weather"
+  ],
+  "observationType": "Observation",
+  "source": {
+    "sourceId": "provider:weather-service",
+    "sourceName": "Weather Services Provider",
+    "sourceUri": "https://weather.example.org"
+  },
+  "location": {
+    "geo": {
+      "type": "Point",
+      "coordinates": [
+        72.8777,
+        19.076
+      ]
+    }
+  },
+  "generatedAt": "2026-08-24T06:05:00Z",
+  "observedAt": "2026-08-24T06:00:00Z",
+  "parameters": [
+    {
+      "parameter": "Temperature",
+      "values": {
+        "instantaneous": 29.4
+      },
+      "unit": "Cel"
+    },
+    {
+      "parameter": "Humidity",
+      "values": {
+        "instantaneous": 82
+      },
+      "unit": "%"
+    },
+    {
+      "parameter": "WindDirection",
+      "values": {
+        "instantaneous": "NE"
+      },
+      "unit": "1"
+    },
+    {
+      "parameter": "Alert",
+      "values": {
+        "instantaneous": false
+      },
+      "unit": "1"
+    }
+  ]
+}

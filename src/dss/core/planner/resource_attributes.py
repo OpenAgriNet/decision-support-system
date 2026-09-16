@@ -113,18 +113,13 @@ def build_resource_attributes(
         "subjectCategories": list(capability.observed_categories),
     }
 
-    # A fallback, not a structural field. An OnDemand weather resource
+    # Where the turn says the question is about. An OnDemand resource
     # advertises no `location` — there is no fixed point until someone asks —
-    # so the turn's geometry is what says which place the forecast is for.
-    #
-    # It must not override, though: where a pack's `location` identifies the
-    # resource rather than the query, the advertised value is the right one.
-    # `AgricultureFacility.location` says so in words — "do not populate it
-    # with the search origin or another inferred point" — and substituting
-    # there would claim the facility sits wherever the farmer is asking from.
+    # so this is what names the place, for a forecast or a facility search
+    # alike.
     allowed = {path.split(".")[0].split("[")[0] for path in filterable}
 
-    fallback: dict = {}
+    turn_location: dict = {}
     location = _location_field(turn)
     # Only where the pack declares the field. Not "where it is filterable":
     # `AgricultureFacility` declares `location` and leaves it out of
@@ -138,7 +133,7 @@ def build_resource_attributes(
     # coordinates — so nothing is added there and the farmer's location reaches
     # the network as `/discover`'s spatial filter.
     if location is not None and "location" in declared:
-        fallback["location"] = location
+        turn_location["location"] = location
 
     # Three layers, each overriding the one before.
     #
@@ -169,4 +164,16 @@ def build_resource_attributes(
         field: _narrowed(value, echoed[field]) if field in echoed else value
         for field, value in model_filled.items()
     }
-    return {**fallback, **echoed, **narrowed, **structural}
+    # The turn's location last, after the model's own values. It wrote
+    # `{"geo": "Nashik"}` — the place name where the schema requires a GeoJSON
+    # geometry — over the point the district lookup had already resolved from
+    # the farmer's words. The model cannot turn a name into coordinates, so
+    # what it writes here can only be worse than what it replaces.
+    #
+    # The other packs work today because the model cannot reach their
+    # location at all: `AgricultureFacility` declares it without listing it as
+    # filterable, and MandiPrice's lives inside the echoed `market` object.
+    # WeatherObservation is the one pack that offers `location.geo`, and the
+    # one where this went wrong — so this is the rule the others already follow
+    # by accident, made explicit.
+    return {**echoed, **narrowed, **structural, **turn_location}

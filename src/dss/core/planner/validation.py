@@ -76,7 +76,7 @@ def parse_domain_schema(pack: SchemaPackFiles) -> DomainSchema:
     )
 
 
-def _flatten(data: dict, prefix: str = "") -> list[str]:
+def _flatten(data: dict, prefix: str = "", stop_at: tuple[str, ...] = ()) -> list[str]:
     """Every leaf path in ``data``, descending through dicts and lists.
 
     Lists matter: a list of objects (``{"topics": [{"evil": "x"}]}``) hides
@@ -88,15 +88,32 @@ def _flatten(data: dict, prefix: str = "") -> list[str]:
 
     paths: list[str] = []
     for key, value in data.items():
-        paths.extend(_flatten_value(value, path=f"{prefix}{key}"))
+        path = f"{prefix}{key}"
+        # A *nested* filterable path names a value the caller supplies, and
+        # what is inside that value is the value's own schema rather than more
+        # fields the pack enumerates. `location.geo` is a GeoJSON geometry:
+        # descending past it produced `location.geo.type`, which matches
+        # nothing, so *valid* GeoJSON was rejected — and the shape that did
+        # pass, the place name as a bare string, was what the provider refused.
+        #
+        # Nested only. A bare name like `topics` is a whole field, and a pack
+        # describing it as free text does not thereby allow arbitrary objects
+        # inside it — descending is what catches structure smuggled through a
+        # list of them.
+        if ("." in path or "[]" in path) and path in stop_at:
+            paths.append(path)
+            continue
+        paths.extend(_flatten_value(value, path=path, stop_at=stop_at))
     # a list of plain values yields its own path once per item; dedupe so the
     # error message names a field once
     return list(dict.fromkeys(paths))
 
 
-def _flatten_value(value: object, *, path: str) -> list[str]:
+def _flatten_value(
+    value: object, *, path: str, stop_at: tuple[str, ...] = ()
+) -> list[str]:
     if isinstance(value, dict):
-        return _flatten(value, prefix=f"{path}.")
+        return _flatten(value, prefix=f"{path}.", stop_at=stop_at)
     if isinstance(value, list):
         # `[]` only where the pack writes it: on a list *of objects*, whose
         # inner fields it spells `supportedCommodities[].code`. Without the
@@ -110,7 +127,9 @@ def _flatten_value(value: object, *, path: str) -> list[str]:
             nested_path
             for item in value
             for nested_path in _flatten_value(
-                item, path=f"{path}[]" if isinstance(item, dict) else path
+                item,
+                path=f"{path}[]" if isinstance(item, dict) else path,
+                stop_at=stop_at,
             )
         ]
         # a list of plain values flattens to the list's own path
@@ -144,6 +163,24 @@ def _check_is_array(path: str, value: object, schema: DomainSchema) -> None:
     raise InvalidArgument(
         f"{path!r} of {schema.type} is {schema.field_types[path]}, "
         f"so it takes a list — got {value!r}. Wrap it: [{value!r}]"
+    )
+
+
+def _check_is_object(path: str, value: object, schema: DomainSchema) -> None:
+    """Reject a scalar where the pack asks for an object.
+
+    The mirror of the array check, and for the same reason: the model wrote
+    the farmer's word straight through — `{"location": "Nashik"}` where the
+    pack types `location` an object — and only the provider noticed.
+    """
+
+    if schema.field_types.get(path) != "object":
+        return
+    if isinstance(value, dict):
+        return
+    raise InvalidArgument(
+        f"{path!r} of {schema.type} is an object, not a value — got "
+        f"{value!r}. Send the fields the pack names under it."
     )
 
 
@@ -186,15 +223,19 @@ def validate_arguments(resource_attributes: dict, schema: DomainSchema) -> None:
                 f"{json.dumps(_nest_example(key))}"
             )
 
-    for path in _flatten(resource_attributes):
+    # Shape before name. `{"location": "Nashik"}` flattens to `location`,
+    # which is not a filterable path — so the name check would call a real
+    # field unknown, when what is wrong is its shape. A misleading retry is
+    # what taught the model to write the place name in the first place.
+    for field, value in resource_attributes.items():
+        _check_is_array(field, value, schema)
+        _check_is_object(field, value, schema)
+
+    for path in _flatten(resource_attributes, stop_at=schema.filterable):
         if path not in schema.filterable:
             raise InvalidArgument(
                 f"{path!r} is not a filterable field of {schema.type} "
                 f"(filterable: {schema.filterable})"
             )
 
-    # Top level only. `field_types` is keyed by the pack's own paths, and a
-    # nested path's type is not read here.
-    for field, value in resource_attributes.items():
-        _check_is_array(field, value, schema)
         _check_is_allowed(field, value, schema)
