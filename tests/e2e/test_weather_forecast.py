@@ -27,6 +27,7 @@ from werkzeug import Request, Response
 from dss.config.settings import Settings
 from dss.entrypoint.app import build_app
 from dss.entrypoint.composition import build_runner
+from tests.e2e.pack_gate import pack_rejection
 
 pytestmark = pytest.mark.skipif(
     not (os.getenv("AZURE_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")),
@@ -106,6 +107,16 @@ class _Network:
     def select(self, request: Request) -> Response:
         body = json.loads(request.get_data())
         self.select_requests.append(body)
+        # The pack's own schema first, so a malformed select is refused whether
+        # or not the check below anticipated that malformation. `parameters[]`
+        # is why: the model filled it because `profile.json` lists it as
+        # filterable, the pack requires a `unit` on every entry, and the
+        # hand-written geometry check waved the body straight through.
+        rejection = pack_rejection(
+            body, root=SCHEMA_PACKS, pack_name="WeatherObservation"
+        )
+        if rejection is not None:
+            return rejection
         geometry = _geometry(body)
         # What the provider itself checks: a GeoJSON geometry, not a word. The
         # real NACK was `value must be an object`.

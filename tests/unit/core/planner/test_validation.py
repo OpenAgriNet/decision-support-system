@@ -10,9 +10,11 @@ No "required minimum" check here — profile.json has no required_filters key
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
+from dss.adapters.schema_packs.filesystem import FilesystemSchemaPackSource
 from dss.core.planner.validation import (
     DomainSchema,
     InvalidArgument,
@@ -32,6 +34,32 @@ _MANDI_PROFILE = json.dumps(
         ],
     }
 )
+
+
+_VENDORED_PACKS = (
+    Path(__file__).resolve().parents[3]
+    / "e2e"
+    / "fixtures"
+    / "network-specs"
+    / "schema"
+)
+
+
+def _real_pack(name: str) -> SchemaPackFiles:
+    """One pack as shipped, read by the real loader.
+
+    Not a hand-written profile. A fixture written to match what the model
+    sends agrees with the model and disagrees with the provider — which is
+    how five select defects passed their tests and failed in production.
+    """
+
+    source = FilesystemSchemaPackSource(_VENDORED_PACKS)
+    packs = {pack.pack_name: pack for pack in source._read_all_packs()}
+    return packs[name]
+
+
+def _weather_pack() -> SchemaPackFiles:
+    return _real_pack("WeatherObservation")
 
 
 def _mandi_pack_files() -> SchemaPackFiles:
@@ -337,3 +365,66 @@ def test_a_geometry_under_a_filterable_path_is_not_descended_into() -> None:
         {"location": {"geo": {"type": "Point", "coordinates": [73.7898, 19.9975]}}},
         schema,
     )
+
+
+def test_a_filterable_path_needing_answer_only_siblings_is_not_offered() -> None:
+    """`parameters[]` is answer data, and the pack says so twice.
+
+    `profile.json` lists `parameters[].values.sum` as filterable, so the
+    planner fills it. But `attributes.yaml` requires `[parameter, values,
+    unit]` on every entry, and `parameters` itself is required only when
+    `informationMode` is `Direct` — the *response* shape. There is no way to
+    ask for a rainfall total without also asserting a unit and a measurement,
+    which only a provider can supply.
+
+    That contradiction is why fixing one field surfaced the next: `sum: true`
+    was a type error, `unit` the required sibling behind it, and `observedAt`
+    and `source` wait behind that. The fix is to stop offering the path, not
+    to satisfy it.
+
+    Read from the real pack on purpose. Every other test here writes its own
+    profile inline, which is how a fixture and an assertion agree on a shape
+    the provider refuses.
+    """
+
+    schema = parse_domain_schema(_weather_pack())
+
+    assert not [path for path in schema.filterable if path.startswith("parameters")], (
+        "parameters[] is result data — the pack requires a unit and a "
+        "measurement on every entry, which a request cannot supply"
+    )
+
+
+def test_a_pack_whose_yaml_will_not_parse_still_offers_its_paths() -> None:
+    """An unreadable `attributes.yaml` must not empty `filterable`.
+
+    The reading layer already treats a pack it cannot parse as usable but
+    unenriched — `_flattened` swallows the same error and returns no fields —
+    and this check has to match, or one malformed file in an external checkout
+    would silently stop a whole capability from being selectable.
+
+    The cost is that `parameters[]` comes back for that pack: nothing can be
+    read about its items, so nothing can be dropped. That is the safe
+    direction — a path offered wrongly is refused by the provider, while a
+    path withheld wrongly answers nothing at all.
+    """
+
+    pack = SchemaPackFiles(
+        pack_name="WeatherObservation",
+        version="0.1",
+        profile_json=json.dumps(
+            {
+                "included_schemas": ["WeatherObservation"],
+                "filterable_paths": [
+                    "beckn:resourceAttributes.parameters[].values.sum",
+                    "beckn:resourceAttributes.location.geo",
+                ],
+            }
+        ),
+        attributes_yaml="a: [1, 2",  # unterminated flow sequence
+        examples_json=(),
+    )
+
+    schema = parse_domain_schema(pack)
+
+    assert schema.filterable == ("parameters[].values.sum", "location.geo")

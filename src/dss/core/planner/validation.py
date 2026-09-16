@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 
+import yaml
 from pydantic import BaseModel, ConfigDict
 
 from dss.core.provider_discovery.models import SchemaPackFiles
@@ -49,15 +50,65 @@ class DomainSchema(BaseModel):
     field_enums: Mapping[str, tuple[str, ...]] = {}
 
 
+def _items_requiring_siblings(attributes_yaml: str) -> frozenset[str]:
+    """Array fields whose item schema has a ``required`` list.
+
+    Naming one field of such an item is not a filter the pack can read: it
+    requires the whole item. `WeatherObservation.parameters` requires
+    `[parameter, values, unit]`, so asking for a rainfall total also asserts
+    a unit and a measurement — data only the provider has.
+
+    Most arrays of objects require nothing (`services`, `supportedCommodities`,
+    `agricultureSubjects`), and those stay filterable: one field of an
+    unconstrained item is a legal narrowing.
+    """
+
+    try:
+        document = yaml.safe_load(attributes_yaml)
+    except yaml.YAMLError:
+        # A pack we cannot read is not a fatal pack, matching the reading
+        # layer: every path stays offered, as before this check existed.
+        return frozenset()
+
+    found: set[str] = set()
+
+    def walk(node: object) -> None:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if (
+                    isinstance(value, dict)
+                    and value.get("type") == "array"
+                    and isinstance(value.get("items"), dict)
+                    and value["items"].get("required")
+                ):
+                    found.add(key)
+                walk(value)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+
+    walk(document)
+    return frozenset(found)
+
+
 def parse_domain_schema(pack: SchemaPackFiles) -> DomainSchema:
     """Read ``filterable_paths`` from a pack's ``profile.json``, with the
     ``beckn:resourceAttributes.`` prefix stripped — the model's
-    ``resource_attributes`` dict is unprefixed."""
+    ``resource_attributes`` dict is unprefixed.
+
+    Paths under an array whose items carry their own ``required`` list are
+    dropped: see ``_items_requiring_siblings``.
+    """
 
     profile = json.loads(pack.profile_json)
+    answer_only = _items_requiring_siblings(pack.attributes_yaml)
     filterable = tuple(
-        path.removeprefix(_BECKN_RESOURCE_ATTRIBUTES_PREFIX)
-        for path in profile["filterable_paths"]
+        path
+        for path in (
+            raw.removeprefix(_BECKN_RESOURCE_ATTRIBUTES_PREFIX)
+            for raw in profile["filterable_paths"]
+        )
+        if path.split("[]")[0] not in answer_only
     )
     return DomainSchema(
         type=pack.pack_name,
