@@ -280,25 +280,28 @@ def _value_at(data: object, path: str) -> object:
     path from this same data, so that means a list of plain values whose
     own path stands in for its items, and those are checked as the list.
 
-    Two guards below are unreachable from ``validate_arguments`` and stay as
-    defence only; they are deliberately untested, because reaching them needs
-    inputs the caller cannot produce:
+    Two guards below cannot change what ``validate_arguments`` decides, so no
+    test pins them and they show as uncovered:
 
-    - the empty-path return, because ``_flatten`` never emits a bare ``[]``
-      with no tail;
-    - the non-list container, because a ``[]`` segment over a scalar makes
-      ``_flatten`` emit the *shallower* path for that item. Either that path
-      is not filterable and the name check rejects the body first, or it is
-      filterable and ``stop_at`` keeps the deeper path from being walked at
-      all. The two conditions cannot both hold.
+    - the empty-path return: ``_flatten`` never emits a bare ``[]`` with no
+      tail, so ``path`` is never empty here.
+    - the non-list container, for a body holding the same key as a scalar in
+      one item and a list of objects in another
+      (``{"a": [{"b": "x"}, {"b": [{"c": 1}]}]}``). Calling ``_value_at``
+      directly on the deep path does reach it, but ``validate_arguments``
+      never does: the deep path is only walked when the shallow one is *not*
+      filterable, and then the shallow path fails the name check before any
+      value is read. With both filterable, ``stop_at`` ends the walk at the
+      shallow one. ``test_one_key_sent_as_both_a_scalar_and_a_list_is_rejected``
+      pins that outcome.
     """
 
-    if not path:
+    if not path:  # pragma: no cover - see docstring
         return data
     head, _, tail = path.partition(".")
     if head.endswith("[]"):
         container = data.get(head[:-2]) if isinstance(data, dict) else None
-        if not isinstance(container, list):
+        if not isinstance(container, list):  # pragma: no cover - see docstring
             return None
         return [_value_at(item, tail) for item in container]
     if not isinstance(data, dict) or head not in data:

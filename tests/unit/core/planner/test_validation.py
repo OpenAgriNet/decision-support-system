@@ -476,3 +476,36 @@ def test_an_item_missing_the_field_says_so_rather_than_naming_none() -> None:
         validate_arguments(
             {"supportedCommodities": [{"code": "23"}, {"name": "Onion"}]}, schema
         )
+
+
+def test_one_key_sent_as_both_a_scalar_and_a_list_is_rejected() -> None:
+    """The model wrote `descriptor` two ways in one list: a bare word in the
+    first item, a list of objects in the second.
+
+    `_flatten` walks the richer item and emits the deeper path, so the scalar
+    item has no list to descend — `_value_at` yields `None` for it. What
+    settles the body is the shallower path: `supportedCommodities[].descriptor`
+    is not filterable, so the name check refuses before that `None` reaches
+    the enum check.
+
+    Worth pinning because the shape is one a model produces — the same key
+    filled inconsistently across items — and because the walk touches a guard
+    nothing else exercises.
+    """
+
+    schema = DomainSchema(
+        type="MandiPrice",
+        filterable=("supportedCommodities[].descriptor[].code",),
+        field_enums={"supportedCommodities[].descriptor[].code": ("23", "24")},
+    )
+
+    with pytest.raises(InvalidArgument, match=r"supportedCommodities\[\].descriptor"):
+        validate_arguments(
+            {
+                "supportedCommodities": [
+                    {"descriptor": "Onion"},
+                    {"descriptor": [{"code": "23"}]},
+                ]
+            },
+            schema,
+        )
