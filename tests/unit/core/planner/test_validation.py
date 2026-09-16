@@ -278,3 +278,62 @@ components:
     schema = parse_domain_schema(pack)
 
     assert schema.field_formats == {"arrivalDate": "date"}
+
+
+def test_a_scalar_where_the_pack_asks_for_an_object_is_rejected() -> None:
+    """The model wrote `{"location": {"geo": "Nashik"}}` — a place name where
+    the pack types the field an object — and only the provider noticed.
+
+    The mirror of the array check: "it is an object" is as clear a rule as "it
+    is a list", and both are the shapes a model gets wrong by writing the
+    farmer's words straight through.
+    """
+
+    schema = DomainSchema(
+        type="WeatherObservation",
+        filterable=("location.geo",),
+        field_types={"location": "object"},
+    )
+
+    with pytest.raises(InvalidArgument, match="object"):
+        validate_arguments({"location": "Nashik"}, schema)
+
+
+def test_an_object_for_an_object_field_is_accepted() -> None:
+    """What a correct model sends."""
+
+    schema = DomainSchema(
+        type="WeatherObservation",
+        filterable=("location.geo",),
+        field_types={"location": "object"},
+    )
+
+    # `location.geo` is the filterable path, so the nested shape is what the
+    # name check accepts — the object check must not reject it on the way past.
+    validate_arguments(
+        {"location": {"geo": {"type": "Point", "coordinates": [73.7, 19.9]}}},
+        schema,
+    )
+
+
+def test_a_geometry_under_a_filterable_path_is_not_descended_into() -> None:
+    """`location.geo` names a value the caller supplies — a GeoJSON geometry —
+    and `type` and `coordinates` are that geometry's own shape, not fields the
+    pack enumerates.
+
+    `_flatten` descended past it and produced `location.geo.type`, which
+    matches no filterable path, so *valid* GeoJSON was rejected. The model
+    could not win: the correct shape failed here, and the shape that passed
+    here — the place name as a string — failed at the provider.
+    """
+
+    schema = DomainSchema(
+        type="WeatherObservation",
+        filterable=("location.geo", "supportedParameters"),
+        field_types={"location": "object"},
+    )
+
+    validate_arguments(
+        {"location": {"geo": {"type": "Point", "coordinates": [73.7898, 19.9975]}}},
+        schema,
+    )
