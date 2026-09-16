@@ -258,6 +258,33 @@ def _check_is_allowed(path: str, value: object, schema: DomainSchema) -> None:
         )
 
 
+def _value_at(data: object, path: str) -> object:
+    """The value ``_flatten`` found at ``path``.
+
+    Walks the same notation ``_flatten`` writes: ``.`` descends into an
+    object, ``[]`` marks a list whose items are descended into. A ``[]``
+    segment yields the values of every item, flattened, because the enum
+    applies to each — `supportedCommodities[].code` is one code per item, and
+    checking only the first would let a later bad one through.
+
+    Returns ``None`` for a path that is not present. `_flatten` produced the
+    path from this same data, so that means a list of plain values whose
+    own path stands in for its items, and those are checked as the list.
+    """
+
+    if not path:
+        return data
+    head, _, tail = path.partition(".")
+    if head.endswith("[]"):
+        container = data.get(head[:-2]) if isinstance(data, dict) else None
+        if not isinstance(container, list):
+            return None
+        return [_value_at(item, tail) for item in container]
+    if not isinstance(data, dict) or head not in data:
+        return None
+    return _value_at(data[head], tail) if tail else data[head]
+
+
 def validate_arguments(resource_attributes: dict, schema: DomainSchema) -> None:
     """Raise ``InvalidArgument`` if a key path in ``resource_attributes`` is
     not one of the schema's ``filterable`` paths, holds a scalar where the
@@ -289,4 +316,8 @@ def validate_arguments(resource_attributes: dict, schema: DomainSchema) -> None:
                 f"(filterable: {schema.filterable})"
             )
 
-        _check_is_allowed(field, value, schema)
+        # The value at *this* path. Reading the loop variables above instead
+        # checked whichever field that loop ended on, so with more than one
+        # field a bad value on any but the last reached the provider — and
+        # every enum test sent a single-key dict, where the two coincide.
+        _check_is_allowed(path, _value_at(resource_attributes, path), schema)

@@ -221,6 +221,31 @@ def test_a_bad_value_inside_a_list_is_rejected() -> None:
         )
 
 
+def test_a_bad_value_is_rejected_when_it_is_not_the_last_field() -> None:
+    """The enum check ran against whichever field the *previous* loop ended on,
+    not the path it was iterating.
+
+    Every other enum test here sends a single-key dict, where the leaked name
+    happens to equal the current path — so the check appeared to work while
+    reading the wrong field. With two fields, a bad value on any but the last
+    one reached the provider.
+    """
+
+    schema = DomainSchema(
+        type="AgricultureFacility",
+        filterable=("facilityType", "informationMode"),
+        field_enums={
+            "facilityType": ("KrishiVigyanKendra", "Warehouse"),
+            "informationMode": ("OnDemand", "Direct"),
+        },
+    )
+
+    with pytest.raises(InvalidArgument, match="krishi kendra"):
+        validate_arguments(
+            {"facilityType": "krishi kendra", "informationMode": "OnDemand"}, schema
+        )
+
+
 def test_the_correct_nested_shape_for_a_list_field_is_accepted() -> None:
     """`profile.json` writes a list-of-objects path as
     `supportedCommodities[].code`, meaning "inside each item of that array".
