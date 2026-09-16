@@ -15,6 +15,7 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
+from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
 from dss.core.moderation.models import ModerationDecision, Outcome
 from dss.core.planner.models import Skill, Verdict
 from dss.core.planner.validation import DomainSchema
@@ -85,6 +86,21 @@ def _skill_with(*tool_names: str) -> Skill:
     )
 
 
+def _intent(category: SubjectCategory = SubjectCategory.MARKET) -> Intent:
+    """One ask at index 0 — the only index these tests' discovery uses."""
+
+    return Intent(
+        asks=(
+            Ask(
+                agriculture_subjects="paddy",
+                subject_categories=category,
+                interaction_type=InteractionType.OBSERVE,
+            ),
+        ),
+        confidence=1.0,
+    )
+
+
 def _deps(invocation: _FakeInvocation) -> PlannerDeps:
     from dss.core.provider_discovery.models import DiscoveryResult
 
@@ -98,6 +114,7 @@ def _deps(invocation: _FakeInvocation) -> PlannerDeps:
             target_lang="en",
             channel="web",
         ),
+        intent=_intent(),
         discovery=DiscoveryResult(
             answers={}, capabilities={0: (CAPABILITY,)}, failures={}, events=()
         ),
@@ -289,3 +306,25 @@ async def test_a_facility_select_carries_the_search_origin() -> None:
     assert invocation.calls[0]["location"] == {
         "geo": {"type": "Point", "coordinates": [73.7898, 19.9975]}
     }
+
+
+async def test_select_states_the_ask_category_not_the_advertised_one() -> None:
+    """The seam again: `_select` has to find the ask behind `ask_index`.
+
+    A unit test hands `build_resource_attributes` a category by hand and so
+    agrees with whatever it was given. Driving the real tool is what catches
+    the category still being read off the discovered capability — which is how
+    a scheme ask reached a provider labelled as a crop question.
+    """
+
+    invocation = _FakeInvocation()
+    agent = build_planner_agent(skills=(_skill_with("select"),))
+    deps = _deps(invocation)
+    # The capability advertises Market; the ask is about a scheme.
+    deps.intent = _intent(SubjectCategory.SCHEME)
+
+    with agent.override(model=FunctionModel(_calls_select_then_answers)):
+        await agent.run("am I eligible for PM-KISAN", deps=deps)
+
+    assert CAPABILITY.observed_categories == ("Market",)
+    assert invocation.calls[0]["subjectCategories"] == ["Scheme"]

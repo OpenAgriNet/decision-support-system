@@ -89,6 +89,7 @@ def build_plan(
         )
         deps = PlannerDeps(
             turn=turn,
+            intent=intent,
             discovery=discovery,
             schemas=schemas,
             schema_context_index=schema_context_index,

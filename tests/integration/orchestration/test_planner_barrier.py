@@ -18,6 +18,7 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
+from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
 from dss.core.moderation.models import ModerationDecision, Outcome, ReasonCode
 from dss.core.planner.models import Skill, Verdict
 from dss.core.planner.validation import DomainSchema
@@ -86,6 +87,21 @@ def _skill_with(*tool_names: str) -> Skill:
     )
 
 
+def _intent(category: SubjectCategory = SubjectCategory.MARKET) -> Intent:
+    """One ask at index 0 — the only index these tests' discovery uses."""
+
+    return Intent(
+        asks=(
+            Ask(
+                agriculture_subjects="paddy",
+                subject_categories=category,
+                interaction_type=InteractionType.OBSERVE,
+            ),
+        ),
+        confidence=1.0,
+    )
+
+
 def _deps(invocation: _RecordingInvocation, verdict: Verdict) -> PlannerDeps:
     return PlannerDeps(
         turn=UserTurn(
@@ -97,6 +113,7 @@ def _deps(invocation: _RecordingInvocation, verdict: Verdict) -> PlannerDeps:
             target_lang="en",
             channel="web",
         ),
+        intent=_intent(),
         discovery=DiscoveryResult(
             answers={}, capabilities={0: (CAPABILITY,)}, failures={}, events=()
         ),

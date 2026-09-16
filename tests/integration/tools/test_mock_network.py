@@ -101,6 +101,7 @@ def _planner_attributes(capability: ProviderCapability, model_filled: dict) -> d
 
     return build_resource_attributes(
         capability=capability,
+        subject_category="Weather",
         turn=UserTurn(
             original_query="q",
             enriched_query="q",

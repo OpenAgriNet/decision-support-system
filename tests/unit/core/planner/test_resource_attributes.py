@@ -1,9 +1,9 @@
 """Tier 1 — assembling resourceAttributes for a /select call.
 
 Structural fields (@context, @type, subjectCategories, location) are built
-here from discovery data and the turn; the model's own resource_attributes
-(e.g. topics, a resolved commodity code) are merged on top. No network, no
-framework.
+here from the schema pack, the ask and the turn; the model's own
+resource_attributes (e.g. topics, a resolved commodity code) are merged on
+top. No network, no framework.
 """
 
 from __future__ import annotations
@@ -61,6 +61,7 @@ def _turn(*, location: Location | None) -> UserTurn:
 
 def test_builds_context_type_and_subject_categories() -> None:
     resource_attributes = build_resource_attributes(
+        subject_category="Market",
         capability=_capability(),
         turn=_turn(location=None),
         model_filled={},
@@ -77,6 +78,7 @@ def test_builds_context_type_and_subject_categories() -> None:
 
 def test_omits_location_when_turn_has_none() -> None:
     resource_attributes = build_resource_attributes(
+        subject_category="Market",
         capability=_capability(),
         turn=_turn(location=None),
         model_filled={},
@@ -100,6 +102,7 @@ def test_includes_location_from_turn_geometry() -> None:
 
     location = Location(geometry=Geometry(coordinates=[72.93, 22.56]))
     resource_attributes = build_resource_attributes(
+        subject_category="Market",
         capability=_capability(),
         turn=_turn(location=location),
         model_filled={},
@@ -115,6 +118,7 @@ def test_includes_location_from_turn_geometry() -> None:
 
 def test_merges_model_filled_fields_on_top() -> None:
     resource_attributes = build_resource_attributes(
+        subject_category="Market",
         capability=_capability(),
         turn=_turn(location=None),
         model_filled={"commodity": {"code": "PADDY", "name": "Paddy"}},
@@ -127,6 +131,7 @@ def test_merges_model_filled_fields_on_top() -> None:
 
 def test_model_filled_cannot_override_a_structural_field() -> None:
     resource_attributes = build_resource_attributes(
+        subject_category="Market",
         capability=_capability(),
         turn=_turn(location=None),
         model_filled={"@type": "something-else"},
@@ -149,6 +154,7 @@ def test_the_discovered_attributes_are_echoed_back() -> None:
     """
 
     resource_attributes = build_resource_attributes(
+        subject_category="Market",
         capability=_capability(
             advertised={
                 "market": {
@@ -183,6 +189,7 @@ def test_the_model_narrows_a_discovered_list() -> None:
     adding to it, so the call asks for Onion alone."""
 
     resource_attributes = build_resource_attributes(
+        subject_category="Market",
         capability=_capability(
             advertised={
                 "supportedCommodities": [
@@ -213,6 +220,7 @@ def test_a_provider_fact_is_not_echoed_as_a_filter() -> None:
     """
 
     resource_attributes = build_resource_attributes(
+        subject_category="Market",
         capability=_capability(
             advertised={
                 "supportedParameters": ["Rainfall", "Temperature"],
@@ -265,6 +273,7 @@ def test_nothing_outside_the_filterable_set_reaches_the_request() -> None:
 
     filterable = ("supportedObservationTypes", "supportedParameters", "location")
     resource_attributes = build_resource_attributes(
+        subject_category="Market",
         capability=_capability(advertised=advertised),
         turn=_turn(location=None),
         model_filled={},
@@ -290,6 +299,7 @@ def test_a_discovered_location_wins_over_the_turns_geometry() -> None:
     facility_geometry = {"geo": {"type": "Point", "coordinates": [72.83, 18.94]}}
 
     resource_attributes = build_resource_attributes(
+        subject_category="Market",
         capability=_capability(advertised={"location": facility_geometry}),
         turn=_turn(location=Location(geometry=Geometry(coordinates=[74.06, 18.57]))),
         model_filled={},
@@ -306,6 +316,7 @@ def test_the_turns_geometry_fills_a_location_nobody_supplied() -> None:
     place the forecast is for."""
 
     resource_attributes = build_resource_attributes(
+        subject_category="Market",
         capability=_capability(advertised={"supportedParameters": ["Rainfall"]}),
         turn=_turn(location=Location(geometry=Geometry(coordinates=[74.06, 18.57]))),
         model_filled={},
@@ -329,6 +340,7 @@ def test_narrowing_an_advertised_list_keeps_the_whole_item() -> None:
     """
 
     resource_attributes = build_resource_attributes(
+        subject_category="Market",
         capability=_capability(
             advertised={
                 "supportedCommodities": [
@@ -354,6 +366,7 @@ def test_an_authored_list_is_not_matched_against_anything() -> None:
     to select from. It passes through as written."""
 
     resource_attributes = build_resource_attributes(
+        subject_category="Market",
         capability=_capability(advertised={"supportedParameters": ["Rainfall"]}),
         turn=_turn(location=None),
         model_filled={"parameters": [{"parameter": "Rainfall"}]},
@@ -369,6 +382,7 @@ def test_an_item_matching_nothing_advertised_is_sent_as_written() -> None:
     provider's call to refuse, not ours to drop silently."""
 
     resource_attributes = build_resource_attributes(
+        subject_category="Market",
         capability=_capability(
             advertised={"supportedCommodities": [{"code": "23", "name": "Onion"}]}
         ),
@@ -386,6 +400,7 @@ def test_a_scalar_list_is_left_alone() -> None:
     are no items to select between, so the model's value stands."""
 
     resource_attributes = build_resource_attributes(
+        subject_category="Market",
         capability=_capability(
             advertised={"supportedPriceFields": ["Minimum", "Maximum", "Modal"]}
         ),
@@ -407,6 +422,7 @@ def test_a_value_of_a_different_kind_is_left_alone() -> None:
     """
 
     resource_attributes = build_resource_attributes(
+        subject_category="Market",
         capability=_capability(advertised={"commodityGroup": "Vegetables"}),
         turn=_turn(location=None),
         model_filled={"commodityGroup": {"code": "VEG"}},
@@ -428,6 +444,7 @@ def test_a_mixed_advertised_list_skips_what_it_cannot_match() -> None:
     """
 
     resource_attributes = build_resource_attributes(
+        subject_category="Market",
         capability=_capability(
             advertised={
                 "supportedCommodities": [
@@ -457,6 +474,7 @@ def test_narrowing_an_advertised_object_merges_into_it() -> None:
     """
 
     resource_attributes = build_resource_attributes(
+        subject_category="Market",
         capability=_capability(
             advertised={
                 "market": {
@@ -496,6 +514,7 @@ def test_the_turns_geometry_is_not_sent_to_a_pack_without_a_location() -> None:
     """
 
     resource_attributes = build_resource_attributes(
+        subject_category="Market",
         capability=_capability(advertised={"market": {"marketCode": "1806"}}),
         turn=_turn(location=Location(geometry=Geometry(coordinates=[74.06, 18.57]))),
         model_filled={},
@@ -519,6 +538,7 @@ def test_the_turns_geometry_reaches_a_pack_that_declares_a_location() -> None:
     """
 
     resource_attributes = build_resource_attributes(
+        subject_category="Market",
         capability=_capability(
             advertised={"supportedFacilityTypes": ["KrishiVigyanKendra"]}
         ),
@@ -548,6 +568,7 @@ def test_the_turns_location_wins_over_the_models() -> None:
     """
 
     resource_attributes = build_resource_attributes(
+        subject_category="Market",
         capability=_capability(),
         turn=_turn(
             location=Location(geometry=Geometry(coordinates=[73.7898, 19.9975]))
@@ -561,3 +582,32 @@ def test_the_turns_location_wins_over_the_models() -> None:
     assert resource_attributes["location"] == {
         "geo": {"type": "Point", "coordinates": [73.7898, 19.9975]}
     }
+
+
+def test_the_subject_category_comes_from_the_ask_not_the_advertisement() -> None:
+    """A resource advertises what it serves; the ask says what was wanted.
+
+    Echoing `subjectCategories` back from the discover response stated the
+    provider's own advertisement as the question's category — so a scheme ask
+    discovered by category alone (ADR-0009) selected a resource advertising
+    `Crop` as a crop question.
+    """
+
+    capability = ProviderCapability(
+        provider_id="kvk",
+        provider_name="KVK",
+        capability="openagrinet:MandiPrice",
+        resource_id="res:kvk:advisory",
+        observed_categories=("Crop", "Practice"),
+    )
+
+    resource_attributes = build_resource_attributes(
+        capability=capability,
+        subject_category="Scheme",
+        turn=_turn(location=None),
+        model_filled={},
+        schema_context_index=_SCHEMA_CONTEXT_INDEX,
+        filterable=_MANDI_FILTERABLE,
+    )
+
+    assert resource_attributes["subjectCategories"] == ["Scheme"]
