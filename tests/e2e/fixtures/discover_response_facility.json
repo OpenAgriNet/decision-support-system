@@ -1,0 +1,97 @@
+{
+  "context": {
+    "action": "on_discover",
+    "version": "2.0.0",
+    "transactionId": "9a29e7bc-acf7-4307-bb95-9228df514229",
+    "messageId": "4debcea0-6292-4189-93f5-a10f4847cc6a",
+    "timestamp": "2026-09-16T05:16:02Z"
+  },
+  "message": {
+    "catalogs": [
+      {
+        "descriptor": {
+          "code": "AGRI_FACILITY_POCRA",
+          "name": "PoCRA agriculture facility locator",
+          "shortDesc": "On-demand search for custom hiring centres, Krishi Vigyan Kendras, warehouses and soil testing laboratories across Maharashtra."
+        },
+        "id": "catalog:agriculture-facility:pocra",
+        "isActive": true,
+        "provider": {
+          "id": "pocra",
+          "descriptor": {
+            "code": "POCRA",
+            "name": "PoCRA, Government of Maharashtra"
+          }
+        },
+        "resources": [
+          {
+            "id": "resource:agriculture-facility:pocra:facility-search",
+            "descriptor": {
+              "code": "AGRI_FACILITY_POCRA_SEARCH",
+              "name": "Nearby agriculture facility search",
+              "longDesc": "Invoke this Resource with a fulfillment stop carrying a Point location and the facility types wanted to obtain one Direct AgricultureFacility Resource per facility. Results are ranked by the Provider's own distance from the search origin."
+            },
+            "resourceAttributes": {
+              "@type": "openagrinet:AgricultureFacility",
+              "source": {
+                "sourceId": "pocra",
+                "sourceUri": "https://mahapocra.gov.in/",
+                "sourceName": "PoCRA, Government of Maharashtra"
+              },
+              "@context": "https://openagrinet.github.io/network-specs/schema/AgricultureFacility/v0.1/context.jsonld",
+              "languages": [
+                "en",
+                "mr"
+              ],
+              "coverageAreas": [
+                {
+                  "areaCode": "IN-MH",
+                  "areaName": "Maharashtra",
+                  "areaLevel": "State",
+                  "codeScheme": "ISO-3166-2"
+                },
+                {
+                  "type": "Polygon",
+                  "coordinates": [
+                    [
+                      [
+                        72.6,
+                        15.6
+                      ],
+                      [
+                        80.9,
+                        15.6
+                      ],
+                      [
+                        80.9,
+                        22.1
+                      ],
+                      [
+                        72.6,
+                        22.1
+                      ],
+                      [
+                        72.6,
+                        15.6
+                      ]
+                    ]
+                  ]
+                }
+              ],
+              "informationMode": "OnDemand",
+              "subjectCategories": [
+                "Facility"
+              ],
+              "supportedFacilityTypes": [
+                "CustomHiringCentre",
+                "KrishiVigyanKendra",
+                "Warehouse",
+                "SoilTestingFacility"
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "@context": [
+    "https://openagrinet.github.io/network-specs/schema/AgricultureResource/v0.1/context.jsonld",
+    {
+      "@version": 1.1,
+      "openagrinet": "https://openagrinet.github.io/network-specs/vocab#",
+      "AgricultureFacility": "openagrinet:AgricultureFacility",
+      "supportedFacilityTypes": {
+        "@id": "openagrinet:supportedFacilityTypes",
+        "@container": "@set"
+      },
+      "facilityType": "openagrinet:facilityType",
+      "location": {
+        "@id": "openagrinet:location",
+        "@context": {
+          "geo": {
+            "@id": "beckn:geo",
+            "@context": "https://schema.beckn.io/GeoJSONGeometry/v2.0/context.jsonld"
+          },
+          "address": {
+            "@id": "beckn:address",
+            "@context": "https://schema.beckn.io/Address/v2.0/context.jsonld"
+          }
+        }
+      },
+      "address": {
+        "@id": "openagrinet:address",
+        "@context": "https://schema.beckn.io/Address/v2.0/context.jsonld"
+      },
+      "services": {
+        "@id": "openagrinet:services",
+        "@container": "@set",
+        "@context": "https://schema.beckn.io/Descriptor/v2.1/context.jsonld"
+      },
+      "capacity": "openagrinet:capacity",
+      "publicContact": {
+        "@id": "openagrinet:publicContact",
+        "@context": "https://schema.beckn.io/Contact/v2.0/context.jsonld"
+      },
+      "website": {
+        "@id": "openagrinet:website",
+        "@type": "@id"
+      },
+      "source": "openagrinet:source",
+      "lastUpdatedAt": "openagrinet:lastUpdatedAt",
+      "value": "openagrinet:value",
+      "unit": "openagrinet:unit",
+      "basis": "openagrinet:capacityBasis"
+    }
+  ]
+}

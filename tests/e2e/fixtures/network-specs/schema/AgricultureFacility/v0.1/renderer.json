@@ -1,0 +1,8 @@
+{
+  "schema": "AgricultureFacility",
+  "version": "0.1.0",
+  "card_template": "{{informationMode}} | {{supportedFacilityTypes}} | {{facilityType}} | {{address.addressLocality}} | {{address.addressRegion}}",
+  "detail_template": "Mode: {{informationMode}}\nSupported facilities: {{supportedFacilityTypes}}\nFacility: {{facilityType}}\nAddress: {{address.streetAddress}}, {{address.addressLocality}}, {{address.addressRegion}} {{address.postalCode}}\nServices: {{services}}\nCapacity: {{capacity.value}} {{capacity.unit}}\nLast updated: {{lastUpdatedAt}}",
+  "html": "<div class=\"oan-agriculture-facility\"><strong>{{facilityType}}</strong><span>{{address.addressLocality}} · {{address.addressRegion}}</span></div>",
+  "html_detail": "<div class=\"oan-agriculture-facility-detail\"><p><strong>Mode:</strong> {{informationMode}}</p><p><strong>Supported facilities:</strong> {{supportedFacilityTypes}}</p><p><strong>Facility:</strong> {{facilityType}}</p><p><strong>Address:</strong> {{address.streetAddress}}, {{address.addressLocality}}, {{address.addressRegion}} {{address.postalCode}}</p><p><strong>Services:</strong> {{services}}</p><p><strong>Last updated:</strong> {{lastUpdatedAt}}</p></div>"
+}
