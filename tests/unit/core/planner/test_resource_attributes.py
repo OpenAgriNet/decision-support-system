@@ -105,6 +105,7 @@ def test_includes_location_from_turn_geometry() -> None:
         model_filled={},
         schema_context_index=_SCHEMA_CONTEXT_INDEX,
         filterable=("location.geo", "supportedParameters"),
+        declared=("location", "supportedParameters"),
     )
 
     assert resource_attributes["location"] == {
@@ -310,6 +311,7 @@ def test_the_turns_geometry_fills_a_location_nobody_supplied() -> None:
         model_filled={},
         schema_context_index=_SCHEMA_CONTEXT_INDEX,
         filterable=("location", "supportedParameters"),
+        declared=("location", "supportedParameters"),
     )
 
     assert resource_attributes["location"] == {
@@ -500,6 +502,37 @@ def test_the_turns_geometry_is_not_sent_to_a_pack_without_a_location() -> None:
         schema_context_index=_SCHEMA_CONTEXT_INDEX,
         # MandiPrice's own paths: a market location, and no top-level one.
         filterable=("market.marketCode", "market.location.geo"),
+        declared=("market",),
     )
 
     assert "location" not in resource_attributes
+
+
+def test_the_turns_geometry_reaches_a_pack_that_declares_a_location() -> None:
+    """A facility search is "what is near *here*", and the point is the query.
+
+    `AgricultureFacility` declares `location` but does not list it in
+    `filterable_paths` — it is the search origin, not a filter over advertised
+    values — and its own resource says to "invoke this Resource with a
+    fulfillment stop carrying a Point location". Gating on the filterable list
+    dropped it, and the provider had nothing to search around.
+    """
+
+    resource_attributes = build_resource_attributes(
+        capability=_capability(
+            advertised={"supportedFacilityTypes": ["KrishiVigyanKendra"]}
+        ),
+        turn=_turn(
+            location=Location(geometry=Geometry(coordinates=[73.7898, 19.9975]))
+        ),
+        model_filled={"facilityType": "KrishiVigyanKendra"},
+        schema_context_index=_SCHEMA_CONTEXT_INDEX,
+        filterable=("supportedFacilityTypes", "facilityType"),
+        # The pack declares `location` as a property without listing it as a
+        # filter, which is how the flattened fields report it.
+        declared=("supportedFacilityTypes", "facilityType", "location"),
+    )
+
+    assert resource_attributes["location"] == {
+        "geo": {"type": "Point", "coordinates": [73.7898, 19.9975]}
+    }

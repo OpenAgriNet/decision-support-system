@@ -100,6 +100,10 @@ async def _select(
         model_filled=resource_attributes,
         schema_context_index=deps.schema_context_index,
         filterable=schema.filterable,
+        # The fields the pack declares, which is not the same as the fields it
+        # lets a caller filter on: `AgricultureFacility` declares `location`
+        # and leaves it out of `filterable_paths`.
+        declared=tuple(schema.field_types),
     )
 
     try:
