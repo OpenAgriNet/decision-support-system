@@ -1,0 +1,106 @@
+{
+  "context": {
+    "action": "on_discover",
+    "version": "2.0.0",
+    "transactionId": "3c67dc05-6ba2-4ab4-bb7c-377e16a5ab5b",
+    "messageId": "74ad565e-5abf-4706-8552-0e7be61c0b00",
+    "timestamp": "2026-09-16T06:58:18Z"
+  },
+  "message": {
+    "catalogs": [
+      {
+        "descriptor": {
+          "code": "WEATHER_MAUSAMGRAM",
+          "name": "IMD Mausamgram daily weather forecast",
+          "shortDesc": "On-demand five-day daily weather forecast for any point in the IMD numerical weather prediction domain."
+        },
+        "id": "catalog:weather-observation:mausamgram",
+        "isActive": true,
+        "provider": {
+          "id": "mausamgram",
+          "descriptor": {
+            "code": "MAUSAMGRAM",
+            "name": "IMD Mausamgram"
+          }
+        },
+        "resources": [
+          {
+            "id": "resource:weather-observation:mausamgram:daily-forecast",
+            "descriptor": {
+              "code": "WEATHER_MAUSAMGRAM_DAILY_FORECAST",
+              "name": "Five-day daily point weather forecast",
+              "longDesc": "Invoke this Resource with a Point location to obtain one Direct WeatherObservation Resource per forecast day."
+            },
+            "resourceAttributes": {
+              "@type": "openagrinet:WeatherObservation",
+              "source": {
+                "sourceId": "mausamgram",
+                "sourceUri": "https://mausamgram.imd.gov.in/",
+                "sourceName": "IMD Mausamgram NWP"
+              },
+              "@context": "https://openagrinet.github.io/network-specs/schema/WeatherObservation/v0.1/context.jsonld",
+              "languages": [
+                "en"
+              ],
+              "coverageAreas": [
+                {
+                  "areaCode": "IN",
+                  "areaName": "India",
+                  "areaLevel": "Country",
+                  "codeScheme": "ISO-3166-1"
+                },
+                {
+                  "type": "Polygon",
+                  "coordinates": [
+                    [
+                      [
+                        68,
+                        6.5
+                      ],
+                      [
+                        97.5,
+                        6.5
+                      ],
+                      [
+                        97.5,
+                        37.5
+                      ],
+                      [
+                        68,
+                        37.5
+                      ],
+                      [
+                        68,
+                        6.5
+                      ]
+                    ]
+                  ]
+                }
+              ],
+              "forecastHorizon": "P5D",
+              "informationMode": "OnDemand",
+              "updateFrequency": "P1D",
+              "subjectCategories": [
+                "Weather"
+              ],
+              "supportedParameters": [
+                "Rainfall",
+                "Temperature",
+                "Humidity",
+                "WindSpeed",
+                "WindDirection",
+                "Alert"
+              ],
+              "geographicGranularities": [
+                "Point"
+              ],
+              "supportedObservationTypes": [
+                "Forecast"
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

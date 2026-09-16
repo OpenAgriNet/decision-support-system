@@ -1,0 +1,8 @@
+{
+  "schema": "WeatherObservation",
+  "version": "0.1.0",
+  "card_template": "{{informationMode}} | {{observationType}} | {{observedAt}} {{modelRunAt}} | {{location.geo.coordinates}}",
+  "detail_template": "Mode: {{informationMode}}\nSupported parameters: {{supportedParameters}}\nType: {{observationType}}\nObserved: {{observedAt}}\nModel run: {{modelRunAt}}\nValid: {{validity}}\nGenerated: {{generatedAt}}\nSource: {{source.sourceName}}\nParameters: {{parameters}}",
+  "html": "<div class=\"oan-weather-observation\"><strong>{{informationMode}}</strong><span>{{observationType}}</span><span>{{generatedAt}}</span></div>",
+  "html_detail": "<div class=\"oan-weather-observation-detail\"><p><strong>Mode:</strong> {{informationMode}}</p><p><strong>Supported parameters:</strong> {{supportedParameters}}</p><p><strong>Source:</strong> {{source.sourceName}}</p><p><strong>Observed:</strong> {{observedAt}}</p><p><strong>Model run:</strong> {{modelRunAt}}</p><p><strong>Valid:</strong> {{validity}}</p><p><strong>Generated:</strong> {{generatedAt}}</p><p><strong>Parameters:</strong> {{parameters}}</p></div>"
+}

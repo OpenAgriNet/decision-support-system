@@ -1,0 +1,92 @@
+{
+  "id": "https://openagrinet.github.io/network-specs/schema/WeatherObservation/v0.1",
+  "name": "Weather Observation Attributes",
+  "version": "0.1.0",
+  "protocol_version": "2.0",
+  "semantic_model": "generalised",
+  "included_schemas": [
+    "WeatherObservation"
+  ],
+  "discovery_fields": [
+    "informationMode",
+    "subjectCategories",
+    "supportedObservationTypes",
+    "supportedParameters",
+    "forecastHorizon",
+    "updateFrequency",
+    "geographicGranularities",
+    "coverageAreas"
+  ],
+  "result_fields": [
+    "observationType",
+    "parameters[].parameter",
+    "parameters[].values.instantaneous",
+    "parameters[].values.minimum",
+    "parameters[].values.maximum",
+    "parameters[].values.mean",
+    "parameters[].values.sum",
+    "location",
+    "generatedAt",
+    "observedAt",
+    "modelRunAt",
+    "validity",
+    "source"
+  ],
+  "indexable_paths": [
+    "beckn:resourceAttributes.informationMode",
+    "beckn:resourceAttributes.subjectCategories",
+    "beckn:resourceAttributes.supportedObservationTypes",
+    "beckn:resourceAttributes.supportedParameters",
+    "beckn:resourceAttributes.geographicGranularities",
+    "beckn:resourceAttributes.observationType",
+    "beckn:resourceAttributes.source.sourceId",
+    "beckn:resourceAttributes.location.geo",
+    "beckn:resourceAttributes.parameters[].parameter",
+    "beckn:resourceAttributes.parameters[].values.instantaneous",
+    "beckn:resourceAttributes.parameters[].values.minimum",
+    "beckn:resourceAttributes.parameters[].values.maximum",
+    "beckn:resourceAttributes.parameters[].values.mean",
+    "beckn:resourceAttributes.parameters[].values.sum",
+    "beckn:resourceAttributes.generatedAt",
+    "beckn:resourceAttributes.observedAt",
+    "beckn:resourceAttributes.modelRunAt",
+    "beckn:resourceAttributes.validity.startsAt",
+    "beckn:resourceAttributes.validity.endsAt"
+  ],
+  "filterable_paths": [
+    "beckn:resourceAttributes.informationMode",
+    "beckn:resourceAttributes.subjectCategories",
+    "beckn:resourceAttributes.supportedObservationTypes",
+    "beckn:resourceAttributes.supportedParameters",
+    "beckn:resourceAttributes.geographicGranularities",
+    "beckn:resourceAttributes.observationType",
+    "beckn:resourceAttributes.source.sourceId",
+    "beckn:resourceAttributes.location.geo",
+    "beckn:resourceAttributes.parameters[].parameter",
+    "beckn:resourceAttributes.parameters[].values.instantaneous",
+    "beckn:resourceAttributes.parameters[].values.minimum",
+    "beckn:resourceAttributes.parameters[].values.maximum",
+    "beckn:resourceAttributes.parameters[].values.mean",
+    "beckn:resourceAttributes.parameters[].values.sum"
+  ],
+  "sortable_paths": [
+    "beckn:resourceAttributes.observedAt",
+    "beckn:resourceAttributes.modelRunAt",
+    "beckn:resourceAttributes.generatedAt"
+  ],
+  "privacy_notes": [
+    "A precise location becomes sensitive when linked to a person or private farm profile; such linkage is outside this public Resource schema."
+  ],
+  "beckn_dependencies": {
+    "Catalog": "2.2",
+    "Provider": "2.1",
+    "Resource": "2.0",
+    "Attributes": "2.0",
+    "Descriptor": "2.1",
+    "Location": "2.0",
+    "GeoJSONGeometry": "2.0",
+    "Address": "2.0"
+  },
+  "interaction_type": "Observe",
+  "outcome_type": "openagrinet:WeatherObservation"
+}

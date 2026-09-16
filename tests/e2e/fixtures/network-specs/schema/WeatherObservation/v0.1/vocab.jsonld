@@ -1,0 +1,120 @@
+{
+  "@context": {
+    "openagrinet": "https://openagrinet.github.io/network-specs/vocab#",
+    "rdfs": "http://www.w3.org/2000/01/rdf-schema#"
+  },
+  "@graph": [
+    {
+      "@id": "openagrinet:WeatherObservation",
+      "@type": "rdfs:Class",
+      "rdfs:label": "Weather Observation",
+      "rdfs:comment": "Measured or forecast weather information used in agriculture."
+    },
+    {
+      "@id": "openagrinet:supportedObservationTypes",
+      "@type": "rdfs:Property",
+      "rdfs:label": "supported observation types"
+    },
+    {
+      "@id": "openagrinet:supportedParameters",
+      "@type": "rdfs:Property",
+      "rdfs:label": "supported parameters"
+    },
+    {
+      "@id": "openagrinet:forecastHorizon",
+      "@type": "rdfs:Property",
+      "rdfs:label": "forecast horizon"
+    },
+    {
+      "@id": "openagrinet:updateFrequency",
+      "@type": "rdfs:Property",
+      "rdfs:label": "update frequency"
+    },
+    {
+      "@id": "openagrinet:geographicGranularities",
+      "@type": "rdfs:Property",
+      "rdfs:label": "geographic granularities"
+    },
+    {
+      "@id": "openagrinet:observationType",
+      "@type": "rdfs:Property",
+      "rdfs:label": "observation type"
+    },
+    {
+      "@id": "openagrinet:source",
+      "@type": "rdfs:Property",
+      "rdfs:label": "source"
+    },
+    {
+      "@id": "openagrinet:location",
+      "@type": "rdfs:Property",
+      "rdfs:label": "location"
+    },
+    {
+      "@id": "openagrinet:generatedAt",
+      "@type": "rdfs:Property",
+      "rdfs:label": "generated at"
+    },
+    {
+      "@id": "openagrinet:modelRunAt",
+      "@type": "rdfs:Property",
+      "rdfs:label": "model run at"
+    },
+    {
+      "@id": "openagrinet:validity",
+      "@type": "rdfs:Property",
+      "rdfs:label": "validity"
+    },
+    {
+      "@id": "openagrinet:parameters",
+      "@type": "rdfs:Property",
+      "rdfs:label": "parameters"
+    },
+    {
+      "@id": "openagrinet:parameter",
+      "@type": "rdfs:Property",
+      "rdfs:label": "parameter"
+    },
+    {
+      "@id": "openagrinet:values",
+      "@type": "rdfs:Property",
+      "rdfs:label": "values",
+      "rdfs:comment": "Statistical or instantaneous values reported for one weather parameter under a shared context."
+    },
+    {
+      "@id": "openagrinet:instantaneous",
+      "@type": "rdfs:Property",
+      "rdfs:label": "instantaneous value"
+    },
+    {
+      "@id": "openagrinet:minimum",
+      "@type": "rdfs:Property",
+      "rdfs:label": "minimum value"
+    },
+    {
+      "@id": "openagrinet:maximum",
+      "@type": "rdfs:Property",
+      "rdfs:label": "maximum value"
+    },
+    {
+      "@id": "openagrinet:mean",
+      "@type": "rdfs:Property",
+      "rdfs:label": "mean value"
+    },
+    {
+      "@id": "openagrinet:sum",
+      "@type": "rdfs:Property",
+      "rdfs:label": "sum value"
+    },
+    {
+      "@id": "openagrinet:unit",
+      "@type": "rdfs:Property",
+      "rdfs:label": "unit"
+    },
+    {
+      "@id": "openagrinet:observedAt",
+      "@type": "rdfs:Property",
+      "rdfs:label": "observed at"
+    }
+  ]
+}
