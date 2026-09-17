@@ -9,6 +9,7 @@ top. No network, no framework.
 from __future__ import annotations
 
 import json
+from datetime import date
 from pathlib import Path
 
 from dss.adapters.discovery.client import _advertised
@@ -611,3 +612,76 @@ def test_the_subject_category_comes_from_the_ask_not_the_advertisement() -> None
     )
 
     assert resource_attributes["subjectCategories"] == ["Scheme"]
+
+
+def test_mandi_price_carries_a_validity_window_the_pack_does_not_offer() -> None:
+    """TODO(#55): remove with the pack fix.
+
+    Agmarknet refuses a MandiPrice select without one —
+    `SCH_INVALID_FORMAT: this capability needs a validity window; it reports
+    prices over a date range` — but `MandiPrice`'s `profile.json` lists
+    `validity` under `result_fields` only, and its `attributes.yaml` calls it
+    "the period during which a current price snapshot should be treated as
+    applicable". By the pack it is an answer; by the provider it is required
+    on the request.
+
+    Sent from here rather than by the model: the field is not filterable, so
+    `validate_arguments` runs before this and would refuse it. Today's date,
+    because the turn carries no date and the provider advertised a current
+    snapshot.
+
+    Scoped to MandiPrice on purpose. No other pack declares `validity` as
+    anything a caller may send, and WeatherObservation answers today without
+    one — adding it there would turn a working call into a NACK.
+    """
+
+    resource_attributes = build_resource_attributes(
+        capability=_capability(),
+        subject_category="Market",
+        turn=_turn(location=None),
+        model_filled={},
+        schema_context_index=_SCHEMA_CONTEXT_INDEX,
+        filterable=_MANDI_FILTERABLE,
+        priced_on=date(2026, 9, 17),
+    )
+
+    assert resource_attributes["validity"] == {
+        "startsAt": "2026-09-17T00:00:00+05:30",
+        "endsAt": "2026-09-17T23:59:59+05:30",
+    }
+
+
+def test_no_other_capability_gets_a_validity_window() -> None:
+    """TODO(#55): remove with the pack fix.
+
+    The exception is the whole risk here, so its edge is what needs pinning.
+    `WeatherObservation` also declares `validity` as a result field and
+    answers correctly today without one — sending it there would put a
+    non-filterable field in a working call and earn a fresh NACK.
+    """
+
+    weather = ProviderCapability(
+        provider_id="mausamgram",
+        provider_name="IMD Mausamgram",
+        capability="openagrinet:WeatherObservation",
+        resource_id="resource:weather-observation:mausamgram:daily-forecast",
+        observed_categories=("Weather",),
+        advertised={},
+    )
+
+    resource_attributes = build_resource_attributes(
+        capability=weather,
+        subject_category="Weather",
+        turn=_turn(location=None),
+        model_filled={},
+        schema_context_index={
+            "openagrinet:WeatherObservation": (
+                "https://schemas.openagrinet.global/schema/"
+                "WeatherObservation/v0.1/context.jsonld"
+            )
+        },
+        filterable=("supportedParameters",),
+        priced_on=date(2026, 9, 17),
+    )
+
+    assert "validity" not in resource_attributes

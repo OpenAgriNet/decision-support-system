@@ -5,8 +5,9 @@ Pydantic AI.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+from datetime import UTC, date, datetime
 
 from pydantic_ai import Agent, ModelRetry, RunContext
 from pydantic_ai.models import Model
@@ -50,6 +51,10 @@ class PlannerDeps:
     # mistake into an AttributeError from inside a tool body.
     invocation: CapabilityInvocation
     verdict: Verdict
+    # TODO(#55): remove with the pack fix — only the MandiPrice validity
+    # exception in `build_resource_attributes` reads this. Injected rather
+    # than called inside core so a test can fix the day.
+    today: Callable[[], date] = lambda: datetime.now(UTC).date()
     raw_answers: list[tuple[int, DiscoveredAnswer]] = field(default_factory=list)
     failures: list[tuple[int, Failure]] = field(default_factory=list)
 
@@ -111,6 +116,12 @@ async def _select(
         # lets a caller filter on: `AgricultureFacility` declares `location`
         # and leaves it out of `filterable_paths`.
         declared=tuple(schema.field_types),
+        # TODO(#55): remove with the pack fix.
+        #
+        # Always today. Nothing reads a date out of the question yet, so a
+        # farmer asking about yesterday still gets today's window —
+        # `arrivalDate` is filterable and is where that will come from.
+        priced_on=deps.today(),
     )
 
     try:
