@@ -6,6 +6,8 @@ tool-calling machinery with the network (CapabilityInvocation) mocked.
 
 from __future__ import annotations
 
+from datetime import date
+
 from pydantic_ai.messages import (
     ModelMessage,
     ModelResponse,
@@ -328,3 +330,31 @@ async def test_select_states_the_ask_category_not_the_advertised_one() -> None:
 
     assert CAPABILITY.observed_categories == ("Market",)
     assert invocation.calls[0]["subjectCategories"] == ["Scheme"]
+
+
+async def test_a_mandi_select_carries_a_validity_window() -> None:
+    """TODO(#55): remove with the pack fix.
+
+    The seam, not either side of it. `build_resource_attributes` adds the
+    window, but only when the tool hands it a date — and nothing did, so the
+    unit test passed while every real select still went out without one.
+    Agmarknet refuses those: `SCH_INVALID_FORMAT: this capability needs a
+    validity window; it reports prices over a date range`.
+
+    A fixed clock, so the assertion names the day rather than recomputing it
+    the same way the code does and agreeing with itself.
+    """
+
+    invocation = _FakeInvocation()
+    agent = build_planner_agent(skills=(_skill_with("select"),))
+    deps = _deps(invocation)
+    deps.today = lambda: date(2026, 9, 17)
+
+    with agent.override(model=FunctionModel(_calls_select_then_answers)):
+        await agent.run("price of paddy", deps=deps)
+
+    assert invocation.calls, "select was never called"
+    assert invocation.calls[0]["validity"] == {
+        "startsAt": "2026-09-17T00:00:00+05:30",
+        "endsAt": "2026-09-17T23:59:59+05:30",
+    }

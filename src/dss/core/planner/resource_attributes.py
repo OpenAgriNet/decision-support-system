@@ -10,12 +10,55 @@ fact.
 
 from __future__ import annotations
 
+from datetime import date, datetime, time, timedelta, timezone
+
 from dss.core.provider_discovery.models import ProviderCapability
 from dss.core.shared.models import UserTurn
 
 # select is only called for an OnDemand capability — a Direct resource's
 # values are already in the catalog, so there is nothing to select.
 _ON_DEMAND = "OnDemand"
+
+# TODO(#55): remove all three of these with the pack fix.
+#
+# Agmarknet refuses a MandiPrice select without a validity window —
+# `SCH_INVALID_FORMAT: this capability needs a validity window; it reports
+# prices over a date range`. The pack disagrees: `profile.json` lists
+# `validity` under `result_fields` only, and `attributes.yaml` describes it as
+# "the period during which a current price snapshot should be treated as
+# applicable" — a property of the answer, not of the question. No pack lists
+# `validity` as filterable, so this cannot come from the model: it would be
+# refused by `validate_arguments`, which runs before this module.
+#
+# Only `profile.json` disagrees, though. `attributes.yaml` accepts the field
+# on a select — a body carrying this window validates against the pack's own
+# schema — so what is being worked around is the filterable list, not the
+# contract. That is why the fix upstream is a one-line `filterable_paths`
+# entry rather than a schema change.
+#
+# Scoped to MandiPrice deliberately. WeatherObservation also declares
+# `validity` as a result field and answers correctly today without one, so
+# sending it there would turn a working call into a NACK. When the pack
+# settles what a caller may send, this goes and the field comes from
+# `filterable_paths` like every other.
+_VALIDITY_EXCEPTION_CAPABILITY = "openagrinet:MandiPrice"
+# The provider publishes its own `validity` in IST, and a mandi's trading day
+# is a local day rather than a UTC one — a UTC window would start and end at
+# 05:30 local and straddle two trading days.
+_MANDI_TZ = timezone(timedelta(hours=5, minutes=30))
+
+
+def _validity_window(day: date) -> dict[str, str]:
+    """One whole local day, as the `TimePeriod` the pack defines.
+
+    `startsAt` and `endsAt` are both `date-time`, and `additionalProperties`
+    is false — so these two keys, in this format, and nothing else.
+    """
+
+    return {
+        "startsAt": datetime.combine(day, time.min, tzinfo=_MANDI_TZ).isoformat(),
+        "endsAt": datetime.combine(day, time(23, 59, 59), tzinfo=_MANDI_TZ).isoformat(),
+    }
 
 
 def _location_field(turn: UserTurn) -> dict | None:
@@ -95,6 +138,7 @@ def build_resource_attributes(
     schema_context_index: dict[str, str],
     filterable: tuple[str, ...],
     declared: tuple[str, ...] = (),
+    priced_on: date | None = None,
 ) -> dict:
     """Build the full resourceAttributes object: structural fields first, the
     model's fields merged on top — but structural fields always win.
@@ -188,4 +232,21 @@ def build_resource_attributes(
     # WeatherObservation is the one pack that offers `location.geo`, and the
     # one where this went wrong — so this is the rule the others already follow
     # by accident, made explicit.
-    return {**echoed, **narrowed, **structural, **turn_location}
+    # TODO(#55): remove with the pack fix — see `_VALIDITY_EXCEPTION_CAPABILITY`.
+    #
+    # Last, like the turn's location, and for the same reason: what the pack
+    # declares about `validity` describes an answer, so anything echoed or
+    # model-filled under that name is not the window the provider is asking
+    # for. `priced_on` is only absent in tests that predate this.
+    #
+    # The day the farmer asked about, which is today only by default — the
+    # caller resolves "yesterday" or a named date before this. A window is
+    # what the provider wants, so even one day arrives as a start and an end.
+    validity: dict = {}
+    if (
+        capability.capability == _VALIDITY_EXCEPTION_CAPABILITY
+        and priced_on is not None
+    ):
+        validity["validity"] = _validity_window(priced_on)
+
+    return {**echoed, **narrowed, **structural, **turn_location, **validity}
