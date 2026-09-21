@@ -14,7 +14,9 @@ from collections.abc import AsyncIterator
 
 import pytest
 
+from dss.adapters.llm.stub import StubLLM
 from dss.adapters.sinks.memory import MemoryTurnSink
+from dss.core.planner.models import Identity
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.shared.models import (
     Claim,
@@ -25,6 +27,7 @@ from dss.core.shared.models import (
     TurnStatus,
     UserTurn,
 )
+from dss.core.stream_response.service import build_stream_response
 from dss.orchestration.orchestrator import Components, Orchestrator
 from tests.integration.orchestration.test_orchestrator import (
     _ANSWERED_EVIDENCE,
@@ -195,3 +198,25 @@ async def test_a_failure_part_way_through_leaves_the_pieces_already_sent() -> No
     assert [e.text for e in seen if isinstance(e, ClaimDelta)] == ["Wheat is ", "2,2"]
     assert not any(isinstance(e, TurnFinished) for e in seen)
     assert isinstance(seen[0], TurnStarted)
+
+
+async def test_the_real_component_streams_through_the_runner() -> None:
+    """Everything above is faked at the composer. This one wires the real
+    `build_stream_response` over a stub model, so the chain from the component
+    to the event stream is exercised rather than assumed."""
+
+    chunks = ("Wheat is ", "2,275 Rs [1].")
+    compose_stream = build_stream_response(
+        identity=Identity(
+            name="Kisan Mitra",
+            persona="A calm, practical farm advisor.",
+            boundaries="Never gives financial advice.",
+        ),
+        llm=StubLLM(text_chunks=chunks),
+    )
+    orch, _ = _build(compose_stream=compose_stream)
+
+    events = await _collect(orch)
+
+    assert [e.text for e in events if isinstance(e, ClaimDelta)] == list(chunks)
+    assert events[-1].content[0].text == "".join(chunks)
