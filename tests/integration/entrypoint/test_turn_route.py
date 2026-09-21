@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 from dss.config.settings import Settings
 from dss.core.shared.models import (
     Claim,
+    ClaimDelta,
     TextBlock,
     TurnFinished,
     TurnOutcome,
@@ -31,7 +32,15 @@ ANSWER = TurnFinished(
     outcome=TurnOutcome(status=TurnStatus.ANSWERED, confidence=92),
     content=(TextBlock(text="Rs 2,275 per quintal.", source_ids=()),),
 )
-EVENTS = [TurnStarted(), Claim(content=ANSWER.content[0]), ANSWER]
+# What the runner actually produces: the composer's pieces, then the finished
+# block, then the terminal event.
+DELTAS = ("Rs 2,2", "75 per quin", "tal.")
+EVENTS = [
+    TurnStarted(),
+    *[ClaimDelta(text=text) for text in DELTAS],
+    Claim(content=ANSWER.content[0]),
+    ANSWER,
+]
 
 
 def client(runner=None, **settings_overrides) -> tuple[TestClient, FakeRunner]:
@@ -58,6 +67,9 @@ def test_a_streaming_turn_returns_the_event_sequence(a_body):
     assert response.headers["content-type"].startswith(SSE)
     assert [name for name, _ in frames(response.text)] == [
         "turn.created",
+        "claim.delta",
+        "claim.delta",
+        "claim.delta",
         "claim.completed",
         "turn.completed",
     ]
@@ -65,10 +77,45 @@ def test_a_streaming_turn_returns_the_event_sequence(a_body):
         1,
         2,
         3,
+        4,
+        5,
+        6,
     ]
 
 
+def test_the_delta_frames_join_back_to_the_completed_claim(a_body):
+    """The guarantee a consumer renders on: concatenating the pieces gives the
+    text the finished claim carries, character for character."""
+
+    app, _ = client()
+
+    sent = frames(app.post("/v1/turns", json=a_body(), headers={"Accept": SSE}).text)
+
+    deltas = [f for name, f in sent if name == "claim.delta"]
+    completed = next(f for name, f in sent if name == "claim.completed")
+    joined = "".join(d["message"]["content"][0]["text"] for d in deltas)
+    assert joined == completed["message"]["content"][0]["text"]
+
+
+def test_a_delta_carries_no_citations(a_body):
+    """Mid-write the block has no end, so there is nothing to cite over. The
+    annotations arrive with the completed claim."""
+
+    app, _ = client()
+
+    sent = frames(app.post("/v1/turns", json=a_body(), headers={"Accept": SSE}).text)
+
+    delta = next(f for name, f in sent if name == "claim.delta")
+    block = delta["message"]["content"][0]
+    assert block["type"] == "output_text_delta"
+    assert "annotations" not in block
+    assert delta["message"].get("outcome") is None
+
+
 def test_a_json_turn_returns_the_terminal_body_alone(a_body):
+    """The composer streams either way. A JSON caller's pieces are drained, not
+    framed — the body is the same one they have always received."""
+
     app, _ = client()
 
     response = app.post("/v1/turns", json=a_body(), headers={"Accept": JSON})
@@ -77,6 +124,7 @@ def test_a_json_turn_returns_the_terminal_body_alone(a_body):
     body = response.json()
     assert body["message"]["outcome"]["status"] == "answered"
     assert "sequenceNumber" not in body["context"]
+    assert [b["type"] for b in body["message"]["content"]] == ["text"]
 
 
 def test_both_modes_describe_the_same_turn(a_body):
@@ -234,7 +282,7 @@ def test_a_fault_mid_stream_keeps_the_frames_already_sent(a_body):
     sent = frames(response.text)
     assert [name for name, _ in sent] == [
         "turn.created",
-        "claim.completed",
+        "claim.delta",
         "turn.failed",
     ]
     assert sent[-1][1]["message"]["outcome"]["cause"] == "internal"

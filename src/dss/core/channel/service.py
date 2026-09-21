@@ -1,9 +1,8 @@
 """Response composition — shaping the written answer for its channel.
 
-Writing the prose is the model's job (`compose.py` beside this one, and
-`core/stream_response/service.py` for the streamed variant); this module does
-the deterministic structural shaping that stays in `core/`: turning the
-composer's text plus the planner's `Evidence` into the `ComposedAnswer` the
+Writing the prose is the model's job (`core/stream_response/service.py`); this
+module does the deterministic structural shaping that stays in `core/`: turning
+the composer's text plus the planner's `Evidence` into the `ComposedAnswer` the
 transport streams, and the fixed no-match reply.
 """
 

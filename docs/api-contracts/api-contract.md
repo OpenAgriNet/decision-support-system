@@ -13,11 +13,10 @@ REST over HTTP. Server-Sent Events are used when the caller requests streaming.
 | Operation | Method and path | Request | Response |
 |---|---|---|---|
 | Turn | `POST /v1/turns` | `application/json` | `application/json` or `text/event-stream` |
-| Streamed turn | `POST /v1/stream/turns` | `application/json` | `text/event-stream` |
 
 The request body contains typed input items. Text, image, and earlier conversation messages therefore use the same endpoint. The HTTP `Accept` header selects JSON or SSE without changing the operation.
 
-The two operations take the same body and produce the same answer. They differ in when the answer leaves: `/v1/turns` sends the composed block once it is finished, `/v1/stream/turns` sends each piece as the composer writes it and then the finished block. A caller that cannot use pieces should use `/v1/turns` — asking the streaming route for `application/json` is a 406, not a buffered response.
+One operation, one body. `Accept` decides how the answer arrives: on the event stream each piece leaves as the composer writes it, and on JSON the pieces are drained into the single body a caller has always received.
 
 ### 1.1 Headers
 
@@ -25,7 +24,7 @@ The two operations take the same body and produce the same answer. They differ i
 |---|:--:|---|
 | `Authorization` | No | DSS does not perform authentication/authorization |
 | `Content-Type` | Yes | `application/json` |
-| `Accept` | Yes | `application/json` by default; use `text/event-stream` for SSE. Required on `/v1/stream/turns` |
+| `Accept` | Yes | `application/json` by default; use `text/event-stream` for SSE |
 | `Content-Encoding` | No | `gzip`, when the request body is gzip-compressed |
 | `traceparent` | No | Standard W3C trace context propagated by OpenTelemetry instrumentation |
 | `tracestate` | No | Optional vendor-specific W3C trace state |
@@ -134,7 +133,7 @@ Rules:
 - The request does not contain a person identifier, authorization artifact, or caller instruction that changes DSS policy.
 - Location attributes contain only the minimum non-personal information needed for the turn.
 - The `Accept` header selects streaming. There is no streaming flag in the request.
-- The *route* selects whether the answer is released as it is written. `/v1/stream/turns` does, `/v1/turns` does not — the request body is identical either way.
+- The composer streams either way. `Accept` decides only whether its pieces are framed as `claim.delta` events or drained into one body.
 - Unknown request fields are rejected where the schema declares a closed object. Clients must ignore unknown optional response fields to remain compatible with later `/v1` releases.
 
 ### 2.0 Types used in this request
@@ -307,10 +306,10 @@ data: {"context":{"id":"api.dss.turn","version":"v1.1","messageId":"msg_mandi_wh
 
 ### Answered, released as it is written
 
-`POST /v1/stream/turns`. Same turn, same finished answer — the difference is the `claim.delta` frames ahead of it. Abbreviated context blocks; every frame carries the same ones as above, with its own `sequenceNumber`.
+The same request as above, shown with the `claim.delta` frames the composer produces. Abbreviated context blocks; every frame carries the same ones, with its own `sequenceNumber`.
 
 ```
-POST /v1/stream/turns
+POST /v1/turns
 Content-Type: application/json
 Accept: text/event-stream
 

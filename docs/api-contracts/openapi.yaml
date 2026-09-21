@@ -29,60 +29,6 @@ tags:
     description: DSS turn execution
 
 paths:
-  /v1/stream/turns:
-    post:
-      tags: [turns]
-      operationId: streamTurn
-      summary: Execute one DSS turn, streaming the answer as it is written
-      description: |
-        The same turn as `POST /v1/turns`, delivered differently: each piece of
-        the composed answer leaves as a `claim.delta` event while the rest is
-        still being written, then `claim.completed` carries the whole block with
-        its citations, then the terminal event.
-
-        SSE only. `Accept: application/json` here is a 406 — use `/v1/turns` for
-        a single JSON body.
-
-        Only a composed answer streams. A refusal, a no-match, or a request for
-        more information is a fixed reply, not something the model writes, so
-        those turns carry no `claim.delta` at all.
-
-        Once the stream has opened with 200, failures are reported by a terminal
-        `turn.failed` event; the HTTP status cannot change. There is no retry
-        after the first piece has been sent — a second attempt would write a
-        different answer over words the caller has already rendered.
-      parameters:
-        - $ref: '#/components/parameters/Traceparent'
-        - $ref: '#/components/parameters/Tracestate'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/TurnRequest'
-      responses:
-        '200':
-          description: |
-            The turn was processed. Refusals, no-matches and dependency failures
-            all arrive here — read `message.outcome.status` on the terminal
-            event.
-          content:
-            text/event-stream:
-              schema:
-                $ref: '#/components/schemas/TurnEventStream'
-        '400':
-          description: Body is not JSON
-        '406':
-          description: Accept does not include text/event-stream
-        '413':
-          description: Decompressed body over the cap
-        '415':
-          description: Content-Type is not application/json
-        '422':
-          description: Well-formed JSON that violates the contract
-        '503':
-          description: DSS is not ready
-
   /v1/turns:
     post:
       tags: [turns]
@@ -94,9 +40,17 @@ paths:
         information is still a 200. The domain result is in `message.outcome`.
 
         With `Accept: text/event-stream` the response is an SSE stream whose
-        terminal event carries the same canonical turn object. Once the stream
-        has opened with 200, failures are reported by a terminal `turn.failed`
-        event; the HTTP status cannot change.
+        terminal event carries the same canonical turn object. The composer's
+        answer arrives as one `claim.delta` per piece as it is written, then
+        `claim.completed` with the whole block and its citations; concatenating
+        the delta texts gives the completed text exactly. With
+        `Accept: application/json` those pieces are drained and the single body
+        is unchanged.
+
+        Once the stream has opened with 200, failures are reported by a terminal
+        `turn.failed` event; the HTTP status cannot change. There is no retry
+        after the first piece has been sent — a second attempt would write a
+        different answer over words the caller has already rendered.
       parameters:
         - $ref: '#/components/parameters/Traceparent'
         - $ref: '#/components/parameters/Tracestate'
@@ -644,9 +598,10 @@ components:
         authoritative; the client does not infer the outcome from connection
         closure.
 
-        `claim.delta` is sent only by `POST /v1/stream/turns`. A caller that
-        does not recognise it can ignore it: `claim.completed` still carries the
-        whole block.
+        A caller that does not recognise `claim.delta` can ignore it:
+        `claim.completed` still carries the whole block. Only a composed answer
+        streams — a refusal, a no-match, or a request for more information is a
+        fixed reply, so those turns carry no `claim.delta` at all.
       contentMediaType: text/event-stream
       externalDocs:
         description: Payload schema carried on each `data:` line

@@ -174,14 +174,14 @@
 
 ## Transport
 
-- ~~**SSE streams the transport, not the content.**~~ Done on its own route:
-  `POST /v1/stream/turns` yields a `claim.delta` per piece as the model writes
-  it (ADR-0011, #122). `/v1/turns` is unchanged and still sends the composed
-  block whole — deliberately, so no existing integration has to move.
+- ~~**SSE streams the transport, not the content.**~~ Done: `/v1/turns` with
+  `Accept: text/event-stream` yields a `claim.delta` per piece as the model
+  writes it (ADR-0011, #72).
 - **Consumers of `claim.delta` are unconfirmed.** The design assumes an adopter
-  platform ignores SSE event names it does not recognise. If one errors instead,
-  the new route is a versioned contract change rather than an additive one.
-  Confirm with the Experience layer before anyone is pointed at it.
+  platform ignores SSE event names it does not recognise. Since the frames land
+  on the existing `/v1/turns` stream, a consumer that errors on an unknown event
+  makes this a versioned contract change rather than an additive one. Confirm
+  with the Experience layer before release.
 - **No end-to-end timing yet.** Nothing has measured how much sooner the first
   word actually reaches a farmer — the tests prove pieces leave early, not that
   the saving is worth the frames. Needs one before/after run against a real

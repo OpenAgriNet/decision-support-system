@@ -1,4 +1,4 @@
-"""The HTTP rules for `POST /v1/turns` and `POST /v1/stream/turns`.
+"""The HTTP rules for `POST /v1/turns`.
 
 Admission is ordered cheapest-rejection-first, so a flood of bad requests costs
 as little as possible: readiness, then media type, then the body, then the
@@ -82,46 +82,6 @@ def turn_router(
         response_model=None,
         summary="Run one turn",
         openapi_extra=_OPENAPI,
-    )
-    return router
-
-
-def stream_turn_router(
-    *,
-    runner: TurnRunner,
-    settings: Settings,
-    clock: Callable[[], datetime] = lambda: datetime.now(UTC),
-) -> APIRouter:
-    """`POST /v1/stream/turns` — the same turn, released as it is written.
-
-    A second route rather than a flag on the first, because the runner is never
-    told which mode it is in (`ports/turn.py`): the route picks a runner that is
-    *already* wired to stream. The admission rules are the first route's,
-    unchanged — only the negotiation differs, since this one has nothing to
-    offer a caller who wants a single JSON body.
-    """
-
-    async def endpoint(request: Request) -> Response:
-        admitted = await _admit(request, settings)
-        if isinstance(admitted, Response):
-            return admitted
-        if not admitted.wants_stream:
-            return problem.problem(
-                406,
-                problem.NOT_ACCEPTABLE,
-                f"This endpoint serves {SSE_MEDIA_TYPE}. "
-                f"Use /v1/turns for a single {JSON_MEDIA_TYPE} response.",
-            )
-        return await _run(admitted, runner=runner, clock=clock)
-
-    router = APIRouter()
-    router.add_api_route(
-        "/v1/stream/turns",
-        endpoint,
-        methods=["POST"],
-        response_model=None,
-        summary="Run one turn, streaming the answer as it is written",
-        openapi_extra=_STREAM_OPENAPI,
     )
     return router
 
@@ -238,9 +198,13 @@ _OPENAPI = {
                     "schema": {
                         "type": "string",
                         "description": (
-                            "turn.created, then one claim.completed per reviewed "
-                            "claim, then turn.completed or turn.failed. Each frame's "
-                            "data is a TurnResponse."
+                            "turn.created, then one claim.delta per piece of "
+                            "the answer as the composer writes it, then "
+                            "claim.completed with the whole block and its "
+                            "citations, then turn.completed or turn.failed. Each "
+                            "frame's data is a TurnResponse. Concatenating the "
+                            "claim.delta texts gives the claim.completed text "
+                            "exactly."
                         ),
                     }
                 },
@@ -248,43 +212,6 @@ _OPENAPI = {
         },
         "400": {"description": "Body is not JSON"},
         "406": {"description": "Accept is neither JSON nor the event stream"},
-        "413": {"description": "Decompressed body over the cap"},
-        "415": {"description": "Content-Type is not application/json"},
-        "422": {"description": "Well-formed JSON that violates the contract"},
-        "503": {"description": "The DSS is not ready"},
-    },
-}
-
-
-_STREAM_OPENAPI = {
-    "requestBody": {
-        "required": True,
-        "content": {JSON_MEDIA_TYPE: {"schema": _ref(schema.TurnRequest)}},
-    },
-    "responses": {
-        "200": {
-            "description": (
-                "The turn was processed. Refusals, no-matches and dependency "
-                "failures all arrive here — read message.outcome.status."
-            ),
-            "content": {
-                SSE_MEDIA_TYPE: {
-                    "schema": {
-                        "type": "string",
-                        "description": (
-                            "turn.created, then one claim.delta per piece of the "
-                            "answer as it is written, then claim.completed with the "
-                            "whole block and its citations, then turn.completed or "
-                            "turn.failed. Each frame's data is a TurnResponse. "
-                            "Concatenating the claim.delta texts gives the "
-                            "claim.completed text exactly."
-                        ),
-                    }
-                },
-            },
-        },
-        "400": {"description": "Body is not JSON"},
-        "406": {"description": "Accept does not include the event stream"},
         "413": {"description": "Decompressed body over the cap"},
         "415": {"description": "Content-Type is not application/json"},
         "422": {"description": "Well-formed JSON that violates the contract"},
@@ -328,8 +255,10 @@ async def _single(
 ) -> JSONResponse:
     """Drain the turn and render only its terminal event.
 
-    Claims are discarded on purpose: `content` on the terminal event already
-    repeats them, and a caller in this mode never saw the stream.
+    Claims and the pieces they were built from are discarded on purpose:
+    `content` on the terminal event already carries the whole answer, and a
+    caller in this mode never saw the stream. The composer streams either way —
+    this mode is a drain, not a second way of composing.
     """
 
     finished: TurnFinished | None = None
@@ -476,4 +405,4 @@ def _minted_id() -> str:
     return uuid.uuid4().hex
 
 
-__all__ = ["TurnStarted", "stream_turn_router", "turn_router"]
+__all__ = ["TurnStarted", "turn_router"]

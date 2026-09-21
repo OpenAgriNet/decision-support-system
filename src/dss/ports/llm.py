@@ -7,11 +7,11 @@ inside the adapter — this port only promises "given a system prompt and a user
 query, return an instance of this schema", or — for prose, which is not a
 schema — yield the answer in pieces as the model writes it.
 
-``text`` and ``stream_text`` are the same question asked two ways, and both
-exist because only one of them may be retried: ``text`` has handed the caller
-nothing yet, so a failed call can be re-issued; ``stream_text`` has already sent
-pieces, and a second attempt would write a different answer after the first
-one's words are out.
+``stream_text`` has no whole-answer twin. A caller who wants the answer in one
+piece joins the pieces — and the absence is deliberate: a whole-answer call
+could be retried, a streamed one cannot (a second attempt would write a
+different answer after the first one's words are already out), and offering both
+invites the two to drift into different prompts.
 
 ``stream_text`` is declared ``def``, not ``async def``: an implementation is an
 async generator, and calling one returns the iterator without awaiting.
@@ -40,13 +40,6 @@ class LLMProvider(Protocol):
         user_query: str,
         schema: type[SchemaT],
     ) -> SchemaT: ...
-
-    async def text(
-        self,
-        *,
-        system_prompt: str,
-        user_query: str,
-    ) -> str: ...
 
     def stream_text(
         self,

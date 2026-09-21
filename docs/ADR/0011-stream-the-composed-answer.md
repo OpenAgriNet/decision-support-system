@@ -1,4 +1,4 @@
-# ADR-0011: Stream the composed answer on its own route
+# ADR-0011: Stream the composed answer
 
 - **Status:** ACCEPTED
 - **Date:** 2026-09-21
@@ -38,15 +38,17 @@ Three things had to be decided to do it.
 prose is not a schema — so the composer sat in `orchestration/` calling Pydantic
 AI directly, which its own docstring flagged as temporary.
 
-**Whether the whole-answer path survives.** A caller sending
+**Whether a whole-answer path survives.** A caller sending
 `Accept: application/json` gets one body. Draining a stream to build it is
-possible; keeping a separate call is also possible, and they differ on retries.
+possible; keeping a separate model call is also possible, and they differ on
+retries.
 
-**How a runner learns which one to use.** This is the hard one. `ports/turn.py`
-states the invariant plainly: *"Streaming never crosses this seam. The runner
-produces events; whether they become SSE frames or a single JSON body is the
-transport's business."* The router knows the mode; the orchestrator is never
-told it.
+**Whether streaming gets its own route.** `ports/turn.py` states an invariant
+plainly: *"Streaming never crosses this seam. The runner produces events;
+whether they become SSE frames or a single JSON body is the transport's
+business."* The router knows the mode; the orchestrator is never told it. So a
+runner cannot *choose* a composer per request — which, if two composers existed,
+would force either a second route or a change to that invariant.
 
 ## 2. Decision Drivers
 
@@ -66,47 +68,59 @@ told it.
 ### Interface
 
 - **A. One route, `Accept` selects.** `/v1/turns` streams deltas when the caller
-  asks for SSE.
+  asks for SSE, and drains them into one body when it asks for JSON.
 - **B. One route, a flag through the seam.** Add `stream: bool` to
   `TurnRunner.run` (or to `TurnContext`) so the orchestrator picks a composer.
 - **C. A second route, `POST /v1/stream/turns`,** bound to a runner already wired
   to stream.
 
+### Composers
+
+- **D. Two composers** — a streaming one and a whole-answer one, sharing a
+  prompt. Only the second may be retried.
+- **E. One composer, which streams.** A whole-answer caller joins the pieces.
+
 ### Composer seam
 
-- **D. Keep the composer in `orchestration/`** calling Pydantic AI directly, and
+- **F. Keep the composer in `orchestration/`** calling Pydantic AI directly, and
   add streaming there.
-- **E. Add `stream_text()` (and `text()`) to `LLMProvider`** and move composition
-  into `core/`.
+- **G. Add `stream_text()` to `LLMProvider`** and move composition into `core/`.
 
 ## 4. Decision Outcome
 
-**C and E.**
+**A, E and G.**
 
-A new component, `core/stream_response/`, yields the answer in the pieces the
-model writes it in. `core/channel/compose.py` — the whole-answer composer, moved
-out of `orchestration/` — keeps today's behaviour. Both build their prompt from
-`core/channel/prompt.py`, so they cannot drift into asking the model different
-questions. Both reach the model through `LLMProvider`, which gains `text()` and
-`stream_text()`.
+One component, `core/stream_response/`, yields the answer in the pieces the model
+writes it in. It is the only composer: a caller asking for
+`Accept: application/json` gets the pieces drained into the same single body as
+before, which the transport was already doing for claims. `LLMProvider` gains
+`stream_text()` and nothing else.
 
-`Components.compose_stream` is how a runner is told to stream. The composition
-root builds two `Orchestrator`s over shared components, sinks and model
-bindings; `build_app` mounts `/v1/turns` on the first and `/v1/stream/turns` on
-the second.
+**A and E stand or fall together.** With one composer there is nothing for a
+runner to choose between, so the invariant in §1 is satisfied without a second
+route: the runner always streams, and `Accept` decides only whether the pieces
+are framed or drained. Two composers would have forced C (or B, which
+contradicts the invariant outright) — and two composers is what E declines.
 
-**Why not A.** `Accept` already selects framing on `/v1/turns`, and this would
-make it silently select *content* as well: the same route would start emitting a
-frame type existing consumers have never seen. It also gives no way to offer
-streaming to one adopter while another is still on the old shape.
+**Why not B.** It contradicts the invariant in §1 directly. The mode would reach
+`core/` through the runner, and every orchestrator test would have to say which
+transport it was pretending to be.
 
-**Why not B.** It contradicts the invariant in §1 directly. The mode would then
-reach `core/` through the runner, and every test of the orchestrator would need
-to say which transport it was pretending to be. The route-picks-the-runner
-arrangement gets the same result with the seam intact: the runner is *configured*
-to stream, never *told* to.
+**Why not C.** It was the first cut of this ADR, and review rejected it: a second
+route is a second contract, a second OpenAPI block and a second thing every
+adopter has to learn, to express what one header already expresses. The reasons
+originally given for it do not survive E — with a single composer there is no
+per-request choice to make, so the seam argument that motivated C no longer
+applies.
 
-**Why not D.** The composer would have stayed the only thing in `orchestration/`
+**Why not D.** Two calls over one prompt is two chances to answer the same
+question differently, guarded only by a test. The retry that justified the second
+composer is worth less than it looks: retries protect against failures before the
+first token, and those are equally invisible to a streaming caller who has not
+received a piece yet. What is genuinely lost is a retry *after* the first token
+for a JSON caller — see Consequences.
+
+**Why not F.** The composer would have stayed the only thing in `orchestration/`
 that exists because a port was missing rather than because it needs the
 framework. Moving it is the change ADR-0001's layering already implied.
 
@@ -120,14 +134,19 @@ framework. Moving it is the change ADR-0001's layering already implied.
   `startIndex 0`, `endIndex len(text)`. Mid-write there is no end index, and a
   citation over a moving target is worse than none. Provenance arrives with
   `claim.completed`.
-- **No retry once a piece is out.** `stream_text` offers none. A second attempt
-  would write a *different* answer (the composer runs at temperature 0.3, with no
-  seed) over words the farmer has already read, and sent bytes cannot be
-  recalled — there is no `id:` line and no reset frame in the contract. A failure
-  after the first delta becomes a terminal `turn.failed` inside the already-open
-  200, which is the path `router._frames` already implements. Retries stay on
-  `text()`, where nothing has reached the caller yet, and on the streaming path
-  they are simply unavailable.
+- **No retry once a piece is out.** `stream_text` offers none, and there is no
+  other way to compose. A second attempt would write a *different* answer (the
+  composer runs at temperature 0.3, with no seed) over words the farmer has
+  already read, and sent bytes cannot be recalled — there is no `id:` line and no
+  reset frame in the contract. A failure after the first delta becomes a terminal
+  `turn.failed` inside the already-open 200, which is the path `router._frames`
+  already implements.
+- **Closing the stream closes the model call.** `async for` is not `yield from`:
+  closing an async generator does not reach the one it is relaying from, so a
+  farmer who hangs up mid-answer would otherwise leave the model's HTTP
+  connection open until the garbage collector finalised it. `contextlib.aclosing`
+  at both relay points — the composer and the runner — with a regression test at
+  each.
 - **Deltas are debounced.** Every frame repeats the whole response envelope, so
   one frame per token is mostly envelope. `PydanticAILLMProvider` groups 100ms of
   pieces by default, costing the farmer at most 100ms on the first word.
@@ -139,23 +158,32 @@ framework. Moving it is the change ADR-0001's layering already implied.
 - First words reach the farmer while the rest is still being written.
 - The composer no longer imports a vendor SDK; a framework swap does not reach
   the prose.
-- `/v1/turns` is byte-for-byte unchanged, so no adopter is forced to move.
-- Streaming is removable: delete the route, the component and the wiring.
+- One route, one composer, one prompt: there is no arrangement in which two
+  callers get differently-worded answers to the same question.
+- A JSON caller's request and response are unchanged.
 
 **Costs accepted.**
 
-- **Two composers.** One prompt, two calls, and a tier-1 test asserting both send
-  the model the same thing. That test is the only thing standing between this and
-  two answers to the same question.
-- **Two routes to document and keep in step.** They share admission
-  (`router._admit`) and framing (`sse.Stream`), so the duplication is the route
-  declaration and its OpenAPI block.
+- **An SSE caller on `/v1/turns` now receives a frame type it has not seen
+  before.** `claim.delta` is additive and `claim.completed` still carries the
+  whole block, so a consumer that ignores unrecognised event names is unaffected
+  — *to be confirmed with the Experience layer before release*. If any consumer
+  errors on an unknown event instead, this is a versioned contract change.
 - **A transport failure after the first token now surfaces** to the farmer rather
-  than being retried away. The window is short, and showing a farmer one price
-  and then replacing it with another is worse.
-- **A new wire content type**, `output_text_delta`. Additive, and consumers that
-  ignore unrecognised event names are unaffected — *to be confirmed with the
-  Experience layer before release*.
+  than being retried away, and this now applies to JSON callers too, who
+  previously had a retry they could not observe. The window is short — retryable
+  composer failures (connection setup, auth, rate limits, cold starts) land
+  before the first token, where nothing has been sent and the failure still
+  propagates as it always did. Showing a farmer one price and then replacing it
+  with another is worse than the alternative.
+
+**Measured.** The saving is smaller than the motivation suggests: over five
+runs against a real model, the time between the first piece and the finished
+turn is **0.27s median on a ~13.6s turn**. The composer span is ~4s, of which
+~3.8s is time-to-first-token — which streaming cannot help — and ~0.2s is the
+writing it releases early. The planner is 60% of the turn. The feature is
+correct and worth keeping, but it is not where a latency budget should be spent
+next.
 
 **Still open.**
 

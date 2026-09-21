@@ -90,24 +90,6 @@ class PydanticAILLMProvider:
         log_external_response("llm", output_schema=schema.__name__, body=result.output)
         return result.output
 
-    async def text(
-        self,
-        *,
-        system_prompt: str,
-        user_query: str,
-    ) -> str:
-        """The whole answer, in one call.
-
-        Retries apply here and nowhere else in prose generation: nothing has
-        reached the caller yet, so a second attempt replaces the first
-        invisibly.
-        """
-
-        agent = self._agent(system_prompt, retries=self._retries)
-        result = await agent.run(user_query, model_settings=self._model_settings)
-        log_external_response("llm", output_schema="text", body=result.output)
-        return result.output
-
     async def stream_text(
         self,
         *,
@@ -126,8 +108,8 @@ class PydanticAILLMProvider:
         ``retries`` is deliberately not passed. Pydantic AI retries output
         validation, and bare prose has none; what fails mid-stream is transport,
         and re-issuing that would re-generate a *different* answer after pieces
-        of the first one have already been sent. The caller's rule — no retry
-        once a piece is out — is enforced by not offering one here.
+        of the first one have already been sent. The rule — no retry once a
+        piece is out — is enforced by there being no other way to compose.
         """
 
         agent = self._agent(system_prompt)

@@ -17,7 +17,7 @@ from fastapi import FastAPI
 from starlette.types import Lifespan
 
 from dss.adapters.http.v1 import schema
-from dss.adapters.http.v1.router import stream_turn_router, turn_router
+from dss.adapters.http.v1.router import turn_router
 from dss.adapters.observability.tracing import configure_tracing
 from dss.config.settings import Settings
 from dss.entrypoint.composition import build_runner_with_lifecycle
@@ -25,9 +25,9 @@ from dss.ports.turn import TurnRunner
 
 TITLE = "Decision Support System"
 DESCRIPTION = (
-    "One turn in, a stream of claims out, then one final event. "
-    "/v1/stream/turns additionally releases each piece of the answer as the "
-    "composer writes it. Internal to the deployment: no authentication, no CORS."
+    "One turn in, the answer streamed as it is written, then one final event. "
+    "`Accept` selects a single JSON body or the event stream. Internal to the "
+    "deployment: no authentication, no CORS."
 )
 
 
@@ -35,16 +35,9 @@ def build_app(
     *,
     runner: TurnRunner,
     settings: Settings,
-    stream_runner: TurnRunner | None = None,
     lifespan: Lifespan[FastAPI] | None = None,
 ) -> FastAPI:
     """Wire a given runner. Tests pass a fake; `create_app` passes the real one.
-
-    `stream_runner` is the same pipeline wired to release the composer's answer
-    as it is written; it gets its own route, because the runner is never told
-    which mode a caller asked for (`ports/turn.py`). Omit it and only
-    `/v1/turns` is mounted, which is what a test that has nothing to say about
-    streaming should do.
 
     `lifespan` is optional so tests can mount a fake runner with no resources to
     release; `create_app` passes one that closes the network client on shutdown.
@@ -59,8 +52,6 @@ def build_app(
         # services reach this port.
     )
     app.include_router(turn_router(runner=runner, settings=settings))
-    if stream_runner is not None:
-        app.include_router(stream_turn_router(runner=stream_runner, settings=settings))
     _publish_wire_schemas(app)
     return app
 
@@ -113,7 +104,7 @@ def create_app() -> FastAPI:
     _configure_logging()
     configure_tracing()
     settings = Settings()
-    runners, aclose = build_runner_with_lifecycle(settings)
+    runner, aclose = build_runner_with_lifecycle(settings)
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
@@ -125,9 +116,4 @@ def create_app() -> FastAPI:
         finally:
             await aclose()
 
-    return build_app(
-        runner=runners.whole,
-        stream_runner=runners.streaming,
-        settings=settings,
-        lifespan=lifespan,
-    )
+    return build_app(runner=runner, settings=settings, lifespan=lifespan)

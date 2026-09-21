@@ -40,7 +40,6 @@ from contextlib import aclosing
 from dataclasses import dataclass
 
 from dss.adapters.observability.tracing import turn_span
-from dss.core.channel.compose import Compose
 from dss.core.channel.models import ComposedAnswer
 from dss.core.channel.service import (
     answer_from_evidence,
@@ -113,17 +112,14 @@ class Components:
     `discover` chains off intent inside `run_turn`; `plan` and `compose` run
     here, past the barrier.
 
-    `compose_stream` is how a runner is told to release the answer as it is
-    written. Set, it replaces `compose` and the turn emits a `ClaimDelta` per
-    piece; unset, the turn behaves exactly as it always has. Which one a route
-    gets is a wiring decision in the composition root — the runner is never told
-    per call, because `ports/turn.py` keeps the transport's mode on the
-    transport's side of the seam."""
+    `compose` streams. There is no whole-answer variant: a caller who wants one
+    body gets it by draining, which the transport already does. That keeps the
+    runner ignorant of how its events are delivered — `ports/turn.py` keeps the
+    transport's mode on the transport's side of the seam."""
 
     discover: DiscoverProviders
     plan: Plan
-    compose: Compose
-    compose_stream: ComposeStream | None = None
+    compose: ComposeStream
 
 
 class Orchestrator:
@@ -245,25 +241,21 @@ class Orchestrator:
             # The span stays open across the yields below, so it measures the
             # whole composition rather than closing on the first piece.
             with trace_component("composer", ctx.trace_id):
-                if self._components.compose_stream is not None:
-                    written: list[str] = []
-                    # `aclosing` for the same reason as in the composer: a
-                    # farmer who closes the screen mid-answer must close the
-                    # model's stream too, and a bare `async for` would leave it
-                    # to the garbage collector.
-                    async with aclosing(
-                        self._components.compose_stream(evidence, turn=turn)
-                    ) as pieces:
-                        async for delta in pieces:
-                            written.append(delta)
-                            yield ClaimDelta(text=delta)
-                    # A failure before this line propagates: the pieces already
-                    # yielded cannot be recalled, so there is no retry to make
-                    # and nothing to roll back. The transport reports a failed
-                    # turn.
-                    text = "".join(written)
-                else:
-                    text = await self._components.compose(evidence, turn=turn)
+                written: list[str] = []
+                # `aclosing`, not a bare `async for`: a farmer who closes the
+                # screen mid-answer must close the model's stream too, and
+                # closing an async generator does not reach the one it relays
+                # from.
+                async with aclosing(
+                    self._components.compose(evidence, turn=turn)
+                ) as pieces:
+                    async for delta in pieces:
+                        written.append(delta)
+                        yield ClaimDelta(text=delta)
+                # A failure before this line propagates: the pieces already
+                # yielded cannot be recalled, so there is no retry to make and
+                # nothing to roll back. The transport reports a failed turn.
+                text = "".join(written)
             answer = answer_from_evidence(text, evidence)
             for block in answer.content:
                 yield Claim(content=block, sources=answer.sources)

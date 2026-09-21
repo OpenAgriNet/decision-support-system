@@ -1,14 +1,13 @@
 """What the composer asks the model — the prompt, and the evidence it rests on.
 
-Here rather than beside either composer because there are two of them: the
-whole-answer path (`core/channel/compose.py`) and the streaming one
-(`core/stream_response/service.py`). They are separate calls on purpose — only
-one of them may be retried — but they must never become separate *prompts*, or
-the two paths start answering the same question differently. One module, one
-prompt, and a test that holds them to it.
+Its own module rather than living inside `core/stream_response/service.py`
+because the question put to the model and the mechanics of receiving the answer
+are separate concerns: this one is pure string assembly, testable without an
+`LLMProvider` at all, and it is where a change to what the farmer's answer is
+grounded in belongs.
 
-Framework-free: plain strings in, plain strings out. Nothing here knows whether
-the answer comes back whole or in pieces.
+Framework-free: plain strings in, plain strings out. Nothing here knows the
+answer arrives in pieces.
 """
 
 from __future__ import annotations

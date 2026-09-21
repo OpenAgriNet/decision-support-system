@@ -88,8 +88,9 @@ def _errors(spec: dict[str, Any], name: str, instance: Any) -> list[str]:
     ]
 
 
-def _client(finished: TurnFinished) -> TestClient:
+def _client(finished: TurnFinished, deltas: tuple[str, ...] = ()) -> TestClient:
     events = [TurnStarted()]
+    events += [ClaimDelta(text=text) for text in deltas]
     events += [Claim(content=block) for block in finished.content]
     events.append(finished)
     return TestClient(build_app(runner=FakeRunner(events), settings=Settings()))
@@ -133,30 +134,13 @@ def test_every_streamed_frame_validates_against_the_contract(spec, a_body):
     assert not problems
 
 
-def _stream_client(finished: TurnFinished, deltas: tuple[str, ...]) -> TestClient:
-    """The streaming route's runner: pieces first, then the finished block."""
-
-    events = [TurnStarted()]
-    events += [ClaimDelta(text=text) for text in deltas]
-    events += [Claim(content=block) for block in finished.content]
-    events.append(finished)
-    return TestClient(
-        build_app(
-            runner=FakeRunner([]),
-            stream_runner=FakeRunner(events),
-            settings=Settings(),
-        )
-    )
-
-
 def test_every_delta_frame_validates_against_the_contract(spec, a_body):
     """`claim.delta` is new on the wire, so the published schema and what the
     transport actually emits have to be checked against each other rather than
     against a reading of either."""
 
-    deltas = ("Rs 2,2", "75 per quintal.")
-    response = _stream_client(ANSWER, deltas).post(
-        "/v1/stream/turns", json=a_body(), headers={"Accept": "text/event-stream"}
+    response = _client(ANSWER, deltas=("Rs 2,2", "75 per quintal.")).post(
+        "/v1/turns", json=a_body(), headers={"Accept": "text/event-stream"}
     )
 
     problems = {}

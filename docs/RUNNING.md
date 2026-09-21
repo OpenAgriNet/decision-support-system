@@ -286,42 +286,7 @@ curl -N -X POST http://127.0.0.1:8077/v1/turns \
 **`-N` matters.** Without it curl buffers and the frames arrive in one lump, which
 hides the thing you are trying to look at.
 
-Expect four frames:
-
-```
-event: turn.created      sequenceNumber 1
-event: claim.completed   sequenceNumber 2
-event: claim.completed   sequenceNumber 3
-event: turn.completed    sequenceNumber 4   outcome.status "answered"
-```
-
-The contract sets `sequenceNumber` minimum 1, so the stream is 1-based.
-
-**The claims are not progressive on this route.** `turn.created` arrives at
-once, then nothing for the length of the whole pipeline, then every
-`claim.completed` and `turn.completed` together — this runner awaits the
-composed text in full before splitting it into blocks. `-N` shows you the frames
-as they are sent, which is not the same as watching an answer being written.
-That is what `/v1/stream/turns` below is for.
-
-Note also that once the first byte is written the status cannot change, so a
-failure after `turn.created` arrives as a `turn.failed` event inside a `200`.
-A 200 is not by itself evidence the turn succeeded.
-
-The `traceId` in every frame body is the one from your `traceparent`. Omit that
-header and the DSS mints one — a turn always has an evidence key.
-
-### Streaming, released as it is written
-
-```bash
-curl -N -X POST http://127.0.0.1:8077/v1/stream/turns \
-  -H 'Content-Type: application/json' \
-  -H 'Accept: text/event-stream' \
-  --data-binary @docs/api-contracts/examples/answered_streaming.json
-```
-
-Same body, same answer. The difference is a `claim.delta` frame per piece of the
-answer, arriving while the composer is still writing:
+Expect the answer to build up as it is written:
 
 ```
 event: turn.created      sequenceNumber 1
@@ -332,11 +297,14 @@ event: claim.completed   sequenceNumber 5   the whole block, with its citations
 event: turn.completed    sequenceNumber 6   outcome.status "answered"
 ```
 
-This is the route where `-N` earns its keep — without it the pieces arrive in one
-lump and there is nothing to see.
+The contract sets `sequenceNumber` minimum 1, so the stream is 1-based.
 
 Things worth knowing when you look at the output:
 
+- **Nothing arrives for the length of the pipeline.** `turn.created` is
+  immediate, then intent, moderation, discovery and the planner run — ten
+  seconds or more against a real model — before the first `claim.delta`. The
+  composer is the only stage with anything to release early.
 - **Pieces split anywhere.** The third frame above cuts `₹2,275` in half. Join
   them and you get the `claim.completed` text exactly; that is the guarantee.
 - **How many frames you get is not how many tokens the model wrote.** Pieces are
@@ -347,8 +315,13 @@ Things worth knowing when you look at the output:
   `claim.delta`, check `outcome.status` on the terminal frame before assuming
   streaming is broken — an unwired network gives `no_match`, which never reaches
   the composer.
-- **`Accept: application/json` here is a 406.** This route only streams; use
-  `/v1/turns` for one JSON body.
+
+Note also that once the first byte is written the status cannot change, so a
+failure after `turn.created` arrives as a `turn.failed` event inside a `200`.
+A 200 is not by itself evidence the turn succeeded.
+
+The `traceId` in every frame body is the one from your `traceparent`. Omit that
+header and the DSS mints one — a turn always has an evidence key.
 
 ### Non-streaming
 

@@ -141,54 +141,6 @@
                     "description": "Send one turn. A valid turn that DSS handles returns 200 whatever the\ndomain result — a safe rejection, no match, or a request for more\ninformation is still a 200. The domain result is in `message.outcome`.\n\nWith `Accept: text/event-stream` the response is an SSE stream whose\nterminal event carries the same canonical turn object. Once the stream\nhas opened with 200, failures are reported by a terminal `turn.failed`\nevent; the HTTP status cannot change.\n"
                   },
                   "response": []
-                },
-                {
-                  "name": "streaming, released as it is written",
-                  "request": {
-                    "method": "POST",
-                    "header": [
-                      {
-                        "key": "traceparent",
-                        "value": "{{traceparent}}",
-                        "description": "W3C trace context. DSS starts its server span from this and echoes the trace id as `context.traceId`."
-                      },
-                      {
-                        "key": "tracestate",
-                        "value": "string",
-                        "description": "Optional vendor-specific W3C trace state."
-                      },
-                      {
-                        "key": "Content-Type",
-                        "value": "application/json"
-                      },
-                      {
-                        "key": "Accept",
-                        "value": "application/json"
-                      }
-                    ],
-                    "body": {
-                      "mode": "raw",
-                      "raw": "{\n    \"context\": {\n        \"id\": \"api.dss.turn\",\n        \"timestamp\": \"2026-09-09T08:00:00Z\",\n        \"sessionId\": \"f4f8217b-6896-48ea-8ee1-6681f34daa85\",\n        \"transactionId\": \"{{transactionId}}\",\n        \"messageId\": \"{{messageId}}\",\n        \"version\": \"1.0.0\"\n    },\n    \"message\": {\n        \"input\": [\n            {\n                \"role\": \"user\",\n                \"content\": [\n                    {\n                        \"type\": \"text\",\n                        \"text\": \"What is the price of Onion at Nashik mandi this week?\"\n                    }\n                ]\n            }\n        ],\n        \"attributes\": {\n            \"channel\": \"web\",\n            \"location\": {\n                \"region\": \"IN-MH\",\n                \"area\": \"Nashik\",\n                \"geometry\": {\n                    \"type\": \"Point\",\n                    \"coordinates\": [\n                        73.7898,\n                        19.9975\n                    ]\n                }\n            },\n            \"response\": {\n                \"maxCharacters\": 1200\n            },\n            \"sourceLanguage\": \"en\",\n            \"targetLanguage\": \"en\"\n        },\n        \"userContext\": [\n            {\n                \"type\": \"identity\",\n                \"userId\": \"usr_9921\"\n            }\n        ]\n    }\n}",
-                      "options": {
-                        "raw": {
-                          "language": "json"
-                        }
-                      }
-                    },
-                    "url": {
-                      "raw": "{{baseUrl}}/v1/stream/turns",
-                      "host": [
-                        "{{baseUrl}}"
-                      ],
-                      "path": [
-                        "v1",
-                        "stream",
-                        "turns"
-                      ]
-                    },
-                    "description": "Same body as the streaming request above, on the route that releases the answer as the composer writes it. Expect a claim.delta frame per piece, then claim.completed with the whole block and its citations, then the terminal event. Concatenating the delta texts gives the completed text exactly. SSE only — Accept: application/json here is a 406."
-                  },
-                  "response": []
                 }
               ]
             },

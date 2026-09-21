@@ -17,10 +17,9 @@ Do not duplicate architecture, domain model, or design-decision detail here — 
 ## Tech Stack
 - Language: Python
 - Orchestration framework: Pydantic AI
-- HTTP framework: FastAPI on uvicorn (ADR-0006). Two routes: `POST /v1/turns`
-  (whole answer) and `POST /v1/stream/turns` (the answer released as it is
-  written, ADR-0011) — the route picks the runner, the runner is never told the
-  transport's mode.
+- HTTP framework: FastAPI on uvicorn (ADR-0006). One route, `POST /v1/turns`;
+  `Accept` selects a single JSON body or the SSE stream. The composer always
+  streams (ADR-0011) — SSE frames its pieces as `claim.delta`, JSON drains them.
 - Async concurrency: anyio
 - Dependency injection: Pydantic
 - Package manager: uv
@@ -32,7 +31,7 @@ Do not duplicate architecture, domain model, or design-decision detail here — 
 Install: `uv sync`
 Lint: `uv run ruff check .` · Format: `uv run ruff format .`
 Test: `uv run pytest` — tier 6 (eval) is excluded; run it deliberately with `uv run pytest -m eval`
-Run locally: `uv run uvicorn --factory dss.entrypoint.app:create_app --port 8077` — `POST /v1/turns`, `Accept` selects JSON or SSE; `POST /v1/stream/turns` is SSE-only and adds a `claim.delta` frame per piece of the answer. The full pipeline is wired (`orchestration/orchestrator.py` is the live runner: intent → moderation → discovery → planner → composer); discovery + invocation are gated on the three network settings, so without them a local turn is `no_match`. See [`docs/RUNNING.md`](./docs/RUNNING.md) for curl recipes, knobs, and what is still fake.
+Run locally: `uv run uvicorn --factory dss.entrypoint.app:create_app --port 8077` — `POST /v1/turns`, `Accept` selects JSON or SSE; on SSE the answer arrives as one `claim.delta` per piece as the composer writes it, then `claim.completed`. The full pipeline is wired (`orchestration/orchestrator.py` is the live runner: intent → moderation → discovery → planner → composer); discovery + invocation are gated on the three network settings, so without them a local turn is `no_match`. See [`docs/RUNNING.md`](./docs/RUNNING.md) for curl recipes, knobs, and what is still fake.
 
 ## Conventions
 Naming, versioning, changelog, git workflow, logging, and linting conventions are documented separately in [`CONVENTIONS.md`](./CONVENTIONS.md) — read that file before naming anything, writing a commit, or opening a PR.
