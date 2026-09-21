@@ -58,13 +58,17 @@ class _FakeComposeStream:
         self._chunks = chunks
         self._fail_after = fail_after
         self.calls = 0
+        self.closed = False
 
     async def __call__(self, evidence, *, turn) -> AsyncIterator[str]:  # noqa: ANN001
         self.calls += 1
-        for index, chunk in enumerate(self._chunks):
-            if index == self._fail_after:
-                raise RuntimeError("the model stream dropped")
-            yield chunk
+        try:
+            for index, chunk in enumerate(self._chunks):
+                if index == self._fail_after:
+                    raise RuntimeError("the model stream dropped")
+                yield chunk
+        finally:
+            self.closed = True
 
 
 def _build(
@@ -220,3 +224,24 @@ async def test_the_real_component_streams_through_the_runner() -> None:
 
     assert [e.text for e in events if isinstance(e, ClaimDelta)] == list(chunks)
     assert events[-1].content[0].text == "".join(chunks)
+
+
+async def test_abandoning_the_turn_closes_the_composer() -> None:
+    """The second of the two relay points.
+
+    A client that disconnects mid-answer closes the runner's stream; that has to
+    reach the composer, and through it the model. `async for` does not propagate
+    a close on its own, so without `aclosing` here the model's connection is
+    left to the garbage collector.
+    """
+
+    compose_stream = _FakeComposeStream()
+    orch, _ = _build(compose_stream=compose_stream)
+
+    events = orch.run(_turn(), _ctx())
+    async for event in events:
+        if isinstance(event, ClaimDelta):
+            break  # the client hangs up part-way through the answer
+    await events.aclose()
+
+    assert compose_stream.closed, "the composer was left open"

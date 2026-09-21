@@ -4,7 +4,6 @@
 - **Date:** 2026-09-21
 - **Deciders:** DSS implementation
 - **Consulted:** —
-- **Informed:** Experience-layer engineering leads
 
 ---
 
@@ -18,11 +17,20 @@ call, and `answer_from_evidence` wrapped that whole string in a single
 `TextBlock`. A turn therefore emitted exactly one `claim.completed`, produced
 only after composition finished, immediately followed by `turn.completed`.
 
-The composer is the last stage of a turn (intent ∥ moderation → discovery →
-planner → composer) and the only stage whose output exists before its work is
-done. Every word it has written is held back until the last one is. Releasing
-them is the largest perceived-latency change available without altering how the
-DSS reasons or which providers it calls.
+The composer is the last stage of a turn *today* (intent ∥ moderation →
+discovery → planner → composer), and the only stage whose output exists before
+its work is done. Every word it has written is held back until the last one is.
+Releasing them is the largest perceived-latency change available without
+altering how the DSS reasons or which providers it calls.
+
+**It will not stay last.** An optional Response Reviewer and a Channel Response
+component come after it (`dss-design-v2.md` §9, §11). Neither changes this
+decision, but both have to respect it: a reviewer that must read the whole
+answer before the first word leaves gives back everything streaming bought,
+which is why design-v2 already scopes review as non-blocking, and a channel
+shaper that rewrites the finished text would break the guarantee that the pieces
+sent equal the block that follows. Whatever lands after the composer either
+works piece-by-piece or runs alongside the stream rather than in front of it.
 
 Three things had to be decided to do it.
 

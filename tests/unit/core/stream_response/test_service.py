@@ -71,7 +71,9 @@ class _FakeLLM:
     """Streams fixed pieces and records the prompts it was given.
 
     `fail_after=n` raises once `n` pieces are out, which is how the no-retry
-    rule is reached without a real model.
+    rule is reached without a real model. `closed` records whether the
+    generator's cleanup actually ran — the real one holds the model's HTTP
+    connection open across its yields.
     """
 
     def __init__(
@@ -84,6 +86,7 @@ class _FakeLLM:
         self._fail_after = fail_after
         self.system_prompts: list[str] = []
         self.user_queries: list[str] = []
+        self.closed = False
 
     async def structured(
         self, *, system_prompt, user_query, schema
@@ -100,10 +103,13 @@ class _FakeLLM:
     ) -> AsyncIterator[str]:
         self.system_prompts.append(system_prompt)
         self.user_queries.append(user_query)
-        for index, chunk in enumerate(self._chunks):
-            if index == self._fail_after:
-                raise RuntimeError("the model stream dropped")
-            yield chunk
+        try:
+            for index, chunk in enumerate(self._chunks):
+                if index == self._fail_after:
+                    raise RuntimeError("the model stream dropped")
+                yield chunk
+        finally:
+            self.closed = True
 
     @property
     def everything(self) -> str:
@@ -219,3 +225,24 @@ async def test_a_failure_part_way_through_is_not_swallowed() -> None:
             seen.append(delta)
 
     assert seen == ["Paddy is ", "Rs 2,2"], "pieces already out stay out"
+
+
+async def test_abandoning_the_stream_closes_the_model_call() -> None:
+    """A farmer who closes the screen mid-answer must close the model's stream
+    with it.
+
+    `async for` is not `yield from`: closing this component does not reach the
+    generator it is relaying from, so without `aclosing` the model's stream
+    stays suspended and its HTTP connection stays open until the garbage
+    collector gets to it. Asserted here rather than left to a disconnect test,
+    because GC would hide the leak by eventually cleaning up anyway.
+    """
+
+    llm = _FakeLLM()
+    pieces = stream_response(EVIDENCE, turn=_turn(), identity=IDENTITY, llm=llm)
+
+    async for _ in pieces:
+        break  # the farmer hangs up after the first piece
+    await pieces.aclose()
+
+    assert llm.closed, "the model's stream was left open"

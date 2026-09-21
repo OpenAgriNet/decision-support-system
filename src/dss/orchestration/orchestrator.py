@@ -36,6 +36,7 @@ before it touches a provider.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Sequence
+from contextlib import aclosing
 from dataclasses import dataclass
 
 from dss.adapters.observability.tracing import turn_span
@@ -246,11 +247,16 @@ class Orchestrator:
             with trace_component("composer", ctx.trace_id):
                 if self._components.compose_stream is not None:
                     written: list[str] = []
-                    async for delta in self._components.compose_stream(
-                        evidence, turn=turn
-                    ):
-                        written.append(delta)
-                        yield ClaimDelta(text=delta)
+                    # `aclosing` for the same reason as in the composer: a
+                    # farmer who closes the screen mid-answer must close the
+                    # model's stream too, and a bare `async for` would leave it
+                    # to the garbage collector.
+                    async with aclosing(
+                        self._components.compose_stream(evidence, turn=turn)
+                    ) as pieces:
+                        async for delta in pieces:
+                            written.append(delta)
+                            yield ClaimDelta(text=delta)
                     # A failure before this line propagates: the pieces already
                     # yielded cannot be recalled, so there is no retry to make
                     # and nothing to roll back. The transport reports a failed

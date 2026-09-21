@@ -27,6 +27,7 @@ different questions.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from contextlib import aclosing
 from typing import Protocol
 
 from dss.core.channel.prompt import system_prompt, user_prompt
@@ -64,8 +65,16 @@ async def stream_response(
 ) -> AsyncIterator[str]:
     """Yield the farmer's answer in the pieces the model writes it in."""
 
-    async for delta in llm.stream_text(
-        system_prompt=system_prompt(identity, turn=turn),
-        user_query=user_prompt(evidence, turn=turn),
-    ):
-        yield delta
+    # `aclosing`, not a bare `async for`. Closing an async generator does not
+    # reach the one it is relaying from: `async for` has no `yield from`, so
+    # `GeneratorExit` stops here and the model's stream stays suspended until
+    # the garbage collector finalises it — holding the HTTP connection to the
+    # model open after the farmer has already hung up.
+    async with aclosing(
+        llm.stream_text(
+            system_prompt=system_prompt(identity, turn=turn),
+            user_query=user_prompt(evidence, turn=turn),
+        )
+    ) as pieces:
+        async for delta in pieces:
+            yield delta

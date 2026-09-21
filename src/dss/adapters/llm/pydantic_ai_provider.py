@@ -62,6 +62,18 @@ class PydanticAILLMProvider:
             return NativeOutput(schema)
         return schema  # "tool" — Pydantic AI's default for a bare schema
 
+    def _agent(self, system_prompt: str, **kwargs: object) -> Agent:
+        """One `Agent`, built the same way for every call this adapter makes.
+
+        `name` is what Langfuse labels the span. Without it every agent in a
+        trace reads "agent run", and a turn's waterfall is four identical rows
+        you have to expand one by one to tell apart.
+        """
+
+        return Agent(
+            self._model, name=self._name, system_prompt=system_prompt, **kwargs
+        )
+
     async def structured(
         self,
         *,
@@ -69,14 +81,9 @@ class PydanticAILLMProvider:
         user_query: str,
         schema: type[SchemaT],
     ) -> SchemaT:
-        # `name` is what Langfuse labels the span. Without it every agent in a
-        # trace reads "agent run", and a turn's waterfall is four identical rows
-        # you have to expand one by one to tell apart.
-        agent: Agent[None, SchemaT] = Agent(
-            self._model,
-            name=self._name,
+        agent = self._agent(
+            system_prompt,
             output_type=self._output_type(schema),
-            system_prompt=system_prompt,
             retries=self._retries,
         )
         result = await agent.run(user_query, model_settings=self._model_settings)
@@ -96,12 +103,7 @@ class PydanticAILLMProvider:
         invisibly.
         """
 
-        agent: Agent[None, str] = Agent(
-            self._model,
-            name=self._name,
-            system_prompt=system_prompt,
-            retries=self._retries,
-        )
+        agent = self._agent(system_prompt, retries=self._retries)
         result = await agent.run(user_query, model_settings=self._model_settings)
         log_external_response("llm", output_schema="text", body=result.output)
         return result.output
@@ -128,11 +130,7 @@ class PydanticAILLMProvider:
         once a piece is out — is enforced by not offering one here.
         """
 
-        agent: Agent[None, str] = Agent(
-            self._model,
-            name=self._name,
-            system_prompt=system_prompt,
-        )
+        agent = self._agent(system_prompt)
         written: list[str] = []
         async with agent.run_stream(
             user_query, model_settings=self._model_settings
