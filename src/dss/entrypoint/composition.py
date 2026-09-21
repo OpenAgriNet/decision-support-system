@@ -140,9 +140,7 @@ def build_runner_with_lifecycle(
             timeout_seconds=settings.planner_timeout_seconds,
             retries=settings.planner_retries,
         ),
-        compose=build_stream_response(
-            identity=identity, llm=_composer_llm(settings)
-        ),
+        compose=build_stream_response(identity=identity, llm=_composer_llm(settings)),
     )
 
     runner = Orchestrator(
