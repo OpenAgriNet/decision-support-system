@@ -88,6 +88,29 @@ class PydanticAILLMProvider:
         log_external_response("llm", output_schema=schema.__name__, body=result.output)
         return result.output
 
+    async def text(
+        self,
+        *,
+        system_prompt: str,
+        user_query: str,
+    ) -> str:
+        """The whole answer, in one call.
+
+        Retries apply here and nowhere else in prose generation: nothing has
+        reached the caller yet, so a second attempt replaces the first
+        invisibly.
+        """
+
+        agent: Agent[None, str] = Agent(
+            self._model,
+            name=self._name,
+            system_prompt=system_prompt,
+            retries=self._retries,
+        )
+        result = await agent.run(user_query, model_settings=self._model_settings)
+        log_external_response("llm", output_schema="text", body=result.output)
+        return result.output
+
     async def stream_text(
         self,
         *,

@@ -91,6 +91,15 @@ class StubLLM:
             )
         return self._table[schema]
 
+    async def text(
+        self,
+        *,
+        system_prompt: str,
+        user_query: str,
+    ) -> str:
+        self.calls.append(Ask(system_prompt, user_query, None))
+        return "".join(self._text_chunks)
+
     async def stream_text(
         self,
         *,
