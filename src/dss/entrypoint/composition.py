@@ -24,6 +24,7 @@ import os
 import threading
 import warnings
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, replace
 from datetime import datetime
 
 import anyio
@@ -52,6 +53,7 @@ from dss.core.provider_discovery.index import PACK_DEFECTS, extract_type_const
 from dss.core.provider_discovery.models import DiscoveryResult, SchemaPackFiles
 from dss.core.provider_discovery.schema_pack_cache import SchemaPackCache
 from dss.core.shared.models import UserTurn
+from dss.core.stream_response.service import build_stream_response
 from dss.orchestration.discovery import (
     DiscoverProviders,
     build_capability_discovery,
@@ -79,22 +81,36 @@ UNWIRED_URL = (
 )
 
 
-def build_runner(settings: Settings, *, fetch: FetchPacks = fetch_packs) -> TurnRunner:
-    """The runner alone, for callers that do not own the network client's
-    lifecycle (tests, and anything running the unwired path). The process entry
-    point uses `build_runner_with_lifecycle` so it can close the client on
-    shutdown."""
+@dataclass(frozen=True)
+class Runners:
+    """The two runners a deployment serves, one per route.
 
-    runner, _aclose = build_runner_with_lifecycle(settings, fetch=fetch)
-    return runner
+    Same pipeline, same components, one difference: `streaming` is wired with a
+    composer that releases the answer as it is written. They are built here
+    rather than chosen per request because the runner is never told which mode a
+    caller asked for — `ports/turn.py` keeps that on the transport's side.
+    """
+
+    whole: TurnRunner
+    streaming: TurnRunner
+
+
+def build_runner(settings: Settings, *, fetch: FetchPacks = fetch_packs) -> TurnRunner:
+    """The whole-answer runner alone, for callers that do not own the network
+    client's lifecycle (tests, and anything running the unwired path). The
+    process entry point uses `build_runner_with_lifecycle` so it can close the
+    client on shutdown."""
+
+    runners, _aclose = build_runner_with_lifecycle(settings, fetch=fetch)
+    return runners.whole
 
 
 def build_runner_with_lifecycle(
     settings: Settings,
     *,
     fetch: FetchPacks = fetch_packs,
-) -> tuple[TurnRunner, Callable[[], Awaitable[None]]]:
-    """The runner and a coroutine that releases what it holds.
+) -> tuple[Runners, Callable[[], Awaitable[None]]]:
+    """Both runners and a coroutine that releases what they hold.
 
     The wired network path opens one shared `httpx.AsyncClient` for the whole
     process — discovery and invocation both call through it — and `aclose`
@@ -127,6 +143,7 @@ def build_runner_with_lifecycle(
         settings, area_lookup=area_lookup, fetch=fetch
     )
 
+    composer_llm = _composer_llm(settings)
     components = Components(
         discover=discover,
         plan=build_plan(
@@ -140,22 +157,37 @@ def build_runner_with_lifecycle(
             timeout_seconds=settings.planner_timeout_seconds,
             retries=settings.planner_retries,
         ),
-        compose=build_compose(identity=identity, llm=_composer_llm(settings)),
+        compose=build_compose(identity=identity, llm=composer_llm),
+    )
+    # The same components, plus the streaming composer. Discovery, the planner
+    # and the model binding are shared objects, not copies — the two runners
+    # differ in how the answer leaves and in nothing else.
+    streaming_components = replace(
+        components,
+        compose_stream=build_stream_response(identity=identity, llm=composer_llm),
     )
 
-    runner = Orchestrator(
-        intent_llm=_intent_llm(settings),
-        moderation_llm=_moderation_llm(settings),
-        policies=policies,
-        scheme_catalog=scheme_catalog,
-        scheme_fuzzy_threshold=settings.scheme_fuzzy_threshold,
-        components=components,
-        turns=FileTurnSink(settings.turns_path),
-        telemetry=FileTelemetrySink(settings.telemetry_path),
-        area_lookup=area_lookup,
-        discovery_radius_m=settings.discovery_radius_m,
+    # Everything a runner needs except which composer it uses. The sinks, the
+    # model bindings and the area index are shared objects: two runners, one
+    # deployment's worth of state.
+    shared = {
+        "intent_llm": _intent_llm(settings),
+        "moderation_llm": _moderation_llm(settings),
+        "policies": policies,
+        "scheme_catalog": scheme_catalog,
+        "scheme_fuzzy_threshold": settings.scheme_fuzzy_threshold,
+        "turns": FileTurnSink(settings.turns_path),
+        "telemetry": FileTelemetrySink(settings.telemetry_path),
+        "area_lookup": area_lookup,
+        "discovery_radius_m": settings.discovery_radius_m,
+    }
+    return (
+        Runners(
+            whole=Orchestrator(components=components, **shared),
+            streaming=Orchestrator(components=streaming_components, **shared),
+        ),
+        _aclose_for(client),
     )
-    return runner, _aclose_for(client)
 
 
 # --- discovery + invocation (gated) --------------------------------------

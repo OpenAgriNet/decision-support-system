@@ -10,6 +10,7 @@ from dss.adapters.http.v1 import schema  # noqa: F401
 from dss.core.shared.models import (
     Cause,
     Claim,
+    ClaimDelta,
     ConversationMessage,
     Geometry,
     Location,
@@ -154,6 +155,25 @@ def to_claim_frame(
     return schema.TurnResponse(
         context=_response_context(ctx, now=now, seq=seq, response_id=response_id),
         message=schema.ResponseMessage(content=[_block(claim.content, claim.sources)]),
+    )
+
+
+def to_delta_frame(
+    delta: ClaimDelta,
+    ctx: TurnContext,
+    *,
+    now: datetime,
+    seq: int | None,
+    response_id: str,
+) -> schema.TurnResponse:
+    """One piece of the answer, on its way out while the rest is still being
+    written. No sources and no annotations — see `schema.OutputTextDelta`."""
+
+    return schema.TurnResponse(
+        context=_response_context(ctx, now=now, seq=seq, response_id=response_id),
+        message=schema.ResponseMessage(
+            content=[schema.OutputTextDelta(text=delta.text)]
+        ),
     )
 
 

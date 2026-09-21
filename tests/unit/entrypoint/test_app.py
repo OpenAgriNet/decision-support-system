@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from dss.entrypoint.app import create_app
+from dss.entrypoint.composition import Runners
 from tests.support.fakes import FakeRunner
 
 
@@ -22,7 +23,10 @@ def test_create_app_closes_the_network_client_on_shutdown(monkeypatch) -> None:
 
     monkeypatch.setattr(
         "dss.entrypoint.app.build_runner_with_lifecycle",
-        lambda settings: (FakeRunner([]), _aclose),
+        lambda settings: (
+            Runners(whole=FakeRunner([]), streaming=FakeRunner([])),
+            _aclose,
+        ),
     )
 
     # Entering and leaving the TestClient context runs startup then shutdown.
