@@ -1,28 +1,20 @@
-"""Tier 3 — the throwaway composer: Evidence in, an answer out.
+"""Tier 1 — the whole-answer composer.
 
-A second LLM call, separate from the planner's loop, so ``Evidence`` stays
-the seam the real Response Composer will read. Lives in ``orchestration/``
-for now because it calls Pydantic AI directly — ``LLMProvider`` only offers
-``structured()``, and prose is not a schema. Moving it to ``core/`` behind a
-``text()`` port is the follow-up.
+`Evidence` in, the farmer's answer out in one piece. The LLM is a fake
+`LLMProvider`, so these assert what reaches the *prompt* — the provider's
+values and the farmer's question — not the canned answer, which would pass
+even if the evidence were never put in the prompt at all.
 
-The model is a ``FunctionModel`` returning a canned string, so these tests
-assert on what reaches the *prompt* — the provider's values and the farmer's
-question — not on the canned output, which would pass even if the evidence
-were never put in the prompt at all.
+The last test here is the one that matters most: this composer and the
+streaming one are separate calls, and this is what stops them becoming
+separate prompts.
 """
 
 from __future__ import annotations
 
-from pydantic_ai.messages import (
-    ModelMessage,
-    ModelResponse,
-    SystemPromptPart,
-    TextPart,
-    UserPromptPart,
-)
-from pydantic_ai.models.function import AgentInfo, FunctionModel
+from collections.abc import AsyncIterator
 
+from dss.core.channel.compose import build_compose
 from dss.core.planner.models import (
     Evidence,
     Failure,
@@ -32,7 +24,7 @@ from dss.core.planner.models import (
     SourceKind,
 )
 from dss.core.shared.models import UserTurn
-from dss.orchestration.compose import build_compose
+from dss.core.stream_response.service import stream_response
 
 IDENTITY = Identity(
     name="Kisan Mitra",
@@ -73,6 +65,36 @@ UNREACHABLE = Evidence(
     sufficient=False,
 )
 
+ANSWER = "The price of paddy is 2,200 Rs."
+
+
+class _Recorder:
+    """Captures every prompt the model was sent, and answers with a fixed
+    string so the assertions can be about the input."""
+
+    def __init__(self, answer: str = ANSWER) -> None:
+        self._answer = answer
+        self.asked: list[tuple[str, str]] = []
+
+    async def structured(
+        self, *, system_prompt, user_query, schema
+    ):  # pragma: no cover
+        raise AssertionError("the composer writes prose, not a schema")
+
+    async def text(self, *, system_prompt: str, user_query: str) -> str:
+        self.asked.append((system_prompt, user_query))
+        return self._answer
+
+    async def stream_text(
+        self, *, system_prompt: str, user_query: str
+    ) -> AsyncIterator[str]:
+        self.asked.append((system_prompt, user_query))
+        yield self._answer
+
+    @property
+    def everything(self) -> str:
+        return "\n".join(part for pair in self.asked for part in pair)
+
 
 def _turn(query: str = "What is the price of paddy?") -> UserTurn:
     return UserTurn(
@@ -86,39 +108,13 @@ def _turn(query: str = "What is the price of paddy?") -> UserTurn:
     )
 
 
-class _Recorder:
-    """Captures every prompt the model was sent, and answers with a fixed
-    string so the assertions can be about the input."""
-
-    def __init__(self, answer: str = "The price of paddy is 2,200 Rs.") -> None:
-        self._answer = answer
-        self.prompts: list[str] = []
-
-    def as_model(self) -> FunctionModel:
-        def model(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
-            self.prompts.extend(
-                part.content
-                for message in messages
-                for part in message.parts
-                if isinstance(part, SystemPromptPart | UserPromptPart)
-                and isinstance(part.content, str)
-            )
-            return ModelResponse(parts=[TextPart(content=self._answer)])
-
-        return FunctionModel(model)
-
-    @property
-    def everything(self) -> str:
-        return "\n".join(self.prompts)
-
-
 async def test_the_prompt_carries_the_question_and_the_providers_values() -> None:
     """Both are required to write "The price of paddy is 2,200 Rs.": the
     values come from the provider, and the question decides which of them the
     answer leads with."""
 
     recorder = _Recorder()
-    compose = build_compose(identity=IDENTITY, model=recorder.as_model())
+    compose = build_compose(identity=IDENTITY, llm=recorder)
 
     await compose(EVIDENCE, turn=_turn("What is the price of paddy?"))
 
@@ -129,12 +125,9 @@ async def test_the_prompt_carries_the_question_and_the_providers_values() -> Non
 
 
 async def test_compose_returns_the_composed_answer() -> None:
-    recorder = _Recorder("The price of paddy is 2,200 Rs.")
-    compose = build_compose(identity=IDENTITY, model=recorder.as_model())
+    compose = build_compose(identity=IDENTITY, llm=_Recorder(ANSWER))
 
-    answer = await compose(EVIDENCE, turn=_turn())
-
-    assert answer == "The price of paddy is 2,200 Rs."
+    assert await compose(EVIDENCE, turn=_turn()) == ANSWER
 
 
 async def test_nothing_retrieved_says_so_in_the_prompt() -> None:
@@ -142,7 +135,7 @@ async def test_nothing_retrieved_says_so_in_the_prompt() -> None:
     an empty block it might fill from its own knowledge."""
 
     recorder = _Recorder()
-    compose = build_compose(identity=IDENTITY, model=recorder.as_model())
+    compose = build_compose(identity=IDENTITY, llm=recorder)
 
     await compose(NOTHING_FOUND, turn=_turn())
 
@@ -159,7 +152,7 @@ async def test_a_failed_provider_is_named_rather_than_reading_as_no_provider() -
     so both rendered as "Nothing was retrieved."."""
 
     recorder = _Recorder()
-    compose = build_compose(identity=IDENTITY, model=recorder.as_model())
+    compose = build_compose(identity=IDENTITY, llm=recorder)
 
     await compose(UNREACHABLE, turn=_turn())
 
@@ -167,3 +160,23 @@ async def test_a_failed_provider_is_named_rather_than_reading_as_no_provider() -
     assert "429 too many requests" in recorder.everything
     # and it must not read as "nobody serves this"
     assert "Nothing was retrieved." not in recorder.everything
+
+
+async def test_both_composers_ask_the_model_exactly_the_same_thing() -> None:
+    """The guard against the two paths drifting.
+
+    They are separate calls — one retryable, one not — over one prompt. If this
+    fails, a farmer's answer now depends on which endpoint they came in
+    through, which is the bug this whole arrangement exists to prevent.
+    """
+
+    whole, streamed = _Recorder(), _Recorder()
+    turn = _turn("What is the price of paddy?")
+
+    await build_compose(identity=IDENTITY, llm=whole)(EVIDENCE, turn=turn)
+    async for _ in stream_response(
+        EVIDENCE, turn=turn, identity=IDENTITY, llm=streamed
+    ):
+        pass
+
+    assert whole.asked == streamed.asked

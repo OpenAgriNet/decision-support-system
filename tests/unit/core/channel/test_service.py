@@ -1,6 +1,6 @@
 """Tier 1 — the deterministic channel shaping.
 
-The prose-writing composer lives in `orchestration/compose.py` (it needs an
+The prose-writing composer lives in `core/channel/compose.py` (it needs an
 LLM); what stays here is the fixed no-match reply. `answer_from_evidence` has
 its own test alongside this one.
 """

@@ -44,6 +44,7 @@ from dss.config.policy_loader import load_policy_pack
 from dss.config.schema_pack_fetch import SchemaPackFetchFailed, fetch_packs
 from dss.config.settings import Settings
 from dss.config.skill_loader import load_skills
+from dss.core.channel.compose import build_compose
 from dss.core.intent.models import Intent
 from dss.core.planner.validation import DomainSchema, parse_domain_schema
 from dss.core.policy.models import Checkpoint
@@ -51,7 +52,6 @@ from dss.core.provider_discovery.index import PACK_DEFECTS, extract_type_const
 from dss.core.provider_discovery.models import DiscoveryResult, SchemaPackFiles
 from dss.core.provider_discovery.schema_pack_cache import SchemaPackCache
 from dss.core.shared.models import UserTurn
-from dss.orchestration.compose import build_compose
 from dss.orchestration.discovery import (
     DiscoverProviders,
     build_capability_discovery,
@@ -140,13 +140,7 @@ def build_runner_with_lifecycle(
             timeout_seconds=settings.planner_timeout_seconds,
             retries=settings.planner_retries,
         ),
-        compose=build_compose(
-            identity=identity,
-            model=_resolve_model(settings.composer_model),
-            temperature=settings.composer_temperature,
-            timeout_seconds=settings.composer_timeout_seconds,
-            retries=settings.composer_retries,
-        ),
+        compose=build_compose(identity=identity, llm=_composer_llm(settings)),
     )
 
     runner = Orchestrator(
@@ -416,6 +410,27 @@ def _intent_llm(settings: Settings):
         temperature=settings.intent_temperature,
         timeout=settings.intent_timeout_seconds,
         retries=settings.intent_retries,
+    )
+
+
+def _composer_llm(settings: Settings):
+    """The composer's model binding.
+
+    Warmer than the planner's by default: this one writes the farmer's answer,
+    where a little variation reads better than a fixed phrasing. `retries`
+    reaches only the whole-answer call — `stream_text` does not offer one, so a
+    stream that has already sent pieces cannot be restarted over the top of
+    them.
+    """
+
+    if settings.stub_llm:
+        return StubLLM()
+    return PydanticAILLMProvider(
+        _resolve_model(settings.composer_model),
+        name="composer",
+        temperature=settings.composer_temperature,
+        timeout=settings.composer_timeout_seconds,
+        retries=settings.composer_retries,
     )
 
 

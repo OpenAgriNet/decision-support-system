@@ -1,26 +1,19 @@
-"""The throwaway composer — ``Evidence`` in, an answer for the farmer out.
+"""What the composer asks the model — the prompt, and the evidence it rests on.
 
-A stand-in for the design's Response Composer (§6.8). It is a *separate* LLM
-call from the planner's loop, deliberately: `Evidence` stays the seam, so the
-real composer replaces this function without touching the planner's output.
+Here rather than beside either composer because there are two of them: the
+whole-answer path (`core/channel/compose.py`) and the streaming one
+(`core/stream_response/service.py`). They are separate calls on purpose — only
+one of them may be retried — but they must never become separate *prompts*, or
+the two paths start answering the same question differently. One module, one
+prompt, and a test that holds them to it.
 
-What it does not do, and the real one will: stream claims, carry a `Claim`
-tuple with per-sentence source ids, shape for voice/SMS, or say what
-moderation refused.
-
-Here rather than in ``core/`` because it calls Pydantic AI directly —
-``LLMProvider`` only offers ``structured()``, and prose is not a schema.
-Adding a ``text()`` method to that port and moving this to ``core/`` is the
-follow-up.
+Framework-free: plain strings in, plain strings out. Nothing here knows whether
+the answer comes back whole or in pieces.
 """
 
 from __future__ import annotations
 
 import json
-from typing import Protocol
-
-from pydantic_ai import Agent
-from pydantic_ai.models import Model
 
 from dss.core.planner.markers import (
     QUESTION,
@@ -29,9 +22,8 @@ from dss.core.planner.markers import (
 )
 from dss.core.planner.models import Evidence, Identity
 from dss.core.shared.models import UserTurn
-from dss.observability.trace_log import log_external_response
 
-_SYSTEM_PROMPT = """You are {name}, {persona}
+SYSTEM_PROMPT = """You are {name}, {persona}
 
 {boundaries}
 
@@ -58,11 +50,30 @@ nobody having the answer — do not turn one into the other.
 """
 
 
-class Compose(Protocol):
-    async def __call__(self, evidence: Evidence, *, turn: UserTurn) -> str: ...
+def system_prompt(identity: Identity, *, turn: UserTurn) -> str:
+    return SYSTEM_PROMPT.format(
+        name=identity.name,
+        persona=identity.persona,
+        boundaries=identity.boundaries,
+        target_lang=turn.target_lang,
+    )
 
 
-def _render_evidence(evidence: Evidence) -> str:
+def user_prompt(evidence: Evidence, *, turn: UserTurn) -> str:
+    """The question and the provider's values, wrapped as data.
+
+    A provider's text is third-party and must never read as instructions, and
+    `wrap_as_data` stops either block from closing early.
+    """
+
+    return (
+        wrap_as_data(turn.enriched_query, QUESTION)
+        + "\n\n"
+        + wrap_as_data(render_evidence(evidence), RETRIEVED_DATA)
+    )
+
+
+def render_evidence(evidence: Evidence) -> str:
     """Lay out the sources and their values for the model.
 
     ``Result.data`` is a provider's ``resourceAttributes`` verbatim — each
@@ -98,47 +109,3 @@ def _render_failures(evidence: Evidence) -> list[str]:
         f"Could not reach a provider for {failure.capability}: {failure.reason}"
         for failure in evidence.failed
     ]
-
-
-def build_compose(
-    *,
-    identity: Identity,
-    model: Model | str,
-    temperature: float = 0.3,
-    timeout_seconds: float = 30.0,
-    retries: int = 1,
-) -> Compose:
-    """Bind the identity and model once; return the per-turn callable.
-
-    Its own model settings, like every other component (ADR-0004). Warmer
-    than the planner by default: this one writes the farmer's answer, where a
-    little variation reads better than a fixed phrasing.
-    """
-
-    model_settings = {"temperature": temperature, "timeout": timeout_seconds}
-
-    async def compose(evidence: Evidence, *, turn: UserTurn) -> str:
-        agent: Agent[None, str] = Agent(
-            model,
-            name="composer",
-            system_prompt=_SYSTEM_PROMPT.format(
-                name=identity.name,
-                persona=identity.persona,
-                boundaries=identity.boundaries,
-                target_lang=turn.target_lang,
-            ),
-            retries=retries,
-        )
-        # The question and the provider's values, wrapped as data — a
-        # provider's text is third-party and must never read as instructions,
-        # and `wrap_as_data` stops either from closing its block early.
-        user_message = (
-            wrap_as_data(turn.enriched_query, QUESTION)
-            + "\n\n"
-            + wrap_as_data(_render_evidence(evidence), RETRIEVED_DATA)
-        )
-        result = await agent.run(user_message, model_settings=model_settings)
-        log_external_response("llm.composer", turn.transaction_id, body=result.output)
-        return result.output
-
-    return compose

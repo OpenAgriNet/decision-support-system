@@ -39,6 +39,7 @@ from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
 
 from dss.adapters.observability.tracing import turn_span
+from dss.core.channel.compose import Compose
 from dss.core.channel.models import ComposedAnswer
 from dss.core.channel.service import (
     answer_from_evidence,
@@ -66,7 +67,6 @@ from dss.core.shared.models import (
     UserTurn,
 )
 from dss.observability.trace_log import bind_turn_ids, trace_component
-from dss.orchestration.compose import Compose
 from dss.orchestration.discovery import DiscoverProviders
 from dss.orchestration.plan import Plan
 from dss.orchestration.turn import run_turn
