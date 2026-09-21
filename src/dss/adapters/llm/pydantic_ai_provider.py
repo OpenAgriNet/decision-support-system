@@ -53,11 +53,6 @@ class PydanticAILLMProvider:
         self._retries = retries
         self._output_mode = output_mode
         self._model_settings = {"temperature": temperature, "timeout": timeout}
-        # How long `stream_text` groups pieces before handing them on. Every
-        # frame downstream repeats the whole response envelope, so one frame per
-        # token is mostly envelope; grouping 100ms of them cuts that to a
-        # fraction and costs the farmer at most 100ms on the first word. `None`
-        # disables it — one piece out for every piece the model emits.
         self._stream_debounce_seconds = stream_debounce_seconds
 
     def _output_type(self, schema: type[SchemaT]):
