@@ -24,3 +24,30 @@ async def test_every_ask_is_recorded_for_inspection():
     assert llm.asked_for(Intent) == 1
     assert llm.asked_for(ComposedAnswer) == 0
     assert llm.calls[0].system_prompt == "p"
+
+
+async def test_streamed_text_arrives_in_pieces_and_is_recorded():
+    """A stub deployment still has to *stream*, or nothing downstream of the
+    composer can be exercised without a real model."""
+
+    llm = StubLLM(text_chunks=("Paddy is ", "Rs 1,450."))
+
+    deltas = [
+        delta async for delta in llm.stream_text(system_prompt="p", user_query="q")
+    ]
+
+    assert deltas == ["Paddy is ", "Rs 1,450."]
+    assert llm.calls[0].user_query == "q"
+    assert llm.calls[0].schema is None
+
+
+async def test_a_stub_with_no_text_wired_streams_nothing():
+    """Not a failure — a turn that composes nothing is representable, and the
+    caller decides what it means."""
+
+    assert [
+        delta
+        async for delta in StubLLM(text_chunks=()).stream_text(
+            system_prompt="p", user_query="q"
+        )
+    ] == []
