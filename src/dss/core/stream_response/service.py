@@ -27,11 +27,32 @@ different questions.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from typing import Protocol
 
 from dss.core.channel.prompt import system_prompt, user_prompt
 from dss.core.planner.models import Evidence, Identity
 from dss.core.shared.models import UserTurn
 from dss.ports.llm import LLMProvider
+
+
+class ComposeStream(Protocol):
+    """A per-turn streaming composer, already bound to its identity and model.
+
+    ``def``, not ``async def``: an implementation is an async generator, so
+    calling one returns the iterator without awaiting.
+    """
+
+    def __call__(self, evidence: Evidence, *, turn: UserTurn) -> AsyncIterator[str]: ...
+
+
+def build_stream_response(*, identity: Identity, llm: LLMProvider) -> ComposeStream:
+    """Bind the identity and the model binding once; return the per-turn
+    callable, so the composition root is the only place that names either."""
+
+    def compose_stream(evidence: Evidence, *, turn: UserTurn) -> AsyncIterator[str]:
+        return stream_response(evidence, turn=turn, identity=identity, llm=llm)
+
+    return compose_stream
 
 
 async def stream_response(

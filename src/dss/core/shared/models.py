@@ -241,6 +241,25 @@ class TurnStarted(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
+class ClaimDelta(BaseModel):
+    """A piece of a claim, handed on as the composer writes it.
+
+    Not a claim. It carries no sources and no citations: mid-write the block has
+    no end yet, so a citation over it would span a moving target. Provenance
+    arrives with the `Claim` that follows, which is the first point the block is
+    final.
+
+    Pieces land on whatever boundary the model produced — mid-word, mid-number,
+    mid-citation-marker. Concatenating every delta of a turn gives the `Claim`'s
+    text exactly; nothing in the pipeline re-splits them, because that guarantee
+    is what lets a caller render them as they arrive.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    text: str
+
+
 class Claim(BaseModel):
     """One reviewed block, ready to present. Emitted as it is produced.
 
@@ -266,4 +285,4 @@ class TurnFinished(BaseModel):
     sources: tuple[Source, ...] = ()
 
 
-TurnEvent = TurnStarted | Claim | TurnFinished
+TurnEvent = TurnStarted | ClaimDelta | Claim | TurnFinished
