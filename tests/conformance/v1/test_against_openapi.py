@@ -25,6 +25,7 @@ from jsonschema import Draft202012Validator
 from dss.config.settings import Settings
 from dss.core.shared.models import (
     Claim,
+    ClaimDelta,
     RefusalBlock,
     Source,
     SourceKind,
@@ -130,3 +131,47 @@ def test_every_streamed_frame_validates_against_the_contract(spec, a_body):
             problems[name] = found
 
     assert not problems
+
+
+def _stream_client(finished: TurnFinished, deltas: tuple[str, ...]) -> TestClient:
+    """The streaming route's runner: pieces first, then the finished block."""
+
+    events = [TurnStarted()]
+    events += [ClaimDelta(text=text) for text in deltas]
+    events += [Claim(content=block) for block in finished.content]
+    events.append(finished)
+    return TestClient(
+        build_app(
+            runner=FakeRunner([]),
+            stream_runner=FakeRunner(events),
+            settings=Settings(),
+        )
+    )
+
+
+def test_every_delta_frame_validates_against_the_contract(spec, a_body):
+    """`claim.delta` is new on the wire, so the published schema and what the
+    transport actually emits have to be checked against each other rather than
+    against a reading of either."""
+
+    deltas = ("Rs 2,2", "75 per quintal.")
+    response = _stream_client(ANSWER, deltas).post(
+        "/v1/stream/turns", json=a_body(), headers={"Accept": "text/event-stream"}
+    )
+
+    problems = {}
+    for block in response.text.strip().split("\n\n"):
+        name = block.split("\n")[0].removeprefix("event: ")
+        payload = json.loads(block.split("\n")[1].removeprefix("data: "))
+        found = _errors(spec, "TurnEvent", payload)
+        if found:
+            problems[name] = found
+
+    assert not problems
+
+
+def test_the_spec_declares_the_delta_content_type(spec):
+    item = spec["components"]["schemas"]["OutputContentItem"]
+
+    assert "output_text_delta" in item["discriminator"]["mapping"]
+    assert "OutputTextDelta" in spec["components"]["schemas"]
