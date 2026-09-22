@@ -90,8 +90,9 @@
 - `dss.discover` and the select spans now say what the call was. They carried a
   name and a duration only, so six of them in a turn were indistinguishable.
   `dss.discover` gains the capability it queried and how many capabilities and
-  answers came back; `dss.select` gains the provider, and each attempt its
-  number. Shape only — the bodies hold the farmer's query and stay on the DEBUG
+  answers came back; `dss.select` gains the provider and how many attempts it
+  took, and each failed attempt the status code that failed it — so a 503 and a
+  429 are no longer identically shaped boxes. Shape only — the bodies hold the farmer's query and stay on the DEBUG
   log lines, per §6.1 (#138)
 - Spans carry an exception's type, not its message. `SelectFailed` embeds the
   provider's response body, which echoes the farmer's query. §6.1 (#138)

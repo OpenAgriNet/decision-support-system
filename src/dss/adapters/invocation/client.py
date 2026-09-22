@@ -173,15 +173,23 @@ class HttpCapabilityInvocation:
 
         with open_span(
             "dss.select", attributes={"provider_id": capability.provider_id}
-        ):
+        ) as call:
             for attempt in range(1, self._attempts + 1):
+                call.set_attribute("attempts", attempt)
                 try:
-                    with open_span(
-                        "dss.select.attempt", attributes={"attempt": attempt}
-                    ):
-                        return await self._select_once(
-                            capability, resource_attributes, transaction_id
-                        )
+                    with open_span("dss.select.attempt") as span:
+                        try:
+                            return await self._select_once(
+                                capability, resource_attributes, transaction_id
+                            )
+                        except SelectFailed as failure:
+                            # The code, not `detail` — that carries the
+                            # provider's response body, which echoes the
+                            # farmer's query back (§6.1). Without it every
+                            # failed attempt reads `SelectFailed`, and a 503
+                            # and a 429 make identically shaped boxes.
+                            span.set_attribute("http.status_code", failure.status_code)
+                            raise
                 except SelectFailed as failure:
                     last_chance = attempt == self._attempts
                     if (

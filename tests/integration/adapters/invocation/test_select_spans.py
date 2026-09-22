@@ -104,9 +104,29 @@ async def test_the_call_span_names_the_provider_it_reached(spans) -> None:
     assert "onion" not in str(call.attributes)
 
 
-async def test_an_attempt_span_numbers_itself(spans) -> None:
-    """Three children all named the same cannot be told apart in a list, and
-    which attempt finally worked is the question the retry level exists for."""
+async def test_each_attempt_says_why_it_failed(spans) -> None:
+    """The durations are the spans themselves and the retry count is how many
+    there are. What the timeline cannot show is *why* each one failed — a 503
+    and a 429 make identically shaped boxes.
+
+    The status code only, never `SelectFailed.detail`: that carries the
+    provider's response body, which echoes the farmer's query back."""
+
+    codes = iter((503, 429, 500))
+
+    def failing(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(next(codes), json={"error": "secret-query-echo"})
+
+    with pytest.raises(SelectFailed):
+        await _invocation(failing).select(CAPABILITY, {}, "txn-1")
+
+    attempts = [s for s in spans.get_finished_spans() if s.name == "dss.select.attempt"]
+    assert [s.attributes["http.status_code"] for s in attempts] == [503, 429, 500]
+    assert "secret-query-echo" not in str([dict(s.attributes) for s in attempts])
+
+
+async def test_the_call_span_counts_its_attempts(spans) -> None:
+    """One number to alert on, rather than counting children by eye."""
 
     def always_429(request: httpx.Request) -> httpx.Response:
         return httpx.Response(429, json={"error": "simulated"})
@@ -114,5 +134,5 @@ async def test_an_attempt_span_numbers_itself(spans) -> None:
     with pytest.raises(SelectFailed):
         await _invocation(always_429).select(CAPABILITY, {}, "txn-1")
 
-    attempts = [s for s in spans.get_finished_spans() if s.name == "dss.select.attempt"]
-    assert [s.attributes["attempt"] for s in attempts] == [1, 2, 3]
+    call = next(s for s in spans.get_finished_spans() if s.name == "dss.select")
+    assert call.attributes["attempts"] == 3
