@@ -14,10 +14,10 @@ Two rules, both enforced by walking the AST:
 1. **No outward package.** `core/` and `ports/` may not import `adapters`,
    `orchestration`, `entrypoint`, or `config`.
 2. **Nothing that reaches the outside world.** No HTTP client, no filesystem, no
-   clock, no environment, no randomness. Each of those is a dependency, and a
-   dependency belongs behind an argument or a port — otherwise the domain cannot
-   be tested without infrastructure, which is the only reason to pay for this
-   layout at all.
+   clock, no environment, no randomness, no telemetry SDK. Each of those is a
+   dependency, and a dependency belongs behind an argument or a port —
+   otherwise the domain cannot be tested without infrastructure, which is the
+   only reason to pay for this layout at all.
 """
 
 from __future__ import annotations
@@ -63,6 +63,11 @@ IMPURE_MODULES = frozenset(
         "time",
         "sqlite3",
         "logging",
+        # Not I/O in the way the rest of this list is, but banned on the same
+        # principle: a span is an outward dependency, and ADR-0012 puts tracing
+        # in the application boundary. A core service that opened its own span
+        # would need a framework runtime to test.
+        "opentelemetry",
     }
 )
 
@@ -126,6 +131,16 @@ def test_a_clock_or_a_network_client_is_caught() -> None:
     tree = ast.parse("import time\nimport httpx\n")
 
     assert _impure(imported_modules(tree)) == {"time", "httpx"}
+
+
+def test_a_tracer_is_caught() -> None:
+    """ADR-0012: tracing stays in the application boundary. A span opened from
+    a core service is the shortcut that decision rejects, and it is a tempting
+    one — the alternative is threading a wrapper through orchestration."""
+
+    tree = ast.parse("from opentelemetry import trace\n")
+
+    assert _impure(imported_modules(tree)) == {"opentelemetry"}
 
 
 def test_what_the_inside_is_allowed_to_import_is_not_flagged() -> None:

@@ -25,6 +25,12 @@ import logging
 import os
 from collections.abc import Iterator
 from contextlib import contextmanager
+from typing import TYPE_CHECKING
+
+from dss.observability.trace_log import set_stage_span_opener
+
+if TYPE_CHECKING:
+    from opentelemetry.trace import Span
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +119,42 @@ def configure_tracing() -> None:
     # was not already there.
     logfire.configure(send_to_logfire=False, console=False, scrubbing=False)
     Agent.instrument_all(settings)
+
+    # Here rather than in `create_app` so stage spans cannot be on while the
+    # exporter is off, or the reverse. Every early return above leaves the slot
+    # empty, and `trace_component` then opens nothing.
+    set_stage_span_opener(open_span)
+
     logger.info("tracing on, exporting to %s", endpoint)
+
+
+@contextmanager
+def open_span(name: str) -> Iterator[Span]:
+    """A named span, nested under whatever is current.
+
+    Callers: it fills `trace_component`'s slot, so every stage gets a
+    `dss.stage.<name>` span; `orchestration/` opens one around the discovery
+    fan-out; and the two network adapters open one per outbound call.
+
+    It lives here because this package is where telemetry SDK code is allowed
+    to live. `observability/trace_log.py` imports none of it — it holds a slot,
+    and this arrives at startup instead.
+
+    Naming is the caller's, so each span name sits beside the thing it is named
+    for rather than in a table here.
+
+    The span is yielded because not every caller can leave it to say what
+    happened. A raise sets ``ERROR`` by itself, but the discovery client never
+    raises — its failures come back as data — and the fan-out's own outcome is
+    a count of how many of its children failed. Callers with nothing to add can
+    ignore what is yielded.
+    """
+
+    from opentelemetry import trace
+
+    tracer = trace.get_tracer("dss.orchestration")
+    with tracer.start_as_current_span(name) as span:
+        yield span
 
 
 @contextmanager

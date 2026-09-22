@@ -12,6 +12,7 @@ from typing import Any, Protocol
 from uuid import uuid4
 
 import httpx
+from opentelemetry.trace import Status, StatusCode
 
 from dss.adapters.network_common import (
     NO_STATUS_CODE,
@@ -19,6 +20,7 @@ from dss.adapters.network_common import (
     extract_source_reference,
     extract_validity,
 )
+from dss.adapters.observability.tracing import open_span
 from dss.core.provider_discovery.models import (
     DiscoveredAnswer,
     DiscoveryFailure,
@@ -305,6 +307,13 @@ class HttpCapabilityDiscovery:
     async def discover(
         self, query: ProviderQuery, ask_indices: tuple[int, ...], transaction_id: str
     ) -> DiscoveryResult:
+        """One query to one provider. Never raises — see `_malformed_result`.
+
+        The span has to be told when this fails, precisely because nothing is
+        raised: left alone it would exit green, and a provider that timed out
+        would be indistinguishable from one that answered.
+        """
+
         request_body = build_discover_request(
             query,
             schema_context_index=self._schema_pack_cache.current_schema_context(),
@@ -319,28 +328,40 @@ class HttpCapabilityDiscovery:
             capabilities=",".join(query.capabilities),
             body=request_body,
         )
-        try:
-            response = await self._client.post(
-                f"{self._base_url}/discover", json=request_body
-            )
-            log_external_response(
-                "discovery",
-                transaction_id,
-                status=response.status_code,
-                capabilities=",".join(query.capabilities),
-                body=response.text,
-            )
-            response.raise_for_status()
-        except httpx.HTTPStatusError as exc:
-            return _failure_result(
-                query, ask_indices, exc.response.status_code, exc.response.text
-            )
-        except httpx.HTTPError as exc:
-            log_external_response(
-                "discovery", transaction_id, status="transport_error", error=str(exc)
-            )
-            return _failure_result(query, ask_indices, NO_STATUS_CODE, str(exc))
-        try:
-            return map_discover_response(response.json(), ask_indices)
-        except (KeyError, TypeError, ValueError) as exc:
-            return _malformed_result(query, ask_indices, f"malformed response: {exc!r}")
+        with open_span("dss.discover") as span:
+            try:
+                response = await self._client.post(
+                    f"{self._base_url}/discover", json=request_body
+                )
+                log_external_response(
+                    "discovery",
+                    transaction_id,
+                    status=response.status_code,
+                    capabilities=",".join(query.capabilities),
+                    body=response.text,
+                )
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                span.set_status(
+                    Status(StatusCode.ERROR, f"HTTP {exc.response.status_code}")
+                )
+                return _failure_result(
+                    query, ask_indices, exc.response.status_code, exc.response.text
+                )
+            except httpx.HTTPError as exc:
+                log_external_response(
+                    "discovery",
+                    transaction_id,
+                    status="transport_error",
+                    error=str(exc),
+                )
+                span.set_status(Status(StatusCode.ERROR, f"transport: {exc}"))
+                return _failure_result(query, ask_indices, NO_STATUS_CODE, str(exc))
+            try:
+                return map_discover_response(response.json(), ask_indices)
+            except (KeyError, TypeError, ValueError) as exc:
+                # The only signal on this path: it writes no log line of its own.
+                span.set_status(Status(StatusCode.ERROR, f"malformed: {exc!r}"))
+                return _malformed_result(
+                    query, ask_indices, f"malformed response: {exc!r}"
+                )

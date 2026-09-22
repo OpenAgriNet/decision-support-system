@@ -7,6 +7,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from opentelemetry.trace import StatusCode
 
 from dss.adapters.schema_packs.filesystem import FilesystemSchemaPackSource
 from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
@@ -107,6 +111,124 @@ async def test_the_wired_discover_providers_bakes_in_radius() -> None:
         )
 
     assert result.answers[0][0].provider_id == "agmarknet"
+
+
+async def test_the_fan_out_runs_inside_a_span(monkeypatch) -> None:
+    """One span for the whole fan-out, opened out here.
+
+    The slot tasks are spawned inside `core/`, which may not open spans
+    (ADR-0012), so per-slot detail would need a port. One span around the
+    fan-out is what orchestration can see, and the per-provider `dss.discover`
+    spans underneath already show a single slow provider.
+    """
+
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    monkeypatch.setattr("opentelemetry.trace.get_tracer_provider", lambda: provider)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=ON_DISCOVER_RESPONSE)
+
+    cache = SchemaPackCache(FilesystemSchemaPackSource(root=SCHEMA_PACKS_FIXTURE_ROOT))
+    await cache.refresh()
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        discover_providers = build_discover_providers(
+            build_capability_discovery(
+                client=client,
+                base_url="https://network-adapter.example",
+                schema_pack_cache=cache,
+            ),
+            cache,
+            FakeAreaLookup(),
+            50_000,
+        )
+        ask = Ask(
+            subject_categories=SubjectCategory.MARKET,
+            interaction_type=InteractionType.OBSERVE,
+        )
+        turn = UserTurn(
+            original_query="onion price",
+            enriched_query="onion price",
+            session_id="s1",
+            transaction_id="t1",
+            source_lang="hi",
+            target_lang="hi",
+            channel="web",
+        )
+
+        with provider.get_tracer("test").start_as_current_span("dss.stage.discovery"):
+            await discover_providers(
+                Intent(asks=(ask,), confidence=0.9),
+                turn,
+                now=datetime(2026, 8, 24, 12, 0, 0, tzinfo=UTC),
+            )
+
+    names = [span.name for span in exporter.get_finished_spans()]
+    assert "dss.provider_discovery" in names
+
+
+async def test_the_fan_out_span_counts_how_many_asks_went_unanswered(
+    monkeypatch,
+) -> None:
+    """One provider down does not make the turn fail, so this span stays green
+    — but the trace has to say so somewhere. A count, because OpenTelemetry
+    status is only OK or ERROR and "1 of 2 answered" is neither.
+
+    Counted per ask rather than per provider, because that is what a
+    `DiscoveryResult` is keyed by. The failed call's own `dss.discover` child
+    is the red one; this span is about the fan-out, which did its job.
+    """
+
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    monkeypatch.setattr("opentelemetry.trace.get_tracer_provider", lambda: provider)
+
+    def unavailable(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, json={"error": "simulated"})
+
+    cache = SchemaPackCache(FilesystemSchemaPackSource(root=SCHEMA_PACKS_FIXTURE_ROOT))
+    await cache.refresh()
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(unavailable)) as client:
+        discover_providers = build_discover_providers(
+            build_capability_discovery(
+                client=client,
+                base_url="https://network-adapter.example",
+                schema_pack_cache=cache,
+            ),
+            cache,
+            FakeAreaLookup(),
+            50_000,
+        )
+        ask = Ask(
+            subject_categories=SubjectCategory.MARKET,
+            interaction_type=InteractionType.OBSERVE,
+        )
+        turn = UserTurn(
+            original_query="onion price",
+            enriched_query="onion price",
+            session_id="s1",
+            transaction_id="t1",
+            source_lang="hi",
+            target_lang="hi",
+            channel="web",
+        )
+
+        await discover_providers(
+            Intent(asks=(ask,), confidence=0.9),
+            turn,
+            now=datetime(2026, 8, 24, 12, 0, 0, tzinfo=UTC),
+        )
+
+    (fan_out,) = [
+        s for s in exporter.get_finished_spans() if s.name == "dss.provider_discovery"
+    ]
+    assert fan_out.attributes["asks_queried"] == 1
+    assert fan_out.attributes["asks_failed"] == 1
+    assert fan_out.status.status_code is not StatusCode.ERROR
 
 
 class _FakeIntentLLM:
