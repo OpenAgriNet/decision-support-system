@@ -36,6 +36,12 @@ Run locally: `uv run uvicorn --factory dss.entrypoint.app:create_app --port 8077
 ## Conventions
 Naming, versioning, changelog, git workflow, logging, and linting conventions are documented separately in [`CONVENTIONS.md`](./CONVENTIONS.md) — read that file before naming anything, writing a commit, or opening a PR.
 
+## Writing Style
+Applies to ADRs, PR descriptions, code comments, and any other document.
+- Simple words, short sentences.
+- No verbosity — say only what's needed.
+- Write for a non-technical reader — a product owner, anyone without a software background.
+
 ## Folder Structure
 
 Hexagonal / ports-and-adapters. The hard rule: **only `orchestration/` imports the orchestration framework (Pydantic AI).** `core/` never imports it — core services take and return plain domain objects, so they stay unit-testable without a framework runtime and a future framework swap only rewrites `orchestration/` (and maybe some of `adapters/`), never `core/`.
