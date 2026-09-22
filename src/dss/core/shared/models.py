@@ -21,6 +21,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from dss.core.shared.network import NetworkTransactionID
+
 # BCP-47 primary subtag plus optional subtags — enough to reject full names like
 # "gujarati" while accepting "gu", "hi", "en", "en-IN" (CONVENTIONS.md).
 _BCP47 = re.compile(r"^[A-Za-z]{2,3}(-[A-Za-z0-9]{1,8})*$")
@@ -101,7 +103,7 @@ class UserTurn(BaseModel):
     original_query: str
     enriched_query: str
     session_id: str
-    transaction_id: str
+    transaction_id: NetworkTransactionID
     source_lang: str  # language the user spoke/typed (BCP-47)
     target_lang: str  # language the response should come back in (BCP-47)
     channel: str  # web / whatsapp / voice / ... (lowercase)
@@ -139,7 +141,7 @@ class TurnContext(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    trace_id: str
+    trace_id: NetworkTransactionID
     message_id: str
     session_id: str
 

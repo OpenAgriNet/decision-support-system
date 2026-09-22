@@ -114,7 +114,7 @@ def test_the_shared_fields_are_merged_in_with_the_packs_own() -> None:
     - `subjectCategories` reports the enum from `items`, not from itself —
       `/discover` filters on those values, so reading the array's own (absent)
       enum would yield nothing to filter by;
-    - a Beckn `https://` ref stops at the boundary as a plain object. Not
+    - a network `https://` ref stops at the boundary as a plain object. Not
       resolved, because that would make flattening need the network. The DSS
       copies `location` from the turn's geometry, so its inner shape is
       already known in code.
