@@ -129,7 +129,7 @@ refactor: delegate v2 path to stream_dss_turn [#61]
 
 ### Pull requests
 - Title: follows Conventional Commits (drives changelog).
-- Body: always ends with `Closes #<issue-no>` — auto-closes issue on merge, enables cycle-time tracking.
+- Body: always ends with `Relates to #<issue-no>` — links the PR to the issue without auto-closing it on merge.
 
 ```markdown
 ## What
@@ -141,16 +141,16 @@ Any adopter can now call DSS without knowing about the underlying pipeline.
 ## Testing
 Smoke tested on Gujarati and English with equivalent v1/v2 output.
 
-Closes #42
+Relates to #42
 ```
 
-Traceability chain: Issue #42 → Branch `feat/42-...` → Commits `[#42]` → PR "Closes #42" → Merged → Issue closed.
+Traceability chain: Issue #42 → Branch `feat/42-...` → Commits `[#42]` → PR "Relates to #42" → Merged → Issue closed manually.
 
 ### Merge strategy
 Rebase merge only. Each commit lands individually on `main` — individual commits are the source of truth for the changelog and `git log` traceability.
 - Squash within a branch is fine for cleanup (typos, formatting).
 - Never squash the entire PR on merge — individual commit history is lost.
-- If a PR is squash-merged by accident: the PR title and `Closes #issue` still preserve traceability and changelog correctness; only intra-PR commit granularity is lost.
+- If a PR is squash-merged by accident: the PR title and `Relates to #issue` still preserve traceability and changelog correctness; only intra-PR commit granularity is lost.
 
 ## Logging
 Always include `request_id`. Never log raw PII.
