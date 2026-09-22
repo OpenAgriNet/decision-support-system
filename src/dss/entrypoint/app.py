@@ -77,6 +77,14 @@ def _instrument_http(app: FastAPI) -> None:
     if not tracing_enabled():
         return
 
+    # Ask for the stable HTTP names before instrumenting. Without this the
+    # instrumentor still emits the superseded ones — `http.server.duration` in
+    # milliseconds instead of `http.server.request.duration` in seconds — and a
+    # dashboard built on the documented name would find nothing. Set here
+    # rather than in the environment so a local run and a deployment publish
+    # the same names.
+    os.environ.setdefault("OTEL_SEMCONV_STABILITY_OPT_IN", "http")
+
     from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
     FastAPIInstrumentor.instrument_app(app)
