@@ -649,7 +649,10 @@ What gets published:
 | `dss.stage.tokens` | tokens per stage, split into input and output |
 | `http.server.request.duration` | every request at the edge, by route and status |
 
-Durations are in **seconds**, which is what the HTTP convention uses.
+Durations are in **seconds**, which is what the HTTP convention uses. The DSS
+opts into the stable OpenTelemetry HTTP names at startup; without that the
+instrumentor still publishes the superseded `http.server.duration`, in
+milliseconds, and a panel built on the name above would stay empty.
 
 Three things worth knowing:
 
