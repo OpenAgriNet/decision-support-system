@@ -171,10 +171,14 @@ class HttpCapabilityInvocation:
         child per network call says how that total was spent.
         """
 
-        with open_span("dss.select"):
+        with open_span(
+            "dss.select", attributes={"provider_id": capability.provider_id}
+        ):
             for attempt in range(1, self._attempts + 1):
                 try:
-                    with open_span("dss.select.attempt"):
+                    with open_span(
+                        "dss.select.attempt", attributes={"attempt": attempt}
+                    ):
                         return await self._select_once(
                             capability, resource_attributes, transaction_id
                         )

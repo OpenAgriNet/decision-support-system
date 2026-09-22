@@ -165,7 +165,9 @@ def configure_tracing(
 
 
 @contextmanager
-def open_span(name: str, attributes: dict[str, str] | None = None) -> Iterator[Span]:
+def open_span(
+    name: str, attributes: dict[str, str | int | float | bool] | None = None
+) -> Iterator[Span]:
     """A named span, nested under whatever is current.
 
     Callers: it fills `trace_component`'s slot, so every stage gets a

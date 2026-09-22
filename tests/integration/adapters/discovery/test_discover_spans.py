@@ -133,3 +133,49 @@ async def test_a_returned_failure_marks_the_span_failed(spans) -> None:
     (span,) = spans.get_finished_spans()
     assert span.name == "dss.discover"
     assert span.status.status_code is StatusCode.ERROR
+
+
+async def test_the_span_says_what_was_asked_and_what_came_back(spans) -> None:
+    """A span with only a name and a duration cannot answer which provider was
+    slow, or whether it found anything. The shape of the call goes on it; the
+    farmer's words do not (`DSS_ARCHITECTURE.md` §6.1), which is why the bodies
+    stay on the DEBUG log lines."""
+
+    def answers(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"message": {"catalogs": []}})
+
+    await _discovery(answers).discover(QUERY, (0,), "txn-1")
+
+    (span,) = spans.get_finished_spans()
+    assert span.attributes["capabilities"] == "openagrinet:MandiPrice"
+    # Not the status code: on a failure the span status already carries it, and
+    # on a success it is always 200.
+    assert "http.status_code" not in span.attributes
+
+
+async def test_the_span_counts_what_the_provider_returned(spans) -> None:
+    """A green span that found nothing and a green span that found three
+    providers look identical without this. Counts, not the catalogs — the
+    resources carry the provider's own data, and a span is not the place."""
+
+    catalog = {
+        "provider": {"id": "agmarknet", "descriptor": {"name": "Agmarknet"}},
+        "resources": [
+            {
+                "id": "res:agmarknet:daily-price",
+                "resourceAttributes": {
+                    "@type": "openagrinet:MandiPrice",
+                    "informationMode": "OnDemand",
+                },
+            }
+        ],
+    }
+
+    def answers(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"message": {"catalogs": [catalog]}})
+
+    await _discovery(answers).discover(QUERY, (0,), "txn-1")
+
+    (span,) = spans.get_finished_spans()
+    assert span.attributes["capability_count"] == 1
+    assert span.attributes["answer_count"] == 0
