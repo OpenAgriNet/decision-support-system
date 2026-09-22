@@ -102,8 +102,13 @@ def create_app() -> FastAPI:
     """The process entry point — `uvicorn --factory dss.entrypoint.app:create_app`."""
 
     _configure_logging()
-    configure_tracing()
     settings = Settings()
+    configure_tracing(
+        intent_model=settings.intent_model,
+        moderation_model=settings.moderation_model,
+        planner_model=settings.planner_model,
+        composer_model=settings.composer_model,
+    )
     runner, aclose = build_runner_with_lifecycle(settings)
 
     @asynccontextmanager

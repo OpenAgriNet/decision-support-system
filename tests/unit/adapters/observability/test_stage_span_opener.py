@@ -11,6 +11,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
+from dss.adapters.observability import tracing
 from dss.adapters.observability.tracing import configure_tracing, open_span
 from dss.observability import trace_log
 
@@ -48,6 +49,21 @@ def test_configuring_tracing_fills_the_slot(monkeypatch) -> None:
     assert trace_log._stage_span_opener is open_span
 
 
+def test_the_model_names_arrive_with_everything_else(monkeypatch) -> None:
+    """One call configures the whole module. A second entry point for the
+    model names would let a caller turn tracing on and leave them behind, with
+    nothing to say so."""
+
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318")
+    monkeypatch.setattr("logfire.configure", lambda **_kwargs: None)
+    monkeypatch.setattr("pydantic_ai.agent.Agent.instrument_all", lambda *_a: None)
+    monkeypatch.setattr(tracing, "_model_names", {})
+
+    configure_tracing(intent_model="openai:gpt-4o-mini")
+
+    assert tracing._model_names == {"intent_model": "openai:gpt-4o-mini"}
+
+
 def test_without_an_endpoint_the_slot_stays_empty(monkeypatch) -> None:
     """The quiet default. No endpoint means no exporter, so a span would go
     nowhere — and `trace_component` is on the path of every stage of every
@@ -55,7 +71,11 @@ def test_without_an_endpoint_the_slot_stays_empty(monkeypatch) -> None:
 
     monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
     monkeypatch.setattr(trace_log, "_stage_span_opener", None)
+    monkeypatch.setattr(tracing, "_model_names", {})
 
-    configure_tracing()
+    configure_tracing(intent_model="openai:gpt-4o-mini")
+
+    # Nothing is recording, so there is no span for a model name to sit on.
+    assert tracing._model_names == {}
 
     assert trace_log._stage_span_opener is None

@@ -52,7 +52,7 @@ the core fan-out.
 **Option C. No tracing port, no span code in `core/`.**
 
 ```
-dss.turn
+dss.turn                               status, model names, first_delta_ms, first_claim_ms
 ├── dss.stage.intent
 ├── dss.stage.moderation
 ├── dss.stage.discovery
@@ -96,6 +96,21 @@ be filtered and graphed.
 **No `dss.plan_execution` span.** Every provider call already runs inside the
 planner block, so it would start and end with `dss.stage.planner`.
 
+**The turn root carries what only the turn knows.** `turn_span` yields a
+`TurnRecorder`, because `status` and the two timings are known only while the
+turn runs. `first_delta_ms` is when the farmer heard the first word;
+`first_claim_ms` is the first complete claim with its sources. Both also record
+a span event, so the moment is on the timeline as well as readable as a number.
+
+They are two fields because they go missing on different turns: a composer that
+fails mid-write has a delta and no claim. **Absent, never zero** — refused,
+needs-input and no-match turns never reach the composer, and zero would make
+"refused in 40ms" look like "answered instantly".
+
+The four model names go on the same span. They arrive through
+`configure_tracing()` with everything else rather than through a second call,
+so tracing cannot be on with the names left behind.
+
 **A test enforces this, not convention.** `tests/unit/test_core_isolation.py`
 banned `time`, `logging`, `os` and `httpx` in `core/` but not `opentelemetry`.
 It is now on that list.
@@ -115,9 +130,11 @@ It is now on that list.
 - Span names are strings at call sites, not one table. Dashboards derive from
   them, and nothing stops a typo. `test_turn_span_tree.py` pins the ones that
   matter.
-- `open_span` yields the span, so two callers touch OpenTelemetry types
-  directly. Both are places where that is allowed, but it is a wider surface
-  than yielding nothing.
+- `open_span` yields the raw span, so its callers touch OpenTelemetry types
+  directly. Allowed where they are, but a wider surface than yielding nothing.
+  `turn_span` yields a `TurnRecorder` instead, which is the better shape — one
+  verb per fact, and no SDK type in `orchestration/`. `open_span` should follow
+  if a third caller needs more than a plain `with`.
 
 **Revisit when** a core service's own behaviour needs tracing — not when one
 call site wants more detail. Then Option A's cost buys something, and this ADR

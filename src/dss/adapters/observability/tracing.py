@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import TYPE_CHECKING
@@ -67,16 +68,22 @@ def instrumentation_settings(*, tracer_provider=None):
     )
 
 
-def configure_tracing() -> None:
+def configure_tracing(**model_names: str) -> None:
     """Send agent runs to the configured OTLP endpoint, if there is one.
 
     Called once from `create_app`. Absent an endpoint this does nothing at
     all — no exporter, no instrumentation, no warning, because a local run
     having none is normal rather than a misconfiguration.
+
+    `model_names` go on every turn span. They are passed here rather than set
+    by a second call, so there is no way to turn tracing on and leave them
+    behind: everything this module needs at startup arrives in one place.
     """
 
     if not tracing_enabled():
         return
+
+    set_model_names(**model_names)
 
     endpoint = os.environ[_ENDPOINT]
     if not endpoint.startswith(("http://", "https://")):
@@ -157,8 +164,65 @@ def open_span(name: str) -> Iterator[Span]:
         yield span
 
 
+# Which model answered is the first thing asked of a turn that answered badly,
+# and the four are separately configurable (ADR-0004). Held here rather than
+# passed per turn: they are the same on every turn of a process, so threading
+# them through the orchestrator would carry constants down four layers.
+_model_names: dict[str, str] = {}
+
+
+def set_model_names(**names: str) -> None:
+    _model_names.clear()
+    _model_names.update(names)
+
+
+class TurnRecorder:
+    """What a turn can add to its own root span while it is still running.
+
+    `status` and the timings are not known when the span opens, and the
+    timings have to be taken at the instant they happen rather than measured
+    afterwards. So the orchestrator holds this and calls a verb per thing.
+
+    Each timing also records a span event, so the moment shows on the trace
+    timeline as well as reading as a number.
+
+    Deliberately not a setter per attribute: an absent timing must stay absent
+    rather than arrive as zero, and a method that is simply never called is
+    harder to get wrong than a default.
+    """
+
+    def __init__(self, span, started: float) -> None:  # noqa: ANN001
+        self._span = span
+        self._started = started
+
+    def _elapsed_ms(self) -> float:
+        return (time.monotonic() - self._started) * 1000
+
+    def first_delta(self) -> None:
+        """The farmer's first word of the answer."""
+
+        self._mark("first_delta_ms")
+
+    def first_claim(self) -> None:
+        """The first complete claim, with its sources attached."""
+
+        self._mark("first_claim_ms")
+
+    def _mark(self, attribute: str) -> None:
+        elapsed_ms = self._elapsed_ms()
+        self._span.set_attribute(attribute, elapsed_ms)
+        self._span.add_event(attribute, {"elapsed_ms": elapsed_ms})
+
+    def status(self, status: str) -> None:
+        """The turn's outcome. Always known, so always set."""
+
+        self._span.set_attribute("status", status)
+
+
 @contextmanager
-def turn_span(*, trace_id: str, message_id: str, session_id: str) -> Iterator[None]:
+def turn_span(
+    *, trace_id: str, message_id: str, session_id: str
+) -> Iterator[TurnRecorder]:
     """The span every one of a turn's other spans hangs off.
 
     Pydantic AI opens its own spans inside `Agent.run()` and the DSS does not
@@ -179,6 +243,9 @@ def turn_span(*, trace_id: str, message_id: str, session_id: str) -> Iterator[No
     Lives here rather than in `orchestration/` so that package imports no
     telemetry SDK. When this grows past one function it should become a proper
     port under `ports/`, with this as its OpenTelemetry adapter.
+
+    Yields a `TurnRecorder`, because the turn's own facts — its outcome, and
+    when the farmer first heard anything — are known only while it runs.
     """
 
     from opentelemetry import trace
@@ -190,6 +257,7 @@ def turn_span(*, trace_id: str, message_id: str, session_id: str) -> Iterator[No
             "langfuse.session.id": session_id,
             "langfuse.trace.metadata.transaction_id": trace_id,
             "langfuse.trace.metadata.message_id": message_id,
+            **_model_names,
         },
-    ):
-        yield
+    ) as span:
+        yield TurnRecorder(span, time.monotonic())
