@@ -62,10 +62,10 @@ def _validity_window(day: date) -> dict[str, str]:
 
 
 def _location_field(turn: UserTurn) -> dict | None:
-    """A Beckn ``Location``, which carries the geometry under ``geo``.
+    """A network ``Location``, which carries the geometry under ``geo``.
 
     Every pack's ``location`` resolves to ``CompleteLocation``, an
-    ``allOf`` over Beckn's ``Location`` that makes ``geo`` required. The
+    ``allOf`` over the network's ``Location`` that makes ``geo`` required. The
     geometry is therefore nested, not the value of ``location`` itself.
     """
 

@@ -13,6 +13,7 @@ from dss.core.provider_discovery.models import (
     FailureClass,
     ProviderCapability,
 )
+from dss.core.shared.network import NetworkTransactionID
 
 
 class SelectFailed(Exception):
@@ -46,7 +47,7 @@ class CapabilityInvocation(Protocol):
         self,
         capability: ProviderCapability,
         resource_attributes: dict,
-        transaction_id: str,
+        transaction_id: NetworkTransactionID,
     ) -> DiscoveredAnswer:
         """Return the provider's answer, or raise ``SelectFailed``."""
         ...

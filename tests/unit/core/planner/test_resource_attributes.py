@@ -91,7 +91,7 @@ def test_omits_location_when_turn_has_none() -> None:
 
 
 def test_includes_location_from_turn_geometry() -> None:
-    """`location` is a Beckn Location, which wraps the geometry under `geo`.
+    """`location` is a network Location, which wraps the geometry under `geo`.
 
     A bare GeoJSON Point here is rejected: a pack's `location` resolves to
     `CompleteLocation`, whose `geo` is required.

@@ -261,6 +261,11 @@ This is a **pre-discovery hint, not a governed-code source.** Routing uses `subj
 | **Alias** | One way a farmer might name a scheme ("PKVY", "organic farming scheme"). Indexed normalized; must be scheme-distinctive, never a bare commodity word. |
 | **Canonicalize** | Replace an ask's free-text subject with the catalog's official scheme name, *without* changing what kind of ask it is. |
 | **Governed code** | A value a provider advertises as one it serves (`supportedCommodities: 78=Tomato`). Comes from the network, never from DSS config. |
+| **Network action** | What an outbound message is for. Two: `discover` and `select`. Both answer on the same call, so there is no separate reply message. |
+| **Network context** | The envelope on every network message: action, version, ids and timestamp. A discover names the schema it asks about; a select names who is asking whom. The two are different shapes, not one shape with blanks. |
+| **Network schema context** | Which schema a discover asks about — the pack's own JSON-LD `@context` URL with the `@type` as a fragment. Confusingly close to the term above, and a different thing: one is the envelope, the other is a field inside it. Absent when no type was resolved, never empty. |
+| **Network schema type** | A resource's `@type`, as a prefixed name: `openagrinet:MandiPrice`. The code calls it `capability` where it is being planned against. An open set — whichever schema packs a deployment mounts. |
+| **Network transaction id** | The id tying a farmer's question to every network call made answering it. The caller's, or minted at the edge when they send none, and never replaced mid-turn. It is also the turn's `traceId`. |
 
 **Layered extraction (v1 direction).** Each layer is cheaper than the next; the pipeline stops at the first layer that returns a confident intent. The layers, in order:
 

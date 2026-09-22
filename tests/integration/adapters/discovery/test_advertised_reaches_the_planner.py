@@ -61,7 +61,7 @@ def test_a_providers_advertised_values_reach_the_rendered_candidate() -> None:
 
 
 def test_a_structural_attribute_does_not_reach_the_rendered_candidate() -> None:
-    """Beckn-level fields are carried by every resource whatever its pack.
+    """Envelope-level fields are carried by every resource whatever its pack.
     Rendering them would tell the model to filter on the envelope rather than
     on the provider's offering.
 

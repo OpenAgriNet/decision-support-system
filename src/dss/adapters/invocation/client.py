@@ -1,7 +1,7 @@
 """Builds /select requests and maps select responses.
 
 Pure translation only — no business logic. resourceAttributes is already
-fully assembled by the caller; this module only wraps it in the Beckn
+fully assembled by the caller; this module only wraps it in the network
 envelope.
 """
 
@@ -14,6 +14,7 @@ from uuid import uuid4
 import anyio
 import httpx
 
+from dss.adapters.network import SelectContext
 from dss.adapters.network_common import (
     NO_STATUS_CODE,
     classify_status_code,
@@ -26,6 +27,7 @@ from dss.core.provider_discovery.models import (
     FailureClass,
     ProviderCapability,
 )
+from dss.core.shared.network import NetworkTransactionID
 from dss.observability.trace_log import (
     log_external_request,
     log_external_response,
@@ -43,7 +45,6 @@ __all__ = ["HttpCapabilityInvocation", "SelectFailed", "build_select_request"]
 # json.JSONDecodeError is one — a body that is not JSON at all.
 _MALFORMED_RESPONSE = (KeyError, IndexError, TypeError, ValueError)
 
-_SELECT_VERSION = "2.0.0"
 _DEFAULT_STATUS_DESCRIPTOR = {"code": "DRAFT", "name": "Draft"}
 _DEFAULT_OFFER_ID = "offer:open-data"
 
@@ -56,21 +57,20 @@ def build_select_request(
     sender_id: str,
     receiver_id: str,
     message_id: str,
-    transaction_id: str,
+    transaction_id: NetworkTransactionID,
     timestamp: str,
     status_descriptor: dict = _DEFAULT_STATUS_DESCRIPTOR,
     offer_id: str = _DEFAULT_OFFER_ID,
 ) -> dict[str, Any]:
+    context = SelectContext(
+        sender_id=sender_id,
+        receiver_id=receiver_id,
+        message_id=message_id,
+        transaction_id=transaction_id,
+        timestamp=timestamp,
+    )
     return {
-        "context": {
-            "action": "select",
-            "version": _SELECT_VERSION,
-            "senderId": sender_id,
-            "receiverId": receiver_id,
-            "messageId": message_id,
-            "transactionId": transaction_id,
-            "timestamp": timestamp,
-        },
+        "context": context.to_wire(),
         "message": {
             "contract": {
                 "commitments": [

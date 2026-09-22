@@ -89,7 +89,7 @@ def _follow(node: dict, *, home: dict, shared: dict | None) -> tuple[dict, dict]
     inside *itself*, so resolving them against the pack that pointed here
     would look in the wrong file.
 
-    An ``https://`` ref — the Beckn ones — is deliberately not followed.
+    An ``https://`` ref — the network's own — is deliberately not followed.
     Resolving it would make flattening need the network, and the DSS builds
     those fields (``location``, ``descriptor``) from the turn rather than from
     a schema. It is left as a plain object.
