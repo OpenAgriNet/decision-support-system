@@ -9,8 +9,10 @@ Three things get logged:
 
 - **Component span** — ``trace_component(name)`` logs ``event=enter`` on the way
   in and ``event=exit`` on the way out, with ``elapsed_ms`` and whether it left
-  by returning or raising. Wrap the call at its orchestration seam, so ``core/``
-  services stay logging-free and pure.
+  by returning or raising. It also opens a ``dss.stage.<name>`` span, so the
+  same timing is groupable and comparable rather than only greppable. Wrap the
+  call at its orchestration seam, so ``core/`` services stay logging-free and
+  pure.
 - **External request** — ``log_external_request(service, ...)`` logs a call on
   its way out, at the ``/discover`` and ``/select`` call sites. Its ``body``
   goes to DEBUG rather than INFO: a request body carries the farmer's query
@@ -40,13 +42,39 @@ import json
 import logging
 import time
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager, nullcontext
 from contextvars import ContextVar
-from typing import Any
+from typing import Any, Protocol
 
 from opentelemetry import trace
 
 logger = logging.getLogger("dss.trace")
+
+
+class StageSpanOpener(Protocol):
+    """Opens a span for one stage, given its full name.
+
+    A span *opener*, not a generic wrapper: `trace_component` builds the
+    `dss.stage.<component>` name itself, so the naming rule lives in one line
+    next to the component name it is built from.
+    """
+
+    def __call__(self, name: str) -> AbstractContextManager[Any]: ...
+
+
+# A slot rather than an import: this module is the inward-facing one and may
+# not depend on `adapters/`, so `configure_tracing()` hands it an opener at
+# startup instead. Unfilled means no span, which is the right behaviour with
+# no OTLP endpoint configured — every test and every local run.
+_stage_span_opener: StageSpanOpener | None = None
+
+
+def set_stage_span_opener(opener: StageSpanOpener | None) -> None:
+    """Fill (or empty) the slot `trace_component` opens its span through."""
+
+    global _stage_span_opener
+    _stage_span_opener = opener
+
 
 _request_id: ContextVar[str] = ContextVar("dss_request_id", default="-")
 _message_id: ContextVar[str] = ContextVar("dss_message_id", default="-")
@@ -99,11 +127,11 @@ def current_otel_ids() -> tuple[str, str]:
     on different lines. A line written inside a Pydantic AI tool carries that
     tool's span — `external=invocation` from the planner's `select` tool
     reports the `select` span, and clicking it in Langfuse lands on the call.
-    A `trace_component` line carries the turn's root instead, because it logs
-    around the work rather than opening a span of its own.
+    A `trace_component` line carries the span its stage runs *inside* rather
+    than the stage's own: both lines are written outside the stage span, so
+    `enter` and `exit` agree with each other and keep their old format.
 
-    `trace_id` is exact on every line either way. Giving `trace_component` a
-    real span is what would make `span_id` uniformly precise.
+    `trace_id` is exact on every line either way.
 
     Both are ``-`` when nothing is recording: no OTLP endpoint, so no exporter,
     so no span context. That is every test and every local run.
@@ -135,17 +163,27 @@ def _ids(request_id: str | None = None) -> str:
 @contextmanager
 def trace_component(component: str, request_id: str | None = None) -> Iterator[None]:
     """Log ``enter`` before the wrapped work and ``exit`` after — with the
-    elapsed time and whether it returned or raised. Wrap an ``await`` directly:
+    elapsed time and whether it returned or raised — and open a
+    ``dss.stage.<component>`` span around it. Wrap an ``await`` directly:
 
         with trace_component("intent", turn.transaction_id):
             intent = await classify_intent(turn, llm)
+
+    The span is opened through the slot, so with no opener registered this
+    costs one ``None`` check and the two log lines it always wrote. A stage
+    that raises leaves the span ``ERROR`` with the exception recorded on it,
+    then re-raises unchanged.
     """
+
+    opener = _stage_span_opener
+    span_context = nullcontext() if opener is None else opener(f"dss.stage.{component}")
 
     start = time.monotonic()
     logger.info("%s component=%s event=enter", _ids(request_id), component)
     status = "ok"
     try:
-        yield
+        with span_context:
+            yield
     except BaseException as exc:  # noqa: BLE001 - re-raised; we only tag the span
         status = f"error:{type(exc).__name__}"
         raise

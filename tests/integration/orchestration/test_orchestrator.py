@@ -35,6 +35,7 @@ from dss.core.shared.models import (
     UserTurn,
 )
 from dss.orchestration.orchestrator import Components, Orchestrator
+from dss.orchestration.plan import Plan
 from dss.ports.area_lookup import AreaMatch
 from tests.support.fakes import FakeAreaLookup, FakeSchemeCatalog
 
@@ -205,7 +206,7 @@ def _build(
     *,
     intent: Intent,
     discovery: DiscoveryResult,
-    plan: _FakePlan,
+    plan: Plan,
     compose: _FakeCompose,
     violated: str | None = None,
     policies=(),

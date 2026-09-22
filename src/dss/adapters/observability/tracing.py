@@ -23,8 +23,15 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
+from typing import TYPE_CHECKING
+
+from dss.observability.trace_log import set_stage_span_opener
+
+if TYPE_CHECKING:
+    from opentelemetry.trace import Span
 
 logger = logging.getLogger(__name__)
 
@@ -61,16 +68,46 @@ def instrumentation_settings(*, tracer_provider=None):
     )
 
 
-def configure_tracing() -> None:
+def configure_tracing(
+    *,
+    intent_model: str | None = None,
+    moderation_model: str | None = None,
+    planner_model: str | None = None,
+    composer_model: str | None = None,
+) -> None:
     """Send agent runs to the configured OTLP endpoint, if there is one.
 
-    Called once from `create_app`. Absent an endpoint this does nothing at
-    all — no exporter, no instrumentation, no warning, because a local run
-    having none is normal rather than a misconfiguration.
+    Called once from `create_app`. Absent an endpoint this does nothing at all
+    but put the module back as it was — no exporter, no instrumentation, no
+    warning, because a local run having none is normal rather than a
+    misconfiguration. `create_app` runs more than once (tests, `--reload`), so
+    the reset matters: leaving a previous boot's opener installed would keep
+    stage spans on while the exporter is off.
+
+    The model names go on every turn span, and arrive here rather than through
+    a second call so tracing cannot be on with them left behind. Named one by
+    one rather than `**kwargs`: they are a closed set of four, and a
+    transposition should stop the process rather than quietly produce an
+    attribute nobody filters on.
     """
 
     if not tracing_enabled():
+        set_stage_span_opener(None)
+        set_model_names()
         return
+
+    set_model_names(
+        **{
+            name: value
+            for name, value in (
+                ("intent_model", intent_model),
+                ("moderation_model", moderation_model),
+                ("planner_model", planner_model),
+                ("composer_model", composer_model),
+            )
+            if value is not None
+        }
+    )
 
     endpoint = os.environ[_ENDPOINT]
     if not endpoint.startswith(("http://", "https://")):
@@ -113,11 +150,154 @@ def configure_tracing() -> None:
     # was not already there.
     logfire.configure(send_to_logfire=False, console=False, scrubbing=False)
     Agent.instrument_all(settings)
+
+    # Here rather than in `create_app` so stage spans cannot be on while the
+    # exporter is off, or the reverse.
+    #
+    # The slot covers the stage spans only. The adapters call `open_span`
+    # directly, because `trace_log.py` may not import this module and they have
+    # no such constraint. With no endpoint configured those still reach a
+    # no-op tracer — cheap, and it exports nothing — whereas the stage path
+    # runs six times per turn and is worth skipping outright.
+    set_stage_span_opener(open_span)
+
     logger.info("tracing on, exporting to %s", endpoint)
 
 
 @contextmanager
-def turn_span(*, trace_id: str, message_id: str, session_id: str) -> Iterator[None]:
+def open_span(name: str, attributes: dict[str, str] | None = None) -> Iterator[Span]:
+    """A named span, nested under whatever is current.
+
+    Callers: it fills `trace_component`'s slot, so every stage gets a
+    `dss.stage.<name>` span; `orchestration/` opens one around the discovery
+    fan-out; and the two network adapters open one per outbound call.
+
+    It lives here because this package is where telemetry SDK code is allowed
+    to live. `observability/trace_log.py` imports none of it — it holds a slot,
+    and this arrives at startup instead.
+
+    Naming is the caller's, so each span name sits beside the thing it is named
+    for rather than in a table here.
+
+    The span is yielded because not every caller can leave it to say what
+    happened: the discovery client never raises — its failures come back as
+    data. Callers with nothing to add can ignore what is yielded.
+
+    **A failure is recorded by type, never by message.** OpenTelemetry's own
+    handling would put `exception.message` and a full `exception.stacktrace` on
+    the span, and an exception message here is not safe to export: `SelectFailed`
+    embeds the provider's entire response body, which echoes the farmer's query
+    back. `DSS_ARCHITECTURE.md` §6.1 names traces as a place personal data may
+    not reach, and unlike the log path there is no length clip — an HTML error
+    page would go whole to the exporter.
+
+    **`BaseException` too, not just `Exception`.** OpenTelemetry deliberately
+    ignores anything deriving straight from `BaseException`, so a cancelled turn
+    would close green. Cancellation is how a turn ends when the farmer closes
+    the screen mid-answer, which is exactly a case worth seeing.
+    """
+
+    from opentelemetry import trace
+    from opentelemetry.trace import Status, StatusCode
+
+    tracer = trace.get_tracer("dss.orchestration")
+    with tracer.start_as_current_span(
+        name,
+        attributes=attributes,
+        record_exception=False,
+        set_status_on_exception=False,
+    ) as span:
+        try:
+            yield span
+        except BaseException as exc:
+            span.set_status(Status(StatusCode.ERROR, type(exc).__name__))
+            raise
+
+
+# Which model answered is the first thing asked of a turn that answered badly,
+# and the four are separately configurable (ADR-0004). Held here rather than
+# passed per turn: they are the same on every turn of a process, so threading
+# them through the orchestrator would carry constants down four layers.
+_model_names: dict[str, str] = {}
+
+
+def set_model_names(**names: str) -> None:
+    _model_names.clear()
+    _model_names.update(names)
+
+
+def set_current_span_attributes(**attributes: str | int | float | bool) -> None:
+    """Add facts to whichever span is open, without opening one.
+
+    For a caller whose work is already bracketed by a span one frame up. A span
+    of its own would start and end with that one — the empty nesting ADR-0012
+    rejects — while the facts still belong on the trace.
+
+    A no-op when nothing is recording, like every other call in this module.
+    """
+
+    from opentelemetry import trace
+
+    trace.get_current_span().set_attributes(dict(attributes))
+
+
+class TurnRecorder:
+    """What a turn can add to its own root span while it is still running.
+
+    `status` and the timings are not known when the span opens, and the
+    timings have to be taken at the instant they happen rather than measured
+    afterwards. So the orchestrator holds this and calls a verb per thing.
+
+    Each timing also records a span event, so the moment shows on the trace
+    timeline as well as reading as a number.
+
+    Deliberately not a setter per attribute: an absent timing must stay absent
+    rather than arrive as zero, and a method that is simply never called is
+    harder to get wrong than a default.
+    """
+
+    def __init__(self, span, started: float) -> None:  # noqa: ANN001
+        self._span = span
+        self._started = started
+
+    def _elapsed_ms(self) -> float:
+        return (time.monotonic() - self._started) * 1000
+
+    def first_delta(self) -> None:
+        """The farmer's first word of the answer."""
+
+        self._mark("first_delta_ms")
+
+    def first_claim(self) -> None:
+        """The first complete claim, with its sources attached.
+
+        Not a mid-stream moment: sources are resolved from the whole text, so
+        the first claim cannot exist until the last delta has arrived. Read it
+        against `first_delta_ms` — that one is how long the farmer waited to
+        see anything, and the gap between them is how long the writing took.
+        """
+
+        self._mark("first_claim_ms")
+
+    def _mark(self, attribute: str) -> None:
+        elapsed_ms = self._elapsed_ms()
+        self._span.set_attribute(attribute, elapsed_ms)
+        self._span.add_event(attribute, {"elapsed_ms": elapsed_ms})
+
+    def status(self, status: str) -> None:
+        """How the turn ended — one of the contract's statuses, or ``error``
+        for a turn that crashed or was abandoned before it could name one.
+
+        Always set, so a breakdown by status accounts for every turn.
+        """
+
+        self._span.set_attribute("status", status)
+
+
+@contextmanager
+def turn_span(
+    *, trace_id: str, message_id: str, session_id: str
+) -> Iterator[TurnRecorder]:
     """The span every one of a turn's other spans hangs off.
 
     Pydantic AI opens its own spans inside `Agent.run()` and the DSS does not
@@ -138,17 +318,28 @@ def turn_span(*, trace_id: str, message_id: str, session_id: str) -> Iterator[No
     Lives here rather than in `orchestration/` so that package imports no
     telemetry SDK. When this grows past one function it should become a proper
     port under `ports/`, with this as its OpenTelemetry adapter.
+
+    Yields a `TurnRecorder`, because the turn's own facts — its outcome, and
+    when the farmer first heard anything — are known only while it runs.
+
+    A turn that crashes or is abandoned never reaches the code that names its
+    outcome, so `status` is stamped ``error`` here instead. Leaving it off
+    would drop exactly those turns out of any breakdown by status — the one
+    place they most need to appear.
     """
 
-    from opentelemetry import trace
-
-    tracer = trace.get_tracer("dss.orchestration")
-    with tracer.start_as_current_span(
+    with open_span(
         "dss.turn",
         attributes={
             "langfuse.session.id": session_id,
             "langfuse.trace.metadata.transaction_id": trace_id,
             "langfuse.trace.metadata.message_id": message_id,
+            **_model_names,
         },
-    ):
-        yield
+    ) as span:
+        recorder = TurnRecorder(span, time.monotonic())
+        try:
+            yield recorder
+        except BaseException:
+            recorder.status("error")
+            raise

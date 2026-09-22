@@ -39,7 +39,7 @@ from collections.abc import AsyncIterator, Sequence
 from contextlib import aclosing
 from dataclasses import dataclass
 
-from dss.adapters.observability.tracing import turn_span
+from dss.adapters.observability.tracing import TurnRecorder, turn_span
 from dss.core.channel.models import ComposedAnswer
 from dss.core.channel.service import (
     answer_from_evidence,
@@ -166,7 +166,7 @@ class Orchestrator:
             trace_id=ctx.trace_id,
             message_id=ctx.message_id,
             session_id=ctx.session_id,
-        ):
+        ) as recorder:
             yield TurnStarted()
             self._turns.opened(ctx, turn)
 
@@ -186,7 +186,7 @@ class Orchestrator:
             self._note("moderation", ctx, decision.outcome.value)
 
             if decision.outcome is not Outcome.PROCEED:
-                yield self._finish(ctx, _refused(decision))
+                yield self._finish(ctx, _refused(decision), recorder)
                 return
 
             self._note("intent", ctx, _classified(result.intent))
@@ -212,6 +212,7 @@ class Orchestrator:
                 yield self._finish(
                     ctx,
                     (outcome_for(TurnStatus.REQUIRES_INPUT), needs_district_answer()),
+                    recorder,
                 )
                 return
 
@@ -221,7 +222,9 @@ class Orchestrator:
             # round-trip to arrive at the same empty-handed place.
             if _nobody_serves(result.discovery):
                 yield self._finish(
-                    ctx, (outcome_for(TurnStatus.NO_MATCH), no_match_answer())
+                    ctx,
+                    (outcome_for(TurnStatus.NO_MATCH), no_match_answer()),
+                    recorder,
                 )
                 return
 
@@ -250,6 +253,8 @@ class Orchestrator:
                     self._components.compose(evidence, turn=turn)
                 ) as pieces:
                     async for delta in pieces:
+                        if not written:
+                            recorder.first_delta()
                         written.append(delta)
                         yield ClaimDelta(text=delta)
                 # A failure before this line propagates: the pieces already
@@ -257,24 +262,33 @@ class Orchestrator:
                 # nothing to roll back. The transport reports a failed turn.
                 text = "".join(written)
             answer = answer_from_evidence(text, evidence)
-            for block in answer.content:
+            for index, block in enumerate(answer.content):
+                if index == 0:
+                    recorder.first_claim()
                 yield Claim(content=block, sources=answer.sources)
             self._note("channel", ctx, str(len(answer.content)))
 
             status, cause = _status_for(evidence, result.intent)
-            yield self._finish(ctx, (outcome_for(status, cause), answer))
+            yield self._finish(ctx, (outcome_for(status, cause), answer), recorder)
 
     def _finish(
-        self, ctx: TurnContext, resolved: tuple[TurnOutcome, ComposedAnswer]
+        self,
+        ctx: TurnContext,
+        resolved: tuple[TurnOutcome, ComposedAnswer],
+        recorder: TurnRecorder,
     ) -> TurnFinished:
         """Build the terminal event and record it.
 
         The turn sink is required, so a failure here is deliberately not caught —
         answering while silently failing to record the turn is not a success
         worth having.
+
+        Every one of the four ways out passes through here, which is why the
+        span's `status` is set here rather than at each of them.
         """
 
         outcome, answer = resolved
+        recorder.status(outcome.status.value)
         finished = TurnFinished(
             outcome=outcome, content=answer.content, sources=answer.sources
         )

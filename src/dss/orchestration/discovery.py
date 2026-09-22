@@ -9,6 +9,7 @@ from typing import Protocol
 import httpx
 
 from dss.adapters.discovery.client import HttpCapabilityDiscovery, SchemaContextSource
+from dss.adapters.observability.tracing import set_current_span_attributes
 from dss.core.intent.models import Intent
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.provider_discovery.service import (
@@ -49,11 +50,41 @@ def build_discover_providers(
 
     The area index is bound here, not per turn: it is a few hundred rows read
     once at startup and shared by every turn.
+
+    The fan-out reports two counts, onto the span already open around it —
+    `trace_component("discovery")` in `turn.py` brackets exactly this call, so
+    a span of its own would start and end with that one. `core/` may not open
+    a span itself (ADR-0012), which is why the counts are read out here.
+
+    That stage span stays green even when a provider fails. An ask nobody could
+    serve is a normal outcome, not a broken stage: the other asks still answer
+    and the turn still succeeds. The failed call's own `dss.discover` span is
+    the red one. Counts rather than a status, because span status has no value
+    between OK and ERROR and "one of three failed" needs one — and a count can
+    be filtered and graphed, which a colour cannot.
     """
-    return partial(
+
+    bound = partial(
         discover_providers,
         discovery=discovery,
         schema_pack_cache=schema_pack_cache,
         area_lookup=area_lookup,
         radius_m=radius_m,
     )
+
+    async def discover(
+        intent: Intent, turn: UserTurn, *, now: datetime
+    ) -> DiscoveryResult:
+        result = await bound(intent, turn, now=now)
+        # `asks_total`, not "asks queried": the core service seeds `failures`
+        # with every unresolved ask before any query goes out, so an ask whose
+        # capability never resolved is a key here too. Calling it "queried"
+        # would flatter an `asks_failed / asks_total` panel by the number of
+        # asks nobody could even look for.
+        set_current_span_attributes(
+            asks_total=len(result.failures),
+            asks_failed=sum(1 for failures in result.failures.values() if failures),
+        )
+        return result
+
+    return discover

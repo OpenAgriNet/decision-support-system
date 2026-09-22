@@ -20,6 +20,7 @@ from dss.adapters.network_common import (
     extract_source_reference,
     extract_validity,
 )
+from dss.adapters.observability.tracing import open_span
 from dss.core.provider_discovery.models import (
     DiscoveredAnswer,
     FailureClass,
@@ -163,18 +164,28 @@ class HttpCapabilityInvocation:
         Backoff doubles per attempt (0.5s, 1s, ...) rather than retrying at
         once, because ``429`` is also transient and hammering a rate-limited
         provider is what caused it.
+
+        Two span levels, because the outer duration alone cannot tell one slow
+        response from three failures with waits between them: ``dss.select`` is
+        what reaching the provider cost in total, and one ``dss.select.attempt``
+        child per network call says how that total was spent.
         """
 
-        for attempt in range(1, self._attempts + 1):
-            try:
-                return await self._select_once(
-                    capability, resource_attributes, transaction_id
-                )
-            except SelectFailed as failure:
-                last_chance = attempt == self._attempts
-                if failure.failure_class is not FailureClass.TRANSIENT or last_chance:
-                    raise
-                await anyio.sleep(self._backoff_seconds * 2 ** (attempt - 1))
+        with open_span("dss.select"):
+            for attempt in range(1, self._attempts + 1):
+                try:
+                    with open_span("dss.select.attempt"):
+                        return await self._select_once(
+                            capability, resource_attributes, transaction_id
+                        )
+                except SelectFailed as failure:
+                    last_chance = attempt == self._attempts
+                    if (
+                        failure.failure_class is not FailureClass.TRANSIENT
+                        or last_chance
+                    ):
+                        raise
+                    await anyio.sleep(self._backoff_seconds * 2 ** (attempt - 1))
         raise AssertionError("unreachable: the loop either returns or raises")
 
     async def _select_once(

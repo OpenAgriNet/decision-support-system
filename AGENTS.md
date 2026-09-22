@@ -26,6 +26,8 @@ Do not duplicate architecture, domain model, or design-decision detail here — 
 - Test framework: pytest
 - Tracing: OpenTelemetry over OTLP, into self-hosted Langfuse (ADR-0007). Nothing
   imports `langfuse` — the endpoint is the seam, so another backend is a config change.
+  Span code lives in `orchestration/` and `adapters/` only; `core/` never opens one
+  (ADR-0012), which `tests/unit/test_core_isolation.py` enforces.
 
 ## Build & Run
 Install: `uv sync`
