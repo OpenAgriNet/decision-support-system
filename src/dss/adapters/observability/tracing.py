@@ -68,22 +68,46 @@ def instrumentation_settings(*, tracer_provider=None):
     )
 
 
-def configure_tracing(**model_names: str) -> None:
+def configure_tracing(
+    *,
+    intent_model: str | None = None,
+    moderation_model: str | None = None,
+    planner_model: str | None = None,
+    composer_model: str | None = None,
+) -> None:
     """Send agent runs to the configured OTLP endpoint, if there is one.
 
-    Called once from `create_app`. Absent an endpoint this does nothing at
-    all — no exporter, no instrumentation, no warning, because a local run
-    having none is normal rather than a misconfiguration.
+    Called once from `create_app`. Absent an endpoint this does nothing at all
+    but put the module back as it was — no exporter, no instrumentation, no
+    warning, because a local run having none is normal rather than a
+    misconfiguration. `create_app` runs more than once (tests, `--reload`), so
+    the reset matters: leaving a previous boot's opener installed would keep
+    stage spans on while the exporter is off.
 
-    `model_names` go on every turn span. They are passed here rather than set
-    by a second call, so there is no way to turn tracing on and leave them
-    behind: everything this module needs at startup arrives in one place.
+    The model names go on every turn span, and arrive here rather than through
+    a second call so tracing cannot be on with them left behind. Named one by
+    one rather than `**kwargs`: they are a closed set of four, and a
+    transposition should stop the process rather than quietly produce an
+    attribute nobody filters on.
     """
 
     if not tracing_enabled():
+        set_stage_span_opener(None)
+        set_model_names()
         return
 
-    set_model_names(**model_names)
+    set_model_names(
+        **{
+            name: value
+            for name, value in (
+                ("intent_model", intent_model),
+                ("moderation_model", moderation_model),
+                ("planner_model", planner_model),
+                ("composer_model", composer_model),
+            )
+            if value is not None
+        }
+    )
 
     endpoint = os.environ[_ENDPOINT]
     if not endpoint.startswith(("http://", "https://")):
@@ -128,8 +152,13 @@ def configure_tracing(**model_names: str) -> None:
     Agent.instrument_all(settings)
 
     # Here rather than in `create_app` so stage spans cannot be on while the
-    # exporter is off, or the reverse. Every early return above leaves the slot
-    # empty, and `trace_component` then opens nothing.
+    # exporter is off, or the reverse.
+    #
+    # The slot covers the stage spans only. The adapters call `open_span`
+    # directly, because `trace_log.py` may not import this module and they have
+    # no such constraint. With no endpoint configured those still reach a
+    # no-op tracer — cheap, and it exports nothing — whereas the stage path
+    # runs six times per turn and is worth skipping outright.
     set_stage_span_opener(open_span)
 
     logger.info("tracing on, exporting to %s", endpoint)

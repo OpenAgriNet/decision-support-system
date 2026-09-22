@@ -76,8 +76,13 @@ def build_discover_providers(
         intent: Intent, turn: UserTurn, *, now: datetime
     ) -> DiscoveryResult:
         result = await bound(intent, turn, now=now)
+        # `asks_total`, not "asks queried": the core service seeds `failures`
+        # with every unresolved ask before any query goes out, so an ask whose
+        # capability never resolved is a key here too. Calling it "queried"
+        # would flatter an `asks_failed / asks_total` panel by the number of
+        # asks nobody could even look for.
         set_current_span_attributes(
-            asks_queried=len(result.failures),
+            asks_total=len(result.failures),
             asks_failed=sum(1 for failures in result.failures.values() if failures),
         )
         return result

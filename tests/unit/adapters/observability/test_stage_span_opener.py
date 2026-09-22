@@ -140,6 +140,34 @@ def test_the_model_names_arrive_with_everything_else(monkeypatch) -> None:
     assert tracing._model_names == {"intent_model": "openai:gpt-4o-mini"}
 
 
+def test_a_misspelled_model_name_is_refused(monkeypatch) -> None:
+    """The four models are a closed set, so a transposition should stop the
+    process rather than produce a span attribute nobody filters on. Under a
+    `**kwargs` signature `planer_model` was accepted in silence, and the real
+    `planner_model` was simply missing from every trace."""
+
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318")
+
+    with pytest.raises(TypeError):
+        configure_tracing(planer_model="openai:gpt-4o-mini")
+
+
+def test_a_second_boot_without_an_endpoint_clears_the_slot(monkeypatch) -> None:
+    """`create_app` runs more than once — tests, `uvicorn --reload`. Returning
+    early on a missing endpoint used to leave the previous boot's opener and
+    model names installed, so stage spans stayed on while the exporter was
+    off and every turn carried the old configuration's models."""
+
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
+    trace_log.set_stage_span_opener(open_span)
+    tracing.set_model_names(intent_model="stale:model")
+
+    configure_tracing()
+
+    assert trace_log._stage_span_opener is None
+    assert tracing._model_names == {}
+
+
 def test_without_an_endpoint_the_slot_stays_empty(monkeypatch) -> None:
     """The quiet default. No endpoint means no exporter, so a span would go
     nowhere — and `trace_component` is on the path of every stage of every

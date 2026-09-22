@@ -29,6 +29,7 @@ import logging
 import uuid
 import zlib
 from collections.abc import AsyncIterable, AsyncIterator, Callable
+from contextlib import aclosing
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -230,8 +231,15 @@ async def _frames(
     """
 
     try:
-        async for event in runner.run(turn, ctx):
-            yield stream.frame(event)
+        # `aclosing`, not a bare `async for`: the turn holds spans open across
+        # its yields, and a farmer who closes the screen leaves this generator
+        # to the loop's finalizer, which runs `aclose()` in a different
+        # contextvars Context. OpenTelemetry's detach then fails, logging a
+        # traceback per held span and leaving the spans to end at collection
+        # time. Closing it here closes them where they were opened.
+        async with aclosing(runner.run(turn, ctx)) as events:
+            async for event in events:
+                yield stream.frame(event)
     except Exception:
         # `except Exception` deliberately does not catch a cancellation: anyio's
         # cancelled class is `asyncio.CancelledError`, which derives from
@@ -263,9 +271,12 @@ async def _single(
 
     finished: TurnFinished | None = None
     try:
-        async for event in runner.run(turn, ctx):
-            if isinstance(event, TurnFinished):
-                finished = event
+        # See `_frames` — the turn holds spans across its yields, so this
+        # generator has to be closed here rather than by the loop's finalizer.
+        async with aclosing(runner.run(turn, ctx)) as events:
+            async for event in events:
+                if isinstance(event, TurnFinished):
+                    finished = event
     except Exception:
         # See `_frames` — a cancellation is BaseException-derived and propagates.
         logger.exception("turn failed (trace_id=%s)", ctx.trace_id)

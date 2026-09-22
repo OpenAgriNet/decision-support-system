@@ -23,6 +23,17 @@
 - `core/stream_response`: the composer's answer yielded in the pieces the model
   writes it in. Pieces pass through untouched, so concatenating them gives the
   completed claim exactly. ADR-0011 (#72)
+- A span per stage of a turn — `dss.stage.<component>` from `trace_component`,
+  plus `dss.discover`, `dss.select` and `dss.select.attempt`. So "which stage
+  was slow" is answerable without reading log files (#138)
+- `dss.turn` now carries `status`, the four model names, `first_delta_ms` and
+  `first_claim_ms` — when the farmer first heard anything, absent rather than
+  zero on turns that never reach the composer (#138)
+- `dss.stage.discovery` carries `asks_total` and `asks_failed`. One provider
+  down is not a failed turn, and span status has no value between OK and
+  ERROR (#138)
+- ADR-0012: tracing stays in the application boundary — no tracing port, no
+  span code in `core/`, enforced by `test_core_isolation` (#138)
 - `LLMProvider.stream_text` — prose is not a schema, so `structured()` could not
   carry the composer. No whole-answer twin, and so no retry once a piece is out:
   re-issuing would write a different answer over words already sent (#72)
@@ -76,6 +87,17 @@
   they are in (`requires_input`) instead of answering from nowhere (#19)
 
 ### Fixed
+- Spans carry an exception's type, not its message. `SelectFailed` embeds the
+  provider's response body, which echoes the farmer's query. §6.1 (#138)
+- A cancelled turn leaves red spans, not green — OpenTelemetry ignores
+  `BaseException`, which is what cancellation is (#138)
+- A crashed turn carries `status=error` instead of no status (#138)
+- `/discover` no longer raises when a capability is missing from the
+  schema-context index; raising cancelled every sibling query (#138)
+- A `/discover` call's request and response log lines share a `span_id` again
+  (#138)
+- The turn consumers close the turn generator with `aclosing`, so an abandoned
+  stream no longer logs an OpenTelemetry error per held span (#138)
 - Citations now carry `sourceName` and `url`. Both were declared in the
   contract — `Annotation.sourceName` even ships an example — and never
   populated, so every annotation reached a caller as a bare `sourceId`. On the

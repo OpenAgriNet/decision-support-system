@@ -243,7 +243,7 @@ async def test_the_fan_out_span_counts_how_many_asks_went_unanswered(
     (stage,) = [
         s for s in exporter.get_finished_spans() if s.name == "dss.stage.discovery"
     ]
-    assert stage.attributes["asks_queried"] == 1
+    assert stage.attributes["asks_total"] == 1
     assert stage.attributes["asks_failed"] == 1
     assert stage.status.status_code is not StatusCode.ERROR
 
