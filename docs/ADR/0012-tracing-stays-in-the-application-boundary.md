@@ -52,15 +52,15 @@ the core fan-out.
 **Option C. No tracing port, no span code in `core/`.**
 
 ```
-dss.turn                               status, model names, first_delta_ms, first_claim_ms
+dss.turn                        status, model names, first_delta_ms, first_claim_ms
 ├── dss.stage.intent
+├── dss.stage.enrichment
 ├── dss.stage.moderation
-├── dss.stage.discovery
-│   └── dss.provider_discovery        the fan-out, with counts
-│       └── dss.discover              one per provider query
+├── dss.stage.discovery         asks_queried, asks_failed
+│   └── dss.discover            one per provider query
 ├── dss.stage.planner
-│   └── dss.select                    one per provider call
-│       └── dss.select.attempt        one per network attempt
+│   └── dss.select              one per provider call
+│       └── dss.select.attempt  one per network attempt
 └── dss.stage.composer
 ```
 
@@ -86,12 +86,31 @@ failures come back as data. Left alone the span exits green, and a provider that
 timed out would look like one that answered. `dss.discover` sets `ERROR` itself
 at each failure return.
 
-**Partial failure is a count, not a status.** The fan-out span stays green when
-one provider fails. The other asks still answer and the turn still succeeds.
-Marking it `ERROR` would make every error-rate panel measure provider flakiness
-instead of real failures. OpenTelemetry status is only OK or ERROR, so "one of
-three failed" is reported as `asks_queried` and `asks_failed` — numbers that can
-be filtered and graphed.
+**Partial failure is a count, not a status.** `dss.stage.discovery` stays green
+when one provider fails. The other asks still answer and the turn still
+succeeds. Marking it `ERROR` would make every error-rate panel measure provider
+flakiness instead of real failures. OpenTelemetry status is only OK or ERROR, so
+"one of three failed" is reported as `asks_queried` and `asks_failed` — numbers
+that can be filtered and graphed.
+
+The counts go **on the stage span**, not on a span of their own.
+`trace_component("discovery")` brackets exactly the fan-out call, so a span
+there would start and end with it — the same empty nesting rejected below for
+`dss.plan_execution`. `core/` may not open a span itself, so `orchestration/`
+reads the result and calls `set_current_span_attributes`.
+
+**A failure is recorded by type, never by message.** OpenTelemetry would put
+`exception.message` and a full `exception.stacktrace` on a span by default, and
+exception text here is not safe to export: `SelectFailed` embeds the provider's
+entire response body, which echoes the farmer's query back. §6.1 names traces as
+a place personal data may not reach, and there is no length clip as there is on
+the log path. `open_span` therefore turns OpenTelemetry's own recording off and
+sets `ERROR` with the exception type alone.
+
+It also catches `BaseException`, not just `Exception`. OpenTelemetry ignores
+anything deriving straight from `BaseException`, so a cancelled turn would close
+green — and cancellation is how a turn ends when the farmer closes the screen
+mid-answer, which is exactly a case worth seeing.
 
 **No `dss.plan_execution` span.** Every provider call already runs inside the
 planner block, so it would start and end with `dss.stage.planner`.
@@ -106,6 +125,15 @@ They are two fields because they go missing on different turns: a composer that
 fails mid-write has a delta and no claim. **Absent, never zero** — refused,
 needs-input and no-match turns never reach the composer, and zero would make
 "refused in 40ms" look like "answered instantly".
+
+`first_claim_ms` is not a mid-stream moment. A claim carries its sources, and
+sources are resolved from the complete text, so the first claim cannot exist
+until the last delta has arrived. Read the two together: `first_delta_ms` is how
+long the farmer waited to see anything, and the gap is how long the writing took.
+
+`status` is always present, including on a turn that crashed or was abandoned —
+those get `error`. Leaving it off would drop exactly those turns out of any
+breakdown by status, which is where they most need to appear.
 
 The four model names go on the same span. They arrive through
 `configure_tracing()` with everything else rather than through a second call,

@@ -136,7 +136,7 @@ def configure_tracing(**model_names: str) -> None:
 
 
 @contextmanager
-def open_span(name: str) -> Iterator[Span]:
+def open_span(name: str, attributes: dict[str, str] | None = None) -> Iterator[Span]:
     """A named span, nested under whatever is current.
 
     Callers: it fills `trace_component`'s slot, so every stage gets a
@@ -151,17 +151,38 @@ def open_span(name: str) -> Iterator[Span]:
     for rather than in a table here.
 
     The span is yielded because not every caller can leave it to say what
-    happened. A raise sets ``ERROR`` by itself, but the discovery client never
-    raises — its failures come back as data — and the fan-out's own outcome is
-    a count of how many of its children failed. Callers with nothing to add can
-    ignore what is yielded.
+    happened: the discovery client never raises — its failures come back as
+    data. Callers with nothing to add can ignore what is yielded.
+
+    **A failure is recorded by type, never by message.** OpenTelemetry's own
+    handling would put `exception.message` and a full `exception.stacktrace` on
+    the span, and an exception message here is not safe to export: `SelectFailed`
+    embeds the provider's entire response body, which echoes the farmer's query
+    back. `DSS_ARCHITECTURE.md` §6.1 names traces as a place personal data may
+    not reach, and unlike the log path there is no length clip — an HTML error
+    page would go whole to the exporter.
+
+    **`BaseException` too, not just `Exception`.** OpenTelemetry deliberately
+    ignores anything deriving straight from `BaseException`, so a cancelled turn
+    would close green. Cancellation is how a turn ends when the farmer closes
+    the screen mid-answer, which is exactly a case worth seeing.
     """
 
     from opentelemetry import trace
+    from opentelemetry.trace import Status, StatusCode
 
     tracer = trace.get_tracer("dss.orchestration")
-    with tracer.start_as_current_span(name) as span:
-        yield span
+    with tracer.start_as_current_span(
+        name,
+        attributes=attributes,
+        record_exception=False,
+        set_status_on_exception=False,
+    ) as span:
+        try:
+            yield span
+        except BaseException as exc:
+            span.set_status(Status(StatusCode.ERROR, type(exc).__name__))
+            raise
 
 
 # Which model answered is the first thing asked of a turn that answered badly,
@@ -174,6 +195,21 @@ _model_names: dict[str, str] = {}
 def set_model_names(**names: str) -> None:
     _model_names.clear()
     _model_names.update(names)
+
+
+def set_current_span_attributes(**attributes: str | int | float | bool) -> None:
+    """Add facts to whichever span is open, without opening one.
+
+    For a caller whose work is already bracketed by a span one frame up. A span
+    of its own would start and end with that one — the empty nesting ADR-0012
+    rejects — while the facts still belong on the trace.
+
+    A no-op when nothing is recording, like every other call in this module.
+    """
+
+    from opentelemetry import trace
+
+    trace.get_current_span().set_attributes(dict(attributes))
 
 
 class TurnRecorder:
@@ -204,7 +240,13 @@ class TurnRecorder:
         self._mark("first_delta_ms")
 
     def first_claim(self) -> None:
-        """The first complete claim, with its sources attached."""
+        """The first complete claim, with its sources attached.
+
+        Not a mid-stream moment: sources are resolved from the whole text, so
+        the first claim cannot exist until the last delta has arrived. Read it
+        against `first_delta_ms` — that one is how long the farmer waited to
+        see anything, and the gap between them is how long the writing took.
+        """
 
         self._mark("first_claim_ms")
 
@@ -214,7 +256,11 @@ class TurnRecorder:
         self._span.add_event(attribute, {"elapsed_ms": elapsed_ms})
 
     def status(self, status: str) -> None:
-        """The turn's outcome. Always known, so always set."""
+        """How the turn ended — one of the contract's statuses, or ``error``
+        for a turn that crashed or was abandoned before it could name one.
+
+        Always set, so a breakdown by status accounts for every turn.
+        """
 
         self._span.set_attribute("status", status)
 
@@ -246,12 +292,14 @@ def turn_span(
 
     Yields a `TurnRecorder`, because the turn's own facts — its outcome, and
     when the farmer first heard anything — are known only while it runs.
+
+    A turn that crashes or is abandoned never reaches the code that names its
+    outcome, so `status` is stamped ``error`` here instead. Leaving it off
+    would drop exactly those turns out of any breakdown by status — the one
+    place they most need to appear.
     """
 
-    from opentelemetry import trace
-
-    tracer = trace.get_tracer("dss.orchestration")
-    with tracer.start_as_current_span(
+    with open_span(
         "dss.turn",
         attributes={
             "langfuse.session.id": session_id,
@@ -260,4 +308,9 @@ def turn_span(
             **_model_names,
         },
     ) as span:
-        yield TurnRecorder(span, time.monotonic())
+        recorder = TurnRecorder(span, time.monotonic())
+        try:
+            yield recorder
+        except BaseException:
+            recorder.status("error")
+            raise

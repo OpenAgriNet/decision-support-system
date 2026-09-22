@@ -22,6 +22,7 @@ from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from dss.adapters.observability.tracing import open_span
+from dss.core.shared.models import ClaimDelta
 from dss.observability.trace_log import set_stage_span_opener
 
 from .test_orchestrator import (
@@ -68,6 +69,33 @@ async def test_an_answered_turn_carries_its_status_and_both_timings(spans) -> No
     assert attributes["first_claim_ms"] >= 0
 
 
+async def test_the_first_claim_lands_after_the_whole_stream(spans) -> None:
+    """What `first_claim_ms` actually measures, pinned so nobody reads it as a
+    mid-stream moment.
+
+    A claim carries its sources, and sources are resolved from the *complete*
+    text — so the first claim cannot exist until the last delta has arrived.
+    The number is therefore composition end, and it is the *gap* between the
+    two that is worth reading: `first_delta_ms` is how long the farmer waited
+    to see anything, and the difference is how long the writing took.
+    """
+
+    slow_tail = _FakeCompose("", chunks=("Wheat is ", "2,275 ", "Rs [1]."))
+    orch, _ = _build(
+        intent=_one_ask(),
+        discovery=_served_discovery(),
+        plan=_FakePlan(_ANSWERED_EVIDENCE),
+        compose=slow_tail,
+    )
+
+    events = await _collect(orch)
+
+    attributes = _turn_span(spans).attributes
+    deltas = [e for e in events if isinstance(e, ClaimDelta)]
+    assert len(deltas) == 3
+    assert attributes["first_claim_ms"] >= attributes["first_delta_ms"]
+
+
 async def test_a_refused_turn_has_a_status_and_neither_timing(spans) -> None:
     """Refused turns never reach the composer, so there is no first word to
     time. Absent, not zero — zero here would say the farmer got an answer
@@ -93,8 +121,12 @@ async def test_a_refused_turn_has_a_status_and_neither_timing(spans) -> None:
 async def test_a_composer_that_fails_mid_write_has_a_delta_but_no_claim(spans) -> None:
     """Why these are two fields and not one. The farmer heard the first words,
     so `first_delta_ms` is real and worth keeping. No claim was ever assembled,
-    so `first_claim_ms` is absent — and the turn never finished, so there is no
-    status either."""
+    so `first_claim_ms` is absent.
+
+    `status` is still set. A turn that crashed never reaches `_finish`, so
+    nothing maps it to a `TurnStatus` — but leaving the attribute off would
+    make a crashed turn vanish from any breakdown by status, which is the one
+    place it most needs to appear."""
 
     orch, _ = _build(
         intent=_one_ask(),
@@ -109,7 +141,7 @@ async def test_a_composer_that_fails_mid_write_has_a_delta_but_no_claim(spans) -
     attributes = _turn_span(spans).attributes
     assert attributes["first_delta_ms"] >= 0
     assert "first_claim_ms" not in attributes
-    assert "status" not in attributes
+    assert attributes["status"] == "error"
 
 
 async def test_the_model_names_are_on_every_turn(spans, monkeypatch) -> None:

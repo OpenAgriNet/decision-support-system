@@ -21,12 +21,18 @@ from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import StatusCode
 
+from dss.adapters.observability.tracing import open_span
 from dss.observability.trace_log import set_stage_span_opener, trace_component
 
 
 @pytest.fixture
-def spans() -> Iterator[InMemorySpanExporter]:
-    """Fill the slot with an opener writing to an in-memory exporter.
+def spans(monkeypatch) -> Iterator[InMemorySpanExporter]:
+    """Fill the slot with the real opener, writing to an in-memory exporter.
+
+    `open_span` itself, not a lambda that merely resembles it. A stand-in here
+    would let the two drift — and they did: `open_span` suppresses exception
+    messages for PII, so a `start_as_current_span` lambda would keep passing a
+    test asserting behaviour production no longer has.
 
     Its own `TracerProvider` rather than the global one: `set_tracer_provider`
     is one-shot per process, so a global would make this order-dependent and
@@ -37,9 +43,9 @@ def spans() -> Iterator[InMemorySpanExporter]:
     exporter = InMemorySpanExporter()
     provider = TracerProvider()
     provider.add_span_processor(SimpleSpanProcessor(exporter))
-    tracer = provider.get_tracer("test")
+    monkeypatch.setattr("opentelemetry.trace.get_tracer_provider", lambda: provider)
 
-    set_stage_span_opener(lambda name: tracer.start_as_current_span(name))
+    set_stage_span_opener(open_span)
     yield exporter
     set_stage_span_opener(None)
 
@@ -52,9 +58,9 @@ def test_a_component_opens_a_span_named_for_its_stage(spans) -> None:
 
 
 def test_a_stage_that_raises_leaves_a_failed_span(spans) -> None:
-    """A stage that blew up must not look like one that succeeded. The
-    exception goes on the span too — a failed stage with no reason on it sends
-    the reader back to the log files this story exists to avoid."""
+    """A stage that blew up must not look like one that succeeded. The type
+    goes on the span, so the reader knows what kind of failure it was without
+    the message, which may carry the farmer's words."""
 
     with pytest.raises(RuntimeError, match="provider unreachable"):
         with trace_component("discovery", "txn-1"):
@@ -62,7 +68,8 @@ def test_a_stage_that_raises_leaves_a_failed_span(spans) -> None:
 
     (span,) = spans.get_finished_spans()
     assert span.status.status_code is StatusCode.ERROR
-    assert [event.name for event in span.events] == ["exception"]
+    assert span.status.description == "RuntimeError"
+    assert "provider unreachable" not in str(span.status.description)
 
 
 def test_an_unfilled_slot_opens_no_span(monkeypatch) -> None:

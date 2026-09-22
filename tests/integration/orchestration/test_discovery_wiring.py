@@ -12,11 +12,13 @@ from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import StatusCode
 
+from dss.adapters.observability.tracing import open_span
 from dss.adapters.schema_packs.filesystem import FilesystemSchemaPackSource
 from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
 from dss.core.provider_discovery.models import ProviderQuery
 from dss.core.provider_discovery.schema_pack_cache import SchemaPackCache
 from dss.core.shared.models import Geometry, Location, UserTurn
+from dss.observability.trace_log import set_stage_span_opener, trace_component
 from dss.orchestration.discovery import (
     build_capability_discovery,
     build_discover_providers,
@@ -158,15 +160,25 @@ async def test_the_fan_out_runs_inside_a_span(monkeypatch) -> None:
             channel="web",
         )
 
-        with provider.get_tracer("test").start_as_current_span("dss.stage.discovery"):
-            await discover_providers(
-                Intent(asks=(ask,), confidence=0.9),
-                turn,
-                now=datetime(2026, 8, 24, 12, 0, 0, tzinfo=UTC),
-            )
+        # `trace_component` and the real opener, as `turn.py` does it — a
+        # hand-rolled span here would not prove the two nest.
+        set_stage_span_opener(open_span)
+        try:
+            with trace_component("discovery", "t1"):
+                await discover_providers(
+                    Intent(asks=(ask,), confidence=0.9),
+                    turn,
+                    now=datetime(2026, 8, 24, 12, 0, 0, tzinfo=UTC),
+                )
+        finally:
+            set_stage_span_opener(None)
 
     names = [span.name for span in exporter.get_finished_spans()]
-    assert "dss.provider_discovery" in names
+    assert "dss.stage.discovery" in names
+    # No wrapper level of its own. `trace_component("discovery")` in `turn.py`
+    # brackets exactly this call, so a span here would start and end with it —
+    # the empty nesting ADR-0012 rejects for `dss.plan_execution`.
+    assert "dss.provider_discovery" not in names
 
 
 async def test_the_fan_out_span_counts_how_many_asks_went_unanswered(
@@ -217,18 +229,23 @@ async def test_the_fan_out_span_counts_how_many_asks_went_unanswered(
             channel="web",
         )
 
-        await discover_providers(
-            Intent(asks=(ask,), confidence=0.9),
-            turn,
-            now=datetime(2026, 8, 24, 12, 0, 0, tzinfo=UTC),
-        )
+        set_stage_span_opener(open_span)
+        try:
+            with trace_component("discovery", "t1"):
+                await discover_providers(
+                    Intent(asks=(ask,), confidence=0.9),
+                    turn,
+                    now=datetime(2026, 8, 24, 12, 0, 0, tzinfo=UTC),
+                )
+        finally:
+            set_stage_span_opener(None)
 
-    (fan_out,) = [
-        s for s in exporter.get_finished_spans() if s.name == "dss.provider_discovery"
+    (stage,) = [
+        s for s in exporter.get_finished_spans() if s.name == "dss.stage.discovery"
     ]
-    assert fan_out.attributes["asks_queried"] == 1
-    assert fan_out.attributes["asks_failed"] == 1
-    assert fan_out.status.status_code is not StatusCode.ERROR
+    assert stage.attributes["asks_queried"] == 1
+    assert stage.attributes["asks_failed"] == 1
+    assert stage.status.status_code is not StatusCode.ERROR
 
 
 class _FakeIntentLLM:
