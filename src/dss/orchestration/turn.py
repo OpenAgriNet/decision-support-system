@@ -44,6 +44,7 @@ from dss.core.moderation.service import moderate
 from dss.core.policy.models import Policy
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.shared.models import UserTurn
+from dss.observability.stages import Stage
 from dss.observability.trace_log import log_event, trace_component
 from dss.orchestration.discovery import DiscoverProviders
 from dss.ports.llm import LLMProvider
@@ -156,18 +157,18 @@ async def run_turn(
 
     async def classify_then_discover() -> None:
         nonlocal intent, discovery
-        with trace_component("intent", turn.transaction_id):
+        with trace_component(Stage.INTENT, turn.transaction_id):
             intent = await classify_intent(turn, intent_llm)
-        with trace_component("enrichment", turn.transaction_id):
+        with trace_component(Stage.ENRICHMENT, turn.transaction_id):
             intent = _enrich(intent, turn, scheme_catalog, scheme_fuzzy_threshold)
-        with trace_component("discovery", turn.transaction_id):
+        with trace_component(Stage.DISCOVERY, turn.transaction_id):
             discovery = await discover_providers(
                 intent, turn, now=now or datetime.now(UTC)
             )
 
     async def run_moderation() -> None:
         nonlocal decision
-        with trace_component("moderation", turn.transaction_id):
+        with trace_component(Stage.MODERATION, turn.transaction_id):
             decision = await moderate(
                 ModerationContext(turn=turn), policies, moderation_llm
             )

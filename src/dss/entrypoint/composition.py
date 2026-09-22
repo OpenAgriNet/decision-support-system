@@ -52,6 +52,7 @@ from dss.core.provider_discovery.models import DiscoveryResult, SchemaPackFiles
 from dss.core.provider_discovery.schema_pack_cache import SchemaPackCache
 from dss.core.shared.models import UserTurn
 from dss.core.stream_response.service import build_stream_response
+from dss.observability.stages import Stage
 from dss.orchestration.discovery import (
     DiscoverProviders,
     build_capability_discovery,
@@ -407,6 +408,7 @@ def _intent_llm(settings: Settings):
     return PydanticAILLMProvider(
         _resolve_model(settings.intent_model),
         name="intent-classifier",
+        stage=Stage.INTENT,
         temperature=settings.intent_temperature,
         timeout=settings.intent_timeout_seconds,
         retries=settings.intent_retries,
@@ -428,6 +430,7 @@ def _composer_llm(settings: Settings):
     return PydanticAILLMProvider(
         _resolve_model(settings.composer_model),
         name="composer",
+        stage=Stage.COMPOSER,
         temperature=settings.composer_temperature,
         timeout=settings.composer_timeout_seconds,
         retries=settings.composer_retries,
@@ -440,6 +443,7 @@ def _moderation_llm(settings: Settings):
     return PydanticAILLMProvider(
         _resolve_model(settings.moderation_model),
         name="moderator",
+        stage=Stage.MODERATION,
         temperature=settings.moderation_temperature,
         timeout=settings.moderation_timeout_seconds,
         retries=settings.moderation_retries,

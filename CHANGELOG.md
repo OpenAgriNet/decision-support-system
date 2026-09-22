@@ -13,6 +13,20 @@
 - `OPENAI_BASE_URL` / `OPENAI_API_KEY` passed through in `docker-compose.yml`,
   so a non-`azure:` model string can reach an OpenAI-compatible proxy. Unset
   by default, which leaves the Azure path unchanged (#138)
+- Turn and HTTP metrics over OTLP: `dss.turn.duration`, `dss.turn.count`,
+  `dss.turn.first_claim.duration`, `dss.turn.cost`, `dss.stage.duration` and
+  `dss.stage.tokens`, plus request duration/count/status from
+  `opentelemetry-instrumentation-fastapi`. Off unless
+  `OTEL_METRICS_EXPORTER=otlp`, since the default endpoint is Langfuse, which
+  discards metrics (#139)
+- `DSS_MODEL_PROFILE` — one name for the whole model configuration, labelling
+  every turn-level metric so two deployments can be compared (#139)
+- `observability/stages.py` — the six stage names as a `Stage` enum, shared by
+  span names and metric labels. ADR-0012 recorded their absence as a cost (#139)
+- Network wire types: `NetworkAction`, `NetworkVersion`, `NetworkContext` (with
+  a discover and a select shape) and `NetworkSchemaContext`, replacing bare
+  string literals and two hand-built context dicts. `NetworkSchemaType` and
+  `NetworkTransactionID` name the two vocabulary aliases in `core/` (#139)
 - Scheme catalog: a `SchemeCatalog` port over a tenant-mounted CSV
   (`scheme_code,scheme_name,scheme_aliases`), indexed by normalized alias at
   boot. Nothing ships in the image; unset is inert plus a warning (#34)

@@ -14,7 +14,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from opentelemetry.trace import StatusCode
 
 from dss.adapters.observability import tracing
-from dss.adapters.observability.tracing import configure_tracing, open_span
+from dss.adapters.observability.tracing import configure_telemetry, open_span
 from dss.observability import trace_log
 
 
@@ -22,7 +22,7 @@ from dss.observability import trace_log
 def _restore_module_globals():
     """Put both module globals back after every test here.
 
-    `configure_tracing` writes two of them, and `monkeypatch` cannot undo
+    `configure_telemetry` writes two of them, and `monkeypatch` cannot undo
     either: `set_stage_span_opener` rebinds through `global`, and
     `set_model_names` mutates the dict in place rather than replacing it. A
     test that leaves the opener installed makes every later test in the session
@@ -120,7 +120,7 @@ def test_configuring_tracing_fills_the_slot(monkeypatch) -> None:
     monkeypatch.setattr("pydantic_ai.agent.Agent.instrument_all", lambda *_a: None)
     monkeypatch.setattr(trace_log, "_stage_span_opener", None)
 
-    configure_tracing()
+    configure_telemetry()
 
     assert trace_log._stage_span_opener is open_span
 
@@ -135,7 +135,7 @@ def test_the_model_names_arrive_with_everything_else(monkeypatch) -> None:
     monkeypatch.setattr("pydantic_ai.agent.Agent.instrument_all", lambda *_a: None)
     monkeypatch.setattr(tracing, "_model_names", {})
 
-    configure_tracing(intent_model="openai:gpt-4o-mini")
+    configure_telemetry(intent_model="openai:gpt-4o-mini")
 
     assert tracing._model_names == {"intent_model": "openai:gpt-4o-mini"}
 
@@ -149,7 +149,7 @@ def test_a_misspelled_model_name_is_refused(monkeypatch) -> None:
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318")
 
     with pytest.raises(TypeError):
-        configure_tracing(planer_model="openai:gpt-4o-mini")
+        configure_telemetry(planer_model="openai:gpt-4o-mini")
 
 
 def test_a_second_boot_without_an_endpoint_clears_the_slot(monkeypatch) -> None:
@@ -162,7 +162,7 @@ def test_a_second_boot_without_an_endpoint_clears_the_slot(monkeypatch) -> None:
     trace_log.set_stage_span_opener(open_span)
     tracing.set_model_names(intent_model="stale:model")
 
-    configure_tracing()
+    configure_telemetry()
 
     assert trace_log._stage_span_opener is None
     assert tracing._model_names == {}
@@ -177,7 +177,7 @@ def test_without_an_endpoint_the_slot_stays_empty(monkeypatch) -> None:
     monkeypatch.setattr(trace_log, "_stage_span_opener", None)
     monkeypatch.setattr(tracing, "_model_names", {})
 
-    configure_tracing(intent_model="openai:gpt-4o-mini")
+    configure_telemetry(intent_model="openai:gpt-4o-mini")
 
     # Nothing is recording, so there is no span for a model name to sit on.
     assert tracing._model_names == {}

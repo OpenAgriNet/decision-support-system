@@ -1,10 +1,9 @@
-# A collector that prints what arrives. For looking at spans locally; a
-# deployment replaces this file with one that forwards somewhere.
+# A collector that prints what arrives. For looking at spans and metrics
+# locally; a deployment replaces this file with one that forwards somewhere.
 #
-# Only traces. The DSS emits metrics too (Pydantic AI counts tokens), but
-# nothing here reads them yet and a pipeline with no consumer is noise — see
-# the discovery-service's own collector for the shape a real metrics pipeline
-# takes.
+# The metrics pipeline only sees anything when the DSS is started with
+# OTEL_METRICS_EXPORTER=otlp. That ships off, because the usual endpoint is
+# Langfuse and Langfuse discards metrics.
 receivers:
   otlp:
     protocols:
@@ -24,6 +23,10 @@ exporters:
 service:
   pipelines:
     traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]
+    metrics:
       receivers: [otlp]
       processors: [batch]
       exporters: [debug]

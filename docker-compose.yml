@@ -33,8 +33,17 @@ services:
       # 401 on every batch, and no content means spans that say what ran but not
       # what was asked. Setting the endpoint alone is the easy mistake.
       OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS:-}
-      # Pydantic AI counts tokens as metrics and Langfuse discards them.
+      # Off by default, and deliberately: the usual endpoint above is Langfuse,
+      # which discards metrics, so leaving this on means one pointless POST per
+      # interval. Set it to `otlp` when the endpoint is a Collector that
+      # forwards metrics somewhere — then `dss.turn.*`, `dss.stage.*` and the
+      # HTTP request metrics leave the process. Pydantic AI's own `gen_ai.*`
+      # token metrics come along with them; `dss.*` is what a dashboard reads.
       OTEL_METRICS_EXPORTER: ${OTEL_METRICS_EXPORTER:-none}
+      # One name for the whole model configuration above, labelling every
+      # turn-level metric. Nothing derives it — two deployments running the
+      # same four models are only comparable if they say which is which.
+      DSS_MODEL_PROFILE: ${DSS_MODEL_PROFILE:-default}
       # Only a literal "true" opts in. See ADR-0007 §5 before turning it on.
       DSS_TRACE_INCLUDE_MESSAGE_CONTENT: ${DSS_TRACE_INCLUDE_MESSAGE_CONTENT:-}
       DSS_INVOCATION_BASE_URL: ${DSS_INVOCATION_BASE_URL:-}

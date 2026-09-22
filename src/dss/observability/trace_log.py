@@ -48,6 +48,9 @@ from typing import Any, Protocol
 
 from opentelemetry import trace
 
+from dss.observability.stages import Stage
+from dss.observability.turn_usage import model_for
+
 logger = logging.getLogger("dss.trace")
 
 
@@ -63,7 +66,7 @@ class StageSpanOpener(Protocol):
 
 
 # A slot rather than an import: this module is the inward-facing one and may
-# not depend on `adapters/`, so `configure_tracing()` hands it an opener at
+# not depend on `adapters/`, so `configure_telemetry()` hands it an opener at
 # startup instead. Unfilled means no span, which is the right behaviour with
 # no OTLP endpoint configured — every test and every local run.
 _stage_span_opener: StageSpanOpener | None = None
@@ -74,6 +77,30 @@ def set_stage_span_opener(opener: StageSpanOpener | None) -> None:
 
     global _stage_span_opener
     _stage_span_opener = opener
+
+
+class StageMetricRecorder(Protocol):
+    """Publishes one stage's elapsed time as a metric.
+
+    Takes the elapsed time rather than measuring it: `trace_component` already
+    measures it for the log line, and two clocks over the same block would
+    eventually disagree.
+    """
+
+    def __call__(self, *, stage: str, elapsed_ms: float, model: str | None) -> None: ...
+
+
+# The second slot, for the same reason as the first: this module may not import
+# `adapters/`, so `configure_telemetry()` hands it a recorder at startup.
+# Unfilled means no metric — every test, and every local run with no exporter.
+_stage_metric_recorder: StageMetricRecorder | None = None
+
+
+def set_stage_metric_recorder(recorder: StageMetricRecorder | None) -> None:
+    """Fill (or empty) the slot `trace_component` publishes its timing through."""
+
+    global _stage_metric_recorder
+    _stage_metric_recorder = recorder
 
 
 _request_id: ContextVar[str] = ContextVar("dss_request_id", default="-")
@@ -173,25 +200,30 @@ def _ids(request_id: str | None = None) -> str:
 
 
 @contextmanager
-def trace_component(component: str, request_id: str | None = None) -> Iterator[None]:
+def trace_component(
+    component: Stage | str, request_id: str | None = None
+) -> Iterator[None]:
     """Log ``enter`` before the wrapped work and ``exit`` after — with the
-    elapsed time and whether it returned or raised — and open a
-    ``dss.stage.<component>`` span around it. Wrap an ``await`` directly:
+    elapsed time and whether it returned or raised — open a
+    ``dss.stage.<component>`` span around it, and publish the same elapsed time
+    as a metric. Wrap an ``await`` directly:
 
-        with trace_component("intent", turn.transaction_id):
+        with trace_component(Stage.INTENT, turn.transaction_id):
             intent = await classify_intent(turn, llm)
 
-    The span is opened through the slot, so with no opener registered this
-    costs one ``None`` check and the two log lines it always wrote. A stage
-    that raises leaves the span ``ERROR`` with the exception recorded on it,
-    then re-raises unchanged.
+    Both the span and the metric go through slots, so with neither registered
+    this costs two ``None`` checks and the two log lines it always wrote. A
+    stage that raises leaves the span ``ERROR`` with the exception recorded on
+    it, then re-raises unchanged — and still publishes its duration, because a
+    stage that failed slowly is exactly what a graph needs to show.
     """
 
+    stage = Stage(component)
     opener = _stage_span_opener
-    span_context = nullcontext() if opener is None else opener(f"dss.stage.{component}")
+    span_context = nullcontext() if opener is None else opener(f"dss.stage.{stage}")
 
     start = time.monotonic()
-    logger.info("%s component=%s event=enter", _ids(request_id), component)
+    logger.info("%s component=%s event=enter", _ids(request_id), stage)
     status = "ok"
     try:
         with span_context:
@@ -207,10 +239,15 @@ def trace_component(component: str, request_id: str | None = None) -> Iterator[N
         logger.info(
             "%s component=%s event=exit status=%s elapsed_ms=%.1f",
             _ids(request_id),
-            component,
+            stage,
             status,
             elapsed_ms,
         )
+        recorder = _stage_metric_recorder
+        if recorder is not None:
+            # Read here rather than at entry: the model that answered is only
+            # known once the call has returned.
+            recorder(stage=stage.value, elapsed_ms=elapsed_ms, model=model_for(stage))
 
 
 def log_event(

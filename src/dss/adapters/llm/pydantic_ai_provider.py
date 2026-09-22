@@ -20,6 +20,8 @@ from pydantic_ai.models import Model
 from pydantic_ai.models.openai import OpenAIResponsesModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
+from dss.adapters.observability.metrics import record_agent_run
+from dss.observability.stages import Stage
 from dss.observability.trace_log import log_external_response
 from dss.ports.llm import SchemaT
 
@@ -42,6 +44,7 @@ class PydanticAILLMProvider:
         model: Model,
         *,
         name: str,
+        stage: Stage,
         temperature: float = 0.0,
         timeout: float = 5.0,
         retries: int = 1,
@@ -50,6 +53,11 @@ class PydanticAILLMProvider:
     ) -> None:
         self._model = model
         self._name = name
+        # Which stage this binding serves. `name` is what Langfuse labels the
+        # span ("intent-classifier"); this is what a metric is labelled with,
+        # and the two are deliberately not the same string — one is a display
+        # name, the other a dashboard's key.
+        self._stage = stage
         self._retries = retries
         self._output_mode = output_mode
         self._model_settings = {"temperature": temperature, "timeout": timeout}
@@ -87,6 +95,7 @@ class PydanticAILLMProvider:
             retries=self._retries,
         )
         result = await agent.run(user_query, model_settings=self._model_settings)
+        record_agent_run(stage=self._stage, result=result)
         log_external_response("llm", output_schema=schema.__name__, body=result.output)
         return result.output
 
@@ -122,6 +131,10 @@ class PydanticAILLMProvider:
             ):
                 written.append(delta)
                 yield delta
+            # Inside the `async with`, and after the drain: usage is only
+            # complete once the last piece has arrived, and the result is gone
+            # once the context manager closes.
+            record_agent_run(stage=self._stage, result=stream)
         # Logged once the stream drains, not per piece: a log line per token
         # would bury every other line in the turn.
         log_external_response("llm", output_schema="text", body="".join(written))
