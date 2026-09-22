@@ -64,6 +64,14 @@ class Settings(BaseSettings):
     composer_timeout_seconds: float = Field(30.0, gt=0.0)
     composer_retries: int = Field(1, ge=0)
 
+    # --- telemetry ---------------------------------------------------------
+    # One name for the whole model configuration above, carried as a label on
+    # every turn-level metric. Nothing derives it: two deployments can run the
+    # same four models with different prompts or settings, and comparing them
+    # is the point. A deployment that never sets it reports as "default",
+    # which is honest — it has not named itself.
+    model_profile: str = "default"
+
     # --- provider invocation (/select) ---
     # One slow provider must not block the turn. The timeout bounds a single
     # call; attempts bound how many times a *transient* failure is retried (a

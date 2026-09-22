@@ -19,6 +19,7 @@ from pydantic_ai.messages import ModelMessage, SystemPromptPart, UserPromptPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from dss.adapters.llm.pydantic_ai_provider import PydanticAILLMProvider
+from dss.observability.stages import Stage
 
 # Deliberately mid-word ("quin" / "tal") and mid-number ("1,4" / "50").
 CHUNKS = ("Paddy is ", "Rs 1,4", "50 per quin", "tal at Anand.")
@@ -57,7 +58,10 @@ def _provider(
     a single piece and the ordering assertions would prove nothing."""
 
     return PydanticAILLMProvider(
-        model, name="composer", stream_debounce_seconds=debounce
+        model,
+        name="composer",
+        stage=Stage.COMPOSER,
+        stream_debounce_seconds=debounce,
     )
 
 

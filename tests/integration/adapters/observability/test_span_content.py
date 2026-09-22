@@ -44,7 +44,7 @@ def spans() -> InMemorySpanExporter:
 
 
 def _instrument_all(exporter: InMemorySpanExporter, monkeypatch) -> None:
-    """Instrument every agent, as `configure_tracing` does.
+    """Instrument every agent, as `configure_telemetry` does.
 
     `instrument_all` is the only public route and it sets a class-level
     default, so `monkeypatch.setattr` restores it afterwards rather than

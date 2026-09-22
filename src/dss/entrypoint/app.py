@@ -18,7 +18,7 @@ from starlette.types import Lifespan
 
 from dss.adapters.http.v1 import schema
 from dss.adapters.http.v1.router import turn_router
-from dss.adapters.observability.tracing import configure_tracing
+from dss.adapters.observability.tracing import configure_telemetry, tracing_enabled
 from dss.config.settings import Settings
 from dss.entrypoint.composition import build_runner_with_lifecycle
 from dss.ports.turn import TurnRunner
@@ -53,7 +53,33 @@ def build_app(
     )
     app.include_router(turn_router(runner=runner, settings=settings))
     _publish_wire_schemas(app)
+    _instrument_http(app)
     return app
+
+
+def _instrument_http(app: FastAPI) -> None:
+    """Request duration, count, route, method and status, for every endpoint.
+
+    Auto-instrumentation rather than a middleware of our own: the same numbers,
+    under the names a dashboard already knows, with nothing to keep in step
+    with FastAPI.
+
+    Note what this measures on `POST /v1/turns`. The turn streams, so the
+    request is not finished until the last claim is written — this is time to
+    the *last* word, where `dss.turn.first_claim.duration` is the wait the
+    farmer feels. The two differ by a lot and neither replaces the other;
+    written down here so one is not later deleted as a duplicate of the other.
+
+    Gated on telemetry being configured, like everything else: with no
+    endpoint, a request should not pay for a span nobody exports.
+    """
+
+    if not tracing_enabled():
+        return
+
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
+    FastAPIInstrumentor.instrument_app(app)
 
 
 def _publish_wire_schemas(app: FastAPI) -> None:
@@ -103,11 +129,12 @@ def create_app() -> FastAPI:
 
     _configure_logging()
     settings = Settings()
-    configure_tracing(
+    configure_telemetry(
         intent_model=settings.intent_model,
         moderation_model=settings.moderation_model,
         planner_model=settings.planner_model,
         composer_model=settings.composer_model,
+        model_profile=settings.model_profile,
     )
     runner, aclose = build_runner_with_lifecycle(settings)
 

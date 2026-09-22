@@ -17,6 +17,7 @@ from typing import Protocol
 
 from pydantic_ai.models import Model
 
+from dss.adapters.observability.metrics import record_agent_run
 from dss.config.planner_prompt_loader import load_planner_prompt_template
 from dss.core.intent.models import Intent
 from dss.core.planner.evidence import assemble_evidence
@@ -25,6 +26,7 @@ from dss.core.planner.prompt import build_planner_prompt, build_user_message
 from dss.core.planner.validation import DomainSchema
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.shared.models import UserTurn
+from dss.observability.stages import Stage
 from dss.observability.trace_log import log_external_response
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
 from dss.ports.invocation import CapabilityInvocation
@@ -107,6 +109,7 @@ def build_plan(
         # The planner's own prose is discarded downstream (the composer writes
         # the answer), but log it so the model's final say is visible next to
         # the provider calls its `select` tool made.
+        record_agent_run(stage=Stage.PLANNER, result=result)
         log_external_response("llm.planner", turn.transaction_id, body=result.output)
         # Direct answers too: they need no select call, so they never land in
         # raw_answers, and leaving them out lost an ask the catalog had
