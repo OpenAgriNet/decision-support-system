@@ -20,9 +20,24 @@
   capability index resolves no `@type` — no published schema pack declares
   `Scheme`, so `/discover` was never called for one. The request carries the
   jsonpath filter and omits `schemaContext`; ADR-0009 (#52)
+- `core/stream_response`: the composer's answer yielded in the pieces the model
+  writes it in. Pieces pass through untouched, so concatenating them gives the
+  completed claim exactly. ADR-0011 (#72)
+- `LLMProvider.stream_text` — prose is not a schema, so `structured()` could not
+  carry the composer. No whole-answer twin, and so no retry once a piece is out:
+  re-issuing would write a different answer over words already sent (#72)
+- `ClaimDelta` turn event, and the `output_text_delta` wire content type. No
+  annotations on either — a block mid-write has no end index to cite over (#72)
 
 
 ### Changed
+- `POST /v1/turns` with `Accept: text/event-stream` now sends one `claim.delta`
+  per piece of the answer before `claim.completed`. Additive: `claim.completed`
+  still carries the whole block, so a consumer that ignores unknown event names
+  is unaffected. A JSON caller's request and response are unchanged (#72)
+- Response composition moved out of `orchestration/` into `core/`: it no longer
+  imports Pydantic AI, because `LLMProvider.stream_text` is now the seam. The
+  prompt moved with it to `core/channel/prompt.py` (#72)
 - `/select` now sends the ask's own `subjectCategories` instead of echoing back
   the ones the discovered resource advertised, so both hops of an ask agree on
   what was asked — a scheme ask no longer reaches a provider labelled `Crop`,

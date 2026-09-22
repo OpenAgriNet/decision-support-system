@@ -286,23 +286,35 @@ curl -N -X POST http://127.0.0.1:8077/v1/turns \
 **`-N` matters.** Without it curl buffers and the frames arrive in one lump, which
 hides the thing you are trying to look at.
 
-Expect four frames:
+Expect the answer to build up as it is written:
 
 ```
 event: turn.created      sequenceNumber 1
-event: claim.completed   sequenceNumber 2
-event: claim.completed   sequenceNumber 3
-event: turn.completed    sequenceNumber 4   outcome.status "answered"
+event: claim.delta       sequenceNumber 2   "इस सप्ताह आनंद मंडी में "
+event: claim.delta       sequenceNumber 3   "गेहूं का भाव ₹2,2"
+event: claim.delta       sequenceNumber 4   "75 प्रति क्विंटल है।"
+event: claim.completed   sequenceNumber 5   the whole block, with its citations
+event: turn.completed    sequenceNumber 6   outcome.status "answered"
 ```
 
 The contract sets `sequenceNumber` minimum 1, so the stream is 1-based.
 
-**The claims are not progressive.** `turn.created` arrives at once, then
-nothing for the length of the whole pipeline, then every `claim.completed` and
-`turn.completed` together — the orchestrator awaits the composed text in full
-before splitting it into blocks. So `-N` shows you the frames as they are sent,
-which is not the same as watching an answer being written. Recorded in
-`TODO.md` under Transport.
+Things worth knowing when you look at the output:
+
+- **Nothing arrives for the length of the pipeline.** `turn.created` is
+  immediate, then intent, moderation, discovery and the planner run — ten
+  seconds or more against a real model — before the first `claim.delta`. The
+  composer is the only stage with anything to release early.
+- **Pieces split anywhere.** The third frame above cuts `₹2,275` in half. Join
+  them and you get the `claim.completed` text exactly; that is the guarantee.
+- **How many frames you get is not how many tokens the model wrote.** Pieces are
+  grouped in 100ms windows, because every frame repeats the whole response
+  envelope.
+- **No deltas on a refusal, a no-match, or a "which district are you in?".**
+  Those are fixed replies, not written by the model. If you are seeing no
+  `claim.delta`, check `outcome.status` on the terminal frame before assuming
+  streaming is broken — an unwired network gives `no_match`, which never reaches
+  the composer.
 
 Note also that once the first byte is written the status cannot change, so a
 failure after `turn.created` arrives as a `turn.failed` event inside a `200`.

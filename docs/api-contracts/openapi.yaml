@@ -40,9 +40,17 @@ paths:
         information is still a 200. The domain result is in `message.outcome`.
 
         With `Accept: text/event-stream` the response is an SSE stream whose
-        terminal event carries the same canonical turn object. Once the stream
-        has opened with 200, failures are reported by a terminal `turn.failed`
-        event; the HTTP status cannot change.
+        terminal event carries the same canonical turn object. The composer's
+        answer arrives as one `claim.delta` per piece as it is written, then
+        `claim.completed` with the whole block and its citations; concatenating
+        the delta texts gives the completed text exactly. With
+        `Accept: application/json` those pieces are drained and the single body
+        is unchanged.
+
+        Once the stream has opened with 200, failures are reported by a terminal
+        `turn.failed` event; the HTTP status cannot change. There is no retry
+        after the first piece has been sent — a second attempt would write a
+        different answer over words the caller has already rendered.
       parameters:
         - $ref: '#/components/parameters/Traceparent'
         - $ref: '#/components/parameters/Tracestate'
@@ -465,11 +473,13 @@ components:
     OutputContentItem:
       oneOf:
         - $ref: '#/components/schemas/OutputText'
+        - $ref: '#/components/schemas/OutputTextDelta'
         - $ref: '#/components/schemas/OutputRefusal'
       discriminator:
         propertyName: type
         mapping:
           text: '#/components/schemas/OutputText'
+          output_text_delta: '#/components/schemas/OutputTextDelta'
           refusal: '#/components/schemas/OutputRefusal'
 
     OutputText:
@@ -486,6 +496,25 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Annotation'
+
+    OutputTextDelta:
+      type: object
+      required: [type, text]
+      description: |
+        A piece of an answer still being written, carried on `claim.delta`.
+        Concatenating every `claim.delta` of a turn gives the `claim.completed`
+        text exactly — pieces land wherever the model broke them, so one may end
+        mid-word, mid-number, or mid-citation-marker.
+
+        No `annotations`: a block that is still being written has no end index
+        for a citation to span. Provenance arrives with `claim.completed`.
+      properties:
+        type:
+          type: string
+          const: output_text_delta
+        text:
+          type: string
+          description: One piece of the answer. Append it to what came before.
 
     OutputRefusal:
       type: object
@@ -563,10 +592,16 @@ components:
     TurnEventStream:
       type: string
       description: |
-        An SSE stream. Event names are `turn.created`, `claim.completed`,
-        `turn.completed`, and `turn.failed`. Each `data:` line is one JSON
-        object matching `TurnEvent`. The terminal event is authoritative; the
-        client does not infer the outcome from connection closure.
+        An SSE stream. Event names are `turn.created`, `claim.delta`,
+        `claim.completed`, `turn.completed`, and `turn.failed`. Each `data:`
+        line is one JSON object matching `TurnEvent`. The terminal event is
+        authoritative; the client does not infer the outcome from connection
+        closure.
+
+        A caller that does not recognise `claim.delta` can ignore it:
+        `claim.completed` still carries the whole block. Only a composed answer
+        streams — a refusal, a no-match, or a request for more information is a
+        fixed reply, so those turns carry no `claim.delta` at all.
       contentMediaType: text/event-stream
       externalDocs:
         description: Payload schema carried on each `data:` line
@@ -594,9 +629,11 @@ components:
         message:
           type: object
           description: |
-            On `claim.completed` this carries `content` only — one reviewed
-            content item ready for presentation. On a terminal event it carries
-            the full `ResponseMessage`.
+            On `claim.delta` this carries `content` only — one
+            `OutputTextDelta`, a piece of an answer still being written. On
+            `claim.completed` it carries `content` only — one reviewed content
+            item ready for presentation. On a terminal event it carries the full
+            `ResponseMessage`.
           properties:
             outcome:
               $ref: '#/components/schemas/Outcome'

@@ -16,6 +16,8 @@ REST over HTTP. Server-Sent Events are used when the caller requests streaming.
 
 The request body contains typed input items. Text, image, and earlier conversation messages therefore use the same endpoint. The HTTP `Accept` header selects JSON or SSE without changing the operation.
 
+One operation, one body. `Accept` decides how the answer arrives: on the event stream each piece leaves as the composer writes it, and on JSON the pieces are drained into the single body a caller has always received.
+
 ### 1.1 Headers
 
 | Header | Required | What it is |
@@ -131,6 +133,7 @@ Rules:
 - The request does not contain a person identifier, authorization artifact, or caller instruction that changes DSS policy.
 - Location attributes contain only the minimum non-personal information needed for the turn.
 - The `Accept` header selects streaming. There is no streaming flag in the request.
+- The composer streams either way. `Accept` decides only whether its pieces are framed as `claim.delta` events or drained into one body.
 - Unknown request fields are rejected where the schema declares a closed object. Clients must ignore unknown optional response fields to remain compatible with later `/v1` releases.
 
 ### 2.0 Types used in this request
@@ -300,6 +303,43 @@ data: {"context":{"id":"api.dss.turn","version":"v1.1","messageId":"msg_mandi_wh
 event: turn.completed
 data: {"context":{"id":"api.dss.turn","version":"v1.1","messageId":"msg_mandi_wheat_01","sessionId":"conv_8f3a1c","traceId":"9f2b7c1a487a9138e394d31b51134a61","timestamp":"2026-09-01T09:30:02Z","sequenceNumber":2},"message":{"outcome":{"status":"answered","cause":null,"confidence":92},"content":[{"type":"text","text":"इस सप्ताह आनंद मंडी में गेहूं का भाव ₹2,275 प्रति क्विंटल है।","annotations":[{"type":"url_citation","url":"https://agmarknet.gov.in/...","sourceId":"src_1","sourceName":"Agmarknet","startIndex":0,"endIndex":61}]}],"sources":[{"id":"src_1","name":"Agmarknet","kind":"provider"}]}}
 ```
+
+### Answered, released as it is written
+
+The same request as above, shown with the `claim.delta` frames the composer produces. Abbreviated context blocks; every frame carries the same ones, with its own `sequenceNumber`.
+
+```
+POST /v1/turns
+Content-Type: application/json
+Accept: text/event-stream
+
+event: turn.created
+data: {"context":{...,"sequenceNumber":1},"message":{}}
+
+event: claim.delta
+data: {"context":{...,"sequenceNumber":2},"message":{"content":[{"type":"output_text_delta","text":"इस सप्ताह आनंद मंडी में "}]}}
+
+event: claim.delta
+data: {"context":{...,"sequenceNumber":3},"message":{"content":[{"type":"output_text_delta","text":"गेहूं का भाव ₹2,2"}]}}
+
+event: claim.delta
+data: {"context":{...,"sequenceNumber":4},"message":{"content":[{"type":"output_text_delta","text":"75 प्रति क्विंटल है।"}]}}
+
+event: claim.completed
+data: {"context":{...,"sequenceNumber":5},"message":{"content":[{"type":"text","text":"इस सप्ताह आनंद मंडी में गेहूं का भाव ₹2,275 प्रति क्विंटल है।","annotations":[{"type":"url_citation","url":"https://agmarknet.gov.in/...","sourceId":"src_1","sourceName":"Agmarknet","startIndex":0,"endIndex":61}]}]}}
+
+event: turn.completed
+data: {"context":{...,"sequenceNumber":6},"message":{"outcome":{"status":"answered","cause":null,"confidence":92},"content":[...],"sources":[{"id":"src_1","name":"Agmarknet","kind":"provider"}]}}
+```
+
+What a consumer has to know:
+
+- **Append, do not replace.** Concatenating every `claim.delta` text gives the `claim.completed` text exactly. A piece may end mid-word, mid-number, or mid-citation-marker — the third frame above splits `₹2,275`.
+- **A delta carries no citations.** A block still being written has no end index for an annotation to span. Provenance arrives with `claim.completed`.
+- **The terminal event is still authoritative.** Store it; do not reassemble it from the pieces you rendered.
+- **Only a composed answer streams.** A refusal, a no-match, or a request for more information is a fixed reply, so those turns carry no `claim.delta`.
+- **There is no retry after the first piece.** A failure from that point on arrives as `turn.failed` inside the already-open 200.
+- **An unrecognised event name is safe to skip.** A consumer that ignores `claim.delta` still gets the whole answer from `claim.completed`.
 
 ### Rejected
 

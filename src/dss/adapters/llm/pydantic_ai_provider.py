@@ -11,6 +11,7 @@ catches whatever escapes after they are exhausted and applies the policy's
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from typing import Literal
 
 from openai import AsyncOpenAI
@@ -45,12 +46,14 @@ class PydanticAILLMProvider:
         timeout: float = 5.0,
         retries: int = 1,
         output_mode: OutputMode = "tool",
+        stream_debounce_seconds: float | None = 0.1,
     ) -> None:
         self._model = model
         self._name = name
         self._retries = retries
         self._output_mode = output_mode
         self._model_settings = {"temperature": temperature, "timeout": timeout}
+        self._stream_debounce_seconds = stream_debounce_seconds
 
     def _output_type(self, schema: type[SchemaT]):
         if self._output_mode == "prompted":
@@ -59,6 +62,18 @@ class PydanticAILLMProvider:
             return NativeOutput(schema)
         return schema  # "tool" — Pydantic AI's default for a bare schema
 
+    def _agent(self, system_prompt: str, **kwargs: object) -> Agent:
+        """One `Agent`, built the same way for every call this adapter makes.
+
+        `name` is what Langfuse labels the span. Without it every agent in a
+        trace reads "agent run", and a turn's waterfall is four identical rows
+        you have to expand one by one to tell apart.
+        """
+
+        return Agent(
+            self._model, name=self._name, system_prompt=system_prompt, **kwargs
+        )
+
     async def structured(
         self,
         *,
@@ -66,19 +81,50 @@ class PydanticAILLMProvider:
         user_query: str,
         schema: type[SchemaT],
     ) -> SchemaT:
-        # `name` is what Langfuse labels the span. Without it every agent in a
-        # trace reads "agent run", and a turn's waterfall is four identical rows
-        # you have to expand one by one to tell apart.
-        agent: Agent[None, SchemaT] = Agent(
-            self._model,
-            name=self._name,
+        agent = self._agent(
+            system_prompt,
             output_type=self._output_type(schema),
-            system_prompt=system_prompt,
             retries=self._retries,
         )
         result = await agent.run(user_query, model_settings=self._model_settings)
         log_external_response("llm", output_schema=schema.__name__, body=result.output)
         return result.output
+
+    async def stream_text(
+        self,
+        *,
+        system_prompt: str,
+        user_query: str,
+    ) -> AsyncIterator[str]:
+        """Yield the model's prose in pieces as it is written.
+
+        ``delta=True`` yields each new piece rather than the text so far, so a
+        consumer concatenates rather than replaces. Pieces land on whatever
+        boundary the model emits, grouped by ``stream_debounce_seconds`` —
+        mid-word and mid-number both happen, and nothing here tidies them:
+        joining them back must give the answer exactly, and a "helpful" re-split
+        is how that guarantee gets lost.
+
+        ``retries`` is deliberately not passed. Pydantic AI retries output
+        validation, and bare prose has none; what fails mid-stream is transport,
+        and re-issuing that would re-generate a *different* answer after pieces
+        of the first one have already been sent. The rule — no retry once a
+        piece is out — is enforced by there being no other way to compose.
+        """
+
+        agent = self._agent(system_prompt)
+        written: list[str] = []
+        async with agent.run_stream(
+            user_query, model_settings=self._model_settings
+        ) as stream:
+            async for delta in stream.stream_text(
+                delta=True, debounce_by=self._stream_debounce_seconds
+            ):
+                written.append(delta)
+                yield delta
+        # Logged once the stream drains, not per piece: a log line per token
+        # would bury every other line in the turn.
+        log_external_response("llm", output_schema="text", body="".join(written))
 
 
 def build_azure_model(

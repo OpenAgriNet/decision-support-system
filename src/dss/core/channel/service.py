@@ -1,9 +1,9 @@
 """Response composition — shaping the written answer for its channel.
 
-Writing the prose is the model's job (`orchestration/compose.py`, which needs
-an `LLMProvider`); this module does the deterministic structural shaping that
-stays in `core/`: turning the composer's text plus the planner's `Evidence`
-into the `ComposedAnswer` the transport streams, and the fixed no-match reply.
+Writing the prose is the model's job (`core/stream_response/service.py`); this
+module does the deterministic structural shaping that stays in `core/`: turning
+the composer's text plus the planner's `Evidence` into the `ComposedAnswer` the
+transport streams, and the fixed no-match reply.
 """
 
 from __future__ import annotations

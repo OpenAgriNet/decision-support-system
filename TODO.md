@@ -174,15 +174,18 @@
 
 ## Transport
 
-- **SSE streams the transport, not the content.** `orchestrator.run` awaits
-  `compose(...)` in full, then splits the finished text and yields one `Claim`
-  per block — so a client gets `turn.created` at once, then nothing for the
-  length of the whole pipeline, then every `claim.completed` and
-  `turn.completed` together. Progressive delivery would mean the composer
-  yielding as the model produces text (Pydantic AI's `run_stream`), which
-  changes the `Compose` port, the orchestrator's loop, and what a
-  `claim.completed` denotes. Worth doing for a farmer on a slow model; not a
-  fault today, but "streaming" reads as a promise the endpoint does not keep.
+- ~~**SSE streams the transport, not the content.**~~ Done: `/v1/turns` with
+  `Accept: text/event-stream` yields a `claim.delta` per piece as the model
+  writes it (ADR-0011, #72).
+- **Consumers of `claim.delta` are unconfirmed.** The design assumes an adopter
+  platform ignores SSE event names it does not recognise. Since the frames land
+  on the existing `/v1/turns` stream, a consumer that errors on an unknown event
+  makes this a versioned contract change rather than an additive one. Confirm
+  with the Experience layer before release.
+- **No end-to-end timing yet.** Nothing has measured how much sooner the first
+  word actually reaches a farmer — the tests prove pieces leave early, not that
+  the saving is worth the frames. Needs one before/after run against a real
+  model.
 
 ## Testing
 

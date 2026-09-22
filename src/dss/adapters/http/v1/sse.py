@@ -1,8 +1,10 @@
 """Server-Sent Events framing.
 
 This module owns two things and no others: what each event is called, and the
-sequence number. Neither is a domain concern — the runner produces events and
-never learns whether they were streamed.
+sequence number. `claim.delta` shares the counter with everything else, so a
+consumer can still tell a dropped frame from a reordered one. Neither is a
+domain concern — the runner produces events and never learns whether they were
+streamed.
 
 There is deliberately no `id:` line. An `id:` advertises `Last-Event-ID`, and
 this stream cannot be resumed: on a dropped connection the DSS finishes the turn
@@ -17,6 +19,7 @@ from datetime import datetime
 from dss.adapters.http.v1 import mapping, schema
 from dss.core.shared.models import (
     Claim,
+    ClaimDelta,
     TurnContext,
     TurnEvent,
     TurnFinished,
@@ -25,6 +28,7 @@ from dss.core.shared.models import (
 )
 
 CREATED = "turn.created"
+CLAIM_DELTA = "claim.delta"
 CLAIM = "claim.completed"
 COMPLETED = "turn.completed"
 FAILED = "turn.failed"
@@ -62,6 +66,8 @@ class Stream:
         }
         if isinstance(event, TurnStarted):
             return CREATED, mapping.to_created_frame(self._ctx, **common)
+        if isinstance(event, ClaimDelta):
+            return CLAIM_DELTA, mapping.to_delta_frame(event, self._ctx, **common)
         if isinstance(event, Claim):
             return CLAIM, mapping.to_claim_frame(event, self._ctx, **common)
         return _terminal_name(event), mapping.to_terminal_frame(

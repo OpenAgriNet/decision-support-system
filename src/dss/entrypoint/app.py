@@ -25,7 +25,8 @@ from dss.ports.turn import TurnRunner
 
 TITLE = "Decision Support System"
 DESCRIPTION = (
-    "One turn in, a stream of claims out, then one final event. Internal to the "
+    "One turn in, the answer streamed as it is written, then one final event. "
+    "`Accept` selects a single JSON body or the event stream. Internal to the "
     "deployment: no authentication, no CORS."
 )
 

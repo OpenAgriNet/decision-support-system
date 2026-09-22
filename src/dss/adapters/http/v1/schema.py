@@ -176,6 +176,21 @@ class OutputText(_WireOut):
     annotations: list[Annotation] = []
 
 
+class OutputTextDelta(_WireOut):
+    """A piece of an answer still being written.
+
+    Deliberately thinner than `OutputText`: no `annotations`, because a block
+    mid-write has no end index for a citation to span. Provenance arrives with
+    the `OutputText` that follows, which is the first point the block is final.
+
+    A consumer concatenates these. Pieces land on whatever boundary the model
+    produced — one may end mid-word, mid-number or mid-citation-marker.
+    """
+
+    type: Literal["output_text_delta"] = "output_text_delta"
+    text: str
+
+
 class OutputRefusal(_WireOut):
     type: Literal["refusal"] = "refusal"
     text: str
@@ -199,11 +214,12 @@ class TurnError(_WireOut):
 
 
 class ResponseMessage(_WireOut):
-    """`outcome` is absent until the turn ends, so `turn.created` and
-    `claim.completed` carry content without implying a result."""
+    """`outcome` is absent until the turn ends, so `turn.created`,
+    `claim.delta` and `claim.completed` carry content without implying a
+    result."""
 
     outcome: Outcome | None = None
-    content: list[OutputText | OutputRefusal] = []
+    content: list[OutputText | OutputTextDelta | OutputRefusal] = []
     sources: list[Source] = []
     error: TurnError | None = None
 

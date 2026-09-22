@@ -44,7 +44,7 @@ The DSS is an **Experience Layer module** used when an interaction requires inte
 
 - A structured intent and capability need.
 - Requests to permitted local tools or to the Network Consumer Adapter.
-- A reviewed response with presentation intent, status, provenance, limitations, and escalation information.
+- A reviewed response with presentation intent, status, provenance, limitations, and escalation information — delivered whole, or released in pieces as it is composed (ADR-0011).
 - Non-personal stage, dependency, policy, review, and failure evidence.
 
 ### 2.2 Requires
@@ -119,6 +119,13 @@ Consequences of the split:
 - Reviewer scope narrows to presentation defects, which is why the corrective retry is local to composition (§5.5).
 - "A required tool was never called" is a *planning* defect caught before execution, not a runtime condition repaired downstream.
 - Sufficiency is a model judgment, so the loop is bounded; on exhaustion the DSS returns the §7 no-match outcome rather than a best-effort answer built from insufficient data.
+
+**Composition is the only stage whose output exists before its work is finished**, and this repo releases it as it is written (ADR-0011). Two consequences follow from the split above rather than from the transport:
+
+- Sufficiency is settled before composition begins, so a piece already sent can never be invalidated by a later replan — there is no replan left to run.
+- Presentation-level review therefore cannot block the stream. A reviewer that must see the whole answer before the first word leaves gives back everything streaming bought; `dss-design-v2.md` §9 already scopes review as non-blocking for this reason.
+
+Releasing pieces is one-way: the DSS cannot recall what it has sent, so a composition failure after the first piece is reported as a failed turn rather than retried into a different answer (ADR-0011 §4).
 
 ---
 
@@ -390,7 +397,7 @@ DSS-scoped, deferred to v1 design and later governance:
 - **Sufficiency check semantics** (§3.2) — how "enough to answer" is evaluated, its iteration bound, and the guarantee that bound exhaustion yields the §7 no-match outcome rather than a best-effort answer built from insufficient data.
 - **Corrective-retry scope** (§5.5, §5.1) — confirming the retry re-renders in composition rather than re-executing the plan, and its bound.
 - **Which deployment profiles require a DSS**, and which may use a deterministic Experience implementation.
-- **Translation boundary and personal-data classification.**
+- **Translation boundary and personal-data classification.** Now carries a constraint from ADR-0011: translation as a step *after* composition would remove the streaming benefit entirely for non-English farmers, since the whole English answer would have to exist before translation could begin. Translation has to stay part of generation, or streaming has to be given up for those farmers.
 - **DSS-internal caches vs user context.** §5.2 and §5.4 give the DSS caches of its own decisions (intent classifications, capability references). These must stay a distinct store from the Experience-owned conversation history and profile, which the DSS reads but never writes (§1.2). Open: whether they share infrastructure, and how the boundary is enforced rather than merely intended.
 - **Evaluation thresholds, confidence categories, and human-escalation requirements.**
 - **Conformance tests** that prove an alternative reasoning engine or tool adapter preserves the DSS contract.
@@ -401,6 +408,7 @@ DSS-scoped, deferred to v1 design and later governance:
 - **Voice-channel specifics.** Concurrent moderation patterns and voice-specific latency budgets.
 - **Registry of MCP tool schemas.** Currently spec/docs contracts only; promote to Schema Registry later if cross-adopter interop needs emerge.
 - **Redaction interceptor implementation.** §6.2 fixes the PII posture and sink-layer enforcement model. Open: library integration vs sink processor, pseudonymisation-token wire format, adopter rule-schema shape, per-sink coverage. **Now load-bearing rather than theoretical:** ADR-0007 ships tracing that records message content with no redaction in front of it, bounded only by self-hosting and a 30-day retention window. The OpenTelemetry span processor in front of the OTLP exporter is the sink §6.2 describes, and is where this should land.
+- **Stream resumability.** A dropped connection loses the pieces already sent; the DSS finishes the turn server-side and the caller recovers it from session history. ADR-0011 keeps this unchanged — no `id:` line, no `Last-Event-ID`. The known pattern is buffering each piece against `trace_id` so any replica can serve the rest on reconnect, which matters most on voice.
 - **Request envelope `history` typing.** Concrete `TurnHistoryEntry` shape (roles, tool-call trace inclusion, redaction posture) deferred.
 - **`UserDetails` extensibility.** Whether tenant-specific profile fields (farmer ID, region, land size) attach through an open `extra` dict on `UserDetails` or route through Context Providers projecting from a separate `user_context` payload. Leaning toward the latter.
 - **PII posture — DSS envelope and forwarding rules.** The DPG architecture prescribes "shared DSS processing does not receive raw personal data" (Posture A). This repo's §5.1 envelope currently carries `user_id` and `phone`, and §6.2 implies raw PII may transit DSS with sink-layer redaction as the primary control (Posture B). Open questions: (1) which fields belong on `UserTurn` — session/interaction IDs and Provider-scoped opaque references only, or also raw identifiers? (2) does the DSS see free-text `query` when the query itself carries PII (names, addresses spoken by the user), and if so, is pre-DSS scrubbing an Experience-layer responsibility or a DSS one? (3) if PII may enter DSS in-flight, do we need per-Provider forwarding allowlists (which fields flow to which capability) in addition to sink-layer redaction? (4) how does personalisation ("Hi Ramesh…") work when DSS can't see the name — templated response with post-DSS substitution by the participating deployment, or opaque user-segment tokens? Needs discussion before v1 envelope is locked.

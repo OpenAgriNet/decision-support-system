@@ -198,9 +198,13 @@ _OPENAPI = {
                     "schema": {
                         "type": "string",
                         "description": (
-                            "turn.created, then one claim.completed per reviewed "
-                            "claim, then turn.completed or turn.failed. Each frame's "
-                            "data is a TurnResponse."
+                            "turn.created, then one claim.delta per piece of "
+                            "the answer as the composer writes it, then "
+                            "claim.completed with the whole block and its "
+                            "citations, then turn.completed or turn.failed. Each "
+                            "frame's data is a TurnResponse. Concatenating the "
+                            "claim.delta texts gives the claim.completed text "
+                            "exactly."
                         ),
                     }
                 },
@@ -251,8 +255,10 @@ async def _single(
 ) -> JSONResponse:
     """Drain the turn and render only its terminal event.
 
-    Claims are discarded on purpose: `content` on the terminal event already
-    repeats them, and a caller in this mode never saw the stream.
+    Claims and the pieces they were built from are discarded on purpose:
+    `content` on the terminal event already carries the whole answer, and a
+    caller in this mode never saw the stream. The composer streams either way —
+    this mode is a drain, not a second way of composing.
     """
 
     finished: TurnFinished | None = None

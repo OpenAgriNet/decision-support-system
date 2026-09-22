@@ -51,7 +51,7 @@ from dss.core.provider_discovery.index import PACK_DEFECTS, extract_type_const
 from dss.core.provider_discovery.models import DiscoveryResult, SchemaPackFiles
 from dss.core.provider_discovery.schema_pack_cache import SchemaPackCache
 from dss.core.shared.models import UserTurn
-from dss.orchestration.compose import build_compose
+from dss.core.stream_response.service import build_stream_response
 from dss.orchestration.discovery import (
     DiscoverProviders,
     build_capability_discovery,
@@ -140,13 +140,7 @@ def build_runner_with_lifecycle(
             timeout_seconds=settings.planner_timeout_seconds,
             retries=settings.planner_retries,
         ),
-        compose=build_compose(
-            identity=identity,
-            model=_resolve_model(settings.composer_model),
-            temperature=settings.composer_temperature,
-            timeout_seconds=settings.composer_timeout_seconds,
-            retries=settings.composer_retries,
-        ),
+        compose=build_stream_response(identity=identity, llm=_composer_llm(settings)),
     )
 
     runner = Orchestrator(
@@ -416,6 +410,27 @@ def _intent_llm(settings: Settings):
         temperature=settings.intent_temperature,
         timeout=settings.intent_timeout_seconds,
         retries=settings.intent_retries,
+    )
+
+
+def _composer_llm(settings: Settings):
+    """The composer's model binding.
+
+    Warmer than the planner's by default: this one writes the farmer's answer,
+    where a little variation reads better than a fixed phrasing. `retries`
+    reaches only the whole-answer call — `stream_text` does not offer one, so a
+    stream that has already sent pieces cannot be restarted over the top of
+    them.
+    """
+
+    if settings.stub_llm:
+        return StubLLM()
+    return PydanticAILLMProvider(
+        _resolve_model(settings.composer_model),
+        name="composer",
+        temperature=settings.composer_temperature,
+        timeout=settings.composer_timeout_seconds,
+        retries=settings.composer_retries,
     )
 
 

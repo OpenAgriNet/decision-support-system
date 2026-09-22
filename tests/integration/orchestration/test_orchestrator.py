@@ -166,13 +166,31 @@ class _FakePlan:
 
 
 class _FakeCompose:
-    def __init__(self, text: str) -> None:
-        self._text = text
-        self.calls = 0
+    """The composer streams — there is only one kind. `chunks` splits the answer
+    so a test can see the pieces; `fail_after=n` raises once `n` are out, and
+    `closed` records whether the generator's cleanup ran."""
 
-    async def __call__(self, evidence, *, turn) -> str:  # noqa: ANN001
+    def __init__(
+        self,
+        text: str,
+        *,
+        chunks: tuple[str, ...] | None = None,
+        fail_after: int | None = None,
+    ) -> None:
+        self._chunks = chunks if chunks is not None else (text,)
+        self._fail_after = fail_after
+        self.calls = 0
+        self.closed = False
+
+    async def __call__(self, evidence, *, turn):  # noqa: ANN001
         self.calls += 1
-        return self._text
+        try:
+            for index, chunk in enumerate(self._chunks):
+                if index == self._fail_after:
+                    raise RuntimeError("the model stream dropped")
+                yield chunk
+        finally:
+            self.closed = True
 
 
 class _Telemetry:
