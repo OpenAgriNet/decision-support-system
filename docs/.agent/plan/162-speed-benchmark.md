@@ -65,12 +65,12 @@
 | `evals/perf/questions.py` | Loads the entries for `--lang`. |
 | `evals/perf/sse.py` | Parses SSE lines into `(event, data)`. Pure. |
 | `evals/perf/turn.py` | Drives one turn and returns `TurnTiming`. |
-| `evals/perf/langfuse.py` | Finds the trace by session and returns `TraceFacts` (stages, token calls, models, flat or not). |
+| `evals/perf/traces.py` | Finds the trace and returns `TraceFacts` (stages, token calls, models, flat or not). Not `langfuse.py`: nothing imports the SDK, only the REST API. Langfuse v4 (`events_only`) has turned off `/api/public/traces`; the read API is `/api/public/v2/observations`. Only `dss.turn` carries the session, so it's two steps: find the root by `sessionId`, then fetch the whole trace by `traceId`. |
 | `evals/perf/stats.py` | `summarise(values) -> Summary(p50, p95, max, n)`. |
 | `evals/perf/runner.py` | Warm-up, repeats, turn cap, miss check, and joining client times to trace facts. |
 | `evals/perf/load.py` | Load mode: steps through the N values with N workers each, and returns one `StepResult` per N. |
 | `evals/perf/container.py` | Starts and stops the pinned DSS container (`docker run --cpus 1 --memory 1g`), and reads back the limits with `docker inspect`. |
-| `evals/perf/report.py` | Text table to stdout, and the JSON to `var/evals/perf/<utc>-<sha>.json`. |
+| `evals/perf/report.py` | Text table to stdout, and the JSON to `var/evals/perf/<utc>-<commit>.json`, so a run is found by time or commit. The CLI reads the commit with `git rev-parse HEAD` (`-dirty` with changes, `unknown` with no git). In #164's PR job, pass the PR head SHA in, because a `pull_request` checkout is a merge commit. |
 | `tests/unit/tools/test_mock_generators.py`, `test_mock_matching.py` | Tier 1. |
 | `tests/integration/tools/test_mock_network.py` | Tier 2. Extend it for miss → 400 and the counter. |
 | `tests/unit/evals/perf/test_*.py` | Tier 1, for sse, stats, questions, langfuse mapping, runner, report. |
