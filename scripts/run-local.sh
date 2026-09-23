@@ -21,15 +21,56 @@ SCHEMA_PACK_REF="${SCHEMA_PACK_REF:-schema-packs-v0.1}"
 COMPOSE_PROJECT="${COMPOSE_PROJECT:-decision-support-system}"
 ENV_LOCAL="${ENV_LOCAL:-.env.local}"
 
-if command -v podman >/dev/null 2>&1; then
-  R=podman
-  COMPOSE=podman-compose
+die() { echo "error: $*" >&2; exit 1; }
+
+# --- container runtime -----------------------------------------------------
+#
+# Installed is not the same as usable. A Homebrew `podman` with no machine
+# started is on the PATH and answers every `command -v`, so picking on that
+# alone sent anyone running Docker or Colima into a podman socket error about
+# a VM they never meant to use. Each candidate has to actually answer before
+# it is chosen.
+#
+# Podman stays first, so a machine that runs both keeps the behaviour it had.
+# Set CONTAINER_RUNTIME to force one either way.
+
+runtime_responds() {
+  command -v "$1" >/dev/null 2>&1 && "$1" info >/dev/null 2>&1
+}
+
+R="${CONTAINER_RUNTIME:-}"
+if [ -n "$R" ]; then
+  runtime_responds "$R" || \
+    die "CONTAINER_RUNTIME is $R, which is not installed or is not responding.
+  Start it, or unset CONTAINER_RUNTIME to let this script choose."
 else
-  R=docker
-  COMPOSE="docker compose"
+  for candidate in podman docker; do
+    if runtime_responds "$candidate"; then R="$candidate"; break; fi
+  done
+  [ -n "$R" ] || die "no container runtime is responding. Start one:
+
+    colima start          # or Docker Desktop
+    podman machine start
+
+  Set CONTAINER_RUNTIME=docker|podman to choose explicitly."
 fi
 
-die() { echo "error: $*" >&2; exit 1; }
+if [ "$R" = podman ]; then
+  COMPOSE=podman-compose
+  command -v podman-compose >/dev/null 2>&1 || \
+    die "podman is the runtime but podman-compose is not installed:
+
+    brew install podman-compose
+
+  Or set CONTAINER_RUNTIME=docker to use Docker instead."
+else
+  COMPOSE="docker compose"
+  docker compose version >/dev/null 2>&1 || \
+    die "docker is the runtime but 'docker compose' is not available.
+  Install the Compose plugin, or set CONTAINER_RUNTIME=podman."
+fi
+
+echo "==> container runtime: $R"
 
 # --- stop ------------------------------------------------------------------
 
@@ -46,7 +87,10 @@ fi
 # All checked before anything starts, so a missing piece is one message at the
 # top rather than a failure three minutes in, after Langfuse has booted.
 
-"$R" network exists oan-edge 2>/dev/null || \
+# `network inspect`, not podman's `network exists`: docker has no `exists`
+# subcommand, so that check failed on every Docker host and reported a missing
+# network rather than an unknown command. `inspect` is in both.
+"$R" network inspect oan-edge >/dev/null 2>&1 || \
   die "the oan-edge network does not exist. Create it:
 
     $R network create oan-edge
