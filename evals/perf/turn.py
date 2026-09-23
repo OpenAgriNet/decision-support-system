@@ -42,6 +42,12 @@ async def run_turn(
         headers={"Accept": "text/event-stream"},
         timeout=120,
     ) as response:
+        # A refused request is not a fast turn: timed, it would read as
+        # thousands of turns a minute.
+        if response.status_code != 200:
+            return TurnTiming(
+                status=f"http_{response.status_code}", first_delta_s=None, total_s=None
+            )
         async for event, data in parse_sse(response.aiter_lines()):
             if event == "claim.delta" and first_delta_s is None:
                 first_delta_s = perf_counter() - started

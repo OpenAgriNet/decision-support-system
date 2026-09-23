@@ -17,11 +17,11 @@ import anyio
 import httpx
 import pytest
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.responses import StreamingResponse
 
 from evals.perf.questions import Question
-from evals.perf.turn import run_turn
+from evals.perf.turn import TurnTiming, run_turn
 
 AKOLA = Question(
     id="37-1",
@@ -50,12 +50,16 @@ def _answered_stream():
 
 @pytest.fixture
 def dss() -> Iterator[str]:
-    """A stand-in DSS on a free port, streaming the frames it is given."""
+    """A stand-in DSS on a free port, streaming the frames it is given. A
+    session named `refuse` gets a 503, as a DSS that is not ready answers."""
 
     app = FastAPI()
 
     @app.post("/v1/turns")
-    async def turns() -> StreamingResponse:
+    async def turns(request: Request) -> Response:
+        body = await request.json()
+        if body["context"]["sessionId"] == "refuse":
+            return Response(status_code=503)
         return StreamingResponse(_answered_stream(), media_type="text/event-stream")
 
     with socket.socket() as probe:
@@ -80,3 +84,15 @@ async def test_first_piece_arrives_before_the_turn_completes(dss: str):
     assert timing.status == "answered"
     assert 0.15 < timing.first_delta_s < timing.total_s
     assert timing.total_s >= 0.45
+
+
+async def test_a_refused_request_is_marked_by_its_status_not_timed(dss: str):
+    """A DSS that answers 503 at once is not a fast turn. Timed, it would
+    read as thousands of turns a minute."""
+
+    async with httpx.AsyncClient() as client:
+        timing = await run_turn(
+            client, dss, AKOLA, session_id="refuse", transaction_id="refuse"
+        )
+
+    assert timing == TurnTiming(status="http_503", first_delta_s=None, total_s=None)

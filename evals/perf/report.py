@@ -12,6 +12,7 @@ from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 
+from evals.perf.load import StepResult
 from evals.perf.runner import RunResult
 from evals.perf.stats import summarise
 
@@ -64,6 +65,68 @@ def figures(
     }
 
 
+def load_figures(
+    steps: list[StepResult],
+    *,
+    limits: dict,
+    machine: dict,
+    commit: str | None,
+) -> dict:
+    """Load mode's report: one row per step, and what the DSS ran on.
+    `limits` is what the container actually got, read back from it."""
+
+    return {
+        "run": {"commit": commit, "machine": machine, "limits": limits},
+        "steps": [
+            {
+                "concurrency": step.concurrency,
+                "turns_per_min": step.turns_per_min,
+                "missed": step.missed,
+                "truncated": step.truncated,
+                "by_status": dict(Counter(str(t.status) for t in step.timings)),
+                "first_delta_s": _summary(t.first_delta_s for t in step.timings),
+                "total_s": _summary(t.total_s for t in step.timings),
+            }
+            for step in steps
+        ],
+    }
+
+
+def render_load_text(report: dict) -> str:
+    """Load mode's report as a table: one row per step."""
+
+    run = report["run"]
+    lines = [
+        f"{'N':>4}  {'turns/min':>9}  {'first piece p50/p95/max (s)':>28}"
+        f"  {'total p50/p95/max (s)':>22}  missed  ended",
+    ]
+    for step in report["steps"]:
+        mark = "*" if step["truncated"] else " "
+        ended = ", ".join(f"{s} {n}" for s, n in step["by_status"].items())
+        lines.append(
+            f"{step['concurrency']:>4}{mark} {step['turns_per_min']:>9.1f}"
+            f"  {_triple(step['first_delta_s']):>28}"
+            f"  {_triple(step['total_s']):>22}  {step['missed']:>6}  {ended}"
+        )
+    if any(step["truncated"] for step in report["steps"]):
+        lines.append("* cut short by the turn limit: fewer turns than the others")
+    cpus = run["limits"].get("cpus", 0)
+    memory = run["limits"].get("memory_gib", 0)
+    lines += [
+        "",
+        f"limits: {cpus:g} CPU · {memory:.1f} GiB",
+        f"commit: {_short_commit(run['commit'])}",
+        f"machine: {_machine_line(run['machine'])}",
+        "Compare runs made on the same machine, close together in time.",
+    ]
+    return "\n".join(lines)
+
+
+def _triple(summary: dict) -> str:
+    values = (summary["p50"], summary["p95"], summary["max"])
+    return " / ".join("-" if v is None else f"{v:.2f}" for v in values)
+
+
 def write_json(report: dict, result: RunResult, directory: Path) -> Path:
     """The report plus one raw row per timed turn, named by when it was
     written and the commit it ran on, so a run is found by either."""
@@ -79,10 +142,17 @@ def write_json(report: dict, result: RunResult, directory: Path) -> Path:
         }
         for t in result.turns
     ]
+    return save_json({**report, "turn_rows": rows}, directory)
+
+
+def save_json(report: dict, directory: Path, *, kind: str = "speed") -> Path:
+    """Write a report as `<utc>-<kind>-<commit>.json`, found by time, mode or
+    commit."""
+
     directory.mkdir(parents=True, exist_ok=True)
     written_at = f"{datetime.now(UTC):%Y-%m-%dT%H-%M-%SZ}"
-    path = directory / f"{written_at}-{report['run']['commit']}.json"
-    path.write_text(json.dumps({**report, "turn_rows": rows}, indent=1))
+    path = directory / f"{written_at}-{kind}-{report['run']['commit']}.json"
+    path.write_text(json.dumps(report, indent=1))
     return path
 
 
