@@ -61,8 +61,8 @@
 | `tools/mock_network/responses/*_select.json` | Deleted; the generators replace them. |
 | `tools/mock_network/responses/mandi_discover.json`, `advisory_discover.json` | Advertise the benchmark's commodities and crops. |
 | `evals/__init__.py`, `evals/perf/__init__.py`, `__main__.py` | CLI entry: `uv run python -m evals.perf`. |
-| `evals/perf/questions.csv` | 30 rows: `question_id, category, question_en, region, area`. |
-| `evals/perf/questions.py` | Loads the rows for `--lang`. |
+| `evals/perf/questions.toml` | 30 `[[question]]` entries: `id, category, question, region, area`, plus `lon/lat` (weather) and `match, answer` (advisory). TOML because it reads long text well, has strict types, and `tomllib` is in the standard library. The mock reads it through `--questions <path>`, not by importing `evals/`. |
+| `evals/perf/questions.py` | Loads the entries for `--lang`. |
 | `evals/perf/sse.py` | Parses SSE lines into `(event, data)`. Pure. |
 | `evals/perf/turn.py` | Drives one turn and returns `TurnTiming`. |
 | `evals/perf/langfuse.py` | Finds the trace by session and returns `TraceFacts` (stages, token calls, models, flat or not). |
@@ -100,8 +100,8 @@ Tests, each written and passed before the next:
 Tests:
 - [ ] The same keys twice → equal output.
 - [ ] Different keys → different figures (e.g. the mandi modal price).
-- [ ] First test in this task: the advisory `recommendations[].message` is one paragraph of at most 500 words (and more than 400), built from the topic. The same topic always gives the same text. For advisory, `size` means words per message, capped at 500. This gives the composer a long input to stream from.
-- [ ] Weather `size=8` → 8 parameters, capped at the pack enum length.
+- [ ] Advisory has **no generator and no size knob**. Each advisory question row carries a hand-written answer of 400–500 words, drafted by Claude and reviewed by the user. Nothing calls an LLM at run time. The mock puts the row's answer into `recommendations[0].message` word for word. It adds only the fields the pack requires (`@type`, `informationMode`, `subjectCategories`), so there are no dates and no source. The long text gives the composer plenty to stream from.
+- [ ] Weather has **no size knob**. Each answer has the pack's required fields plus one entry for each of the pack's 8 `parameters[].parameter` values. 8 is the pack's full list, so it is the largest real answer. The values are drawn from a realistic range for each parameter by a `random.Random` seeded from the coordinates (`sha256`). So each location gets its own numbers, and the same numbers every run, which keeps token counts steady for #164.
 - [ ] Every generator's output passes `check_against_pack` against the real `var/schema-packs` (reuse `tools/mock_network/validation.py`). Skip with a clear reason if packs aren't fetched.
 - [ ] Dates use `now`, keeping the job of today's `fill_in_dates` (which is then no longer needed for select).
 
@@ -109,11 +109,11 @@ Tests:
 - [ ] Tier-2 test: a known potato + Kochi-market `/select` returns a generated answer through the real `HttpCapabilityInvocation`. Shape it after the real answer: one resource, `arrivalDate`, `market{district, marketName, state}` as names, `prices{min,max,modal,currency,unit}`.
 - [ ] The 400 gets a code comment saying why. A 404 fits "no answer" better, but the DSS treats a 404 as TRANSIENT and retries it. Turning retries off (`DSS_SELECT_ATTEMPTS=1`) was rejected, because the benchmark must time the DSS on its real settings.
 - [ ] Tier-2 test: an unknown commodity → the mock answers 400, and `GET /_bench/misses` rises by 1. This is the only failure test. It backs "a miss is counted, never answered with wrong data". The DSS's own retry logic is not tested here.
-- [ ] Add `--advisory-size`, `--weather-size` flags (defaults: see Task 9 dry run). Delete the `*_select.json` files, and update the mandi/advisory discover files.
+- [ ] No size flags: advisory answers are hand-written, weather is fixed, and mandi is one price. Delete the `*_select.json` files, and update the mandi/advisory discover files.
 - [ ] Run the whole suite: `uv run pytest`. Run `uv run ruff check .`.
 
 ### Task 4: Questions
-- [ ] Copy 10 single-turn questions per category from `../oan-evaluation/inference/benchmark_questions.csv`, keeping `question_id`. Leave out livestock and scheme questions, which the mock doesn't serve. Add `region`/`area` so no turn stops at `requires_input`. Weather rows also get `lon`/`lat`, sent as `location.geometry`. The DSS doesn't pass a point it found by place name on to `/select` (`core/planner/resource_attributes.py:64-79`). Without the coordinates, every weather turn would miss. That bug is outside #162.
+- [ ] Copy 10 single-turn questions per category from `../oan-evaluation/inference/benchmark_questions.csv` into `evals/perf/questions.toml`, keeping `question_id`. Claude drafts the 10 advisory answers (400–500 words each) and their match words; the user reviews each one. Leave out livestock and scheme questions, which the mock doesn't serve. Add `region`/`area` so no turn stops at `requires_input`. Weather rows also get `lon`/`lat`, sent as `location.geometry`. The DSS doesn't pass a point it found by place name on to `/select` (`core/planner/resource_attributes.py:64-79`). Without the coordinates, every weather turn would miss. That bug is outside #162.
 - [ ] A long input doesn't force a long answer: the composer may summarise. Pick some advisory questions that ask for detail ("explain step by step…"), so the stream is long. The report's composer output tokens and `claim.delta` count show whether it was.
 - [ ] The advertised advisory topics must cover the 10 advisory questions (pests, nutrients, sowing, irrigation, weeds, …).
 - [ ] Tier-1 test: loader returns 30 rows, 10 per category, unique ids.
