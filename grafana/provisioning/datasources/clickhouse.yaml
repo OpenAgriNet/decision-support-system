@@ -1,0 +1,35 @@
+# The ClickHouse the collector writes to (ADR-0013).
+#
+# Provisioned rather than clicked in, so the dashboard's datasource uid is
+# fixed and the checked-in dashboard JSON works on any Grafana that loads this
+# file. A hand-made datasource gets a random uid and the dashboard comes up
+# empty with no error worth reading.
+#
+# Needs the `grafana-clickhouse-datasource` plugin installed.
+apiVersion: 1
+
+datasources:
+  - name: ClickHouse-OTEL
+    # Referenced by `grafana/dashboards/dss.json`. Do not change one without
+    # the other.
+    uid: dss-clickhouse-otel
+    type: grafana-clickhouse-datasource
+    isDefault: false
+    jsonData:
+      host: ${CLICKHOUSE_HOST}
+      # Native protocol, the same port the collector writes on.
+      port: 9000
+      protocol: native
+      secure: false
+      username: ${CLICKHOUSE_USER}
+      defaultDatabase: ${CLICKHOUSE_DATABASE}
+      # Where the plugin's built-in "Explore traces/logs" views look. Same
+      # tables the dashboard queries.
+      logs:
+        defaultDatabase: ${CLICKHOUSE_DATABASE}
+        defaultTable: otel_logs
+      traces:
+        defaultDatabase: ${CLICKHOUSE_DATABASE}
+        defaultTable: otel_traces
+    secureJsonData:
+      password: ${CLICKHOUSE_PASSWORD}

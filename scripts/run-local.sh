@@ -17,6 +17,8 @@ cd "$(dirname "$0")/.."
 DSS_PORT="${DSS_PORT:-8077}"
 MOCK_PORT="${MOCK_PORT:-8078}"
 LANGFUSE_PORT="${LANGFUSE_PORT:-3000}"
+OTEL_PORT="${OTEL_PORT:-4318}"
+COLLECTOR="${COLLECTOR:-dss-otel-collector}"
 SCHEMA_PACK_REF="${SCHEMA_PACK_REF:-schema-packs-v0.1}"
 COMPOSE_PROJECT="${COMPOSE_PROJECT:-decision-support-system}"
 ENV_LOCAL="${ENV_LOCAL:-.env.local}"
@@ -76,6 +78,9 @@ echo "==> container runtime: $R"
 
 if [ "${1:-}" = "--down" ]; then
   $COMPOSE -f docker-compose.langfuse.yml --env-file .env.langfuse down
+  # Started with `run`, not compose, so it is stopped by name. See where it
+  # starts, below, for why it is not a compose service here.
+  "$R" rm -f "$COLLECTOR" >/dev/null 2>&1 || true
   # The mock is not a container, so compose does not own it.
   pkill -f 'tools.mock_network' 2>/dev/null || true
   echo "stopped"
@@ -179,6 +184,42 @@ else
   $COMPOSE -f docker-compose.langfuse.yml --env-file .env.langfuse up -d
 fi
 
+# --- collector -------------------------------------------------------------
+#
+# The DSS talks to the collector, and the collector talks to Langfuse
+# (ADR-0013). Locally it uses `collector.local.yaml`, which has no ClickHouse
+# exporter: the collector validates exporters at startup, so one pointed at a
+# ClickHouse that is not there stops the process rather than degrading. The
+# stripped branch still runs and prints, so `docker logs` shows what a
+# deployment would have sent to ClickHouse — with the farmer's words removed.
+#
+# `run`, not a compose service, because the compose one mounts the deployment
+# config. One container started by name is less machinery than a second
+# compose file whose only job is to swap one path.
+
+if [ -n "$("$R" ps --filter "name=^${COLLECTOR}$" --format '{{.Names}}' 2>/dev/null || true)" ]; then
+  echo "==> collector already up on :$OTEL_PORT"
+else
+  lsof -ti:"$OTEL_PORT" >/dev/null 2>&1 && \
+    die "port $OTEL_PORT is in use, and the collector needs it. Another
+  collector (HyperDX runs one) or a stale container — find it with
+  \`lsof -i:$OTEL_PORT\`, or set OTEL_PORT to something else."
+
+  echo "==> starting collector on :$OTEL_PORT"
+  "$R" rm -f "$COLLECTOR" >/dev/null 2>&1 || true
+  # A plain header value, not the URL-encoded OTEL_EXPORTER_OTLP_HEADERS list
+  # the DSS used to build — so a literal space after "Basic" is correct here
+  # and `%20` would be wrong. The hazard moved rather than disappeared.
+  "$R" run -d --name "$COLLECTOR" \
+    --network oan-edge \
+    -p "127.0.0.1:${OTEL_PORT}:4318" \
+    -e LANGFUSE_OTLP_ENDPOINT="http://langfuse-web:3000/api/public/otel" \
+    -e LANGFUSE_AUTH_HEADER="Basic $(printf '%s:%s' "$LANGFUSE_PUBLIC_KEY" "$LANGFUSE_SECRET_KEY" | base64 | tr -d '\n')" \
+    -v "$PWD/otel/collector.local.yaml:/etc/otel/collector.yaml:ro" \
+    "otel/opentelemetry-collector-contrib:${OTEL_COLLECTOR_TAG:-latest}" \
+    --config=/etc/otel/collector.yaml >/dev/null
+fi
+
 # --- mock network ----------------------------------------------------------
 #
 # --reload because the @type-to-response map is read at import: a mock started
@@ -199,20 +240,21 @@ fi
 lsof -ti:"$DSS_PORT" >/dev/null 2>&1 && \
   die "port $DSS_PORT is already in use — another DSS is running."
 
-# Built here rather than by hand: the endpoint alone is a 401 on every export
-# batch, and it is the easy half to forget.
-export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:${LANGFUSE_PORT}/api/public/otel"
-# `%20`, not a literal space. This variable is a comma-separated key=value list
-# and the spec says values are URL-encoded, so a raw space truncates the value
-# at "Basic" — which reaches Langfuse as a credential-less Authorization header
-# and 401s every batch. Nothing in the DSS log says so: the export failure is
-# the exporter's own retry warning, and the turn answers normally either way.
-export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Basic%20$(printf '%s:%s' "$LANGFUSE_PUBLIC_KEY" "$LANGFUSE_SECRET_KEY" | base64 | tr -d '\n')"
-# Pydantic AI counts tokens as metrics and Langfuse discards them; left on, the
-# log fills with failed metric exports.
-export OTEL_METRICS_EXPORTER=none
+# The collector, not Langfuse. It holds the Langfuse credential now, so there
+# is no OTEL_EXPORTER_OTLP_HEADERS here at all — which also retires the `%20`
+# trap that used to live on this line.
+export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:${OTEL_PORT}"
+# On, because the collector forwards metrics. It was `none` while the endpoint
+# was Langfuse, which discards them and filled the log with failed exports.
+export OTEL_METRICS_EXPORTER=otlp
+# Matches the deployment, so a dashboard query written against local data still
+# works against real data.
+export OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=delta
+export OTEL_SERVICE_NAME=dss
+export OTEL_RESOURCE_ATTRIBUTES="deployment.environment.name=local"
 # A laptop, where seeing the prompt is the point. ADR-0007 §5 does not permit
-# this in a deployment.
+# this in a deployment. It reaches Langfuse and is stripped before the branch
+# that would go to ClickHouse — `docker logs` on the collector shows both.
 export DSS_TRACE_INCLUDE_MESSAGE_CONTENT=true
 
 export DSS_DISCOVERY_BASE_URL="http://127.0.0.1:${MOCK_PORT}"
@@ -222,6 +264,7 @@ echo
 echo "    langfuse   http://localhost:${LANGFUSE_PORT}"
 echo "    dss        http://127.0.0.1:${DSS_PORT}/docs"
 echo "    mock log   tail -f var/mock-network.log"
+echo "    otel log   $R logs -f $COLLECTOR"
 echo
 echo "    curl -s -X POST http://127.0.0.1:${DSS_PORT}/v1/turns \\"
 echo "      -H 'Content-Type: application/json' -H 'Accept: application/json' \\"
