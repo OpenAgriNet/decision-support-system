@@ -23,6 +23,11 @@ services:
       # Read from the environment by the model adapter, not through Settings.
       AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:-}
       AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-}
+      # Read by the OpenAI SDK itself, under its own names. Unset, it goes to
+      # api.openai.com; pointed at an OpenAI-compatible proxy (LiteLLM, vLLM)
+      # a non-`azure:` model string reaches that instead, with no code change.
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       # Without these three the container exports nothing useful: no auth means
       # 401 on every batch, and no content means spans that say what ran but not

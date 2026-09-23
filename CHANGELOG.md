@@ -3,6 +3,16 @@
 ## [Unreleased]
 
 ### Added
+- `scripts/run-local.sh`: one command for a local stack — Langfuse, the mock
+  network and the DSS. Prerequisites are checked before anything starts and
+  refused with the fix, never repaired: a missing `oan-edge` network, an
+  `ENCRYPTION_KEY` that is not 64 hex characters, a too-short
+  `LANGFUSE_INIT_USER_PASSWORD`. Secrets live in a gitignored `.env.local`,
+  because `pydantic-settings` reads `.env` into `Settings` and never into
+  `os.environ`, where the SDKs look (#138)
+- `OPENAI_BASE_URL` / `OPENAI_API_KEY` passed through in `docker-compose.yml`,
+  so a non-`azure:` model string can reach an OpenAI-compatible proxy. Unset
+  by default, which leaves the Azure path unchanged (#138)
 - Scheme catalog: a `SchemeCatalog` port over a tenant-mounted CSV
   (`scheme_code,scheme_name,scheme_aliases`), indexed by normalized alias at
   boot. Nothing ships in the image; unset is inert plus a warning (#34)

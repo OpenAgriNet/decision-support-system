@@ -21,6 +21,48 @@ intent → moderation → discovery → planner → evidence → composer.
 Set `targetLanguage` to `hi` in the request and the same answer arrives in
 Hindi, which is how the channel's language handling gets exercised.
 
+## One command
+
+`scripts/run-local.sh` starts the whole stack — Langfuse, the mock network
+and the DSS. Every prerequisite is checked before anything starts, so a
+missing piece is one message naming the fix rather than a failure three
+minutes in:
+
+```bash
+./scripts/run-local.sh
+```
+
+It needs `.env.local`, gitignored, holding what `.env` cannot carry — these
+are read from `os.environ` by the SDKs themselves, and `pydantic-settings`
+reads `.env` into the `Settings` object, never into the environment:
+
+```bash
+export LANGFUSE_PUBLIC_KEY="pk-lf-..."
+export LANGFUSE_SECRET_KEY="sk-lf-..."
+
+# Azure, matching the compose default:
+export AZURE_OPENAI_ENDPOINT="https://<res>.services.ai.azure.com/openai/v1"
+export AZURE_OPENAI_API_KEY="<key>"
+
+# or an OpenAI-compatible proxy (LiteLLM in front of Gemma, vLLM, …), where
+# the base URL is the whole difference — a non-`azure:` model string is
+# handed to Pydantic AI untouched, so nothing else changes:
+export OPENAI_BASE_URL="https://<proxy host>/v1"
+export OPENAI_API_KEY="<proxy key>"
+```
+
+One pair or the other, matching the `DSS_*_MODEL` prefix in `.env`:
+`azure:<deployment>` uses the first, anything else (`openai:<model>`) the
+second. The Langfuse keys come from Settings → API Keys at
+<http://localhost:3000>.
+
+Ctrl-C stops the DSS and leaves Langfuse and the mock up — they are slow to
+start and a local session restarts the DSS often.
+`./scripts/run-local.sh --down` stops everything.
+
+The sections below are what the script automates. Read them when it refuses,
+or to run a piece by hand.
+
 ## Get the schema packs
 
 The packs describe what a provider can answer — one per capability
