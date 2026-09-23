@@ -140,8 +140,16 @@ fi
   The Langfuse pair comes from Settings -> API Keys at
   http://localhost:$LANGFUSE_PORT. .env.* is gitignored."
 
+# `set -a` so a line without `export` still reaches the DSS. Plain `source`
+# makes a shell variable, which satisfied the check below and then never
+# reached uvicorn — the whole point of this file is that these are read from
+# `os.environ` by a child process. The failure was a raw
+# `KeyError: 'AZURE_OPENAI_ENDPOINT'` from inside the app, with the script
+# having just reported the variable as set.
+set -a
 # shellcheck disable=SC1090
 source "$ENV_LOCAL"
+set +a
 
 for v in AZURE_OPENAI_ENDPOINT AZURE_OPENAI_API_KEY LANGFUSE_PUBLIC_KEY LANGFUSE_SECRET_KEY; do
   [ -n "${!v:-}" ] || die "$v is not set in $ENV_LOCAL"
