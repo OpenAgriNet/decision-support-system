@@ -322,9 +322,19 @@ class HttpCapabilityDiscovery:
         The span has to be told when this fails, precisely because nothing is
         raised: left alone it would exit green, and a provider that timed out
         would be indistinguishable from one that answered.
+
+        Three attributes, each answering something nothing else does: which
+        capability this call was for, and whether the provider served anything.
+        Not the status code — a failure already carries it in the span status,
+        and a success is always 200. Not the bodies either: they hold the
+        farmer's query verbatim, which §6.1 does not permit on a trace, so they
+        stay on the DEBUG log lines and are found by this span's id.
         """
 
-        with open_span("dss.discover") as span:
+        with open_span(
+            "dss.discover",
+            attributes={"capabilities": ",".join(_failed_labels(query))},
+        ) as span:
             try:
                 request_body = build_discover_request(
                     query,
@@ -376,10 +386,17 @@ class HttpCapabilityDiscovery:
                 span.set_status(Status(StatusCode.ERROR, f"transport: {exc}"))
                 return _failure_result(query, ask_indices, NO_STATUS_CODE, str(exc))
             try:
-                return map_discover_response(response.json(), ask_indices)
+                result = map_discover_response(response.json(), ask_indices)
             except (KeyError, TypeError, ValueError) as exc:
                 # The only signal on this path: it writes no log line of its own.
                 span.set_status(Status(StatusCode.ERROR, f"malformed: {exc!r}"))
                 return _malformed_result(
                     query, ask_indices, f"malformed response: {exc!r}"
                 )
+            # A green span that found nobody and one that found three providers
+            # are otherwise identical. The catalogs themselves stay off the
+            # span — they carry the provider's own data.
+            first = ask_indices[0]
+            span.set_attribute("capability_count", len(result.capabilities[first]))
+            span.set_attribute("answer_count", len(result.answers[first]))
+            return result

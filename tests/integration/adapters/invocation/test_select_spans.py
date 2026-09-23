@@ -66,3 +66,73 @@ async def test_every_attempt_gets_its_own_span_under_the_call(spans) -> None:
     assert len(attempts) == 3
     assert {s.parent.span_id for s in attempts} == {call.context.span_id}
     assert call.status.status_code is StatusCode.ERROR
+
+
+async def test_the_call_span_names_the_provider_it_reached(spans) -> None:
+    """`dss.select` without this says only that a provider call took 3s, not
+    which provider. The attributes are the capability and who serves it —
+    never `resource_attributes`, which carry what the farmer asked for."""
+
+    def answers(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "message": {
+                    "contract": {
+                        "commitments": [
+                            {
+                                "resources": [
+                                    {
+                                        "id": "res:answered",
+                                        "resourceAttributes": {
+                                            "@type": CAPABILITY.capability,
+                                            "parameters": [],
+                                        },
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                }
+            },
+        )
+
+    await _invocation(answers).select(CAPABILITY, {"commodity": "onion"}, "txn-1")
+
+    call = next(s for s in spans.get_finished_spans() if s.name == "dss.select")
+    assert call.attributes["provider_id"] == "mausamgram"
+    assert "onion" not in str(call.attributes)
+
+
+async def test_each_attempt_says_why_it_failed(spans) -> None:
+    """The durations are the spans themselves and the retry count is how many
+    there are. What the timeline cannot show is *why* each one failed — a 503
+    and a 429 make identically shaped boxes.
+
+    The status code only, never `SelectFailed.detail`: that carries the
+    provider's response body, which echoes the farmer's query back."""
+
+    codes = iter((503, 429, 500))
+
+    def failing(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(next(codes), json={"error": "secret-query-echo"})
+
+    with pytest.raises(SelectFailed):
+        await _invocation(failing).select(CAPABILITY, {}, "txn-1")
+
+    attempts = [s for s in spans.get_finished_spans() if s.name == "dss.select.attempt"]
+    assert [s.attributes["http.status_code"] for s in attempts] == [503, 429, 500]
+    assert "secret-query-echo" not in str([dict(s.attributes) for s in attempts])
+
+
+async def test_the_call_span_counts_its_attempts(spans) -> None:
+    """One number to alert on, rather than counting children by eye."""
+
+    def always_429(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(429, json={"error": "simulated"})
+
+    with pytest.raises(SelectFailed):
+        await _invocation(always_429).select(CAPABILITY, {}, "txn-1")
+
+    call = next(s for s in spans.get_finished_spans() if s.name == "dss.select")
+    assert call.attributes["attempts"] == 3
