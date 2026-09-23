@@ -116,6 +116,18 @@ def current_request_id() -> str:
     return _request_id.get()
 
 
+def current_session_id() -> str | None:
+    """This turn's ``sessionId``, or ``None`` outside a turn.
+
+    ``None`` rather than the ``-`` the log lines render: the caller decides
+    whether to set a span attribute at all, and one reading ``-`` is worse
+    than none.
+    """
+
+    session_id = _session_id.get()
+    return None if session_id == _ABSENT else session_id
+
+
 def _rid(request_id: str | None) -> str:
     return request_id if request_id is not None else _request_id.get()
 

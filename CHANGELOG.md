@@ -97,6 +97,9 @@
   they are in (`requires_input`) instead of answering from nowhere (#19)
 
 ### Fixed
+- Every span in a turn carries the turn's session id, not just `dss.turn`.
+  Langfuse says an attribute it filters on has to be on each span, so the
+  agent runs inside a turn were showing a different session (#138)
 - `dss.discover` and the select spans now say what the call was. They carried a
   name and a duration only, so six of them in a turn were indistinguishable.
   `dss.discover` gains the capability it queried and how many capabilities and
