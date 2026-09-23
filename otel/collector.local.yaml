@@ -1,0 +1,69 @@
+# The collector for a laptop. Same shape as `collector.yaml`, no ClickHouse.
+#
+# A separate file rather than an empty `CLICKHOUSE_ENDPOINT`, because the
+# collector validates its exporters at startup: an exporter configured with
+# nowhere to go stops the process, it does not degrade. So "ClickHouse is
+# optional locally" has to be two configs.
+#
+# The second traces pipeline still runs the strip processor and prints the
+# result. That is the point of having it here: you can read the debug output
+# and see that the query and the answer are in Langfuse and not in the branch
+# that would have gone to ClickHouse — without running a ClickHouse.
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+
+  # Kept identical to `collector.yaml`. If the two drift, the control is tested
+  # locally and a different one runs in the deployment.
+  attributes/strip_content:
+    actions:
+      - key: gen_ai.input.messages
+        action: delete
+      - key: gen_ai.output.messages
+        action: delete
+      - key: gen_ai.system_instructions
+        action: delete
+      - key: pydantic_ai.all_messages
+        action: delete
+      - key: gen_ai.tool.call.arguments
+        action: delete
+      - key: gen_ai.tool.call.result
+        action: delete
+
+exporters:
+  otlphttp/langfuse:
+    traces_endpoint: ${env:LANGFUSE_OTLP_ENDPOINT}
+    headers:
+      Authorization: ${env:LANGFUSE_AUTH_HEADER}
+
+  debug:
+    # `detailed` prints every attribute, which is what makes the strip visible.
+    verbosity: detailed
+
+service:
+  pipelines:
+    traces/langfuse:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp/langfuse]
+
+    traces/stripped:
+      receivers: [otlp]
+      processors: [attributes/strip_content, batch]
+      exporters: [debug]
+
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]
+
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]

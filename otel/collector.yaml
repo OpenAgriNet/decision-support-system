@@ -1,9 +1,21 @@
-# A collector that prints what arrives. For looking at spans and metrics
-# locally; a deployment replaces this file with one that forwards somewhere.
+# The export hub (ADR-0013). The DSS sends one OTLP stream here; this fans it
+# out to two places that want different things.
 #
-# The metrics pipeline only sees anything when the DSS is started with
-# OTEL_METRICS_EXPORTER=otlp. That ships off, because the usual endpoint is
-# Langfuse and Langfuse discards metrics.
+# Langfuse wants the words. It answers "why did the model say that", which
+# needs the prompt and the completion, and it is reached by people through its
+# own login.
+#
+# ClickHouse wants the numbers. Grafana sits on top of it and answers "how
+# often, how slow, how much" — none of which needs a farmer's query. So the
+# content is deleted on the way, by `attributes/strip_content` below.
+#
+# That split is the whole reason there are two `traces/*` pipelines rather than
+# one: a pipeline cannot branch after a processor, so a single pipeline would
+# have to send stripped spans to both or unstripped spans to both.
+#
+# This file is for a deployment, where both destinations exist. A laptop uses
+# `collector.local.yaml`, which has no ClickHouse.
+
 receivers:
   otlp:
     protocols:
@@ -14,19 +26,84 @@ receivers:
 processors:
   batch:
 
+  # ADR-0007 §5 recorded message content in spans as a bounded deviation, and
+  # DSS_ARCHITECTURE.md §6.2 says the control that should bound it — a
+  # redaction interceptor at the sink — does not exist. This is that
+  # interceptor, for one of the two sinks.
+  #
+  # The six keys are every place pydantic-ai puts message text when
+  # `include_content` is on (instrumentation version 5). They are span
+  # attributes, not span events, which is why a plain `attributes` processor is
+  # enough and no OTTL is needed. If the pinned pydantic-ai version changes,
+  # re-check this list — a renamed key means content flows to ClickHouse and
+  # nothing here fails.
+  attributes/strip_content:
+    actions:
+      - key: gen_ai.input.messages
+        action: delete
+      - key: gen_ai.output.messages
+        action: delete
+      - key: gen_ai.system_instructions
+        action: delete
+      - key: pydantic_ai.all_messages
+        action: delete
+      - key: gen_ai.tool.call.arguments
+        action: delete
+      - key: gen_ai.tool.call.result
+        action: delete
+
 exporters:
-  debug:
-    # `detailed` prints every attribute, which is the point of running this at
-    # all — including seeing that message bodies are absent.
-    verbosity: detailed
+  # Traces only. Langfuse discards metrics, which is why they were off by
+  # default before this file existed.
+  otlphttp/langfuse:
+    traces_endpoint: ${env:LANGFUSE_OTLP_ENDPOINT}
+    headers:
+      Authorization: ${env:LANGFUSE_AUTH_HEADER}
+
+  clickhouse:
+    # tcp://host:9000 — ClickHouse's native port, not the HTTP 8123.
+    endpoint: ${env:CLICKHOUSE_ENDPOINT}
+    username: ${env:CLICKHOUSE_USER}
+    password: ${env:CLICKHOUSE_PASSWORD}
+    # A shared server. `service.name` is what separates DSS rows from whatever
+    # else writes here, so the DSS sets OTEL_SERVICE_NAME — without it every
+    # row says `unknown_service` and no dashboard can filter.
+    database: ${env:CLICKHOUSE_DATABASE}
+    # Tables are created on first write if absent. Verify the existing schema
+    # before pointing this at a database another collector already writes to:
+    # ours would insert into its tables, and a mismatch fails at runtime.
+    create_schema: true
+    # 30 days, the window ADR-0007 chose for Langfuse. One retention story for
+    # both stores is easier to state and easier to defend than two. Applied as
+    # a table TTL at creation, so changing it later means an ALTER, the way
+    # `scripts/langfuse-retention.sh` does it.
+    ttl: 720h
+    # Retry and queue are left at their defaults on purpose: retry in memory,
+    # drop on overflow. Telemetry is lost during a long ClickHouse outage,
+    # which is the cheaper failure — a disk buffer trades it for a disk-full
+    # mode that takes the collector down with it.
 
 service:
   pipelines:
-    traces:
+    traces/langfuse:
       receivers: [otlp]
       processors: [batch]
-      exporters: [debug]
+      exporters: [otlphttp/langfuse]
+
+    traces/clickhouse:
+      receivers: [otlp]
+      # Strip first, batch second. The order is not cosmetic: batching first
+      # would still work, but keeping the deletion adjacent to the receiver
+      # makes it obvious that nothing downstream of here has the content.
+      processors: [attributes/strip_content, batch]
+      exporters: [clickhouse]
+
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [debug]
+      exporters: [clickhouse]
+
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [clickhouse]

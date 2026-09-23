@@ -1,0 +1,20 @@
+# Loads every dashboard in `grafana/dashboards/` from disk.
+#
+# `allowUiUpdates: false` on purpose. The dashboard is checked in because the
+# metric names in `observability/stages.py` and `metrics.py` are a contract,
+# and a contract is only enforced if breaking it breaks something visible. A
+# dashboard edited in the UI drifts from the file, and then the file is wrong
+# and nobody knows which one is real. Edit the JSON, commit it.
+apiVersion: 1
+
+providers:
+  - name: dss
+    orgId: 1
+    folder: DSS
+    type: file
+    disableDeletion: false
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/dashboards
+      foldersFromFilesStructure: false
