@@ -34,7 +34,8 @@ minutes in:
 
 It needs `.env.local`, gitignored, holding what `.env` cannot carry — these
 are read from `os.environ` by the SDKs themselves, and `pydantic-settings`
-reads `.env` into the `Settings` object, never into the environment:
+reads `.env` into the `Settings` object, never into the environment. The
+`export` keyword is optional; the script exports whatever the file sets:
 
 ```bash
 export LANGFUSE_PUBLIC_KEY="pk-lf-..."
