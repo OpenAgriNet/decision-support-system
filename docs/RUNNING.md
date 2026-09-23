@@ -23,10 +23,10 @@ Hindi, which is how the channel's language handling gets exercised.
 
 ## One command
 
-`scripts/run-local.sh` starts the whole stack — Langfuse, the mock network
-and the DSS. Every prerequisite is checked before anything starts, so a
-missing piece is one message naming the fix rather than a failure three
-minutes in:
+`scripts/run-local.sh` starts the whole stack — Langfuse, the collector, the
+mock network and the DSS. Every prerequisite is checked before anything
+starts, so a missing piece is one message naming the fix rather than a failure
+three minutes in:
 
 ```bash
 ./scripts/run-local.sh
@@ -57,8 +57,16 @@ One pair or the other, matching the `DSS_*_MODEL` prefix in `.env`:
 second. The Langfuse keys come from Settings → API Keys at
 <http://localhost:3000>.
 
-Ctrl-C stops the DSS and leaves Langfuse and the mock up — they are slow to
-start and a local session restarts the DSS often.
+Ctrl-C stops the DSS and leaves Langfuse, the collector and the mock up — they
+are slow to start and a local session restarts the DSS often. `--down` stops
+all three.
+
+The collector runs `otel/collector.local.yaml`, which has no ClickHouse
+exporter: a laptop needs no ClickHouse, and the collector refuses to start
+with an exporter pointed at one that is not there. It still runs the branch
+that would have gone to ClickHouse and prints the result, so
+`docker logs -f dss-otel-collector` shows the farmer's words reaching Langfuse
+and not reaching the other branch.
 `./scripts/run-local.sh --down` stops everything.
 
 **It picks a container runtime that answers**, not merely one that is
@@ -302,7 +310,7 @@ sink is required, so on today's rules a failed write fails the turn — which wo
 make every turn depend on the evidence API being up. That is a real decision, not
 a detail.
 
-## The wire is camelCase## The wire is camelCase
+## The wire is camelCase
 
 `sessionId`, `transactionId`, `sourceLanguage`, `maxCharacters`, `traceId`,
 `sequenceNumber` — per `docs/api-contracts/openapi.yaml`. Python stays
@@ -570,78 +578,101 @@ the column across when regenerating against a newer snapshot. An adopter who
 needs a different area set or different aliases points `DSS_DISTRICT_CSV_PATH`
 at their own file.
 
+## Where telemetry goes
+
+Everything the DSS emits — spans, metrics, log lines — leaves over OTLP to one
+endpoint, and a **collector** splits it from there (ADR-0013):
+
+```
+DSS ──OTLP──> collector ──┬── traces, with the words ──> Langfuse
+                          ├── traces, words removed  ──> ClickHouse ──> Grafana
+                          ├── metrics                ──> ClickHouse ──> Grafana
+                          └── logs                   ──> ClickHouse ──> Grafana
+```
+
+Two destinations because they answer different questions. Langfuse answers
+"why did the model say that", which needs the prompt and the completion.
+Grafana answers "how often, how slow, how much", which needs none of the
+words — so they are deleted on the way.
+
+The DSS knows about none of this. It sets one endpoint, and where things go
+after that is `otel/collector.yaml`.
+
 ## Tracing
 
-Agent runs become OpenTelemetry spans when `OTEL_EXPORTER_OTLP_ENDPOINT` is
-set — which agent ran, how long, how many tokens, which tool it called, where
-it failed. Unset, nothing is instrumented and nothing is exported, which is
-the default for a local run.
+Agent runs become OpenTelemetry spans — which agent ran, how long, how many
+tokens, which tool it called, where it failed — plus a `dss.turn` root, one
+span per stage, and one per outbound provider call (ADR-0012).
+
+In `docker compose`, the endpoint already points at the collector and there is
+nothing to set. Running uvicorn by hand:
 
 ```bash
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 \
+OTEL_SERVICE_NAME=dss \
+OTEL_RESOURCE_ATTRIBUTES=deployment.environment.name=local \
 uv run uvicorn --factory dss.entrypoint.app:create_app --port 8077
 ```
 
-The endpoint is the standard OTEL variable, so it points at a local Collector,
-Langfuse's OTLP endpoint, or anything else — the service does not care.
-`send_to_logfire=False` is fixed: logfire is used for its instrumentation of
-Pydantic AI, not as a destination.
+Unset the endpoint and nothing is instrumented and nothing is exported — the
+quiet default for a test run.
+
+**Name the service.** Without `OTEL_SERVICE_NAME` every row says
+`unknown_service`. The ClickHouse is shared with other services, and
+`service.name` is the only thing telling the rows apart;
+`deployment.environment.name` is what keeps a laptop's turns out of a
+production panel. Every dashboard panel filters on both.
 
 **Something has to be listening.** With nothing on the other end, one agent run
 produces half a dozen `Transient error … Connection refused … retrying`
-warnings from the OTLP exporter, for traces and metrics both — the exporter
-being honest rather than tracing being broken, but it buries the rest of the
-log. So leave the endpoint unset unless you have a collector, which is its
-default.
+warnings from the OTLP exporter — the exporter being honest rather than
+tracing being broken, but it buries the rest of the log. `./scripts/run-local.sh`
+starts a collector for you.
 
-`docker-compose.yml` carries one, behind a profile so a plain `up` skips it:
+**Message content is suppressed by default.** A span carries roles, part types,
+token counts and latency, but not the farmer's query or the composed answer.
+`DSS_TRACE_INCLUDE_MESSAGE_CONTENT=true` turns them on and logs a warning
+saying not to do that in a deployment. Only a literal `true` counts — `1` and
+`yes` read as off, so a typo cannot enable it.
+
+**Even with it on, ClickHouse never sees the words.** The collector deletes the
+six attributes that carry message text before the ClickHouse branch:
+`gen_ai.input.messages`, `gen_ai.output.messages`, `gen_ai.system_instructions`,
+`pydantic_ai.all_messages`, `gen_ai.tool.call.arguments`,
+`gen_ai.tool.call.result`. Locally you can watch this happen — the collector
+prints the stripped branch:
 
 ```bash
-docker compose --profile tracing up -d
+docker logs -f dss-otel-collector
 ```
 
-It prints every span it receives to its own log (`otel/collector.yaml`), which
-is how you see that message bodies really are absent. From inside the compose
-network the DSS reaches it as `http://otel-collector:4318`; the published port
-is for a DSS running on the host instead.
+Langfuse shows the prompt; the same turn in that log does not. If you upgrade
+`pydantic-ai` and one of those attribute names changes, content starts flowing
+to ClickHouse and nothing fails — re-check the list in `otel/collector.yaml`
+against the installed version.
 
-To see the spans with no container at all, the tests read them back in memory:
+To see spans with no container at all, the tests read them back in memory:
 
 ```bash
 uv run pytest tests/integration/adapters/observability/ -v --no-cov
 ```
 
-**Message content is suppressed.** A span carries roles, part types, token
-counts and latency, but not the farmer's query or the composed answer.
-`DSS_ARCHITECTURE.md` §6.1 does not permit "prompts containing personal data"
-or raw conversations in traces, and Pydantic AI includes both by default.
-
-`DSS_TRACE_INCLUDE_MESSAGE_CONTENT=true` turns them on, and logs a warning
-saying not to do that in a deployment. It is for a laptop, where seeing the
-prompt is the point. Only a literal `true` counts — `1` and `yes` read as off,
-so a typo cannot enable it.
-
 ## Metrics
 
 Spans answer "why was *this* turn slow". They cannot answer "is this deployment
-slower than last week" — that needs numbers already added up. Metrics are the
-other half.
+slower than last week" — that needs numbers already added up.
 
-They go to the **same** `OTEL_EXPORTER_OTLP_ENDPOINT` as the spans, but they
-are off unless you also ask for them:
+**They are on by default now.** They used to ship as `OTEL_METRICS_EXPORTER=none`
+because the endpoint was Langfuse and Langfuse throws metrics away. The
+endpoint is a collector that forwards them, so the reason is gone.
 
 ```bash
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 \
 OTEL_METRICS_EXPORTER=otlp \
+OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=delta \
 DSS_MODEL_PROFILE=local \
 uv run uvicorn --factory dss.entrypoint.app:create_app --port 8077
 ```
-
-**Why off by default.** The usual endpoint is Langfuse, and Langfuse throws
-metrics away. Leaving the exporter on would send one pointless POST per
-interval, forever. Turn it on when the endpoint is a Collector that forwards
-metrics somewhere — the one in `docker-compose.yml` now prints them, like it
-prints spans.
 
 What gets published:
 
@@ -660,6 +691,12 @@ Durations are in **seconds**, which is what the HTTP convention uses. The DSS
 opts into the stable OpenTelemetry HTTP names at startup; without that the
 instrumentor still publishes the superseded `http.server.duration`, in
 milliseconds, and a panel built on the name above would stay empty.
+
+**Temporality is delta, not cumulative.** ClickHouse stores what it is given.
+A cumulative counter would make every rate panel compute a windowed difference
+in SQL; delta lets a panel sum rows. The checked-in dashboard is written for
+delta, so a deployment that leaves this unset gets wrong-looking graphs rather
+than empty ones.
 
 Worth knowing:
 
@@ -692,6 +729,48 @@ To see the numbers with no container at all:
 ```bash
 uv run pytest tests/integration/adapters/observability/test_metrics.py -v --no-cov
 ```
+
+## Logs
+
+`dss.trace` writes one line per stage and one per outbound call. Those lines go
+to stderr as they always have, and now also over OTLP, so a dashboard can sit
+them next to the span they came from instead of leaving them in a container's
+stdout.
+
+They carry `trace_id` and `span_id` as fields, so Grafana joins a log line to
+its trace without parsing the text.
+
+**Only INFO and above is exported, and that is a PII control, not a volume
+one.** `/discover` and `/select` bodies are logged at DEBUG — clipped at 8000
+characters, but otherwise the farmer's words and the provider's reply. The
+bridge's handler sits at INFO, so `DSS_LOG_LEVEL=DEBUG` still prints those
+bodies to your terminal and still exports none of them.
+
+That is the whole of it. If you move the level onto the logger instead of the
+handler, or raise the handler to DEBUG, provider bodies start landing in
+ClickHouse. A test pins the behaviour:
+
+```bash
+uv run pytest tests/integration/adapters/observability/test_logs.py -v --no-cov
+```
+
+## Dashboards
+
+`grafana/dashboards/dss.json` is the dashboard, checked in and provisioned from
+disk with UI edits disabled. It is in the repo because the `dss.*` metric names
+and the stage names in `observability/stages.py` are a contract, and a contract
+is only enforced if breaking it breaks something visible.
+
+Four rows: turn health, stage breakdown, cost and tokens, HTTP and errors.
+
+Two variables to set when you open it: **Database** (`otel` unless a schema
+clash forced another) and **Environment** (`deployment.environment.name`).
+The shared ClickHouse holds every environment, so every panel filters on the
+second.
+
+Editing it means editing the JSON and committing it. A dashboard changed in the
+UI drifts from the file, and then the file is wrong and nobody knows which one
+is real.
 
 ## What is fake, and where to swap it
 
