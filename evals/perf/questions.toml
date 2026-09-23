@@ -14,7 +14,9 @@
 #             Onion's). The answer's price is built in code.
 # - weather:  `lon`/`lat` is the district's centre from the DSS district file.
 #             It is sent as the turn's coordinates, because the DSS does not
-#             pass a point it resolved by name on to /select.
+#             pass a point it resolved by name on to /select. Each question
+#             asks about weather alone: 55-1 ("should fertilizer be postponed
+#             due to rain") was read by the DSS as crop advice and left out.
 # - advisory: the mock picks the question whose `match` words all appear in
 #             the planner's `topics`. Each crop appears once, so the crop is
 #             enough. `chil` covers both "chili" and "chilli".
@@ -168,13 +170,13 @@ lon = 75.487940
 lat = 20.932545
 
 [[question]]
-id = "55-1"
+id = "88-1"
 category = "weather"
-question = "Should fertilizer application be postponed due to rain forecast in Chandrapur district?"
+question = "What will be the temperature for the next few days in Washim area?"
 region = "IN-MH"
-area = "Chandrapur"
-lon = 79.440540
-lat = 20.118386
+area = "Washim"
+lon = 77.216372
+lat = 20.234103
 
 [[question]]
 id = "67-1"
