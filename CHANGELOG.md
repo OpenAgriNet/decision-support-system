@@ -20,6 +20,8 @@
   `opentelemetry-instrumentation-fastapi`. Off unless
   `OTEL_METRICS_EXPORTER=otlp`, since the default endpoint is Langfuse, which
   discards metrics (#139)
+- A model run that fails still records its tokens and cost, so a failing turn
+  does not look cheaper than it was (#139)
 - `DSS_MODEL_PROFILE` — one name for the whole model configuration, labelling
   every turn-level metric so two deployments can be compared (#139)
 - `observability/stages.py` — the six stage names as a `Stage` enum, shared by

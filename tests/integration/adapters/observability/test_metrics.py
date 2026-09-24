@@ -17,6 +17,7 @@ from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from dss.adapters.observability.metrics import (
     LABEL_KEYS,
     configure_metrics,
+    model_that_ran,
     record_agent_run,
     record_composed,
     record_first_delta,
@@ -169,14 +170,17 @@ class _FakeUsage:
 class _FakeResult:
     """Shaped like a Pydantic AI run result, without running a model.
 
-    `record_agent_run` is duck-typed against exactly these three accessors, so
-    this is the contract it depends on.
+    `model_that_ran` reads only `response.model_name`, so this is the contract
+    it depends on.
     """
 
-    def __init__(self, model_name, usage):
+    def __init__(self, model_name):
         self.response = type("Response", (), {"model_name": model_name})()
-        # Properties, not methods — that is how Pydantic AI exposes both.
-        self.usage = usage
+
+
+class _FakeModel:
+    def __init__(self, model_name):
+        self.model_name = model_name
 
 
 def test_a_model_run_publishes_its_tokens_and_names_its_model(reader) -> None:
@@ -187,7 +191,8 @@ def test_a_model_run_publishes_its_tokens_and_names_its_model(reader) -> None:
     begin_turn_usage()
     record_agent_run(
         stage=Stage.INTENT,
-        result=_FakeResult("gpt-4o-mini", _FakeUsage(120, 30, Decimal("0.0007"))),
+        usage=_FakeUsage(120, 30, Decimal("0.0007")),
+        model="gpt-4o-mini",
     )
 
     by_direction = {
@@ -204,11 +209,33 @@ def test_a_self_hosted_model_reports_no_cost(reader) -> None:
 
     begin_turn_usage()
     record_agent_run(
-        stage=Stage.COMPOSER,
-        result=_FakeResult("local-llama", _FakeUsage(50, 10, None)),
+        stage=Stage.COMPOSER, usage=_FakeUsage(50, 10, None), model="local-llama"
     )
 
     usage = current_turn_usage()
     assert usage is not None
     # No published price, so no cost. Tokens are the number that matters.
     assert usage.cost == 0.0
+
+
+def test_the_model_that_answered_wins_over_the_configured_one() -> None:
+    # An `azure:` binding names a deployment; the response names the model.
+    assert (
+        model_that_ran(_FakeResult("gpt-4o-mini"), _FakeModel("azure:intent"))
+        == "gpt-4o-mini"
+    )
+
+
+def test_a_run_with_no_response_falls_back_to_the_configured_model() -> None:
+    assert model_that_ran(None, _FakeModel("azure:intent")) == "azure:intent"
+    # The planner can be bound by a plain model string.
+    assert model_that_ran(None, "azure:planner") == "azure:planner"
+
+
+def test_a_run_with_no_model_name_is_recorded_as_unknown(reader) -> None:
+    from dss.observability.turn_usage import begin_turn_usage, model_for
+
+    begin_turn_usage()
+    record_agent_run(stage=Stage.INTENT, usage=_FakeUsage(1, 1, None), model=None)
+
+    assert model_for(Stage.INTENT) == "unknown"

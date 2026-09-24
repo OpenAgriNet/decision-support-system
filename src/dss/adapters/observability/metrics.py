@@ -187,29 +187,24 @@ def record_stage_tokens(
     )
 
 
-def record_agent_run(*, stage: Stage, result) -> None:  # noqa: ANN001
-    """Publish one model call's tokens and cost, and name the model that ran.
+def record_agent_run(*, stage: Stage, usage, model: str | None) -> None:  # noqa: ANN001
+    """Publish one model run's tokens and cost, and name the model that ran.
 
-    Takes the run result rather than the three numbers: every call site would
-    otherwise unpack it the same way, and the unpacking is the part that moves
-    when Pydantic AI changes. Duck-typed on purpose — nothing here imports the
-    framework.
+    Takes the run's usage counter, not its result. A run that fails after
+    paid requests has no result, but its counter still holds what was spent.
+    Callers record from a `finally`, so a failing turn is not shown cheaper
+    than it was. Duck-typed on purpose — nothing here imports the framework.
 
     Pydantic AI has counted all of this on its own spans since tracing was
     wired; this does not re-count it, it aggregates it into metrics a dashboard
     can graph without reading a thousand traces.
-
-    The model name is the one that *answered*, read off the response, not the
-    string someone put in config. An `azure:` binding names a deployment, and
-    which model sits behind a deployment can change without the config moving.
 
     `cost` is `None` until Pydantic AI knows the model's price, so a
     self-hosted deployment reports zero. Expected, not a bug — tokens are the
     number that matters there.
     """
 
-    usage = result.usage
-    model = result.response.model_name or "unknown"
+    model = model or "unknown"
     record_stage_model(stage, model)
     record_stage_tokens(
         stage=stage,
@@ -218,6 +213,20 @@ def record_agent_run(*, stage: Stage, result) -> None:  # noqa: ANN001
         output_tokens=usage.output_tokens,
     )
     add_cost(float(usage.cost or 0))
+
+
+def model_that_ran(result, configured) -> str | None:  # noqa: ANN001
+    """The model named on the response, else the configured one.
+
+    The response is preferred: an `azure:` binding names a deployment, and
+    which model sits behind it can change without the config moving. A run
+    that failed before any response arrived has only the configured name.
+    """
+
+    response = getattr(result, "response", None)
+    return getattr(response, "model_name", None) or getattr(
+        configured, "model_name", configured
+    )
 
 
 def record_first_delta(elapsed_ms: float) -> None:
