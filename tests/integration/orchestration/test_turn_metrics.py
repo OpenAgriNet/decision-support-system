@@ -71,6 +71,40 @@ async def test_an_answered_turn_is_counted_and_timed(reader) -> None:
     assert duration.sum >= 0
 
 
+async def test_the_first_word_is_timed_separately(reader) -> None:
+    orch, _ = _build(
+        intent=_one_ask(),
+        discovery=_served_discovery(),
+        plan=_FakePlan(_ANSWERED_EVIDENCE),
+        compose=_FakeCompose("", chunks=("Wheat is ", "2,275 ", "Rs [1].")),
+    )
+
+    await _collect(orch)
+
+    # One point per turn, not per delta.
+    (first_delta,) = points(reader, "dss.turn.first_delta.duration")
+    assert first_delta.count == 1
+    assert dict(first_delta.attributes) == {"model_profile": "tier3"}
+
+
+async def test_the_first_word_lands_before_the_end_of_composition(reader) -> None:
+    """`first_claim` waits for the whole text, so it can never beat the first
+    word. Pinned so nobody reads `first_claim` as time to first word again."""
+
+    orch, _ = _build(
+        intent=_one_ask(),
+        discovery=_served_discovery(),
+        plan=_FakePlan(_ANSWERED_EVIDENCE),
+        compose=_FakeCompose("", chunks=("Wheat is ", "2,275 ", "Rs [1].")),
+    )
+
+    await _collect(orch)
+
+    (first_delta,) = points(reader, "dss.turn.first_delta.duration")
+    (first_claim,) = points(reader, "dss.turn.first_claim.duration")
+    assert first_delta.sum <= first_claim.sum
+
+
 async def test_the_first_claim_is_timed_separately(reader) -> None:
     orch, _ = _build(
         intent=_one_ask(),
@@ -86,7 +120,7 @@ async def test_the_first_claim_is_timed_separately(reader) -> None:
     assert dict(first_claim.attributes) == {"model_profile": "tier3"}
 
 
-async def test_a_refused_turn_still_counts_and_publishes_no_first_claim(reader) -> None:
+async def test_a_refused_turn_still_counts_and_publishes_neither_timing(reader) -> None:
     orch, _ = _build(
         intent=_one_ask(),
         discovery=_served_discovery(),
@@ -102,6 +136,7 @@ async def test_a_refused_turn_still_counts_and_publishes_no_first_claim(reader) 
     assert dict(count.attributes) == {"status": "rejected", "model_profile": "tier3"}
     # Never reached the composer, so there is no first word to time. Absent,
     # not zero — a zero here would read as "answered instantly".
+    assert points(reader, "dss.turn.first_delta.duration") == []
     assert points(reader, "dss.turn.first_claim.duration") == []
 
 

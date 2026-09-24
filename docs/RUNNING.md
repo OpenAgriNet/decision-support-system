@@ -642,7 +642,8 @@ What gets published:
 | Name | What it says |
 |---|---|
 | `dss.turn.duration` | how long a whole turn took, by how it ended |
-| `dss.turn.first_claim.duration` | how long the farmer waited for a real answer |
+| `dss.turn.first_delta.duration` | how long the farmer waited for the first word |
+| `dss.turn.first_claim.duration` | when the answer finished writing, with its sources |
 | `dss.turn.count` | how many turns, by how they ended |
 | `dss.turn.cost` | what a turn cost, where the model has a published price |
 | `dss.stage.duration` | how long one stage took, and which model ran it |
@@ -661,9 +662,12 @@ Three things worth knowing:
   if each says which one it is. Unset reads as `default`.
 - **A turn that crashes still counts.** It is recorded with `status=error`, so a
   breakdown by status accounts for every turn rather than only the happy ones.
-- **HTTP duration is not time-to-first-claim.** A turn streams, so the request
-  is not over until the last word. `dss.turn.first_claim.duration` is the wait
+- **HTTP duration is not time to first word.** A turn streams, so the request
+  is not over until the last word. `dss.turn.first_delta.duration` is the wait
   the farmer actually feels, and the two differ by a lot.
+- **First claim is the end of composition, not the first word.** A claim needs
+  the whole text to attach its sources, so it lands after the last word. The
+  gap between first delta and first claim is how long the writing took.
 - **Cost is zero on a self-hosted model.** There is no published price for one.
   That is expected; read the token counts instead.
 

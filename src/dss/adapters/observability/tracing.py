@@ -33,6 +33,7 @@ from opentelemetry.sdk.trace import SpanProcessor
 from dss.adapters.observability.metrics import (
     configure_metrics,
     record_first_claim,
+    record_first_delta,
     record_turn,
     reset_metrics,
 )
@@ -329,6 +330,7 @@ class TurnRecorder:
         """The farmer's first word of the answer."""
 
         self._mark("first_delta_ms")
+        record_first_delta(self._elapsed_ms())
 
     def first_claim(self) -> None:
         """The first complete claim, with its sources attached.
