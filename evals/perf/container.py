@@ -113,6 +113,10 @@ def start(
     ]
     if Path(runtime).name == "docker":
         # Linux Docker has no host alias unless it is added.
+        # TODO(#163): on Linux this alias is the bridge address, not the host's
+        # loopback, so a mock or Langfuse bound to 127.0.0.1 is out of reach and
+        # every turn fails. Rootless Podman on Linux has the same problem. CI
+        # runs on Linux: bind them to 0.0.0.0 there, or use `--network host`.
         command += ["--add-host", "host.docker.internal:host-gateway"]
     for name in pass_env:
         command += ["-e", name]
