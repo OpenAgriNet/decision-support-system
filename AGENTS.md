@@ -28,6 +28,8 @@ Do not duplicate architecture, domain model, or design-decision detail here — 
   imports `langfuse` — the endpoint is the seam, so another backend is a config change.
   Span code lives in `orchestration/` and `adapters/` only; `core/` never opens one
   (ADR-0012), which `tests/unit/test_core_isolation.py` enforces.
+- Speed benchmark: `evals/perf/` CLI, real models with the mock network; load mode
+  runs the DSS in a 1 CPU / 1 GiB container (ADR-0013).
 
 ## Build & Run
 Install: `uv sync`
@@ -105,6 +107,7 @@ src/dss/
 - Tier 1 must outnumber every other tier combined. If it doesn't, you're testing at the wrong layer.
 - Never assert exact LLM-generated text anywhere except tier 4 (where the cassette makes it deterministic).
 - Tier 6 (eval) is diagnostic, not a gate — wire it to a schedule/dashboard, not to merge checks.
+- Tier-6 **speed** runs live in `evals/perf/`, not `tests/`: a CLI benchmark with no pass or fail (ADR-0013). Its own code is tested in `tests/unit/evals/` and `tests/integration/evals/` like any other.
 
 ## Known Gotchas
 - `docs/DSS_ARCHITECTURE.md` §8 (Open items) is the authoritative list of what's still undecided (PII posture, envelope shape, primitive schemas, etc.) — check it before assuming a contract is final.
