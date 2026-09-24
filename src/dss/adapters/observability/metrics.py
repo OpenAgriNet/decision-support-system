@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 TURN_DURATION = "dss.turn.duration"
 TURN_FIRST_DELTA = "dss.turn.first_delta.duration"
-TURN_FIRST_CLAIM = "dss.turn.first_claim.duration"
+TURN_COMPOSED = "dss.turn.composed.duration"
 TURN_COUNT = "dss.turn.count"
 TURN_COST = "dss.turn.cost"
 STAGE_DURATION = "dss.stage.duration"
@@ -52,7 +52,7 @@ STAGE_TOKENS = "dss.stage.tokens"
 LABEL_KEYS: dict[str, frozenset[str]] = {
     TURN_DURATION: frozenset({"status", "model_profile"}),
     TURN_FIRST_DELTA: frozenset({"model_profile"}),
-    TURN_FIRST_CLAIM: frozenset({"model_profile"}),
+    TURN_COMPOSED: frozenset({"model_profile"}),
     STAGE_DURATION: frozenset({"stage", "model"}),
     TURN_COUNT: frozenset({"status", "model_profile"}),
     STAGE_TOKENS: frozenset({"stage", "model", "direction"}),
@@ -83,12 +83,12 @@ class _Instruments:
                 "farmer actually feels."
             ),
         )
-        self.turn_first_claim: Histogram = meter.create_histogram(
-            TURN_FIRST_CLAIM,
+        self.turn_composed: Histogram = meter.create_histogram(
+            TURN_COMPOSED,
             unit=_SECONDS,
             description=(
-                "Time to the end of composition. The first claim needs the "
-                "whole text for its sources, so it lands after the last word."
+                "Time to the end of composition: the answer is fully written "
+                "and its sources are attached. Lands after the last word."
             ),
         )
         self.stage_duration: Histogram = meter.create_histogram(
@@ -228,8 +228,8 @@ def record_first_delta(elapsed_ms: float) -> None:
     _instruments.turn_first_delta.record(elapsed_ms / 1000, _turn_labels())
 
 
-def record_first_claim(elapsed_ms: float) -> None:
-    """The first complete claim, with its sources — end of composition.
+def record_composed(elapsed_ms: float) -> None:
+    """The answer is fully written and its sources are attached.
 
     Not time to first word: sources come from the whole text, so this lands
     after the last delta. `record_first_delta` is the first-word wait.
@@ -237,7 +237,7 @@ def record_first_claim(elapsed_ms: float) -> None:
 
     if _instruments is None:
         return
-    _instruments.turn_first_claim.record(elapsed_ms / 1000, _turn_labels())
+    _instruments.turn_composed.record(elapsed_ms / 1000, _turn_labels())
 
 
 def record_turn(*, status: str, elapsed_ms: float, cost: float) -> None:

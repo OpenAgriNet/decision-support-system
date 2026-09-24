@@ -15,7 +15,7 @@
   by default, which leaves the Azure path unchanged (#138)
 - Turn and HTTP metrics over OTLP: `dss.turn.duration`, `dss.turn.count`,
   `dss.turn.first_delta.duration` (time to first word),
-  `dss.turn.first_claim.duration` (end of composition), `dss.turn.cost`,
+  `dss.turn.composed.duration` (end of composition), `dss.turn.cost`,
   `dss.stage.duration` and `dss.stage.tokens`, plus request duration/count/status from
   `opentelemetry-instrumentation-fastapi`. Off unless
   `OTEL_METRICS_EXPORTER=otlp`, since the default endpoint is Langfuse, which
@@ -52,7 +52,8 @@
   plus `dss.discover`, `dss.select` and `dss.select.attempt`. So "which stage
   was slow" is answerable without reading log files (#138)
 - `dss.turn` now carries `status`, the four model names, `first_delta_ms` and
-  `first_claim_ms` — when the farmer first heard anything, absent rather than
+  `composed_ms` — when the farmer first heard anything and when the answer
+  finished writing, absent rather than
   zero on turns that never reach the composer (#138)
 - `dss.stage.discovery` carries `asks_total` and `asks_failed`. One provider
   down is not a failed turn, and span status has no value between OK and

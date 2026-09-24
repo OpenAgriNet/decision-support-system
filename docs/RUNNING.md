@@ -643,7 +643,7 @@ What gets published:
 |---|---|
 | `dss.turn.duration` | how long a whole turn took, by how it ended |
 | `dss.turn.first_delta.duration` | how long the farmer waited for the first word |
-| `dss.turn.first_claim.duration` | when the answer finished writing, with its sources |
+| `dss.turn.composed.duration` | when the answer finished writing, with its sources |
 | `dss.turn.count` | how many turns, by how they ended |
 | `dss.turn.cost` | what a turn cost, where the model has a published price |
 | `dss.stage.duration` | how long one stage took, and which model ran it |
@@ -665,9 +665,9 @@ Three things worth knowing:
 - **HTTP duration is not time to first word.** A turn streams, so the request
   is not over until the last word. `dss.turn.first_delta.duration` is the wait
   the farmer actually feels, and the two differ by a lot.
-- **First claim is the end of composition, not the first word.** A claim needs
-  the whole text to attach its sources, so it lands after the last word. The
-  gap between first delta and first claim is how long the writing took.
+- **Composed is the end of composition, not the first word.** Sources are
+  attached from the whole text, so it lands after the last word. The gap
+  between first delta and composed is how long the writing took.
 - **Cost is zero on a self-hosted model.** There is no published price for one.
   That is expected; read the token counts instead.
 

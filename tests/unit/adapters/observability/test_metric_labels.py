@@ -43,7 +43,7 @@ def test_the_instruments_are_the_ones_the_dashboard_expects():
     assert set(LABEL_KEYS) == {
         "dss.turn.duration",
         "dss.turn.first_delta.duration",
-        "dss.turn.first_claim.duration",
+        "dss.turn.composed.duration",
         "dss.stage.duration",
         "dss.turn.count",
         "dss.stage.tokens",
@@ -56,7 +56,7 @@ def test_the_instruments_are_the_ones_the_dashboard_expects():
     [
         ("dss.turn.duration", {"status", "model_profile"}),
         ("dss.turn.first_delta.duration", {"model_profile"}),
-        ("dss.turn.first_claim.duration", {"model_profile"}),
+        ("dss.turn.composed.duration", {"model_profile"}),
         ("dss.stage.duration", {"stage", "model"}),
         ("dss.turn.count", {"status", "model_profile"}),
         ("dss.stage.tokens", {"stage", "model", "direction"}),
