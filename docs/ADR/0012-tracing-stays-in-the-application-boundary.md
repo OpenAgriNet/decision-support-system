@@ -52,7 +52,7 @@ the core fan-out.
 **Option C. No tracing port, no span code in `core/`.**
 
 ```
-dss.turn                        status, model names, first_delta_ms, first_claim_ms
+dss.turn                        status, model names, first_delta_ms, composed_ms
 ├── dss.stage.intent
 ├── dss.stage.enrichment
 ├── dss.stage.moderation
@@ -118,17 +118,18 @@ planner block, so it would start and end with `dss.stage.planner`.
 **The turn root carries what only the turn knows.** `turn_span` yields a
 `TurnRecorder`, because `status` and the two timings are known only while the
 turn runs. `first_delta_ms` is when the farmer heard the first word;
-`first_claim_ms` is the first complete claim with its sources. Both also record
+`composed_ms` is when the answer is fully written, sources attached. Both also record
 a span event, so the moment is on the timeline as well as readable as a number.
 
 They are two fields because they go missing on different turns: a composer that
-fails mid-write has a delta and no claim. **Absent, never zero** — refused,
+fails mid-write has a delta and is never composed. **Absent, never zero** — refused,
 needs-input and no-match turns never reach the composer, and zero would make
 "refused in 40ms" look like "answered instantly".
 
-`first_claim_ms` is not a mid-stream moment. A claim carries its sources, and
-sources are resolved from the complete text, so the first claim cannot exist
-until the last delta has arrived. Read the two together: `first_delta_ms` is how
+`composed_ms` is not a mid-stream moment. A claim carries its sources, and
+sources are resolved from the complete text, so no claim can exist until the
+last delta has arrived. It was named `first_claim_ms` until #139; renamed
+because that name read as time to first word. Read the two together: `first_delta_ms` is how
 long the farmer waited to see anything, and the gap is how long the writing took.
 
 `status` is always present, including on a turn that crashed or was abandoned —

@@ -18,7 +18,7 @@ from dss.adapters.observability.metrics import (
     LABEL_KEYS,
     configure_metrics,
     record_agent_run,
-    record_first_claim,
+    record_composed,
     record_first_delta,
     record_stage_duration,
     record_stage_tokens,
@@ -62,7 +62,7 @@ def test_nothing_is_published_before_configure(monkeypatch) -> None:
     record_turn(status="answered", elapsed_ms=100.0, cost=0.0)
     record_stage_duration(stage="intent", elapsed_ms=10.0, model="m")
     record_first_delta(20.0)
-    record_first_claim(50.0)
+    record_composed(50.0)
     record_stage_tokens(stage=Stage.INTENT, model="m", input_tokens=1, output_tokens=2)
 
 
@@ -92,13 +92,13 @@ def test_a_turn_publishes_duration_count_and_cost(reader) -> None:
     assert dict(cost[0].attributes) == {"model_profile": "test-profile"}
 
 
-def test_first_claim_is_its_own_instrument(reader) -> None:
+def test_composed_is_its_own_instrument(reader) -> None:
     record_turn(status="answered", elapsed_ms=4000.0, cost=0.0)
-    record_first_claim(1200.0)
+    record_composed(1200.0)
 
-    first_claim = points(reader, "dss.turn.first_claim.duration")
-    assert first_claim[0].sum == pytest.approx(1.2)
-    assert dict(first_claim[0].attributes) == {"model_profile": "test-profile"}
+    composed = points(reader, "dss.turn.composed.duration")
+    assert composed[0].sum == pytest.approx(1.2)
+    assert dict(composed[0].attributes) == {"model_profile": "test-profile"}
 
 
 def test_first_delta_is_its_own_instrument(reader) -> None:
@@ -149,7 +149,7 @@ def test_no_instrument_publishes_a_label_it_is_not_allowed(reader) -> None:
 
     record_turn(status="answered", elapsed_ms=1.0, cost=0.1)
     record_first_delta(1.0)
-    record_first_claim(1.0)
+    record_composed(1.0)
     record_stage_duration(stage="intent", elapsed_ms=1.0, model="m")
     record_stage_duration(stage="discovery", elapsed_ms=1.0, model=None)
     record_stage_tokens(stage=Stage.INTENT, model="m", input_tokens=1, output_tokens=1)

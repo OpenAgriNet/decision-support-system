@@ -32,7 +32,7 @@ from opentelemetry.sdk.trace import SpanProcessor
 
 from dss.adapters.observability.metrics import (
     configure_metrics,
-    record_first_claim,
+    record_composed,
     record_first_delta,
     record_turn,
     reset_metrics,
@@ -332,17 +332,17 @@ class TurnRecorder:
         self._mark("first_delta_ms")
         record_first_delta(self._elapsed_ms())
 
-    def first_claim(self) -> None:
-        """The first complete claim, with its sources attached.
+    def composed(self) -> None:
+        """The answer is fully written and its sources are attached.
 
         Not a mid-stream moment: sources are resolved from the whole text, so
-        the first claim cannot exist until the last delta has arrived. Read it
+        this cannot happen until the last delta has arrived. Read it
         against `first_delta_ms` — that one is how long the farmer waited to
         see anything, and the gap between them is how long the writing took.
         """
 
-        self._mark("first_claim_ms")
-        record_first_claim(self._elapsed_ms())
+        self._mark("composed_ms")
+        record_composed(self._elapsed_ms())
 
     def _mark(self, attribute: str) -> None:
         elapsed_ms = self._elapsed_ms()

@@ -88,8 +88,8 @@ async def test_the_first_word_is_timed_separately(reader) -> None:
 
 
 async def test_the_first_word_lands_before_the_end_of_composition(reader) -> None:
-    """`first_claim` waits for the whole text, so it can never beat the first
-    word. Pinned so nobody reads `first_claim` as time to first word again."""
+    """`composed` waits for the whole text, so it can never beat the first
+    word. Pinned so nobody reads `composed` as time to first word again."""
 
     orch, _ = _build(
         intent=_one_ask(),
@@ -101,11 +101,11 @@ async def test_the_first_word_lands_before_the_end_of_composition(reader) -> Non
     await _collect(orch)
 
     (first_delta,) = points(reader, "dss.turn.first_delta.duration")
-    (first_claim,) = points(reader, "dss.turn.first_claim.duration")
-    assert first_delta.sum <= first_claim.sum
+    (composed,) = points(reader, "dss.turn.composed.duration")
+    assert first_delta.sum <= composed.sum
 
 
-async def test_the_first_claim_is_timed_separately(reader) -> None:
+async def test_composition_is_timed_separately(reader) -> None:
     orch, _ = _build(
         intent=_one_ask(),
         discovery=_served_discovery(),
@@ -115,9 +115,9 @@ async def test_the_first_claim_is_timed_separately(reader) -> None:
 
     await _collect(orch)
 
-    (first_claim,) = points(reader, "dss.turn.first_claim.duration")
-    assert first_claim.count == 1
-    assert dict(first_claim.attributes) == {"model_profile": "tier3"}
+    (composed,) = points(reader, "dss.turn.composed.duration")
+    assert composed.count == 1
+    assert dict(composed.attributes) == {"model_profile": "tier3"}
 
 
 async def test_a_refused_turn_still_counts_and_publishes_neither_timing(reader) -> None:
@@ -137,7 +137,7 @@ async def test_a_refused_turn_still_counts_and_publishes_neither_timing(reader) 
     # Never reached the composer, so there is no first word to time. Absent,
     # not zero — a zero here would read as "answered instantly".
     assert points(reader, "dss.turn.first_delta.duration") == []
-    assert points(reader, "dss.turn.first_claim.duration") == []
+    assert points(reader, "dss.turn.composed.duration") == []
 
 
 async def test_a_turn_that_crashes_is_still_counted(reader) -> None:

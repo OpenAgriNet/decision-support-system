@@ -66,15 +66,15 @@ async def test_an_answered_turn_carries_its_status_and_both_timings(spans) -> No
     attributes = _turn_span(spans).attributes
     assert attributes["status"] == "answered"
     assert attributes["first_delta_ms"] >= 0
-    assert attributes["first_claim_ms"] >= 0
+    assert attributes["composed_ms"] >= 0
 
 
-async def test_the_first_claim_lands_after_the_whole_stream(spans) -> None:
-    """What `first_claim_ms` actually measures, pinned so nobody reads it as a
+async def test_composition_ends_after_the_whole_stream(spans) -> None:
+    """What `composed_ms` actually measures, pinned so nobody reads it as a
     mid-stream moment.
 
     A claim carries its sources, and sources are resolved from the *complete*
-    text — so the first claim cannot exist until the last delta has arrived.
+    text — so composition cannot end until the last delta has arrived.
     The number is therefore composition end, and it is the *gap* between the
     two that is worth reading: `first_delta_ms` is how long the farmer waited
     to see anything, and the difference is how long the writing took.
@@ -93,7 +93,7 @@ async def test_the_first_claim_lands_after_the_whole_stream(spans) -> None:
     attributes = _turn_span(spans).attributes
     deltas = [e for e in events if isinstance(e, ClaimDelta)]
     assert len(deltas) == 3
-    assert attributes["first_claim_ms"] >= attributes["first_delta_ms"]
+    assert attributes["composed_ms"] >= attributes["first_delta_ms"]
 
 
 async def test_a_refused_turn_has_a_status_and_neither_timing(spans) -> None:
@@ -115,13 +115,15 @@ async def test_a_refused_turn_has_a_status_and_neither_timing(spans) -> None:
     attributes = _turn_span(spans).attributes
     assert attributes["status"] == "rejected"
     assert "first_delta_ms" not in attributes
-    assert "first_claim_ms" not in attributes
+    assert "composed_ms" not in attributes
 
 
-async def test_a_composer_that_fails_mid_write_has_a_delta_but_no_claim(spans) -> None:
+async def test_a_composer_that_fails_mid_write_has_a_delta_but_is_never_composed(
+    spans,
+) -> None:
     """Why these are two fields and not one. The farmer heard the first words,
-    so `first_delta_ms` is real and worth keeping. No claim was ever assembled,
-    so `first_claim_ms` is absent.
+    so `first_delta_ms` is real and worth keeping. The answer was never
+    finished, so `composed_ms` is absent.
 
     `status` is still set. A turn that crashed never reaches `_finish`, so
     nothing maps it to a `TurnStatus` — but leaving the attribute off would
@@ -140,7 +142,7 @@ async def test_a_composer_that_fails_mid_write_has_a_delta_but_no_claim(spans) -
 
     attributes = _turn_span(spans).attributes
     assert attributes["first_delta_ms"] >= 0
-    assert "first_claim_ms" not in attributes
+    assert "composed_ms" not in attributes
     assert attributes["status"] == "error"
 
 

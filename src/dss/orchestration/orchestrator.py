@@ -263,9 +263,8 @@ class Orchestrator:
                 # nothing to roll back. The transport reports a failed turn.
                 text = "".join(written)
             answer = answer_from_evidence(text, evidence)
-            for index, block in enumerate(answer.content):
-                if index == 0:
-                    recorder.first_claim()
+            recorder.composed()
+            for block in answer.content:
                 yield Claim(content=block, sources=answer.sources)
             self._note("channel", ctx, str(len(answer.content)))
 
