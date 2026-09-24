@@ -66,7 +66,7 @@ def _instrument_http(app: FastAPI) -> None:
 
     Note what this measures on `POST /v1/turns`. The turn streams, so the
     request is not finished until the last claim is written — this is time to
-    the *last* word, where `dss.turn.first_claim.duration` is the wait the
+    the *last* word, where `dss.turn.first_delta.duration` is the wait the
     farmer feels. The two differ by a lot and neither replaces the other;
     written down here so one is not later deleted as a duplicate of the other.
 

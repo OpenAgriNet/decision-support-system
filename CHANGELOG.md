@@ -14,8 +14,9 @@
   so a non-`azure:` model string can reach an OpenAI-compatible proxy. Unset
   by default, which leaves the Azure path unchanged (#138)
 - Turn and HTTP metrics over OTLP: `dss.turn.duration`, `dss.turn.count`,
-  `dss.turn.first_claim.duration`, `dss.turn.cost`, `dss.stage.duration` and
-  `dss.stage.tokens`, plus request duration/count/status from
+  `dss.turn.first_delta.duration` (time to first word),
+  `dss.turn.first_claim.duration` (end of composition), `dss.turn.cost`,
+  `dss.stage.duration` and `dss.stage.tokens`, plus request duration/count/status from
   `opentelemetry-instrumentation-fastapi`. Off unless
   `OTEL_METRICS_EXPORTER=otlp`, since the default endpoint is Langfuse, which
   discards metrics (#139)

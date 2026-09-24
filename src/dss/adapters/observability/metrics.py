@@ -37,6 +37,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 TURN_DURATION = "dss.turn.duration"
+TURN_FIRST_DELTA = "dss.turn.first_delta.duration"
 TURN_FIRST_CLAIM = "dss.turn.first_claim.duration"
 TURN_COUNT = "dss.turn.count"
 TURN_COST = "dss.turn.cost"
@@ -50,6 +51,7 @@ STAGE_TOKENS = "dss.stage.tokens"
 # model name in a dashboard's dropdown.
 LABEL_KEYS: dict[str, frozenset[str]] = {
     TURN_DURATION: frozenset({"status", "model_profile"}),
+    TURN_FIRST_DELTA: frozenset({"model_profile"}),
     TURN_FIRST_CLAIM: frozenset({"model_profile"}),
     STAGE_DURATION: frozenset({"stage", "model"}),
     TURN_COUNT: frozenset({"status", "model_profile"}),
@@ -65,7 +67,7 @@ _SECONDS = "s"
 
 
 class _Instruments:
-    """The six instruments, built once per configured meter."""
+    """The seven instruments, built once per configured meter."""
 
     def __init__(self, meter) -> None:  # noqa: ANN001
         self.turn_duration: Histogram = meter.create_histogram(
@@ -73,12 +75,20 @@ class _Instruments:
             unit=_SECONDS,
             description="Wall-clock time of a whole turn, however it ended.",
         )
+        self.turn_first_delta: Histogram = meter.create_histogram(
+            TURN_FIRST_DELTA,
+            unit=_SECONDS,
+            description=(
+                "Time to the first word of the answer. This is the wait the "
+                "farmer actually feels."
+            ),
+        )
         self.turn_first_claim: Histogram = meter.create_histogram(
             TURN_FIRST_CLAIM,
             unit=_SECONDS,
             description=(
-                "Time to the first complete claim. Separate from turn duration "
-                "on purpose: this is the wait the farmer actually feels."
+                "Time to the end of composition. The first claim needs the "
+                "whole text for its sources, so it lands after the last word."
             ),
         )
         self.stage_duration: Histogram = meter.create_histogram(
@@ -210,8 +220,20 @@ def record_agent_run(*, stage: Stage, result) -> None:  # noqa: ANN001
     add_cost(float(usage.cost or 0))
 
 
+def record_first_delta(elapsed_ms: float) -> None:
+    """The farmer's first word of the answer — time to first word."""
+
+    if _instruments is None:
+        return
+    _instruments.turn_first_delta.record(elapsed_ms / 1000, _turn_labels())
+
+
 def record_first_claim(elapsed_ms: float) -> None:
-    """The farmer's first complete claim, with its sources."""
+    """The first complete claim, with its sources — end of composition.
+
+    Not time to first word: sources come from the whole text, so this lands
+    after the last delta. `record_first_delta` is the first-word wait.
+    """
 
     if _instruments is None:
         return
