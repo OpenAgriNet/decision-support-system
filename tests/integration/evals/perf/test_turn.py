@@ -86,6 +86,24 @@ async def test_first_piece_arrives_before_the_turn_completes(dss: str):
     assert timing.total_s >= 0.45
 
 
+async def test_a_request_that_fails_on_the_network_is_marked_not_raised():
+    """One dropped connection must not end a run and lose every turn already
+    sent — under load it would cancel every other worker too."""
+
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        nobody = f"http://127.0.0.1:{probe.getsockname()[1]}"
+
+    async with httpx.AsyncClient() as client:
+        timing = await run_turn(
+            client, nobody, AKOLA, session_id="s", transaction_id="t"
+        )
+
+    assert timing == TurnTiming(
+        status="error_ConnectError", first_delta_s=None, total_s=None
+    )
+
+
 async def test_a_refused_request_is_marked_by_its_status_not_timed(dss: str):
     """A DSS that answers 503 at once is not a fast turn. Timed, it would
     read as thousands of turns a minute."""

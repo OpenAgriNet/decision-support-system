@@ -35,26 +35,33 @@ async def run_turn(
     body = turn_request(question, session_id, transaction_id)
     status = first_delta_s = total_s = None
     started = perf_counter()
-    async with client.stream(
-        "POST",
-        f"{base_url}/v1/turns",
-        json=body,
-        headers={"Accept": "text/event-stream"},
-        timeout=120,
-    ) as response:
-        # A refused request is not a fast turn: timed, it would read as
-        # thousands of turns a minute.
-        if response.status_code != 200:
-            return TurnTiming(
-                status=f"http_{response.status_code}", first_delta_s=None, total_s=None
-            )
-        async for event, data in parse_sse(response.aiter_lines()):
-            if event == "claim.delta" and first_delta_s is None:
-                first_delta_s = perf_counter() - started
-            elif event in ("turn.completed", "turn.failed"):
-                total_s = perf_counter() - started
-                status = data["message"]["outcome"]["status"]
+    try:
+        async with client.stream(
+            "POST",
+            f"{base_url}/v1/turns",
+            json=body,
+            headers={"Accept": "text/event-stream"},
+            timeout=120,
+        ) as response:
+            # A refused request is not a fast turn: timed, it would read as
+            # thousands of turns a minute.
+            if response.status_code != 200:
+                return _untimed(f"http_{response.status_code}")
+            async for event, data in parse_sse(response.aiter_lines()):
+                if event == "claim.delta" and first_delta_s is None:
+                    first_delta_s = perf_counter() - started
+                elif event in ("turn.completed", "turn.failed"):
+                    total_s = perf_counter() - started
+                    status = data["message"]["outcome"]["status"]
+    except httpx.HTTPError as error:
+        # A timeout or dropped connection is one failed turn, not the end of
+        # the run: raised, it would lose every turn already sent.
+        return _untimed(f"error_{type(error).__name__}")
     return TurnTiming(status=status, first_delta_s=first_delta_s, total_s=total_s)
+
+
+def _untimed(status: str) -> TurnTiming:
+    return TurnTiming(status=status, first_delta_s=None, total_s=None)
 
 
 def turn_request(question: Question, session_id: str, transaction_id: str) -> dict:

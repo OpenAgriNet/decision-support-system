@@ -47,13 +47,24 @@ async def run_load(
     turn: SendTurn,
     misses: ReadMisses,
     max_turns: int | None = None,
+    warmup: int = 0,
 ) -> list[StepResult]:
     """`max_turns` caps every turn sent across all steps: each is a real
-    model call. A step is skipped once the limit is spent."""
+    model call. A step is skipped once the limit is spent.
+
+    `warmup` turns go first, one at a time, and are not counted: a container
+    that has just started pays for cold imports and a first model connection,
+    which would otherwise land on the first step — the baseline.
+    """
 
     run_id = uuid.uuid4().hex[:8]
     results = []
-    budget = len(questions) * len(steps) if max_turns is None else max_turns
+    total = warmup + len(questions) * len(steps)
+    budget = total if max_turns is None else max_turns
+    warm = questions[: min(warmup, budget)]
+    for question in warm:
+        await turn(question, f"bench-{run_id}-warmup-{question.id}")
+    budget -= len(warm)
     for concurrency in steps:
         if budget <= 0:
             break

@@ -77,6 +77,21 @@ async def test_a_miss_under_load_is_tied_to_its_own_turn_and_left_out():
     assert len(step.timings) == len(_QUESTIONS) - 1
 
 
+async def test_warm_up_turns_go_to_the_new_container_first_and_are_not_counted():
+    """A container that has just started pays for cold imports and a first
+    model connection. Left in, that cost lands on the N=1 step, which is the
+    baseline every other step is compared with."""
+
+    dss = _Dss()
+
+    (step,) = await run_load(
+        _QUESTIONS, steps=[1], turn=dss.turn, misses=dss.misses, warmup=2
+    )
+
+    assert len(dss.sent) == 2 + len(_QUESTIONS)
+    assert len(step.timings) == len(_QUESTIONS)
+
+
 async def test_the_turn_limit_caps_load_across_steps_and_marks_the_cut_step():
     """Each turn is a real model call. A step cut short has fewer turns than
     the others, so its figures must say so."""

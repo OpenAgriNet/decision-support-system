@@ -36,7 +36,8 @@ def test_a_missed_turn_is_counted_but_left_out_of_the_figures():
 
     report = figures(result)
 
-    assert report["turns"]["timed"] == 3
+    # "sent", not "timed": the missed turn was sent but is not in the figures.
+    assert report["turns"]["sent"] == 3
     assert report["turns"]["missed"] == 1
     assert report["first_delta_s"]["max"] == 3.0
     assert report["total_s"]["n"] == 2

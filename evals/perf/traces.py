@@ -33,7 +33,7 @@ class TokenCall:
 
 @dataclass(frozen=True)
 class TraceFacts:
-    # Seconds per stage. A stage seen twice in one turn is summed.
+    # Seconds per stage. Spans of one stage that overlap count once.
     stages: dict[str, float]
     calls: list[TokenCall]
     # Agent → the model it ran on, as the server recorded it on `dss.turn`.
@@ -84,12 +84,12 @@ async def _observations(client: httpx.AsyncClient, params: dict) -> list[dict]:
 
 def to_trace_facts(observations: list[dict]) -> TraceFacts:
     by_id = {row["id"]: row for row in observations}
-    stages: dict[str, float] = {}
+    spans: dict[str, list[tuple[datetime, datetime]]] = {}
     calls: list[TokenCall] = []
     for row in observations:
         stage = _stage_of(row["name"])
         if stage is not None:
-            stages[stage] = stages.get(stage, 0.0) + _seconds(row)
+            spans.setdefault(stage, []).append(_interval(row))
         # Only the model calls: an agent's own span sums its calls' tokens,
         # so counting both would count every token twice.
         if row["type"] == "GENERATION":
@@ -101,7 +101,7 @@ def to_trace_facts(observations: list[dict]) -> TraceFacts:
                 )
             )
     return TraceFacts(
-        stages=stages,
+        stages={stage: _covered(intervals) for stage, intervals in spans.items()},
         calls=calls,
         models=_models(observations),
         flat=_is_flat(observations),
@@ -144,7 +144,27 @@ def _stage_of(name: str) -> str | None:
     return _TIMED.get(name)
 
 
-def _seconds(row: dict) -> float:
-    started = datetime.fromisoformat(row["startTime"])
-    ended = datetime.fromisoformat(row["endTime"])
-    return (ended - started).total_seconds()
+def _interval(row: dict) -> tuple[datetime, datetime]:
+    return datetime.fromisoformat(row["startTime"]), datetime.fromisoformat(
+        row["endTime"]
+    )
+
+
+def _covered(intervals: list[tuple[datetime, datetime]]) -> float:
+    """Seconds covered by the spans, overlaps counted once.
+
+    Parallel calls (two /discover at once) must not be summed, and calls apart
+    in time (/select, then the planner thinks, then /select again) must not
+    count the gap between them. Merging overlaps, then adding up, does both.
+    """
+
+    total = 0.0
+    end = None
+    for started, ended in sorted(intervals):
+        if end is None or started > end:
+            total += (ended - started).total_seconds()
+            end = ended
+        elif ended > end:
+            total += (ended - end).total_seconds()
+            end = ended
+    return total
