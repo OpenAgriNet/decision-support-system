@@ -49,7 +49,7 @@ def figures(
             "truncated": result.truncated,
         },
         "turns": {
-            "timed": len(result.turns),
+            "sent": len(result.turns),
             "missed": len(result.turns) - len(counted),
             "by_status": dict(Counter(str(t.timing.status) for t in counted)),
             "no_trace": len(counted) - len(traced),
@@ -128,7 +128,7 @@ def _triple(summary: dict) -> str:
 
 
 def write_json(report: dict, result: RunResult, directory: Path) -> Path:
-    """The report plus one raw row per timed turn, named by when it was
+    """The report plus one raw row per turn sent, named by when it was
     written and the commit it ran on, so a run is found by either."""
 
     rows = [
@@ -202,7 +202,7 @@ def render_text(report: dict) -> str:
         ]
     lines += [
         "",
-        f"turns: {turns['timed']} timed, {turns['missed']} missed, "
+        f"turns: {turns['sent']} sent, {turns['missed']} missed, "
         f"{turns['no_trace']} without a trace, {turns['flat_traces']} flat",
         "ended: " + ", ".join(f"{s} {n}" for s, n in turns["by_status"].items()),
         f"models: {_models_line(run['models'])}",

@@ -163,6 +163,7 @@ async def _load_steps(args: argparse.Namespace):
             turn=turn,
             misses=partial(_misses, mock),
             max_turns=args.max_turns,
+            warmup=args.warmup,
         )
 
 
