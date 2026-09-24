@@ -7,6 +7,7 @@ discarded — the composer writes the answer from ``Evidence``.
 
 from __future__ import annotations
 
+import pytest
 from pydantic_ai.messages import (
     ModelMessage,
     ModelResponse,
@@ -278,7 +279,9 @@ async def test_the_planner_binds_its_own_model_settings() -> None:
 
     plan = build_plan(
         schemas=SCHEMAS,
-        schema_context_index={},
+        schema_context_index={
+            "openagrinet:MandiPrice": "https://schemas.openagrinet.global/schema/MandiPrice/0.1/context.jsonld"
+        },
         invocation=_FakeInvocation(),
         identity=IDENTITY,
         skills=(SKILL,),
@@ -336,3 +339,57 @@ async def test_a_rejected_turn_yields_empty_insufficient_evidence() -> None:
     assert evidence.sources == ()
     assert evidence.served == ()
     assert evidence.sufficient is False
+
+
+async def test_a_planner_run_that_fails_still_records_what_it_spent() -> None:
+    """The first request is billed, its tool call runs, then the model fails.
+    The turn must still carry the first request's cost."""
+
+    from decimal import Decimal
+
+    from pydantic_ai.usage import RequestUsage
+
+    from dss.observability.stages import Stage
+    from dss.observability.turn_usage import (
+        begin_turn_usage,
+        current_turn_usage,
+        model_for,
+    )
+
+    def select_then_fail(
+        messages: list[ModelMessage], info: AgentInfo
+    ) -> ModelResponse:
+        if len(messages) == 1:
+            response = _calls_select_then_answers(messages, info)
+            response.usage = RequestUsage(
+                input_tokens=500, output_tokens=40, cost=Decimal("0.003")
+            )
+            return response
+        raise RuntimeError("the model went away")
+
+    begin_turn_usage()
+    plan = build_plan(
+        schemas=SCHEMAS,
+        schema_context_index={
+            "openagrinet:MandiPrice": "https://schemas.openagrinet.global/schema/MandiPrice/0.1/context.jsonld"
+        },
+        invocation=_FakeInvocation(),
+        identity=IDENTITY,
+        skills=(SKILL,),
+        model=FunctionModel(select_then_fail),
+    )
+
+    with pytest.raises(RuntimeError, match="the model went away"):
+        await plan(
+            _turn(),
+            intent=Intent(asks=(PRICE_ASK,), confidence=0.9),
+            discovery=DiscoveryResult(
+                answers={}, capabilities={0: (CAPABILITY,)}, failures={}, events=()
+            ),
+            verdict=_cleared_verdict(),
+        )
+
+    usage = current_turn_usage()
+    assert usage is not None
+    assert usage.cost == pytest.approx(0.003)
+    assert model_for(Stage.PLANNER) == "function:select_then_fail:"

@@ -19,8 +19,9 @@ from pydantic_ai import Agent, NativeOutput, PromptedOutput
 from pydantic_ai.models import Model
 from pydantic_ai.models.openai import OpenAIResponsesModel
 from pydantic_ai.providers.openai import OpenAIProvider
+from pydantic_ai.usage import RunUsage
 
-from dss.adapters.observability.metrics import record_agent_run
+from dss.adapters.observability.metrics import model_that_ran, record_agent_run
 from dss.observability.stages import Stage
 from dss.observability.trace_log import log_external_response
 from dss.ports.llm import SchemaT
@@ -94,8 +95,20 @@ class PydanticAILLMProvider:
             output_type=self._output_type(schema),
             retries=self._retries,
         )
-        result = await agent.run(user_query, model_settings=self._model_settings)
-        record_agent_run(stage=self._stage, result=result)
+        # Our own counter, passed in: Pydantic AI adds to it as each request
+        # lands, so it still holds the spend when the run raises.
+        usage = RunUsage()
+        result = None
+        try:
+            result = await agent.run(
+                user_query, model_settings=self._model_settings, usage=usage
+            )
+        finally:
+            record_agent_run(
+                stage=self._stage,
+                usage=usage,
+                model=model_that_ran(result, self._model),
+            )
         log_external_response("llm", output_schema=schema.__name__, body=result.output)
         return result.output
 
@@ -123,18 +136,26 @@ class PydanticAILLMProvider:
 
         agent = self._agent(system_prompt)
         written: list[str] = []
-        async with agent.run_stream(
-            user_query, model_settings=self._model_settings
-        ) as stream:
-            async for delta in stream.stream_text(
-                delta=True, debounce_by=self._stream_debounce_seconds
-            ):
-                written.append(delta)
-                yield delta
-            # Inside the `async with`, and after the drain: usage is only
-            # complete once the last piece has arrived, and the result is gone
-            # once the context manager closes.
-            record_agent_run(stage=self._stage, result=stream)
+        # Recorded in `finally`, so a stream that drops or is closed early
+        # still reports the tokens it used. Pydantic AI folds a cut-off
+        # response's usage into this counter too.
+        usage = RunUsage()
+        stream = None
+        try:
+            async with agent.run_stream(
+                user_query, model_settings=self._model_settings, usage=usage
+            ) as stream:
+                async for delta in stream.stream_text(
+                    delta=True, debounce_by=self._stream_debounce_seconds
+                ):
+                    written.append(delta)
+                    yield delta
+        finally:
+            record_agent_run(
+                stage=self._stage,
+                usage=usage,
+                model=model_that_ran(stream, self._model),
+            )
         # Logged once the stream drains, not per piece: a log line per token
         # would bury every other line in the turn.
         log_external_response("llm", output_schema="text", body="".join(written))
