@@ -20,8 +20,27 @@ MINIO_ROOT_USER="${MINIO_ROOT_USER:-minio}"
 MINIO_ROOT_PASSWORD="${MINIO_ROOT_PASSWORD:-miniosecret}"
 
 if command -v podman >/dev/null 2>&1; then R=podman; else R=docker; fi
-ch="${COMPOSE_PROJECT}_clickhouse_1"
-minio="${COMPOSE_PROJECT}_minio_1"
+
+# Found by compose label, not by name. docker compose names containers
+# `<project>-<service>-1` and podman-compose `<project>_<service>_1`, so any
+# hardcoded spelling works on one machine and silently finds nothing on the
+# other — which looks like a stack with no tables rather than a lookup failure.
+container_for() {
+  "$R" ps --filter "label=com.docker.compose.project=${COMPOSE_PROJECT}" \
+          --filter "label=com.docker.compose.service=$1" \
+          --format '{{.Names}}' | head -1
+}
+
+ch="$(container_for clickhouse)"
+minio="$(container_for minio)"
+
+if [ -z "$ch" ] || [ -z "$minio" ]; then
+  echo "no clickhouse/minio container for project '${COMPOSE_PROJECT}'." >&2
+  echo "running compose projects:" >&2
+  "$R" ps --format '{{.Label "com.docker.compose.project"}}' | sort -u | sed '/^$/d;s/^/  /' >&2
+  echo "set COMPOSE_PROJECT to one of those." >&2
+  exit 1
+fi
 
 # `--enable_full_text_index=1`: these tables carry a text index, and MODIFY TTL
 # re-validates the whole schema on the way through. Without the setting the
