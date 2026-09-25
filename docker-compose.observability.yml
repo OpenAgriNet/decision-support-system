@@ -1,0 +1,73 @@
+# ClickHouse and Grafana for a laptop, so the dashboard can be watched locally.
+#
+#     ./scripts/run-local.sh --with-grafana
+#
+# The script starts this file and points the collector at `otel/collector.yaml`,
+# the deployment config, instead of `collector.local.yaml`. A deployment has
+# its own ClickHouse and Grafana and does not use this file.
+#
+# Its own ClickHouse, not Langfuse's. Langfuse owns that one's schema, and
+# the dashboard should read the same `otel` tables a deployment has.
+#
+# Local credentials only. Nothing here is published beyond 127.0.0.1.
+
+# Its own project. Without it compose names it after the directory, the same
+# as the Langfuse file, and each `down` treats the other's containers as its own.
+name: dss-observability
+
+services:
+  # Not `clickhouse`: Langfuse's is already called that on `oan-edge`, and two
+  # services with one name on one network resolve to either.
+  dss-clickhouse:
+    image: docker.io/clickhouse/clickhouse-server:25.12
+    container_name: dss-clickhouse
+    environment:
+      CLICKHOUSE_DB: otel
+      CLICKHOUSE_USER: dss
+      CLICKHOUSE_PASSWORD: dss
+    volumes:
+      - dss_clickhouse_data:/var/lib/clickhouse
+    ports:
+      # HTTP only, for `curl` queries. Not 8123: HyperDX's ClickHouse often
+      # holds it. The collector and Grafana use 9000 inside the network.
+      - "127.0.0.1:${CLICKHOUSE_HTTP_PORT:-18123}:8123"
+    healthcheck:
+      test: wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  dss-grafana:
+    image: docker.io/grafana/grafana:${GRAFANA_TAG:-latest}
+    container_name: dss-grafana
+    depends_on:
+      dss-clickhouse:
+        condition: service_healthy
+    environment:
+      GF_INSTALL_PLUGINS: grafana-clickhouse-datasource
+      # A laptop: no login screen.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      # Read by grafana/provisioning/datasources/clickhouse.yaml.
+      CLICKHOUSE_HOST: dss-clickhouse
+      CLICKHOUSE_USER: dss
+      CLICKHOUSE_PASSWORD: dss
+      CLICKHOUSE_DATABASE: otel
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
+    ports:
+      # Not 3000: Langfuse has it.
+      - "127.0.0.1:${GRAFANA_PORT:-3001}:3000"
+    restart: unless-stopped
+
+volumes:
+  dss_clickhouse_data:
+
+# The collector reaches these by name, and it runs on `oan-edge`.
+networks:
+  default:
+    name: oan-edge
+    external: true

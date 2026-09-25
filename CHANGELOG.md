@@ -26,6 +26,9 @@
   stage breakdown, cost and tokens, HTTP and errors. Checked in and UI edits
   disabled, so renaming a `dss.*` metric or a stage breaks something visible
   (#141)
+- `./scripts/run-local.sh --with-grafana` — a local ClickHouse and Grafana
+  (`docker-compose.observability.yml`) with the collector on its deployment
+  config, so the dashboard can be watched on a laptop (#141)
 - `otel/collector.local.yaml` — a collector for a laptop, with no ClickHouse
   exporter but the same content-stripping branch, printed rather than stored
   (#141)
