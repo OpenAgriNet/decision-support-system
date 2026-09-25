@@ -1,0 +1,70 @@
+# The model gateway (ADR-0013). Its own Postgres, because virtual keys, budgets
+# and spend rows live there.
+#
+#   docker compose -f docker-compose.litellm.yml --env-file .env up -d
+#
+# Joins `oan-edge` (the Langfuse network) so spans reach langfuse-web directly.
+# Start docker-compose.langfuse.yml first.
+services:
+  litellm:
+    image: ghcr.io/berriai/litellm:${LITELLM_TAG:-main-stable}
+    depends_on:
+      litellm-postgres:
+        condition: service_healthy
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    volumes:
+      - ./litellm/config.yaml:/app/config.yaml:ro
+    environment:
+      # No default: a guessable admin credential in front of every vendor
+      # account is worse than a container that refuses to start.
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?set LITELLM_MASTER_KEY in .env}
+      # Encrypts vendor keys stored in the database (the Credentials feature).
+      # Set it BEFORE storing any credential, and never change it afterwards —
+      # every stored key is encrypted with it and cannot be read back without it.
+      LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:?set LITELLM_SALT_KEY (openssl rand -hex 32)}
+      DATABASE_URL: postgresql://litellm:litellm@litellm-postgres:5432/litellm
+      STORE_MODEL_IN_DB: "True"
+      OTEL_EXPORTER: otlp_http
+      OTEL_ENDPOINT: ${LITELLM_OTEL_ENDPOINT:-http://litellm-otel:4318/v1/traces}
+      OTEL_HEADERS: ${LITELLM_OTEL_HEADERS:-}
+      OTEL_SERVICE_NAME: litellm-gateway
+    ports:
+      - "127.0.0.1:${LITELLM_HOST_PORT:-4000}:4000"
+    restart: unless-stopped
+
+  litellm-otel:
+    image: otel/opentelemetry-collector-contrib:${OTEL_COLLECTOR_TAG:-latest}
+    command: ["--config=/etc/otel/collector-gateway.yaml"]
+    volumes:
+      - ./otel/collector-gateway.yaml:/etc/otel/collector-gateway.yaml:ro
+    environment:
+      LANGFUSE_OTEL_ENDPOINT: ${LANGFUSE_OTEL_ENDPOINT:-http://langfuse-web:3000/api/public/otel}
+      LANGFUSE_OTEL_AUTH: ${LANGFUSE_OTEL_AUTH:-}
+    restart: unless-stopped
+
+  litellm-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: litellm
+      POSTGRES_PASSWORD: litellm
+      POSTGRES_DB: litellm
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U litellm"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - litellm_postgres_data:/var/lib/postgresql/data
+    # Bound to 127.0.0.1 so a GUI client on this machine can read the spend
+    # tables. 5433, because Langfuse's own Postgres has first claim on 5432.
+    ports:
+      - "127.0.0.1:${LITELLM_DB_HOST_PORT:-5433}:5432"
+    restart: unless-stopped
+
+volumes:
+  litellm_postgres_data:
+
+networks:
+  default:
+    name: ${LANGFUSE_NETWORK:-oan-edge}
+    external: true
