@@ -14,10 +14,12 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from typing import Literal
 
+import httpx
 from openai import AsyncOpenAI
+from opentelemetry.propagate import inject
 from pydantic_ai import Agent, NativeOutput, PromptedOutput
 from pydantic_ai.models import Model
-from pydantic_ai.models.openai import OpenAIResponsesModel
+from pydantic_ai.models.openai import OpenAIChatModel, OpenAIResponsesModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
 from dss.observability.trace_log import log_external_response
@@ -191,3 +193,37 @@ def build_azure_llm(
         retries=retries,
         output_mode=output_mode,
     )
+
+
+async def _carry_the_trace(request: httpx.Request) -> None:
+    """Put the current span's `traceparent` on an outgoing model request.
+
+    Without this the gateway starts a fresh trace per call: one turn becomes
+    seven unrelated traces, and the money the gateway knows about sits nowhere
+    near the turn it was spent on.
+
+    `HTTPXClientInstrumentor().instrument()` does not do this job — it never
+    reaches the client the OpenAI SDK builds. Hence the explicit hook.
+    """
+
+    inject(request.headers)
+
+
+def build_gateway_model(alias: str, *, base_url: str, api_key: str) -> Model:
+    """The bare Pydantic AI ``Model`` for a model reached through the gateway
+    (ADR-0013).
+
+    ``alias`` is a name the gateway resolves — ``dss-composer``, not a vendor's
+    model id. Which vendor and which model that means is the gateway's business,
+    and changing it there needs no restart here.
+
+    The client is built by hand for one reason: the event hook. Everything else
+    is what pydantic-ai would have inferred from ``OPENAI_BASE_URL``.
+    """
+
+    client = AsyncOpenAI(
+        base_url=base_url,
+        api_key=api_key,
+        http_client=httpx.AsyncClient(event_hooks={"request": [_carry_the_trace]}),
+    )
+    return OpenAIChatModel(alias, provider=OpenAIProvider(openai_client=client))

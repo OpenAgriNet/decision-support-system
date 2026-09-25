@@ -1,0 +1,40 @@
+# Between the gateway and Langfuse, to keep the gateway's plumbing out of a turn.
+#
+# LiteLLM emits a span for everything it does: a Postgres write per spend row, a
+# router pick, an auth check, its own proxy-request wrapper, and one per call to
+# its admin API. Most of it arrives with no parent, so it lands loose in
+# whichever trace is open — a turn went from 22 spans to 71, and the extras were
+# things like `postgres` sitting under the composer.
+#
+# The rule is by service, not by name: everything the gateway emits is dropped
+# except two spans per model call — `Received Proxy Server Request`, which hangs
+# off the `chat …` span that made the call, and `litellm_request` beneath it,
+# which carries the model, the tokens and the cost. The wrapper is kept only
+# because it is the link: drop it and `litellm_request` loses its parent and
+# floats at the root of the turn.
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  filter/plumbing:
+    error_mode: ignore
+    traces:
+      span:
+        - 'resource.attributes["service.name"] == "litellm-gateway" and name != "litellm_request" and name != "Received Proxy Server Request"'
+  batch: {}
+
+exporters:
+  otlphttp/langfuse:
+    endpoint: ${env:LANGFUSE_OTEL_ENDPOINT}
+    headers:
+      Authorization: ${env:LANGFUSE_OTEL_AUTH}
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [filter/plumbing, batch]
+      exporters: [otlphttp/langfuse]

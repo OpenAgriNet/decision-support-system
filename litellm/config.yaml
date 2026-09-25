@@ -1,0 +1,20 @@
+# The gateway's own config. Deliberately thin.
+#
+# The model map is NOT here — it lives in the gateway's database, so the four
+# step aliases (dss-intent, dss-moderation, dss-planner, dss-composer) can be
+# re-pointed from the admin UI with no restart of anything. A model declared in
+# this file is read-only in the UI, which is the wrong trade for the thing an
+# operator changes most often.
+#
+# The cost of that choice: the map is no longer in version control. Bootstrap a
+# fresh deployment with scripts/seed-gateway-models.sh, which is in the repo and
+# is the reviewable record of what the aliases mean.
+
+litellm_settings:
+  drop_params: true
+  # Without this the OTEL_* env vars are read but nothing is exported.
+  callbacks: ["otel"]
+
+general_settings:
+  # Alias -> deployment lives in the DB (see above).
+  store_model_in_db: true

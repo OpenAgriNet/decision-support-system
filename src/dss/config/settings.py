@@ -104,6 +104,20 @@ class Settings(BaseSettings):
     # Anchored to the module, not the working directory, because
     # `uvicorn --factory` starts from wherever the operator is.
     district_csv_path: Path = DEFAULT_DISTRICT_CSV
+    # --- the model gateway (ADR-0013) -------------------------------------
+    # Every model call goes through the gateway, and each component's
+    # `*_model` is a NAME the gateway resolves - `dss-composer`, not a vendor's
+    # model id. Which vendor and which model that means is the gateway's
+    # business, and changing it there needs no change here.
+    #
+    # Unset, the component strings fall back to what Pydantic AI makes of them
+    # (`azure:<deployment>`, `openai:gpt-4o-mini`), which is the pre-gateway
+    # path and goes when the gateway lands everywhere.
+    gateway_url: str | None = None
+    # The DSS's own credential for the gateway. Vendor keys are held by the
+    # gateway and never reach this process.
+    gateway_api_key: str = ""
+
     # Envelope routing ids the /select adapter stamps on each provider call.
     network_sender_id: str = "consumer.oan.dev"
     network_receiver_id: str = "oan"
