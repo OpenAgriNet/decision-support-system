@@ -90,3 +90,17 @@ def test_a_nested_span_carries_the_turns_session(spans) -> None:
         "planner run": "my-session-42",
         "dss.turn": "my-session-42",
     }
+
+
+def test_a_span_carries_the_session_under_the_sdks_key_too(spans) -> None:
+    """Langfuse's own SDK writes the session as `session.id`. On a v4
+    deployment the Sessions page did not list a session sent only as
+    `langfuse.session.id`, though the observation filter found it."""
+
+    bind_turn_ids("txn-1", message_id="msg-1", session_id="my-session-42")
+
+    with trace.get_tracer("t").start_as_current_span("planner run"):
+        pass
+
+    (span,) = spans.get_finished_spans()
+    assert span.attributes.get("session.id") == "my-session-42"
