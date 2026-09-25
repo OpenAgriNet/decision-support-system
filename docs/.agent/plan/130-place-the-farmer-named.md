@@ -74,8 +74,8 @@ One rule, replacing the three scattered ones:
 ```
 place named in this turn
   > place carried forward from this session
-  > client-asserted area
   > device geometry
+  > client-asserted area
   > nothing
 ```
 
@@ -87,7 +87,12 @@ where the farmer is, not something the farmer said this turn.
 
 Today it **beats** the farmer's own words (`service.py:74-78`). After this
 change it drops below them: what the farmer actually said wins, and the
-platform's assertion is only used when nobody named anywhere.
+platform's assertion is only used as a last resort.
+
+Device geometry, sent this turn with the farmer's location consent, is fresher
+than an asserted area the platform is only repeating from an earlier turn — so
+it outranks the asserted area, though it still loses to anything the farmer
+actually said this turn or earlier in the session.
 
 Carry-forward beating the device location is decision 3.
 
@@ -447,4 +452,14 @@ Required in the same change by CLAUDE.md:
   policy decision; today's all-or-nothing gate stays.
 - **Validating `place_name` is a literal copy of prompt text.** Only if the
   tier-5 never-invent test fails. Transliteration makes it genuinely hard.
+- **Per-ask clarification when some asks resolve and others don't.** Outcome
+  now lives per ask (`Ask.place` is `ResolvedPlace | AmbiguousPlace |
+  UnresolvedPlace | None`), not one outcome for the whole turn. Step 3's gate
+  only checks "did *any* ask resolve a place" and stops the whole turn with
+  today's single message if none did — same all-or-nothing shape as before,
+  just re-derived from per-ask results instead of one turn-level check. A
+  turn with one resolved ask and one ambiguous ask proceeds today rather than
+  surfacing the ambiguity, because the composer/clarification code has no way
+  yet to answer part of a turn and ask about the rest. Revisit once step 4's
+  clarification messages exist.
 - **`_HISTORY_WINDOW` past 6.** Session state is not the DSS's to own.

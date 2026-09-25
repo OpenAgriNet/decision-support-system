@@ -46,11 +46,18 @@ class SubjectCategory(StrEnum):
 
 
 class PlaceSource(StrEnum):
-    """How a resolved place was decided."""
+    """How a resolved place was decided.
 
-    DEVICE = "device"
+    ``ASSERTED_AREA`` and ``ASSERTED_GEOMETRY`` both come from the calling
+    platform's ``turn.location`` — told to us as fact, not said by the farmer
+    this turn. They stay distinct because the area still goes through the
+    same lookup a farmer-named place does; the geometry does not.
+    """
+
     NAMED = "named"
     CARRIED = "carried"
+    ASSERTED_AREA = "asserted_area"
+    ASSERTED_GEOMETRY = "asserted_geometry"
 
 
 class ResolvedPlace(BaseModel):

@@ -8,7 +8,13 @@ from typing import Protocol
 
 import anyio
 
-from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
+from dss.core.intent.models import (
+    Ask,
+    Intent,
+    InteractionType,
+    ResolvedPlace,
+    SubjectCategory,
+)
 from dss.core.provider_discovery.models import (
     AskDiscoveryFailed,
     AskUnservable,
@@ -24,7 +30,6 @@ from dss.core.provider_discovery.models import (
     ProviderQuery,
 )
 from dss.core.shared.models import UserTurn
-from dss.ports.area_lookup import AreaLookup
 from dss.ports.discovery import CapabilityDiscovery
 
 # The network's own horizontal axis is Knowledge/Service (network-specs'
@@ -53,44 +58,19 @@ def resolve_capability_type(
     return types, None
 
 
-def coverage_for(
-    turn: UserTurn,
-    intent: Intent,
-    *,
-    lookup: AreaLookup,
-    radius_m: int,
-) -> Coverage | None:
-    """Where to search, or ``None`` when the turn names nowhere resolvable.
+def coverage_for_ask(ask: Ask, *, radius_m: int) -> Coverage | None:
+    """Where this ask's discover call searches, or ``None`` when it has no
+    place to search around.
 
-    Coordinates the client sent are used as-is and the lookup is left alone —
-    they are already what the spatial filter needs, and a name could only
-    contradict them.
+    Resolution already happened — ``core.location.resolve_places`` ran before
+    discovery and filled ``ask.place`` (or didn't). This only reads it: an
+    ``AmbiguousPlace``/``UnresolvedPlace``/``None`` all mean no coordinate to
+    search from, so all three yield no coverage.
     """
 
-    if turn.location is not None and turn.location.geometry is not None:
-        lon, lat = turn.location.geometry.coordinates
-        return Coverage(lat=lat, lon=lon, radius_m=radius_m)
-
-    # The client's own `area` before the classifier's `place_name`: one is the
-    # caller asserting where the farmer is (typically a district it captured on
-    # an earlier turn and now repeats), the other is inferred from the query.
-    area = turn.location.area if turn.location is not None else None
-    name = area or intent.place_name
-    if name is None:
+    if not isinstance(ask.place, ResolvedPlace):
         return None
-
-    region = turn.location.region if turn.location is not None else None
-    matches = lookup.resolve(name, region)
-    # Exactly one, or nothing. A village name resolves to nothing because the
-    # index holds districts only.
-    # TODO(#19): three district names (Bilaspur, Hamirpur, Pratapgarh) resolve
-    # to two districts each, and with no region to narrow them this drops the
-    # spatial filter. Naming both states back to the farmer would resolve it;
-    # that needs a region code -> state name map the CSV does not carry yet.
-    if len(matches) != 1:
-        return None
-
-    lon, lat = matches[0].geometry.coordinates
+    lon, lat = ask.place.geometry.coordinates
     return Coverage(lat=lat, lon=lon, radius_m=radius_m)
 
 
@@ -200,7 +180,7 @@ def _diverged_categories(
 def _build_queries(
     intent: Intent,
     languages: tuple[str, ...],
-    coverage: Coverage | None,
+    radius_m: int,
     index: Mapping[tuple[str, str], tuple[str, ...]],
 ) -> tuple[
     dict[ProviderQuery, list[int]],
@@ -208,11 +188,16 @@ def _build_queries(
     set[int],
     list[DiscoveryEvent],
 ]:
+    """Coverage is computed per ask: each ask carries its own resolved place
+    (or none), so a turn asking about two places issues two spatially
+    different discover calls rather than one shared coordinate."""
+
     queries_to_asks: dict[ProviderQuery, list[int]] = {}
     ask_capabilities: dict[int, tuple[str, ...]] = {}
     unresolved_asks: set[int] = set()
     events: list[DiscoveryEvent] = []
     for ask_index, ask in enumerate(intent.asks):
+        coverage = coverage_for_ask(ask, radius_m=radius_m)
         query, event = _query_for_ask(ask, languages, coverage, index)
         if query is None:
             assert event is not None
@@ -357,11 +342,13 @@ async def discover_providers(
     *,
     discovery: CapabilityDiscovery,
     schema_pack_cache: CapabilityIndexSource,
-    area_lookup: AreaLookup,
     radius_m: int,
     now: datetime,
 ) -> DiscoveryResult:
     """Find who can serve each of ``intent``'s asks.
+
+    Coverage is per ask (``ask.place``, resolved before this runs) rather than
+    one shared coordinate for the turn — see ``_build_queries``.
 
     Everything past ``turn`` is keyword-only on purpose. ``build_discover_providers``
     binds ``discovery``/``schema_pack_cache``/``radius_m`` by keyword and leaves
@@ -371,11 +358,10 @@ async def discover_providers(
     """
 
     languages = (turn.target_lang,)
-    coverage = coverage_for(turn, intent, lookup=area_lookup, radius_m=radius_m)
     index = schema_pack_cache.current()
 
     queries_to_asks, ask_capabilities, unresolved_asks, events = _build_queries(
-        intent, languages, coverage, index
+        intent, languages, radius_m, index
     )
 
     answers, capabilities, failures, run_events = await _run_queries(

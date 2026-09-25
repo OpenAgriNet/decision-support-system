@@ -8,8 +8,8 @@ from pydantic import ValidationError
 from dss.core.intent.models import (
     AmbiguousPlace,
     Ask,
-    ClassifiedAsk,
     Classification,
+    ClassifiedAsk,
     Intent,
     InteractionType,
     PlaceSource,
@@ -45,6 +45,19 @@ def test_ask_carries_its_own_resolved_place() -> None:
     assert ask.place == place
 
 
+def test_place_source_has_four_values() -> None:
+    """Device geometry and a client-asserted area are different provenances
+    — one is a raw coordinate, the other is a name resolved through the same
+    lookup as a farmer-named place — so they need distinct source values."""
+
+    assert {s.value for s in PlaceSource} == {
+        "asserted_geometry",
+        "named",
+        "carried",
+        "asserted_area",
+    }
+
+
 def test_ask_place_defaults_to_none() -> None:
     """No place needed and none named — a valid ask, not an error
     ("how do I grow potatoes" has nothing to resolve)."""
@@ -62,8 +75,16 @@ def test_ask_carries_an_ambiguous_place() -> None:
     which one."""
 
     candidates = (
-        AreaMatch(name="Bilaspur", region="IN-HP", geometry=Geometry(coordinates=[76.75, 31.33])),
-        AreaMatch(name="Bilaspur", region="IN-CT", geometry=Geometry(coordinates=[82.15, 22.09])),
+        AreaMatch(
+            name="Bilaspur",
+            region="IN-HP",
+            geometry=Geometry(coordinates=[76.75, 31.33]),
+        ),
+        AreaMatch(
+            name="Bilaspur",
+            region="IN-CT",
+            geometry=Geometry(coordinates=[82.15, 22.09]),
+        ),
     )
     ask = Ask(
         subject_categories=SubjectCategory.WEATHER,
@@ -110,7 +131,7 @@ def test_resolved_place_is_frozen() -> None:
         name="Pune",
         within=("India", "Maharashtra"),
         geometry=Geometry(coordinates=[73.85, 18.52]),
-        source=PlaceSource.DEVICE,
+        source=PlaceSource.ASSERTED_GEOMETRY,
     )
     with pytest.raises(ValidationError):
         place.name = "Anand"
@@ -122,7 +143,7 @@ def test_resolved_place_unknown_field_raises() -> None:
             name="Pune",
             within=(),
             geometry=Geometry(coordinates=[73.85, 18.52]),
-            source=PlaceSource.DEVICE,
+            source=PlaceSource.ASSERTED_GEOMETRY,
             level="district",
         )
 

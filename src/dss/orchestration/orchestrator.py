@@ -53,7 +53,7 @@ from dss.core.planner.models import Evidence, Verdict
 from dss.core.planner.sufficiency import unserved_asks
 from dss.core.policy.models import Policy
 from dss.core.provider_discovery.models import DiscoveryResult
-from dss.core.provider_discovery.service import coverage_for
+from dss.core.provider_discovery.service import coverage_for_ask
 from dss.core.shared.models import (
     Cause,
     Claim,
@@ -180,6 +180,7 @@ class Orchestrator:
                 moderation_llm=self._moderation_llm,
                 policies=self._policies,
                 discover_providers=self._components.discover,
+                area_lookup=self._area_lookup,
                 scheme_catalog=self._scheme_catalog,
                 scheme_fuzzy_threshold=self._scheme_fuzzy_threshold,
             )
@@ -192,23 +193,24 @@ class Orchestrator:
 
             self._note("intent", ctx, _classified(result.intent))
 
-            # Nowhere to search: the turn carried no coordinates, no area, and the
-            # classifier found no place name the area index could resolve. Ask for a
-            # district rather than answer from nowhere.
+            # Nowhere to search: not one ask in the turn ended up with a
+            # resolved place — no name, no carried-forward place, no device
+            # geometry, no client-asserted area. Ask for a district rather
+            # than answer from nowhere.
             #
-            # Checked here rather than inside `run_turn`, which would have to skip
-            # the discover call to act on it. Discovery is read-only and already
-            # allowed to be wasted (it starts before moderation has cleared the
-            # turn), so letting it run and discarding it costs one cheap call and
-            # keeps the decision in one place.
-            if (
-                coverage_for(
-                    turn,
-                    result.intent,
-                    lookup=self._area_lookup,
-                    radius_m=self._discovery_radius_m,
-                )
-                is None
+            # All-or-nothing for now: a turn with one resolved ask and one
+            # ambiguous/unresolved ask still proceeds, because the composer
+            # has no way yet to answer part of a turn and ask about the rest.
+            # TODO(#130): revisit once per-ask clarification exists.
+            #
+            # Checked here rather than inside `run_turn`, which would have to
+            # skip the discover call to act on it. Discovery is read-only and
+            # already allowed to be wasted (it starts before moderation has
+            # cleared the turn), so letting it run and discarding it costs one
+            # cheap call and keeps the decision in one place.
+            if all(
+                coverage_for_ask(ask, radius_m=self._discovery_radius_m) is None
+                for ask in result.intent.asks
             ):
                 yield self._finish(
                     ctx,

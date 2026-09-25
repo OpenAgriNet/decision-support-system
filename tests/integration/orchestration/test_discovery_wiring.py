@@ -14,7 +14,14 @@ from opentelemetry.trace import StatusCode
 
 from dss.adapters.observability.tracing import open_span
 from dss.adapters.schema_packs.filesystem import FilesystemSchemaPackSource
-from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
+from dss.core.intent.models import (
+    Ask,
+    Classification,
+    ClassifiedAsk,
+    Intent,
+    InteractionType,
+    SubjectCategory,
+)
 from dss.core.provider_discovery.models import ProviderQuery
 from dss.core.provider_discovery.schema_pack_cache import SchemaPackCache
 from dss.core.shared.models import Geometry, Location, UserTurn
@@ -90,7 +97,6 @@ async def test_the_wired_discover_providers_bakes_in_radius() -> None:
         discover_providers = build_discover_providers(
             discovery=discovery,
             schema_pack_cache=schema_pack_cache,
-            area_lookup=FakeAreaLookup(),
             radius_m=25000,
         )
         ask = Ask(
@@ -143,7 +149,6 @@ async def test_the_fan_out_runs_inside_a_span(monkeypatch) -> None:
                 schema_pack_cache=cache,
             ),
             cache,
-            FakeAreaLookup(),
             50_000,
         )
         ask = Ask(
@@ -212,7 +217,6 @@ async def test_the_fan_out_span_counts_how_many_asks_went_unanswered(
                 schema_pack_cache=cache,
             ),
             cache,
-            FakeAreaLookup(),
             50_000,
         )
         ask = Ask(
@@ -249,7 +253,7 @@ async def test_the_fan_out_span_counts_how_many_asks_went_unanswered(
 
 
 class _FakeIntentLLM:
-    def __init__(self, result: Intent) -> None:
+    def __init__(self, result: Classification) -> None:
         self._result = result
 
     async def structured(self, *, system_prompt, user_query, schema):
@@ -285,7 +289,6 @@ async def test_run_turn_can_call_the_composed_discover_providers() -> None:
                 schema_pack_cache=cache,
             ),
             cache,
-            FakeAreaLookup(),
             50_000,
         )
 
@@ -305,9 +308,9 @@ async def test_run_turn_can_call_the_composed_discover_providers() -> None:
                 ),
             ),
             intent_llm=_FakeIntentLLM(
-                Intent(
+                Classification(
                     asks=(
-                        Ask(
+                        ClassifiedAsk(
                             subject_categories=SubjectCategory.MARKET,
                             interaction_type=InteractionType.OBSERVE,
                         ),
@@ -318,6 +321,7 @@ async def test_run_turn_can_call_the_composed_discover_providers() -> None:
             moderation_llm=_FakeModerationLLM(),
             policies=[],
             discover_providers=discover_providers,
+            area_lookup=FakeAreaLookup(),
         )
 
     assert result.discovery.answers[0][0].provider_id == "agmarknet"

@@ -87,10 +87,13 @@ Supporting choices, each following from the above:
   code never asks what a "state" is. This is how GeoNames, Who's On First and
   Photon model the same problem.
 - **One precedence rule:** a place named this turn, then a place carried
-  forward from this session, then the client's asserted `area`, then the
-  device geometry. The client's `area` moves below the farmer's own words: one
-  is a platform repeating what it captured earlier, the other is what the
-  farmer just said.
+  forward from this session, then the device's own geometry, then the
+  client's asserted `area`. Live device geometry — sent this turn, with the
+  farmer's location consent — is a fresher signal of where they are than an
+  `area` the platform is only repeating from an earlier turn, so it now
+  outranks that repeat. The client's `area` still moves below the farmer's own
+  words: one is a platform repeating what it captured earlier, the other is
+  what the farmer just said.
 - **Carry-forward is the classifier's job, not new state.** The last six turns
   are already rendered into the intent prompt. The prompt currently forbids
   taking a place from the conversation, which was written to stop the model

@@ -1,4 +1,4 @@
-"""Tier 5 — does a real model fill `Intent.place_name`?
+"""Tier 5 — does a real model fill `ClassifiedAsk.place_name`?
 
 Structural only: the assertion is that whatever the model extracted *resolves*
 against the shipped district index, never that it produced a particular string.
@@ -113,13 +113,17 @@ def _turn(query: str, *, source_lang: str = "en") -> UserTurn:
 async def test_a_named_place_resolves_to_one_district(
     query: str, source_lang: str
 ) -> None:
-    intent = await classify_intent(_turn(query, source_lang=source_lang), _live_llm())
+    classification = await classify_intent(
+        _turn(query, source_lang=source_lang), _live_llm()
+    )
 
-    assert intent.place_name is not None, "the model named no place"
+    assert classification.asks, "the model returned no asks"
+    place_name = classification.asks[0].place_name
+    assert place_name is not None, "the model named no place"
     # Exactly one: a name resolving to none would leave the turn without a
     # spatial filter, and one resolving to several is the ambiguous case.
-    matches = LOOKUP.resolve(intent.place_name)
-    assert len(matches) == 1, f"{intent.place_name!r} resolved to {len(matches)}"
+    matches = LOOKUP.resolve(place_name)
+    assert len(matches) == 1, f"{place_name!r} resolved to {len(matches)}"
 
 
 async def test_no_place_named_leaves_it_none() -> None:
@@ -128,6 +132,10 @@ async def test_no_place_named_leaves_it_none() -> None:
     "Pune" here would send every advisory turn to one arbitrary district.
     """
 
-    intent = await classify_intent(_turn("How do I treat potato blight?"), _live_llm())
+    classification = await classify_intent(
+        _turn("How do I treat potato blight?"), _live_llm()
+    )
 
-    assert intent.place_name is None, f"invented {intent.place_name!r}"
+    assert classification.asks, "the model returned no asks"
+    place_name = classification.asks[0].place_name
+    assert place_name is None, f"invented {place_name!r}"

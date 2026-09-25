@@ -5,7 +5,12 @@ Plain Python in/out; the ``LLMProvider`` port is faked. No framework, no network
 
 from __future__ import annotations
 
-from dss.core.intent.models import ClassifiedAsk, Classification, InteractionType, SubjectCategory
+from dss.core.intent.models import (
+    Classification,
+    ClassifiedAsk,
+    InteractionType,
+    SubjectCategory,
+)
 from dss.core.intent.service import build_intent_prompt, classify_intent
 from dss.core.shared.models import ConversationMessage, UserTurn
 

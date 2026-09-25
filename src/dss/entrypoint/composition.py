@@ -61,7 +61,6 @@ from dss.orchestration.discovery import (
 )
 from dss.orchestration.orchestrator import Components, Orchestrator
 from dss.orchestration.plan import build_plan
-from dss.ports.area_lookup import AreaLookup
 from dss.ports.invocation import CapabilityInvocation
 from dss.ports.turn import TurnRunner
 
@@ -126,7 +125,7 @@ def build_runner_with_lifecycle(
     scheme_catalog = load_scheme_catalog(settings.schemes_config_path)
 
     discover, invocation, schemas, schema_context_index, client = _network(
-        settings, area_lookup=area_lookup, fetch=fetch
+        settings, fetch=fetch
     )
 
     components = Components(
@@ -191,7 +190,6 @@ async def _discovers_nothing(
 def _network(
     settings: Settings,
     *,
-    area_lookup: AreaLookup,
     fetch: FetchPacks = fetch_packs,
 ) -> tuple[
     DiscoverProviders,
@@ -237,7 +235,6 @@ def _network(
     discover = build_discover_providers(
         discovery=discovery,
         schema_pack_cache=cache,
-        area_lookup=area_lookup,
         radius_m=settings.discovery_radius_m,
     )
     invocation = HttpCapabilityInvocation(

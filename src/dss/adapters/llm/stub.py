@@ -20,7 +20,12 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
+from dss.core.intent.models import (
+    Classification,
+    ClassifiedAsk,
+    InteractionType,
+    SubjectCategory,
+)
 from dss.core.moderation.models import LlmModerationVerdict
 
 # The answers a stub deployment hands back. They live here, not in the
@@ -32,9 +37,9 @@ DEFAULT_ANSWERS: dict[type[BaseModel], object] = {
     # turns every turn into `moderation_unavailable` — which is exactly what
     # happened before this entry existed.
     LlmModerationVerdict: LlmModerationVerdict(violated_policy_id=None),
-    Intent: Intent(
+    Classification: Classification(
         asks=(
-            Ask(
+            ClassifiedAsk(
                 agriculture_subjects="wheat",
                 subject_categories=SubjectCategory.MARKET,
                 interaction_type=InteractionType.OBSERVE,

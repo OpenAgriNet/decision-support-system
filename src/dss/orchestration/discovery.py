@@ -17,7 +17,6 @@ from dss.core.provider_discovery.service import (
     discover_providers,
 )
 from dss.core.shared.models import UserTurn
-from dss.ports.area_lookup import AreaLookup
 from dss.ports.discovery import CapabilityDiscovery
 
 
@@ -42,14 +41,13 @@ class DiscoverProviders(Protocol):
 def build_discover_providers(
     discovery: CapabilityDiscovery,
     schema_pack_cache: CapabilityIndexSource,
-    area_lookup: AreaLookup,
     radius_m: int,
 ) -> DiscoverProviders:
-    """Bakes in the built adapter, cache, area index, and configured radius, so
-    callers only ever supply what changes per turn: intent, turn, and now.
+    """Bakes in the built adapter, cache, and configured radius, so callers
+    only ever supply what changes per turn: intent, turn, and now.
 
-    The area index is bound here, not per turn: it is a few hundred rows read
-    once at startup and shared by every turn.
+    No area index here — place resolution now happens once, before discovery,
+    in ``core.location.resolve_places``. Discovery only reads ``ask.place``.
 
     The fan-out reports two counts, onto the span already open around it —
     `trace_component("discovery")` in `turn.py` brackets exactly this call, so
@@ -68,7 +66,6 @@ def build_discover_providers(
         discover_providers,
         discovery=discovery,
         schema_pack_cache=schema_pack_cache,
-        area_lookup=area_lookup,
         radius_m=radius_m,
     )
 

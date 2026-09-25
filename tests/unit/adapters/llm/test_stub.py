@@ -6,7 +6,7 @@ import pytest
 
 from dss.adapters.llm.stub import StubLLM
 from dss.core.channel.models import ComposedAnswer
-from dss.core.intent.models import Intent
+from dss.core.intent.models import Classification
 
 
 async def test_an_unwired_schema_says_so_plainly():
@@ -19,9 +19,9 @@ async def test_an_unwired_schema_says_so_plainly():
 async def test_every_ask_is_recorded_for_inspection():
     llm = StubLLM()
 
-    await llm.structured(system_prompt="p", user_query="q", schema=Intent)
+    await llm.structured(system_prompt="p", user_query="q", schema=Classification)
 
-    assert llm.asked_for(Intent) == 1
+    assert llm.asked_for(Classification) == 1
     assert llm.asked_for(ComposedAnswer) == 0
     assert llm.calls[0].system_prompt == "p"
 

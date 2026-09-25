@@ -11,7 +11,12 @@ the four ways out map from the verdict and the evidence.
 from __future__ import annotations
 
 from dss.adapters.sinks.memory import MemoryTurnSink
-from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
+from dss.core.intent.models import (
+    Classification,
+    ClassifiedAsk,
+    InteractionType,
+    SubjectCategory,
+)
 from dss.core.moderation.models import Outcome
 from dss.core.planner.models import Evidence, Failure, Result, Source, SourceKind
 from dss.core.policy.models import (
@@ -92,10 +97,10 @@ def _ctx() -> TurnContext:
     return TurnContext(trace_id="t1", message_id="m1", session_id="s1")
 
 
-def _one_ask(n: int = 1) -> Intent:
-    return Intent(
+def _one_ask(n: int = 1) -> Classification:
+    return Classification(
         asks=tuple(
-            Ask(
+            ClassifiedAsk(
                 agriculture_subjects="wheat",
                 subject_categories=SubjectCategory.MARKET,
                 interaction_type=InteractionType.OBSERVE,
@@ -131,7 +136,7 @@ _ANSWERED_EVIDENCE = _evidence(
 
 
 class _FakeIntentLLM:
-    def __init__(self, result: Intent) -> None:
+    def __init__(self, result: Classification) -> None:
         self._result = result
 
     async def structured(self, *, system_prompt, user_query, schema):
@@ -204,7 +209,7 @@ class _Telemetry:
 
 def _build(
     *,
-    intent: Intent,
+    intent: Classification,
     discovery: DiscoveryResult,
     plan: Plan,
     compose: _FakeCompose,

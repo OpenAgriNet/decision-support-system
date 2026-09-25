@@ -54,6 +54,7 @@ the core fan-out.
 ```
 dss.turn                        status, model names, first_delta_ms, composed_ms
 ├── dss.stage.intent
+├── dss.stage.location
 ├── dss.stage.enrichment
 ├── dss.stage.moderation
 ├── dss.stage.discovery         asks_queried, asks_failed

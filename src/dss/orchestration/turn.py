@@ -4,14 +4,18 @@ objects and returns plain objects.
 
 Order is code, not config. What this function does *is* the sequence.
 
-Four components so far: intent, scheme enrichment, moderation, provider
-discovery. Enrichment sits between intent and discovery — it needs the
-classified asks, and discovery routes on what it leaves behind. Intent and
-moderation are independent — moderation judges harm on the raw query, intent
-classifies capability need, and neither consumes the other's output — so they
-run concurrently (ADR-0003) and the turn's latency is the slower of the two
-rather than their sum. Discovery needs ``Intent.asks``, so it chains off
-intent.
+Five components so far: intent, place resolution, scheme enrichment,
+moderation, provider discovery. ``classify_intent`` returns a
+``Classification`` — words only, no geometry — and place resolution
+(``core.location.resolve_places``) is what turns that into the domain
+``Intent``, filling each ask's ``place``. Enrichment sits after that and
+before discovery — it needs the classified asks, and discovery routes on what
+it leaves behind. Intent and moderation are independent — moderation judges
+harm on the raw query, intent classifies capability need, and neither
+consumes the other's output — so they run concurrently (ADR-0003) and the
+turn's latency is the slower of the two rather than their sum. Discovery
+needs ``Intent.asks``, so it chains off intent, through location resolution
+and enrichment.
 
 Still to come, in order: the planner agent (returns ``Evidence``), then the
 composer (turns ``Evidence`` into text). So ``TurnResult`` is a staging shape
@@ -35,6 +39,7 @@ from pydantic import BaseModel, ConfigDict
 from dss.core.enrichment.service import resolve_scheme_subjects
 from dss.core.intent.models import Intent
 from dss.core.intent.service import classify_intent
+from dss.core.location.service import resolve_places
 from dss.core.moderation.models import (
     ModerationContext,
     ModerationDecision,
@@ -47,6 +52,7 @@ from dss.core.shared.models import UserTurn
 from dss.observability.stages import Stage
 from dss.observability.trace_log import log_event, trace_component
 from dss.orchestration.discovery import DiscoverProviders
+from dss.ports.area_lookup import AreaLookup
 from dss.ports.llm import LLMProvider
 from dss.ports.scheme_catalog import SchemeCatalog
 
@@ -131,6 +137,7 @@ async def run_turn(
     moderation_llm: LLMProvider,
     policies: Sequence[Policy],
     discover_providers: DiscoverProviders,
+    area_lookup: AreaLookup,
     scheme_catalog: SchemeCatalog | None = None,
     scheme_fuzzy_threshold: float | None = None,
     now: datetime | None = None,
@@ -158,7 +165,9 @@ async def run_turn(
     async def classify_then_discover() -> None:
         nonlocal intent, discovery
         with trace_component(Stage.INTENT, turn.transaction_id):
-            intent = await classify_intent(turn, intent_llm)
+            classification = await classify_intent(turn, intent_llm)
+        with trace_component(Stage.LOCATION, turn.transaction_id):
+            intent = resolve_places(classification, turn, lookup=area_lookup)
         with trace_component(Stage.ENRICHMENT, turn.transaction_id):
             intent = _enrich(intent, turn, scheme_catalog, scheme_fuzzy_threshold)
         with trace_component(Stage.DISCOVERY, turn.transaction_id):

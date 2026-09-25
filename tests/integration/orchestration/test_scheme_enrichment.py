@@ -10,11 +10,17 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 
-from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
+from dss.core.intent.models import (
+    Classification,
+    ClassifiedAsk,
+    Intent,
+    InteractionType,
+    SubjectCategory,
+)
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.shared.models import UserTurn
 from dss.orchestration.turn import run_turn
-from tests.support.fakes import FakeSchemeCatalog
+from tests.support.fakes import FakeAreaLookup, FakeSchemeCatalog
 
 MAKHANA = "Central Sector Scheme for Development of Makhana"
 CATALOG = FakeSchemeCatalog({"makhana scheme": MAKHANA})
@@ -33,10 +39,10 @@ def _turn(query: str) -> UserTurn:
     )
 
 
-def _intent(subject: str, category: SubjectCategory) -> Intent:
-    return Intent(
+def _intent(subject: str, category: SubjectCategory) -> Classification:
+    return Classification(
         asks=(
-            Ask(
+            ClassifiedAsk(
                 agriculture_subjects=subject,
                 subject_categories=category,
                 interaction_type=InteractionType.ADVISE,
@@ -52,7 +58,7 @@ class _FakeLLM:
 
     async def structured(self, *, system_prompt, user_query, schema):
         # One fake for both components; each asks for a different schema.
-        if schema is Intent:
+        if schema is Classification:
             return self._result
         return schema()
 
@@ -68,7 +74,7 @@ class _RecordingDiscovery:
         return DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
 
 
-async def _run(intent: Intent, query: str, *, catalog=CATALOG, **kwargs):
+async def _run(intent: Classification, query: str, *, catalog=CATALOG, **kwargs):
     discovery = _RecordingDiscovery()
     result = await run_turn(
         _turn(query),
@@ -76,6 +82,7 @@ async def _run(intent: Intent, query: str, *, catalog=CATALOG, **kwargs):
         moderation_llm=_FakeLLM(intent),
         policies=[],
         discover_providers=discovery,
+        area_lookup=FakeAreaLookup(),
         scheme_catalog=catalog,
         now=datetime.now(UTC),
         **kwargs,
