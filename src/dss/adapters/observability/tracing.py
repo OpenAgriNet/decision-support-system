@@ -28,7 +28,9 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
-from dss.observability.trace_log import set_stage_span_opener
+from opentelemetry.sdk.trace import SpanProcessor
+
+from dss.observability.trace_log import current_session_id, set_stage_span_opener
 
 if TYPE_CHECKING:
     from opentelemetry.trace import Span
@@ -66,6 +68,28 @@ def instrumentation_settings(*, tracer_provider=None):
     return InstrumentationSettings(
         include_content=include, tracer_provider=tracer_provider
     )
+
+
+class TurnIdSpanProcessor(SpanProcessor):
+    """Puts the turn's session id on every span.
+
+    Langfuse says an attribute it filters on "needs to be present on each span
+    in the trace, not only on the root span". We set it on `dss.turn` only, so
+    the agent runs inside a turn showed a different session.
+
+    The id comes from the context variable `bind_turn_ids` sets. Anyio copies
+    the context into child tasks, so every branch of a turn sees the same one.
+    Outside a turn there is none, and nothing is stamped.
+
+    Langfuse suggests OpenTelemetry Baggage instead. It needs a new dependency,
+    and what it adds — passing the id between processes — a single-process turn
+    does not need.
+    """
+
+    def on_start(self, span, parent_context=None) -> None:  # noqa: ANN001
+        session_id = current_session_id()
+        if session_id is not None:
+            span.set_attribute("langfuse.session.id", session_id)
 
 
 def configure_tracing(
@@ -150,6 +174,21 @@ def configure_tracing(
     # was not already there.
     logfire.configure(send_to_logfire=False, console=False, scrubbing=False)
     Agent.instrument_all(settings)
+
+    # After `logfire.configure`, which creates the provider. Every span goes
+    # through it, including the ones Pydantic AI opens for an agent run — the
+    # ones that were missing the session id.
+    #
+    # Only an SDK provider takes processors. Warn rather than raise: no session
+    # id on a span is worse telemetry, not a reason to refuse to serve.
+    from opentelemetry import trace
+    from opentelemetry.sdk.trace import TracerProvider as SdkTracerProvider
+
+    provider = trace.get_tracer_provider()
+    if isinstance(provider, SdkTracerProvider):
+        provider.add_span_processor(TurnIdSpanProcessor())
+    else:
+        logger.warning("no SDK tracer provider, so spans will not carry the session id")
 
     # Here rather than in `create_app` so stage spans cannot be on while the
     # exporter is off, or the reverse.
