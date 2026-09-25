@@ -100,6 +100,36 @@ class TurnIdSpanProcessor(SpanProcessor):
             span.set_attribute("langfuse.session.id", session_id)
 
 
+def _metric_views():
+    """Logfire's default metric views, minus the one that makes every
+    histogram exponential.
+
+    A view beats an instrument's bucket hint, so with it our seconds and USD
+    edges applied only in tests, and the dashboard's explicit-bucket queries
+    found nothing. The other two defaults are restated here rather than
+    filtered out of logfire's list, which would mean reading its private
+    fields: drop the SDK's own metrics, and bound the active-requests labels.
+    """
+
+    from opentelemetry.sdk.metrics import UpDownCounter
+    from opentelemetry.sdk.metrics.view import DropAggregation, View
+
+    return [
+        View(instrument_name="otel.sdk.*", aggregation=DropAggregation()),
+        View(
+            instrument_type=UpDownCounter,
+            instrument_name="http.server.active_requests",
+            attribute_keys={
+                "url.scheme",
+                "http.scheme",
+                "http.flavor",
+                "http.method",
+                "http.request.method",
+            },
+        ),
+    ]
+
+
 def configure_telemetry(
     *,
     intent_model: str | None = None,
@@ -207,6 +237,7 @@ def configure_telemetry(
         console=False,
         scrubbing=False,
         add_baggage_to_attributes=False,
+        metrics=logfire.MetricsOptions(views=_metric_views()),
         additional_span_processors=[TurnIdSpanProcessor()],
     )
     Agent.instrument_all(settings)

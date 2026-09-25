@@ -22,7 +22,8 @@
   discards metrics (#139)
 - Duration and cost histograms carry bucket edges in seconds and USD. The SDK
   default is sized for milliseconds, which put nearly every value in one
-  bucket (#139)
+  bucket. Logfire's exponential-histogram view is dropped, since a view beats
+  a bucket hint (#139)
 - HTTP requests publish metrics only, no spans. The instrumentor's spans became
   the trace root, added a span per streamed frame, traced the healthcheck, and
   carried the query string and exception messages (#139)
