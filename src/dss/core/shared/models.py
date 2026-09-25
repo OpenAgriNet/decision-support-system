@@ -8,7 +8,7 @@ signature.
 
 The conversation ``history``, ``location``, and the actor's ``reference`` token
 are typed here because the Experience-API envelope carries them and the
-orchestration boundary (``orchestration/envelope.py``) normalizes an inbound
+HTTP adapter (``adapters/http/v1/mapping.py``) normalizes an inbound
 request into this shape.
 """
 
