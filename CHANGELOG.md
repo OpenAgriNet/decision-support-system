@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Fixed
+- `scripts/run-local.sh` exports what `.env.local` sets, so a line written
+  without `export` still reaches the DSS. It used to make a shell variable
+  only: the script reported it set and the app then died on a raw
+  `KeyError: 'AZURE_OPENAI_ENDPOINT'` (#138)
+- `scripts/run-local.sh` now picks a container runtime that answers, rather
+  than the first one on the PATH — an installed but unstarted podman no longer
+  beats a working Docker or Colima, and `CONTAINER_RUNTIME` forces either. The
+  `oan-edge` check uses `network inspect`, which both runtimes have; `network
+  exists` is podman-only, so the Docker path always reported the network
+  missing (#138)
+
 ### Added
 - `scripts/run-local.sh`: one command for a local stack — Langfuse, the mock
   network and the DSS. Prerequisites are checked before anything starts and

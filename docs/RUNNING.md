@@ -34,7 +34,8 @@ minutes in:
 
 It needs `.env.local`, gitignored, holding what `.env` cannot carry — these
 are read from `os.environ` by the SDKs themselves, and `pydantic-settings`
-reads `.env` into the `Settings` object, never into the environment:
+reads `.env` into the `Settings` object, never into the environment. The
+`export` keyword is optional; the script exports whatever the file sets:
 
 ```bash
 export LANGFUSE_PUBLIC_KEY="pk-lf-..."
@@ -59,6 +60,11 @@ second. The Langfuse keys come from Settings → API Keys at
 Ctrl-C stops the DSS and leaves Langfuse and the mock up — they are slow to
 start and a local session restarts the DSS often.
 `./scripts/run-local.sh --down` stops everything.
+
+**It picks a container runtime that answers**, not merely one that is
+installed. Podman first, then Docker — so a Homebrew `podman` sitting there
+with no machine started no longer takes precedence over a working Docker or
+Colima. `CONTAINER_RUNTIME=docker` or `=podman` forces one.
 
 The sections below are what the script automates. Read them when it refuses,
 or to run a piece by hand.
