@@ -22,7 +22,7 @@ from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from dss.adapters.observability.tracing import open_span
-from dss.core.shared.models import ClaimDelta
+from dss.core.shared.models import ClaimDelta, TurnFinished
 from dss.observability.trace_log import set_stage_span_opener
 
 from .test_orchestrator import (
@@ -30,10 +30,12 @@ from .test_orchestrator import (
     DELETE_COMMAND,
     _build,
     _collect,
+    _ctx,
     _FakeCompose,
     _FakePlan,
     _one_ask,
     _served_discovery,
+    _turn,
 )
 
 
@@ -168,3 +170,22 @@ async def test_the_model_names_are_on_every_turn(spans, monkeypatch) -> None:
     attributes = _turn_span(spans).attributes
     assert attributes["intent_model"] == "openai:gpt-4o-mini"
     assert attributes["composer_model"] == "openai:gpt-4o"
+
+
+async def test_a_turn_closed_after_it_finished_keeps_its_status(spans) -> None:
+    """Closing the turn after its terminal event is a hang-up, not a crash."""
+
+    orch, _ = _build(
+        intent=_one_ask(),
+        discovery=_served_discovery(),
+        plan=_FakePlan(_ANSWERED_EVIDENCE),
+        compose=_FakeCompose("Wheat is 2,275 Rs [1]."),
+    )
+
+    events = orch.run(_turn(), _ctx())
+    async for event in events:
+        if isinstance(event, TurnFinished):
+            break
+    await events.aclose()
+
+    assert _turn_span(spans).attributes["status"] == "answered"

@@ -284,15 +284,17 @@ class Orchestrator:
         worth having.
 
         Every one of the four ways out passes through here, which is why the
-        span's `status` is set here rather than at each of them.
+        span's `status` is set here rather than at each of them. It is set
+        after the turn is recorded, so a turn whose record failed stays
+        ``error``.
         """
 
         outcome, answer = resolved
-        recorder.status(outcome.status.value)
         finished = TurnFinished(
             outcome=outcome, content=answer.content, sources=answer.sources
         )
         self._turns.closed(ctx, finished)
+        recorder.status(outcome.status.value)
         return finished
 
     def _note(self, stage: str, ctx: TurnContext, outcome: str) -> None:

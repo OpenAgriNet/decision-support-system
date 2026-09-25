@@ -318,10 +318,9 @@ class TurnRecorder:
     def __init__(self, span, started: float) -> None:  # noqa: ANN001
         self._span = span
         self._started = started
-        # `error` until the turn says otherwise. A turn that crashes or is
-        # abandoned never names its outcome, and leaving it unset would drop
-        # exactly those turns out of any breakdown by status.
-        self._status = "error"
+        # Unset until the turn names its outcome. A turn that crashes or is
+        # abandoned never does, and is stamped `error` on the way out.
+        self._status: str | None = None
 
     def _elapsed_ms(self) -> float:
         return (time.monotonic() - self._started) * 1000
@@ -366,8 +365,14 @@ class TurnRecorder:
         `_finish`. `_finish` is only reached on the four normal exits, and a
         turn that crashed or was abandoned has to be counted too — that is the
         turn a graph most needs to show.
+
+        A turn with no named outcome is stamped ``error`` here. One that named
+        its outcome keeps it, even if the caller then closes it rather than
+        reading to the end — that is a hang-up after the answer, not a crash.
         """
 
+        if self._status is None:
+            self.status("error")
         usage = current_turn_usage()
         record_turn(
             status=self._status,
@@ -405,7 +410,8 @@ def turn_span(
     when the farmer first heard anything — are known only while it runs.
 
     A turn that crashes or is abandoned never reaches the code that names its
-    outcome, so `status` is stamped ``error`` here instead. Leaving it off
+    outcome, so `status` is stamped ``error`` on exit instead. A turn that did
+    name it keeps it, even if closed early after its terminal event. Leaving it off
     would drop exactly those turns out of any breakdown by status — the one
     place they most need to appear.
     """
@@ -423,8 +429,5 @@ def turn_span(
         recorder = TurnRecorder(span, time.monotonic())
         try:
             yield recorder
-        except BaseException:
-            recorder.status("error")
-            raise
         finally:
             recorder._publish()
