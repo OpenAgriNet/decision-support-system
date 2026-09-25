@@ -84,12 +84,17 @@ class TurnIdSpanProcessor(SpanProcessor):
     Langfuse suggests OpenTelemetry Baggage instead. It needs a new dependency,
     and what it adds — passing the id between processes — a single-process turn
     does not need.
+
+    Written under two keys. `session.id` is the one Langfuse's own SDK writes;
+    on a v4 deployment the Sessions page did not list a session sent only as
+    `langfuse.session.id`, though the observation filter found it.
     """
 
     def on_start(self, span, parent_context=None) -> None:  # noqa: ANN001
         session_id = current_session_id()
         if session_id is not None:
             span.set_attribute("langfuse.session.id", session_id)
+            span.set_attribute("session.id", session_id)
 
 
 def configure_tracing(
