@@ -14,20 +14,25 @@ services:
     # variables, and the network configured with no schema packs names the
     # directory and the fetch command. Those beat a parse error.
     environment:
-      # All four agents (ADR-0004). The part after `azure:` is the deployment
-      # id; any other prefix is handed to Pydantic AI as-is.
-      DSS_INTENT_MODEL: ${DSS_INTENT_MODEL:-azure:gpt-5.6-luna}
-      DSS_MODERATION_MODEL: ${DSS_MODERATION_MODEL:-azure:gpt-5.6-luna}
-      DSS_PLANNER_MODEL: ${DSS_PLANNER_MODEL:-azure:gpt-5.6-luna}
-      DSS_COMPOSER_MODEL: ${DSS_COMPOSER_MODEL:-azure:gpt-5.6-luna}
+      # All four agents (ADR-0004), as names the model gateway resolves
+      # (ADR-0013). Fixed, not overridable: which vendor and which model each
+      # one means is the gateway's business, so changing a model is a change
+      # there and never here. These four names are the contract between the
+      # two, and the gateway's model list uses the same ones.
+      DSS_INTENT_MODEL: dss-intent
+      DSS_MODERATION_MODEL: dss-moderation
+      DSS_PLANNER_MODEL: dss-planner
+      DSS_COMPOSER_MODEL: dss-composer
       # Read from the environment by the model adapter, not through Settings.
       AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:-}
       AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-}
-      # Read by the OpenAI SDK itself, under its own names. Unset, it goes to
-      # api.openai.com; pointed at an OpenAI-compatible proxy (LiteLLM, vLLM)
-      # a non-`azure:` model string reaches that instead, with no code change.
-      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # The gateway, by service name on the network below - not the published
+      # port, which means nothing from inside a container. Fixed for the same
+      # reason as the names above.
+      DSS_GATEWAY_URL: http://litellm:4000/v1
+      # The DSS's own credential for the gateway, and the only key it holds.
+      # Vendor keys live in the gateway and never reach this process.
+      DSS_GATEWAY_API_KEY: ${DSS_GATEWAY_API_KEY:-}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       # Without these three the container exports nothing useful: no auth means
       # 401 on every batch, and no content means spans that say what ran but not
@@ -81,3 +86,17 @@ services:
       # the host instead.
       - "127.0.0.1:${OTEL_HOST_PORT:-4318}:4318"
     restart: unless-stopped
+
+# `oan-edge` is the network Langfuse and the model gateway are already on, so
+# naming it here is what lets the DSS reach `litellm` and `langfuse-web` by
+# service name. Without it compose puts this project on a network of its own and
+# every model call fails to resolve a host.
+#
+# Locally, where it does not exist yet:
+#
+#     docker network create oan-edge
+#
+networks:
+  default:
+    name: oan-edge
+    external: true
