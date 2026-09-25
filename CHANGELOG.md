@@ -20,6 +20,11 @@
   `opentelemetry-instrumentation-fastapi`. Off unless
   `OTEL_METRICS_EXPORTER=otlp`, since the default endpoint is Langfuse, which
   discards metrics (#139)
+- Duration and cost histograms carry bucket edges in seconds and USD. The SDK
+  default is sized for milliseconds, which put nearly every value in one
+  bucket (#139)
+- A turn closed after its terminal event keeps its status. An SSE client
+  hanging up after the answer no longer counts it as an error (#139)
 - A model run that fails still records its tokens and cost, so a failing turn
   does not look cheaper than it was (#139)
 - `DSS_MODEL_PROFILE` — one name for the whole model configuration, labelling

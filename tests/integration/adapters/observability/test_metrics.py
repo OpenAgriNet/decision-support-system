@@ -239,3 +239,26 @@ def test_a_run_with_no_model_name_is_recorded_as_unknown(reader) -> None:
     record_agent_run(stage=Stage.INTENT, usage=_FakeUsage(1, 1, None), model=None)
 
     assert model_for(Stage.INTENT) == "unknown"
+
+
+def test_durations_are_bucketed_in_seconds(reader) -> None:
+    """The SDK's default edges (0, 5, 10 … 10000) are sized for milliseconds.
+    In seconds, a 0.4s turn and a 4s turn would share a bucket and no
+    percentile could tell them apart."""
+
+    record_turn(status="answered", elapsed_ms=400.0, cost=0.0)
+    record_turn(status="answered", elapsed_ms=4000.0, cost=0.0)
+
+    (point,) = points(reader, "dss.turn.duration")
+    filled = [count for count in point.bucket_counts if count]
+    assert filled == [1, 1]
+    assert point.explicit_bounds[-1] >= 60
+
+
+def test_cost_is_bucketed_in_fractions_of_a_dollar(reader) -> None:
+    record_turn(status="answered", elapsed_ms=1.0, cost=0.0005)
+    record_turn(status="answered", elapsed_ms=1.0, cost=0.02)
+
+    (point,) = points(reader, "dss.turn.cost")
+    filled = [count for count in point.bucket_counts if count]
+    assert filled == [1, 1]

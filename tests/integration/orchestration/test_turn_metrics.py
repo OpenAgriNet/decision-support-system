@@ -15,16 +15,19 @@ from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 
 from dss.adapters.observability.metrics import configure_metrics, reset_metrics
+from dss.core.shared.models import TurnFinished
 
 from .test_orchestrator import (
     _ANSWERED_EVIDENCE,
     DELETE_COMMAND,
     _build,
     _collect,
+    _ctx,
     _FakeCompose,
     _FakePlan,
     _one_ask,
     _served_discovery,
+    _turn,
 )
 
 
@@ -203,3 +206,47 @@ async def test_a_stage_with_no_model_carries_no_model_label(reader) -> None:
 
     for point in points(reader, "dss.stage.duration"):
         assert "model" not in point.attributes
+
+
+async def test_a_turn_closed_after_it_finished_keeps_its_status(reader) -> None:
+    """An SSE client can hang up right after the terminal frame. The turn is
+    then closed rather than drained — but it was answered, and must count so."""
+
+    orch, _ = _build(
+        intent=_one_ask(),
+        discovery=_served_discovery(),
+        plan=_FakePlan(_ANSWERED_EVIDENCE),
+        compose=_FakeCompose("Wheat is 2,275 Rs [1]."),
+    )
+
+    events = orch.run(_turn(), _ctx())
+    async for event in events:
+        if isinstance(event, TurnFinished):
+            break
+    await events.aclose()
+
+    (count,) = points(reader, "dss.turn.count")
+    assert dict(count.attributes) == {"status": "answered", "model_profile": "tier3"}
+
+
+async def test_a_turn_that_fails_to_record_is_counted_as_an_error(reader) -> None:
+    """The status is named only once the turn is recorded. A turn whose record
+    failed did not succeed, whatever the answer said."""
+
+    orch, turns = _build(
+        intent=_one_ask(),
+        discovery=_served_discovery(),
+        plan=_FakePlan(_ANSWERED_EVIDENCE),
+        compose=_FakeCompose("Wheat is 2,275 Rs [1]."),
+    )
+
+    def _broken(ctx, finished):
+        raise RuntimeError("turn store down")
+
+    turns.closed = _broken
+
+    with pytest.raises(RuntimeError, match="turn store down"):
+        await _collect(orch)
+
+    (count,) = points(reader, "dss.turn.count")
+    assert dict(count.attributes) == {"status": "error", "model_profile": "tier3"}

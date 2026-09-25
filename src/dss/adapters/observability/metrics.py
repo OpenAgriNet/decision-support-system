@@ -65,6 +65,19 @@ LABEL_KEYS: dict[str, frozenset[str]] = {
 # sees until they read the axis.
 _SECONDS = "s"
 
+# Bucket edges, passed as a hint. The SDK default (0, 5, 10 … 10000) is sized
+# for milliseconds: in seconds or dollars nearly every value lands in the first
+# bucket and no percentile can be read. A Collector view can still override.
+# Seconds: fast stages are tenths of a second; a slow planner turn can pass a
+# minute.
+_SECONDS_BUCKETS = (
+    0.05, 0.1, 0.25, 0.5, 0.75, 1, 1.5, 2, 3, 5, 7.5, 10, 15, 20, 30, 45, 60, 90, 120,
+)  # fmt: skip
+# USD: a turn costs fractions of a cent to a few cents.
+_COST_BUCKETS = (
+    0.0001, 0.00025, 0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1,
+)  # fmt: skip
+
 
 class _Instruments:
     """The seven instruments, built once per configured meter."""
@@ -73,11 +86,13 @@ class _Instruments:
         self.turn_duration: Histogram = meter.create_histogram(
             TURN_DURATION,
             unit=_SECONDS,
+            explicit_bucket_boundaries_advisory=_SECONDS_BUCKETS,
             description="Wall-clock time of a whole turn, however it ended.",
         )
         self.turn_first_delta: Histogram = meter.create_histogram(
             TURN_FIRST_DELTA,
             unit=_SECONDS,
+            explicit_bucket_boundaries_advisory=_SECONDS_BUCKETS,
             description=(
                 "Time to the first word of the answer. This is the wait the "
                 "farmer actually feels."
@@ -86,6 +101,7 @@ class _Instruments:
         self.turn_composed: Histogram = meter.create_histogram(
             TURN_COMPOSED,
             unit=_SECONDS,
+            explicit_bucket_boundaries_advisory=_SECONDS_BUCKETS,
             description=(
                 "Time to the end of composition: the answer is fully written "
                 "and its sources are attached. Lands after the last word."
@@ -94,6 +110,7 @@ class _Instruments:
         self.stage_duration: Histogram = meter.create_histogram(
             STAGE_DURATION,
             unit=_SECONDS,
+            explicit_bucket_boundaries_advisory=_SECONDS_BUCKETS,
             description="Wall-clock time of one stage of a turn.",
         )
         self.turn_count: Counter = meter.create_counter(
@@ -113,6 +130,7 @@ class _Instruments:
         self.turn_cost: Histogram = meter.create_histogram(
             TURN_COST,
             unit="USD",
+            explicit_bucket_boundaries_advisory=_COST_BUCKETS,
             description=(
                 "Cost of a turn, where the model has a published price. A "
                 "self-hosted model has none, so this reads zero and the token "
