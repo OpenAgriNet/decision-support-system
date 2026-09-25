@@ -363,6 +363,13 @@ The DSS emits non-personal evidence events for every turn:
 - Latency, timeout, retry, cancellation, escalation, and terminal outcome.
 - Confidence or quality category **without storing the request or response content**.
 
+How it leaves the process today (ADR-0007, ADR-0012):
+
+- **Traces** — one span per turn and per stage, over OpenTelemetry into self-hosted Langfuse. They answer "why was this turn slow".
+- **Metrics** — turn and stage duration, time to first word, turn count and cost, and tokens per stage, over the same endpoint. They answer "is this deployment slower or dearer than the last one". Off unless a collector is configured, since Langfuse drops metrics.
+- **Labels stay bounded and non-personal** — stage, model, status and model profile only. Never a farmer's words, a provider, or a place. A test pins the allowed set.
+- Span code lives in `orchestration/` and `adapters/`, never `core/`.
+
 ---
 
 ## 7. Failure behaviour
