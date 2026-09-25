@@ -32,15 +32,32 @@ def spans(monkeypatch) -> Iterator[InMemorySpanExporter]:
 def test_configuring_tracing_registers_the_processor(monkeypatch) -> None:
     """The processor only works if it is on the provider every span goes
     through. Registered by whatever turns tracing on, so the two cannot drift
-    apart — the same rule the stage-span slot follows."""
+    apart — the same rule the stage-span slot follows.
+
+    The real `logfire.configure` runs. Its provider is not an SDK
+    `TracerProvider`, and a stand-in that was one hid that the processor was
+    never added."""
+
+    import logfire
 
     exporter = InMemorySpanExporter()
-    provider = TracerProvider()
-    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    real_configure = logfire.configure
+
+    def configure_and_capture(**kwargs):
+        extra = kwargs.pop("additional_span_processors", None) or []
+        real_configure(
+            **kwargs,
+            additional_span_processors=[*extra, SimpleSpanProcessor(exporter)],
+        )
+
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318")
-    monkeypatch.setattr("logfire.configure", lambda **_kwargs: None)
+    # The endpoint turns our tracing on, but logfire also reads it and adds its
+    # own exporter, which retries against a port nobody listens on. `none`
+    # keeps logfire from exporting; the span still reaches `exporter`.
+    for signal in ("TRACES", "METRICS", "LOGS"):
+        monkeypatch.setenv(f"OTEL_{signal}_EXPORTER", "none")
+    monkeypatch.setattr("logfire.configure", configure_and_capture)
     monkeypatch.setattr("pydantic_ai.agent.Agent.instrument_all", lambda *_a: None)
-    monkeypatch.setattr("opentelemetry.trace.get_tracer_provider", lambda: provider)
 
     configure_tracing()
 

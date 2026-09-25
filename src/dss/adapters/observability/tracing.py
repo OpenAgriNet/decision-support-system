@@ -172,23 +172,19 @@ def configure_tracing(
     # a new exposure: `include_content` already puts the query and the answer in
     # the span, so a scrubber over the id attributes was protecting nothing that
     # was not already there.
-    logfire.configure(send_to_logfire=False, console=False, scrubbing=False)
-    Agent.instrument_all(settings)
-
-    # After `logfire.configure`, which creates the provider. Every span goes
-    # through it, including the ones Pydantic AI opens for an agent run — the
-    # ones that were missing the session id.
     #
-    # Only an SDK provider takes processors. Warn rather than raise: no session
-    # id on a span is worse telemetry, not a reason to refuse to serve.
-    from opentelemetry import trace
-    from opentelemetry.sdk.trace import TracerProvider as SdkTracerProvider
-
-    provider = trace.get_tracer_provider()
-    if isinstance(provider, SdkTracerProvider):
-        provider.add_span_processor(TurnIdSpanProcessor())
-    else:
-        logger.warning("no SDK tracer provider, so spans will not carry the session id")
+    # The session processor goes in through logfire, not onto the global
+    # provider afterwards. Logfire's provider is its own proxy, not an SDK
+    # `TracerProvider`, so a processor added from outside never runs — and
+    # every agent span then fell back to Pydantic AI's per-run
+    # `gen_ai.conversation.id`, which Langfuse also reads as a session.
+    logfire.configure(
+        send_to_logfire=False,
+        console=False,
+        scrubbing=False,
+        additional_span_processors=[TurnIdSpanProcessor()],
+    )
+    Agent.instrument_all(settings)
 
     # Here rather than in `create_app` so stage spans cannot be on while the
     # exporter is off, or the reverse.
