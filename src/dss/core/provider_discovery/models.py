@@ -13,6 +13,13 @@ from enum import Enum
 
 from dss.core.provider_discovery.schema_fields import FieldSpec
 
+# A resource's `@type`, as a prefixed CURIE: `openagrinet:MandiPrice`. An open
+# set, fed by whichever schema packs a deployment mounts — so never an enum.
+# Called `capability` at most call sites, which is the DSS's word for the same
+# thing seen from the planning side. A plain alias, like `NetworkTransactionID`
+# in `core/shared/network.py`: it buys the name, not a runtime check.
+NetworkSchemaType = str
+
 
 @dataclass(frozen=True)
 class Coverage:
@@ -46,7 +53,7 @@ class ProviderCapability:
 
     provider_id: str
     provider_name: str
-    capability: str  # the resource's @type
+    capability: NetworkSchemaType
     resource_id: str  # names which resource `select` commits to
     observed_categories: tuple[str, ...] = ()  # the resource's own subjectCategories
     # The provider's own code from on_discover ("AGMARKNET-01"). Kept rather
@@ -83,7 +90,7 @@ class DiscoveredAnswer:
 
     provider_id: str
     provider_name: str
-    capability: str
+    capability: NetworkSchemaType
     resource_id: str
     attributes: dict[str, object]
     validity: Validity | None
@@ -123,7 +130,7 @@ class DiscoveryFailure:
     ready for that but unverified against real data.
     """
 
-    capability: str
+    capability: NetworkSchemaType
     status_code: int
     failure_class: FailureClass
     provider_id: str | None = None
@@ -140,7 +147,7 @@ class ExpiredAnswerDropped:
     """
 
     provider_id: str
-    capability: str
+    capability: NetworkSchemaType
     resource_id: str
     had_fallback: bool  # an OnDemand capability existed on the same provider+capability
 
@@ -150,7 +157,7 @@ class AskDiscoveryFailed:
     """A discovery call failed for one ask — mirrors the DiscoveryFailure."""
 
     ask_index: int
-    capability: str
+    capability: NetworkSchemaType
     failure_class: FailureClass
     status_code: int
 
@@ -167,7 +174,7 @@ class AskUnservable:
 class CategoryMappingDiverged:
     """A returned resource's own subjectCategories contradicts the index."""
 
-    capability: str
+    capability: NetworkSchemaType
     observed_category: str
 
 

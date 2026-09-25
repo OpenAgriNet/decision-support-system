@@ -26,6 +26,7 @@ from dss.config.settings import DEFAULT_DISTRICT_CSV, Settings
 from dss.core.intent.service import classify_intent
 from dss.core.shared.models import UserTurn
 from dss.entrypoint.composition import _resolve_model
+from dss.observability.stages import Stage
 
 _DOTENV = Path(__file__).parents[3] / ".env"
 
@@ -74,6 +75,7 @@ def _live_llm() -> PydanticAILLMProvider:
     return PydanticAILLMProvider(
         _resolve_model(settings.intent_model),
         name="intent-classifier",
+        stage=Stage.INTENT,
         temperature=settings.intent_temperature,
         timeout=settings.intent_timeout_seconds,
         retries=settings.intent_retries,

@@ -615,6 +615,78 @@ saying not to do that in a deployment. It is for a laptop, where seeing the
 prompt is the point. Only a literal `true` counts — `1` and `yes` read as off,
 so a typo cannot enable it.
 
+## Metrics
+
+Spans answer "why was *this* turn slow". They cannot answer "is this deployment
+slower than last week" — that needs numbers already added up. Metrics are the
+other half.
+
+They go to the **same** `OTEL_EXPORTER_OTLP_ENDPOINT` as the spans, but they
+are off unless you also ask for them:
+
+```bash
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 \
+OTEL_METRICS_EXPORTER=otlp \
+DSS_MODEL_PROFILE=local \
+uv run uvicorn --factory dss.entrypoint.app:create_app --port 8077
+```
+
+**Why off by default.** The usual endpoint is Langfuse, and Langfuse throws
+metrics away. Leaving the exporter on would send one pointless POST per
+interval, forever. Turn it on when the endpoint is a Collector that forwards
+metrics somewhere — the one in `docker-compose.yml` now prints them, like it
+prints spans.
+
+What gets published:
+
+| Name | What it says |
+|---|---|
+| `dss.turn.duration` | how long a whole turn took, by how it ended |
+| `dss.turn.first_delta.duration` | how long the farmer waited for the first word |
+| `dss.turn.composed.duration` | when the answer finished writing, with its sources |
+| `dss.turn.count` | how many turns, by how they ended |
+| `dss.turn.cost` | what a turn cost, where the model has a published price |
+| `dss.stage.duration` | how long one stage took, and which model ran it |
+| `dss.stage.tokens` | tokens per stage, split into input and output |
+| `http.server.request.duration` | every request at the edge, by route and status |
+
+Durations are in **seconds**, which is what the HTTP convention uses. The DSS
+opts into the stable OpenTelemetry HTTP names at startup; without that the
+instrumentor still publishes the superseded `http.server.duration`, in
+milliseconds, and a panel built on the name above would stay empty.
+
+Worth knowing:
+
+- **`DSS_MODEL_PROFILE` names the whole model configuration.** Nothing works it
+  out for you. Two deployments running the same four models are only comparable
+  if each says which one it is. Unset reads as `default`.
+- **A turn that crashes still counts.** It is recorded with `status=error`, so a
+  breakdown by status accounts for every turn rather than only the happy ones.
+- **HTTP duration is not time to first word.** A turn streams, so the request
+  is not over until the last word. `dss.turn.first_delta.duration` is the wait
+  the farmer actually feels, and the two differ by a lot.
+- **Composed is the end of composition, not the first word.** Sources are
+  attached from the whole text, so it lands after the last word. The gap
+  between first delta and composed is how long the writing took.
+- **HTTP requests get metrics, not spans.** The instrumentor's spans would sit
+  above `dss.turn` as the root and carry the query string and exception
+  messages. `dss.turn` is the trace root.
+- **A caller's `baggage` header never reaches a span.** Otherwise a caller
+  could set the Langfuse user, session or trace name.
+- **Cost is zero on a self-hosted model.** There is no published price for one.
+  That is expected; read the token counts instead.
+
+**No label carries a farmer's words, a provider, or a place.** Every distinct
+combination of label values becomes its own stored series, so an unbounded one
+would grow without limit — and §6.1 keeps personal data out of telemetry
+anyway. A test pins exactly which labels are allowed.
+
+To see the numbers with no container at all:
+
+```bash
+uv run pytest tests/integration/adapters/observability/test_metrics.py -v --no-cov
+```
+
 ## What is fake, and where to swap it
 
 Every stub is marked `STUB(#nn)` in the source. Grep for it.

@@ -13,6 +13,35 @@
 - `OPENAI_BASE_URL` / `OPENAI_API_KEY` passed through in `docker-compose.yml`,
   so a non-`azure:` model string can reach an OpenAI-compatible proxy. Unset
   by default, which leaves the Azure path unchanged (#138)
+- Turn and HTTP metrics over OTLP: `dss.turn.duration`, `dss.turn.count`,
+  `dss.turn.first_delta.duration` (time to first word),
+  `dss.turn.composed.duration` (end of composition), `dss.turn.cost`,
+  `dss.stage.duration` and `dss.stage.tokens`, plus request duration/count/status from
+  `opentelemetry-instrumentation-fastapi`. Off unless
+  `OTEL_METRICS_EXPORTER=otlp`, since the default endpoint is Langfuse, which
+  discards metrics (#139)
+- Duration and cost histograms carry bucket edges in seconds and USD. The SDK
+  default is sized for milliseconds, which put nearly every value in one
+  bucket. Logfire's exponential-histogram view is dropped, since a view beats
+  a bucket hint (#139)
+- HTTP requests publish metrics only, no spans. The instrumentor's spans became
+  the trace root, added a span per streamed frame, traced the healthcheck, and
+  carried the query string and exception messages (#139)
+- A caller's `baggage` header is no longer copied onto spans, so it cannot set
+  the Langfuse user, session or trace name (#139)
+- A turn closed after its terminal event keeps its status. An SSE client
+  hanging up after the answer no longer counts it as an error (#139)
+- A model run that fails still records its tokens and cost, so a failing turn
+  does not look cheaper than it was (#139)
+- `DSS_MODEL_PROFILE` — one name for the whole model configuration, labelling
+  every turn-level metric so two deployments can be compared (#139)
+- `observability/stages.py` — the six stage names as a `Stage` enum, shared by
+  span names and metric labels. ADR-0012 recorded their absence as a cost (#139)
+- Network wire types: `NetworkAction`, `NetworkVersion`, `NetworkContext` (with
+  a discover and a select shape) and `NetworkSchemaContext`, replacing bare
+  string literals and two hand-built context dicts. `NetworkSchemaType` (in
+  `core/provider_discovery/`, its only user) and `NetworkTransactionID` (in
+  `core/shared/`) name the two vocabulary aliases in `core/` (#139)
 - Scheme catalog: a `SchemeCatalog` port over a tenant-mounted CSV
   (`scheme_code,scheme_name,scheme_aliases`), indexed by normalized alias at
   boot. Nothing ships in the image; unset is inert plus a warning (#34)
@@ -37,7 +66,8 @@
   plus `dss.discover`, `dss.select` and `dss.select.attempt`. So "which stage
   was slow" is answerable without reading log files (#138)
 - `dss.turn` now carries `status`, the four model names, `first_delta_ms` and
-  `first_claim_ms` — when the farmer first heard anything, absent rather than
+  `composed_ms` — when the farmer first heard anything and when the answer
+  finished writing, absent rather than
   zero on turns that never reach the composer (#138)
 - `dss.stage.discovery` carries `asks_total` and `asks_failed`. One provider
   down is not a failed turn, and span status has no value between OK and

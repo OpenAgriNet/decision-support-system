@@ -261,6 +261,11 @@ This is a **pre-discovery hint, not a governed-code source.** Routing uses `subj
 | **Alias** | One way a farmer might name a scheme ("PKVY", "organic farming scheme"). Indexed normalized; must be scheme-distinctive, never a bare commodity word. |
 | **Canonicalize** | Replace an ask's free-text subject with the catalog's official scheme name, *without* changing what kind of ask it is. |
 | **Governed code** | A value a provider advertises as one it serves (`supportedCommodities: 78=Tomato`). Comes from the network, never from DSS config. |
+| **Network action** | What an outbound message is for. Two: `discover` and `select`. Both answer on the same call, so there is no separate reply message. |
+| **Network context** | The envelope on every network message: action, version, ids and timestamp. A discover names the schema it asks about; a select names who is asking whom. The two are different shapes, not one shape with blanks. |
+| **Network schema context** | Which schema a discover asks about — the pack's own JSON-LD `@context` URL with the `@type` as a fragment. Confusingly close to the term above, and a different thing: one is the envelope, the other is a field inside it. Absent when no type was resolved, never empty. |
+| **Network schema type** | A resource's `@type`, as a prefixed name: `openagrinet:MandiPrice`. The code calls it `capability` where it is being planned against. An open set — whichever schema packs a deployment mounts. |
+| **Network transaction id** | The id tying a farmer's question to every network call made answering it. The caller's, or minted at the edge when they send none, and never replaced mid-turn. It is also the turn's `traceId`. |
 
 **Layered extraction (v1 direction).** Each layer is cheaper than the next; the pipeline stops at the first layer that returns a confident intent. The layers, in order:
 
@@ -357,6 +362,14 @@ The DSS emits non-personal evidence events for every turn:
 - Tool, adapter, model, persona, policy, and reviewer versions where applicable.
 - Latency, timeout, retry, cancellation, escalation, and terminal outcome.
 - Confidence or quality category **without storing the request or response content**.
+
+How it leaves the process today (ADR-0007, ADR-0012):
+
+- **Traces** — one span per turn and per stage, over OpenTelemetry into self-hosted Langfuse. They answer "why was this turn slow".
+- **Metrics** — turn and stage duration, time to first word, turn count and cost, and tokens per stage, over the same endpoint. They answer "is this deployment slower or dearer than the last one". Off unless a collector is configured, since Langfuse drops metrics.
+- **Labels stay bounded and non-personal** — stage, model, status and model profile only. Never a farmer's words, a provider, or a place. A test pins the allowed set.
+- **What a caller sends never shapes a span** — HTTP requests get metrics, not spans, and inbound OpenTelemetry Baggage is not copied onto spans.
+- Span code lives in `orchestration/` and `adapters/`, never `core/`.
 
 ---
 

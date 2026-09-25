@@ -24,6 +24,13 @@ dependencies = [
     # calls it. Not a destination — `send_to_logfire=False`; traces go to
     # whatever OTEL_EXPORTER_OTLP_ENDPOINT names.
     "logfire>=3.0.0",
+    # HTTP request duration, count, route, method and status at the edge, from
+    # one call in `create_app` — no middleware to write or keep in step with
+    # FastAPI. The OpenTelemetry instrumentor rather than logfire's: it is the
+    # one that emits `http.server.request.duration` under the HTTP convention,
+    # which is the name a dashboard already knows. Nothing else is installed
+    # here, so metrics stay vendor-neutral like traces (ADR-0007).
+    "opentelemetry-instrumentation-fastapi>=0.65b0",
     # Settings binding for the moderation LLM knobs and config paths (spec 0002).
     "pydantic-settings>=2.5.0",
     # The policy loader deserialises the mounted YAML pack (spec 0003), and the

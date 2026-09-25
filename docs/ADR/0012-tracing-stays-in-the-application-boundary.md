@@ -52,7 +52,7 @@ the core fan-out.
 **Option C. No tracing port, no span code in `core/`.**
 
 ```
-dss.turn                        status, model names, first_delta_ms, first_claim_ms
+dss.turn                        status, model names, first_delta_ms, composed_ms
 ├── dss.stage.intent
 ├── dss.stage.enrichment
 ├── dss.stage.moderation
@@ -66,7 +66,7 @@ dss.turn                        status, model names, first_delta_ms, first_claim
 
 **`trace_component` opens its span through a slot.** `observability/trace_log.py`
 holds a `StageSpanOpener | None` and imports nothing from `adapters/`.
-`configure_tracing()` fills it at startup, so spans and the exporter cannot be
+`configure_telemetry()` fills it at startup, so spans and the exporter cannot be
 on independently. An unfilled slot means no span — the right behaviour with no
 OTLP endpoint, which is every test and every local run.
 
@@ -118,17 +118,18 @@ planner block, so it would start and end with `dss.stage.planner`.
 **The turn root carries what only the turn knows.** `turn_span` yields a
 `TurnRecorder`, because `status` and the two timings are known only while the
 turn runs. `first_delta_ms` is when the farmer heard the first word;
-`first_claim_ms` is the first complete claim with its sources. Both also record
+`composed_ms` is when the answer is fully written, sources attached. Both also record
 a span event, so the moment is on the timeline as well as readable as a number.
 
 They are two fields because they go missing on different turns: a composer that
-fails mid-write has a delta and no claim. **Absent, never zero** — refused,
+fails mid-write has a delta and is never composed. **Absent, never zero** — refused,
 needs-input and no-match turns never reach the composer, and zero would make
 "refused in 40ms" look like "answered instantly".
 
-`first_claim_ms` is not a mid-stream moment. A claim carries its sources, and
-sources are resolved from the complete text, so the first claim cannot exist
-until the last delta has arrived. Read the two together: `first_delta_ms` is how
+`composed_ms` is not a mid-stream moment. A claim carries its sources, and
+sources are resolved from the complete text, so no claim can exist until the
+last delta has arrived. It was named `first_claim_ms` until #139; renamed
+because that name read as time to first word. Read the two together: `first_delta_ms` is how
 long the farmer waited to see anything, and the gap is how long the writing took.
 
 `status` is always present, including on a turn that crashed or was abandoned —
@@ -136,7 +137,7 @@ those get `error`. Leaving it off would drop exactly those turns out of any
 breakdown by status, which is where they most need to appear.
 
 The four model names go on the same span. They arrive through
-`configure_tracing()` with everything else rather than through a second call,
+`configure_telemetry()` with everything else rather than through a second call,
 so tracing cannot be on with the names left behind.
 
 **A test enforces this, not convention.** `tests/unit/test_core_isolation.py`
@@ -163,6 +164,34 @@ It is now on that list.
   `turn_span` yields a `TurnRecorder` instead, which is the better shape — one
   verb per fact, and no SDK type in `orchestration/`. `open_span` should follow
   if a third caller needs more than a plain `with`.
+
+## 6. Metrics ride the same seam
+
+Added when metrics were built (#139), because they were decided by this ADR
+rather than by one of their own.
+
+Metrics are the other half of the same picture: a span says why *this* turn was
+slow, a metric says whether this week is slower than last. They raised the same
+question — where may the code live — and got the same answer.
+
+- **A second slot, beside the first.** `trace_log.py` now holds a
+  `StageMetricRecorder | None` as well, filled by the same startup call. A
+  stage cannot be spanned but unmeasured, or the reverse.
+- **Still no port.** Option A was rejected here for want of a second
+  implementation, and metrics do not supply one. If a second backend ever
+  arrives it should supersede this ADR, not bend it.
+- **`configure_tracing` became `configure_telemetry`**, since it now wires both.
+- **Stage names are a published contract**, not a convention. Span names and
+  metric labels derive from the same values, so a dashboard joins the two by
+  that string. They are now a `Stage` enum in `observability/stages.py` — the
+  one table this ADR recorded as missing. Renaming a member is a breaking
+  change for anything graphing it.
+- **Labels are bounded, and a test holds us to it.** Every combination of label
+  values is its own time series, and an unbounded label (a provider id, a
+  district, a farmer id) degrades the backend rather than failing a build.
+  `LABEL_KEYS` names what is allowed.
+
+---
 
 **Revisit when** a core service's own behaviour needs tracing — not when one
 call site wants more detail. Then Option A's cost buys something, and this ADR

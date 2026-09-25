@@ -14,6 +14,7 @@ from uuid import uuid4
 import httpx
 from opentelemetry.trace import Status, StatusCode
 
+from dss.adapters.network import DiscoverContext, NetworkSchemaContext
 from dss.adapters.network_common import (
     NO_STATUS_CODE,
     classify_status_code,
@@ -29,6 +30,7 @@ from dss.core.provider_discovery.models import (
     ProviderCapability,
     ProviderQuery,
 )
+from dss.core.shared.network import NetworkTransactionID
 from dss.observability.trace_log import (
     log_external_request,
     log_external_response,
@@ -100,16 +102,15 @@ class SchemaContextSource(Protocol):
 
 _ON_DEMAND = "OnDemand"
 _DIRECT = "Direct"
-_DISCOVER_VERSION = "2.0.0"
 
 
-# Beckn-level fields every resource carries, whatever its pack. What is left
+# Envelope-level fields every resource carries, whatever its pack. What is left
 # after removing them is the pack's own advertised vocabulary — the codes and
 # values the model needs and cannot invent.
 #
 # A skip-list rather than a read of the pack's own `discovery_fields`: that
 # list lives in profile.json, which this adapter cannot reach without a new
-# index threaded through two layers. These keys are Beckn-level and rarely
+# index threaded through two layers. These keys are envelope-level and rarely
 # change, while the advertised fields change often — so the rare failure is
 # the one that needs a code edit.
 _STRUCTURAL_ATTRIBUTES = frozenset(
@@ -199,24 +200,6 @@ def map_discover_response(
     )
 
 
-def _schema_context_urls(
-    capabilities: tuple[str, ...],
-    schema_context_index: dict[str, str],
-) -> list[str]:
-    """The pack's own ``@context`` URL, with the @type as a fragment.
-
-    The base URL comes from the pack rather than configuration — it is the
-    pack that states where its context lives. The ``#{capability}`` fragment
-    is discover's own addition: it names which type in that context the query
-    is about, and the real ``discover_request.json`` carries it.
-    """
-
-    return [
-        f"{schema_context_index[capability]}#{capability}"
-        for capability in capabilities
-    ]
-
-
 def _jsonpath_filter(subject_category: str) -> dict[str, str]:
     """Match resources by `subjectCategories`, not by `@type`.
 
@@ -261,7 +244,7 @@ def build_discover_request(
     query: ProviderQuery,
     schema_context_index: dict[str, str],
     message_id: str,
-    transaction_id: str,
+    transaction_id: NetworkTransactionID,
     timestamp: str,
 ) -> dict[str, Any]:
     intent: dict[str, Any] = {"filters": _jsonpath_filter(query.subject_category)}
@@ -269,22 +252,18 @@ def build_discover_request(
     if spatial:
         intent["spatial"] = spatial
 
-    context: dict[str, Any] = {
-        "action": "discover",
-        "version": _DISCOVER_VERSION,
-        "messageId": message_id,
-        "transactionId": transaction_id,
-        "timestamp": timestamp,
-    }
-    # Omitted, not sent empty, when no @type resolved (#52): the contract takes
-    # either the filter or schemaContext, and `[]` would assert that no schema
-    # applies rather than that none was named.
-    if query.capabilities:
-        context["schemaContext"] = _schema_context_urls(
+    context = DiscoverContext(
+        message_id=message_id,
+        transaction_id=transaction_id,
+        timestamp=timestamp,
+        # `None` when no @type resolved, which the envelope then omits rather
+        # than sending empty (#52).
+        schema_context=NetworkSchemaContext.for_types(
             query.capabilities, schema_context_index
-        )
+        ),
+    )
 
-    return {"context": context, "message": {"intent": intent}}
+    return {"context": context.to_wire(), "message": {"intent": intent}}
 
 
 class HttpCapabilityDiscovery:

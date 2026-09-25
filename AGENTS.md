@@ -28,6 +28,11 @@ Do not duplicate architecture, domain model, or design-decision detail here — 
   imports `langfuse` — the endpoint is the seam, so another backend is a config change.
   Span code lives in `orchestration/` and `adapters/` only; `core/` never opens one
   (ADR-0012), which `tests/unit/test_core_isolation.py` enforces.
+- Metrics: OpenTelemetry over the same OTLP endpoint, through the same slot pattern
+  (ADR-0012 §6). Turn and stage duration, counts, tokens and cost as `dss.*`;
+  HTTP request metrics from `opentelemetry-instrumentation-fastapi`. Off unless
+  `OTEL_METRICS_EXPORTER=otlp` — the default endpoint is Langfuse, which drops them.
+  Stage names come from `observability/stages.py` and are a dashboard contract.
 
 ## Build & Run
 Install: `uv sync`

@@ -15,7 +15,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
-from dss.adapters.observability.tracing import TurnIdSpanProcessor, configure_tracing
+from dss.adapters.observability.tracing import TurnIdSpanProcessor, configure_telemetry
 from dss.observability.trace_log import bind_turn_ids
 
 
@@ -59,7 +59,7 @@ def test_configuring_tracing_registers_the_processor(monkeypatch) -> None:
     monkeypatch.setattr("logfire.configure", configure_and_capture)
     monkeypatch.setattr("pydantic_ai.agent.Agent.instrument_all", lambda *_a: None)
 
-    configure_tracing()
+    configure_telemetry()
 
     # Asserted through a span rather than by reading the provider's processor
     # list, which is private to the SDK.

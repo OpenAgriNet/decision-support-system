@@ -30,7 +30,15 @@ from typing import TYPE_CHECKING
 
 from opentelemetry.sdk.trace import SpanProcessor
 
+from dss.adapters.observability.metrics import (
+    configure_metrics,
+    record_composed,
+    record_first_delta,
+    record_turn,
+    reset_metrics,
+)
 from dss.observability.trace_log import current_session_id, set_stage_span_opener
+from dss.observability.turn_usage import begin_turn_usage, current_turn_usage
 
 if TYPE_CHECKING:
     from opentelemetry.trace import Span
@@ -97,14 +105,46 @@ class TurnIdSpanProcessor(SpanProcessor):
             span.set_attribute("session.id", session_id)
 
 
-def configure_tracing(
+def _metric_views():
+    """Logfire's default metric views, minus the one that makes every
+    histogram exponential.
+
+    A view beats an instrument's bucket hint, so with it our seconds and USD
+    edges applied only in tests, and the dashboard's explicit-bucket queries
+    found nothing. The other two defaults are restated here rather than
+    filtered out of logfire's list, which would mean reading its private
+    fields: drop the SDK's own metrics, and bound the active-requests labels.
+    """
+
+    from opentelemetry.sdk.metrics import UpDownCounter
+    from opentelemetry.sdk.metrics.view import DropAggregation, View
+
+    return [
+        View(instrument_name="otel.sdk.*", aggregation=DropAggregation()),
+        View(
+            instrument_type=UpDownCounter,
+            instrument_name="http.server.active_requests",
+            attribute_keys={
+                "url.scheme",
+                "http.scheme",
+                "http.flavor",
+                "http.method",
+                "http.request.method",
+            },
+        ),
+    ]
+
+
+def configure_telemetry(
     *,
     intent_model: str | None = None,
     moderation_model: str | None = None,
     planner_model: str | None = None,
     composer_model: str | None = None,
+    model_profile: str = "default",
 ) -> None:
-    """Send agent runs to the configured OTLP endpoint, if there is one.
+    """Send agent runs and turn metrics to the configured OTLP endpoint, if
+    there is one.
 
     Called once from `create_app`. Absent an endpoint this does nothing at all
     but put the module back as it was — no exporter, no instrumentation, no
@@ -117,12 +157,21 @@ def configure_tracing(
     a second call so tracing cannot be on with them left behind. Named one by
     one rather than `**kwargs`: they are a closed set of four, and a
     transposition should stop the process rather than quietly produce an
-    attribute nobody filters on.
+    attribute nobody filters on. `model_profile` joins them for the same
+    reason — it names the whole model configuration on every turn metric, and
+    nothing derives it.
+
+    Metrics and traces share this one call and this one endpoint, so metrics
+    cannot be on with tracing off — a state nothing needs. Whether a metric
+    then leaves the process is a second, separate gate: `OTEL_METRICS_EXPORTER`
+    ships as `none`, because the usual destination is Langfuse and Langfuse
+    discards metrics.
     """
 
     if not tracing_enabled():
         set_stage_span_opener(None)
         set_model_names()
+        reset_metrics()
         return
 
     set_model_names(
@@ -183,10 +232,17 @@ def configure_tracing(
     # `TracerProvider`, so a processor added from outside never runs — and
     # every agent span then fell back to Pydantic AI's per-run
     # `gen_ai.conversation.id`, which Langfuse also reads as a session.
+    #
+    # `add_baggage_to_attributes=False`: logfire copies OpenTelemetry Baggage
+    # onto every span by default, and a caller's `baggage` header reaches the
+    # request context. A caller could then set `langfuse.user.id`, the session
+    # or the trace name on our spans. Those are ours to set.
     logfire.configure(
         send_to_logfire=False,
         console=False,
         scrubbing=False,
+        add_baggage_to_attributes=False,
+        metrics=logfire.MetricsOptions(views=_metric_views()),
         additional_span_processors=[TurnIdSpanProcessor()],
     )
     Agent.instrument_all(settings)
@@ -201,7 +257,10 @@ def configure_tracing(
     # runs six times per turn and is worth skipping outright.
     set_stage_span_opener(open_span)
 
-    logger.info("tracing on, exporting to %s", endpoint)
+    # Fills the second slot too, so a stage cannot be spanned but unmeasured.
+    configure_metrics(model_profile=model_profile)
+
+    logger.info("telemetry on, exporting to %s", endpoint)
 
 
 @contextmanager
@@ -301,6 +360,9 @@ class TurnRecorder:
     def __init__(self, span, started: float) -> None:  # noqa: ANN001
         self._span = span
         self._started = started
+        # Unset until the turn names its outcome. A turn that crashes or is
+        # abandoned never does, and is stamped `error` on the way out.
+        self._status: str | None = None
 
     def _elapsed_ms(self) -> float:
         return (time.monotonic() - self._started) * 1000
@@ -308,23 +370,27 @@ class TurnRecorder:
     def first_delta(self) -> None:
         """The farmer's first word of the answer."""
 
-        self._mark("first_delta_ms")
+        record_first_delta(self._mark("first_delta_ms"))
 
-    def first_claim(self) -> None:
-        """The first complete claim, with its sources attached.
+    def composed(self) -> None:
+        """The answer is fully written and its sources are attached.
 
         Not a mid-stream moment: sources are resolved from the whole text, so
-        the first claim cannot exist until the last delta has arrived. Read it
+        this cannot happen until the last delta has arrived. Read it
         against `first_delta_ms` — that one is how long the farmer waited to
         see anything, and the gap between them is how long the writing took.
         """
 
-        self._mark("first_claim_ms")
+        record_composed(self._mark("composed_ms"))
 
-    def _mark(self, attribute: str) -> None:
+    def _mark(self, attribute: str) -> float:
+        """Stamp the moment on the span and return it, so the metric records
+        the same reading rather than a second one."""
+
         elapsed_ms = self._elapsed_ms()
         self._span.set_attribute(attribute, elapsed_ms)
         self._span.add_event(attribute, {"elapsed_ms": elapsed_ms})
+        return elapsed_ms
 
     def status(self, status: str) -> None:
         """How the turn ended — one of the contract's statuses, or ``error``
@@ -333,7 +399,30 @@ class TurnRecorder:
         Always set, so a breakdown by status accounts for every turn.
         """
 
+        self._status = status
         self._span.set_attribute("status", status)
+
+    def _publish(self) -> None:
+        """Count this turn and publish its duration and cost.
+
+        Called once, from `turn_span`'s exit rather than from the orchestrator's
+        `_finish`. `_finish` is only reached on the four normal exits, and a
+        turn that crashed or was abandoned has to be counted too — that is the
+        turn a graph most needs to show.
+
+        A turn with no named outcome is stamped ``error`` here. One that named
+        its outcome keeps it, even if the caller then closes it rather than
+        reading to the end — that is a hang-up after the answer, not a crash.
+        """
+
+        if self._status is None:
+            self.status("error")
+        usage = current_turn_usage()
+        record_turn(
+            status=self._status,
+            elapsed_ms=self._elapsed_ms(),
+            cost=usage.cost if usage is not None else 0.0,
+        )
 
 
 @contextmanager
@@ -365,7 +454,8 @@ def turn_span(
     when the farmer first heard anything — are known only while it runs.
 
     A turn that crashes or is abandoned never reaches the code that names its
-    outcome, so `status` is stamped ``error`` here instead. Leaving it off
+    outcome, so `status` is stamped ``error`` on exit instead. A turn that did
+    name it keeps it, even if closed early after its terminal event. Leaving it off
     would drop exactly those turns out of any breakdown by status — the one
     place they most need to appear.
     """
@@ -379,9 +469,9 @@ def turn_span(
             **_model_names,
         },
     ) as span:
+        begin_turn_usage()
         recorder = TurnRecorder(span, time.monotonic())
         try:
             yield recorder
-        except BaseException:
-            recorder.status("error")
-            raise
+        finally:
+            recorder._publish()

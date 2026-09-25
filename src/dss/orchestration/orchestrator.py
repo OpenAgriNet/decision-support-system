@@ -68,6 +68,7 @@ from dss.core.shared.models import (
     UserTurn,
 )
 from dss.core.stream_response.service import ComposeStream
+from dss.observability.stages import Stage
 from dss.observability.trace_log import bind_turn_ids, trace_component
 from dss.orchestration.discovery import DiscoverProviders
 from dss.orchestration.plan import Plan
@@ -233,7 +234,7 @@ class Orchestrator:
             # the tool, which may be several model round-trips deep.
             verdict = Verdict()
             verdict.set(decision)
-            with trace_component("planner", ctx.trace_id):
+            with trace_component(Stage.PLANNER, ctx.trace_id):
                 evidence = await self._components.plan(
                     turn,
                     intent=result.intent,
@@ -243,7 +244,7 @@ class Orchestrator:
 
             # The span stays open across the yields below, so it measures the
             # whole composition rather than closing on the first piece.
-            with trace_component("composer", ctx.trace_id):
+            with trace_component(Stage.COMPOSER, ctx.trace_id):
                 written: list[str] = []
                 # `aclosing`, not a bare `async for`: a farmer who closes the
                 # screen mid-answer must close the model's stream too, and
@@ -262,9 +263,8 @@ class Orchestrator:
                 # nothing to roll back. The transport reports a failed turn.
                 text = "".join(written)
             answer = answer_from_evidence(text, evidence)
-            for index, block in enumerate(answer.content):
-                if index == 0:
-                    recorder.first_claim()
+            recorder.composed()
+            for block in answer.content:
                 yield Claim(content=block, sources=answer.sources)
             self._note("channel", ctx, str(len(answer.content)))
 
@@ -284,15 +284,17 @@ class Orchestrator:
         worth having.
 
         Every one of the four ways out passes through here, which is why the
-        span's `status` is set here rather than at each of them.
+        span's `status` is set here rather than at each of them. It is set
+        after the turn is recorded, so a turn whose record failed stays
+        ``error``.
         """
 
         outcome, answer = resolved
-        recorder.status(outcome.status.value)
         finished = TurnFinished(
             outcome=outcome, content=answer.content, sources=answer.sources
         )
         self._turns.closed(ctx, finished)
+        recorder.status(outcome.status.value)
         return finished
 
     def _note(self, stage: str, ctx: TurnContext, outcome: str) -> None:
