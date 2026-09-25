@@ -176,18 +176,9 @@ The sections below refine implementation decisions this repo makes on top of the
 
 The DSS receives every turn as a structured envelope from the Experience API. **Language is a first-class field on the envelope**, not a projected Context Provider variable — it is a channel/session property, not user-profile data.
 
-**Inbound envelope (as implemented on this branch — ADR-0004).** The wire contract is an OpenAI-style thread plus `user_context` and `attributes`:
+**Inbound envelope.** The wire contract is `POST /v1/turns` (ADR-0006), specified in `docs/api-contracts/api-contract.md` and typed in `adapters/http/v1/schema.py`.
 
-```jsonc
-{
-  "context": { "id", "version", "transactionId", "messageId", "timestamp", "sessionId" },
-  "input": [ { "role": "user", "content": [ { "type": "text", "text": "…" } ] }, … ],
-  "user_context": { "user_id", "reference_token", "issuer", "expires_at" },
-  "attributes": { "sourceLanguage", "targetLanguage", "channel", "location", "response": { "max_characters" } }
-}
-```
-
-`orchestration/envelope.py::to_user_turn` normalizes this into the domain `UserTurn` — camelCase and provider JSON never reach the core. The last `user` message is the current query; earlier messages become typed `history`; an expired `reference_token` (`expires_at <= now`) is treated as absent. `session_id` and `transaction_id` come from the request's top-level `context` object (`context.sessionId`, `context.transactionId` — both required per `docs/api-contracts/api-contract.md`), not from `user_context`. `transaction_id` is passed through unchanged to every `/discover` and `/select` call the turn makes, so a Provider can correlate them.
+`adapters/http/v1/mapping.py::to_user_turn` normalizes it into the domain `UserTurn` — camelCase and provider JSON never reach the core. The last `user` message in `message.input` is the current query; earlier messages become typed `history`. `session_id` and `transaction_id` come from the request's top-level `context` object; a missing `transactionId` is minted. `transaction_id` is passed through unchanged to every `/discover` and `/select` call the turn makes, so a Provider can correlate them.
 
 **Domain `UserTurn` (normalized shape the core works with).**
 
