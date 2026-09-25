@@ -5,12 +5,7 @@ Plain Python in/out; the ``LLMProvider`` port is faked. No framework, no network
 
 from __future__ import annotations
 
-from dss.core.intent.models import (
-    Ask,
-    Intent,
-    InteractionType,
-    SubjectCategory,
-)
+from dss.core.intent.models import ClassifiedAsk, Classification, InteractionType, SubjectCategory
 from dss.core.intent.service import build_intent_prompt, classify_intent
 from dss.core.shared.models import ConversationMessage, UserTurn
 
@@ -29,9 +24,9 @@ def _turn(query: str, history: list[ConversationMessage] | None = None) -> UserT
 
 
 class _FakeLLM:
-    """Records what it was asked and returns a scripted Intent."""
+    """Records what it was asked and returns a scripted Classification."""
 
-    def __init__(self, result: Intent) -> None:
+    def __init__(self, result: Classification) -> None:
         self._result = result
         self.seen_query: str | None = None
         self.seen_prompt: str | None = None
@@ -39,14 +34,29 @@ class _FakeLLM:
     async def structured(self, *, system_prompt, user_query, schema):
         self.seen_prompt = system_prompt
         self.seen_query = user_query
-        assert schema is Intent
+        assert schema is Classification
         return self._result
 
 
 async def test_classify_returns_asks_and_confidence() -> None:
-    expected = Intent(
+    llm = _FakeLLM(
+        Classification(
+            asks=(
+                ClassifiedAsk(
+                    agriculture_subjects="potato",
+                    subject_categories=SubjectCategory.MARKET,
+                    interaction_type=InteractionType.OBSERVE,
+                ),
+            ),
+            confidence=0.88,
+        )
+    )
+
+    classification = await classify_intent(_turn("What is the potato price?"), llm)
+
+    assert classification == Classification(
         asks=(
-            Ask(
+            ClassifiedAsk(
                 agriculture_subjects="potato",
                 subject_categories=SubjectCategory.MARKET,
                 interaction_type=InteractionType.OBSERVE,
@@ -54,16 +64,11 @@ async def test_classify_returns_asks_and_confidence() -> None:
         ),
         confidence=0.88,
     )
-    llm = _FakeLLM(expected)
-
-    intent = await classify_intent(_turn("What is the potato price?"), llm)
-
-    assert intent == expected
     assert llm.seen_query == "What is the potato price?"
 
 
 async def test_history_reaches_the_prompt_for_followups() -> None:
-    llm = _FakeLLM(Intent())
+    llm = _FakeLLM(Classification())
     history = [
         ConversationMessage(role="user", text="What is the wheat price?"),
         ConversationMessage(role="assistant", text="Wheat is ₹2,275 per quintal."),

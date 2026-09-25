@@ -1,19 +1,22 @@
-"""The intent classifier (spec 0002).
+"""The intent classifier.
 
-One batched, structured LLM call maps a turn to an ``Intent``. The recent
-conversation is rendered into the prompt so a follow-up ("And potato?") is
-classified against what came before rather than in isolation.
+One LLM call turns a turn into a ``Classification`` — words only, no
+geometry. The recent conversation goes into the prompt so a follow-up ("And
+potato?") is read against what came before.
 
-Framework-agnostic: this builds a plain prompt and depends only on the
-``LLMProvider`` port. The adapter turns the returned ``Intent`` schema into
-structured output.
+Turning that into an ``Intent`` — resolving each ask's ``place_name`` to a
+``ResolvedPlace`` — is ``core.location``'s job. This module never builds an
+``Ask``.
+
+Plain Python: builds a prompt, calls the ``LLMProvider`` port. No framework
+here.
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
 
-from dss.core.intent.models import Intent, InteractionType, SubjectCategory
+from dss.core.intent.models import Classification, InteractionType, SubjectCategory
 from dss.core.shared.models import ConversationMessage, UserTurn
 from dss.ports.llm import LLMProvider
 
@@ -95,11 +98,11 @@ def build_intent_prompt(history: Sequence[ConversationMessage]) -> str:
     return "\n".join(lines)
 
 
-async def classify_intent(turn: UserTurn, llm: LLMProvider) -> Intent:
+async def classify_intent(turn: UserTurn, llm: LLMProvider) -> Classification:
     """Classify the raw query in the context of the turn's recent history."""
 
     return await llm.structured(
         system_prompt=build_intent_prompt(turn.history),
         user_query=turn.original_query,
-        schema=Intent,
+        schema=Classification,
     )
