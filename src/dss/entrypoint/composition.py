@@ -34,6 +34,7 @@ from dss.adapters.invocation.client import HttpCapabilityInvocation
 from dss.adapters.llm.pydantic_ai_provider import (
     PydanticAILLMProvider,
     build_azure_model,
+    build_gateway_model,
 )
 from dss.adapters.llm.stub import StubLLM
 from dss.adapters.schema_packs.filesystem import FilesystemSchemaPackSource
@@ -135,7 +136,7 @@ def build_runner_with_lifecycle(
             invocation=invocation,
             identity=identity,
             skills=skills,
-            model=_resolve_model(settings.planner_model),
+            model=_resolve_model(settings.planner_model, settings),
             temperature=settings.planner_temperature,
             timeout_seconds=settings.planner_timeout_seconds,
             retries=settings.planner_retries,
@@ -375,17 +376,32 @@ def _load_schema_packs_blocking(
     return box["result"]
 
 
-def _resolve_model(model: str):
+def _resolve_model(model: str, settings: Settings):
     """Turn a component's model string into what Pydantic AI should bind.
 
-    An ``azure:<deployment>`` string is built here into a concrete Responses-API
-    ``Model`` (endpoint + key from the environment, the same ``AZURE_OPENAI_*``
-    vars the SDK reads directly), because pydantic-ai's own ``azure:`` inference
-    routes to the classic ``?api-version=`` provider, which the v1 GA endpoint
-    rejects. The deployment id is the part after ``azure:`` — so per-component
-    bindings (ADR-0004) stay independent. Any other string (``openai:...``) is
-    handed back untouched for pydantic-ai to infer.
+    With ``gateway_url`` set, the string is a NAME the gateway resolves -
+    ``dss-composer``, not a vendor's model id. Which vendor answers is the
+    gateway's business (ADR-0013), so these four settings are meant to be set
+    once and left alone: a model or vendor change happens in the gateway.
+
+    The client is built here rather than left to Pydantic AI's inference for one
+    reason - the request has to carry ``traceparent``, or the gateway files its
+    spans under a trace of its own and one turn becomes seven.
+
+    Without ``gateway_url`` the pre-gateway paths remain. An ``azure:<deployment>``
+    string is built into a concrete Responses-API ``Model`` (endpoint + key from
+    the environment, the same ``AZURE_OPENAI_*`` vars the SDK reads directly),
+    because pydantic-ai's own ``azure:`` inference routes to the classic
+    ``?api-version=`` provider, which the v1 GA endpoint rejects. Anything else is
+    handed back untouched. Both go when the gateway lands everywhere.
     """
+
+    if settings.gateway_url:
+        return build_gateway_model(
+            model,
+            base_url=settings.gateway_url,
+            api_key=settings.gateway_api_key,
+        )
 
     if not model.startswith("azure:"):
         return model
@@ -405,7 +421,7 @@ def _intent_llm(settings: Settings):
     if settings.stub_llm:
         return StubLLM()  # STUB(#83): canned answers, no network
     return PydanticAILLMProvider(
-        _resolve_model(settings.intent_model),
+        _resolve_model(settings.intent_model, settings),
         name="intent-classifier",
         temperature=settings.intent_temperature,
         timeout=settings.intent_timeout_seconds,
@@ -426,7 +442,7 @@ def _composer_llm(settings: Settings):
     if settings.stub_llm:
         return StubLLM()
     return PydanticAILLMProvider(
-        _resolve_model(settings.composer_model),
+        _resolve_model(settings.composer_model, settings),
         name="composer",
         temperature=settings.composer_temperature,
         timeout=settings.composer_timeout_seconds,
@@ -438,7 +454,7 @@ def _moderation_llm(settings: Settings):
     if settings.stub_llm:
         return StubLLM()
     return PydanticAILLMProvider(
-        _resolve_model(settings.moderation_model),
+        _resolve_model(settings.moderation_model, settings),
         name="moderator",
         temperature=settings.moderation_temperature,
         timeout=settings.moderation_timeout_seconds,
