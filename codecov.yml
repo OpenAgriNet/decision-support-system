@@ -11,9 +11,8 @@
 # coverage and passes untouched, while a PR that slips one untested src/ file in
 # alongside doc edits is still caught.
 #
-# tools/, scripts/, and examples/ are deliberately unmeasured: tools/mock_network
-# is a test double, and scripts/ and examples/ are not runnable in CI (they hit
-# the network or boot a server). Measuring them would drag the total down and
+# tools/ and scripts/ are deliberately unmeasured: tools/mock_network is a test
+# double, and scripts/ is not runnable in CI (it hits the network). Measuring them would drag the total down and
 # force a weaker floor on the code that actually ships.
 coverage:
   status:
