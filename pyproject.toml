@@ -10,8 +10,7 @@ dependencies = [
     # and force-installs anthropic, google-genai, logfire, mcp, evals, cli, and web.
     # The LLM provider is a swappable adapter behind a port (DSS_ARCHITECTURE.md §4.3),
     # so extras are declared explicitly as adapters are built.
-    # The HTTP entrypoint (ADR-0006). Runtime, not dev: fastapi and uvicorn back
-    # the committed /v1/turns surface, no longer just the examples/ harness.
+    # The HTTP entrypoint (ADR-0006): fastapi and uvicorn back /v1/turns.
     "fastapi>=0.141.1",
     "uvicorn>=0.52.4",
     # The async HTTP client behind the provider-discovery and invocation

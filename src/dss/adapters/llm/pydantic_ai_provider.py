@@ -136,10 +136,9 @@ def build_azure_model(
     """The bare Pydantic AI ``Model`` for an Azure OpenAI **v1** deployment via
     its Responses API.
 
-    Split out from ``build_azure_llm`` because the planner and composer bind a
-    ``Model`` directly (they build their own ``Agent``), while intent and
-    moderation wrap it in a ``PydanticAILLMProvider``. Both need the same
-    endpoint/auth wiring, so it lives here once.
+    The planner and composer bind this ``Model`` directly (they build their own
+    ``Agent``), while intent and moderation wrap it in a ``PydanticAILLMProvider``.
+    Both need the same endpoint/auth wiring, so it lives here once.
 
     ``endpoint`` is the v1 base or the full responses URL — e.g.
     ``https://<res>.services.ai.azure.com/openai/v1`` (a trailing ``/responses`` is
@@ -161,33 +160,4 @@ def build_azure_model(
     )
     return OpenAIResponsesModel(
         deployment, provider=OpenAIProvider(openai_client=client)
-    )
-
-
-def build_azure_llm(
-    deployment: str,
-    *,
-    name: str,
-    endpoint: str,
-    api_key: str,
-    temperature: float = 0.0,
-    timeout: float = 60.0,
-    retries: int = 2,
-    output_mode: OutputMode = "tool",
-) -> PydanticAILLMProvider:
-    """An ``LLMProvider`` backed by an Azure OpenAI **v1** deployment via its
-    Responses API. Keeps the SDK construction inside the adapter.
-
-    ``output_mode`` defaults to ``"tool"`` — a capable hosted model does structured
-    output best via function-calling; switch to ``"native"``/``"prompted"`` if a
-    given deployment rejects tools.
-    """
-
-    return PydanticAILLMProvider(
-        build_azure_model(deployment, endpoint=endpoint, api_key=api_key),
-        name=name,
-        temperature=temperature,
-        timeout=timeout,
-        retries=retries,
-        output_mode=output_mode,
     )
