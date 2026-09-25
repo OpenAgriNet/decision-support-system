@@ -97,6 +97,12 @@
   they are in (`requires_input`) instead of answering from nowhere (#19)
 
 ### Fixed
+- The session id now really reaches every span. The processor meant to stamp
+  it was never added: logfire's tracer provider is not an SDK one, so the
+  check before adding it always failed. With no `langfuse.session.id`,
+  Langfuse fell back to each agent run's own `gen_ai.conversation.id` and
+  showed one session per agent. The processor now goes in through
+  `logfire.configure` (#138)
 - Every span in a turn carries the turn's session id, not just `dss.turn`.
   Langfuse says an attribute it filters on has to be on each span, so the
   agent runs inside a turn were showing a different session (#138)
