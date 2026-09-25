@@ -328,8 +328,7 @@ class TurnRecorder:
     def first_delta(self) -> None:
         """The farmer's first word of the answer."""
 
-        self._mark("first_delta_ms")
-        record_first_delta(self._elapsed_ms())
+        record_first_delta(self._mark("first_delta_ms"))
 
     def composed(self) -> None:
         """The answer is fully written and its sources are attached.
@@ -340,13 +339,16 @@ class TurnRecorder:
         see anything, and the gap between them is how long the writing took.
         """
 
-        self._mark("composed_ms")
-        record_composed(self._elapsed_ms())
+        record_composed(self._mark("composed_ms"))
 
-    def _mark(self, attribute: str) -> None:
+    def _mark(self, attribute: str) -> float:
+        """Stamp the moment on the span and return it, so the metric records
+        the same reading rather than a second one."""
+
         elapsed_ms = self._elapsed_ms()
         self._span.set_attribute(attribute, elapsed_ms)
         self._span.add_event(attribute, {"elapsed_ms": elapsed_ms})
+        return elapsed_ms
 
     def status(self, status: str) -> None:
         """How the turn ended — one of the contract's statuses, or ``error``

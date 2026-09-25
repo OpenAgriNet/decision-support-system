@@ -12,7 +12,13 @@ from datetime import datetime
 from enum import Enum
 
 from dss.core.provider_discovery.schema_fields import FieldSpec
-from dss.core.shared.network import NetworkSchemaType
+
+# A resource's `@type`, as a prefixed CURIE: `openagrinet:MandiPrice`. An open
+# set, fed by whichever schema packs a deployment mounts — so never an enum.
+# Called `capability` at most call sites, which is the DSS's word for the same
+# thing seen from the planning side. A plain alias, like `NetworkTransactionID`
+# in `core/shared/network.py`: it buys the name, not a runtime check.
+NetworkSchemaType = str
 
 
 @dataclass(frozen=True)

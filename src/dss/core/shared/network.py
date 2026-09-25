@@ -1,24 +1,19 @@
-"""Two network terms that are domain language, not wire detail.
+"""A network term that is domain language, not wire detail.
 
-The envelope types live in `adapters/beckn/`, because a request body is
-protocol. These two are different: they name things `core/` reasons about and
-passes between services, so they belong where the domain does.
+The envelope types live in `adapters/network/`, because a request body is
+protocol. This one is different: `core/`, the ports and the adapters all pass
+it around, so it lives where the domain does.
 
-Plain aliases, not wrapper objects. There is no type checker in CI — ruff is
+A plain alias, not a wrapper object. There is no type checker in CI — ruff is
 the only enforced tool — so a wrapper would have to validate at runtime to
-enforce anything, and neither of these has a shape worth validating: a
-transaction id is whatever the caller sent, and the set of `@type`s is whatever
-the schema packs publish. What an alias buys is the name, at every signature
+enforce anything, and a transaction id has no shape worth validating: it is
+whatever the caller sent. What an alias buys is the name, at every signature
 that used to read `str`.
+
+`NetworkSchemaType` lives with provider discovery, its only user.
 """
 
 from __future__ import annotations
-
-# A resource's `@type`, as a prefixed CURIE: `openagrinet:MandiPrice`. An open
-# set, fed by whichever schema packs a deployment mounts — so never an enum.
-# Called `capability` at most call sites, which is the DSS's word for the same
-# thing seen from the planning side.
-NetworkSchemaType = str
 
 # The id that ties one farmer's question to every network call made answering
 # it. Minted at the HTTP edge when the caller sends none, then threaded through
