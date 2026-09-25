@@ -2,6 +2,7 @@
 # Start the whole local stack: Langfuse, the mock network, and the DSS.
 #
 #     ./scripts/run-local.sh
+#     ./scripts/run-local.sh --with-grafana   # also ClickHouse + Grafana
 #
 # Ctrl-C stops the DSS. Langfuse and the mock keep running — they are slow to
 # start and you usually want them across several DSS restarts. Stop them with
@@ -74,10 +75,22 @@ fi
 
 echo "==> container runtime: $R"
 
+WITH_GRAFANA=false
+DOWN=false
+for arg in "$@"; do
+  case "$arg" in
+    --with-grafana) WITH_GRAFANA=true ;;
+    --down) DOWN=true ;;
+    *) die "unknown flag: $arg (expected --with-grafana or --down)" ;;
+  esac
+done
+
 # --- stop ------------------------------------------------------------------
 
-if [ "${1:-}" = "--down" ]; then
+if [ "$DOWN" = true ]; then
   $COMPOSE -f docker-compose.langfuse.yml --env-file .env.langfuse down
+  # Stopped whether or not this run started it. Its data volume is kept.
+  $COMPOSE -f docker-compose.observability.yml down
   # Started with `run`, not compose, so it is stopped by name. See where it
   # starts, below, for why it is not a compose service here.
   "$R" rm -f "$COLLECTOR" >/dev/null 2>&1 || true
@@ -184,6 +197,22 @@ else
   $COMPOSE -f docker-compose.langfuse.yml --env-file .env.langfuse up -d
 fi
 
+# --- clickhouse + grafana (--with-grafana) ---------------------------------
+#
+# Waited on, unlike Langfuse. The collector checks its ClickHouse exporter at
+# startup, so starting it before ClickHouse answers stops the collector.
+
+if [ "$WITH_GRAFANA" = true ]; then
+  echo "==> starting clickhouse + grafana"
+  $COMPOSE -f docker-compose.observability.yml up -d
+  for _ in $(seq 1 30); do
+    [ "$("$R" inspect -f '{{.State.Health.Status}}' dss-clickhouse 2>/dev/null || true)" = healthy ] && break
+    sleep 2
+  done
+  [ "$("$R" inspect -f '{{.State.Health.Status}}' dss-clickhouse 2>/dev/null || true)" = healthy ] || \
+    die "dss-clickhouse did not become healthy in 60s. See: $R logs dss-clickhouse"
+fi
+
 # --- collector -------------------------------------------------------------
 #
 # The DSS talks to the collector, and the collector talks to Langfuse
@@ -193,11 +222,28 @@ fi
 # stripped branch still runs and prints, so `docker logs` shows what a
 # deployment would have sent to ClickHouse — with the farmer's words removed.
 #
+# `--with-grafana` swaps in `collector.yaml`, the deployment config, pointed at
+# the local ClickHouse. The config is stored as a label, so a collector left
+# running with the other one is replaced rather than silently reused.
+#
 # `run`, not a compose service, because the compose one mounts the deployment
 # config. One container started by name is less machinery than a second
 # compose file whose only job is to swap one path.
 
-if [ -n "$("$R" ps --filter "name=^${COLLECTOR}$" --format '{{.Names}}' 2>/dev/null || true)" ]; then
+if [ "$WITH_GRAFANA" = true ]; then
+  COLLECTOR_CONFIG=otel/collector.yaml
+else
+  COLLECTOR_CONFIG=otel/collector.local.yaml
+fi
+
+running_config="$("$R" ps --filter "name=^${COLLECTOR}$" --format '{{.Label "dss.collector-config"}}' 2>/dev/null || true)"
+if [ -n "$running_config" ] && [ "$running_config" != "$COLLECTOR_CONFIG" ]; then
+  echo "==> collector is running $running_config; replacing it"
+  "$R" rm -f "$COLLECTOR" >/dev/null
+  running_config=""
+fi
+
+if [ -n "$running_config" ]; then
   echo "==> collector already up on :$OTEL_PORT"
 else
   lsof -ti:"$OTEL_PORT" >/dev/null 2>&1 && \
@@ -205,17 +251,29 @@ else
   collector (HyperDX runs one) or a stale container — find it with
   \`lsof -i:$OTEL_PORT\`, or set OTEL_PORT to something else."
 
-  echo "==> starting collector on :$OTEL_PORT"
+  echo "==> starting collector on :$OTEL_PORT ($COLLECTOR_CONFIG)"
   "$R" rm -f "$COLLECTOR" >/dev/null 2>&1 || true
+  # Matches docker-compose.observability.yml. Unused by collector.local.yaml.
+  clickhouse_env=()
+  if [ "$WITH_GRAFANA" = true ]; then
+    clickhouse_env=(
+      -e CLICKHOUSE_ENDPOINT=tcp://dss-clickhouse:9000
+      -e CLICKHOUSE_USER=dss
+      -e CLICKHOUSE_PASSWORD=dss
+      -e CLICKHOUSE_DATABASE=otel
+    )
+  fi
   # A plain header value, not the URL-encoded OTEL_EXPORTER_OTLP_HEADERS list
   # the DSS used to build — so a literal space after "Basic" is correct here
   # and `%20` would be wrong. The hazard moved rather than disappeared.
   "$R" run -d --name "$COLLECTOR" \
+    --label "dss.collector-config=$COLLECTOR_CONFIG" \
     --network oan-edge \
     -p "127.0.0.1:${OTEL_PORT}:4318" \
     -e LANGFUSE_OTLP_ENDPOINT="http://langfuse-web:3000/api/public/otel" \
     -e LANGFUSE_AUTH_HEADER="Basic $(printf '%s:%s' "$LANGFUSE_PUBLIC_KEY" "$LANGFUSE_SECRET_KEY" | base64 | tr -d '\n')" \
-    -v "$PWD/otel/collector.local.yaml:/etc/otel/collector.yaml:ro" \
+    ${clickhouse_env[@]+"${clickhouse_env[@]}"} \
+    -v "$PWD/$COLLECTOR_CONFIG:/etc/otel/collector.yaml:ro" \
     "otel/opentelemetry-collector-contrib:${OTEL_COLLECTOR_TAG:-latest}" \
     --config=/etc/otel/collector.yaml >/dev/null
 fi
@@ -265,6 +323,10 @@ echo "    langfuse   http://localhost:${LANGFUSE_PORT}"
 echo "    dss        http://127.0.0.1:${DSS_PORT}/docs"
 echo "    mock log   tail -f var/mock-network.log"
 echo "    otel log   $R logs -f $COLLECTOR"
+if [ "$WITH_GRAFANA" = true ]; then
+  echo "    grafana    http://localhost:${GRAFANA_PORT:-3001}  (DSS folder; Environment = local)"
+  echo "    clickhouse http://localhost:${CLICKHOUSE_HTTP_PORT:-18123}  (user dss / dss)"
+fi
 echo
 echo "    curl -s -X POST http://127.0.0.1:${DSS_PORT}/v1/turns \\"
 echo "      -H 'Content-Type: application/json' -H 'Accept: application/json' \\"
