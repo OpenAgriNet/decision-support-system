@@ -655,7 +655,7 @@ opts into the stable OpenTelemetry HTTP names at startup; without that the
 instrumentor still publishes the superseded `http.server.duration`, in
 milliseconds, and a panel built on the name above would stay empty.
 
-Three things worth knowing:
+Worth knowing:
 
 - **`DSS_MODEL_PROFILE` names the whole model configuration.** Nothing works it
   out for you. Two deployments running the same four models are only comparable

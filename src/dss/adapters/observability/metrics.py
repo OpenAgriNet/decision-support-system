@@ -15,11 +15,12 @@ destination is Langfuse and Langfuse discards metrics. A deployment with a
 collector in front sets it to `otlp`.
 
 **Labels are a contract, and a bounded one.** Every distinct combination of
-label values becomes its own time series. Six stages, a handful of models, six
-statuses and one profile per deployment stay small. Adding an unbounded label
-later — a provider id, a district, a farmer id — would multiply series until
-the backend degrades, and that failure shows up in the backend months later
-rather than in a build. `LABEL_KEYS` is what a test holds us to.
+label values becomes its own time series. Six stages, a handful of models,
+seven statuses (six outcomes plus `error`) and one profile per deployment stay
+small. Adding an unbounded label later — a provider id, a district, a farmer
+id — would multiply series until the backend degrades, and that failure shows
+up in the backend months later rather than in a build. `LABEL_KEYS` is what a
+test holds us to.
 """
 
 from __future__ import annotations
