@@ -74,6 +74,21 @@ installed. Podman first, then Docker — so a Homebrew `podman` sitting there
 with no machine started no longer takes precedence over a working Docker or
 Colima. `CONTAINER_RUNTIME=docker` or `=podman` forces one.
 
+**To watch the dashboard, add `--with-grafana`.**
+
+```bash
+./scripts/run-local.sh --with-grafana
+```
+
+- **What it starts:** a local ClickHouse and Grafana from
+  `docker-compose.observability.yml`, then the collector on `otel/collector.yaml`
+  — the deployment config, so local rows match a deployment's.
+- **Where to look:** Grafana at <http://localhost:3001>, dashboard *DSS overview*
+  in the DSS folder. Set **Database** to `otel` and **Environment** to `local`.
+- **Raw rows:** `curl 'http://localhost:18123/?user=dss&password=dss' --data 'SHOW TABLES FROM otel'`.
+- **Switching back:** a run without the flag replaces the collector with the
+  laptop config. `--down` stops ClickHouse and Grafana too; their data is kept.
+
 The sections below are what the script automates. Read them when it refuses,
 or to run a piece by hand.
 
