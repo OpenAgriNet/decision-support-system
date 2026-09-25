@@ -8,10 +8,14 @@ transport streams, and the fixed no-match reply.
 
 from __future__ import annotations
 
-from dss.core.channel.models import ComposedAnswer
+from collections.abc import Sequence
+
+from dss.core.channel.models import ClarificationText, ComposedAnswer
+from dss.core.intent.models import AmbiguousPlace, Ask, ResolvedPlace, UnresolvedPlace
 from dss.core.planner.models import Evidence
 from dss.core.planner.models import Source as EvidenceSource
 from dss.core.shared.models import Source, SourceKind, TextBlock
+from dss.ports.area_lookup import AreaMatch
 
 NO_MATCH_TEXT = (
     "I could not find a way to help with that. I can assist with agriculture "
@@ -29,23 +33,85 @@ def no_match_answer() -> ComposedAnswer:
     return ComposedAnswer(content=(TextBlock(text=NO_MATCH_TEXT),))
 
 
-# Asks for a *district* by name, not "where are you from?". The area lookup
-# holds districts only, so an open question invites a village or a city and the
-# next turn fails to resolve for the same reason.
-NEEDS_DISTRICT_TEXT = (
-    "Which district are you in? I need it to find information for your area."
-)
-
-
-def needs_district_answer() -> ComposedAnswer:
-    """What the farmer reads when the turn has no location to search around.
+def needs_place_answer(text: ClarificationText) -> ComposedAnswer:
+    """What the farmer reads when nothing in the turn names a place at all.
 
     Deterministic like `no_match_answer`, and for the same reason: asking a
     fixed question needs no model. Shares that function's caveat — the real
     version writes in `target_lang` and for the channel.
     """
 
-    return ComposedAnswer(content=(TextBlock(text=NEEDS_DISTRICT_TEXT),))
+    return ComposedAnswer(content=(TextBlock(text=text.needs_place),))
+
+
+def unknown_place_answer(name: str, text: ClarificationText) -> ComposedAnswer:
+    """What the farmer reads when they named a place the index does not
+    carry. A different problem from naming nowhere — they already answered,
+    with a name we cannot resolve."""
+
+    return ComposedAnswer(
+        content=(TextBlock(text=text.unknown_place.format(name=name)),)
+    )
+
+
+def _candidate_line(number: int, candidate: AreaMatch) -> str:
+    return f"{number}. {candidate.name}, {candidate.region}"
+
+
+def ambiguous_place_answer(
+    name: str, candidates: Sequence[AreaMatch], text: ClarificationText
+) -> ComposedAnswer:
+    """What the farmer reads when a name matches several places.
+
+    A numbered list, one line per candidate, so a later turn can read the
+    list back from history and have the farmer's reply picked against it
+    rather than guessed.
+    """
+
+    lines = [text.ambiguous_place_header.format(name=name)]
+    lines.extend(
+        _candidate_line(number, candidate)
+        for number, candidate in enumerate(candidates, start=1)
+    )
+    return ComposedAnswer(content=(TextBlock(text="\n".join(lines)),))
+
+
+def answer_for_unplaced_asks(
+    asks: Sequence[Ask], text: ClarificationText
+) -> ComposedAnswer | None:
+    """What the farmer reads when some asks have no place. `None` if every
+    ask resolved.
+
+    Reports every failing ask, not just one, so fixing all of them takes one
+    reply. Plain `None` asks share one question, asked once.
+
+    Known gap: a plain `None` always reads as "needs a place," even for an
+    ask that never needed one (e.g. "how do I grow potatoes").
+    """
+
+    lines: list[str] = []
+    needs_place = False
+    for ask in asks:
+        if isinstance(ask.place, ResolvedPlace):
+            continue
+        if isinstance(ask.place, AmbiguousPlace):
+            lines.append(
+                text.ambiguous_place_header.format(name=ask.place.unresolved_name)
+            )
+            lines.extend(
+                _candidate_line(number, candidate)
+                for number, candidate in enumerate(ask.place.candidates, start=1)
+            )
+        elif isinstance(ask.place, UnresolvedPlace):
+            lines.append(text.unknown_place.format(name=ask.place.unresolved_name))
+        else:
+            needs_place = True
+
+    if needs_place:
+        lines.append(text.needs_place)
+    if not lines:
+        return None
+    return ComposedAnswer(content=(TextBlock(text="\n".join(lines)),))
 
 
 def _to_wire_source(source: EvidenceSource) -> Source:

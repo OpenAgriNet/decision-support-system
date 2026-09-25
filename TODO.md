@@ -172,6 +172,28 @@
   dereferences either at runtime, so this is fixture/reality drift rather than
   a live fault.
 
+## Place resolution (#130) — deferred to separate PRs
+
+- **No per-category "needs a place" fact.** `Ask.place` is `None` both when an
+  ask genuinely has nowhere to search and when the ask never needed a place at
+  all ("how do I grow potatoes"). `answer_for_unplaced_asks`
+  (`core/channel/service.py`) cannot tell the two apart, so it treats every
+  plain `None` as "needs a place" — a category-only ask can wrongly be asked
+  where the farmer is. Fixing this needs a policy decision (which categories
+  require a place) that does not exist yet; today's all-or-nothing gate has
+  the same blind spot and predates this note.
+- **The orchestrator's district-clarification gate is all-or-nothing per
+  turn.** It fires only when *no* ask in the turn resolved a place. A turn
+  with one resolved ask and one ambiguous/unresolved ask still proceeds
+  without surfacing the ambiguity — the composer has no way yet to answer
+  part of a turn and ask about the rest in one reply.
+- **`ResolvedPlace.within` holds one ancestor today, not the full chain.**
+  `_from_match` (`core/location/service.py`) builds `within=(match.region,)`
+  from `AreaMatch.region` — a single ISO 3166-2 code. The design's coarsest-
+  first ancestor chain (`("India", "Maharashtra", "Pune")`) needs the CSV
+  regenerated with a real `within` column; until then, disambiguation only
+  ever has one level to compare.
+
 ## Transport
 
 - ~~**SSE streams the transport, not the content.**~~ Done: `/v1/turns` with

@@ -15,6 +15,7 @@ import pytest
 
 from dss.adapters.llm.stub import StubLLM
 from dss.adapters.sinks.memory import MemoryTurnSink
+from dss.config.clarification_text_loader import load_clarification_text
 from dss.core.planner.models import Identity
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.shared.models import (
@@ -69,6 +70,7 @@ def _build(
         telemetry=_Telemetry(),
         area_lookup=FakeAreaLookup({"pune": [_PUNE_MATCH]}),
         discovery_radius_m=25_000,
+        clarification_text=load_clarification_text(),
     )
     return orch, turns
 
@@ -189,6 +191,7 @@ async def test_the_real_component_streams_through_the_runner() -> None:
         telemetry=_Telemetry(),
         area_lookup=FakeAreaLookup({"pune": [_PUNE_MATCH]}),
         discovery_radius_m=25_000,
+        clarification_text=load_clarification_text(),
     )
 
     events = await _collect(orch)

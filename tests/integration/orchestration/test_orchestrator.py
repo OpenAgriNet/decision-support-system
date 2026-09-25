@@ -11,6 +11,7 @@ the four ways out map from the verdict and the evidence.
 from __future__ import annotations
 
 from dss.adapters.sinks.memory import MemoryTurnSink
+from dss.config.clarification_text_loader import load_clarification_text
 from dss.core.intent.models import (
     Classification,
     ClassifiedAsk,
@@ -230,6 +231,7 @@ def _build(
         telemetry=_Telemetry(),
         area_lookup=FakeAreaLookup({"pune": [_PUNE_MATCH]}),
         discovery_radius_m=25_000,
+        clarification_text=load_clarification_text(),
     )
     return orch, turns
 
@@ -299,10 +301,12 @@ async def test_nobody_serving_is_no_match_without_planning() -> None:
     assert plan.calls == 0 and compose.calls == 0
 
 
-async def test_an_unlocated_turn_asks_for_a_district() -> None:
+async def test_an_unlocated_turn_asks_for_a_place() -> None:
     """No coordinates, no area, and the classifier found no place name: there is
     nowhere to search, so ask the farmer instead of discovering, planning and
-    composing an answer that could not be local to them.
+    composing an answer that could not be local to them. Blocks mean a place
+    smaller than a district is now answerable, so the question no longer
+    names a district specifically.
     """
 
     plan = _FakePlan(_ANSWERED_EVIDENCE)
@@ -315,7 +319,7 @@ async def test_an_unlocated_turn_asks_for_a_district() -> None:
 
     finished = events[-1]
     assert finished.outcome.status is TurnStatus.REQUIRES_INPUT
-    assert "district" in finished.content[0].text.lower()
+    assert "place" in finished.content[0].text.lower()
     # discovery ran and was discarded — read-only and cheap, and it already
     # starts before moderation clears the turn. What matters is that the planner
     # and composer, which cost real model calls, never ran.

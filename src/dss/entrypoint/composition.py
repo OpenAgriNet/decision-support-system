@@ -40,6 +40,7 @@ from dss.adapters.llm.stub import StubLLM
 from dss.adapters.schema_packs.filesystem import FilesystemSchemaPackSource
 from dss.adapters.scheme_catalog.csv_file import load_scheme_catalog
 from dss.adapters.sinks.file import FileTelemetrySink, FileTurnSink
+from dss.config.clarification_text_loader import load_clarification_text
 from dss.config.identity_loader import load_identity
 from dss.config.policy_loader import load_policy_pack
 from dss.config.schema_pack_fetch import SchemaPackFetchFailed, fetch_packs
@@ -114,6 +115,7 @@ def build_runner_with_lifecycle(
         Checkpoint.MODERATION
     )
     identity = load_identity()  # bundled default until an adopter mounts one
+    clarification_text = load_clarification_text()  # bundled default, same as identity
     skills = load_skills()
     # Loaded before the network gate, and unconditionally: the file is checked
     # in, so an unreadable one is a broken build either way, and a boot that
@@ -155,6 +157,7 @@ def build_runner_with_lifecycle(
         telemetry=FileTelemetrySink(settings.telemetry_path),
         area_lookup=area_lookup,
         discovery_radius_m=settings.discovery_radius_m,
+        clarification_text=clarification_text,
     )
     return runner, _aclose_for(client)
 

@@ -18,3 +18,18 @@ class ComposedAnswer(BaseModel):
 
     content: tuple[OutputContent, ...]
     sources: tuple[Source, ...] = ()
+
+
+class ClarificationText(BaseModel):
+    """Fixed questions a farmer reads when a turn needs more from them.
+    Loaded from config, like `Identity`.
+
+    `unknown_place` and `ambiguous_place_header` are `str.format` templates —
+    e.g. `"I could not find {name}."`.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    needs_place: str
+    unknown_place: str
+    ambiguous_place_header: str

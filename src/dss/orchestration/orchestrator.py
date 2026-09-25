@@ -40,10 +40,10 @@ from contextlib import aclosing
 from dataclasses import dataclass
 
 from dss.adapters.observability.tracing import TurnRecorder, turn_span
-from dss.core.channel.models import ComposedAnswer
+from dss.core.channel.models import ClarificationText, ComposedAnswer
 from dss.core.channel.service import (
+    answer_for_unplaced_asks,
     answer_from_evidence,
-    needs_district_answer,
     no_match_answer,
 )
 from dss.core.intent.models import Intent
@@ -53,7 +53,6 @@ from dss.core.planner.models import Evidence, Verdict
 from dss.core.planner.sufficiency import unserved_asks
 from dss.core.policy.models import Policy
 from dss.core.provider_discovery.models import DiscoveryResult
-from dss.core.provider_discovery.service import coverage_for_ask
 from dss.core.shared.models import (
     Cause,
     Claim,
@@ -140,6 +139,7 @@ class Orchestrator:
         telemetry: TelemetrySink,
         area_lookup: AreaLookup,
         discovery_radius_m: int,
+        clarification_text: ClarificationText,
     ) -> None:
         self._intent_llm = intent_llm
         self._moderation_llm = moderation_llm
@@ -154,6 +154,7 @@ class Orchestrator:
         self._telemetry = telemetry
         self._area_lookup = area_lookup
         self._discovery_radius_m = discovery_radius_m
+        self._clarification_text = clarification_text
 
     async def run(self, turn: UserTurn, ctx: TurnContext) -> AsyncIterator[TurnEvent]:
         bind_turn_ids(
@@ -193,28 +194,22 @@ class Orchestrator:
 
             self._note("intent", ctx, _classified(result.intent))
 
-            # Nowhere to search: not one ask in the turn ended up with a
-            # resolved place — no name, no carried-forward place, no device
-            # geometry, no client-asserted area. Ask for a district rather
-            # than answer from nowhere.
-            #
-            # All-or-nothing for now: a turn with one resolved ask and one
-            # ambiguous/unresolved ask still proceeds, because the composer
-            # has no way yet to answer part of a turn and ask about the rest.
-            # TODO(#130): revisit once per-ask clarification exists.
+            # Some ask has no place to search around: named nowhere, a name
+            # the index does not carry, or a name matching several. Ask
+            # rather than answer from nowhere or guess.
             #
             # Checked here rather than inside `run_turn`, which would have to
             # skip the discover call to act on it. Discovery is read-only and
             # already allowed to be wasted (it starts before moderation has
             # cleared the turn), so letting it run and discarding it costs one
             # cheap call and keeps the decision in one place.
-            if all(
-                coverage_for_ask(ask, radius_m=self._discovery_radius_m) is None
-                for ask in result.intent.asks
-            ):
+            clarification = answer_for_unplaced_asks(
+                result.intent.asks, self._clarification_text
+            )
+            if clarification is not None:
                 yield self._finish(
                     ctx,
-                    (outcome_for(TurnStatus.REQUIRES_INPUT), needs_district_answer()),
+                    (outcome_for(TurnStatus.REQUIRES_INPUT), clarification),
                     recorder,
                 )
                 return
