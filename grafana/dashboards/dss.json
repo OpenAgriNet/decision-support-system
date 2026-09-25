@@ -201,8 +201,8 @@
     {
       "id": 4,
       "type": "stat",
-      "title": "Time to first claim (p95)",
-      "description": "The wait before anything appears. Separate from turn duration on purpose.",
+      "title": "Time to first word (p95)",
+      "description": "How long the farmer waits for the first word. Separate from turn duration on purpose.",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
         "uid": "dss-clickhouse-otel"
@@ -226,7 +226,7 @@
           },
           "pluginVersion": "4.0.0",
           "queryType": "sql",
-          "rawSql": "WITH agg AS (SELECT $__timeInterval(TimeUnix) AS time, sumForEach(BucketCounts) AS counts, any(ExplicitBounds) AS bounds FROM $database.otel_metrics_histogram WHERE MetricName = 'dss.turn.first_claim.duration' AND ServiceName = 'dss' AND ResourceAttributes['deployment.environment.name'] = '$env' AND $__timeFilter(TimeUnix) GROUP BY time) SELECT time, bounds[least(arrayFirstIndex(c -> c >= 0.95 * arraySum(counts), arrayCumSum(counts)), length(bounds))] AS \"p95\" FROM agg ORDER BY time",
+          "rawSql": "WITH agg AS (SELECT $__timeInterval(TimeUnix) AS time, sumForEach(BucketCounts) AS counts, any(ExplicitBounds) AS bounds FROM $database.otel_metrics_histogram WHERE MetricName = 'dss.turn.first_delta.duration' AND ServiceName = 'dss' AND ResourceAttributes['deployment.environment.name'] = '$env' AND $__timeFilter(TimeUnix) GROUP BY time) SELECT time, bounds[least(arrayFirstIndex(c -> c >= 0.95 * arraySum(counts), arrayCumSum(counts)), length(bounds))] AS \"p95\" FROM agg ORDER BY time",
           "refId": "A"
         }
       ],
