@@ -1,8 +1,8 @@
 """Assembles resourceAttributes for a /select call.
 
 Structural fields (@context, @type, subjectCategories, location) come from the
-schema pack, the ask and the turn — never from the model, and never from the
-discover response. The model's own resource_attributes (a resolved commodity
+schema pack, the ask and its resolved place — never from the model, and never
+from the discover response. The model's own resource_attributes (a resolved commodity
 code, topics, ...) merge on top, but cannot override a structural field: the
 model chooses the capability by resource_id, not by rewriting @type after the
 fact.
@@ -12,8 +12,8 @@ from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta, timezone
 
+from dss.core.intent.models import ResolvedPlace
 from dss.core.provider_discovery.models import ProviderCapability
-from dss.core.shared.models import UserTurn
 
 # select is only called for an OnDemand capability — a Direct resource's
 # values are already in the catalog, so there is nothing to select.
@@ -61,20 +61,24 @@ def _validity_window(day: date) -> dict[str, str]:
     }
 
 
-def _location_field(turn: UserTurn) -> dict | None:
+def _location_field(place: ResolvedPlace | None) -> dict | None:
     """A network ``Location``, which carries the geometry under ``geo``.
 
     Every pack's ``location`` resolves to ``CompleteLocation``, an
     ``allOf`` over the network's ``Location`` that makes ``geo`` required. The
     geometry is therefore nested, not the value of ``location`` itself.
+
+    Only a ``ResolvedPlace`` has a geometry to send — an ``AmbiguousPlace``,
+    ``UnresolvedPlace``, or ``None`` all mean nowhere to search, the same as
+    the turn carrying no location at all.
     """
 
-    if turn.location is None or turn.location.geometry is None:
+    if place is None:
         return None
     return {
         "geo": {
-            "type": turn.location.geometry.type,
-            "coordinates": turn.location.geometry.coordinates,
+            "type": place.geometry.type,
+            "coordinates": place.geometry.coordinates,
         }
     }
 
@@ -133,7 +137,7 @@ def build_resource_attributes(
     *,
     capability: ProviderCapability,
     subject_category: str,
-    turn: UserTurn,
+    place: ResolvedPlace | None,
     model_filled: dict,
     schema_context_index: dict[str, str],
     filterable: tuple[str, ...],
@@ -169,14 +173,14 @@ def build_resource_attributes(
         "subjectCategories": [subject_category],
     }
 
-    # Where the turn says the question is about. An OnDemand resource
-    # advertises no `location` — there is no fixed point until someone asks —
-    # so this is what names the place, for a forecast or a facility search
-    # alike.
+    # Where the ask's resolved place says the question is about. An OnDemand
+    # resource advertises no `location` — there is no fixed point until
+    # someone asks — so this is what names the place, for a forecast or a
+    # facility search alike.
     allowed = {path.split(".")[0].split("[")[0] for path in filterable}
 
-    turn_location: dict = {}
-    location = _location_field(turn)
+    resolved_location: dict = {}
+    location = _location_field(place)
     # Only where the pack declares the field. Not "where it is filterable":
     # `AgricultureFacility` declares `location` and leaves it out of
     # `filterable_paths`, because it is the search origin rather than a filter
@@ -186,10 +190,10 @@ def build_resource_attributes(
     # search around.
     #
     # MandiPrice declares none — it names `market.location`, the market's own
-    # coordinates — so nothing is added there and the farmer's location reaches
-    # the network as `/discover`'s spatial filter.
+    # coordinates — so nothing is added there and the resolved place reaches
+    # the network as `/discover`'s spatial filter instead.
     if location is not None and "location" in declared:
-        turn_location["location"] = location
+        resolved_location["location"] = location
 
     # Three layers, each overriding the one before.
     #
@@ -220,7 +224,7 @@ def build_resource_attributes(
         field: _narrowed(value, echoed[field]) if field in echoed else value
         for field, value in model_filled.items()
     }
-    # The turn's location last, after the model's own values. It wrote
+    # The resolved place last, after the model's own values. It wrote
     # `{"geo": "Nashik"}` — the place name where the schema requires a GeoJSON
     # geometry — over the point the district lookup had already resolved from
     # the farmer's words. The model cannot turn a name into coordinates, so
@@ -234,7 +238,7 @@ def build_resource_attributes(
     # by accident, made explicit.
     # TODO(#55): remove with the pack fix — see `_VALIDITY_EXCEPTION_CAPABILITY`.
     #
-    # Last, like the turn's location, and for the same reason: what the pack
+    # Last, like the resolved place, and for the same reason: what the pack
     # declares about `validity` describes an answer, so anything echoed or
     # model-filled under that name is not the window the provider is asking
     # for. `priced_on` is only absent in tests that predate this.
@@ -249,4 +253,4 @@ def build_resource_attributes(
     ):
         validity["validity"] = _validity_window(priced_on)
 
-    return {**echoed, **narrowed, **structural, **turn_location, **validity}
+    return {**echoed, **narrowed, **structural, **resolved_location, **validity}

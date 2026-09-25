@@ -17,7 +17,14 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
-from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
+from dss.core.intent.models import (
+    Ask,
+    Intent,
+    InteractionType,
+    PlaceSource,
+    ResolvedPlace,
+    SubjectCategory,
+)
 from dss.core.moderation.models import ModerationDecision, Outcome
 from dss.core.planner.models import Skill, Verdict
 from dss.core.planner.validation import DomainSchema
@@ -26,7 +33,7 @@ from dss.core.provider_discovery.models import (
     DiscoveryResult,
     ProviderCapability,
 )
-from dss.core.shared.models import Geometry, Location, UserTurn
+from dss.core.shared.models import Geometry, UserTurn
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
 
 CAPABILITY = ProviderCapability(
@@ -271,15 +278,20 @@ async def test_a_facility_select_carries_the_search_origin() -> None:
             "AgricultureFacility/v0.1/context.jsonld"
         )
     }
-    deps.turn = UserTurn(
-        original_query="what are the krishi kendra near me?",
-        enriched_query="what are the krishi kendra near me?",
-        transaction_id="txn-1",
-        session_id="s-1",
-        source_lang="en",
-        target_lang="en",
-        channel="web",
-        location=Location(geometry=Geometry(coordinates=[73.7898, 19.9975])),
+    deps.intent = Intent(
+        asks=(
+            Ask(
+                subject_categories=SubjectCategory.FACILITY,
+                interaction_type=InteractionType.OBSERVE,
+                place=ResolvedPlace(
+                    name="Anand",
+                    within=("IN-GJ",),
+                    geometry=Geometry(coordinates=[73.7898, 19.9975]),
+                    source=PlaceSource.ASSERTED_GEOMETRY,
+                ),
+            ),
+        ),
+        confidence=1.0,
     )
 
     def call_select(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
