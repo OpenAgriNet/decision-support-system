@@ -1,15 +1,13 @@
 """The labels a metric may carry.
 
 Every distinct combination of label values is its own time series. The labels
-here are bounded — six stages, a handful of models, six statuses, one profile
+here are bounded — six stages, a handful of models, seven statuses, one profile
 per deployment. An unbounded one (a provider id, a district, a farmer id) would
 multiply series until the backend degrades, and that failure appears in the
 backend months later rather than in a test. So it is pinned here instead.
 
 Also §6.1: a farmer's words may not reach telemetry, and a label is telemetry.
 """
-
-import pytest
 
 from dss.adapters.observability.metrics import LABEL_KEYS
 
@@ -39,32 +37,21 @@ FORBIDDEN = (
 )
 
 
-def test_the_instruments_are_the_ones_the_dashboard_expects():
-    assert set(LABEL_KEYS) == {
-        "dss.turn.duration",
-        "dss.turn.first_delta.duration",
-        "dss.turn.composed.duration",
-        "dss.stage.duration",
-        "dss.turn.count",
-        "dss.stage.tokens",
-        "dss.turn.cost",
-    }
+# Restated on purpose, once: a dashboard is built on these names and labels, so
+# changing one should mean changing this file too.
+EXPECTED = {
+    "dss.turn.duration": {"status", "model_profile"},
+    "dss.turn.first_delta.duration": {"model_profile"},
+    "dss.turn.composed.duration": {"model_profile"},
+    "dss.stage.duration": {"stage", "model"},
+    "dss.turn.count": {"status", "model_profile"},
+    "dss.stage.tokens": {"stage", "model", "direction"},
+    "dss.turn.cost": {"model_profile"},
+}
 
 
-@pytest.mark.parametrize(
-    ("instrument", "labels"),
-    [
-        ("dss.turn.duration", {"status", "model_profile"}),
-        ("dss.turn.first_delta.duration", {"model_profile"}),
-        ("dss.turn.composed.duration", {"model_profile"}),
-        ("dss.stage.duration", {"stage", "model"}),
-        ("dss.turn.count", {"status", "model_profile"}),
-        ("dss.stage.tokens", {"stage", "model", "direction"}),
-        ("dss.turn.cost", {"model_profile"}),
-    ],
-)
-def test_each_instrument_carries_exactly_these_labels(instrument, labels):
-    assert set(LABEL_KEYS[instrument]) == labels
+def test_the_instruments_and_their_labels_are_the_ones_the_dashboard_expects():
+    assert {name: set(labels) for name, labels in LABEL_KEYS.items()} == EXPECTED
 
 
 def test_no_label_could_carry_a_farmer_value_a_provider_or_a_location():

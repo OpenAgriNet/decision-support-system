@@ -262,3 +262,44 @@ def test_cost_is_bucketed_in_fractions_of_a_dollar(reader) -> None:
     (point,) = points(reader, "dss.turn.cost")
     filled = [count for count in point.bucket_counts if count]
     assert filled == [1, 1]
+
+
+class _FakeSpan:
+    def __init__(self):
+        self.attributes: dict = {}
+
+    def set_attribute(self, key, value):
+        self.attributes[key] = value
+
+    def add_event(self, name, attributes):
+        pass
+
+
+@pytest.mark.parametrize(
+    ("moment", "attribute", "instrument"),
+    [
+        ("first_delta", "first_delta_ms", "dss.turn.first_delta.duration"),
+        ("composed", "composed_ms", "dss.turn.composed.duration"),
+    ],
+)
+def test_the_span_and_the_metric_carry_the_same_moment(
+    reader, monkeypatch, moment, attribute, instrument
+) -> None:
+    """One reading of the clock, not two. A clock that moves between reads
+    would give the trace and the dashboard different numbers for one event."""
+
+    from itertools import count
+
+    from dss.adapters.observability.tracing import TurnRecorder
+
+    ticks = count(start=10.0, step=1.0)
+    monkeypatch.setattr(
+        "dss.adapters.observability.tracing.time.monotonic", lambda: next(ticks)
+    )
+    span = _FakeSpan()
+    recorder = TurnRecorder(span, started=0.0)
+
+    getattr(recorder, moment)()
+
+    (point,) = points(reader, instrument)
+    assert point.sum * 1000 == pytest.approx(span.attributes[attribute])

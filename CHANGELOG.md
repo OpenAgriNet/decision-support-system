@@ -33,8 +33,9 @@
   span names and metric labels. ADR-0012 recorded their absence as a cost (#139)
 - Network wire types: `NetworkAction`, `NetworkVersion`, `NetworkContext` (with
   a discover and a select shape) and `NetworkSchemaContext`, replacing bare
-  string literals and two hand-built context dicts. `NetworkSchemaType` and
-  `NetworkTransactionID` name the two vocabulary aliases in `core/` (#139)
+  string literals and two hand-built context dicts. `NetworkSchemaType` (in
+  `core/provider_discovery/`, its only user) and `NetworkTransactionID` (in
+  `core/shared/`) name the two vocabulary aliases in `core/` (#139)
 - Scheme catalog: a `SchemeCatalog` port over a tenant-mounted CSV
   (`scheme_code,scheme_name,scheme_aliases`), indexed by normalized alias at
   boot. Nothing ships in the image; unset is inert plus a warning (#34)

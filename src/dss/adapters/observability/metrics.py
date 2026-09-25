@@ -83,7 +83,9 @@ _COST_BUCKETS = (
 class _Instruments:
     """The seven instruments, built once per configured meter."""
 
-    def __init__(self, meter) -> None:  # noqa: ANN001
+    def __init__(self, meter, *, model_profile: str) -> None:  # noqa: ANN001
+        # Kept with the instruments, so a reset takes both away together.
+        self.model_profile = model_profile
         self.turn_duration: Histogram = meter.create_histogram(
             TURN_DURATION,
             unit=_SECONDS,
@@ -139,9 +141,11 @@ class _Instruments:
             ),
         )
 
+    def turn_labels(self, **extra: str) -> dict[str, str]:
+        return {"model_profile": self.model_profile, **extra}
+
 
 _instruments: _Instruments | None = None
-_model_profile = "default"
 
 
 def configure_metrics(
@@ -154,13 +158,12 @@ def configure_metrics(
     back; left unset, the global one logfire configured is used.
     """
 
-    global _instruments, _model_profile
+    global _instruments
 
     from opentelemetry import metrics as otel_metrics
 
     provider = meter_provider or otel_metrics.get_meter_provider()
-    _model_profile = model_profile
-    _instruments = _Instruments(provider.get_meter("dss"))
+    _instruments = _Instruments(provider.get_meter("dss"), model_profile=model_profile)
     set_stage_metric_recorder(record_stage_duration)
 
 
@@ -174,10 +177,6 @@ def reset_metrics() -> None:
     global _instruments
     _instruments = None
     set_stage_metric_recorder(None)
-
-
-def _turn_labels(**extra: str) -> dict[str, str]:
-    return {"model_profile": _model_profile, **extra}
 
 
 def record_stage_duration(*, stage: str, elapsed_ms: float, model: str | None) -> None:
@@ -253,7 +252,7 @@ def record_first_delta(elapsed_ms: float) -> None:
 
     if _instruments is None:
         return
-    _instruments.turn_first_delta.record(elapsed_ms / 1000, _turn_labels())
+    _instruments.turn_first_delta.record(elapsed_ms / 1000, _instruments.turn_labels())
 
 
 def record_composed(elapsed_ms: float) -> None:
@@ -265,7 +264,7 @@ def record_composed(elapsed_ms: float) -> None:
 
     if _instruments is None:
         return
-    _instruments.turn_composed.record(elapsed_ms / 1000, _turn_labels())
+    _instruments.turn_composed.record(elapsed_ms / 1000, _instruments.turn_labels())
 
 
 def record_turn(*, status: str, elapsed_ms: float, cost: float) -> None:
@@ -277,7 +276,7 @@ def record_turn(*, status: str, elapsed_ms: float, cost: float) -> None:
 
     if _instruments is None:
         return
-    labels = _turn_labels(status=status)
+    labels = _instruments.turn_labels(status=status)
     _instruments.turn_duration.record(elapsed_ms / 1000, labels)
     _instruments.turn_count.add(1, labels)
-    _instruments.turn_cost.record(cost, _turn_labels())
+    _instruments.turn_cost.record(cost, _instruments.turn_labels())
