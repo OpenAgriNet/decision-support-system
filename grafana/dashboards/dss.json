@@ -1,0 +1,749 @@
+{
+  "uid": "dss-overview",
+  "title": "DSS overview",
+  "description": "Turn health, stage latency, cost and HTTP errors for the Decision Support System. Built on the `dss.*` names in src/dss/adapters/observability/metrics.py and the stage names in src/dss/observability/stages.py \u2014 those are a contract, and this dashboard is what makes breaking them visible (ADR-0013).",
+  "tags": [
+    "dss",
+    "otel"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1m",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "editable": false,
+  "templating": {
+    "list": [
+      {
+        "name": "database",
+        "label": "Database",
+        "type": "textbox",
+        "description": "The ClickHouse database the collector writes to. `otel` unless a schema clash forced a different one (ADR-0013).",
+        "query": "otel",
+        "current": {
+          "selected": false,
+          "text": "otel",
+          "value": "otel"
+        },
+        "options": [
+          {
+            "selected": true,
+            "text": "otel",
+            "value": "otel"
+          }
+        ]
+      },
+      {
+        "name": "env",
+        "label": "Environment",
+        "type": "custom",
+        "description": "deployment.environment.name. A shared ClickHouse holds every environment, so every panel filters on this.",
+        "query": "prod,staging,dev,local",
+        "current": {
+          "selected": true,
+          "text": "prod",
+          "value": "prod"
+        },
+        "options": [
+          {
+            "selected": true,
+            "text": "prod",
+            "value": "prod"
+          },
+          {
+            "selected": false,
+            "text": "staging",
+            "value": "staging"
+          },
+          {
+            "selected": false,
+            "text": "dev",
+            "value": "dev"
+          },
+          {
+            "selected": false,
+            "text": "local",
+            "value": "local"
+          }
+        ]
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Turn health",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Turns by outcome",
+      "description": "Rate of turns, split by how they ended. Delta temporality, so a bucket is the sum of its rows \u2014 no windowed difference.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "dss-clickhouse-otel"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 1
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "dss-clickhouse-otel"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "meta": {
+            "builderOptions": {}
+          },
+          "pluginVersion": "4.0.0",
+          "queryType": "sql",
+          "rawSql": "SELECT $__timeInterval(TimeUnix) AS time, Attributes['status'] AS status, sum(Value) AS turns FROM $database.otel_metrics_sum WHERE MetricName = 'dss.turn.count' AND ServiceName = 'dss' AND ResourceAttributes['deployment.environment.name'] = '$env' AND $__timeFilter(TimeUnix) GROUP BY time, status ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Turn duration",
+      "description": "Whole-turn wall clock. This is time to the LAST word, because the answer streams \u2014 the wait the farmer actually feels is the next panel.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "dss-clickhouse-otel"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 1
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "dss-clickhouse-otel"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "meta": {
+            "builderOptions": {}
+          },
+          "pluginVersion": "4.0.0",
+          "queryType": "sql",
+          "rawSql": "WITH agg AS (SELECT $__timeInterval(TimeUnix) AS time, sumForEach(BucketCounts) AS counts, any(ExplicitBounds) AS bounds FROM $database.otel_metrics_histogram WHERE MetricName = 'dss.turn.duration' AND ServiceName = 'dss' AND ResourceAttributes['deployment.environment.name'] = '$env' AND $__timeFilter(TimeUnix) GROUP BY time) SELECT time, bounds[least(arrayFirstIndex(c -> c >= 0.5 * arraySum(counts), arrayCumSum(counts)), length(bounds))] AS \"p50\" FROM agg ORDER BY time",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "dss-clickhouse-otel"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "meta": {
+            "builderOptions": {}
+          },
+          "pluginVersion": "4.0.0",
+          "queryType": "sql",
+          "rawSql": "WITH agg AS (SELECT $__timeInterval(TimeUnix) AS time, sumForEach(BucketCounts) AS counts, any(ExplicitBounds) AS bounds FROM $database.otel_metrics_histogram WHERE MetricName = 'dss.turn.duration' AND ServiceName = 'dss' AND ResourceAttributes['deployment.environment.name'] = '$env' AND $__timeFilter(TimeUnix) GROUP BY time) SELECT time, bounds[least(arrayFirstIndex(c -> c >= 0.95 * arraySum(counts), arrayCumSum(counts)), length(bounds))] AS \"p95\" FROM agg ORDER BY time",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "dss-clickhouse-otel"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "meta": {
+            "builderOptions": {}
+          },
+          "pluginVersion": "4.0.0",
+          "queryType": "sql",
+          "rawSql": "WITH agg AS (SELECT $__timeInterval(TimeUnix) AS time, sumForEach(BucketCounts) AS counts, any(ExplicitBounds) AS bounds FROM $database.otel_metrics_histogram WHERE MetricName = 'dss.turn.duration' AND ServiceName = 'dss' AND ResourceAttributes['deployment.environment.name'] = '$env' AND $__timeFilter(TimeUnix) GROUP BY time) SELECT time, bounds[least(arrayFirstIndex(c -> c >= 0.99 * arraySum(counts), arrayCumSum(counts)), length(bounds))] AS \"p99\" FROM agg ORDER BY time",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Time to first word (p95)",
+      "description": "How long the farmer waits for the first word. Separate from turn duration on purpose.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "dss-clickhouse-otel"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 0,
+        "y": 9
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "dss-clickhouse-otel"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "meta": {
+            "builderOptions": {}
+          },
+          "pluginVersion": "4.0.0",
+          "queryType": "sql",
+          "rawSql": "WITH agg AS (SELECT $__timeInterval(TimeUnix) AS time, sumForEach(BucketCounts) AS counts, any(ExplicitBounds) AS bounds FROM $database.otel_metrics_histogram WHERE MetricName = 'dss.turn.first_delta.duration' AND ServiceName = 'dss' AND ResourceAttributes['deployment.environment.name'] = '$env' AND $__timeFilter(TimeUnix) GROUP BY time) SELECT time, bounds[least(arrayFirstIndex(c -> c >= 0.95 * arraySum(counts), arrayCumSum(counts)), length(bounds))] AS \"p95\" FROM agg ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Error rate",
+      "description": "Share of turns that did not end `answered`.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "dss-clickhouse-otel"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 6,
+        "y": 9
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "dss-clickhouse-otel"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "meta": {
+            "builderOptions": {}
+          },
+          "pluginVersion": "4.0.0",
+          "queryType": "sql",
+          "rawSql": "SELECT $__timeInterval(TimeUnix) AS time, sumIf(Value, Attributes['status'] != 'answered') / nullIf(sum(Value), 0) AS error_rate FROM $database.otel_metrics_sum WHERE MetricName = 'dss.turn.count' AND ServiceName = 'dss' AND ResourceAttributes['deployment.environment.name'] = '$env' AND $__timeFilter(TimeUnix) GROUP BY time ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 6,
+      "type": "piechart",
+      "title": "Turns by outcome (totals)",
+      "description": "Totals over the selected range.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "dss-clickhouse-otel"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 12,
+        "y": 9
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "dss-clickhouse-otel"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "meta": {
+            "builderOptions": {}
+          },
+          "pluginVersion": "4.0.0",
+          "queryType": "sql",
+          "rawSql": "SELECT Attributes['status'] AS status, sum(Value) AS turns FROM $database.otel_metrics_sum WHERE MetricName = 'dss.turn.count' AND ServiceName = 'dss' AND ResourceAttributes['deployment.environment.name'] = '$env' AND $__timeFilter(TimeUnix) GROUP BY status ORDER BY turns DESC",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 7,
+      "type": "row",
+      "title": "Stage breakdown",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 15
+      },
+      "panels": []
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Stage duration (mean)",
+      "description": "Where a turn's time goes. The planner is typically about half the wall-clock (ADR-0007 \u00a76) \u2014 this is the panel that says so.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "dss-clickhouse-otel"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "dss-clickhouse-otel"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "meta": {
+            "builderOptions": {}
+          },
+          "pluginVersion": "4.0.0",
+          "queryType": "sql",
+          "rawSql": "SELECT $__timeInterval(TimeUnix) AS time, Attributes['stage'] AS stage, sum(Sum) / nullIf(sum(Count), 0) AS mean_s FROM $database.otel_metrics_histogram WHERE MetricName = 'dss.stage.duration' AND ServiceName = 'dss' AND ResourceAttributes['deployment.environment.name'] = '$env' AND $__timeFilter(TimeUnix) GROUP BY time, stage ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 9,
+      "type": "table",
+      "title": "Stage duration (mean, by stage and model)",
+      "description": "Same numbers as a table. `model` is absent for enrichment and discovery, which run none \u2014 an empty cell there is correct, not missing data.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "dss-clickhouse-otel"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "dss-clickhouse-otel"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "meta": {
+            "builderOptions": {}
+          },
+          "pluginVersion": "4.0.0",
+          "queryType": "sql",
+          "rawSql": "SELECT Attributes['stage'] AS stage, Attributes['model'] AS model, sum(Sum) / nullIf(sum(Count), 0) AS mean_s, sum(Count) AS calls FROM $database.otel_metrics_histogram WHERE MetricName = 'dss.stage.duration' AND ServiceName = 'dss' AND ResourceAttributes['deployment.environment.name'] = '$env' AND $__timeFilter(TimeUnix) GROUP BY stage, model ORDER BY mean_s DESC",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 10,
+      "type": "row",
+      "title": "Cost and tokens",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 24
+      },
+      "panels": []
+    },
+    {
+      "id": 11,
+      "type": "stat",
+      "title": "Spend",
+      "description": "Total cost over the range. Reads zero for a self-hosted model with no published price \u2014 expected, not a bug; the token panels are the number that matters there.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "dss-clickhouse-otel"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 0,
+        "y": 25
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "dss-clickhouse-otel"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "meta": {
+            "builderOptions": {}
+          },
+          "pluginVersion": "4.0.0",
+          "queryType": "sql",
+          "rawSql": "SELECT sum(Sum) AS usd FROM $database.otel_metrics_histogram WHERE MetricName = 'dss.turn.cost' AND ServiceName = 'dss' AND ResourceAttributes['deployment.environment.name'] = '$env' AND $__timeFilter(TimeUnix)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Cost per turn (mean)",
+      "description": "Spend divided by turns, over time.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "dss-clickhouse-otel"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 6,
+        "y": 25
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "dss-clickhouse-otel"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "meta": {
+            "builderOptions": {}
+          },
+          "pluginVersion": "4.0.0",
+          "queryType": "sql",
+          "rawSql": "SELECT $__timeInterval(TimeUnix) AS time, sum(Sum) / nullIf(sum(Count), 0) AS usd_per_turn FROM $database.otel_metrics_histogram WHERE MetricName = 'dss.turn.cost' AND ServiceName = 'dss' AND ResourceAttributes['deployment.environment.name'] = '$env' AND $__timeFilter(TimeUnix) GROUP BY time ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Tokens by stage and direction",
+      "description": "Output tokens are generated one at a time and drive latency; input tokens are processed together and mostly drive cost. Split, because one combined count hides which of them grew.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "dss-clickhouse-otel"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 12,
+        "y": 25
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "dss-clickhouse-otel"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "meta": {
+            "builderOptions": {}
+          },
+          "pluginVersion": "4.0.0",
+          "queryType": "sql",
+          "rawSql": "SELECT $__timeInterval(TimeUnix) AS time, concat(Attributes['stage'], ' ', Attributes['direction']) AS series, sum(Value) AS tokens FROM $database.otel_metrics_sum WHERE MetricName = 'dss.stage.tokens' AND ServiceName = 'dss' AND ResourceAttributes['deployment.environment.name'] = '$env' AND $__timeFilter(TimeUnix) GROUP BY time, series ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 14,
+      "type": "row",
+      "title": "HTTP and errors",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 31
+      },
+      "panels": []
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "HTTP requests by status",
+      "description": "From FastAPI auto-instrumentation. On POST /v1/turns this measures time to the last streamed byte, like turn duration.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "dss-clickhouse-otel"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 32
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "dss-clickhouse-otel"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "meta": {
+            "builderOptions": {}
+          },
+          "pluginVersion": "4.0.0",
+          "queryType": "sql",
+          "rawSql": "SELECT $__timeInterval(TimeUnix) AS time, Attributes['http.response.status_code'] AS status, sum(Count) AS requests FROM $database.otel_metrics_histogram WHERE MetricName = 'http.server.request.duration' AND ServiceName = 'dss' AND ResourceAttributes['deployment.environment.name'] = '$env' AND $__timeFilter(TimeUnix) GROUP BY time, status ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "HTTP request duration (p95)",
+      "description": "Edge latency, for comparison with the turn numbers above.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "dss-clickhouse-otel"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 32
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "dss-clickhouse-otel"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "meta": {
+            "builderOptions": {}
+          },
+          "pluginVersion": "4.0.0",
+          "queryType": "sql",
+          "rawSql": "WITH agg AS (SELECT $__timeInterval(TimeUnix) AS time, sumForEach(BucketCounts) AS counts, any(ExplicitBounds) AS bounds FROM $database.otel_metrics_histogram WHERE MetricName = 'http.server.request.duration' AND ServiceName = 'dss' AND ResourceAttributes['deployment.environment.name'] = '$env' AND $__timeFilter(TimeUnix) GROUP BY time) SELECT time, bounds[least(arrayFirstIndex(c -> c >= 0.95 * arraySum(counts), arrayCumSum(counts)), length(bounds))] AS \"p95\" FROM agg ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "Failed discovery asks",
+      "description": "From the `dss.stage.discovery` span, not a metric: `asks_failed` counts provider queries that did not answer. A turn can still succeed with some of them failing, so this rising without the error rate rising means answers are getting thinner.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "dss-clickhouse-otel"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 39
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "dss-clickhouse-otel"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "meta": {
+            "builderOptions": {}
+          },
+          "pluginVersion": "4.0.0",
+          "queryType": "sql",
+          "rawSql": "SELECT $__timeInterval(Timestamp) AS time, sum(toUInt32OrZero(SpanAttributes['asks_failed'])) AS failed, sum(toUInt32OrZero(SpanAttributes['asks_total'])) AS total FROM $database.otel_traces WHERE SpanName = 'dss.stage.discovery' AND ServiceName = 'dss' AND ResourceAttributes['deployment.environment.name'] = '$env' AND $__timeFilter(Timestamp) GROUP BY time ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 18,
+      "type": "table",
+      "title": "Recent errors and warnings",
+      "description": "Log lines at WARN and above. Bodies of provider calls are DEBUG-only and deliberately never exported (ADR-0013), so nothing here carries a farmer's words.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "dss-clickhouse-otel"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 39
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "dss-clickhouse-otel"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "meta": {
+            "builderOptions": {}
+          },
+          "pluginVersion": "4.0.0",
+          "queryType": "sql",
+          "rawSql": "SELECT Timestamp AS time, SeverityText, Body, hex(TraceId) AS trace_id FROM $database.otel_logs WHERE ServiceName = 'dss' AND ResourceAttributes['deployment.environment.name'] = '$env' AND SeverityNumber >= 13 AND $__timeFilter(Timestamp) ORDER BY Timestamp DESC LIMIT 200",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {}
+    }
+  ]
+}

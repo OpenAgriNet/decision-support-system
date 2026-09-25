@@ -28,18 +28,29 @@ services:
       # a non-`azure:` model string reaches that instead, with no code change.
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
-      # Without these three the container exports nothing useful: no auth means
-      # 401 on every batch, and no content means spans that say what ran but not
-      # what was asked. Setting the endpoint alone is the easy mistake.
-      OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS:-}
-      # Off by default, and deliberately: the usual endpoint above is Langfuse,
-      # which discards metrics, so leaving this on means one pointless POST per
-      # interval. Set it to `otlp` when the endpoint is a Collector that
-      # forwards metrics somewhere — then `dss.turn.*`, `dss.stage.*` and the
-      # HTTP request metrics leave the process. Pydantic AI's own `gen_ai.*`
-      # token metrics come along with them; `dss.*` is what a dashboard reads.
-      OTEL_METRICS_EXPORTER: ${OTEL_METRICS_EXPORTER:-none}
+      # The collector below, not Langfuse (ADR-0013). It is in this compose
+      # file, so it is always there — which is why this has a default at all,
+      # where before it was empty and telemetry was off unless someone asked.
+      # No credentials here any more: the collector holds Langfuse's, because
+      # it is the thing that talks to Langfuse.
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318}
+      # On by default now. It shipped as `none` because the endpoint was
+      # Langfuse and Langfuse discards metrics; the endpoint is a collector
+      # that forwards them to ClickHouse, so the reason is gone. `dss.turn.*`,
+      # `dss.stage.*` and the HTTP request metrics are what a dashboard reads;
+      # Pydantic AI's own `gen_ai.*` token metrics come along with them.
+      OTEL_METRICS_EXPORTER: ${OTEL_METRICS_EXPORTER:-otlp}
+      # Delta, not OTLP's default of cumulative. ClickHouse stores what it is
+      # given, so a cumulative counter makes every rate panel compute a
+      # windowed difference in SQL. Delta means a panel sums rows.
+      OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE: ${OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE:-delta}
+      # What identifies these rows in a ClickHouse other services also write
+      # to. Unset, every span and metric says `unknown_service` and no
+      # dashboard can tell the DSS apart from anything else.
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-dss}
+      # The second half of that: which deployment. Without it a staging turn
+      # and a production turn land in the same panel.
+      OTEL_RESOURCE_ATTRIBUTES: deployment.environment.name=${DSS_ENV:-dev}
       # One name for the whole model configuration above, labelling every
       # turn-level metric. Nothing derives it — two deployments running the
       # same four models are only comparable if they say which is which.
@@ -65,28 +76,55 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # Somewhere for the spans to go. Behind a profile, so the default `up` does
-  # not start it:
-  #
-  #     docker compose --profile tracing up -d
-  #
-  # Only worth starting when you want to look. Nothing listening on the
-  # endpoint means the DSS's exporter retries loudly and buries the rest of
-  # the log — so leave OTEL_EXPORTER_OTLP_ENDPOINT unset otherwise, which is
-  # its default.
+  # The export hub (ADR-0013). No longer behind a profile: the DSS now points
+  # at it by default, so it is part of the deployment rather than something to
+  # start when you want to look. It fans one OTLP stream out to Langfuse (with
+  # message content) and ClickHouse (without it — see otel/collector.yaml).
   otel-collector:
-    profiles: [tracing]
     image: otel/opentelemetry-collector-contrib:${OTEL_COLLECTOR_TAG:-latest}
-    # Printing to its own log is the whole job here. A deployment replaces
-    # this with a config that forwards to Langfuse or wherever else, which is
-    # why the config is a mounted file rather than baked in.
     command:
       - --config=/etc/otel/collector.yaml
     volumes:
       - ./otel/collector.yaml:/etc/otel/collector.yaml:ro
+    environment:
+      # Where the traces that keep their content go. Reached by service name
+      # over oan-edge, which is the network Langfuse's own compose file
+      # declares.
+      LANGFUSE_OTLP_ENDPOINT: ${LANGFUSE_OTLP_ENDPOINT:-http://langfuse-web:3000/api/public/otel}
+      # Moved here from the DSS. The collector is what talks to Langfuse, so
+      # it is what needs the credential. Build it as
+      # `Basic $(printf '%s:%s' "$PUBLIC_KEY" "$SECRET_KEY" | base64)` —
+      # note this one is a plain header value, not the URL-encoded
+      # OTEL_EXPORTER_OTLP_HEADERS list, so a literal space is correct here.
+      LANGFUSE_AUTH_HEADER: ${LANGFUSE_AUTH_HEADER:-}
+      # Native protocol, not HTTP: tcp://host:9000. No default — a wrong guess
+      # here writes telemetry somewhere nobody is looking.
+      CLICKHOUSE_ENDPOINT: ${CLICKHOUSE_ENDPOINT:-}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-}
+      # Shared with whatever else writes OTLP to this server. Check the
+      # existing tables' schema before pointing a second collector at it.
+      CLICKHOUSE_DATABASE: ${CLICKHOUSE_DATABASE:-otel}
     ports:
       # OTLP/HTTP. The DSS reaches it as http://otel-collector:4318 from
       # inside the compose network; the published port is for a DSS running on
       # the host instead.
       - "127.0.0.1:${OTEL_HOST_PORT:-4318}:4318"
+    networks:
+      - default
+      - oan-edge
     restart: unless-stopped
+
+# `oan-edge` already exists on the deployment host — docker-compose.langfuse.yml
+# declares it external too, and both files have to agree or the collector
+# cannot reach Langfuse by service name. Declared here rather than assumed in a
+# comment, which is how it was carried before.
+#
+#     docker network create oan-edge
+#
+# `default` stays so the DSS container reaches the collector without every
+# service needing to be on the shared network.
+networks:
+  default:
+  oan-edge:
+    external: true

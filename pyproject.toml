@@ -31,6 +31,15 @@ dependencies = [
     # which is the name a dashboard already knows. Nothing else is installed
     # here, so metrics stay vendor-neutral like traces (ADR-0007).
     "opentelemetry-instrumentation-fastapi>=0.65b0",
+    # The log signal (ADR-0013). `dss.trace` lines become OTLP log records, so
+    # a dashboard can sit them next to the span they came from instead of
+    # leaving them in a container's stdout. The SDK ships a `LoggingHandler`
+    # too, but deprecates it in favour of this package's.
+    "opentelemetry-instrumentation-logging>=0.65b0",
+    # Named rather than left transitive through logfire: `logs.py` builds a
+    # LoggerProvider and an OTLP log exporter directly, so these are ours now.
+    "opentelemetry-sdk>=1.44.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.44.0",
     # Settings binding for the moderation LLM knobs and config paths (spec 0002).
     "pydantic-settings>=2.5.0",
     # The policy loader deserialises the mounted YAML pack (spec 0003), and the

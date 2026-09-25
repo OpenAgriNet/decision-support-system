@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING
 
 from opentelemetry.sdk.trace import SpanProcessor
 
+from dss.adapters.observability.logs import configure_logs, reset_logs
 from dss.adapters.observability.metrics import (
     configure_metrics,
     record_composed,
@@ -167,6 +168,7 @@ def configure_telemetry(
         set_stage_span_opener(None)
         set_model_names()
         reset_metrics()
+        reset_logs()
         return
 
     set_model_names(
@@ -254,6 +256,11 @@ def configure_telemetry(
 
     # Fills the second slot too, so a stage cannot be spanned but unmeasured.
     configure_metrics(model_profile=model_profile)
+
+    # And the third signal. Traces say what ran, metrics say how often, logs
+    # say what the turn was doing in between — all three to the one endpoint,
+    # so a dashboard can put them on the same screen (ADR-0013).
+    configure_logs()
 
     logger.info("telemetry on, exporting to %s", endpoint)
 

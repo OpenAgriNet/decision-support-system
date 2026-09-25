@@ -15,6 +15,23 @@
   missing (#138)
 
 ### Added
+- The OpenTelemetry Collector as the export hub: one OTLP stream from the DSS,
+  fanned out to Langfuse (traces, with message content) and ClickHouse (traces,
+  metrics and logs, with it removed). Grafana reads ClickHouse. ADR-0013 (#141)
+- Log signal over OTLP — `dss.trace` lines become log records carrying their
+  span's `trace_id`, so a dashboard can put a turn's logs next to its trace.
+  Exported at INFO and above, which keeps DEBUG-only provider request and
+  response bodies inside the process (#141)
+- `grafana/dashboards/dss.json` and datasource provisioning — turn health,
+  stage breakdown, cost and tokens, HTTP and errors. Checked in and UI edits
+  disabled, so renaming a `dss.*` metric or a stage breaks something visible
+  (#141)
+- `./scripts/run-local.sh --with-grafana` — a local ClickHouse and Grafana
+  (`docker-compose.observability.yml`) with the collector on its deployment
+  config, so the dashboard can be watched on a laptop (#141)
+- `otel/collector.local.yaml` — a collector for a laptop, with no ClickHouse
+  exporter but the same content-stripping branch, printed rather than stored
+  (#141)
 - `scripts/run-local.sh`: one command for a local stack — Langfuse, the mock
   network and the DSS. Prerequisites are checked before anything starts and
   refused with the fix, never repaired: a missing `oan-edge` network, an
@@ -94,6 +111,22 @@
 
 
 ### Changed
+- `OTEL_METRICS_EXPORTER` now defaults to `otlp` and
+  `OTEL_EXPORTER_OTLP_ENDPOINT` to the collector. Metrics shipped off because
+  the endpoint was Langfuse, which discards them; the endpoint is a collector
+  that forwards them, so the reason is gone (#141)
+- Metric temporality is now delta rather than OTLP's cumulative default —
+  ClickHouse stores what it is given, and a cumulative counter makes every rate
+  panel compute a windowed difference in SQL (#141)
+- `OTEL_SERVICE_NAME=dss` and `deployment.environment.name` are now set. Spans
+  and metrics arrived as `unknown_service`, which is not viable in a ClickHouse
+  other services also write to (#141)
+- Langfuse credentials moved from the DSS to the collector. The DSS no longer
+  sets `OTEL_EXPORTER_OTLP_HEADERS` at all, which also retires the `%20`
+  URL-encoding trap that 401'd every export batch when written as a space (#141)
+- The `otel-collector` compose service is no longer behind the `tracing`
+  profile, and joins the external `oan-edge` network — previously asserted in a
+  comment rather than declared (#141)
 - `POST /v1/turns` with `Accept: text/event-stream` now sends one `claim.delta`
   per piece of the answer before `claim.completed`. Additive: `claim.completed`
   still carries the whole block, so a consumer that ignores unknown event names
