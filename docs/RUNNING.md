@@ -13,10 +13,10 @@ That exercises the transport and the flow, not a provider-backed answer.
 
 For a real answer, run the mock network and point the DSS at it. The three
 sections below, in order: get the packs, start the mock, start the DSS. Asked
-for wheat prices at Anand, it comes back with the minimum, maximum and modal
-price per quintal for Wheat (Lokwan) at Anand mandi, citing "Agmarknet
-Vistaar" — every figure the mock provider's own, so the payload crossed
-intent → moderation → discovery → planner → evidence → composer.
+for potato prices in Mumbai, it comes back with the minimum, maximum and modal
+price per quintal at Mumbai APMC — every figure the mock provider's own, so
+the payload crossed intent → moderation → discovery → planner → evidence →
+composer.
 
 Set `targetLanguage` to `hi` in the request and the same answer arrives in
 Hindi, which is how the channel's language handling gets exercised.
@@ -113,21 +113,21 @@ not have. `tools/mock_network/` stands in for it — the same synchronous
 uv run python -m tools.mock_network --port 8078 --reload
 ```
 
-**Use `--reload` while adding scenarios.** The `@type`-to-response map is read
-at import, so a mock started before a new scenario existed returns an empty
-catalog for it — discovery then finds nobody and the turn comes back
-`no_match`, with nothing to say the mock is simply out of date. `--reload`
-restarts it when a source or response file changes.
+`--reload` restarts the mock when its code changes. It does not watch
+`evals/perf/questions.toml`, so restart the mock after editing that file.
 
-It reads the same schema packs the DSS reads, so it can only advertise a
-`@type` the DSS can route, and it validates its own response bodies against
-those packs — a body carrying a field no pack declares is refused rather than
-served. `http://127.0.0.1:8078/docs` pokes the two routes by hand.
+One mock serves weather, mandi and advisory. It answers only the questions in
+`evals/perf/questions.toml`:
 
-Scenarios are keyed off the `@type` in the request, so one running mock
-answers any of the three without a restart — weather, mandi price, and a crop
-advisory. Each `/discover` returns an `OnDemand` capability and each `/select`
-returns the values a composed answer quotes back.
+| Type | Answers | Matched on |
+|---|---|---|
+| Mandi | 5 markets, 4 commodities | commodity code and market code |
+| Weather | any point | the turn's coordinates (must be sent) |
+| Advisory | 10 written answers | the crop word in `topics` |
+
+The same question gets the same answer every run. A request it can't match
+gets a `400`, and is counted at `GET /_bench/misses`. `/docs` on port 8078
+lets you call the routes by hand.
 
 ## Start it
 
@@ -187,9 +187,9 @@ answers either, with no restart:
 
 | Request body | Routes to | Answer carries |
 |---|---|---|
-| `answered_streaming.json` | `openagrinet:MandiPrice` | wheat prices at Anand, from Agmarknet Vistaar |
-| `answered_weather.json` | `openagrinet:WeatherObservation` | five-day rainfall and temperature for Nashik, from IMD Mausamgram NWP |
-| `answered_advisory.json` | `openagrinet:KnowledgeAdvisory` | cotton establishment guidance, from Krishi Vigyan Kendra Advisory Service |
+| `answered_streaming.json` | `openagrinet:MandiPrice` | potato prices at Mumbai APMC |
+| `answered_weather.json` | `openagrinet:WeatherObservation` | a forecast for Nashik's point, all 8 parameters |
+| `answered_advisory.json` | `openagrinet:KnowledgeAdvisory` | the set's cotton answer (weed control), matched on "cotton" |
 
 A question intent classifies into a category the mock does not serve comes
 back `no_match` — which is the honest answer, and worth telling apart from a
@@ -615,6 +615,44 @@ saying not to do that in a deployment. It is for a laptop, where seeing the
 prompt is the point. Only a literal `true` counts — `1` and `yes` read as off,
 so a typo cannot enable it.
 
+## Time it: the speed benchmark
+
+`evals/perf/` runs 30 fixed questions through the DSS and reports how fast it
+answered. The providers are the mock. The models are real, so each turn costs
+a model call.
+
+Start the stack (`scripts/run-local.sh`), then:
+
+```bash
+export LANGFUSE_PUBLIC_KEY=... LANGFUSE_SECRET_KEY=...
+uv run python -m evals.perf                                      # full run
+uv run python -m evals.perf --warmup 0 --repeats 1 --max-turns 10  # quick check
+```
+
+It prints p50, p95 and max for:
+
+- time to the first answer piece, and total time
+- each stage, read from Langfuse
+- tokens per model call, per agent
+
+It also prints the models, the commit and the machine. The JSON goes to
+`var/evals/perf/`. Compare runs made on the same machine, close in time.
+
+### Load mode
+
+```bash
+set -a; source .env.local; source .env; set +a
+uv run python -m evals.perf load --concurrency 1,2,4,8
+```
+
+Each step sends the 30 questions with N turns at a time. It reports turns per
+minute and turn times.
+
+Load mode runs its own DSS in a container, limited to 1 CPU and 1 GiB. The
+container only gets what your shell exports, so source both files first:
+`.env.local` has the keys, `.env` has the `DSS_*_MODEL` settings. The
+container's log is saved next to the report.
+
 ## What is fake, and where to swap it
 
 Every stub is marked `STUB(#nn)` in the source. Grep for it.
@@ -643,6 +681,7 @@ uv run pytest                 # everything; tier 6 (eval) excluded
 uv run pytest tests/unit      # pure — mapping, framing, core rules, boundaries
 uv run pytest tests/integration/entrypoint     # the HTTP layer against a fake runner
 uv run pytest tests/integration/orchestration  # the runner against fake ports
+uv run pytest tests/unit/evals tests/integration/evals   # the benchmark itself
 uv run ruff check . && uv run ruff format --check .
 ```
 

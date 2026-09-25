@@ -387,6 +387,7 @@ The architecture is deliberately silent on these; this repo makes explicit choic
 - **Plan-then-execute** is one possible reasoning strategy — this repo uses it, with the plan as a first-class artifact (§5.5) and bounded iteration on a sufficiency check (§3.2). A single-step plan degenerates to a direct tool call and should not pay planning overhead. An implementation may use ReAct, another reasoning strategy, or a deterministic workflow while preserving the same DSS contract.
 - **MCP** is one possible local-tool integration protocol — this repo uses it. An implementation may use another tool protocol.
 - The logical functions may run in one process or in separately deployed modules. Deployment choices do not change the Experience Layer boundary or move Provider and Network Exchange responsibilities into the DSS.
+- **Speed is measured by a benchmark, not a test** (ADR-0013). `evals/perf/` sends 30 fixed questions to a running DSS, with real models and faked providers, and reports time to the first answer piece, total time, time per stage and tokens per model call. A load mode runs several turns at once on a DSS limited to 1 CPU and 1 GiB. It lives outside `src/` and does not ship. How to run it: `docs/RUNNING.md`.
 
 ### 8.3 Open items
 

@@ -15,6 +15,7 @@ deliberately against whatever `DSS_INTENT_MODEL` the deployment binds.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -26,6 +27,7 @@ from dss.config.settings import DEFAULT_DISTRICT_CSV, Settings
 from dss.core.intent.service import classify_intent
 from dss.core.shared.models import UserTurn
 from dss.entrypoint.composition import _resolve_model
+from tests.support.live_model import missing_model_key
 
 _DOTENV = Path(__file__).parents[3] / ".env"
 
@@ -42,9 +44,14 @@ def _dotenv_values() -> dict[str, str]:
     return {name: value for name, value in dotenv_values(_DOTENV).items() if value}
 
 
+# The key the configured intent model needs, from the shell or `.env` — the
+# two places the run reads it from.
+_MISSING = missing_model_key(
+    Settings().intent_model, {**os.environ, **_dotenv_values()}
+)
 pytestmark = pytest.mark.skipif(
-    not (_dotenv_values().keys() & {"OPENAI_API_KEY", "AZURE_OPENAI_API_KEY"}),
-    reason="live model test — needs OPENAI_API_KEY or AZURE_OPENAI_API_KEY in .env",
+    _MISSING is not None,
+    reason=f"live model test — DSS_INTENT_MODEL needs {_MISSING}, in .env or exported",
 )
 
 

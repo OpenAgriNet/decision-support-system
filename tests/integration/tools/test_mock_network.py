@@ -15,10 +15,10 @@ hand.
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+import tomllib
 from pathlib import Path
 
-import httpx2
+import httpx
 import pytest
 
 from dss.adapters.discovery.client import HttpCapabilityDiscovery
@@ -27,11 +27,26 @@ from dss.adapters.schema_packs.filesystem import FilesystemSchemaPackSource
 from dss.core.planner.resource_attributes import build_resource_attributes
 from dss.core.provider_discovery.models import ProviderCapability, ProviderQuery
 from dss.core.provider_discovery.schema_pack_cache import SchemaPackCache
-from dss.core.shared.models import UserTurn
-from tools.mock_network.app import build_mock_app
+from dss.core.shared.models import Geometry, Location, UserTurn
+from dss.ports.invocation import SelectFailed
+from tools.mock_network.app import DEFAULT_QUESTIONS, build_mock_app
+from tools.mock_network.generators import (
+    advisory_answer,
+    mandi_answer,
+    weather_answer,
+)
 
 _WEATHER = "openagrinet:WeatherObservation"
 _MANDI = "openagrinet:MandiPrice"
+_ADVISORY = "openagrinet:KnowledgeAdvisory"
+
+
+def _benchmark_questions() -> list[dict]:
+    """The raw entries the mock reads, with their written answers."""
+
+    with DEFAULT_QUESTIONS.open("rb") as file:
+        return tomllib.load(file)["question"]
+
 
 _PROFILE = '{"filterable_paths": ["beckn:resourceAttributes.observationType"]}'
 
@@ -90,13 +105,16 @@ _WEATHER_FILTERABLE = (
 
 
 def _planner_attributes(capability: ProviderCapability, model_filled: dict) -> dict:
-    """`resourceAttributes` as the planner builds them.
+    """`resourceAttributes` as the planner builds them, for a turn in Akola.
 
     Two steps make a select request, and only the first adds `@type`: the
     planner assembles the attributes, then the adapter wraps them in the
     envelope. Calling the adapter with a bare dict would send something no
     real turn sends, and the mock — which routes on `@type`, as the real
     network does — would rightly not recognise it.
+
+    The turn carries its point, as the benchmark's weather questions do: the
+    mock keys a weather answer on it.
     """
 
     return build_resource_attributes(
@@ -110,6 +128,9 @@ def _planner_attributes(capability: ProviderCapability, model_filled: dict) -> d
             channel="web",
             session_id="conv_1",
             transaction_id="txn_1",
+            location=Location(
+                area="Akola", geometry=Geometry(coordinates=[77.056016, 20.748005])
+            ),
         ),
         model_filled=model_filled,
         schema_context_index={
@@ -119,6 +140,7 @@ def _planner_attributes(capability: ProviderCapability, model_filled: dict) -> d
             )
         },
         filterable=_WEATHER_FILTERABLE,
+        declared=("location",),
     )
 
 
@@ -151,8 +173,8 @@ async def discovery(pack_dir: Path) -> HttpCapabilityDiscovery:
     cache = SchemaPackCache(FilesystemSchemaPackSource(root=pack_dir))
     await cache.refresh()
 
-    client = httpx2.AsyncClient(
-        transport=httpx2.ASGITransport(app=build_mock_app(pack_dir=pack_dir)),
+    client = httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=build_mock_app(pack_dir=pack_dir)),
         base_url="http://mock.test",
     )
     return HttpCapabilityDiscovery(
@@ -219,6 +241,35 @@ async def test_one_running_mock_answers_either_capability(
     assert await provider_for(_MANDI) == "agmarknet-mock"
 
 
+async def test_mandi_discover_advertises_each_benchmark_market(
+    discovery: HttpCapabilityDiscovery,
+) -> None:
+    """A real mandi provider advertises one resource per market, with the
+    commodities it prices there. The planner echoes them back at select, which
+    is what the mock matches on — so they come from the benchmark's own
+    question set, and a question can never ask for a market nobody offers."""
+
+    result = await discovery.discover(
+        ProviderQuery(
+            capabilities=(_MANDI,),
+            subject_category="Market",
+            languages=("en",),
+            coverage=None,
+        ),
+        ask_indices=(0,),
+        transaction_id="9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44",
+    )
+
+    by_market = {c.resource_id: c.advertised for c in result.capabilities[0]}
+    assert set(by_market) == {
+        f"resource:mandi-price:market:{code}"
+        for code in ("9001", "9002", "9003", "9004", "9005")
+    }
+    mumbai = by_market["resource:mandi-price:market:9001"]
+    assert mumbai["market"]["marketName"] == "Mumbai APMC"
+    assert {c["name"] for c in mumbai["supportedCommodities"]} == {"Potato", "Cotton"}
+
+
 async def test_a_query_naming_two_capabilities_gets_both(
     discovery: HttpCapabilityDiscovery,
 ) -> None:
@@ -258,8 +309,8 @@ async def test_select_returns_the_values_the_composer_will_quote(
     test and produce an empty answer.
     """
 
-    client = httpx2.AsyncClient(
-        transport=httpx2.ASGITransport(app=build_mock_app(pack_dir=pack_dir)),
+    client = httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=build_mock_app(pack_dir=pack_dir)),
         base_url="http://mock.test",
     )
     invocation = HttpCapabilityInvocation(
@@ -286,30 +337,119 @@ async def test_select_returns_the_values_the_composer_will_quote(
     # provenance the answer must carry, from the request side not the response
     assert answer.provider_id == "mausamgram-mock"
     assert answer.provider_name == "IMD Mausamgram NWP"
-    # the provider's own resource id, not the uuid4 the DSS sent
-    assert answer.resource_id == "res:mausamgram:forecast:point"
-    # and the values themselves — what the composer quotes back
-    rainfall = next(
-        p for p in answer.attributes["parameters"] if p["parameter"] == "Rainfall"
+    # and the values themselves — what the composer quotes back: the built
+    # answer for this point, every parameter the pack names
+    assert answer.attributes == weather_answer(lon=77.056016, lat=20.748005)
+    assert len(answer.attributes["parameters"]) == 8
+
+
+async def test_mandi_select_answers_one_price_for_the_advertised_market(
+    discovery: HttpCapabilityDiscovery, pack_dir: Path
+) -> None:
+    """Through both hops, as a turn makes them: discover a market, then select
+    it with the commodity the model picked. The planner echoes the advertised
+    market, so the mock's answer is for exactly the market it offered."""
+
+    found = await discovery.discover(
+        ProviderQuery(
+            capabilities=(_MANDI,),
+            subject_category="Market",
+            languages=("en",),
+            coverage=None,
+        ),
+        ask_indices=(0,),
+        transaction_id="txn-mandi",
     )
-    assert rainfall["values"]["sum"] == 5.2
-    assert rainfall["unit"] == "mm"
+    mumbai = next(
+        c
+        for c in found.capabilities[0]
+        if c.resource_id == "resource:mandi-price:market:9001"
+    )
+    attrs = build_resource_attributes(
+        capability=mumbai,
+        subject_category="Market",
+        turn=UserTurn(
+            original_query="q",
+            enriched_query="q",
+            source_lang="en",
+            target_lang="en",
+            channel="web",
+            session_id="conv_1",
+            transaction_id="txn-mandi",
+        ),
+        model_filled={"supportedCommodities": [{"code": "24"}]},
+        schema_context_index={_MANDI: "https://example.test/MandiPrice/context"},
+        filterable=("market", "supportedCommodities[].code"),
+    )
+    client = httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=build_mock_app(pack_dir=pack_dir)),
+        base_url="http://mock.test",
+    )
+    invocation = HttpCapabilityInvocation(
+        client=client, base_url="http://mock.test", sender_id="dss", receiver_id="x"
+    )
+
+    answer = await invocation.select(mumbai, attrs, "txn-mandi")
+
+    assert answer.attributes == mandi_answer(
+        commodity={"code": "24", "name": "Potato"},
+        market=mumbai.advertised["market"],
+    )
 
 
-async def test_the_selected_answer_is_valid_now_not_when_recorded(
+async def test_advisory_select_answers_with_the_questions_written_answer(
     pack_dir: Path,
 ) -> None:
-    """The recorded example's window ended 2026-08-24; this one covers now.
+    """The planner writes `topics` itself, from the question. The mock finds
+    the benchmark question whose match words the topic holds and sends its
+    hand-written answer, so the composer reads advice that fits the ask."""
 
-    Under OnDemand this does not decide whether the answer survives — the
-    expiry filter runs in `discover_providers` and applies to Direct answers
-    only. It decides whether the answer is *honest*: a forecast labelled with
-    last month's window read as current would be the mock lying.
-    """
-
-    client = httpx2.AsyncClient(
-        transport=httpx2.ASGITransport(app=build_mock_app(pack_dir=pack_dir)),
+    capability = ProviderCapability(
+        provider_id="kvk-advisory-mock",
+        provider_name="Krishi Vigyan Kendra Advisory Service",
+        capability=_ADVISORY,
+        resource_id="res:kvk:crop-advisory",
+    )
+    attrs = build_resource_attributes(
+        capability=capability,
+        subject_category="Crop",
+        turn=UserTurn(
+            original_query="q",
+            enriched_query="q",
+            source_lang="en",
+            target_lang="en",
+            channel="web",
+            session_id="conv_1",
+            transaction_id="txn-advisory",
+        ),
+        model_filled={"topics": ["Ginger seed rate in Sangli"]},
+        schema_context_index={_ADVISORY: "https://example.test/Advisory/context"},
+        filterable=("topics",),
+    )
+    client = httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=build_mock_app(pack_dir=pack_dir)),
         base_url="http://mock.test",
+    )
+    invocation = HttpCapabilityInvocation(
+        client=client, base_url="http://mock.test", sender_id="dss", receiver_id="x"
+    )
+
+    answer = await invocation.select(capability, attrs, "txn-advisory")
+
+    ginger = next(q for q in _benchmark_questions() if q["id"] == "7-1")
+    assert answer.attributes == advisory_answer(ginger["answer"])
+
+
+async def test_a_select_the_mock_cannot_answer_is_refused_and_counted(
+    pack_dir: Path,
+) -> None:
+    """A miss must show, never be answered with the wrong data: the benchmark
+    counts it and leaves the turn out of its figures. The transaction id says
+    which turn missed, even with several turns in flight."""
+
+    app = build_mock_app(pack_dir=pack_dir)
+    client = httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://mock.test"
     )
     invocation = HttpCapabilityInvocation(
         client=client,
@@ -322,19 +462,16 @@ async def test_the_selected_answer_is_valid_now_not_when_recorded(
         provider_name="IMD Mausamgram NWP",
         capability=_WEATHER,
         resource_id="res:mausamgram:point-forecast",
-        observed_categories=("Weather",),
-        provider_code="IMD-NWP-01",
     )
+    attrs = _planner_attributes(capability, {})
+    no_location = {k: v for k, v in attrs.items() if k != "location"}
 
-    answer = await invocation.select(
-        capability, _planner_attributes(capability, {}), "txn"
-    )
+    with pytest.raises(SelectFailed) as failed:
+        await invocation.select(capability, no_location, "txn-miss")
 
-    assert answer.validity is not None
-    now = datetime.now(UTC)
-    assert answer.validity.starts_at is not None
-    assert answer.validity.ends_at is not None
-    assert answer.validity.starts_at <= now <= answer.validity.ends_at
+    assert failed.value.status_code == 400
+    misses = (await client.get("/_bench/misses")).json()
+    assert misses == {"count": 1, "transactionIds": ["txn-miss"]}
 
 
 async def test_a_type_the_mock_does_not_serve_finds_nobody(
@@ -359,8 +496,8 @@ async def test_a_type_the_mock_does_not_serve_finds_nobody(
 
     cache = SchemaPackCache(FilesystemSchemaPackSource(root=pack_dir))
     await cache.refresh()
-    client = httpx2.AsyncClient(
-        transport=httpx2.ASGITransport(app=build_mock_app(pack_dir=pack_dir)),
+    client = httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=build_mock_app(pack_dir=pack_dir)),
         base_url="http://mock.test",
     )
     discovery = HttpCapabilityDiscovery(
