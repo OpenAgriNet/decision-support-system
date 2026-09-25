@@ -57,7 +57,7 @@ def build_app(
     return app
 
 
-def _instrument_http(app: FastAPI) -> None:
+def _instrument_http(app: FastAPI, *, meter_provider=None) -> None:  # noqa: ANN001
     """Request duration, count, route, method and status, for every endpoint.
 
     Auto-instrumentation rather than a middleware of our own: the same numbers,
@@ -70,8 +70,14 @@ def _instrument_http(app: FastAPI) -> None:
     farmer feels. The two differ by a lot and neither replaces the other;
     written down here so one is not later deleted as a duplicate of the other.
 
+    Metrics only, no spans. The instrumentor's spans sat above `dss.turn` as
+    the trace root, added an ASGI send/receive span per streamed frame, traced
+    the healthcheck, and carried the raw query string and full exception
+    messages — where our spans say what failed by type, never by message
+    (§6.1). `dss.turn` already covers the turn; a no-op tracer drops the rest.
+
     Gated on telemetry being configured, like everything else: with no
-    endpoint, a request should not pay for a span nobody exports.
+    endpoint, a request should not pay for metrics nobody exports.
     """
 
     if not tracing_enabled():
@@ -86,8 +92,11 @@ def _instrument_http(app: FastAPI) -> None:
     os.environ.setdefault("OTEL_SEMCONV_STABILITY_OPT_IN", "http")
 
     from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+    from opentelemetry.trace import NoOpTracerProvider
 
-    FastAPIInstrumentor.instrument_app(app)
+    FastAPIInstrumentor.instrument_app(
+        app, tracer_provider=NoOpTracerProvider(), meter_provider=meter_provider
+    )
 
 
 def _publish_wire_schemas(app: FastAPI) -> None:

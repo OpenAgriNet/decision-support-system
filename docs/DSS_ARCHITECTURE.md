@@ -368,6 +368,7 @@ How it leaves the process today (ADR-0007, ADR-0012):
 - **Traces** — one span per turn and per stage, over OpenTelemetry into self-hosted Langfuse. They answer "why was this turn slow".
 - **Metrics** — turn and stage duration, time to first word, turn count and cost, and tokens per stage, over the same endpoint. They answer "is this deployment slower or dearer than the last one". Off unless a collector is configured, since Langfuse drops metrics.
 - **Labels stay bounded and non-personal** — stage, model, status and model profile only. Never a farmer's words, a provider, or a place. A test pins the allowed set.
+- **What a caller sends never shapes a span** — HTTP requests get metrics, not spans, and inbound OpenTelemetry Baggage is not copied onto spans.
 - Span code lives in `orchestration/` and `adapters/`, never `core/`.
 
 ---

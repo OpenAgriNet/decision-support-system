@@ -23,6 +23,11 @@
 - Duration and cost histograms carry bucket edges in seconds and USD. The SDK
   default is sized for milliseconds, which put nearly every value in one
   bucket (#139)
+- HTTP requests publish metrics only, no spans. The instrumentor's spans became
+  the trace root, added a span per streamed frame, traced the healthcheck, and
+  carried the query string and exception messages (#139)
+- A caller's `baggage` header is no longer copied onto spans, so it cannot set
+  the Langfuse user, session or trace name (#139)
 - A turn closed after its terminal event keeps its status. An SSE client
   hanging up after the answer no longer counts it as an error (#139)
 - A model run that fails still records its tokens and cost, so a failing turn

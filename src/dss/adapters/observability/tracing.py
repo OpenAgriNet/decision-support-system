@@ -197,10 +197,16 @@ def configure_telemetry(
     # `TracerProvider`, so a processor added from outside never runs — and
     # every agent span then fell back to Pydantic AI's per-run
     # `gen_ai.conversation.id`, which Langfuse also reads as a session.
+    #
+    # `add_baggage_to_attributes=False`: logfire copies OpenTelemetry Baggage
+    # onto every span by default, and a caller's `baggage` header reaches the
+    # request context. A caller could then set `langfuse.user.id`, the session
+    # or the trace name on our spans. Those are ours to set.
     logfire.configure(
         send_to_logfire=False,
         console=False,
         scrubbing=False,
+        add_baggage_to_attributes=False,
         additional_span_processors=[TurnIdSpanProcessor()],
     )
     Agent.instrument_all(settings)

@@ -668,6 +668,11 @@ Worth knowing:
 - **Composed is the end of composition, not the first word.** Sources are
   attached from the whole text, so it lands after the last word. The gap
   between first delta and composed is how long the writing took.
+- **HTTP requests get metrics, not spans.** The instrumentor's spans would sit
+  above `dss.turn` as the root and carry the query string and exception
+  messages. `dss.turn` is the trace root.
+- **A caller's `baggage` header never reaches a span.** Otherwise a caller
+  could set the Langfuse user, session or trace name.
 - **Cost is zero on a self-hosted model.** There is no published price for one.
   That is expected; read the token counts instead.
 
