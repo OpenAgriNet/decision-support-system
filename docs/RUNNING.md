@@ -44,17 +44,18 @@ export LANGFUSE_SECRET_KEY="sk-lf-..."
 export AZURE_OPENAI_ENDPOINT="https://<res>.services.ai.azure.com/openai/v1"
 export AZURE_OPENAI_API_KEY="<key>"
 
-# or an OpenAI-compatible proxy (LiteLLM in front of Gemma, vLLM, …), where
-# the base URL is the whole difference — a non-`azure:` model string is
-# handed to Pydantic AI untouched, so nothing else changes:
-export OPENAI_BASE_URL="https://<proxy host>/v1"
-export OPENAI_API_KEY="<proxy key>"
+# or the model gateway (ADR-0013), which is the direction of travel. With it
+# set, each DSS_*_MODEL is a name the gateway resolves — `dss-composer`, not a
+# vendor's model id — and which vendor answers is the gateway's business:
+export DSS_GATEWAY_URL="https://<gateway host>/v1"
+export DSS_GATEWAY_API_KEY="<the DSS's own gateway key>"
 ```
 
-One pair or the other, matching the `DSS_*_MODEL` prefix in `.env`:
-`azure:<deployment>` uses the first, anything else (`openai:<model>`) the
-second. The Langfuse keys come from Settings → API Keys at
-<http://localhost:3000>.
+One pair or the other. With `DSS_GATEWAY_URL` set, every model call goes
+through the gateway and the `AZURE_OPENAI_*` pair is unused — vendor keys live
+in the gateway instead. Without it, `azure:<deployment>` uses the first pair.
+See [`RUNNING-GATEWAY.md`](./RUNNING-GATEWAY.md). The Langfuse keys come from
+Settings → API Keys at <http://localhost:3000>.
 
 Ctrl-C stops the DSS and leaves Langfuse and the mock up — they are slow to
 start and a local session restarts the DSS often.
@@ -445,7 +446,13 @@ one at a bigger model without touching the rest:
 | planner | `DSS_PLANNER_MODEL` | `DSS_PLANNER_TEMPERATURE` | `DSS_PLANNER_TIMEOUT_SECONDS` | `DSS_PLANNER_RETRIES` |
 | composer | `DSS_COMPOSER_MODEL` | `DSS_COMPOSER_TEMPERATURE` | `DSS_COMPOSER_TIMEOUT_SECONDS` | `DSS_COMPOSER_RETRIES` |
 
-All models default to `openai:gpt-4o-mini`. Temperatures default to `0.0`
+With `DSS_GATEWAY_URL` set, each of these is a **name the gateway resolves** —
+`dss-composer`, not a vendor's model id. Which vendor and which model that means
+is the gateway's business (ADR-0013), so these four are set once and left alone;
+a model or vendor change happens in the gateway, not here.
+
+Without it they are Pydantic AI's own strings, and all default to
+`openai:gpt-4o-mini`. Temperatures default to `0.0`
 except the composer's `0.3` — it writes the farmer's answer, where a little
 variation reads better than a fixed phrasing. The planner gets 30s and 3
 retries because it is a loop, and its design leans on `ModelRetry` in three
@@ -454,17 +461,21 @@ places.
 Set any of them on the command line, or in a `.env` file:
 
 ```bash
-DSS_PLANNER_MODEL=openai:gpt-4o \
+DSS_PLANNER_MODEL=dss-planner \
 DSS_PLANNER_TEMPERATURE=0.2 \
 uv run uvicorn --factory dss.entrypoint.app:create_app --port 8077
 ```
 
-The provider is the model string's prefix — Pydantic AI's own syntax — and the
-API key is read by that SDK from its own environment variable
-(`OPENAI_API_KEY`), not by `Settings`. Note only `pydantic-ai-slim[openai]` is
-installed, so an `anthropic:` or `google:` model needs its extra added to
-`pyproject.toml` first: the setting will accept the string, and the SDK will
-not be there.
+**Through the gateway**, the name is all there is: the gateway holds the vendor
+accounts, so no vendor SDK and no vendor key is involved here at all. The DSS
+carries one credential, `DSS_GATEWAY_API_KEY`, which is its own.
+
+**Without the gateway**, the provider is the model string's prefix — Pydantic
+AI's own syntax — and the API key is read by that SDK from its own environment
+variable (`OPENAI_API_KEY`), not by `Settings`. Only `pydantic-ai-slim[openai]`
+is installed, so an `anthropic:` or `google:` model needs its extra added to
+`pyproject.toml` first: the setting will accept the string, and the SDK will not
+be there. This is the pre-gateway path.
 
 ### Azure OpenAI
 
