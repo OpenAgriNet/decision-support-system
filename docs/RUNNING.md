@@ -539,7 +539,7 @@ wrong:
 | `invocation_base_url` | unset | the provider `/select` endpoint |
 | `schema_pack_dir` | `var/schema-packs/` | another pack checkout, or a mounted path in a container |
 | `discovery_radius_m` | `25000` | how far around the turn's location to look |
-| `district_csv_path` | `src/dss/config/districts.csv` | another district index — a different area set, or extra aliases |
+| `area_csv_path` | `src/dss/config/areas.csv` | another area index — a different area set, or extra aliases |
 
 The two base URLs are all-or-nothing (`Settings.network_enabled`): set both and
 discovery + the planner call real providers; leave either unset and the turn
@@ -550,9 +550,9 @@ models (`DSS_PLANNER_MODEL`, `DSS_COMPOSER_MODEL`) — `DSS_STUB_LLM` only stubs
 intent and moderation, so a real provider-backed answer needs both the network
 settings and real model access.
 
-### The district index
+### The area index
 
-`src/dss/config/districts.csv` turns a place the farmer names into the point the
+`src/dss/config/areas.csv` turns a place the farmer names into the point the
 `/discover` spatial filter needs — "I am from Pune" becomes a coordinate. It is
 read once at startup and held in memory; a missing or unreadable file **refuses
 the boot**, naming the path, rather than quietly serving turns that have lost
@@ -560,25 +560,26 @@ every spatial filter.
 
 | Column | Notes |
 |---|---|
-| `area_code` | LGD district code |
+| `area_code` | LGD area code |
 | `area_name` | official name — the string a follow-up question shows the farmer |
-| `region` | ISO 3166-2 (`IN-MH`); disambiguates the three district names that repeat |
-| `latitude` / `longitude` | district centroid |
-| `aliases` | `;`-separated other names for the same district (`Bangalore;Bangalore City`) |
+| `region` | ISO 3166-2 (`IN-MH`); disambiguates names that repeat across states |
+| `latitude` / `longitude` | the area's centroid — a block's is inherited from its district, not its own point (a known gap, see `TODO.md`) |
+| `aliases` | `;`-separated other names for the same area (`Bangalore;Bangalore City`) |
+| `within` | ancestor chain, coarsest first, `;`-separated (`India;Maharashtra` for a district, `India;Maharashtra;Pune` for a block inside it) |
 
 A name resolves in two steps. Exact match on `area_name` or any alias first;
-failing that, districts that *qualify* it as a whole word — "Bengaluru" finds
+failing that, areas that *qualify* it as a whole word — "Bengaluru" finds
 Bengaluru Urban, Rural and South. Exact wins on its own, so "Mumbai" never drags
 in "Mumbai Suburban", and a partial word ("Pun") matches nothing rather than
 guessing at a typo.
 
-Resolving to several districts is not an answer: the turn goes without a spatial
-filter and the farmer is asked which district they are in.
+Resolving to several areas is not an answer: the turn goes without a spatial
+filter and the farmer is asked which one they mean.
 
 **Aliases are hand-maintained in this file.** The LGD snapshot carries none, so
-`scripts/generate_district_csv.py` reads the existing `districts.csv` and carries
+`scripts/generate_area_csv.py` reads the existing `areas.csv` and carries
 the column across when regenerating against a newer snapshot. An adopter who
-needs a different area set or different aliases points `DSS_DISTRICT_CSV_PATH`
+needs a different area set or different aliases points `DSS_AREA_CSV_PATH`
 at their own file.
 
 ## Tracing

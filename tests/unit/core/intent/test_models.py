@@ -78,11 +78,13 @@ def test_ask_carries_an_ambiguous_place() -> None:
         AreaMatch(
             name="Bilaspur",
             region="IN-HP",
+            within=("India", "Himachal Pradesh"),
             geometry=Geometry(coordinates=[76.75, 31.33]),
         ),
         AreaMatch(
             name="Bilaspur",
             region="IN-CT",
+            within=("India", "Chhattisgarh"),
             geometry=Geometry(coordinates=[82.15, 22.09]),
         ),
     )

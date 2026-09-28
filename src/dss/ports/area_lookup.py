@@ -34,6 +34,9 @@ class AreaMatch(BaseModel):
 
     name: str  # canonical spelling from the index, e.g. "Pune"
     region: str  # ISO 3166-2, e.g. "IN-MH"
+    # Ancestor chain, coarsest first, no level words: ("India", "Maharashtra")
+    # for a district, ("India", "Maharashtra", "Pune") for a block inside it.
+    within: tuple[str, ...]
     geometry: Geometry
 
 

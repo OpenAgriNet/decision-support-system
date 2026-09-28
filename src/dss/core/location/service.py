@@ -36,7 +36,7 @@ Place = ResolvedPlace | AmbiguousPlace | UnresolvedPlace | None
 def _from_match(match: AreaMatch, source: PlaceSource) -> ResolvedPlace:
     return ResolvedPlace(
         name=match.name,
-        within=(match.region,),
+        within=match.within,
         geometry=match.geometry,
         source=source,
     )

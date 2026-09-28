@@ -32,10 +32,16 @@ class _FakeLookup:
 
 
 _PUNE = AreaMatch(
-    name="Pune", region="IN-MH", geometry=Geometry(coordinates=[73.85, 18.52])
+    name="Pune",
+    region="IN-MH",
+    within=("India", "Maharashtra"),
+    geometry=Geometry(coordinates=[73.85, 18.52]),
 )
 _ANAND = AreaMatch(
-    name="Anand", region="IN-GJ", geometry=Geometry(coordinates=[72.95, 22.56])
+    name="Anand",
+    region="IN-GJ",
+    within=("India", "Gujarat"),
+    geometry=Geometry(coordinates=[72.95, 22.56]),
 )
 _DEVICE_GEOMETRY = Geometry(coordinates=[72.93, 22.55])  # Anand, device-reported
 
@@ -121,10 +127,16 @@ def test_named_place_matching_several_is_ambiguous() -> None:
     ~1000km error, so the ask carries every candidate instead."""
 
     bilaspur_hp = AreaMatch(
-        name="Bilaspur", region="IN-HP", geometry=Geometry(coordinates=[76.75, 31.33])
+        name="Bilaspur",
+        region="IN-HP",
+        within=("India", "Himachal Pradesh"),
+        geometry=Geometry(coordinates=[76.75, 31.33]),
     )
     bilaspur_ct = AreaMatch(
-        name="Bilaspur", region="IN-CT", geometry=Geometry(coordinates=[82.15, 22.09])
+        name="Bilaspur",
+        region="IN-CT",
+        within=("India", "Chhattisgarh"),
+        geometry=Geometry(coordinates=[82.15, 22.09]),
     )
     classification = Classification(asks=(_weather_ask("Bilaspur"),))
     turn = _turn()
@@ -155,10 +167,16 @@ def test_region_hint_narrows_an_otherwise_ambiguous_name() -> None:
     several — "Bilaspur in IN-HP" is not a contradiction, it is a hint."""
 
     bilaspur_hp = AreaMatch(
-        name="Bilaspur", region="IN-HP", geometry=Geometry(coordinates=[76.75, 31.33])
+        name="Bilaspur",
+        region="IN-HP",
+        within=("India", "Himachal Pradesh"),
+        geometry=Geometry(coordinates=[76.75, 31.33]),
     )
     bilaspur_ct = AreaMatch(
-        name="Bilaspur", region="IN-CT", geometry=Geometry(coordinates=[82.15, 22.09])
+        name="Bilaspur",
+        region="IN-CT",
+        within=("India", "Chhattisgarh"),
+        geometry=Geometry(coordinates=[82.15, 22.09]),
     )
     classification = Classification(asks=(_weather_ask("Bilaspur"),))
     turn = _turn(region="IN-HP")

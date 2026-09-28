@@ -1,7 +1,7 @@
 """Tier 5 — does a real model fill `ClassifiedAsk.place_name`?
 
 Structural only: the assertion is that whatever the model extracted *resolves*
-against the shipped district index, never that it produced a particular string.
+against the shipped area index, never that it produced a particular string.
 
 The prompt asks for the place in English, so the Marathi query is the case that
 matters — the index carries English names only, and a model that echoes "पुणे"
@@ -23,7 +23,7 @@ from dotenv import dotenv_values
 
 from dss.adapters.area_lookup.csv_lookup import CsvAreaLookup
 from dss.adapters.llm.pydantic_ai_provider import PydanticAILLMProvider
-from dss.config.settings import DEFAULT_DISTRICT_CSV, Settings
+from dss.config.settings import DEFAULT_AREA_CSV, Settings
 from dss.core.intent.service import classify_intent
 from dss.core.shared.models import UserTurn
 from dss.entrypoint.composition import _resolve_model
@@ -69,8 +69,8 @@ def _live_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 # The real shipped index, not a fixture: the point is that a model's output
-# lands on one of these 784 districts.
-LOOKUP = CsvAreaLookup.load(DEFAULT_DISTRICT_CSV)
+# lands on one of these areas.
+LOOKUP = CsvAreaLookup.load(DEFAULT_AREA_CSV)
 
 
 def _live_llm() -> PydanticAILLMProvider:

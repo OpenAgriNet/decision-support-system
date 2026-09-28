@@ -187,12 +187,15 @@
   with one resolved ask and one ambiguous/unresolved ask still proceeds
   without surfacing the ambiguity — the composer has no way yet to answer
   part of a turn and ask about the rest in one reply.
-- **`ResolvedPlace.within` holds one ancestor today, not the full chain.**
-  `_from_match` (`core/location/service.py`) builds `within=(match.region,)`
-  from `AreaMatch.region` — a single ISO 3166-2 code. The design's coarsest-
-  first ancestor chain (`("India", "Maharashtra", "Pune")`) needs the CSV
-  regenerated with a real `within` column; until then, disambiguation only
-  ever has one level to compare.
+- **A block's coordinate is its district's, not its own.** Every one of the
+  7,092 Block rows in the 2026-09-03 LGD snapshot has `point_method` starting
+  `inherited:` — none has a real point of its own. A farmer naming their
+  block now resolves by *name* correctly, but the geometry returned is the
+  district centroid, same precision as before blocks existed. Fixing this
+  needs the snapshot rebuilt with `join_geometry.py --source lgd` (per
+  `network-adapter/tools/area-lookups/README.md`), which is a decision for
+  whoever owns that pipeline, not something regenerating from the current
+  snapshot can fix.
 
 ## Transport
 

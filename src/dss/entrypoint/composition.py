@@ -121,7 +121,7 @@ def build_runner_with_lifecycle(
     # in, so an unreadable one is a broken build either way, and a boot that
     # skipped it would only surface the problem as missing spatial filters much
     # later. Read once here — every turn shares this index.
-    area_lookup = CsvAreaLookup.load(settings.district_csv_path)
+    area_lookup = CsvAreaLookup.load(settings.area_csv_path)
     # The scheme catalog is the other way round: nothing ships, because which
     # schemes a deployment serves is the tenant's call.
     scheme_catalog = load_scheme_catalog(settings.schemes_config_path)

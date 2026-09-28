@@ -69,6 +69,7 @@ _PUNE = Location(geometry=Geometry(coordinates=[74.067998, 18.571118]))
 _PUNE_MATCH = AreaMatch(
     name="Pune",
     region="IN-MH",
+    within=("India", "Maharashtra"),
     geometry=Geometry(coordinates=[74.067998, 18.571118]),
 )
 
