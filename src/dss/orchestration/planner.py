@@ -138,6 +138,7 @@ async def _select(
             (
                 ask_index,
                 Failure(
+                    ask_index=ask_index,
                     capability=exc.capability,
                     reason=exc.detail or str(exc.status_code),
                     retryable=exc.failure_class is FailureClass.TRANSIENT,

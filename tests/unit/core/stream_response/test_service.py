@@ -12,6 +12,14 @@ from collections.abc import AsyncIterator, Sequence
 
 import pytest
 
+from dss.core.intent.models import (
+    Ask,
+    Intent,
+    InteractionType,
+    PlaceSource,
+    ResolvedPlace,
+    SubjectCategory,
+)
 from dss.core.planner.models import (
     Evidence,
     Failure,
@@ -20,7 +28,7 @@ from dss.core.planner.models import (
     Source,
     SourceKind,
 )
-from dss.core.shared.models import UserTurn
+from dss.core.shared.models import Geometry, UserTurn
 from dss.core.stream_response.service import stream_response
 
 IDENTITY = Identity(
@@ -54,12 +62,31 @@ UNREACHABLE = Evidence(
     served=(),
     failed=(
         Failure(
+            ask_index=0,
             capability="openagrinet:MandiPrice",
             reason="429 too many requests",
             retryable=True,
         ),
     ),
     sufficient=False,
+)
+
+
+def _ask(place: ResolvedPlace | None = None) -> Ask:
+    return Ask(
+        subject_categories=SubjectCategory.MARKET,
+        interaction_type=InteractionType.OBSERVE,
+        place=place,
+    )
+
+
+INTENT = Intent(asks=(_ask(),))
+
+PUNE = ResolvedPlace(
+    name="Pune",
+    within=("IN-MH",),
+    geometry=Geometry(coordinates=[73.85, 18.52]),
+    source=PlaceSource.NAMED,
 )
 
 # Split mid-word and mid-number on purpose — that is what a model does.
@@ -128,11 +155,13 @@ def _turn(query: str = "What is the price of paddy?") -> UserTurn:
     )
 
 
-async def _collect(llm: _FakeLLM, evidence: Evidence = EVIDENCE) -> list[str]:
+async def _collect(
+    llm: _FakeLLM, evidence: Evidence = EVIDENCE, intent: Intent = INTENT
+) -> list[str]:
     return [
         delta
         async for delta in stream_response(
-            evidence, turn=_turn(), identity=IDENTITY, llm=llm
+            evidence, intent, turn=_turn(), identity=IDENTITY, llm=llm
         )
     ]
 
@@ -180,6 +209,17 @@ async def test_the_identity_reaches_the_model() -> None:
     assert "Never gives financial advice." in llm.everything
 
 
+async def test_the_asks_resolved_place_reaches_the_model() -> None:
+    """The fallback the composer prefers only when the retrieved data itself
+    names no place."""
+
+    llm = _FakeLLM()
+
+    await _collect(llm, intent=Intent(asks=(_ask(PUNE),)))
+
+    assert "Pune" in llm.everything
+
+
 async def test_nothing_retrieved_says_so_rather_than_leaving_the_block_empty() -> None:
     """An empty block invites the model to fill it from its own knowledge."""
 
@@ -220,7 +260,7 @@ async def test_a_failure_part_way_through_is_not_swallowed() -> None:
 
     with pytest.raises(RuntimeError, match="stream dropped"):
         async for delta in stream_response(
-            EVIDENCE, turn=_turn(), identity=IDENTITY, llm=llm
+            EVIDENCE, INTENT, turn=_turn(), identity=IDENTITY, llm=llm
         ):
             seen.append(delta)
 
@@ -239,7 +279,7 @@ async def test_abandoning_the_stream_closes_the_model_call() -> None:
     """
 
     llm = _FakeLLM()
-    pieces = stream_response(EVIDENCE, turn=_turn(), identity=IDENTITY, llm=llm)
+    pieces = stream_response(EVIDENCE, INTENT, turn=_turn(), identity=IDENTITY, llm=llm)
 
     async for _ in pieces:
         break  # the farmer hangs up after the first piece

@@ -189,7 +189,7 @@ class _FakeCompose:
         self.calls = 0
         self.closed = False
 
-    async def __call__(self, evidence, *, turn):  # noqa: ANN001
+    async def __call__(self, evidence, intent, *, turn):  # noqa: ANN001
         self.calls += 1
         try:
             for index, chunk in enumerate(self._chunks):
@@ -350,7 +350,10 @@ async def test_all_calls_failing_is_unavailable() -> None:
             served=(),
             failed=(
                 Failure(
-                    capability="openagrinet:MandiPrice", reason="502", retryable=True
+                    ask_index=0,
+                    capability="openagrinet:MandiPrice",
+                    reason="502",
+                    retryable=True,
                 ),
             ),
         )

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 
+from dss.core.intent.models import Intent, ResolvedPlace
 from dss.core.planner.markers import (
     QUESTION,
     RETRIEVED_DATA,
@@ -37,6 +38,9 @@ never your own knowledge, and never a number the data does not contain.
 - When one thing carries several prices, the usual price is the answer. Give
   that, then say how low and how high it went in the same sentence.
 - Cite a source with its number in square brackets, like [1].
+- Say which place the answer is about, in your own words. If the retrieved
+  data itself names a place, use that — it is more precise. Otherwise, each
+  block also carries the place its ask was about; use that instead.
 - Reply in {target_lang}.
 
 If the data does not answer the question, say plainly that you could not
@@ -58,43 +62,60 @@ def system_prompt(identity: Identity, *, turn: UserTurn) -> str:
     )
 
 
-def user_prompt(evidence: Evidence, *, turn: UserTurn) -> str:
+def user_prompt(evidence: Evidence, intent: Intent, *, turn: UserTurn) -> str:
     """The question and the provider's values, wrapped as data.
 
     A provider's text is third-party and must never read as instructions, and
-    `wrap_as_data` stops either block from closing early.
+    `wrap_as_data` stops either block from closing early. The place label on
+    each block rides inside this same wrapped block — still content, not
+    instruction, even though it traces back to the farmer's own words.
     """
 
     return (
         wrap_as_data(turn.enriched_query, QUESTION)
         + "\n\n"
-        + wrap_as_data(render_evidence(evidence), RETRIEVED_DATA)
+        + wrap_as_data(render_evidence(evidence, intent), RETRIEVED_DATA)
     )
 
 
-def render_evidence(evidence: Evidence) -> str:
+def _place_label(ask_index: int, intent: Intent) -> str:
+    """ "— about <place>", or nothing if the ask has no resolved place."""
+
+    place = intent.asks[ask_index].place
+    if not isinstance(place, ResolvedPlace):
+        return ""
+    return f" — about {place.name}"
+
+
+def render_evidence(evidence: Evidence, intent: Intent) -> str:
     """Lay out the sources and their values for the model.
 
     ``Result.data`` is a provider's ``resourceAttributes`` verbatim — each
     pack has its own shape, so this does not try to interpret them. Turning
     ``{"prices": {"modal": 2200}}`` into "2,200 Rs" is the model's job; this
     only has to make the values legible and say which source each came from.
+
+    Each block also carries the place its own ask resolved — a two-place turn
+    ("wheat price in Pune, will it rain in Anand") labels each block with its
+    own place, rather than leaving the model to guess which is which. It is
+    a fallback the model uses only when the data itself names no place.
     """
 
     name_by_id = {source.id: source.name for source in evidence.sources}
     blocks = [
-        f"[{result.source_id}] {name_by_id.get(result.source_id, 'unknown')}\n"
+        f"[{result.source_id}] {name_by_id.get(result.source_id, 'unknown')}"
+        f"{_place_label(result.ask_index, intent)}\n"
         f"{json.dumps(result.data, indent=2, ensure_ascii=False)}"
         for result in evidence.results
     ]
-    blocks.extend(_render_failures(evidence))
+    blocks.extend(_render_failures(evidence, intent))
 
     if not blocks:
         return "Nothing was retrieved."
     return "\n\n".join(blocks)
 
 
-def _render_failures(evidence: Evidence) -> list[str]:
+def _render_failures(evidence: Evidence, intent: Intent) -> list[str]:
     """Calls that did not answer, and why.
 
     "We could not reach Agmarknet" and "nobody serves this" are the same
@@ -105,6 +126,7 @@ def _render_failures(evidence: Evidence) -> list[str]:
     """
 
     return [
-        f"Could not reach a provider for {failure.capability}: {failure.reason}"
+        f"Could not reach a provider for {failure.capability}"
+        f"{_place_label(failure.ask_index, intent)}: {failure.reason}"
         for failure in evidence.failed
     ]

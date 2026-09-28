@@ -76,14 +76,19 @@ def test_result_is_frozen() -> None:
 
 
 def test_failure_carries_capability_and_reason() -> None:
-    failure = Failure(capability="MandiPrice", reason="timeout", retryable=True)
+    failure = Failure(
+        ask_index=0, capability="MandiPrice", reason="timeout", retryable=True
+    )
+    assert failure.ask_index == 0
     assert failure.capability == "MandiPrice"
     assert failure.reason == "timeout"
     assert failure.retryable is True
 
 
 def test_failure_is_frozen() -> None:
-    failure = Failure(capability="MandiPrice", reason="timeout", retryable=True)
+    failure = Failure(
+        ask_index=0, capability="MandiPrice", reason="timeout", retryable=True
+    )
     with pytest.raises(ValidationError):
         failure.retryable = False
 
@@ -91,7 +96,9 @@ def test_failure_is_frozen() -> None:
 def test_evidence_assembles_sources_results_and_gaps() -> None:
     source = Source(id="1", name="Agmarknet", kind=SourceKind.PROVIDER, url=None)
     result = Result(ask_index=0, source_id="1", data={"modal_price": "2100"})
-    failure = Failure(capability="KnowledgeAdvisory", reason="timeout", retryable=True)
+    failure = Failure(
+        ask_index=1, capability="KnowledgeAdvisory", reason="timeout", retryable=True
+    )
 
     evidence = Evidence(
         sources=(source,),

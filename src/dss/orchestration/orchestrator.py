@@ -248,7 +248,7 @@ class Orchestrator:
                 # closing an async generator does not reach the one it relays
                 # from.
                 async with aclosing(
-                    self._components.compose(evidence, turn=turn)
+                    self._components.compose(evidence, result.intent, turn=turn)
                 ) as pieces:
                     async for delta in pieces:
                         if not written:

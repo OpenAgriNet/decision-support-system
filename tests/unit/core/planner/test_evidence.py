@@ -249,6 +249,7 @@ def test_failures_are_carried_onto_the_evidence() -> None:
     things to tell a farmer."""
 
     failure = Failure(
+        ask_index=0,
         capability="openagrinet:MandiPrice",
         reason="too many requests",
         retryable=True,
