@@ -10,10 +10,14 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from dss.core.shared.models import Geometry
 from dss.ports.area_lookup import AreaMatch
+
+# What a model leaves around a name it copied out of a sentence or a quoted
+# example. Brackets and hyphens are not here: they can end a real name.
+_PLACE_NAME_EDGE_JUNK = " \t\n'\"‘’“”,.;:"
 
 
 class InteractionType(StrEnum):
@@ -129,6 +133,16 @@ class ClassifiedAsk(BaseModel):
     subject_categories: SubjectCategory
     interaction_type: InteractionType
     place_name: str | None = None
+    # True when place_name came from an earlier turn, not the latest query.
+    # Only the model can tell: it read both, in whatever language they were.
+    place_from_history: bool = False
+
+    @field_validator("place_name")
+    @classmethod
+    def _trim_place_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip(_PLACE_NAME_EDGE_JUNK) or None
 
 
 class Classification(BaseModel):

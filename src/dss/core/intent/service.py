@@ -91,8 +91,15 @@ def build_intent_prompt(history: Sequence[ConversationMessage]) -> str:
         "place_name: the place the user says they are in or asks about, "
         "written in English (transliterate: 'मी पुण्याहून' -> 'Pune'). "
         "Return the place only — no district/taluka/village word, no state, "
-        "no coordinates. Use null if no place is named; do not guess one from "
-        "the crop, the language, or the conversation's subject.",
+        "no coordinates. If the latest query names no place, use the most "
+        "recent place named earlier in this conversation, and set "
+        "place_from_history to true. Only ever copy a "
+        "place someone actually said — never guess one from the crop, the "
+        "language, or the subject. Use null if no place was said anywhere.",
+        "  'weather in Pune and Mumbai' -> two asks, place_name 'Pune' and "
+        "'Mumbai'. Two places are two asks, even with one subject.",
+        "  'weather in Pune, Maharashtra' -> one ask, place_name 'Pune'. A "
+        "state after a place narrows it; it is not a second place.",
     ]
     lines += _render_history(history)
     return "\n".join(lines)

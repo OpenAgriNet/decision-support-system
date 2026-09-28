@@ -162,6 +162,44 @@ def test_classified_ask_carries_a_place_name_not_a_place() -> None:
     assert ask.place_name == "Pune"
 
 
+@pytest.mark.parametrize("raw", ["Pune, ", "Pune', "])
+def test_classified_ask_trims_stray_punctuation_off_the_place_name(raw: str) -> None:
+    """Both values are what a live model returned. The lookup keys on the
+    exact name, so a trailing comma or quote left the place unresolved.
+    """
+
+    ask = ClassifiedAsk(
+        subject_categories=SubjectCategory.MARKET,
+        interaction_type=InteractionType.OBSERVE,
+        place_name=raw,
+    )
+    assert ask.place_name == "Pune"
+
+
+def test_classified_ask_keeps_punctuation_inside_the_place_name() -> None:
+    """Only the edges are trimmed. A dot inside a real name is part of it."""
+
+    ask = ClassifiedAsk(
+        subject_categories=SubjectCategory.MARKET,
+        interaction_type=InteractionType.OBSERVE,
+        place_name="St. Thomas",
+    )
+    assert ask.place_name == "St. Thomas"
+
+
+def test_classified_ask_with_only_punctuation_names_no_place() -> None:
+    """An empty name would reach the farmer as "I could not find ." — no name
+    is the honest reading, and lets the device or asserted area apply.
+    """
+
+    ask = ClassifiedAsk(
+        subject_categories=SubjectCategory.MARKET,
+        interaction_type=InteractionType.OBSERVE,
+        place_name="', ",
+    )
+    assert ask.place_name is None
+
+
 def test_classification_rejects_a_domain_ask() -> None:
     """Proves the split is a real type boundary, not a rename: the LLM schema
     cannot be handed a domain ``Ask`` carrying a ``ResolvedPlace``."""

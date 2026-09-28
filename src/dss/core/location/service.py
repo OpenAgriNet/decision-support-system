@@ -42,13 +42,16 @@ def _from_match(match: AreaMatch, source: PlaceSource) -> ResolvedPlace:
     )
 
 
-def _resolve_named(name: str, lookup: AreaLookup, region: str | None) -> Place:
-    """A place the farmer actually said this turn — the one case that can
-    fail loud (`AmbiguousPlace`/`UnresolvedPlace`) rather than fall through."""
+def _resolve_named(
+    name: str, lookup: AreaLookup, region: str | None, source: PlaceSource
+) -> Place:
+    """A place the farmer actually said, this turn or earlier — the one case
+    that can fail loud (`AmbiguousPlace`/`UnresolvedPlace`) rather than fall
+    through."""
 
     matches = lookup.resolve(name, region)
     if len(matches) == 1:
-        return _from_match(matches[0], PlaceSource.NAMED)
+        return _from_match(matches[0], source)
     if len(matches) > 1:
         return AmbiguousPlace(unresolved_name=name, candidates=tuple(matches))
     return UnresolvedPlace(unresolved_name=name)
@@ -106,7 +109,12 @@ def resolve_places(
     # come back ambiguous or unresolved; those are per-ask, not fixed by a
     # sibling, so they are never overwritten below.
     places: list[Place] = [
-        _resolve_named(classified.place_name, lookup, region)
+        _resolve_named(
+            classified.place_name,
+            lookup,
+            region,
+            PlaceSource.CARRIED if classified.place_from_history else PlaceSource.NAMED,
+        )
         if classified.place_name
         else None
         for classified in classification.asks

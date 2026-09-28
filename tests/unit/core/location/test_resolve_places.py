@@ -8,6 +8,8 @@ from dss.core.intent.models import (
     Classification,
     ClassifiedAsk,
     InteractionType,
+    PlaceSource,
+    ResolvedPlace,
     SubjectCategory,
     UnresolvedPlace,
 )
@@ -89,6 +91,25 @@ def test_named_place_beats_device_geometry() -> None:
     assert place is not None
     assert place.name == "Pune"
     assert place.geometry == _PUNE.geometry
+
+
+def test_a_place_from_history_resolves_as_carried() -> None:
+    """Same lookup as a named place; only the label differs, so a reader can
+    tell "you said Pune" from "you said Pune earlier"."""
+
+    ask = ClassifiedAsk(
+        subject_categories=SubjectCategory.WEATHER,
+        interaction_type=InteractionType.OBSERVE,
+        place_name="Pune",
+        place_from_history=True,
+    )
+    lookup = _FakeLookup({"pune": [_PUNE]})
+
+    intent = resolve_places(Classification(asks=(ask,)), _turn(), lookup=lookup)
+
+    place = intent.asks[0].place
+    assert isinstance(place, ResolvedPlace)
+    assert place.source == PlaceSource.CARRIED
 
 
 def test_named_place_beats_asserted_area() -> None:

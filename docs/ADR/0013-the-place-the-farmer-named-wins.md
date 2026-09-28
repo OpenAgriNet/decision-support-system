@@ -94,59 +94,90 @@ Supporting choices, each following from the above:
   outranks that repeat. The client's `area` still moves below the farmer's own
   words: one is a platform repeating what it captured earlier, the other is
   what the farmer just said.
+- **Not resolved is not one shape.** A named place can fail two different
+  ways — it matches several areas, or none — and each needs its own answer to
+  the farmer. `Ask.place` is a union
+  (`ResolvedPlace | AmbiguousPlace | UnresolvedPlace | None`), not a resolved
+  value plus a side channel for failure. The type itself carries which case
+  happened; nothing downstream needs a second field to check.
 - **Carry-forward is the classifier's job, not new state.** The last six turns
   are already rendered into the intent prompt. The prompt currently forbids
   taking a place from the conversation, which was written to stop the model
   inventing one; it is narrowed to "only ever copy a place someone actually
   said". No session store is added — the DSS does not own durable session
-  state.
+  state. The model marks a place it took from history (`place_from_history`),
+  and the resolver labels it `CARRIED`. The model sets the flag, not code: it
+  read both the query and the history, in whatever language. A text check in
+  code fails as soon as the farmer's language differs from the English
+  `place_name`.
 - **The LLM's schema is split from the domain model.** `Intent` is handed to
   `llm.structured`, so any field on it is a field the model is asked to fill.
-  A classifier-only `Classification`/`ClassifiedAsk` carries `place_name`; the
-  resolver builds the domain `Intent` with the geometry. Driver 3 becomes
-  structural rather than prompt-enforced.
+  `classify_intent` now returns `Classification` — words only, `place_name`
+  per ask, no geometry — and never builds an `Ask` itself. `resolve_places`
+  is the only place a domain `Ask` is built, turning each `place_name` into a
+  `place`. Driver 3 becomes structural rather than prompt-enforced.
+- **The model's place name is trimmed in code.** A live model returned
+  `'Pune, '` and `"Pune', "`, which matched nothing. `ClassifiedAsk` strips
+  quotes, commas and spaces off the ends, and a name that is only punctuation
+  becomes no name. The prompt handles meaning; code handles format.
 - **The resolved place is a fallback in the composer, not an override.**
   `render_evidence` renders a provider's `resourceAttributes` verbatim, so a
   mandi price already names the market it came from — more precise than the
   district centroid we searched around. The composer prefers the place the
-  data names and uses ours only when the data names none.
+  data names and uses ours only when the data names none. Each result and
+  failure carries its own ask's place — `Failure` gained `ask_index` to match
+  `Result` — so a turn naming two places labels each block correctly rather
+  than leaving the model to guess which is which.
 - **Three clarification messages, not one.** Named nowhere, named a place the
   index lacks, and named an ambiguous one are different problems; today all
-  three read "Which district are you in?".
+  three read "Which district are you in?". All three failing asks in one
+  turn are reported together, in one reply, rather than only the first found
+  — a farmer fixing one does not need a second round-trip to hear about the
+  other.
 
 ## 5. Consequences
 
 - `core/location/` is created for the resolver, alongside `core/enrichment/`
   and shaped like it: take an `Intent`, look names up, return a new one.
-- **`coverage_for` is deleted.** Its precedence moves into the resolver, and
-  the orchestrator's gate reads the outcome off `TurnResult` instead of
-  recomputing it. The second resolution per turn disappears.
+- **`coverage_for` is deleted.** Its precedence moves into the resolver.
+  `coverage_for_ask` reads `ask.place` directly, no lookup — resolution
+  already happened. The second resolution per turn disappears.
 - **A resolved place reaches `/select` for the first time.**
   `resource_attributes._location_field` built the select body's location from
   `turn.location.geometry` alone, so a turn that resolved "Pune" from the
   question sent a weather select with no location at all. Per-ask resolution
   closes that gap as a side effect rather than as a separate fix.
 - **Blocks enter the index and ambiguity rises sharply.** The generator's own
-  header records why blocks were excluded: they take colliding names from 3 to
-  226. That is accepted here because this change builds the ambiguous branch
-  that makes collisions answerable. Villages are not included — the LGD
-  snapshot does not carry them.
-- **`NEEDS_DISTRICT_TEXT` stops being correct and changes.** Its comment ties
-  it to an index that "holds districts only"; with blocks that reason expires,
-  and demanding a district is needlessly narrow.
-- **The ambiguity question's numbered format is a contract with #131.** That
-  story resolves the farmer's reply by giving the LLM the candidate list and
-  having it pick, so nothing can be invented. The list must therefore be
-  legible in the conversation history that #131 reads back.
-- **Carry-forward is bounded by `_HISTORY_WINDOW = 6`, not by the session.** A
-  place named ten turns ago is outside the window and silently stops carrying.
-  Raising it costs prompt tokens on every turn; the durable fix is session
-  history, which the Experience API owns (architecture §1.2). Named here
-  rather than fixed.
-- **The prompt's "never invent a place" guard is weakened by design.** It was
-  previously enforced by forbidding the model to read history at all; it is
-  now a narrower rule about copying only spoken words. A tier-5 test that a
-  query with no place anywhere returns none is what earns the relaxation. If
-  it drifts, the fallback is validating that the name appears in the prompt
-  text — declined for now because transliteration means the English "Pune"
-  does not appear literally in "मी पुण्याहून".
+  header records why blocks were originally excluded: they take colliding
+  names from 3 to several hundred. That is accepted here because this change
+  builds the ambiguous branch that makes collisions answerable. The area
+  index — regenerated with blocks and the real `within` chain — is renamed
+  `areas.csv`; it was `districts.csv` when it held districts alone. Villages
+  are still not included — the LGD snapshot does not carry them.
+- **A block's coordinate is its district's, not its own — a known gap.**
+  Every Block row in the snapshot this ships against has an inherited
+  district/state centroid rather than a real point of its own. A farmer
+  naming their block now resolves by name; the geometry returned is the
+  district's, same precision as before blocks existed. Fixing this needs the
+  snapshot rebuilt with a different geometry source, a decision for whoever
+  owns that pipeline.
+- **`NEEDS_DISTRICT_TEXT` stops being correct and changes** to
+  `NEEDS_PLACE_TEXT` (`"Which place are you asking about?"`). Its old comment
+  tied it to an index that "holds districts only"; with blocks that reason
+  expires, and demanding a district is needlessly narrow. Clarification text
+  is now a config primitive (`ClarificationText`, mirroring `Identity`) —
+  bundled defaults, adopter-overridable path.
+- **The gate is per-ask, but still all-or-nothing per turn.** The
+  orchestrator now asks for a place only when *no* ask in the turn resolved
+  one; a turn with one resolved ask and one ambiguous ask still proceeds
+  without surfacing the ambiguity. The composer has no way yet to answer part
+  of a turn and ask about the rest in one reply — noted in `TODO.md`, not
+  fixed here.
+- **The ambiguity question's numbered format is a contract with a future
+  story that reads the farmer's reply.** That story gives the LLM the
+  candidate list and has it pick, so nothing can be invented. The list must
+  therefore be legible in the conversation history that story reads back.
+- **Carry-forward reaches back six messages, not the whole session.**
+  `_HISTORY_WINDOW = 6` bounds how far the prompt looks. If that proves too
+  short, the durable fix is session history the Experience API owns
+  (architecture §1.2), not something this story changes.

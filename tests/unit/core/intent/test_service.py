@@ -110,6 +110,48 @@ def test_prompt_asks_for_the_place_name_in_english() -> None:
     assert "English" in prompt
 
 
+def test_prompt_carries_a_place_named_earlier_in_the_conversation() -> None:
+    """ "And tomorrow?" after "weather in Pune" names no place. Without this
+    line the model returns null and the turn falls back to the device point.
+    """
+
+    prompt = build_intent_prompt([])
+
+    assert "earlier in this conversation" in prompt
+
+
+def test_prompt_asks_the_model_to_flag_a_carried_place() -> None:
+    """Only the model read both the query and the history, in whatever
+    language. Unasked, it always sends the default and a carried place is
+    labelled as named this turn.
+    """
+
+    prompt = build_intent_prompt([])
+
+    assert "place_from_history" in prompt
+
+
+def test_prompt_forbids_guessing_a_place_nobody_said() -> None:
+    """Carry-forward lets the model look past the latest query. This line keeps
+    it from inventing a place from the crop or language instead.
+    """
+
+    prompt = build_intent_prompt([])
+
+    assert "never guess" in prompt
+
+
+def test_prompt_shows_two_places_apart_from_one_qualified_place() -> None:
+    """Both read as "a place, a comma or 'and', another name". Two places are
+    two asks; a state after a place is one ask with one place.
+    """
+
+    prompt = build_intent_prompt([])
+
+    assert "Pune and Mumbai" in prompt
+    assert "Pune, Maharashtra" in prompt
+
+
 def test_prompt_glosses_every_category() -> None:
     """A bare category list left the model guessing which bucket an ask falls
     in. Each name carries a line saying what belongs in it — asserted per
