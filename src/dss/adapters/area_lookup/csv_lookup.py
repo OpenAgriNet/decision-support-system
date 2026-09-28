@@ -12,6 +12,7 @@ Named `csv_lookup` rather than `csv` so the module does not shadow the stdlib
 from __future__ import annotations
 
 import csv
+from bisect import bisect_left
 from pathlib import Path
 
 from dss.core.shared.models import Geometry
@@ -38,6 +39,10 @@ class CsvAreaLookup:
 
     def __init__(self, by_name: dict[str, tuple[AreaMatch, ...]]) -> None:
         self._by_name = by_name
+        # Sorted once, at load: every key sharing a prefix sits in one
+        # contiguous block, so `_qualified_by` finds where it starts with
+        # `bisect_left` in O(log n) instead of scanning every key.
+        self._sorted_keys = sorted(by_name)
 
     @classmethod
     def load(cls, path: Path) -> CsvAreaLookup:
@@ -93,13 +98,19 @@ class CsvAreaLookup:
         "Bengaluru" names no district on its own; three qualify it (Urban,
         Rural, South). Whole-word, so "Pun" does not reach "Pune" — a partial
         word is a typo, and this must not turn one into a confident answer.
+
+        Sorting puts every key sharing a prefix in one contiguous block:
+        `bisect_left` finds where it starts in O(log n), then this walks
+        forward only while `startswith` holds — no full scan of every key.
         """
 
         prefix = f"{wanted} "
         found: list[AreaMatch] = []
-        for key, matches in self._by_name.items():
-            if key.startswith(prefix):
-                found.extend(matches)
+        start = bisect_left(self._sorted_keys, prefix)
+        for key in self._sorted_keys[start:]:
+            if not key.startswith(prefix):
+                break
+            found.extend(self._by_name[key])
         return tuple(found)
 
     def resolve(self, name: str, region: str | None = None) -> list[AreaMatch]:
