@@ -33,3 +33,13 @@ def test_the_dashboard_queries_only_published_metrics() -> None:
 
     assert queried, "no MetricName found — has the query format changed?"
     assert queried <= set(LABEL_KEYS) | HTTP_METRICS
+
+
+def test_trace_and_span_ids_are_not_hex_encoded_twice() -> None:
+    """The exporter already stores `TraceId` and `SpanId` as hex strings.
+    `hex()` on one encodes it again, and the id then matches no trace."""
+
+    sql = DASHBOARD.read_text()
+
+    assert "hex(TraceId)" not in sql
+    assert "hex(SpanId)" not in sql
