@@ -136,8 +136,11 @@ class ClassifiedAsk(BaseModel):
     # True when place_name came from an earlier turn, not the latest query.
     # Only the model can tell: it read both, in whatever language they were.
     place_from_history: bool = False
+    # The larger place the farmer said it is in ("Bilaspur, Himachal
+    # Pradesh" -> "Himachal Pradesh"). Picks between same-name places.
+    place_within: str | None = None
 
-    @field_validator("place_name")
+    @field_validator("place_name", "place_within")
     @classmethod
     def _trim_place_name(cls, value: str | None) -> str | None:
         if value is None:

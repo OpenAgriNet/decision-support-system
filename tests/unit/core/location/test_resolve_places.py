@@ -228,6 +228,44 @@ def test_region_hint_narrows_an_otherwise_ambiguous_name() -> None:
     assert place.geometry == _BILASPUR_HP.geometry
 
 
+def test_the_state_the_farmer_named_picks_the_place() -> None:
+    """ "Bilaspur, Himachal Pradesh": the farmer already said which one, so
+    asking "which Bilaspur?" would ignore them."""
+
+    ask = ClassifiedAsk(
+        subject_categories=SubjectCategory.WEATHER,
+        interaction_type=InteractionType.OBSERVE,
+        place_name="Bilaspur",
+        place_within="Himachal Pradesh",
+    )
+    lookup = _FakeLookup({"bilaspur": [_BILASPUR_HP, _BILASPUR_CT]})
+
+    intent = resolve_places(Classification(asks=(ask,)), _turn(), lookup=lookup)
+
+    place = intent.asks[0].place
+    assert isinstance(place, ResolvedPlace)
+    assert place.geometry == _BILASPUR_HP.geometry
+
+
+def test_a_named_state_that_fits_no_match_still_asks_which_one() -> None:
+    """No Bilaspur is in Gujarat. "I could not find Bilaspur" would be false;
+    ask which one."""
+
+    ask = ClassifiedAsk(
+        subject_categories=SubjectCategory.WEATHER,
+        interaction_type=InteractionType.OBSERVE,
+        place_name="Bilaspur",
+        place_within="Gujarat",
+    )
+    lookup = _FakeLookup({"bilaspur": [_BILASPUR_HP, _BILASPUR_CT]})
+
+    intent = resolve_places(Classification(asks=(ask,)), _turn(), lookup=lookup)
+
+    place = intent.asks[0].place
+    assert isinstance(place, AmbiguousPlace)
+    assert place.candidates == (_BILASPUR_HP, _BILASPUR_CT)
+
+
 def test_a_region_that_fits_no_match_still_asks_which_one() -> None:
     """A farmer in Gujarat asks about Bilaspur, which is in six states but not
     Gujarat. "I could not find Bilaspur" would be false; ask which one."""
