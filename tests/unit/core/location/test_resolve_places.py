@@ -183,32 +183,64 @@ def test_named_place_not_in_the_index_is_unresolved() -> None:
     assert place.unresolved_name == "Xyzzy"
 
 
+def test_the_farmers_region_never_hides_the_place_they_named() -> None:
+    """A farmer in Gujarat asks about Pune. The region says where they are, not
+    what they asked about, so it must not filter Pune out."""
+
+    classification = Classification(asks=(_weather_ask("Pune"),))
+    turn = _turn(region="IN-GJ")
+    lookup = _FakeLookup({"pune": [_PUNE]})
+
+    intent = resolve_places(classification, turn, lookup=lookup)
+
+    place = intent.asks[0].place
+    assert isinstance(place, ResolvedPlace)
+    assert place.name == "Pune"
+
+
+_BILASPUR_HP = AreaMatch(
+    name="Bilaspur",
+    region="IN-HP",
+    within=("India", "Himachal Pradesh"),
+    geometry=Geometry(coordinates=[76.75, 31.33]),
+)
+_BILASPUR_CT = AreaMatch(
+    name="Bilaspur",
+    region="IN-CT",
+    within=("India", "Chhattisgarh"),
+    geometry=Geometry(coordinates=[82.15, 22.09]),
+)
+
+
 def test_region_hint_narrows_an_otherwise_ambiguous_name() -> None:
     """`turn.location.region` disambiguates a name that would otherwise match
     several — "Bilaspur in IN-HP" is not a contradiction, it is a hint."""
 
-    bilaspur_hp = AreaMatch(
-        name="Bilaspur",
-        region="IN-HP",
-        within=("India", "Himachal Pradesh"),
-        geometry=Geometry(coordinates=[76.75, 31.33]),
-    )
-    bilaspur_ct = AreaMatch(
-        name="Bilaspur",
-        region="IN-CT",
-        within=("India", "Chhattisgarh"),
-        geometry=Geometry(coordinates=[82.15, 22.09]),
-    )
     classification = Classification(asks=(_weather_ask("Bilaspur"),))
     turn = _turn(region="IN-HP")
-    lookup = _FakeLookup({"bilaspur": [bilaspur_hp, bilaspur_ct]})
+    lookup = _FakeLookup({"bilaspur": [_BILASPUR_HP, _BILASPUR_CT]})
 
     intent = resolve_places(classification, turn, lookup=lookup)
 
     place = intent.asks[0].place
     assert place is not None
     assert place.name == "Bilaspur"
-    assert place.geometry == bilaspur_hp.geometry
+    assert place.geometry == _BILASPUR_HP.geometry
+
+
+def test_a_region_that_fits_no_match_still_asks_which_one() -> None:
+    """A farmer in Gujarat asks about Bilaspur, which is in six states but not
+    Gujarat. "I could not find Bilaspur" would be false; ask which one."""
+
+    classification = Classification(asks=(_weather_ask("Bilaspur"),))
+    turn = _turn(region="IN-GJ")
+    lookup = _FakeLookup({"bilaspur": [_BILASPUR_HP, _BILASPUR_CT]})
+
+    intent = resolve_places(classification, turn, lookup=lookup)
+
+    place = intent.asks[0].place
+    assert isinstance(place, AmbiguousPlace)
+    assert place.candidates == (_BILASPUR_HP, _BILASPUR_CT)
 
 
 def test_two_asks_two_places() -> None:

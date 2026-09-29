@@ -49,7 +49,11 @@ def _resolve_named(
     that can fail loud (`AmbiguousPlace`/`UnresolvedPlace`) rather than fall
     through."""
 
-    matches = lookup.resolve(name, region)
+    # The region is where the farmer is, not what they asked about: it only
+    # breaks a tie between same-name places, never hides the one they named.
+    matches = lookup.resolve(name)
+    if len(matches) > 1 and region is not None:
+        matches = lookup.resolve(name, region) or matches
     if len(matches) == 1:
         return _from_match(matches[0], source)
     if len(matches) > 1:
