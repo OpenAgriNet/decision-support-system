@@ -243,6 +243,33 @@ def test_a_region_that_fits_no_match_still_asks_which_one() -> None:
     assert place.candidates == (_BILASPUR_HP, _BILASPUR_CT)
 
 
+def test_a_block_inside_its_same_name_district_resolves_to_the_district() -> None:
+    """Nashik district holds a Nashik block. The district covers the block, so
+    asking "which Nashik?" would make the farmer pick between near-equal
+    answers."""
+
+    district = AreaMatch(
+        name="Nashik",
+        region="IN-MH",
+        within=("India", "Maharashtra"),
+        geometry=Geometry(coordinates=[73.79, 20.0]),
+    )
+    block = AreaMatch(
+        name="Nashik",
+        region="IN-MH",
+        within=("India", "Maharashtra", "Nashik"),
+        geometry=Geometry(coordinates=[73.79, 20.0]),
+    )
+    classification = Classification(asks=(_weather_ask("Nashik"),))
+    lookup = _FakeLookup({"nashik": [block, district]})
+
+    intent = resolve_places(classification, _turn(), lookup=lookup)
+
+    place = intent.asks[0].place
+    assert isinstance(place, ResolvedPlace)
+    assert place.within == district.within
+
+
 def test_two_asks_two_places() -> None:
     """ "Wheat price in Pune and will it rain in Anand?" — two asks, two
     independently resolved places."""

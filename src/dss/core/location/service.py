@@ -42,6 +42,17 @@ def _from_match(match: AreaMatch, source: PlaceSource) -> ResolvedPlace:
     )
 
 
+def _drop_nested(matches: list[AreaMatch]) -> list[AreaMatch]:
+    """A match inside another match of the same name — Nashik block inside
+    Nashik district — adds no real choice: the larger place covers it."""
+
+    return [
+        match
+        for match in matches
+        if not any(match.within == (*outer.within, outer.name) for outer in matches)
+    ]
+
+
 def _resolve_named(
     name: str, lookup: AreaLookup, region: str | None, source: PlaceSource
 ) -> Place:
@@ -49,11 +60,11 @@ def _resolve_named(
     that can fail loud (`AmbiguousPlace`/`UnresolvedPlace`) rather than fall
     through."""
 
+    matches = _drop_nested(lookup.resolve(name))
     # The region is where the farmer is, not what they asked about: it only
     # breaks a tie between same-name places, never hides the one they named.
-    matches = lookup.resolve(name)
     if len(matches) > 1 and region is not None:
-        matches = lookup.resolve(name, region) or matches
+        matches = [m for m in matches if m.region == region] or matches
     if len(matches) == 1:
         return _from_match(matches[0], source)
     if len(matches) > 1:
