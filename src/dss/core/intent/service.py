@@ -99,6 +99,9 @@ def build_intent_prompt(history: Sequence[ConversationMessage]) -> str:
         "language, or the subject. Use null if no place was said anywhere.",
         "  'weather in Pune and Mumbai' -> two asks, place_name 'Pune' and "
         "'Mumbai'. Two places are two asks, even with one subject.",
+        "  'wheat price and will it rain in Pune' -> two asks, place_name "
+        "'Pune' on each. If one place covers several asks, put it on each; "
+        "'here' is not a place name, so leave it null.",
         "  'weather in Pune, Maharashtra' -> one ask, place_name 'Pune', "
         "place_within 'Maharashtra'. A state after a place narrows it; it is "
         "not a second place.",

@@ -3,10 +3,10 @@
 The only place an `Ask` is built from a `ClassifiedAsk` — see
 `core/intent/service.py`'s docstring. Precedence, one ask at a time:
 
-    place named in this turn
-      > place another ask in this turn already resolved
+    place named (this turn, or carried from earlier)
       > device geometry
       > client-asserted area
+      > place another ask in this turn already resolved
       > nothing
 
 Device geometry, sent this turn with the farmer's location consent, is a
@@ -108,7 +108,7 @@ def _resolve_from_location(
 
 def _first_resolved(places: list[Place]) -> ResolvedPlace | None:
     """The first place any ask in this turn actually resolved by name — what
-    a placeless sibling ask borrows before falling back to the envelope."""
+    a placeless sibling ask borrows when the envelope gives it nothing."""
 
     for place in places:
         if isinstance(place, ResolvedPlace):
@@ -147,13 +147,14 @@ def resolve_places(
         for classified in classification.asks
     ]
 
-    # Pass 2: an ask that named nothing borrows the first place any sibling
-    # in this same turn resolved, before falling back to the turn's own
-    # device/asserted location.
+    # Pass 2: an ask that named nothing uses the turn's device/asserted
+    # location — "here" means the farmer — and only without one borrows a
+    # sibling's place. The classifier repeats a place that covers several
+    # asks, so borrowing is the fallback, not the rule.
     sibling_place = _first_resolved(places)
     for index, classified in enumerate(classification.asks):
         if places[index] is None and not classified.place_name:
-            places[index] = sibling_place or _resolve_from_location(location, lookup)
+            places[index] = _resolve_from_location(location, lookup) or sibling_place
 
     asks = tuple(
         _build_ask(classified, place)

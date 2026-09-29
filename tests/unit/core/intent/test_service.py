@@ -149,6 +149,15 @@ def test_prompt_carries_only_a_place_the_user_said() -> None:
     assert "a place the user actually said" in prompt
 
 
+def test_prompt_repeats_a_shared_place_on_each_ask() -> None:
+    """Code no longer lends one ask's place to another ahead of the device
+    location, so "wheat price and will it rain in Pune" needs Pune on both."""
+
+    prompt = build_intent_prompt([])
+
+    assert "put it on each" in prompt
+
+
 def test_prompt_forbids_guessing_a_place_nobody_said() -> None:
     """Carry-forward lets the model look past the latest query. This line keeps
     it from inventing a place from the crop or language instead.

@@ -24,6 +24,7 @@ from dotenv import dotenv_values
 from dss.adapters.area_lookup.csv_lookup import CsvAreaLookup
 from dss.adapters.llm.pydantic_ai_provider import PydanticAILLMProvider
 from dss.config.settings import DEFAULT_AREA_CSV, Settings
+from dss.core.intent.models import SubjectCategory
 from dss.core.intent.service import classify_intent
 from dss.core.shared.models import ConversationMessage, UserTurn
 from dss.entrypoint.composition import _resolve_model
@@ -229,6 +230,37 @@ async def test_a_conversation_with_no_place_carries_none_forward() -> None:
     assert classification.asks, "the model returned no asks"
     place_name = classification.asks[0].place_name
     assert place_name is None, f"invented {place_name!r}"
+
+
+async def test_one_place_covering_two_asks_is_on_both() -> None:
+    """Code lends a sibling's place only when the turn has no location, so
+    the model must put Pune on the rain ask itself."""
+
+    classification = await classify_intent(
+        _turn("What is the wheat price and will it rain in Pune?"), _live_llm()
+    )
+
+    assert len(classification.asks) == 2, f"expected two asks, got {classification!r}"
+    for ask in classification.asks:
+        assert ask.place_name is not None, f"an ask lost Pune: {classification!r}"
+        assert len(LOOKUP.resolve(ask.place_name)) == 1
+
+
+async def test_here_is_left_for_the_device() -> None:
+    """ "Here" is where the farmer is. Filling it with the sibling's Pune
+    would answer the rain for the wrong place."""
+
+    classification = await classify_intent(
+        _turn("Onion price in Pune, and will it rain here?"), _live_llm()
+    )
+
+    rain = [
+        ask
+        for ask in classification.asks
+        if ask.subject_categories is SubjectCategory.WEATHER
+    ]
+    assert len(rain) == 1, f"expected one weather ask, got {classification!r}"
+    assert rain[0].place_name is None, f"'here' became {rain[0].place_name!r}"
 
 
 async def test_a_place_only_the_assistant_said_is_not_carried() -> None:

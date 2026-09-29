@@ -329,10 +329,26 @@ def test_two_asks_two_places() -> None:
     assert places[1] is not None and places[1].name == "Anand"
 
 
+def test_an_ask_naming_no_place_uses_the_device_before_a_sibling() -> None:
+    """ "Onion price in Pune, and will it rain here?" from Anand. "Here" is
+    the device, not Pune."""
+
+    rain_here = _weather_ask()
+    classification = Classification(asks=(_weather_ask("Pune"), rain_here))
+    turn = _turn(geometry=_DEVICE_GEOMETRY)
+    lookup = _FakeLookup({"pune": [_PUNE]})
+
+    intent = resolve_places(classification, turn, lookup=lookup)
+
+    place = intent.asks[1].place
+    assert place is not None
+    assert place.geometry == _DEVICE_GEOMETRY
+
+
 def test_two_asks_one_place() -> None:
-    """ "Wheat price and will it rain in Pune?" — one ask names the place; the
-    other names none but shares the turn, so it reuses what its sibling
-    resolved rather than falling all the way to device/asserted/none."""
+    """ "Wheat price and will it rain in Pune?" with no device location — one
+    ask names the place, the other names none, and with nothing else to go
+    on it reuses what its sibling resolved rather than having no place."""
 
     market_ask = ClassifiedAsk(
         subject_categories=SubjectCategory.MARKET,
