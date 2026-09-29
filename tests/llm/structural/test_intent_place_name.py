@@ -80,7 +80,7 @@ def _live_llm() -> PydanticAILLMProvider:
     # whatever key happens to be set.
     settings = Settings()
     return PydanticAILLMProvider(
-        _resolve_model(settings.intent_model),
+        _resolve_model(settings.intent_model, settings),
         name="intent-classifier",
         stage=Stage.INTENT,
         temperature=settings.intent_temperature,

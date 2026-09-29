@@ -172,7 +172,7 @@ async def sent_topics() -> list[str]:
         # is exactly what a deployment loads.
         identity=load_identity(),
         skills=load_skills(),
-        model=_resolve_model(settings.planner_model),
+        model=_resolve_model(settings.planner_model, settings),
         temperature=settings.planner_temperature,
         timeout_seconds=settings.planner_timeout_seconds,
         retries=settings.planner_retries,
