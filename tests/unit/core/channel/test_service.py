@@ -127,6 +127,18 @@ def test_each_choice_shows_the_part_of_its_chain_that_differs() -> None:
     assert "2. Ashti, Beed" in text
 
 
+def test_the_same_failed_place_is_reported_once() -> None:
+    """ "Xyzzy price and Xyzzy weather" is one place the farmer has to fix,
+    not two."""
+
+    xyzzy = UnresolvedPlace(unresolved_name="Xyzzy")
+
+    answer = answer_for_unplaced_asks((_ask(place=xyzzy), _ask(place=xyzzy)), _TEXT)
+
+    assert answer is not None
+    assert answer.content[0].text.count("I could not find Xyzzy.") == 1
+
+
 def test_each_choice_stops_where_it_stands_apart_from_every_other() -> None:
     """Three Akbarpurs, two in Uttar Pradesh. The state is enough for the
     Bihar one; the two in Uttar Pradesh only differ by district."""

@@ -109,7 +109,14 @@ def answer_for_unplaced_asks(
 
     lines: list[str] = []
     needs_place = False
+    # A list, not a set: a place's geometry holds a list, so it cannot hash.
+    reported: list[AmbiguousPlace | UnresolvedPlace] = []
     for ask in asks:
+        if isinstance(ask.place, AmbiguousPlace | UnresolvedPlace):
+            # Two asks failing on one name are one thing for the farmer to fix.
+            if ask.place in reported:
+                continue
+            reported.append(ask.place)
         if isinstance(ask.place, AmbiguousPlace):
             lines.append(
                 text.ambiguous_place_header.format(name=ask.place.unresolved_name)
