@@ -46,8 +46,8 @@ def build_discover_providers(
     """Bakes in the built adapter, cache, and configured radius, so callers
     only ever supply what changes per turn: intent, turn, and now.
 
-    No area index here — place resolution now happens once, before discovery,
-    in ``core.location.resolve_places``. Discovery only reads ``ask.place``.
+    Discovery only reads ``ask.place``; ``core.location.resolve_places`` fills
+    it before discovery runs.
 
     The fan-out reports two counts, onto the span already open around it —
     `trace_component("discovery")` in `turn.py` brackets exactly this call, so

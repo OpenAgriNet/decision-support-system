@@ -137,7 +137,7 @@ Code-level extensions (custom reasoning engines, sidecar model providers, altern
 
 ### 4.1 Configuration primitives
 
-The DSS accepts five primitives, mounted as YAML/Markdown files under `/config/`:
+The DSS accepts six primitives, mounted as YAML/Markdown files under `/config/`:
 
 | Primitive | Add | Override | Disable | Purpose |
 |-----------|-----|----------|---------|---------|
@@ -146,6 +146,7 @@ The DSS accepts five primitives, mounted as YAML/Markdown files under `/config/`
 | **Policies** | Yes | Yes | No | Enforceable guardrails at named checkpoints (Moderation, Pre-tool-call, Post-response). LLM-evaluated or deterministic. Follow the policy's `on_violation` action on rejection. |
 | **Context Providers** | Yes | **No** | No | Declarative mapping from prompt variable → source (`request.user_context.*`, `builtin://clock.date`, …). Override by using a different variable name. |
 | **Response Reviewers** | Yes | Yes | No | Post-hoc quality/safety checks on candidate answers (length, language conformance, presence of citations, …). May merge with post-response Policies in a later refactor. |
+| **Clarification text** | No | Yes | No | The fixed questions a farmer reads when a place is missing, not found, or matches several. Bundled default; the loader takes an override path. |
 
 **Personas.** A Persona is a *composition label* referencing a bundle of primitives (Identity + Skill set + Policy pack + Reviewers). Not a separate primitive; a way to bundle for a tenant.
 

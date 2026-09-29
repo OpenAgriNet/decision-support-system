@@ -86,9 +86,18 @@ Supporting choices, each following from the above:
   chains and shows the shortest part that distinguishes two candidates; the
   code never asks what a "state" is. This is how GeoNames, Who's On First and
   Photon model the same problem.
-- **One precedence rule:** a place named this turn, then a place carried
-  forward from this session, then the device's own geometry, then the
-  client's asserted `area`. Live device geometry — sent this turn, with the
+- **Narrowing a name that matches several places**, in order: drop a match
+  inside a same-name match (Nashik block inside Nashik district); then the
+  state or district the farmer named (`place_within`); then the envelope's
+  `region`. Each step only narrows, and never empties the list: a place the
+  farmer named is never hidden by where their phone is. Each remaining choice
+  shows the part of its chain that sets it apart ("Ashti, Wardha" / "Ashti,
+  Beed").
+- **One precedence rule, per ask:** a place the farmer named (this turn, or
+  carried from earlier), then the device's own geometry, then the client's
+  asserted `area`, then a place another ask in the same turn resolved.
+  "Here" means the farmer, so the device outranks a sibling's place; the
+  classifier repeats a place that covers several asks. Live device geometry — sent this turn, with the
   farmer's location consent — is a fresher signal of where they are than an
   `area` the platform is only repeating from an earlier turn, so it now
   outranks that repeat. The client's `area` still moves below the farmer's own
@@ -138,7 +147,8 @@ Supporting choices, each following from the above:
 ## 5. Consequences
 
 - `core/location/` is created for the resolver, alongside `core/enrichment/`
-  and shaped like it: take an `Intent`, look names up, return a new one.
+  and shaped like it: take a `Classification`, look names up, return an
+  `Intent`.
 - **`coverage_for` is deleted.** Its precedence moves into the resolver.
   `coverage_for_ask` reads `ask.place` directly, no lookup — resolution
   already happened. The second resolution per turn disappears.
@@ -162,11 +172,12 @@ Supporting choices, each following from the above:
   snapshot rebuilt with a different geometry source, a decision for whoever
   owns that pipeline.
 - **`NEEDS_DISTRICT_TEXT` stops being correct and changes** to
-  `NEEDS_PLACE_TEXT` (`"Which place are you asking about?"`). Its old comment
+  `ClarificationText.needs_place` (`"Which place are you asking about?"`). Its old comment
   tied it to an index that "holds districts only"; with blocks that reason
   expires, and demanding a district is needlessly narrow. Clarification text
   is now a config primitive (`ClarificationText`, mirroring `Identity`) —
-  bundled defaults, adopter-overridable path.
+  bundled defaults; the loader takes a path, but no setting points it at an
+  adopter file yet.
 - **A turn with some places found answers those and reports the rest.** The
   gate asks the farmer only when no ask resolved a place. Otherwise each
   ambiguous or unresolved ask becomes a `Failure` with no `capability`,

@@ -83,8 +83,9 @@ src/dss/
 │                             # Wires core services as steps/agents, defines control flow and policy checkpoints
 │                             # (moderation / pre-tool-call / post-response), owns the framework's state schema.
 │
-├── config/                   # Loads and validates the 5 configuration primitives (Identity, Skills, Policies,
-│                             # Context Providers, Response Reviewers) mounted under /config per the extension model.
+├── config/                   # Loads and validates the 6 configuration primitives (Identity, Skills, Policies,
+│                             # Context Providers, Response Reviewers, Clarification text) mounted under /config
+│                             # per the extension model.
 │
 └── entrypoint/                # Whatever exposes the DSS to the Experience API — REST/gRPC/in-process is currently
                               # undecided (see docs/DSS_ARCHITECTURE.md); add an ADR when this is chosen.

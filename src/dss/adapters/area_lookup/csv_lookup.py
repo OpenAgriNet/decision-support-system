@@ -103,7 +103,7 @@ class CsvAreaLookup:
         return cls({name: tuple(matches) for name, matches in by_name.items()})
 
     def _qualified_by(self, wanted: str) -> tuple[AreaMatch, ...]:
-        """Districts whose name begins with `wanted` as a whole word.
+        """Areas whose name begins with `wanted` as a whole word.
 
         "Bengaluru" names no district on its own; three qualify it (Urban,
         Rural, South). Whole-word, so "Pun" does not reach "Pune" — a partial
