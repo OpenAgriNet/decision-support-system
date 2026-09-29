@@ -6,7 +6,7 @@ a mean up and hides what most turns felt like.
 
 from __future__ import annotations
 
-from evals.perf.stats import summarise
+from benchmarks.stats import summarise
 
 
 def test_a_hundred_values_give_their_typical_slow_and_worst():

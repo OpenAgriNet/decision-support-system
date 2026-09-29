@@ -37,9 +37,9 @@ We want to measure **our** code and models, not the provider network.
 
 ## 4. Decision Outcome
 
-- A CLI in `evals/perf/`, not a test. It does not ship: the image copies only
+- A CLI in `benchmarks/`, not a test. It does not ship: the image copies only
   `src/`.
-- 30 fixed questions in `evals/perf/questions.toml`. The same file holds the
+- 30 fixed questions in `benchmarks/questions.toml`. The same file holds the
   mock's answers, so the two cannot drift apart.
 - The mock answers only those questions. Prices and forecasts are seeded from
   the request, so each question gets the same numbers every run.

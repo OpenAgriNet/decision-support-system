@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import anyio
 
-from evals.perf.load import run_load
-from evals.perf.questions import Question
-from evals.perf.turn import TurnTiming
+from benchmarks.load import run_load
+from benchmarks.questions import Question
+from benchmarks.turn import TurnTiming
 
 _QUESTIONS = [
     Question(

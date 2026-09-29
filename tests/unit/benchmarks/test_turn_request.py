@@ -7,9 +7,9 @@ pass there and fail every real turn with a 422.
 
 from __future__ import annotations
 
+from benchmarks.questions import Question
+from benchmarks.turn import turn_request
 from dss.adapters.http.v1.schema import TurnRequest
-from evals.perf.questions import Question
-from evals.perf.turn import turn_request
 
 AKOLA = Question(
     id="37-1",

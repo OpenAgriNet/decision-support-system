@@ -15,10 +15,10 @@ import httpx
 from pytest_httpserver import HTTPServer
 from werkzeug import Request, Response
 
-from evals.perf.traces import fetch_trace
+from benchmarks.traces import fetch_trace
 
 _TRACE = (
-    Path(__file__).parents[3] / "unit" / "evals" / "perf" / "fixtures"
+    Path(__file__).parents[2] / "unit" / "benchmarks" / "fixtures"
 ) / "langfuse_trace.json"
 _SINCE = datetime(2026, 9, 23, 13, 0, tzinfo=UTC)
 

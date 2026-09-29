@@ -11,9 +11,9 @@ import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 
-from evals.perf.questions import Question
-from evals.perf.traces import TraceFacts
-from evals.perf.turn import TurnTiming
+from benchmarks.questions import Question
+from benchmarks.traces import TraceFacts
+from benchmarks.turn import TurnTiming
 
 SendTurn = Callable[[Question, str], Awaitable[TurnTiming]]
 ReadMisses = Callable[[], Awaitable[set[str]]]

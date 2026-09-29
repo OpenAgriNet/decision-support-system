@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from evals.perf.container import (
+from benchmarks.container import (
     container_env,
     limits,
     logs,

@@ -1,7 +1,7 @@
 """Run the speed benchmark, or its load mode, against the DSS.
 
-    uv run python -m evals.perf --repeats 3 --warmup 2
-    uv run python -m evals.perf load --concurrency 1,2,4,8
+    uv run python -m benchmarks --repeats 3 --warmup 2
+    uv run python -m benchmarks load --concurrency 1,2,4,8
 
 Both need the mock network and Langfuse up (`scripts/run-local.sh`), and read
 LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY from the environment.
@@ -12,7 +12,7 @@ LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY from the environment.
   `--memory`, so the figures mean "one pod", not "this laptop". It needs the
   model settings (`DSS_*_MODEL`, the model keys) exported in this shell.
 
-Each writes its report as JSON under `var/evals/perf/`. Only wiring lives
+Each writes its report as JSON under `var/benchmarks/`. Only wiring lives
 here: each piece it calls is tested on its own, and this file is checked by a
 real run.
 """
@@ -32,10 +32,10 @@ from pathlib import Path
 import anyio
 import httpx
 
-from evals.perf import container
-from evals.perf.load import run_load
-from evals.perf.questions import load_questions
-from evals.perf.report import (
+from benchmarks import container
+from benchmarks.load import run_load
+from benchmarks.questions import load_questions
+from benchmarks.report import (
     figures,
     load_figures,
     render_load_text,
@@ -43,12 +43,12 @@ from evals.perf.report import (
     save_json,
     write_json,
 )
-from evals.perf.runner import RunOptions, run
-from evals.perf.traces import fetch_trace
-from evals.perf.turn import run_turn
+from benchmarks.runner import RunOptions, run
+from benchmarks.traces import fetch_trace
+from benchmarks.turn import run_turn
 
 _HERE = Path(__file__).parent
-_REPO = _HERE.parents[1]
+_REPO = _HERE.parent
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -254,7 +254,7 @@ def _parser() -> argparse.ArgumentParser:
         default=None,
         help="stop after this many turns, warm-up included; caps what a run costs",
     )
-    parser.add_argument("--out", type=Path, default=_REPO / "var" / "evals" / "perf")
+    parser.add_argument("--out", type=Path, default=_REPO / "var" / "benchmarks")
     load = parser.add_argument_group("load mode")
     load.add_argument(
         "--concurrency", default="1,2,4,8", help="turns at once, per step"

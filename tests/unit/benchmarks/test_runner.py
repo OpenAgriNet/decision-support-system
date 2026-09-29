@@ -6,10 +6,10 @@ are passed in as plain async functions, so these tests hand in fakes.
 
 from __future__ import annotations
 
-from evals.perf.questions import Question
-from evals.perf.runner import RunOptions, RunResult, run
-from evals.perf.traces import TraceFacts
-from evals.perf.turn import TurnTiming
+from benchmarks.questions import Question
+from benchmarks.runner import RunOptions, RunResult, run
+from benchmarks.traces import TraceFacts
+from benchmarks.turn import TurnTiming
 
 _QUESTIONS = [
     Question(

@@ -12,9 +12,9 @@ from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 
-from evals.perf.load import StepResult
-from evals.perf.runner import RunResult
-from evals.perf.stats import summarise
+from benchmarks.load import StepResult
+from benchmarks.runner import RunResult
+from benchmarks.stats import summarise
 
 
 def figures(

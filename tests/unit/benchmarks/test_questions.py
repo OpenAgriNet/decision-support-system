@@ -10,9 +10,9 @@ from pathlib import Path
 
 import pytest
 
-from evals.perf.questions import load_questions
+from benchmarks.questions import load_questions
 
-QUESTIONS = Path(__file__).parents[4] / "evals" / "perf" / "questions.toml"
+QUESTIONS = Path(__file__).parents[3] / "benchmarks" / "questions.toml"
 
 
 def test_the_set_holds_ten_questions_per_category():

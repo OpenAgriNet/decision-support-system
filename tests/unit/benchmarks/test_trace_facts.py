@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from evals.perf.traces import TokenCall, to_trace_facts
+from benchmarks.traces import TokenCall, to_trace_facts
 
 _TRACE = Path(__file__).parent / "fixtures" / "langfuse_trace.json"
 

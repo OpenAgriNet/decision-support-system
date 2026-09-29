@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from evals.perf.load import StepResult
-from evals.perf.report import load_figures, render_load_text
-from evals.perf.turn import TurnTiming
+from benchmarks.load import StepResult
+from benchmarks.report import load_figures, render_load_text
+from benchmarks.turn import TurnTiming
 
 
 def _step(concurrency: int, totals: list[float], **kwargs) -> StepResult:

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 
-from evals.perf.sse import parse_sse
+from benchmarks.sse import parse_sse
 
 
 async def _lines(*lines: str) -> AsyncIterator[str]:

@@ -121,10 +121,10 @@ uv run python -m tools.mock_network --port 8078 --reload
 ```
 
 `--reload` restarts the mock when its code changes. It does not watch
-`evals/perf/questions.toml`, so restart the mock after editing that file.
+`benchmarks/questions.toml`, so restart the mock after editing that file.
 
 One mock serves weather, mandi and advisory. It answers only the questions in
-`evals/perf/questions.toml`:
+`benchmarks/questions.toml`:
 
 | Type | Answers | Matched on |
 |---|---|---|
@@ -706,7 +706,7 @@ uv run pytest tests/integration/adapters/observability/test_metrics.py -v --no-c
 
 ## Time it: the speed benchmark
 
-`evals/perf/` runs 30 fixed questions through the DSS and reports how fast it
+`benchmarks/` runs 30 fixed questions through the DSS and reports how fast it
 answered. The providers are the mock. The models are real, so each turn costs
 a model call.
 
@@ -714,8 +714,8 @@ Start the stack (`scripts/run-local.sh`), then:
 
 ```bash
 export LANGFUSE_PUBLIC_KEY=... LANGFUSE_SECRET_KEY=...
-uv run python -m evals.perf                                      # full run
-uv run python -m evals.perf --warmup 0 --repeats 1 --max-turns 10  # quick check
+uv run python -m benchmarks                                      # full run
+uv run python -m benchmarks --warmup 0 --repeats 1 --max-turns 10  # quick check
 ```
 
 It prints p50, p95 and max for:
@@ -725,13 +725,13 @@ It prints p50, p95 and max for:
 - tokens per model call, per agent
 
 It also prints the models, the commit and the machine. The JSON goes to
-`var/evals/perf/`. Compare runs made on the same machine, close in time.
+`var/benchmarks/`. Compare runs made on the same machine, close in time.
 
 ### Load mode
 
 ```bash
 set -a; source .env.local; source .env; set +a
-uv run python -m evals.perf load --concurrency 1,2,4,8
+uv run python -m benchmarks load --concurrency 1,2,4,8
 ```
 
 Each step sends the 30 questions with N turns at a time. It reports turns per
@@ -770,7 +770,7 @@ uv run pytest                 # everything; tier 6 (eval) excluded
 uv run pytest tests/unit      # pure — mapping, framing, core rules, boundaries
 uv run pytest tests/integration/entrypoint     # the HTTP layer against a fake runner
 uv run pytest tests/integration/orchestration  # the runner against fake ports
-uv run pytest tests/unit/evals tests/integration/evals   # the benchmark itself
+uv run pytest tests/unit/benchmarks tests/integration/benchmarks   # the benchmark itself
 uv run ruff check . && uv run ruff format --check .
 ```
 

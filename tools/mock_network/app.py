@@ -10,7 +10,7 @@ request carries `@type` twice — in `context.schemaContext` and in the jsonpath
 filter — and no subject category. The category is how the DSS *chooses* which
 `@type` to ask for; by the time a request leaves it is already resolved.
 
-Select answers the speed benchmark's questions (`evals/perf/questions.toml`).
+Select answers the speed benchmark's questions (`benchmarks/questions.toml`).
 It matches a request on a few key fields (`matching.py`) and builds the answer
 (`generators.py`). A request it cannot match is refused with a 400 and counted
 at `GET /_bench/misses`, never answered with the wrong data.
@@ -48,8 +48,8 @@ from tools.mock_network.matching import key_fields
 
 _RESPONSES = Path(__file__).parent / "responses"
 
-# Read as a file, not imported: `tools/` does not depend on `evals/` code.
-DEFAULT_QUESTIONS = Path(__file__).parents[2] / "evals" / "perf" / "questions.toml"
+# Read as a file, not imported: `tools/` does not depend on `benchmarks/` code.
+DEFAULT_QUESTIONS = Path(__file__).parents[2] / "benchmarks" / "questions.toml"
 
 # Which recorded catalog answers which capability. A `@type` with no entry is
 # a provider nobody serves — an empty catalog, which is what the real network

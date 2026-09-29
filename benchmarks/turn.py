@@ -12,8 +12,8 @@ from time import perf_counter
 
 import httpx
 
-from evals.perf.questions import Question
-from evals.perf.sse import parse_sse
+from benchmarks.questions import Question
+from benchmarks.sse import parse_sse
 
 
 @dataclass(frozen=True)

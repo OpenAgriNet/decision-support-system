@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import json
 
-from evals.perf.report import figures, render_text, write_json
-from evals.perf.runner import RunResult, TurnResult
-from evals.perf.traces import TokenCall, TraceFacts
-from evals.perf.turn import TurnTiming
+from benchmarks.report import figures, render_text, write_json
+from benchmarks.runner import RunResult, TurnResult
+from benchmarks.traces import TokenCall, TraceFacts
+from benchmarks.turn import TurnTiming
 
 
 def _turn(

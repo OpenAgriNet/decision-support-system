@@ -20,8 +20,8 @@ import uvicorn
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import StreamingResponse
 
-from evals.perf.questions import Question
-from evals.perf.turn import TurnTiming, run_turn
+from benchmarks.questions import Question
+from benchmarks.turn import TurnTiming, run_turn
 
 AKOLA = Question(
     id="37-1",

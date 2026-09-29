@@ -15,9 +15,9 @@ from time import perf_counter
 
 import anyio
 
-from evals.perf.questions import Question
-from evals.perf.runner import ReadMisses, SendTurn
-from evals.perf.turn import TurnTiming
+from benchmarks.questions import Question
+from benchmarks.runner import ReadMisses, SendTurn
+from benchmarks.turn import TurnTiming
 
 
 @dataclass(frozen=True)
