@@ -131,15 +131,6 @@ def test_prompt_asks_the_model_to_flag_a_carried_place() -> None:
     assert "place_from_history" in prompt
 
 
-def test_prompt_asks_for_the_state_the_farmer_named() -> None:
-    """ "Bilaspur, Himachal Pradesh": unasked, the model drops the state and
-    the farmer is asked which Bilaspur they already named."""
-
-    prompt = build_intent_prompt([])
-
-    assert "place_within" in prompt
-
-
 def test_prompt_carries_only_a_place_the_user_said() -> None:
     """The assistant's "At Lasalgaon APMC, ..." names a market in an answer,
     not where the farmer is. Carrying it would answer for the wrong place."""

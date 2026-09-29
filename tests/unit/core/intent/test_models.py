@@ -176,18 +176,6 @@ def test_classified_ask_trims_stray_punctuation_off_the_place_name(raw: str) -> 
     assert ask.place_name == "Pune"
 
 
-def test_classified_ask_trims_the_state_the_same_way() -> None:
-    """The state comes from the same sentence, so it picks up the same stray
-    comma — and "maharashtra," matches no chain."""
-
-    ask = ClassifiedAsk(
-        subject_categories=SubjectCategory.MARKET,
-        interaction_type=InteractionType.OBSERVE,
-        place_within="Maharashtra, ",
-    )
-    assert ask.place_within == "Maharashtra"
-
-
 def test_classified_ask_keeps_punctuation_inside_the_place_name() -> None:
     """Only the edges are trimmed. A dot inside a real name is part of it."""
 

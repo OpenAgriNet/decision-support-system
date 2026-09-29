@@ -88,11 +88,12 @@ Supporting choices, each following from the above:
   Photon model the same problem.
 - **Narrowing a name that matches several places**, in order: drop a match
   inside a same-name match (Nashik block inside Nashik district); then the
-  state or district the farmer named (`place_within`); then the envelope's
-  `region`. Each step only narrows, and never empties the list: a place the
-  farmer named is never hidden by where their phone is. Each remaining choice
-  shows the part of its chain that sets it apart ("Ashti, Wardha" / "Ashti,
-  Beed").
+  envelope's `region`. Each step only narrows, and never empties the list: a
+  place the farmer named is never hidden by where their phone is. Each
+  remaining choice shows the part of its chain that sets it apart ("Ashti,
+  Wardha" / "Ashti, Beed"). A state the farmer names ("Bilaspur, Himachal
+  Pradesh") is not used yet: asking the model for it made it merge separate
+  questions into one ask. #131 picks the place from the farmer's reply.
 - **One precedence rule, per ask:** a place the farmer named (this turn, or
   carried from earlier), then the device's own geometry, then the client's
   asserted `area`, then a place another ask in the same turn resolved.

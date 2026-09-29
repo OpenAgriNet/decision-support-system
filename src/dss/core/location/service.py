@@ -54,24 +54,13 @@ def _drop_nested(matches: list[AreaMatch]) -> list[AreaMatch]:
 
 
 def _resolve_named(
-    name: str,
-    lookup: AreaLookup,
-    region: str | None,
-    source: PlaceSource,
-    within: str | None = None,
+    name: str, lookup: AreaLookup, region: str | None, source: PlaceSource
 ) -> Place:
     """A place the farmer actually said, this turn or earlier — the one case
     that can fail loud (`AmbiguousPlace`/`UnresolvedPlace`) rather than fall
     through."""
 
     matches = _drop_nested(lookup.resolve(name))
-    # What the farmer said the place is in beats where their phone is, so it
-    # narrows first.
-    if len(matches) > 1 and within:
-        wanted = within.casefold()
-        matches = [
-            m for m in matches if wanted in (p.casefold() for p in m.within)
-        ] or matches
     # The region is where the farmer is, not what they asked about: it only
     # breaks a tie between same-name places, never hides the one they named.
     if len(matches) > 1 and region is not None:
@@ -140,7 +129,6 @@ def resolve_places(
             lookup,
             region,
             PlaceSource.CARRIED if classified.place_from_history else PlaceSource.NAMED,
-            classified.place_within,
         )
         if classified.place_name
         else None
