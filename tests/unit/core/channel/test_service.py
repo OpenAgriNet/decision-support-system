@@ -92,9 +92,69 @@ def test_ambiguous_place_answer_numbers_each_candidate() -> None:
 
     text = answer.content[0].text
     assert "Bilaspur" in text
-    assert "1. Bilaspur, IN-HP" in text
-    assert "2. Bilaspur, IN-CT" in text
+    assert "1. Bilaspur, Himachal Pradesh" in text
+    assert "2. Bilaspur, Chhattisgarh" in text
     assert answer.sources == ()
+
+
+def test_each_choice_shows_the_part_of_its_chain_that_differs() -> None:
+    """Both Ashtis are in Maharashtra, so the state tells them apart for no
+    one. The district does."""
+
+    ashti = AmbiguousPlace(
+        unresolved_name="Ashti",
+        candidates=(
+            AreaMatch(
+                name="Ashti",
+                region="IN-MH",
+                within=("India", "Maharashtra", "Wardha"),
+                geometry=Geometry(coordinates=[78.18, 21.2]),
+            ),
+            AreaMatch(
+                name="Ashti",
+                region="IN-MH",
+                within=("India", "Maharashtra", "Beed"),
+                geometry=Geometry(coordinates=[75.2, 18.8]),
+            ),
+        ),
+    )
+
+    answer = answer_for_unplaced_asks((_ask(place=ashti),), _TEXT)
+
+    assert answer is not None
+    text = answer.content[0].text
+    assert "1. Ashti, Wardha" in text
+    assert "2. Ashti, Beed" in text
+
+
+def test_each_choice_stops_where_it_stands_apart_from_every_other() -> None:
+    """Three Akbarpurs, two in Uttar Pradesh. The state is enough for the
+    Bihar one; the two in Uttar Pradesh only differ by district."""
+
+    def akbarpur(*within: str) -> AreaMatch:
+        return AreaMatch(
+            name="Akbarpur",
+            region="IN-XX",
+            within=("India", *within),
+            geometry=Geometry(coordinates=[80.0, 26.0]),
+        )
+
+    place = AmbiguousPlace(
+        unresolved_name="Akbarpur",
+        candidates=(
+            akbarpur("Bihar", "Nawada"),
+            akbarpur("Uttar Pradesh", "Kanpur Dehat"),
+            akbarpur("Uttar Pradesh", "Ambedkar Nagar"),
+        ),
+    )
+
+    answer = answer_for_unplaced_asks((_ask(place=place),), _TEXT)
+
+    assert answer is not None
+    text = answer.content[0].text
+    assert "1. Akbarpur, Bihar" in text
+    assert "2. Akbarpur, Kanpur Dehat" in text
+    assert "3. Akbarpur, Ambedkar Nagar" in text
 
 
 def _ask(place=None) -> Ask:  # noqa: ANN001

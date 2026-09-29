@@ -54,8 +54,25 @@ def unknown_place_answer(name: str, text: ClarificationText) -> ComposedAnswer:
     )
 
 
-def _candidate_line(number: int, candidate: AreaMatch) -> str:
-    return f"{number}. {candidate.name}, {candidate.region}"
+def _standout_part(within: tuple[str, ...], others: list[tuple[str, ...]]) -> str:
+    """The first part of the chain where no other choice matches it any more."""
+
+    for depth in range(len(within)):
+        if not any(other[: depth + 1] == within[: depth + 1] for other in others):
+            return within[depth]
+    return within[-1] if within else ""
+
+
+def _candidate_lines(candidates: Sequence[AreaMatch]) -> list[str]:
+    """Each choice shows the part of its chain that sets it apart: two Ashtis
+    in Maharashtra read "Wardha" and "Beed", not the state twice."""
+
+    chains = [candidate.within for candidate in candidates]
+    return [
+        f"{number}. {candidate.name}, "
+        f"{_standout_part(candidate.within, chains[: number - 1] + chains[number:])}"
+        for number, candidate in enumerate(candidates, start=1)
+    ]
 
 
 def ambiguous_place_answer(
@@ -69,10 +86,7 @@ def ambiguous_place_answer(
     """
 
     lines = [text.ambiguous_place_header.format(name=name)]
-    lines.extend(
-        _candidate_line(number, candidate)
-        for number, candidate in enumerate(candidates, start=1)
-    )
+    lines.extend(_candidate_lines(candidates))
     return ComposedAnswer(content=(TextBlock(text="\n".join(lines)),))
 
 
@@ -100,10 +114,7 @@ def answer_for_unplaced_asks(
             lines.append(
                 text.ambiguous_place_header.format(name=ask.place.unresolved_name)
             )
-            lines.extend(
-                _candidate_line(number, candidate)
-                for number, candidate in enumerate(ask.place.candidates, start=1)
-            )
+            lines.extend(_candidate_lines(ask.place.candidates))
         elif isinstance(ask.place, UnresolvedPlace):
             lines.append(text.unknown_place.format(name=ask.place.unresolved_name))
         else:
