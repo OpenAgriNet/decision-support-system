@@ -182,11 +182,21 @@
   where the farmer is. Fixing this needs a policy decision (which categories
   require a place) that does not exist yet; today's all-or-nothing gate has
   the same blind spot and predates this note.
-- **The orchestrator's district-clarification gate is all-or-nothing per
-  turn.** It fires only when *no* ask in the turn resolved a place. A turn
-  with one resolved ask and one ambiguous/unresolved ask still proceeds
-  without surfacing the ambiguity — the composer has no way yet to answer
-  part of a turn and ask about the rest in one reply.
+  What the specs offer (checked 2026-09-29): every pack inherits
+  `coverageAreas`, which says where a provider serves, not what the farmer
+  must give. Weather requires `location` and MandiPrice requires `market`
+  only on a `Direct` resource, i.e. the answer's shape, not the request's.
+  Weather's `OnDemand` entry requires `geographicGranularities`, the nearest
+  request-side hint; MandiPrice has none. So the schema cannot drive this
+  cleanly. Fix: ask the network-specs owners for a request-side flag, e.g.
+  `requiresLocation` on `OnDemand` entries.
+- **An ambiguous place in a partly answered turn does not show its choices
+  (#131).** "Weather in Pune and Aurangabad" answers Pune and reports
+  Aurangabad as a failure, "matches several places". The numbered candidate
+  list only reaches the farmer when *every* ask fails, through the gate's
+  question. In a partial turn the composer never sees the list, so it cannot
+  show the farmer what to pick from. #131, which reads the farmer's pick,
+  decides how the list reaches them.
 - **A block's coordinate is its district's, not its own.** Every one of the
   7,092 Block rows in the 2026-09-03 LGD snapshot has `point_method` starting
   `inherited:` — none has a real point of its own. A farmer naming their

@@ -167,12 +167,14 @@ Supporting choices, each following from the above:
   expires, and demanding a district is needlessly narrow. Clarification text
   is now a config primitive (`ClarificationText`, mirroring `Identity`) —
   bundled defaults, adopter-overridable path.
-- **The gate is per-ask, but still all-or-nothing per turn.** The
-  orchestrator now asks for a place only when *no* ask in the turn resolved
-  one; a turn with one resolved ask and one ambiguous ask still proceeds
-  without surfacing the ambiguity. The composer has no way yet to answer part
-  of a turn and ask about the rest in one reply — noted in `TODO.md`, not
-  fixed here.
+- **A turn with some places found answers those and reports the rest.** The
+  gate asks the farmer only when no ask resolved a place. Otherwise each
+  ambiguous or unresolved ask becomes a `Failure` with no `capability`,
+  because no provider was called. It is recorded before the planner runs, so
+  it is reported even if the model skips that ask, and `select` refuses to
+  call for it. The turn ends `partially_answered`. Gap: in a partial turn the
+  ambiguous candidate list does not reach the farmer (#131, noted in
+  `TODO.md`).
 - **The ambiguity question's numbered format is a contract with a future
   story that reads the farmer's reply.** That story gives the LLM the
   candidate list and has it pick, so nothing can be invented. The list must

@@ -24,6 +24,7 @@ from dss.core.intent.models import (
     PlaceSource,
     ResolvedPlace,
     SubjectCategory,
+    UnresolvedPlace,
 )
 from dss.core.moderation.models import ModerationDecision, Outcome
 from dss.core.planner.models import Skill, Verdict
@@ -393,6 +394,33 @@ async def test_each_select_carries_its_own_asks_place() -> None:
 
     points = [call["location"]["geo"]["coordinates"] for call in invocation.calls]
     assert points == [pune.coordinates, mumbai.coordinates]
+
+
+async def test_select_makes_no_call_for_an_ask_whose_place_failed() -> None:
+    """Xyzzy has nowhere to search. Calling anyway would send no location,
+    and the provider could answer for some other place."""
+
+    invocation = _FakeInvocation()
+    deps = _deps(invocation)
+    deps.intent = Intent(
+        asks=(
+            Ask(
+                agriculture_subjects="paddy",
+                subject_categories=SubjectCategory.MARKET,
+                interaction_type=InteractionType.OBSERVE,
+                place=UnresolvedPlace(unresolved_name="Xyzzy"),
+            ),
+        ),
+        confidence=1.0,
+    )
+
+    agent = build_planner_agent(skills=(_skill_with("select"),))
+    with agent.override(model=FunctionModel(_calls_select_then_answers)):
+        await agent.run("price of paddy in Xyzzy", deps=deps)
+
+    assert invocation.calls == []
+    # `plan()` records the failure up front; this must not add a second one.
+    assert deps.failures == []
 
 
 async def test_select_states_the_ask_category_not_the_advertised_one() -> None:

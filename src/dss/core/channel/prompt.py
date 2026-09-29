@@ -20,7 +20,7 @@ from dss.core.planner.markers import (
     RETRIEVED_DATA,
     wrap_as_data,
 )
-from dss.core.planner.models import Evidence, Identity
+from dss.core.planner.models import Evidence, Failure, Identity
 from dss.core.shared.models import UserTurn
 
 SYSTEM_PROMPT = """You are {name}, {persona}
@@ -126,7 +126,15 @@ def _render_failures(evidence: Evidence, intent: Intent) -> list[str]:
     """
 
     return [
-        f"Could not reach a provider for {failure.capability}"
+        f"{_failure_lead(failure)}"
         f"{_place_label(failure.ask_index, intent)}: {failure.reason}"
         for failure in evidence.failed
     ]
+
+
+def _failure_lead(failure: Failure) -> str:
+    # No capability means no call was made: the ask's place failed. Blaming a
+    # provider would have the composer tell the farmer a service is down.
+    if failure.capability is None:
+        return "Nothing searched"
+    return f"Could not reach a provider for {failure.capability}"

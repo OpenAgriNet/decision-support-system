@@ -194,9 +194,10 @@ class Orchestrator:
 
             self._note("intent", ctx, _classified(result.intent))
 
-            # Some ask has no place to search around: named nowhere, a name
-            # the index does not carry, or a name matching several. Ask
-            # rather than answer from nowhere or guess.
+            # No ask has a place to search around: named nowhere, a name the
+            # index does not carry, or a name matching several. Ask rather
+            # than answer from nowhere or guess. If any ask has a place, the
+            # turn goes on; the others reach the composer as failures.
             #
             # Checked here rather than inside `run_turn`, which would have to
             # skip the discover call to act on it. Discovery is read-only and

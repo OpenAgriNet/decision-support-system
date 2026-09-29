@@ -344,6 +344,40 @@ async def test_some_asks_unserved_is_partial() -> None:
     assert events[-1].outcome.status is TurnStatus.PARTIALLY_ANSWERED
 
 
+async def test_one_place_not_found_still_answers_the_other() -> None:
+    """ "Weather in Pune and Xyzzy": stopping to ask about Xyzzy would leave
+    Pune unanswered. Pune is answered; Xyzzy reaches the composer as a
+    failure."""
+
+    def weather_in(place_name: str) -> ClassifiedAsk:
+        return ClassifiedAsk(
+            subject_categories=SubjectCategory.WEATHER,
+            interaction_type=InteractionType.OBSERVE,
+            place_name=place_name,
+        )
+
+    plan = _FakePlan(
+        _evidence(
+            results=(Result(ask_index=0, source_id="1", data={"rain": "none"}),),
+            served=(0,),
+        )
+    )
+    compose = _FakeCompose("No rain in Pune [1]. I could not find Xyzzy.")
+    orch, _ = _build(
+        intent=Classification(
+            asks=(weather_in("Pune"), weather_in("Xyzzy")), confidence=0.9
+        ),
+        discovery=_served_discovery(),
+        plan=plan,
+        compose=compose,
+    )
+
+    events = await _collect(orch, _turn("weather in Pune and Xyzzy", location=None))
+
+    assert plan.calls == 1
+    assert events[-1].outcome.status is TurnStatus.PARTIALLY_ANSWERED
+
+
 async def test_all_calls_failing_is_unavailable() -> None:
     plan = _FakePlan(
         _evidence(

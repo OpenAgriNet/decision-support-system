@@ -73,6 +73,32 @@ def test_a_failure_is_labelled_with_its_asks_resolved_place() -> None:
     assert "Anand" in rendered
 
 
+def test_a_place_failure_does_not_blame_a_provider() -> None:
+    """No provider was called for Xyzzy. "Could not reach a provider" would
+    have the composer tell the farmer a service is down."""
+
+    intent = Intent(asks=(_ask(_place("Pune")), _ask()))
+    evidence = Evidence(
+        sources=(),
+        results=(),
+        served=(),
+        failed=(
+            Failure(
+                ask_index=1,
+                capability=None,
+                reason="Xyzzy: place not found",
+                retryable=False,
+            ),
+        ),
+        sufficient=False,
+    )
+
+    rendered = render_evidence(evidence, intent)
+
+    assert "Xyzzy: place not found" in rendered
+    assert "Could not reach a provider" not in rendered
+
+
 def test_no_place_resolved_labels_nothing() -> None:
     """`place=None` — nothing named, no fallback, or the ask needed none —
     is not a fact worth stating, so no label is added."""

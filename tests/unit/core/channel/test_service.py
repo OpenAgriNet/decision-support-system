@@ -119,18 +119,14 @@ def test_answer_for_unplaced_asks_is_none_if_every_ask_resolved() -> None:
     assert answer_for_unplaced_asks(asks, _TEXT) is None
 
 
-def test_answer_for_unplaced_asks_skips_resolved_asks() -> None:
-    """One ask resolved, one didn't — only the unresolved one's problem is
-    surfaced; the resolved one proceeds silently."""
+def test_answer_for_unplaced_asks_is_none_if_any_ask_resolved() -> None:
+    """ "Weather in Pune and Xyzzy" — asking stops the turn, and Pune would go
+    unanswered. Pune is answered; Xyzzy travels on as a failure instead."""
 
     unresolved = UnresolvedPlace(unresolved_name="Xyzzy")
     asks = (_ask(place=_PUNE), _ask(place=unresolved))
 
-    answer = answer_for_unplaced_asks(asks, _TEXT)
-
-    assert answer is not None
-    assert "Pune" not in answer.content[0].text
-    assert "Xyzzy" in answer.content[0].text
+    assert answer_for_unplaced_asks(asks, _TEXT) is None
 
 
 def test_answer_for_unplaced_asks_reports_every_distinct_failure() -> None:

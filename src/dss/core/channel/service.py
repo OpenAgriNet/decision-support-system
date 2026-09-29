@@ -79,8 +79,9 @@ def ambiguous_place_answer(
 def answer_for_unplaced_asks(
     asks: Sequence[Ask], text: ClarificationText
 ) -> ComposedAnswer | None:
-    """What the farmer reads when some asks have no place. `None` if every
-    ask resolved.
+    """What the farmer reads when no ask has a place. `None` if any ask
+    resolved; the rest travel on as failures, so the resolved ones still get
+    answered.
 
     Reports every failing ask, not just one, so fixing all of them takes one
     reply. Plain `None` asks share one question, asked once.
@@ -89,11 +90,12 @@ def answer_for_unplaced_asks(
     ask that never needed one (e.g. "how do I grow potatoes").
     """
 
+    if any(isinstance(ask.place, ResolvedPlace) for ask in asks):
+        return None
+
     lines: list[str] = []
     needs_place = False
     for ask in asks:
-        if isinstance(ask.place, ResolvedPlace):
-            continue
         if isinstance(ask.place, AmbiguousPlace):
             lines.append(
                 text.ambiguous_place_header.format(name=ask.place.unresolved_name)
