@@ -4,7 +4,7 @@
     "timestamp": "2026-09-04T08:00:00Z",
     "sessionId": "conv_8f3a1c",
     "transactionId": "txn_9f2c1a8e",
-    "messageId": "msg_mandi_wheat_01",
+    "messageId": "msg_mandi_potato_01",
     "version": "1.0.0"
   },
   "message": {
@@ -14,7 +14,7 @@
         "content": [
           {
             "type": "text",
-            "text": "What is the price of wheat at Anand mandi this week?"
+            "text": "What are today's rates of potato in Mumbai mandi?"
           }
         ]
       }
@@ -22,13 +22,13 @@
     "attributes": {
       "channel": "web",
       "location": {
-        "region": "IN-GJ",
-        "area": "Anand",
+        "region": "IN-MH",
+        "area": "Mumbai",
         "geometry": {
           "type": "Point",
           "coordinates": [
-            72.93,
-            22.56
+            72.838017,
+            18.989036
           ]
         }
       },

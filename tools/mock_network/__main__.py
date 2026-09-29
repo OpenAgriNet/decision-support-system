@@ -23,7 +23,7 @@ from pathlib import Path
 import uvicorn
 
 from dss.config.schema_pack_fetch import DEFAULT_PACK_DIR
-from tools.mock_network.app import build_mock_app
+from tools.mock_network.app import DEFAULT_QUESTIONS, build_mock_app
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -40,6 +40,15 @@ def main(argv: list[str] | None = None) -> None:
         ),
     )
     parser.add_argument(
+        "--questions",
+        type=Path,
+        default=DEFAULT_QUESTIONS,
+        help=(
+            "the speed benchmark's question set; /select answers only these "
+            f"(default: {DEFAULT_QUESTIONS})"
+        ),
+    )
+    parser.add_argument(
         "--reload",
         action="store_true",
         help=(
@@ -53,8 +62,9 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.reload:
         # `uvicorn --reload` needs an import string rather than an app object,
-        # so the pack directory travels by environment.
+        # so the pack directory and question set travel by environment.
         os.environ.setdefault("DSS_SCHEMA_PACK_DIR", str(args.pack_dir))
+        os.environ.setdefault("DSS_MOCK_QUESTIONS", str(args.questions))
         uvicorn.run(
             "tools.mock_network.app:build_from_env",
             factory=True,
@@ -65,7 +75,11 @@ def main(argv: list[str] | None = None) -> None:
         )
         return
 
-    uvicorn.run(build_mock_app(pack_dir=args.pack_dir), host=args.host, port=args.port)
+    uvicorn.run(
+        build_mock_app(pack_dir=args.pack_dir, questions=args.questions),
+        host=args.host,
+        port=args.port,
+    )
 
 
 if __name__ == "__main__":

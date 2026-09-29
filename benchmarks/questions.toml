@@ -1,0 +1,631 @@
+# The speed benchmark's fixed question set, and the fake answers the mock
+# network sends back for them.
+#
+# The questions are copied from the shared farmer benchmark, keeping each
+# `id`. They are single-turn and in English, 10 per category.
+#
+# THE ANSWERS ARE FAKE. They exist so the composer has a real-sized text to
+# read and stream from, and are used only to time the DSS. They are not
+# agronomic advice and must never be served to a farmer.
+#
+# Per category:
+# - mandi:    `commodity` and `market` are what the mock advertises at discover.
+#             The codes are the mock's own, not real Agmarknet codes (except
+#             Onion's). The answer's price is built in code.
+# - weather:  `lon`/`lat` is the district's centre from the DSS district file.
+#             It is sent as the turn's coordinates, because the DSS does not
+#             pass a point it resolved by name on to /select. Each question
+#             asks about weather alone: 55-1 ("should fertilizer be postponed
+#             due to rain") was read by the DSS as crop advice and left out.
+# - advisory: the mock picks the question whose `match` words all appear in
+#             the planner's `topics`. Each crop appears once, so the crop is
+#             enough. `chil` covers both "chili" and "chilli".
+
+# --- mandi -------------------------------------------------------------------
+
+[[question]]
+id = "1-1"
+category = "mandi"
+question = "What are today's rates of potato in Mumbai mandi?"
+region = "IN-MH"
+area = "Mumbai"
+commodity = { code = "24", name = "Potato" }
+market = { marketCode = "9001", marketName = "Mumbai APMC", district = "Mumbai", state = "Maharashtra" }
+
+[[question]]
+id = "6-1"
+category = "mandi"
+question = "What are the current market prices for apples in the Bangalore market?"
+region = "IN-KA"
+area = "Bangalore"
+commodity = { code = "17", name = "Apple" }
+market = { marketCode = "9002", marketName = "Bangalore APMC", district = "Bengaluru Urban", state = "Karnataka" }
+
+[[question]]
+id = "8-1"
+category = "mandi"
+question = "What is the current market price of apples in the Kochi market?"
+region = "IN-KL"
+area = "Kochi"
+commodity = { code = "17", name = "Apple" }
+market = { marketCode = "9003", marketName = "Ernakulam Market", district = "Ernakulam", state = "Kerala" }
+
+[[question]]
+id = "29-1"
+category = "mandi"
+question = "What is the current minimum price of tapioca in Kochi mandi?"
+region = "IN-KL"
+area = "Kochi"
+commodity = { code = "100", name = "Tapioca" }
+market = { marketCode = "9003", marketName = "Ernakulam Market", district = "Ernakulam", state = "Kerala" }
+
+[[question]]
+id = "40-1"
+category = "mandi"
+question = "What is the current market price for selling cotton in Mumbai mandi?"
+region = "IN-MH"
+area = "Mumbai"
+commodity = { code = "15", name = "Cotton" }
+market = { marketCode = "9001", marketName = "Mumbai APMC", district = "Mumbai", state = "Maharashtra" }
+
+[[question]]
+id = "41-1"
+category = "mandi"
+question = "What is the current price of tapioca in Chandigarh mandi today?"
+region = "IN-CH"
+area = "Chandigarh"
+commodity = { code = "100", name = "Tapioca" }
+market = { marketCode = "9004", marketName = "Chandigarh Grain Market", district = "Chandigarh", state = "Chandigarh" }
+
+[[question]]
+id = "43-1"
+category = "mandi"
+question = "What are today's rates of potato in Kozhikode mandi?"
+region = "IN-KL"
+area = "Kozhikode"
+commodity = { code = "24", name = "Potato" }
+market = { marketCode = "9005", marketName = "Kozhikode Market", district = "Kozhikode", state = "Kerala" }
+
+[[question]]
+id = "68-1"
+category = "mandi"
+question = "What are the current market prices for cotton in the Bangalore market?"
+region = "IN-KA"
+area = "Bangalore"
+commodity = { code = "15", name = "Cotton" }
+market = { marketCode = "9002", marketName = "Bangalore APMC", district = "Bengaluru Urban", state = "Karnataka" }
+
+[[question]]
+id = "81-1"
+category = "mandi"
+question = "What are the current market prices for apples in Chandigarh today?"
+region = "IN-CH"
+area = "Chandigarh"
+commodity = { code = "17", name = "Apple" }
+market = { marketCode = "9004", marketName = "Chandigarh Grain Market", district = "Chandigarh", state = "Chandigarh" }
+
+[[question]]
+id = "87-1"
+category = "mandi"
+question = "What are the current market prices for cotton in Kozhikode mandi?"
+region = "IN-KL"
+area = "Kozhikode"
+commodity = { code = "15", name = "Cotton" }
+market = { marketCode = "9005", marketName = "Kozhikode Market", district = "Kozhikode", state = "Kerala" }
+
+# --- weather -----------------------------------------------------------------
+
+[[question]]
+id = "3-1"
+category = "weather"
+question = "Is the weather suitable for maize harvesting in Sangli district?"
+region = "IN-MH"
+area = "Sangli"
+lon = 74.767913
+lat = 17.113762
+
+[[question]]
+id = "18-1"
+category = "weather"
+question = "What is the probability of rain in the next 3 days in Bhandara?"
+region = "IN-MH"
+area = "Bhandara"
+lon = 79.763152
+lat = 21.115620
+
+[[question]]
+id = "20-1"
+category = "weather"
+question = "What is the weather forecast for the next 5 days in Jalna area?"
+region = "IN-MH"
+area = "Jalna"
+lon = 75.980338
+lat = 19.807495
+
+[[question]]
+id = "23-1"
+category = "weather"
+question = "What will be the temperature for the next few days in Kolhapur area?"
+region = "IN-MH"
+area = "Kolhapur"
+lon = 74.158638
+lat = 16.471481
+
+[[question]]
+id = "37-1"
+category = "weather"
+question = "Will it rain tomorrow in Akola district?"
+region = "IN-MH"
+area = "Akola"
+lon = 77.056016
+lat = 20.748005
+
+[[question]]
+id = "44-1"
+category = "weather"
+question = "Is there a possibility of heavy rain next week in Jalgaon?"
+region = "IN-MH"
+area = "Jalgaon"
+lon = 75.487940
+lat = 20.932545
+
+[[question]]
+id = "88-1"
+category = "weather"
+question = "What will be the temperature for the next few days in Washim area?"
+region = "IN-MH"
+area = "Washim"
+lon = 77.216372
+lat = 20.234103
+
+[[question]]
+id = "67-1"
+category = "weather"
+question = "Will it rain tomorrow in Nashik district?"
+region = "IN-MH"
+area = "Nashik"
+lon = 74.070699
+lat = 20.259820
+
+[[question]]
+id = "85-1"
+category = "weather"
+question = "Is the weather favorable for crop growth this week in Latur area?"
+region = "IN-MH"
+area = "Latur"
+lon = 76.759511
+lat = 18.373766
+
+[[question]]
+id = "147-1"
+category = "weather"
+question = "Will it rain tomorrow in Hingoli district?"
+region = "IN-MH"
+area = "Hingoli"
+lon = 77.100455
+lat = 19.637480
+
+# --- advisory ----------------------------------------------------------------
+
+[[question]]
+id = "7-1"
+category = "advisory"
+question = "What is the seed rate for ginger crop in Sangli?"
+region = "IN-MH"
+area = "Sangli"
+match = ["ginger"]
+answer = """
+Ginger is planted from seed rhizomes rather than true seed, so the seed rate \
+is measured in kilograms of rhizome per acre. For Sangli conditions, plan on \
+about 600 to 800 kilograms of healthy seed rhizome per acre, which works out \
+to roughly 1,500 to 2,000 kilograms per hectare. The exact amount depends on \
+the size of the bits you cut, the spacing you choose, and whether you plant \
+on raised beds or on ridges. Each seed bit should weigh about 20 to 25 grams \
+and carry at least two healthy buds. Bits that are too small give weak plants \
+and poor yields, while very large bits waste costly seed without a matching \
+gain in harvest. Choose rhizomes from a crop that was fully mature, free of \
+soft rot and bacterial wilt, and stored in a cool, shaded pit after harvest. \
+Before planting, treat the bits to protect them from rhizome rot and scale \
+insects. A common practice is to dip them for thirty minutes in a solution of \
+a recommended fungicide, then dry them in the shade for a few hours before \
+they go into the soil. Many farmers also use a biological treatment with \
+Trichoderma mixed into well-rotted farmyard manure, which helps the young \
+roots resist soil-borne disease. For spacing, plant on raised beds about one \
+metre wide and fifteen to twenty centimetres high, with a gap of about forty \
+centimetres between beds for drainage. Keep rows about twenty-five to thirty \
+centimetres apart and place the bits about twenty to twenty-five centimetres \
+apart within the row, at a depth of four to five centimetres. Raised beds \
+matter in Sangli because ginger cannot stand waterlogging, and standing water \
+during the monsoon is the main cause of rot. The best planting window is \
+from late April to mid May, just before the monsoon sets in, so that the crop \
+establishes with the first rains. Apply a basal dose of well-decomposed \
+farmyard manure at about ten to twelve tonnes per acre while preparing the \
+beds, and mulch the beds with green leaves or straw right after planting. \
+Mulching keeps the soil moist and cool, reduces weeds, and prevents the \
+heavy rain from washing soil off the beds. Repeat the mulch after the first \
+and second weeding. If you plan to use drip irrigation, you can reduce the \
+seed rate slightly toward the lower end of the range, because spacing can be \
+kept more even and fewer bits fail. Keep a record of how much seed you used \
+and how the plot performed, so you can adjust the rate next season. If you \
+see yellowing, wilting or soft, foul-smelling rhizomes after planting, \
+contact your local Krishi Vigyan Kendra, because early advice can save the \
+rest of the plot.
+"""
+
+[[question]]
+id = "13-1"
+category = "advisory"
+question = "Suggest fertilizer schedule for tomato in Chandrapur area."
+region = "IN-MH"
+area = "Chandrapur"
+match = ["tomato"]
+answer = """
+A good fertilizer schedule for tomato in Chandrapur starts with the soil \
+rather than the bag. If you can, get a soil test done before planting, \
+because the red and black soils of the district differ a lot in potash and \
+zinc. As a general guide for hybrid tomato, plan for about 100 kilograms of \
+nitrogen, 50 kilograms of phosphorus and 50 kilograms of potash per acre over \
+the whole season. Varieties that are not hybrids need somewhat less, about \
+two thirds of these amounts. Begin with organic matter. While preparing the \
+field, mix ten to twelve tonnes of well-rotted farmyard manure or compost per \
+acre into the soil. This improves water holding, feeds soil life, and makes \
+the chemical fertilizer work better. At transplanting, apply the basal dose: \
+all of the phosphorus, half of the potash and about one quarter of the \
+nitrogen. Place it in bands a few centimetres away from the plant rows, not \
+directly touching the roots. Split the remaining nitrogen into three equal \
+doses. Give the first about twenty to twenty-five days after transplanting, \
+when the plants start active growth. Give the second at about forty to \
+forty-five days, at the start of flowering, together with the remaining half \
+of the potash. Give the third at about sixty to sixty-five days, when the \
+first fruits are setting. Splitting the nitrogen this way feeds the crop when \
+it needs it and reduces losses from heavy rain washing the fertilizer away. \
+Tomato in this region often shows a shortage of calcium and boron, which \
+appears as blossom end rot, a dark sunken patch on the bottom of the fruit, \
+and as cracked or poorly set fruit. A spray of calcium nitrate at the flowering \
+stage and a light spray of borax, at the dose on the label, can help where \
+these problems have been seen before. Zinc deficiency shows as small, narrow \
+leaves with yellow patches, and can be corrected with zinc sulphate applied \
+to the soil at planting. If you use drip irrigation, you can give the \
+nitrogen and potash through the drip in small weekly doses instead of three \
+large ones. This is called fertigation and usually gives better fruit size \
+and quality with less fertilizer. Water the field lightly after each \
+top-dressing so the fertilizer reaches the roots, but avoid flooding. Watch \
+the leaves: pale lower leaves often mean the crop needs nitrogen, while \
+purple tints can point to a shortage of phosphorus in cold weather. Keep a \
+note of what you apply and when, and speak to your local agriculture officer \
+or Krishi Vigyan Kendra if the crop shows unusual symptoms.
+"""
+
+[[question]]
+id = "14-1"
+category = "advisory"
+question = "How to do seed treatment for cabbage in Jalna area?"
+region = "IN-MH"
+area = "Jalna"
+match = ["cabbage"]
+answer = """
+Seed treatment for cabbage protects the young seedlings in the nursery, which \
+is where most losses happen. In Jalna, damping off is the main problem: the \
+seedlings collapse at the soil line and die in patches, especially when the \
+nursery is kept too wet. Treating the seed before sowing costs very little \
+and prevents much of this loss. Start with good seed. Buy certified seed from \
+a trusted dealer, check the packet date, and keep the seed in a cool, dry \
+place until sowing. Many hybrid seed packets are already treated by the \
+company, and the packet will say so and show a coloured coating. Do not treat \
+such seed again with a chemical fungicide. For untreated seed, a common \
+chemical method is to mix the seed with a recommended fungicide such as \
+thiram or captan at about two to three grams per kilogram of seed. Put the \
+seed and the powder in a closed container or a plastic bag and shake it well \
+so every seed gets a thin, even coating. Sow the treated seed within a day. \
+Wear gloves while handling treated seed and keep it away from food and \
+children. A biological method works well too, and many farmers now prefer \
+it. Mix Trichoderma viride powder at about four to five grams per kilogram of \
+seed with a little water or rice gruel so that it sticks, then dry the seed \
+in the shade for half an hour before sowing. Trichoderma is a friendly fungus \
+that grows around the roots and fights the fungi that cause damping off. Do \
+not mix Trichoderma with a chemical fungicide in the same treatment, because \
+the chemical will kill it. Some farmers also use a hot water treatment against \
+black rot, a bacterial disease that causes V-shaped yellow patches on the \
+leaf edges. The seed is kept in water at exactly fifty degrees Celsius for \
+about twenty-five minutes, then cooled and dried. This needs a thermometer \
+and care, because water that is too hot kills the seed. Treatment alone is \
+not enough. Prepare raised nursery beds about fifteen centimetres high, mix \
+in well-rotted compost, and sow in lines about ten centimetres apart rather \
+than broadcasting. Water lightly in the morning, and avoid overwatering, \
+because wet, crowded beds bring damping off back even after treatment. \
+Seedlings are usually ready to transplant in about four to five weeks, when \
+they have four to five true leaves. If seedlings still wilt or rot, contact \
+your local Krishi Vigyan Kendra so they can check the nursery soil.
+"""
+
+[[question]]
+id = "15-1"
+category = "advisory"
+question = "Suggest chemical pesticide for whitefly on papaya in Thane."
+region = "IN-MH"
+area = "Thane"
+match = ["papaya"]
+answer = """
+Whitefly on papaya is a serious pest in Thane, not only because it sucks sap \
+and weakens the plant, but because it spreads leaf curl virus from plant to \
+plant. So the aim is to keep numbers low early, before the virus spreads, \
+rather than waiting for a heavy attack. First confirm that it is whitefly. \
+Turn a few leaves over in the morning and look for tiny white insects that \
+fly up when disturbed, and for sticky honeydew and black sooty mould on the \
+leaves below. Yellow sticky traps, placed at about ten to twelve per acre at \
+the height of the crop, help you see how many are present and also catch a \
+good number. Start with the gentler steps. Remove and destroy leaves that \
+are badly infested, pull out weeds that host whitefly around the field, and \
+avoid too much nitrogen fertilizer, because soft, lush growth attracts the \
+pest. A spray of neem oil at about five millilitres per litre of water, with \
+a little soap to help it spread, works well when numbers are still low. If \
+the attack keeps growing, a chemical spray may be needed. Commonly \
+recommended options include imidacloprid 17.8 SL, thiamethoxam 25 WG, and \
+diafenthiuron 50 WP, used strictly at the dose written on the label. Spray \
+the underside of the leaves, where the whitefly lives, and cover the plant \
+well. Use a clean sprayer with a fine nozzle, and spray in the early morning \
+or late evening when the insects are less active and the leaves are cool. Do \
+not use the same chemical again and again. Whitefly quickly becomes resistant, \
+so switch to a product from a different group for the next spray, and keep \
+at least ten to fourteen days between sprays unless the label says \
+otherwise. Never mix several insecticides in one tank in the hope of a \
+stronger effect, because this harms bees and friendly insects and makes \
+resistance worse. Respect the waiting period on the label between the last \
+spray and harvesting the fruit, because papaya is eaten fresh. Wear gloves, \
+a mask and full clothing while spraying, wash well afterwards, and keep \
+children and animals away from the field and the empty containers. Plants \
+already showing leaf curl, with small, twisted and puckered leaves, will not \
+recover, so remove them to protect the rest of the orchard. If the problem \
+continues, contact the Krishi Vigyan Kendra, which can advise which product \
+works best in your area this season.
+"""
+
+[[question]]
+id = "16-1"
+category = "advisory"
+question = "Which organic fertilizer to use for maize in Parbhani area?"
+region = "IN-MH"
+area = "Parbhani"
+match = ["maize"]
+answer = """
+Maize is a heavy feeder, so an organic plan in Parbhani needs to supply a lot \
+of nutrients and supply them on time. The black cotton soils of the area hold \
+water well but are often low in nitrogen and organic carbon, so building \
+organic matter pays off over several seasons, not only in the current crop. \
+The base of the plan is well-rotted farmyard manure or compost. Apply about \
+five to six tonnes per acre while preparing the field, at least two to three \
+weeks before sowing, and mix it into the top soil. Manure that is not fully \
+rotted can burn young roots and bring in weed seeds and termites, so use \
+only dark, crumbly, well-decomposed material that no longer smells. \
+Vermicompost is a richer option. It carries more nutrients per kilogram than \
+ordinary compost, so about one to two tonnes per acre, placed in the seed \
+rows at sowing, can replace part of the farmyard manure. It also improves the \
+soil's structure and life. Oil cakes such as neem cake or groundnut cake add \
+nitrogen that is released more slowly. Neem cake at about one to two quintals \
+per acre also helps reduce soil pests. Apply it at sowing, mixed with the \
+manure. Biofertilizers are cheap and work well with organic matter. Treat the \
+seed with Azospirillum, which fixes nitrogen from the air around the roots, \
+and with a phosphate solubilising bacterium, which makes locked phosphorus in \
+the soil available to the plant. Mix about two hundred grams of each per ten \
+kilograms of seed with a little jaggery water, dry in the shade, and sow the \
+same day. Green manuring is another strong option. Grow a crop such as \
+sunnhemp or dhaincha before the maize, cut it at flowering, and turn it into \
+the soil. This can supply a good share of the nitrogen the maize needs. Maize \
+needs most nitrogen at knee height and at tasselling. Organic sources release \
+nutrients slowly, so a top-dressing of vermicompost or a spray of a liquid \
+organic manure such as jeevamrut at about thirty and fifty days after sowing \
+helps the crop at these stages. Keep the soil covered with crop residue \
+between rows to hold moisture and feed soil life. Remember that a fully \
+organic crop may yield somewhat less in the first year or two while the soil \
+improves. Keep records, and talk to your local Krishi Vigyan Kendra about the \
+best local sources of good quality compost and biofertilizers.
+"""
+
+[[question]]
+id = "26-1"
+category = "advisory"
+question = "How to manage weeds in cotton crop in Thane area?"
+region = "IN-MH"
+area = "Thane"
+match = ["cotton"]
+answer = """
+Weeds compete hard with cotton for water, nutrients and light, especially in \
+the first eight weeks after sowing. In Thane, where the monsoon is heavy, \
+weeds grow very fast after each spell of rain, so the key is to keep the \
+field clean during this early period. After about sixty days, the cotton \
+canopy covers the ground and shades out most new weeds. Start before sowing. \
+Plough and harrow the field well, and if possible let the first rains \
+germinate a flush of weeds, then destroy them with a light harrowing before \
+you sow. This simple step removes a large share of the weed seed in the top \
+soil. Use clean seed and well-rotted manure, because fresh manure carries \
+weed seeds. After sowing, a pre-emergence herbicide can stop weeds from \
+coming up for the first few weeks. Pendimethalin is commonly used for cotton. \
+Spray it within two to three days of sowing, on moist soil, at the dose on \
+the label, and do not disturb the soil surface after spraying. Hand weeding \
+and hoeing remain the backbone of weed control in cotton. Plan for the first \
+weeding at about twenty to twenty-five days after sowing and the second at \
+about forty to forty-five days. A bullock-drawn or tractor-drawn hoe between \
+the rows saves labour, followed by hand weeding within the rows. Hoeing also \
+loosens the soil and helps rainwater soak in. Post-emergence herbicides can \
+control grasses that come up later. Products based on quizalofop-ethyl or \
+propaquizafop control grassy weeds without harming cotton, but they do not \
+kill broad-leaved weeds. Spray them when the grasses are young, at three to \
+four leaves, and follow the label. Never spray a herbicide meant for other \
+crops, such as 2,4-D, anywhere near cotton, because even the drift can badly \
+damage the crop. Mulching between rows with crop residue and growing a short \
+intercrop such as green gram or soybean also suppress weeds while adding \
+income. Keep the field bunds and channels clean too, because weeds there \
+spread seed back into the field every year. Watch for parasitic and hard \
+weeds such as Cyperus, which need repeated removal of the tubers. A field \
+kept clean for the first two months usually needs little weeding after that. \
+After \
+spraying any herbicide, wash the sprayer thoroughly before using it for \
+insecticides on cotton. For the right product and dose for your soil, speak \
+to the local agriculture officer or Krishi Vigyan Kendra before you buy.
+"""
+
+[[question]]
+id = "27-1"
+category = "advisory"
+question = "Why do yellow spots appear on leaves of guava in Nanded district?"
+region = "IN-MH"
+area = "Nanded"
+match = ["guava"]
+answer = """
+Yellow spots on guava leaves in Nanded can come from several causes, so it \
+helps to look closely before deciding what to do. The most common causes are \
+a shortage of nutrients, sucking pests, and fungal leaf spot diseases, and \
+sometimes more than one is present at the same time. Nutrient shortage is \
+often the reason when the yellowing is spread over the leaf rather than in \
+small round spots. A lack of zinc shows as small, narrow leaves with yellow \
+areas between the veins, often on the new growth at the tips. A lack of \
+magnesium shows as yellow patches between the veins on older leaves while \
+the veins stay green. Guava on the light, shallow soils of the district often \
+lacks zinc, and a spray of zinc sulphate at the dose recommended by your \
+local officer, together with farmyard manure at the base of the tree, usually \
+corrects it. Sucking pests are the next cause. Tea mosquito bug, whitefly, \
+scale insects and mealybugs feed on the sap and leave small yellow or brown \
+spots where they pierce the leaf. Turn the leaves over and look for insects, \
+white cottony masses, or sticky honeydew with black sooty mould. Prune \
+crowded branches so air and light reach the centre of the tree, remove badly \
+affected shoots, and use a neem oil spray at about five millilitres per litre \
+of water when numbers are low. Fungal diseases cause spots that are more \
+defined. Cercospora and other leaf spot fungi make small yellow spots that \
+later turn brown with a darker edge, and in wet weather the spots join into \
+larger patches and leaves fall early. Anthracnose causes dark sunken spots on \
+leaves and fruit. Collect and burn fallen leaves, avoid overhead irrigation, \
+and prune for good air movement. Where the disease is serious, a spray of a \
+copper-based fungicide at the label dose after the rains helps protect new \
+leaves. Waterlogging and root damage can also cause the whole tree to turn \
+yellow, especially in the black soils after heavy rain. Make sure water \
+drains away from the base of the tree. Wilt, a soil-borne disease, causes \
+yellowing that starts on one side of the tree and spreads, followed by the \
+branches drying. It cannot be cured by spraying, and affected trees are \
+usually removed. Take a few affected leaves, and a photo of the whole tree, \
+to your local Krishi Vigyan Kendra so they can confirm the cause.
+"""
+
+[[question]]
+id = "38-1"
+category = "advisory"
+question = "Suggest fertilizer schedule for orange in Amravati area."
+region = "IN-MH"
+area = "Amravati"
+match = ["orange"]
+answer = """
+Amravati is one of the main areas for Nagpur mandarin, which farmers here call \
+orange, and a steady fertilizer schedule is one of the keys to good fruit \
+size and to avoiding the decline that affects many old orchards. The amount \
+depends on the age of the tree, so the schedule grows with the orchard. For \
+a fully grown tree of about eight years and older, a common guide is about \
+800 grams of nitrogen, 300 grams of phosphorus and 600 grams of potash per \
+tree per year, along with about 40 to 50 kilograms of well-rotted farmyard \
+manure. For younger trees, start at about one eighth of this amount in the \
+first year and increase it each year until the eighth. Timing follows the \
+flowering season you take. Most Amravati orchards take the ambia bahar, with \
+flowering in January and February, or the mrig bahar, with flowering at the \
+start of the monsoon. Apply the farmyard manure and all of the phosphorus \
+when you release the trees from the stress period, just before the flowering \
+irrigation. Give half of the nitrogen and half of the potash at the same \
+time, and the remaining half about a month or two later, when the fruit is \
+setting and starting to grow. Apply the fertilizer in a ring around the tree \
+under the outer edge of the canopy, not near the trunk. This is where the \
+feeding roots are. Mix it lightly into the top soil and irrigate soon after. \
+Orange trees in this region often lack zinc, iron and manganese, which shows \
+as small, pale, mottled leaves on new flushes. A spray of zinc sulphate, \
+ferrous sulphate and manganese sulphate at the doses recommended locally, \
+given on the new flush after flowering, usually corrects this. Avoid heavy \
+nitrogen late in the season, because it pushes soft growth that attracts \
+leaf miners and psylla. Take care with water as well as fertilizer. Drip \
+irrigation, with the fertilizer given through the drip in small doses, gives \
+better results and saves water. Keep water away from the trunk to prevent \
+foot rot, which is common in the heavy soils here. Every two or three years, \
+get a soil and leaf test done, because the right dose for your orchard may be \
+higher or lower than this general guide. The Krishi Vigyan Kendra and the \
+citrus research centre near Nagpur can help you read the results and adjust \
+the schedule for your trees.
+"""
+
+[[question]]
+id = "48-1"
+category = "advisory"
+question = "When to irrigate sorghum crop in Yavatmal district?"
+region = "IN-MH"
+area = "Yavatmal"
+match = ["sorghum"]
+answer = """
+Sorghum, or jowar, is a hardy crop that tolerates dry spells better than most \
+cereals, which is why it suits Yavatmal. But it still gives a much better \
+yield when water is available at the right stages. The key is to irrigate at \
+the critical stages rather than on a fixed calendar. In the kharif season, \
+the monsoon usually supplies most of the water, and irrigation is needed only \
+during long dry spells. In the rabi season, sown after the rains on stored \
+soil moisture in the black soils, one or two well-timed irrigations can raise \
+the yield a great deal. There are four stages when the crop is most \
+sensitive to a shortage of water. The first is the early seedling stage, \
+about fifteen to twenty days after sowing, when the young roots are still \
+shallow. The second is just before the head comes out, when the panicle is \
+forming inside the plant, about thirty-five to forty-five days after sowing. \
+The third, and the most important, is flowering. A lack of water at \
+flowering causes poor seed setting and many empty grains. The fourth is the \
+grain filling stage, when the grain is soft and milky, which decides how \
+heavy the grain will be. If you can give only one irrigation in rabi, give it \
+at the stage just before the head comes out or at flowering. If you can give \
+two, give them at the panicle forming stage and at grain filling. Check the \
+soil before you irrigate. Take a handful of soil from about fifteen \
+centimetres deep and press it. If it holds together as a ball, there is \
+still enough moisture. If it crumbles, the crop needs water. Signs of stress \
+in the plant include leaves rolling inward during the day and a dull, \
+greyish colour. Irrigate in furrows or in small basins, and avoid flooding \
+the field, because the heavy black soils of Yavatmal crack when dry and then \
+hold standing water for long when flooded. Good drainage is as important as \
+irrigation during heavy monsoon rain. Stop irrigating once the grain has \
+hardened, because water at that stage only delays harvest and can cause \
+grain mould in the heads. Mulching with crop residue and keeping the field \
+free of weeds help the soil hold moisture longer, so fewer irrigations are \
+needed. For the best timing for your variety, ask the local agriculture \
+officer or Krishi Vigyan Kendra.
+"""
+
+[[question]]
+id = "61-1"
+category = "advisory"
+question = "How to control armyworm on chili crop in Dhule area?"
+region = "IN-MH"
+area = "Dhule"
+match = ["chil"]
+answer = """
+Armyworm on chili in Dhule is usually the tobacco caterpillar, Spodoptera. \
+The young caterpillars feed in groups on the underside of leaves and leave \
+them thin and papery. Older caterpillars scatter, feed at night and eat \
+leaves, flowers and even young fruit, and can strip a field in a few days \
+if they are not controlled. Early action is what saves the crop. Check the \
+field twice a week, especially after rain. Look under the leaves for egg \
+masses, which are covered with brown hair, and for patches of papery leaves \
+with groups of tiny green caterpillars. Pick off and destroy these egg masses \
+and young groups by hand. This simple step removes hundreds of caterpillars \
+before they spread. Pheromone traps, placed at about four to five per acre, \
+catch the male moths and tell you when a new generation is coming. Light \
+traps also attract the moths at night. Plant a border of castor around the \
+chili. The moths prefer to lay eggs on castor, so you can find and destroy \
+them there. For young caterpillars, a spray of neem seed kernel extract at \
+five percent, or a biological product based on Bacillus thuringiensis or on \
+the Spodoptera virus called NPV, works well and is safe for friendly \
+insects. Spray in the evening, because the caterpillars feed at night and \
+the biological products break down in strong sunlight. If the caterpillars \
+are older and numbers are high, a chemical spray may be needed. Commonly \
+recommended options include emamectin benzoate 5 SG, chlorantraniliprole \
+18.5 SC, and spinosad 45 SC, used strictly at the dose on the label. Spray \
+thoroughly, covering the underside of the leaves, in the evening. Rotate \
+between products from different groups for the next spray, because this pest \
+quickly becomes resistant. Avoid broad-spectrum older insecticides, which \
+kill the wasps and bugs that feed on armyworm and often make the problem \
+worse later in the season. Chili is often sold fresh and also dried for \
+spice, so respect the waiting period between the last spray and picking. \
+Wear gloves, a mask and full clothing when spraying, and wash well \
+afterwards. After harvest, plough the field deeply so the pupae in the soil \
+are exposed to birds and the sun, and remove weeds around the field where \
+the pest can survive between crops. If the attack is heavy or spreads fast, \
+contact your local Krishi Vigyan Kendra for advice on the best product this \
+season.
+"""

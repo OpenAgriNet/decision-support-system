@@ -36,15 +36,6 @@
               "subjectCategories": [
                 "Crop"
               ],
-              "agricultureSubjects": [
-                {
-                  "subjectId": "https://taxonomy.openagrinet.global/crops/cotton",
-                  "descriptor": {
-                    "code": "COTTON",
-                    "name": "Cotton"
-                  }
-                }
-              ],
               "languages": [
                 "en",
                 "hi"

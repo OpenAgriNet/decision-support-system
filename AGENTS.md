@@ -33,6 +33,8 @@ Do not duplicate architecture, domain model, or design-decision detail here — 
   HTTP request metrics from `opentelemetry-instrumentation-fastapi`. Off unless
   `OTEL_METRICS_EXPORTER=otlp` — the default endpoint is Langfuse, which drops them.
   Stage names come from `observability/stages.py` and are a dashboard contract.
+- Speed benchmark: `benchmarks/` CLI, real models with the mock network; load mode
+  runs the DSS in a 1 CPU / 1 GiB container (ADR-0013).
 
 ## Build & Run
 Install: `uv sync`
@@ -110,6 +112,7 @@ src/dss/
 - Tier 1 must outnumber every other tier combined. If it doesn't, you're testing at the wrong layer.
 - Never assert exact LLM-generated text anywhere except tier 4 (where the cassette makes it deterministic).
 - Tier 6 (eval) is diagnostic, not a gate — wire it to a schedule/dashboard, not to merge checks.
+- Speed benchmarks live in `benchmarks/`, not `tests/`: a CLI with no pass or fail (ADR-0013). Its own code is tested in `tests/unit/benchmarks/` and `tests/integration/benchmarks/` like any other.
 
 ## Known Gotchas
 - `docs/DSS_ARCHITECTURE.md` §8 (Open items) is the authoritative list of what's still undecided (PII posture, envelope shape, primitive schemas, etc.) — check it before assuming a contract is final.
