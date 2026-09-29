@@ -149,6 +149,25 @@ def test_prompt_repeats_a_shared_place_on_each_ask() -> None:
     assert "put it on each" in prompt
 
 
+def test_prompt_shows_here_is_not_the_named_place() -> None:
+    """The rule alone did not hold: a live model still put Pune on "will it
+    rain here". A worked example is what models copy — a different sentence
+    from the live test's, so that test still checks understanding."""
+
+    prompt = build_intent_prompt([])
+
+    assert "is it raining here" in prompt
+
+
+def test_prompt_shows_an_assistant_named_place_is_not_carried() -> None:
+    """The rule alone did not hold on every model: luna carried the market
+    an answer named. A worked example is what models copy."""
+
+    prompt = build_intent_prompt([])
+
+    assert "only the assistant named" in prompt
+
+
 def test_prompt_forbids_guessing_a_place_nobody_said() -> None:
     """Carry-forward lets the model look past the latest query. This line keeps
     it from inventing a place from the crop or language instead.

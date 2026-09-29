@@ -99,8 +99,13 @@ def build_intent_prompt(history: Sequence[ConversationMessage]) -> str:
         "  'weather in Pune and Mumbai' -> two asks, place_name 'Pune' and "
         "'Mumbai'. Two places are two asks, even with one subject.",
         "  'wheat price and will it rain in Pune' -> two asks, place_name "
-        "'Pune' on each. If one place covers several asks, put it on each; "
-        "'here' is not a place name, so leave it null.",
+        "'Pune' on each. If one place covers several asks, put it on each.",
+        "  'mandi rate in Nashik and is it raining here' -> two asks: "
+        "place_name 'Nashik' on the rate, null on the rain. 'Here' is the "
+        "user's own location, not a place named elsewhere in the query.",
+        "  Conversation: user 'tomato rate?', assistant 'At Vashi market, "
+        "tomato is 20 a kg.', then 'and next week?' -> place_name null. A "
+        "place only the assistant named is not the user's.",
         "  'weather in Pune, Maharashtra' -> one ask, place_name 'Pune'. A "
         "state after a place narrows it; it is not a second place.",
     ]
