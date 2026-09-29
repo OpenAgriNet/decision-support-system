@@ -230,7 +230,7 @@ class UserTurn:
 
 The DSS uses **intent-based routing**: extract an intent once, then match uniformly against skills, tools, and Provider capabilities.
 
-**Intent object (as implemented on this branch — spec 0002, ADR-0003, ADR-0013).** The classifier (`core/intent/service.py::classify_intent`) returns a `Classification` — words only, no geometry — and a separate step, `core/location/service.py::resolve_places`, builds the domain `Intent` from it, filling each ask's `place`:
+**Intent object (as implemented on this branch — spec 0002, ADR-0003, ADR-0014).** The classifier (`core/intent/service.py::classify_intent`) returns a `Classification` — words only, no geometry — and a separate step, `core/location/service.py::resolve_places`, builds the domain `Intent` from it, filling each ask's `place`:
 ```jsonc
 {
   "asks": [
@@ -251,7 +251,7 @@ The DSS uses **intent-based routing**: extract an intent once, then match unifor
 ```
 `interaction_type` names what the farmer wants done — **advise** (explain/guide), **observe** (look up a value/record/status), **act** (book, apply, submit, update, escalate). A turn holding several needs ("wheat price and will it rain?") yields several asks, each with its own `place` — a turn is not grounded in one location, an ask is. The layered-extraction cache pipeline below remains directional; this branch implements the LLM-classifier axis only, run in parallel with moderation.
 
-**Why the LLM never fills `place` directly (ADR-0013).** The schema handed to `llm.structured` (`Classification`/`ClassifiedAsk`) carries a `place_name: str | None` — words, in English — never a geometry field. It also carries `place_from_history: bool`, which the model sets when the name came from an earlier turn; the resolver labels that place `carried`. A model asked for coordinates invents plausible ones; keeping the field off its schema entirely makes that structurally impossible rather than merely prompted against. `resolve_places` is the only place a domain `Ask` is built, matching a name against an area index (districts and blocks, an LGD-derived CSV) and filling `place`.
+**Why the LLM never fills `place` directly (ADR-0014).** The schema handed to `llm.structured` (`Classification`/`ClassifiedAsk`) carries a `place_name: str | None` — words, in English — never a geometry field. It also carries `place_from_history: bool`, which the model sets when the name came from an earlier turn; the resolver labels that place `carried`. A model asked for coordinates invents plausible ones; keeping the field off its schema entirely makes that structurally impossible rather than merely prompted against. `resolve_places` is the only place a domain `Ask` is built, matching a name against an area index (districts and blocks, an LGD-derived CSV) and filling `place`.
 
 **Scheme enrichment (as implemented on this branch — ADR-0008).** Between classification and discovery, `core/enrichment/service.py::resolve_scheme_subjects` rewrites a scheme ask's `agriculture_subjects` to the official scheme name, matched against a **scheme catalog** the tenant mounts as CSV (`DSS_SCHEMES_CONFIG_PATH`; nothing ships in the image). It is deterministic — a lookup, not a model call — and matches the longest whole-token **alias** span, trying the ask's own subject before the raw query.
 
