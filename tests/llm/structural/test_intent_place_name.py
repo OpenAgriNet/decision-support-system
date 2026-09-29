@@ -229,3 +229,23 @@ async def test_a_conversation_with_no_place_carries_none_forward() -> None:
     assert classification.asks, "the model returned no asks"
     place_name = classification.asks[0].place_name
     assert place_name is None, f"invented {place_name!r}"
+
+
+async def test_a_place_only_the_assistant_said_is_not_carried() -> None:
+    """Lasalgaon is the market the answer came from, not where the farmer is.
+    Carrying it would answer the follow-up for the wrong place."""
+
+    history = [
+        ConversationMessage(role="user", text="What is the onion price?"),
+        ConversationMessage(
+            role="assistant", text="At Lasalgaon APMC, onion is 1,800 a quintal."
+        ),
+    ]
+
+    classification = await classify_intent(
+        _turn("And tomorrow?", history=history), _live_llm()
+    )
+
+    assert classification.asks, "the model returned no asks"
+    place_name = classification.asks[0].place_name
+    assert place_name is None, f"carried the assistant's {place_name!r}"
