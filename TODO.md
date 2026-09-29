@@ -96,7 +96,7 @@
   surfaced the `provider_code` mismatch above automatically.
 - **The `<BEGIN ...>` markers are hardcoded in three places** —
   `core/planner/markdown.py`, `core/planner/prompt.py`, and
-  `core/planner/planner_prompt.md`. Change one and the prompt's instruction
+  `config/defaults/planner-prompt.md`. Change one and the prompt's instruction
   no longer matches what the code emits. Shared constants would fix it.
 - **Required fields have no source.** Some `filterable` fields matter far
   more than others for a useful answer (`AgricultureFacility`'s

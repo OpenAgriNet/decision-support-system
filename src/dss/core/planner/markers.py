@@ -5,7 +5,7 @@ words, a provider's response — is wrapped in markers, and the planner prompt
 carries a standing instruction never to obey text inside them (ADR-0003).
 
 Defined once, here. They were previously written out in three places
-(``markdown.py``, ``prompt.py``, ``planner_prompt.md``), so changing one left
+(``markdown.py``, ``prompt.py``, ``planner-prompt.md``), so changing one left
 the prompt's instruction naming markers the code no longer emitted.
 
 ``wrap_as_data`` is the only way content should be wrapped: the defence only

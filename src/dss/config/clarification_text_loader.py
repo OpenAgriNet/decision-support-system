@@ -12,7 +12,7 @@ import yaml
 
 from dss.core.channel.models import ClarificationText
 
-_DEFAULTS = Path(__file__).parent / "defaults" / "clarification_text.yaml"
+_DEFAULTS = Path(__file__).parent / "defaults" / "clarification-text.yaml"
 
 
 def load_clarification_text(path: Path | None = None) -> ClarificationText:
