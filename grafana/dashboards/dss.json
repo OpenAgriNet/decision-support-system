@@ -732,7 +732,7 @@
           },
           "pluginVersion": "4.0.0",
           "queryType": "sql",
-          "rawSql": "SELECT Timestamp AS time, SeverityText, Body, hex(TraceId) AS trace_id FROM $database.otel_logs WHERE ServiceName = 'dss' AND ResourceAttributes['deployment.environment.name'] = '$env' AND SeverityNumber >= 13 AND $__timeFilter(Timestamp) ORDER BY Timestamp DESC LIMIT 200",
+          "rawSql": "SELECT Timestamp AS time, SeverityText, Body, TraceId AS trace_id FROM $database.otel_logs WHERE ServiceName = 'dss' AND ResourceAttributes['deployment.environment.name'] = '$env' AND SeverityNumber >= 13 AND $__timeFilter(Timestamp) ORDER BY Timestamp DESC LIMIT 200",
           "refId": "A"
         }
       ],
