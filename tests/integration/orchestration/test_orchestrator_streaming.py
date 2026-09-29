@@ -69,7 +69,6 @@ def _build(
         turns=turns,
         telemetry=_Telemetry(),
         area_lookup=FakeAreaLookup({"pune": [_PUNE_MATCH]}),
-        discovery_radius_m=25_000,
         clarification_text=load_clarification_text(),
     )
     return orch, turns
@@ -190,7 +189,6 @@ async def test_the_real_component_streams_through_the_runner() -> None:
         turns=MemoryTurnSink(),
         telemetry=_Telemetry(),
         area_lookup=FakeAreaLookup({"pune": [_PUNE_MATCH]}),
-        discovery_radius_m=25_000,
         clarification_text=load_clarification_text(),
     )
 

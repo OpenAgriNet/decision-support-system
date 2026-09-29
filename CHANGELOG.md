@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Changed
+- `DSS_DISTRICT_CSV_PATH` is now `DSS_AREA_CSV_PATH`: the index holds blocks
+  as well as districts. The old name is ignored without a warning, so an
+  adopter who set it gets the bundled `areas.csv` instead — rename it (#130)
+
 ### Fixed
 - `scripts/run-local.sh` exports what `.env.local` sets, so a line written
   without `export` still reaches the DSS. It used to make a shell variable

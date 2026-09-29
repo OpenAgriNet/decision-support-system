@@ -231,7 +231,6 @@ def _build(
         turns=turns,
         telemetry=_Telemetry(),
         area_lookup=FakeAreaLookup({"pune": [_PUNE_MATCH]}),
-        discovery_radius_m=25_000,
         clarification_text=load_clarification_text(),
     )
     return orch, turns
@@ -305,9 +304,8 @@ async def test_nobody_serving_is_no_match_without_planning() -> None:
 async def test_an_unlocated_turn_asks_for_a_place() -> None:
     """No coordinates, no area, and the classifier found no place name: there is
     nowhere to search, so ask the farmer instead of discovering, planning and
-    composing an answer that could not be local to them. Blocks mean a place
-    smaller than a district is now answerable, so the question no longer
-    names a district specifically.
+    composing an answer that could not be local to them. The question asks for
+    a place, not a district: a block answers too.
     """
 
     plan = _FakePlan(_ANSWERED_EVIDENCE)

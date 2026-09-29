@@ -138,7 +138,6 @@ class Orchestrator:
         turns: TurnSink,
         telemetry: TelemetrySink,
         area_lookup: AreaLookup,
-        discovery_radius_m: int,
         clarification_text: ClarificationText,
     ) -> None:
         self._intent_llm = intent_llm
@@ -153,7 +152,6 @@ class Orchestrator:
         self._turns = turns
         self._telemetry = telemetry
         self._area_lookup = area_lookup
-        self._discovery_radius_m = discovery_radius_m
         self._clarification_text = clarification_text
 
     async def run(self, turn: UserTurn, ctx: TurnContext) -> AsyncIterator[TurnEvent]:

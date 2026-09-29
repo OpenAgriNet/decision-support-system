@@ -10,11 +10,8 @@ from __future__ import annotations
 from dss.core.channel.models import ClarificationText
 from dss.core.channel.service import (
     NO_MATCH_TEXT,
-    ambiguous_place_answer,
     answer_for_unplaced_asks,
-    needs_place_answer,
     no_match_answer,
-    unknown_place_answer,
 )
 from dss.core.intent.models import (
     AmbiguousPlace,
@@ -45,51 +42,31 @@ def test_no_match_answer_has_one_block_and_no_sources() -> None:
     assert answer.content[0].source_ids == ()
 
 
-def test_needs_place_answer_asks_where_not_which_district() -> None:
-    """Blocks mean a smaller place than a district is now answerable, so
-    demanding a district specifically is both wrong and needlessly narrow."""
-
-    answer = needs_place_answer(_TEXT)
-
-    assert len(answer.content) == 1
-    assert answer.content[0].text == _TEXT.needs_place
-    assert "district" not in _TEXT.needs_place.lower()
-    assert answer.sources == ()
-    assert answer.content[0].source_ids == ()
-
-
-def test_unknown_place_answer_names_the_place() -> None:
-    """A place the index does not carry is a different problem from naming
-    nowhere — the farmer already answered, just with a name we don't have."""
-
-    answer = unknown_place_answer("Xyzzy", _TEXT)
-
-    assert len(answer.content) == 1
-    assert "Xyzzy" in answer.content[0].text
-    assert answer.sources == ()
-
-
-def test_ambiguous_place_answer_numbers_each_candidate() -> None:
+def test_an_ambiguous_place_numbers_each_candidate() -> None:
     """A stable numbered list lets a later turn read the candidates back from
     history and pick by number, so nothing has to be invented."""
 
-    candidates = (
-        AreaMatch(
-            name="Bilaspur",
-            region="IN-HP",
-            within=("India", "Himachal Pradesh"),
-            geometry=Geometry(coordinates=[76.75, 31.33]),
-        ),
-        AreaMatch(
-            name="Bilaspur",
-            region="IN-CT",
-            within=("India", "Chhattisgarh"),
-            geometry=Geometry(coordinates=[82.15, 22.09]),
+    bilaspur = AmbiguousPlace(
+        unresolved_name="Bilaspur",
+        candidates=(
+            AreaMatch(
+                name="Bilaspur",
+                region="IN-HP",
+                within=("India", "Himachal Pradesh"),
+                geometry=Geometry(coordinates=[76.75, 31.33]),
+            ),
+            AreaMatch(
+                name="Bilaspur",
+                region="IN-CT",
+                within=("India", "Chhattisgarh"),
+                geometry=Geometry(coordinates=[82.15, 22.09]),
+            ),
         ),
     )
 
-    answer = ambiguous_place_answer("Bilaspur", candidates, _TEXT)
+    answer = answer_for_unplaced_asks((_ask(place=bilaspur),), _TEXT)
 
+    assert answer is not None
     text = answer.content[0].text
     assert "Bilaspur" in text
     assert "1. Bilaspur, Himachal Pradesh" in text

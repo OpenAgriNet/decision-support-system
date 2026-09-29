@@ -99,6 +99,22 @@ def test_a_place_failure_does_not_blame_a_provider() -> None:
     assert "Could not reach a provider" not in rendered
 
 
+def test_a_device_point_with_no_name_labels_nothing() -> None:
+    """A device point with no area has no name. "about " with nothing after it
+    is noise the composer might try to fill."""
+
+    intent = Intent(asks=(_ask(_place("")),))
+    evidence = Evidence(
+        sources=(Source(id="1", name="IMD", kind=SourceKind.PROVIDER, url=None),),
+        results=(Result(ask_index=0, source_id="1", data={"rain": "none"}),),
+        served=(0,),
+        failed=(),
+        sufficient=True,
+    )
+
+    assert "about" not in render_evidence(evidence, intent)
+
+
 def test_no_place_resolved_labels_nothing() -> None:
     """`place=None` — nothing named, no fallback, or the ask needed none —
     is not a fact worth stating, so no label is added."""

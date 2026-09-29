@@ -79,10 +79,11 @@ def user_prompt(evidence: Evidence, intent: Intent, *, turn: UserTurn) -> str:
 
 
 def _place_label(ask_index: int, intent: Intent) -> str:
-    """ "— about <place>", or nothing if the ask has no resolved place."""
+    """ "— about <place>", or nothing if the ask has no resolved place or the
+    place has no name (a device point the turn sent without an area)."""
 
     place = intent.asks[ask_index].place
-    if not isinstance(place, ResolvedPlace):
+    if not isinstance(place, ResolvedPlace) or not place.name:
         return ""
     return f" — about {place.name}"
 

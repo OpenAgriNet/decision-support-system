@@ -156,7 +156,6 @@ def build_runner_with_lifecycle(
         turns=FileTurnSink(settings.turns_path),
         telemetry=FileTelemetrySink(settings.telemetry_path),
         area_lookup=area_lookup,
-        discovery_radius_m=settings.discovery_radius_m,
         clarification_text=clarification_text,
     )
     return runner, _aclose_for(client)

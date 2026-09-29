@@ -33,27 +33,6 @@ def no_match_answer() -> ComposedAnswer:
     return ComposedAnswer(content=(TextBlock(text=NO_MATCH_TEXT),))
 
 
-def needs_place_answer(text: ClarificationText) -> ComposedAnswer:
-    """What the farmer reads when nothing in the turn names a place at all.
-
-    Deterministic like `no_match_answer`, and for the same reason: asking a
-    fixed question needs no model. Shares that function's caveat — the real
-    version writes in `target_lang` and for the channel.
-    """
-
-    return ComposedAnswer(content=(TextBlock(text=text.needs_place),))
-
-
-def unknown_place_answer(name: str, text: ClarificationText) -> ComposedAnswer:
-    """What the farmer reads when they named a place the index does not
-    carry. A different problem from naming nowhere — they already answered,
-    with a name we cannot resolve."""
-
-    return ComposedAnswer(
-        content=(TextBlock(text=text.unknown_place.format(name=name)),)
-    )
-
-
 def _standout_part(within: tuple[str, ...], others: list[tuple[str, ...]]) -> str:
     """The first part of the chain where no other choice matches it any more."""
 
@@ -65,7 +44,11 @@ def _standout_part(within: tuple[str, ...], others: list[tuple[str, ...]]) -> st
 
 def _candidate_lines(candidates: Sequence[AreaMatch]) -> list[str]:
     """Each choice shows the part of its chain that sets it apart: two Ashtis
-    in Maharashtra read "Wardha" and "Beed", not the state twice."""
+    in Maharashtra read "Wardha" and "Beed", not the state twice.
+
+    Numbered, one line per choice, so a later turn can read the list back
+    from history and pick the farmer's reply against it rather than guess.
+    """
 
     chains = [candidate.within for candidate in candidates]
     return [
@@ -73,21 +56,6 @@ def _candidate_lines(candidates: Sequence[AreaMatch]) -> list[str]:
         f"{_standout_part(candidate.within, chains[: number - 1] + chains[number:])}"
         for number, candidate in enumerate(candidates, start=1)
     ]
-
-
-def ambiguous_place_answer(
-    name: str, candidates: Sequence[AreaMatch], text: ClarificationText
-) -> ComposedAnswer:
-    """What the farmer reads when a name matches several places.
-
-    A numbered list, one line per candidate, so a later turn can read the
-    list back from history and have the farmer's reply picked against it
-    rather than guessed.
-    """
-
-    lines = [text.ambiguous_place_header.format(name=name)]
-    lines.extend(_candidate_lines(candidates))
-    return ComposedAnswer(content=(TextBlock(text="\n".join(lines)),))
 
 
 def answer_for_unplaced_asks(
