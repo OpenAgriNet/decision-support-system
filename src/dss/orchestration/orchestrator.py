@@ -50,7 +50,7 @@ from dss.core.intent.models import Intent
 from dss.core.moderation.messages import messages_for
 from dss.core.moderation.models import ModerationDecision, Outcome
 from dss.core.planner.models import Evidence, Verdict
-from dss.core.planner.sufficiency import unserved_asks
+from dss.core.planner.sufficiency import provider_failed, unserved_asks
 from dss.core.policy.models import Policy
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.shared.models import (
@@ -321,15 +321,17 @@ def _status_for(evidence: Evidence, intent: Intent) -> tuple[TurnStatus, Cause |
     """Map what the loop actually gathered to a contract outcome. Reads facts
     off `Evidence` — it invents no rule, so no business `if` escapes `core/`:
 
-    - no results, but calls failed → the providers exist but could not be
-      reached: `unavailable`, which the transport reports as a retryable error.
-    - no results, no failures → nobody served it after all: `no_match`.
+    - no results, but provider calls failed → the providers exist but could
+      not be reached: `unavailable`, which the transport reports as a
+      retryable error.
+    - no results, no provider failures → nobody served it after all:
+      `no_match`. A place failure called no provider, so it lands here.
     - some asks unserved → `partially_answered` (design v2 §6.2).
     - every ask served → `answered`.
     """
 
     if not evidence.results:
-        if evidence.failed:
+        if provider_failed(evidence):
             return TurnStatus.UNAVAILABLE, Cause.PROVIDER_UNAVAILABLE
         return TurnStatus.NO_MATCH, None
     if unserved_asks(evidence, intent=intent):

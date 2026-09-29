@@ -408,6 +408,34 @@ async def test_all_calls_failing_is_unavailable() -> None:
     )
 
 
+async def test_a_place_failure_alone_is_not_an_outage() -> None:
+    """Pune's provider had nothing, and Xyzzy was never searched. No service
+    was down, so the farmer must not be told to retry one."""
+
+    plan = _FakePlan(
+        _evidence(
+            results=(),
+            served=(),
+            failed=(
+                Failure(
+                    ask_index=1,
+                    capability=None,
+                    reason="Xyzzy: place not found",
+                    retryable=False,
+                ),
+            ),
+        )
+    )
+    compose = _FakeCompose("No weather for Pune today. I could not find Xyzzy.")
+    orch, _ = _build(
+        intent=_one_ask(2), discovery=_served_discovery(), plan=plan, compose=compose
+    )
+
+    events = await _collect(orch)
+
+    assert events[-1].outcome.status is TurnStatus.NO_MATCH
+
+
 async def test_a_streamed_claim_carries_the_sources_it_cites() -> None:
     """A claim is streamed before the terminal frame, so a caller has nothing
     to join a bare `sourceId` to until the turn ends."""
