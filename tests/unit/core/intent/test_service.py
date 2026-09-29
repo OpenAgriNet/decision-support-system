@@ -140,6 +140,15 @@ def test_prompt_asks_for_the_state_the_farmer_named() -> None:
     assert "place_within" in prompt
 
 
+def test_prompt_carries_only_a_place_the_user_said() -> None:
+    """The assistant's "At Lasalgaon APMC, ..." names a market in an answer,
+    not where the farmer is. Carrying it would answer for the wrong place."""
+
+    prompt = build_intent_prompt([])
+
+    assert "a place the user actually said" in prompt
+
+
 def test_prompt_forbids_guessing_a_place_nobody_said() -> None:
     """Carry-forward lets the model look past the latest query. This line keeps
     it from inventing a place from the crop or language instead.
