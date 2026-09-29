@@ -9,11 +9,13 @@ from typing import Protocol
 import anyio
 
 from dss.core.intent.models import (
+    AmbiguousPlace,
     Ask,
     Intent,
     InteractionType,
     ResolvedPlace,
     SubjectCategory,
+    UnresolvedPlace,
 )
 from dss.core.provider_discovery.models import (
     AskDiscoveryFailed,
@@ -197,6 +199,11 @@ def _build_queries(
     unresolved_asks: set[int] = set()
     events: list[DiscoveryEvent] = []
     for ask_index, ask in enumerate(intent.asks):
+        # Nowhere to search: an unfiltered discover would bring back answers
+        # for some other place. The place failure is reported downstream.
+        if isinstance(ask.place, AmbiguousPlace | UnresolvedPlace):
+            unresolved_asks.add(ask_index)
+            continue
         coverage = coverage_for_ask(ask, radius_m=radius_m)
         query, event = _query_for_ask(ask, languages, coverage, index)
         if query is None:

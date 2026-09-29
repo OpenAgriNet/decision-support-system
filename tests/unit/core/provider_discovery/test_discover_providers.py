@@ -8,7 +8,13 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
+from dss.core.intent.models import (
+    Ask,
+    Intent,
+    InteractionType,
+    SubjectCategory,
+    UnresolvedPlace,
+)
 from dss.core.provider_discovery.models import (
     AskDiscoveryFailed,
     AskUnservable,
@@ -125,6 +131,36 @@ async def test_an_unresolved_ask_never_calls_discover() -> None:
     assert result.capabilities == {0: ()}
     assert result.failures == {0: ()}
     assert result.events == (CapabilityUnresolved("Facility", "Service"),)
+
+
+async def test_an_ask_whose_place_failed_is_never_discovered() -> None:
+    """Xyzzy has nowhere to search. Discovering anyway sends no location
+    filter, and a Direct answer from any place in the network comes back as
+    if it were Xyzzy's."""
+
+    ask = Ask(
+        subject_categories=SubjectCategory.MARKET,
+        interaction_type=InteractionType.OBSERVE,
+        place=UnresolvedPlace(unresolved_name="Xyzzy"),
+    )
+    discovery = _FakeDiscovery(
+        DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
+    )
+
+    result = await discover_providers(
+        Intent(asks=(ask,), confidence=0.9),
+        _turn(),
+        discovery=discovery,
+        schema_pack_cache=_FakeSchemaPackCache(
+            {("Market", "Service"): ("openagrinet:MandiPrice",)}
+        ),
+        radius_m=25000,
+        now=NOW,
+    )
+
+    assert discovery.calls == []
+    assert result.answers == {0: ()}
+    assert result.capabilities == {0: ()}
 
 
 class _PartiallyFailingDiscovery:
