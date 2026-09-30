@@ -6,8 +6,8 @@
 # own login.
 #
 # ClickHouse wants the numbers. Grafana sits on top of it and answers "how
-# often, how slow, how much" — none of which needs a farmer's query. So the
-# content is deleted on the way, by `attributes/strip_content` below.
+# often, how slow, how much" — none of which needs a farmer's query. So only
+# named, known-safe attributes go on, by `transform/clickhouse_allowlist` below.
 #
 # That split is the whole reason there are two `traces/*` pipelines rather than
 # one: a pipeline cannot branch after a processor, so a single pipeline would
@@ -26,31 +26,30 @@ receivers:
 processors:
   batch:
 
-  # ADR-0007 §5 recorded message content in spans as a bounded deviation, and
-  # DSS_ARCHITECTURE.md §6.2 says the control that should bound it — a
-  # redaction interceptor at the sink — does not exist. This is that
-  # interceptor, for one of the two sinks.
+  # An allowlist, not a denylist. Nothing redacts a farmer's words before this
+  # yet (DSS_ARCHITECTURE.md §6.2), so this is the only thing between them and
+  # a shared database. The denylist it replaces named six content keys and
+  # missed `final_result` — every agent run's full output — and exception text.
+  # A key pydantic-ai adds or renames is now dropped rather than shipped.
   #
-  # The six keys are every place pydantic-ai puts message text when
-  # `include_content` is on (instrumentation version 5). They are span
-  # attributes, not span events, which is why a plain `attributes` processor is
-  # enough and no OTTL is needed. If the pinned pydantic-ai version changes,
-  # re-check this list — a renamed key means content flows to ClickHouse and
-  # nothing here fails.
-  attributes/strip_content:
-    actions:
-      - key: gen_ai.input.messages
-        action: delete
-      - key: gen_ai.output.messages
-        action: delete
-      - key: gen_ai.system_instructions
-        action: delete
-      - key: pydantic_ai.all_messages
-        action: delete
-      - key: gen_ai.tool.call.arguments
-        action: delete
-      - key: gen_ai.tool.call.result
-        action: delete
+  # Kept: our own attributes (`dss.*`, status, timings, ask counts, model
+  # names), ids for joining to Langfuse, and gen_ai model, usage and tool
+  # *names*. Dropped: everything else, including tool arguments and results.
+  # To send something new to ClickHouse, add it here and to the test that
+  # reads this list (tests/unit/test_collector_allowlist.py).
+  #
+  # `propagate`: a statement that errors drops the batch instead of passing it
+  # through unfiltered.
+  transform/clickhouse_allowlist:
+    error_mode: propagate
+    trace_statements:
+      - statements:
+          - 'keep_matching_keys(span.attributes, "^(dss\\..+|status|first_delta_ms|composed_ms|asks_(total|failed)|answer_count|attempts|capabilities|capability_count|provider_id|(intent|moderation|planner|composer)_model|agent_name|model_name|session\\.id|langfuse\\.(session\\.id|trace\\.metadata\\.(transaction_id|message_id))|gen_ai\\.(agent\\.(name|call\\.id)|conversation\\.id|operation\\.name|provider\\.name|system|request\\.(model|temperature)|response\\.(finish_reasons|id|model)|tool\\.(name|call\\.id)|usage\\..+|aggregated_usage\\..+|client\\.operation\\.time_to_first_chunk)|operation\\.cost|server\\.address|http\\.status_code|logfire\\.(span_type|level_num))$")'
+          # The status says a span failed; its message is exception text.
+          - 'set(span.status.message, "") where span.status.message != ""'
+      # `exception` events keep what failed by type, never by message.
+      - statements:
+          - 'keep_keys(spanevent.attributes, ["exception.type", "exception.escaped", "elapsed_ms"])'
 
 exporters:
   # Traces only. Langfuse discards metrics, which is why they were off by
@@ -95,7 +94,7 @@ service:
       # Strip first, batch second. The order is not cosmetic: batching first
       # would still work, but keeping the deletion adjacent to the receiver
       # makes it obvious that nothing downstream of here has the content.
-      processors: [attributes/strip_content, batch]
+      processors: [transform/clickhouse_allowlist, batch]
       exporters: [clickhouse]
 
     metrics:
