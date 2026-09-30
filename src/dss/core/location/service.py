@@ -60,7 +60,15 @@ def _resolve_named(
     that can fail loud (`AmbiguousPlace`/`UnresolvedPlace`) rather than fall
     through."""
 
-    matches = _drop_nested(lookup.resolve(name))
+    # "Rampur, Himachal Pradesh" is a line we listed and the farmer picked:
+    # the name, then a place that contains it. No area name holds a comma.
+    lookup_name, comma, part = name.rpartition(",")
+    if not comma:
+        lookup_name, part = name, ""
+    matches = _drop_nested(lookup.resolve(lookup_name.strip()))
+    part = part.strip().casefold()
+    inside = [m for m in matches if part in {w.casefold() for w in m.within}]
+    matches = inside or matches
     # The region is where the farmer is, not what they asked about: it only
     # breaks a tie between same-name places, never hides the one they named.
     if len(matches) > 1 and region is not None:

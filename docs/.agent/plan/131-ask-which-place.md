@@ -93,7 +93,9 @@ OpenAgriNet/engineering-tracker#131.
 - `uv run ruff check . && uv run ruff format --check . && uv run pytest`
   (offline, tiers 1–3).
 - **Tier 5, new tests in `tests/llm/structural/test_intent_place_name.py`:**
-  reply by state ("Himachal"), by number ("2"), by "the one in X"; a new
+  reply by state ("Himachal"), by number ("2"), by "the one in X", by a short
+  or loose form ("Rampur himachal", "HP" — the model must copy the full listed
+  line, since code only matches the part exactly); a new
   question after our list is classified as new; a follow-up after the pick
   ("and tomorrow?") carries the picked place. Run the **whole file on Gemma
   and luna**; all must pass (today's lesson: any prompt line can break

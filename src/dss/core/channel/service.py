@@ -58,6 +58,33 @@ def _candidate_lines(candidates: Sequence[AreaMatch]) -> list[str]:
     ]
 
 
+def _group_lines(
+    name: str, candidates: Sequence[AreaMatch], text: ClarificationText
+) -> list[str]:
+    """One line per group, at the first level of the chains where they differ.
+    The level is never named: it is a state in India and a county in Kenya.
+    Past `max_choices` groups the rest are cut and the farmer is told how to
+    reach them."""
+
+    for depth in range(max(len(candidate.within) for candidate in candidates)):
+        parts = list(
+            dict.fromkeys(
+                candidate.within[depth]
+                for candidate in candidates
+                if len(candidate.within) > depth
+            )
+        )
+        if len(parts) > 1:
+            shown = parts[: text.max_choices]
+            lines = [
+                f"{number}. {name}, {part}" for number, part in enumerate(shown, 1)
+            ]
+            if len(shown) < len(parts):
+                lines.append(text.more_places_hint)
+            return lines
+    return _candidate_lines(candidates)
+
+
 def answer_for_unplaced_asks(
     asks: Sequence[Ask], text: ClarificationText
 ) -> ComposedAnswer | None:
@@ -86,10 +113,14 @@ def answer_for_unplaced_asks(
                 continue
             reported.append(ask.place)
         if isinstance(ask.place, AmbiguousPlace):
-            lines.append(
-                text.ambiguous_place_header.format(name=ask.place.unresolved_name)
-            )
-            lines.extend(_candidate_lines(ask.place.candidates))
+            name = ask.place.unresolved_name
+            candidates = ask.place.candidates
+            if len(candidates) > text.max_choices:
+                lines.append(text.grouped_place_header.format(name=name))
+                lines.extend(_group_lines(name, candidates, text))
+            else:
+                lines.append(text.ambiguous_place_header.format(name=name))
+                lines.extend(_candidate_lines(candidates))
         elif isinstance(ask.place, UnresolvedPlace):
             lines.append(text.unknown_place.format(name=ask.place.unresolved_name))
         else:

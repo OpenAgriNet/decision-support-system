@@ -29,6 +29,8 @@ _TEXT = ClarificationText(
     needs_place="Which place are you asking about?",
     unknown_place="I could not find {name}.",
     ambiguous_place_header="Which {name}?",
+    grouped_place_header="{name} is in several places. Which one:",
+    more_places_hint="Not in this list? Tell me the area it is in.",
 )
 
 
@@ -144,6 +146,73 @@ def test_each_choice_stops_where_it_stands_apart_from_every_other() -> None:
     assert "1. Akbarpur, Bihar" in text
     assert "2. Akbarpur, Kanpur Dehat" in text
     assert "3. Akbarpur, Ambedkar Nagar" in text
+
+
+def test_a_long_list_is_grouped_one_level_up() -> None:
+    """Six Rampurs, two in each of three states. Six lines are too many to
+    read; the farmer picks a state first, and the next turn narrows further."""
+
+    def rampur(*within: str) -> AreaMatch:
+        return AreaMatch(
+            name="Rampur",
+            region="IN-XX",
+            within=("India", *within),
+            geometry=Geometry(coordinates=[80.0, 26.0]),
+        )
+
+    place = AmbiguousPlace(
+        unresolved_name="Rampur",
+        candidates=(
+            rampur("Uttar Pradesh", "Moradabad"),
+            rampur("Uttar Pradesh", "Rampur"),
+            rampur("Himachal Pradesh", "Shimla"),
+            rampur("Himachal Pradesh", "Kullu"),
+            rampur("Odisha", "Cuttack"),
+            rampur("Odisha", "Puri"),
+        ),
+    )
+
+    answer = answer_for_unplaced_asks((_ask(place=place),), _TEXT)
+
+    assert answer is not None
+    assert answer.content[0].text.splitlines() == [
+        "Rampur is in several places. Which one:",
+        "1. Rampur, Uttar Pradesh",
+        "2. Rampur, Himachal Pradesh",
+        "3. Rampur, Odisha",
+    ]
+
+
+def test_a_grouped_list_is_cut_at_five_and_says_how_to_find_the_rest() -> None:
+    """Seven Rampurs in seven states: list five, then tell the farmer whose
+    place is not shown how to get to it."""
+
+    states = ["UP", "HP", "OD", "BR", "JH", "MP", "RJ"]
+    place = AmbiguousPlace(
+        unresolved_name="Rampur",
+        candidates=tuple(
+            AreaMatch(
+                name="Rampur",
+                region="IN-XX",
+                within=("India", state),
+                geometry=Geometry(coordinates=[80.0, 26.0]),
+            )
+            for state in states
+        ),
+    )
+
+    answer = answer_for_unplaced_asks((_ask(place=place),), _TEXT)
+
+    assert answer is not None
+    assert answer.content[0].text.splitlines() == [
+        "Rampur is in several places. Which one:",
+        "1. Rampur, UP",
+        "2. Rampur, HP",
+        "3. Rampur, OD",
+        "4. Rampur, BR",
+        "5. Rampur, JH",
+        "Not in this list? Tell me the area it is in.",
+    ]
 
 
 def _ask(place=None) -> Ask:  # noqa: ANN001
