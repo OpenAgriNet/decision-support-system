@@ -35,6 +35,9 @@
 - The ClickHouse branch keeps an allowlist of attributes instead of deleting
   six content keys, which missed each agent run's `final_result` and exception
   text (#141)
+- Provider fields for dashboards: `offered_provider_ids` and
+  `answered_provider_ids` on `dss.discover`; `capability`, `answered` and
+  `failure_class` on `dss.select`. Ids and classes only, never bodies (#141)
 - What farmers ask, without their words: `dss.ask.*` on the turn span and a
   `dss.ask.count` counter, plus a "What farmers ask" dashboard row (#141)
 - `scripts/run-local.sh`: one command for a local stack — Langfuse, the mock

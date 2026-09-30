@@ -64,6 +64,12 @@ NEEDED = (
     "gen_ai.agent.name",
     "gen_ai.tool.name",
     "operation.cost",
+    "provider_id",
+    "capability",
+    "answered",
+    "failure_class",
+    "offered_provider_ids",
+    "answered_provider_ids",
 )
 
 

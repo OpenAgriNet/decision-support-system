@@ -44,7 +44,7 @@ processors:
     error_mode: propagate
     trace_statements:
       - statements:
-          - 'keep_matching_keys(span.attributes, "^(dss\\..+|status|first_delta_ms|composed_ms|asks_(total|failed)|answer_count|attempts|capabilities|capability_count|provider_id|(intent|moderation|planner|composer)_model|agent_name|model_name|session\\.id|langfuse\\.(session\\.id|trace\\.metadata\\.(transaction_id|message_id))|gen_ai\\.(agent\\.(name|call\\.id)|conversation\\.id|operation\\.name|provider\\.name|system|request\\.(model|temperature)|response\\.(finish_reasons|id|model)|tool\\.(name|call\\.id)|usage\\..+|aggregated_usage\\..+|client\\.operation\\.time_to_first_chunk)|operation\\.cost|server\\.address|http\\.status_code|logfire\\.(span_type|level_num))$")'
+          - 'keep_matching_keys(span.attributes, "^(dss\\..+|status|first_delta_ms|composed_ms|asks_(total|failed)|answer_count|attempts|capabilities|capability_count|capability|provider_id|(offered|answered)_provider_ids|answered|failure_class|(intent|moderation|planner|composer)_model|agent_name|model_name|session\\.id|langfuse\\.(session\\.id|trace\\.metadata\\.(transaction_id|message_id))|gen_ai\\.(agent\\.(name|call\\.id)|conversation\\.id|operation\\.name|provider\\.name|system|request\\.(model|temperature)|response\\.(finish_reasons|id|model)|tool\\.(name|call\\.id)|usage\\..+|aggregated_usage\\..+|client\\.operation\\.time_to_first_chunk)|operation\\.cost|server\\.address|http\\.status_code|logfire\\.(span_type|level_num))$")'
           # The status says a span failed; its message is exception text.
           - 'set(span.status.message, "") where span.status.message != ""'
       # `exception` events keep what failed by type, never by message.
