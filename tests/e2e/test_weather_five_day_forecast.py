@@ -159,3 +159,5 @@ def test_a_live_model_answers_every_day_of_the_forecast(
     print(f"\n  model wrote: {text!r}")
     assert _quoted(FIRST_DAY_MAXIMUM, text), text
     assert _quoted(LAST_DAY_MAXIMUM, text), text
+    # One source, so one citation — not one per day.
+    assert text.count("[1]") == 1, text
