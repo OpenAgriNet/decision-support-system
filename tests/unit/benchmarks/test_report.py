@@ -23,6 +23,8 @@ def _turn(
         category="mandi",
         repeat=1,
         session_id="s",
+        transaction_id="t",
+        trace_id="tr",
         timing=TurnTiming(status=status, first_delta_s=first, total_s=total),
         missed=missed,
         facts=facts,
@@ -122,11 +124,14 @@ def test_the_run_records_its_models_commit_machine_and_whether_it_was_cut_short(
 
     models = {"planner": "openai:gemma-4-31b-it"}
     facts = TraceFacts(stages={}, calls=[], models=models, flat=False)
-    result = RunResult(turns=[_turn(1.0, 2.0, facts=facts)], truncated=True)
+    result = RunResult(
+        turns=[_turn(1.0, 2.0, facts=facts)], session_id="run-session", truncated=True
+    )
 
     run = figures(result, commit="abc1234", machine={"cpu_count": 2})["run"]
 
     assert run == {
+        "session_id": "run-session",
         "models": models,
         "commit": "abc1234",
         "machine": {"cpu_count": 2},
@@ -227,7 +232,7 @@ def test_different_models_are_listed_per_agent():
 
 def test_the_json_file_holds_the_figures_and_one_row_per_turn(tmp_path):
     """The raw rows let the figures be recomputed, or a slow turn be found by
-    its session in Langfuse."""
+    its trace in Langfuse."""
 
     result = RunResult(turns=[_turn(1.0, 2.0), _turn(9.0, 9.0, missed=True)])
     report = figures(result, commit="abc1234")
@@ -239,3 +244,13 @@ def test_the_json_file_holds_the_figures_and_one_row_per_turn(tmp_path):
     assert written["total_s"] == report["total_s"]
     assert [row["missed"] for row in written["turn_rows"]] == [False, True]
     assert written["turn_rows"][0]["session_id"] == "s"
+    assert written["turn_rows"][0]["transaction_id"] == "t"
+    assert written["turn_rows"][0]["trace_id"] == "tr"
+
+
+def test_the_printed_report_names_the_langfuse_session_that_holds_the_run():
+    """Pasted into Langfuse's session filter, it shows every turn of the run."""
+
+    result = RunResult(turns=[_turn(1.0, 2.0)], session_id="run-session")
+
+    assert "langfuse session: run-session" in render_text(figures(result))

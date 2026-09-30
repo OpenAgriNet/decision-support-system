@@ -25,6 +25,7 @@ import os
 import platform
 import subprocess
 import sys
+import uuid
 from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
@@ -34,7 +35,7 @@ import httpx
 
 from benchmarks import container
 from benchmarks.load import run_load
-from benchmarks.questions import load_questions
+from benchmarks.questions import Question, load_questions
 from benchmarks.report import (
     figures,
     load_figures,
@@ -45,7 +46,7 @@ from benchmarks.report import (
 )
 from benchmarks.runner import RunOptions, run
 from benchmarks.traces import fetch_trace
-from benchmarks.turn import run_turn
+from benchmarks.turn import TurnIds, TurnTiming, run_turn
 
 _HERE = Path(__file__).parent
 _REPO = _HERE.parent
@@ -63,8 +64,31 @@ def main(argv: list[str] | None = None) -> None:
         anyio.run(partial(_speed, args, (public, secret)))
 
 
+def _new_session() -> str:
+    """One Langfuse session for the whole run, printed first so the run can
+    be watched there while it is still going."""
+
+    session_id = str(uuid.uuid4())
+    print(f"langfuse session: {session_id}", flush=True)
+    return session_id
+
+
+async def _run_turn(
+    client: httpx.AsyncClient, base_url: str, question: Question, ids: TurnIds
+) -> TurnTiming:
+    return await run_turn(
+        client,
+        base_url,
+        question,
+        session_id=ids.session_id,
+        transaction_id=ids.transaction_id,
+        trace_id=ids.trace_id,
+    )
+
+
 async def _speed(args: argparse.Namespace, keys: tuple[str, str]) -> None:
     questions = load_questions(args.questions, lang=args.lang)
+    session_id = _new_session()
     since = datetime.now(UTC)
     async with (
         httpx.AsyncClient() as dss,
@@ -72,24 +96,16 @@ async def _speed(args: argparse.Namespace, keys: tuple[str, str]) -> None:
         httpx.AsyncClient(base_url=args.langfuse_url, auth=keys, timeout=30) as lf,
     ):
 
-        async def turn(question, session_id):
-            return await run_turn(
-                dss,
-                args.base_url,
-                question,
-                session_id=session_id,
-                transaction_id=session_id,
-            )
-
-        async def trace(session_id):
-            return await fetch_trace(lf, session_id, since=since)
+        async def trace(trace_id):
+            return await fetch_trace(lf, trace_id, since=since)
 
         result = await run(
             questions,
             RunOptions(
                 warmup=args.warmup, repeats=args.repeats, max_turns=args.max_turns
             ),
-            turn=turn,
+            session_id=session_id,
+            turn=partial(_run_turn, dss, args.base_url),
             misses=partial(_misses, mock),
             trace=trace,
         )
@@ -126,7 +142,8 @@ def _load(args: argparse.Namespace, keys: tuple[str, str]) -> None:
     log = args.out / f"{datetime.now(UTC):%Y-%m-%dT%H-%M-%SZ}-load-container.log"
     try:
         limits = container.limits(runtime, started)
-        steps = anyio.run(partial(_load_steps, args))
+        session_id = _new_session()
+        steps = anyio.run(partial(_load_steps, args, session_id))
     finally:
         # Kept before stopping: `--rm` removes the container and its log.
         args.out.mkdir(parents=True, exist_ok=True)
@@ -134,12 +151,18 @@ def _load(args: argparse.Namespace, keys: tuple[str, str]) -> None:
         container.stop(runtime, started)
         print(f"container log: {log}")
 
-    report = load_figures(steps, limits=limits, machine=_machine(), commit=_commit())
+    report = load_figures(
+        steps,
+        limits=limits,
+        machine=_machine(),
+        commit=_commit(),
+        session_id=session_id,
+    )
     print(render_load_text(report))
     print(f"\nwritten: {save_json(report, args.out, kind='load')}")
 
 
-async def _load_steps(args: argparse.Namespace):
+async def _load_steps(args: argparse.Namespace, session_id: str):
     base_url = f"http://127.0.0.1:{args.port}"
     questions = load_questions(args.questions, lang=args.lang)
     async with (
@@ -147,21 +170,12 @@ async def _load_steps(args: argparse.Namespace):
         httpx.AsyncClient(base_url=args.mock_url) as mock,
     ):
         await _wait_until_up(dss, base_url)
-
-        async def turn(question, session_id):
-            return await run_turn(
-                dss,
-                base_url,
-                question,
-                session_id=session_id,
-                transaction_id=session_id,
-            )
-
         return await run_load(
             questions,
             [int(n) for n in args.concurrency.split(",")],
-            turn=turn,
+            turn=partial(_run_turn, dss, base_url),
             misses=partial(_misses, mock),
+            session_id=session_id,
             max_turns=args.max_turns,
             warmup=args.warmup,
         )

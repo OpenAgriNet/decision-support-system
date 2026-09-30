@@ -48,6 +48,9 @@ def _answered_stream():
     return frames()
 
 
+_SEEN_TRACEPARENTS: list[str | None] = []
+
+
 @pytest.fixture
 def dss() -> Iterator[str]:
     """A stand-in DSS on a free port, streaming the frames it is given. A
@@ -57,6 +60,7 @@ def dss() -> Iterator[str]:
 
     @app.post("/v1/turns")
     async def turns(request: Request) -> Response:
+        _SEEN_TRACEPARENTS.append(request.headers.get("traceparent"))
         body = await request.json()
         if body["context"]["sessionId"] == "refuse":
             return Response(status_code=503)
@@ -114,3 +118,26 @@ async def test_a_refused_request_is_marked_by_its_status_not_timed(dss: str):
         )
 
     assert timing == TurnTiming(status="http_503", first_delta_s=None, total_s=None)
+
+
+async def test_the_turn_is_sent_under_the_trace_id_it_is_given(dss: str):
+    """The benchmark picks each turn's trace id, so it can read that trace back
+    from Langfuse by id — a run's turns share one session."""
+
+    trace_id = "4bf92f3577b34da6a3ce929d0e0e4736"
+    _SEEN_TRACEPARENTS.clear()
+
+    async with httpx.AsyncClient() as client:
+        await run_turn(
+            client,
+            dss,
+            AKOLA,
+            session_id="s",
+            transaction_id="t",
+            trace_id=trace_id,
+        )
+
+    (header,) = _SEEN_TRACEPARENTS
+    version, sent_trace, span, flags = header.split("-")
+    assert (version, sent_trace, flags) == ("00", trace_id, "01")
+    assert len(span) == 16 and span != "0" * 16
