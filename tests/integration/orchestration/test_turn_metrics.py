@@ -253,8 +253,7 @@ async def test_a_turn_that_fails_to_record_is_counted_as_an_error(reader) -> Non
 
 
 async def test_each_ask_is_counted_by_category_and_interaction(reader) -> None:
-    """What farmers ask, without their words: the classifier's closed-set
-    category and interaction, one count per ask."""
+    """Shows what farmers ask, without their words."""
 
     orch, _ = _build(
         intent=_one_ask(2),

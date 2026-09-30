@@ -1,7 +1,6 @@
 """Tier 1 — every metric the dashboard queries is one the DSS publishes.
 
-A renamed metric does not fail anything: its panel just goes empty. The
-`first_claim` to `composed` rename did exactly that. This catches it here.
+A renamed metric fails nothing; its panel just goes empty.
 """
 
 from __future__ import annotations
@@ -36,8 +35,7 @@ def test_the_dashboard_queries_only_published_metrics() -> None:
 
 
 def test_trace_and_span_ids_are_not_hex_encoded_twice() -> None:
-    """The exporter already stores `TraceId` and `SpanId` as hex strings.
-    `hex()` on one encodes it again, and the id then matches no trace."""
+    """Ids are already hex; encoding again makes them match no trace."""
 
     sql = DASHBOARD.read_text()
 

@@ -1,23 +1,8 @@
 """Tier 2 — the log bridge, read back through an in-memory exporter.
 
-Two claims are pinned here, and the second is the one that matters.
-
-The bridge exists so Grafana can sit log lines next to the span they came
-from. That is the first claim: an exported record carries the enclosing span's
-trace and span ids, so the join needs no string parsing.
-
-The second is a PII control. `log_external_request`/`log_external_response`
-put `/discover` and `/select` bodies in the log at DEBUG, and those bodies are
-the one place outside the `gen_ai.*` span attributes where a farmer's words
-appear. ADR-0013 keeps them out of ClickHouse by giving the *handler* a level
-of INFO — so `DSS_LOG_LEVEL=DEBUG` still prints them to stderr for whoever is
-debugging, and still exports nothing. A handler that quietly starts accepting
-DEBUG would leak them, and only a test that reads the exported records
-notices.
-
-Each test builds its own `LoggerProvider` and hands it in, rather than
-installing one globally: `set_logger_provider` is one-shot per process, the
-same as the tracer and meter providers.
+- Log lines carry span ids, so Grafana can show them next to their span.
+- DEBUG lines hold farmers' words, so they must never be exported (ADR-0013).
+- Each test passes its own `LoggerProvider`: the global one can be set once.
 """
 
 from __future__ import annotations
@@ -38,12 +23,7 @@ from dss.adapters.observability.logs import _DSS_LOGGER, configure_logs, reset_l
 
 @pytest.fixture(autouse=True)
 def dss_logger_at_info() -> Iterator[None]:
-    """What `_configure_logging` does in `app.py`, and nothing more.
-
-    Without it the `dss` logger sits at NOTSET, inherits WARNING from root,
-    and drops INFO before any handler sees it — so every assertion below would
-    pass for the wrong reason.
-    """
+    """Match `app.py`; else INFO is dropped early and tests pass wrongly."""
 
     dss_logger = logging.getLogger(_DSS_LOGGER)
     before = dss_logger.level
@@ -73,10 +53,8 @@ def test_info_is_exported(exporter: InMemoryLogRecordExporter) -> None:
 
 
 def test_debug_is_not_exported(exporter: InMemoryLogRecordExporter) -> None:
-    # The logger is at DEBUG, as `DSS_LOG_LEVEL=DEBUG` leaves it. The record
-    # reaches the handlers; the bridge is what must refuse it. Asserting
-    # through a DEBUG-level logger is the whole point — a test that left the
-    # logger at INFO would pass with the control removed.
+    # A DEBUG logger, as `DSS_LOG_LEVEL=DEBUG` leaves it, so the bridge itself
+    # must refuse the line. At INFO this would pass with the control removed.
     logger = logging.getLogger("dss.trace")
     logger.setLevel(logging.DEBUG)
     try:
@@ -99,9 +77,7 @@ def test_warning_and_error_are_exported(exporter: InMemoryLogRecordExporter) -> 
 def test_record_carries_the_enclosing_span_ids(
     exporter: InMemoryLogRecordExporter,
 ) -> None:
-    # What makes a log line clickable from a trace. `trace_log.py` already
-    # writes both ids into the message text for grep; this is the same join
-    # done by the backend instead.
+    # Lets a trace link straight to its log lines, with no text parsing.
     tracer = TracerProvider().get_tracer("test")
     with tracer.start_as_current_span("dss.turn") as span:
         expected = span.get_span_context()
@@ -121,9 +97,8 @@ def test_reset_detaches_the_handler(exporter: InMemoryLogRecordExporter) -> None
 
 
 def test_configure_twice_attaches_one_handler() -> None:
-    # `create_app` runs more than once in a process (tests, `--reload`). Two
-    # handlers would export every line twice, which reads as double the traffic
-    # on a dashboard rather than as a bug.
+    # `create_app` can run twice in one process. Two handlers would double
+    # every line, which looks like double traffic, not a bug.
     provider = LoggerProvider()
     exporter = InMemoryLogRecordExporter()
     provider.add_log_record_processor(SimpleLogRecordProcessor(exporter))
@@ -137,8 +112,7 @@ def test_configure_twice_attaches_one_handler() -> None:
 
 
 def test_telemetry_off_leaves_no_handler(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Every test and every local run without an endpoint lands here. Nothing
-    # should be attached, and nothing from a previous boot should survive.
+    # Local runs have no endpoint. Nothing from an earlier boot may linger.
     from dss.adapters.observability.tracing import configure_telemetry
 
     provider = LoggerProvider()
@@ -154,8 +128,7 @@ def test_telemetry_off_leaves_no_handler(monkeypatch: pytest.MonkeyPatch) -> Non
 
 
 def test_only_the_dss_logger_is_bridged(exporter: InMemoryLogRecordExporter) -> None:
-    # A handler on the root logger would export uvicorn's access log and every
-    # library's chatter, which is a cost decision nobody made.
+    # Exporting every library's logs would add cost nobody agreed to.
     logging.getLogger("httpx").info("HTTP Request: POST /select 200 OK")
 
     assert messages(exporter) == []

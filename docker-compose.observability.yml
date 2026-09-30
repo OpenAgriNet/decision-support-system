@@ -1,22 +1,13 @@
-# ClickHouse and Grafana for a laptop, so the dashboard can be watched locally.
-#
-#     ./scripts/run-local.sh --with-grafana
-#
-# The script starts this file and points the collector at `otel/collector.yaml`,
-# the deployment config, instead of `collector.local.yaml`. A deployment has
-# its own ClickHouse and Grafana and does not use this file.
-#
-# Its own ClickHouse, not Langfuse's. Langfuse owns that one's schema, and
-# the dashboard should read the same `otel` tables a deployment has.
-#
-# Local credentials only. Nothing here is published beyond 127.0.0.1.
+# Local ClickHouse and Grafana, to watch the dashboard on a laptop.
+# - Not Langfuse's ClickHouse: Langfuse owns that schema.
+# - Local credentials only; nothing binds beyond 127.0.0.1.
 
-# Its own project. Without it compose names it after the directory, the same
-# as the Langfuse file, and each `down` treats the other's containers as its own.
+# Else compose names it after the directory, like the Langfuse stack,
+# and each `down` would stop the other's containers.
 name: dss-observability
 
 services:
-  # Not `clickhouse`: Langfuse's is already called that on `oan-edge`, and two
+  # Not `clickhouse`: Langfuse's has that name on `oan-edge`, and two
   # services with one name on one network resolve to either.
   dss-clickhouse:
     image: docker.io/clickhouse/clickhouse-server:25.12
@@ -28,8 +19,7 @@ services:
     volumes:
       - dss_clickhouse_data:/var/lib/clickhouse
     ports:
-      # HTTP only, for `curl` queries. Not 8123: HyperDX's ClickHouse often
-      # holds it. The collector and Grafana use 9000 inside the network.
+      # For `curl` only. Not 8123: HyperDX's ClickHouse often holds it.
       - "127.0.0.1:${CLICKHOUSE_HTTP_PORT:-18123}:8123"
     healthcheck:
       test: wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1
@@ -46,11 +36,11 @@ services:
         condition: service_healthy
     environment:
       GF_INSTALL_PLUGINS: grafana-clickhouse-datasource
-      # A laptop: no login screen.
+      # Laptop only: no login screen.
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
       GF_AUTH_DISABLE_LOGIN_FORM: "true"
-      # Read by grafana/provisioning/datasources/clickhouse.yaml.
+      # Read by the provisioned datasource.
       CLICKHOUSE_HOST: dss-clickhouse
       CLICKHOUSE_USER: dss
       CLICKHOUSE_PASSWORD: dss
