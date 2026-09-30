@@ -607,7 +607,7 @@ at their own file.
 ## Where telemetry goes
 
 Everything the DSS emits — spans, metrics, log lines — leaves over OTLP to one
-endpoint, and a **collector** splits it from there (ADR-0013):
+endpoint, and a **collector** splits it from there (ADR-0014):
 
 ```
 DSS ──OTLP──> collector ──┬── traces, with the words ──> Langfuse

@@ -25,7 +25,7 @@ Do not duplicate architecture, domain model, or design-decision detail here — 
 - Package manager: uv
 - Test framework: pytest
 - Telemetry destination: one OTLP endpoint, pointed at an OpenTelemetry Collector
-  that fans out (ADR-0013) — traces to self-hosted Langfuse (ADR-0007) with message
+  that fans out (ADR-0014) — traces to self-hosted Langfuse (ADR-0007) with message
   content, and traces + metrics + logs to an existing ClickHouse with that content
   deleted. Grafana reads ClickHouse. Nothing imports `langfuse` or a ClickHouse
   client: the endpoint is the seam, and routing is `otel/collector.yaml`.
@@ -41,7 +41,7 @@ Do not duplicate architecture, domain model, or design-decision detail here — 
 - Logs: the `dss` logger bridged to OTLP at INFO and above
   (`adapters/observability/logs.py`). The handler's level is a PII control, not a
   volume one — provider request/response bodies are DEBUG-only and must never be
-  exported (ADR-0013).
+  exported (ADR-0014).
 - Speed benchmark: `benchmarks/` CLI, real models with the mock network; load mode
   runs the DSS in a 1 CPU / 1 GiB container (ADR-0013).
 

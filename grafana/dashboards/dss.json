@@ -1,7 +1,7 @@
 {
   "uid": "dss-overview",
   "title": "DSS overview",
-  "description": "Turn health, stage latency, cost and HTTP errors for the Decision Support System. Built on the `dss.*` names in src/dss/adapters/observability/metrics.py and the stage names in src/dss/observability/stages.py \u2014 those are a contract, and this dashboard is what makes breaking them visible (ADR-0013).",
+  "description": "Turn health, stage latency, cost and HTTP errors for the Decision Support System. Built on the `dss.*` names in src/dss/adapters/observability/metrics.py and the stage names in src/dss/observability/stages.py \u2014 those are a contract, and this dashboard is what makes breaking them visible (ADR-0014).",
   "tags": [
     "dss",
     "otel"
@@ -21,7 +21,7 @@
         "name": "database",
         "label": "Database",
         "type": "textbox",
-        "description": "The ClickHouse database the collector writes to. `otel` unless a schema clash forced a different one (ADR-0013).",
+        "description": "The ClickHouse database the collector writes to. `otel` unless a schema clash forced a different one (ADR-0014).",
         "query": "otel",
         "current": {
           "selected": false,
@@ -844,7 +844,7 @@
       "id": 18,
       "type": "table",
       "title": "Recent errors and warnings",
-      "description": "Log lines at WARN and above. Bodies of provider calls are DEBUG-only and deliberately never exported (ADR-0013), so nothing here carries a farmer's words.",
+      "description": "Log lines at WARN and above. Bodies of provider calls are DEBUG-only and deliberately never exported (ADR-0014), so nothing here carries a farmer's words.",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
         "uid": "dss-clickhouse-otel"
