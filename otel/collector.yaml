@@ -1,4 +1,4 @@
-# The export hub (ADR-0013). The DSS sends one OTLP stream here; this fans it
+# The export hub. The DSS sends one OTLP stream here; this fans it
 # out to two places that want different things.
 #
 # Langfuse wants the words. It answers "why did the model say that", which
@@ -72,7 +72,7 @@ exporters:
     # before pointing this at a database another collector already writes to:
     # ours would insert into its tables, and a mismatch fails at runtime.
     create_schema: true
-    # 30 days, the window ADR-0007 chose for Langfuse. One retention story for
+    # 30 days, the same window Langfuse keeps. One retention story for
     # both stores is easier to state and easier to defend than two. Applied as
     # a table TTL at creation, so changing it later means an ALTER, the way
     # `scripts/langfuse-retention.sh` does it.
