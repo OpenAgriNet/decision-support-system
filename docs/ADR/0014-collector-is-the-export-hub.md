@@ -1,4 +1,4 @@
-# ADR-0013: the collector is the export hub
+# ADR-0014: the collector is the export hub
 
 - **Status:** ACCEPTED
 - **Date:** 2026-09-23

@@ -1,7 +1,7 @@
 """Tier 2 — the log bridge, read back through an in-memory exporter.
 
 - Log lines carry span ids, so Grafana can show them next to their span.
-- DEBUG lines hold farmers' words, so they must never be exported (ADR-0013).
+- DEBUG lines hold farmers' words, so they must never be exported (ADR-0014).
 - Each test passes its own `LoggerProvider`: the global one can be set once.
 """
 

@@ -17,7 +17,7 @@
 ### Added
 - The OpenTelemetry Collector as the export hub: one OTLP stream from the DSS,
   fanned out to Langfuse (traces, with message content) and ClickHouse (traces,
-  metrics and logs, with it removed). Grafana reads ClickHouse. ADR-0013 (#141)
+  metrics and logs, with it removed). Grafana reads ClickHouse. ADR-0014 (#141)
 - Log signal over OTLP — `dss.trace` lines become log records carrying their
   span's `trace_id`, so a dashboard can put a turn's logs next to its trace.
   Exported at INFO and above, which keeps DEBUG-only provider request and
