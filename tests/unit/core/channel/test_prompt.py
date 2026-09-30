@@ -51,6 +51,50 @@ def test_a_result_is_labelled_with_its_asks_resolved_place() -> None:
     assert "Pune" in rendered
 
 
+def test_the_label_names_the_place_above_so_two_rampurs_are_told_apart() -> None:
+    rampur = ResolvedPlace(
+        name="Rampur",
+        within=("India", "Himachal Pradesh"),
+        geometry=Geometry(coordinates=[77.63, 31.45]),
+        source=PlaceSource.NAMED,
+    )
+    intent = Intent(asks=(_ask(rampur),))
+    evidence = Evidence(
+        sources=(Source(id="1", name="IMD", kind=SourceKind.PROVIDER, url=None),),
+        results=(Result(ask_index=0, source_id="1", data={"rain": 2}),),
+        served=(0,),
+        failed=(),
+        sufficient=True,
+    )
+
+    rendered = render_evidence(evidence, intent)
+
+    assert "— about Rampur, Himachal Pradesh\n" in rendered
+
+
+def test_a_place_with_nothing_above_it_is_labelled_with_its_name_alone() -> None:
+    """A device point sent with an area name has no chain: no dangling comma."""
+
+    anand = ResolvedPlace(
+        name="Anand",
+        within=(),
+        geometry=Geometry(coordinates=[72.95, 22.56]),
+        source=PlaceSource.ASSERTED_GEOMETRY,
+    )
+    intent = Intent(asks=(_ask(anand),))
+    evidence = Evidence(
+        sources=(Source(id="1", name="IMD", kind=SourceKind.PROVIDER, url=None),),
+        results=(Result(ask_index=0, source_id="1", data={"rain": 2}),),
+        served=(0,),
+        failed=(),
+        sufficient=True,
+    )
+
+    rendered = render_evidence(evidence, intent)
+
+    assert "— about Anand\n" in rendered
+
+
 def test_a_failure_is_labelled_with_its_asks_resolved_place() -> None:
     intent = Intent(asks=(_ask(_place("Anand")),))
     evidence = Evidence(

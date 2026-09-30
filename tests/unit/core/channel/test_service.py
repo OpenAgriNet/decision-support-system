@@ -12,6 +12,7 @@ from dss.core.channel.service import (
     NO_MATCH_TEXT,
     answer_for_unplaced_asks,
     no_match_answer,
+    question_for_ambiguous_asks,
 )
 from dss.core.intent.models import (
     AmbiguousPlace,
@@ -274,3 +275,32 @@ def test_answer_for_unplaced_asks_shows_the_generic_question_once() -> None:
     assert answer is not None
     text = answer.content[0].text
     assert text.count(_TEXT.needs_place) == 1
+
+
+def test_the_question_for_ambiguous_asks_skips_everything_that_resolved() -> None:
+    """Pune was answered; only Bilaspur still needs the farmer's pick."""
+
+    bilaspur = AmbiguousPlace(
+        unresolved_name="Bilaspur",
+        candidates=(
+            AreaMatch(
+                name="Bilaspur",
+                region="IN-HP",
+                within=("India", "Himachal Pradesh"),
+                geometry=Geometry(coordinates=[76.75, 31.33]),
+            ),
+            AreaMatch(
+                name="Bilaspur",
+                region="IN-CT",
+                within=("India", "Chhattisgarh"),
+                geometry=Geometry(coordinates=[82.15, 22.09]),
+            ),
+        ),
+    )
+    asks = (_ask(place=_PUNE), _ask(place=bilaspur))
+
+    question = question_for_ambiguous_asks(asks, _TEXT)
+
+    assert question == (
+        "Which Bilaspur?\n1. Bilaspur, Himachal Pradesh\n2. Bilaspur, Chhattisgarh"
+    )

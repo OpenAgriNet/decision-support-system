@@ -79,13 +79,15 @@ def user_prompt(evidence: Evidence, intent: Intent, *, turn: UserTurn) -> str:
 
 
 def _place_label(ask_index: int, intent: Intent) -> str:
-    """ "— about <place>", or nothing if the ask has no resolved place or the
-    place has no name (a device point the turn sent without an area)."""
+    """ "— about <place>, <place above it>", or nothing if the ask has no
+    resolved place or the place has no name (a device point the turn sent
+    without an area). The place above is what tells two Rampurs apart."""
 
     place = intent.asks[ask_index].place
     if not isinstance(place, ResolvedPlace) or not place.name:
         return ""
-    return f" — about {place.name}"
+    above = f", {place.within[-1]}" if place.within else ""
+    return f" — about {place.name}{above}"
 
 
 def render_evidence(evidence: Evidence, intent: Intent) -> str:

@@ -85,6 +85,34 @@ def _group_lines(
     return _candidate_lines(candidates)
 
 
+def _ambiguous_lines(place: AmbiguousPlace, text: ClarificationText) -> list[str]:
+    name = place.unresolved_name
+    if len(place.candidates) > text.max_choices:
+        return [
+            text.grouped_place_header.format(name=name),
+            *_group_lines(name, place.candidates, text),
+        ]
+    return [
+        text.ambiguous_place_header.format(name=name),
+        *_candidate_lines(place.candidates),
+    ]
+
+
+def question_for_ambiguous_asks(
+    asks: Sequence[Ask], text: ClarificationText
+) -> str | None:
+    """The "which one?" block for the asks whose place is still ambiguous, for
+    a turn where other asks were answered. `None` if none is ambiguous."""
+
+    lines: list[str] = []
+    reported: list[AmbiguousPlace] = []
+    for ask in asks:
+        if isinstance(ask.place, AmbiguousPlace) and ask.place not in reported:
+            reported.append(ask.place)
+            lines.extend(_ambiguous_lines(ask.place, text))
+    return "\n".join(lines) or None
+
+
 def answer_for_unplaced_asks(
     asks: Sequence[Ask], text: ClarificationText
 ) -> ComposedAnswer | None:
@@ -113,14 +141,7 @@ def answer_for_unplaced_asks(
                 continue
             reported.append(ask.place)
         if isinstance(ask.place, AmbiguousPlace):
-            name = ask.place.unresolved_name
-            candidates = ask.place.candidates
-            if len(candidates) > text.max_choices:
-                lines.append(text.grouped_place_header.format(name=name))
-                lines.extend(_group_lines(name, candidates, text))
-            else:
-                lines.append(text.ambiguous_place_header.format(name=name))
-                lines.extend(_candidate_lines(candidates))
+            lines.extend(_ambiguous_lines(ask.place, text))
         elif isinstance(ask.place, UnresolvedPlace):
             lines.append(text.unknown_place.format(name=ask.place.unresolved_name))
         else:

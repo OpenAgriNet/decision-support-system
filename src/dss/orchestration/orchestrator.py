@@ -45,6 +45,7 @@ from dss.core.channel.service import (
     answer_for_unplaced_asks,
     answer_from_evidence,
     no_match_answer,
+    question_for_ambiguous_asks,
 )
 from dss.core.intent.models import Intent
 from dss.core.moderation.messages import messages_for
@@ -58,6 +59,7 @@ from dss.core.shared.models import (
     Claim,
     ClaimDelta,
     RefusalBlock,
+    TextBlock,
     TurnContext,
     TurnEvent,
     TurnFinished,
@@ -262,6 +264,17 @@ class Orchestrator:
             recorder.composed()
             for block in answer.content:
                 yield Claim(content=block, sources=answer.sources)
+            # An ask whose place matched several was not answered. Ask which one
+            # after the answer, so the farmer's next reply can finish it.
+            question = question_for_ambiguous_asks(
+                result.intent.asks, self._clarification_text
+            )
+            if question is not None:
+                block = TextBlock(text=question)
+                yield Claim(content=block)
+                answer = ComposedAnswer(
+                    content=(*answer.content, block), sources=answer.sources
+                )
             self._note("channel", ctx, str(len(answer.content)))
 
             status, cause = _status_for(evidence, result.intent)
