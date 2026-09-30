@@ -42,6 +42,8 @@ def figures(
 
     return {
         "run": {
+            # Every turn of the run is in this Langfuse session.
+            "session_id": result.session_id,
             # What the server ran with, as its traces recorded it.
             "models": next((f.models for f in traced if f.models), {}),
             "commit": commit,
@@ -71,12 +73,18 @@ def load_figures(
     limits: dict,
     machine: dict,
     commit: str | None,
+    session_id: str | None = None,
 ) -> dict:
     """Load mode's report: one row per step, and what the DSS ran on.
     `limits` is what the container actually got, read back from it."""
 
     return {
-        "run": {"commit": commit, "machine": machine, "limits": limits},
+        "run": {
+            "session_id": session_id,
+            "commit": commit,
+            "machine": machine,
+            "limits": limits,
+        },
         "steps": [
             {
                 "concurrency": step.concurrency,
@@ -117,6 +125,7 @@ def render_load_text(report: dict) -> str:
         f"limits: {cpus:g} CPU · {memory:.1f} GiB",
         f"commit: {_short_commit(run['commit'])}",
         f"machine: {_machine_line(run['machine'])}",
+        f"langfuse session: {run.get('session_id') or '-'}",
         "Compare runs made on the same machine, close together in time.",
     ]
     return "\n".join(lines)
@@ -137,6 +146,8 @@ def write_json(report: dict, result: RunResult, directory: Path) -> Path:
             "category": t.category,
             "repeat": t.repeat,
             "session_id": t.session_id,
+            "transaction_id": t.transaction_id,
+            "trace_id": t.trace_id,
             "missed": t.missed,
             **asdict(t.timing),
         }
@@ -208,6 +219,7 @@ def render_text(report: dict) -> str:
         f"models: {_models_line(run['models'])}",
         f"commit: {_short_commit(run['commit'])}",
         f"machine: {_machine_line(run['machine'])}",
+        f"langfuse session: {run.get('session_id') or '-'}",
     ]
     if run["truncated"]:
         lines.append("NOTE: the turn limit stopped the run early.")

@@ -823,6 +823,14 @@ It prints p50, p95 and max for:
 It also prints the models, the commit and the machine. The JSON goes to
 `var/benchmarks/`. Compare runs made on the same machine, close in time.
 
+**One run is one Langfuse session.** The first line printed is
+`langfuse session: <uuid>`. Every turn of the run, warm-up included, is sent
+under that `sessionId`, so Langfuse's Sessions view shows the whole run in one
+place. Each turn still has its own `transactionId` and trace. The benchmark
+sends the trace id as `traceparent` and reads each turn's trace back by that
+id. The JSON's `turn_rows` list both ids, so a slow turn is easy to find.
+Load mode works the same way.
+
 ### Load mode
 
 ```bash

@@ -7,16 +7,17 @@ interface: the run only needs to call them, and a test hands in fakes.
 
 from __future__ import annotations
 
-import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 
 from benchmarks.questions import Question
 from benchmarks.traces import TraceFacts
-from benchmarks.turn import TurnTiming
+from benchmarks.turn import TurnIds, TurnTiming
 
-SendTurn = Callable[[Question, str], Awaitable[TurnTiming]]
+SendTurn = Callable[[Question, TurnIds], Awaitable[TurnTiming]]
+# Transaction ids of the turns the mock could not answer.
 ReadMisses = Callable[[], Awaitable[set[str]]]
+# A turn's trace, by trace id.
 ReadTrace = Callable[[str], Awaitable[TraceFacts | None]]
 
 
@@ -33,6 +34,8 @@ class TurnResult:
     category: str
     repeat: int
     session_id: str
+    transaction_id: str
+    trace_id: str
     timing: TurnTiming
     # The mock had no answer for one of the turn's /select calls, so its
     # times are left out of the figures.
@@ -45,6 +48,8 @@ class TurnResult:
 @dataclass(frozen=True)
 class RunResult:
     turns: list[TurnResult]
+    # The Langfuse session every turn of the run was sent under.
+    session_id: str | None = None
     # The turn limit stopped the run before every turn was sent.
     truncated: bool = False
 
@@ -53,11 +58,11 @@ async def run(
     questions: list[Question],
     options: RunOptions,
     *,
+    session_id: str,
     turn: SendTurn,
     misses: ReadMisses,
     trace: ReadTrace,
 ) -> RunResult:
-    run_id = uuid.uuid4().hex[:8]
     # Every turn the run would send, in order; repeat 0 is a warm-up turn.
     planned = [(q, 0) for q in questions[: options.warmup]] + [
         (q, repeat) for repeat in range(1, options.repeats + 1) for q in questions
@@ -67,16 +72,17 @@ async def run(
 
     turns = []
     for question, repeat in sent:
-        label = repeat or "warmup"
-        session_id = f"bench-{run_id}-{question.id}-{label}"
-        timing = await turn(question, session_id)
+        ids = TurnIds.new(session_id)
+        timing = await turn(question, ids)
         if repeat:
             turns.append(
                 TurnResult(
                     question_id=question.id,
                     category=question.category,
                     repeat=repeat,
-                    session_id=session_id,
+                    session_id=ids.session_id,
+                    transaction_id=ids.transaction_id,
+                    trace_id=ids.trace_id,
                     timing=timing,
                 )
             )
@@ -85,7 +91,9 @@ async def run(
     # The mock keys a miss by transaction id, which the runner set per turn.
     missed = await misses()
     turns = [
-        replace(t, missed=t.session_id in missed, facts=await trace(t.session_id))
+        replace(t, missed=t.transaction_id in missed, facts=await trace(t.trace_id))
         for t in turns
     ]
-    return RunResult(turns=turns, truncated=len(sent) < len(planned))
+    return RunResult(
+        turns=turns, session_id=session_id, truncated=len(sent) < len(planned)
+    )

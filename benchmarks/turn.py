@@ -6,6 +6,8 @@ only the server's side, and the farmer waits for the network too.
 
 from __future__ import annotations
 
+import secrets
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from time import perf_counter
@@ -14,6 +16,29 @@ import httpx
 
 from benchmarks.questions import Question
 from benchmarks.sse import parse_sse
+
+
+@dataclass(frozen=True)
+class TurnIds:
+    """The ids one turn is sent under.
+
+    Every turn of a run shares the session, so Langfuse shows the run in one
+    place. The trace id tells the turns apart there: the benchmark sends it
+    as `traceparent`, then reads that trace back by id.
+    """
+
+    session_id: str
+    transaction_id: str
+    trace_id: str
+
+    @classmethod
+    def new(cls, session_id: str) -> TurnIds:
+        # UUIDs, not words: services on the shared stack expect them.
+        return cls(
+            session_id=session_id,
+            transaction_id=str(uuid.uuid4()),
+            trace_id=uuid.uuid4().hex,
+        )
 
 
 @dataclass(frozen=True)
@@ -31,8 +56,12 @@ async def run_turn(
     *,
     session_id: str,
     transaction_id: str,
+    trace_id: str | None = None,
 ) -> TurnTiming:
     body = turn_request(question, session_id, transaction_id)
+    headers = {"Accept": "text/event-stream"}
+    if trace_id is not None:
+        headers["traceparent"] = f"00-{trace_id}-{secrets.token_hex(8)}-01"
     status = first_delta_s = total_s = None
     started = perf_counter()
     try:
@@ -40,7 +69,7 @@ async def run_turn(
             "POST",
             f"{base_url}/v1/turns",
             json=body,
-            headers={"Accept": "text/event-stream"},
+            headers=headers,
             timeout=120,
         ) as response:
             # A refused request is not a fast turn: timed, it would read as
