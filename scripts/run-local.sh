@@ -219,7 +219,7 @@ fi
 # (ADR-0013). Locally it uses `collector.local.yaml`, which has no ClickHouse
 # exporter: the collector validates exporters at startup, so one pointed at a
 # ClickHouse that is not there stops the process rather than degrading. The
-# stripped branch still runs and prints, so `docker logs` shows what a
+# allowlisted branch still runs and prints, so `docker logs` shows what a
 # deployment would have sent to ClickHouse — with the farmer's words removed.
 #
 # `--with-grafana` swaps in `collector.yaml`, the deployment config, pointed at
@@ -311,7 +311,7 @@ export OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=delta
 export OTEL_SERVICE_NAME=dss
 export OTEL_RESOURCE_ATTRIBUTES="deployment.environment.name=local"
 # A laptop, where seeing the prompt is the point. ADR-0007 §5 does not permit
-# this in a deployment. It reaches Langfuse and is stripped before the branch
+# this in a deployment. It reaches Langfuse and is dropped before the branch
 # that would go to ClickHouse — `docker logs` on the collector shows both.
 export DSS_TRACE_INCLUDE_MESSAGE_CONTENT=true
 

@@ -5,7 +5,7 @@
 # nowhere to go stops the process, it does not degrade. So "ClickHouse is
 # optional locally" has to be two configs.
 #
-# The second traces pipeline still runs the strip processor and prints the
+# The second traces pipeline still runs the ClickHouse allowlist and prints the
 # result. That is the point of having it here: you can read the debug output
 # and see that the query and the answer are in Langfuse and not in the branch
 # that would have gone to ClickHouse — without running a ClickHouse.
@@ -19,22 +19,32 @@ receivers:
 processors:
   batch:
 
-  # Kept identical to `collector.yaml`. If the two drift, the control is tested
-  # locally and a different one runs in the deployment.
-  attributes/strip_content:
-    actions:
-      - key: gen_ai.input.messages
-        action: delete
-      - key: gen_ai.output.messages
-        action: delete
-      - key: gen_ai.system_instructions
-        action: delete
-      - key: pydantic_ai.all_messages
-        action: delete
-      - key: gen_ai.tool.call.arguments
-        action: delete
-      - key: gen_ai.tool.call.result
-        action: delete
+  # Kept identical to `collector.yaml`: tests/unit/test_collector_allowlist.py
+  # fails if they drift.
+  # An allowlist, not a denylist. Nothing redacts a farmer's words before this
+  # yet (DSS_ARCHITECTURE.md §6.2), so this is the only thing between them and
+  # a shared database. The denylist it replaces named six content keys and
+  # missed `final_result` — every agent run's full output — and exception text.
+  # A key pydantic-ai adds or renames is now dropped rather than shipped.
+  #
+  # Kept: our own attributes (`dss.*`, status, timings, ask counts, model
+  # names), ids for joining to Langfuse, and gen_ai model, usage and tool
+  # *names*. Dropped: everything else, including tool arguments and results.
+  # To send something new to ClickHouse, add it here and to the test that
+  # reads this list (tests/unit/test_collector_allowlist.py).
+  #
+  # `propagate`: a statement that errors drops the batch instead of passing it
+  # through unfiltered.
+  transform/clickhouse_allowlist:
+    error_mode: propagate
+    trace_statements:
+      - statements:
+          - 'keep_matching_keys(span.attributes, "^(dss\\..+|status|first_delta_ms|composed_ms|asks_(total|failed)|answer_count|attempts|capabilities|capability_count|provider_id|(intent|moderation|planner|composer)_model|agent_name|model_name|session\\.id|langfuse\\.(session\\.id|trace\\.metadata\\.(transaction_id|message_id))|gen_ai\\.(agent\\.(name|call\\.id)|conversation\\.id|operation\\.name|provider\\.name|system|request\\.(model|temperature)|response\\.(finish_reasons|id|model)|tool\\.(name|call\\.id)|usage\\..+|aggregated_usage\\..+|client\\.operation\\.time_to_first_chunk)|operation\\.cost|server\\.address|http\\.status_code|logfire\\.(span_type|level_num))$")'
+          # The status says a span failed; its message is exception text.
+          - 'set(span.status.message, "") where span.status.message != ""'
+      # `exception` events keep what failed by type, never by message.
+      - statements:
+          - 'keep_keys(spanevent.attributes, ["exception.type", "exception.escaped", "elapsed_ms"])'
 
 exporters:
   otlphttp/langfuse:
@@ -55,7 +65,7 @@ service:
 
     traces/stripped:
       receivers: [otlp]
-      processors: [attributes/strip_content, batch]
+      processors: [transform/clickhouse_allowlist, batch]
       exporters: [debug]
 
     metrics:
