@@ -1,13 +1,8 @@
 """The collector keeps only named attributes on the way to ClickHouse.
 
-Nothing redacts a farmer's words before the collector yet, so this processor is
-the only thing between them and a shared database. A denylist of content keys
-missed `final_result` and exception text; an allowlist cannot miss a key it
-never heard of. These tests read the allowlist the collector runs and check it
-against keys we know carry content and keys we know we need.
-
-Python's `re` stands in for the collector's RE2 — the pattern uses nothing the
-two disagree on.
+- It is the only thing keeping farmers' words out of a shared database.
+- An allowlist cannot miss a new content key; a denylist did.
+- Python's `re` stands in for RE2; the pattern uses nothing they differ on.
 """
 
 from __future__ import annotations
@@ -78,8 +73,7 @@ def _config(path: Path) -> dict:
 
 
 def _statements(path: Path, context: str) -> list[str]:
-    """The statements acting on one context, read from their path prefix
-    (`span.`, `spanevent.`) — the collector infers the context the same way."""
+    """Match by path prefix, as the collector infers the context."""
 
     processor = _config(path)["processors"][PROCESSOR]
     return [

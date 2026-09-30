@@ -263,9 +263,7 @@ def configure_telemetry(
     # Fills the second slot too, so a stage cannot be spanned but unmeasured.
     configure_metrics(model_profile=model_profile)
 
-    # And the third signal. Traces say what ran, metrics say how often, logs
-    # say what the turn was doing in between — all three to the one endpoint,
-    # so a dashboard can put them on the same screen (ADR-0013).
+    # One endpoint for all three signals, so a dashboard can join them.
     configure_logs()
 
     logger.info("telemetry on, exporting to %s", endpoint)
@@ -407,12 +405,10 @@ class TurnRecorder:
         interactions: Sequence[str],
         subjects: Sequence[str],
     ) -> None:
-        """What the turn asked, in shape only: one entry per ask, in order, so
-        the three lists line up. Never the question itself.
+        """What the turn asked, in shape only — never the question itself.
 
-        `subjects` is the crop or scheme ("wheat", "PM-KISAN"), empty where the
-        ask names none. Open-ended, so a span attribute rather than a metric
-        label; the counter carries only the two closed sets.
+        - One entry per ask, in order, so the three lists line up.
+        - `subjects` is open-ended, so it stays off the metric labels.
         """
 
         self._span.set_attribute("dss.ask.categories", list(categories))

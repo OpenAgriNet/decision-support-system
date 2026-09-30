@@ -166,8 +166,7 @@ def _answer(attributes: dict) -> httpx.Response:
 async def test_the_call_span_says_what_was_asked_and_whether_data_came_back(
     spans,
 ) -> None:
-    """Which kind of data, and whether the provider returned any: a provider
-    that always answers 200 with nothing in it looks healthy otherwise."""
+    """An empty 200 would otherwise look like a healthy provider."""
 
     await _invocation(lambda _: _answer({"parameters": [{"name": "rain"}]})).select(
         CAPABILITY, {}, "txn-1"
@@ -188,7 +187,7 @@ async def test_an_empty_answer_is_marked_as_one(spans) -> None:
 
 
 async def test_a_failed_call_says_how_it_failed_by_class(spans) -> None:
-    """`transient` or `defect`, never the provider's error text."""
+    """Provider error text may echo the farmer's query."""
 
     def forbidden(request: httpx.Request) -> httpx.Response:
         return httpx.Response(403, json={"error": "secret-query-echo"})

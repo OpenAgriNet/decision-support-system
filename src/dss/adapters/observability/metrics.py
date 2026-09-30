@@ -60,8 +60,7 @@ LABEL_KEYS: dict[str, frozenset[str]] = {
     TURN_COUNT: frozenset({"status", "model_profile"}),
     STAGE_TOKENS: frozenset({"stage", "model", "direction"}),
     TURN_COST: frozenset({"model_profile"}),
-    # Both closed sets. The crop or scheme asked about is not a label: it is
-    # open-ended, so it goes on the turn span instead.
+    # Closed sets only. The crop or scheme is open-ended, so it goes on the span.
     ASK_COUNT: frozenset({"category", "interaction"}),
 }
 

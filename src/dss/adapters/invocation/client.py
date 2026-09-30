@@ -292,8 +292,7 @@ class HttpCapabilityInvocation:
 def _has_data(answer: DiscoveredAnswer) -> bool:
     """Whether the provider returned anything beyond the JSON-LD envelope.
 
-    An empty list or object counts as nothing: `"parameters": []` is a
-    well-formed answer that tells the farmer nothing.
+    Empty lists count as nothing: valid, but they tell the farmer nothing.
     """
 
     return any(

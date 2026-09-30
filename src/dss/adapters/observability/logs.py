@@ -1,29 +1,8 @@
-"""The app's log lines, sent where the spans and metrics already go.
+"""Sends the app's log lines to the same endpoint as spans and metrics.
 
-`dss.trace` writes one line per stage and one per outbound call, each already
-carrying `trace_id` and `span_id` as text so a person can grep a turn's log
-back together. That works for a person with the file. It does not work for
-someone looking at a dashboard: the lines are in a container's stdout and the
-span is in ClickHouse, and nothing joins them.
-
-This bridges the standard library's logger to OpenTelemetry, so a record
-arrives as a log signal with the enclosing span's ids on it as *fields*. The
-text format does not change — stderr still gets exactly what it got before.
-
-**The handler's level is the PII control, and it is deliberate.** Bodies of
-`/discover` and `/select` are logged at DEBUG (`observability/trace_log.py`),
-clipped but verbatim, and they are the one place outside the `gen_ai.*` span
-attributes where a farmer's words appear in telemetry. ADR-0013 keeps them out
-of ClickHouse by filtering here rather than at the collector: the level sits on
-the *handler*, not the logger, so `DSS_LOG_LEVEL=DEBUG` still prints bodies to
-stderr for whoever is debugging, and still exports none of them. Leaking and
-then filtering downstream would be one forgotten processor away from shipping
-them.
-
-**No LoggerProvider comes from logfire.** It configures a tracer and a meter
-provider from the environment, not a logger provider, so unlike `metrics.py`
-this module does build one — from the same standard `OTEL_EXPORTER_OTLP_*`
-variables, so there is still one endpoint and one configuration path.
+- Ids as fields, not text, so a dashboard can join a log line to its span.
+- The handler's INFO level is the PII guard: DEBUG lines hold farmer words.
+- logfire builds no logger provider, so this module builds one (same OTLP env).
 """
 
 from __future__ import annotations
@@ -36,39 +15,27 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# The app's own logger, the one `_configure_logging` sets up in `app.py`.
-# `dss.trace` and everything else under `dss.` propagates to it, and nothing
-# else does — a handler on the root logger would export uvicorn's access log
-# and every library's chatter, which is a cost nobody chose.
+# Not the root logger: that would also export uvicorn's and every library's lines.
 _DSS_LOGGER = "dss"
 
-# Marks our handler so a second `configure_logs` finds it instead of adding
-# another. The same trick `_configure_logging` uses for its stream handler.
+# Lets a second `configure_logs` find our handler instead of adding another.
 _MARKER = "_dss_otel_handler"
 
 _provider: LoggerProvider | None = None
-# Whether we built `_provider`, and so whether shutting it down is ours to do.
-# A provider handed in by a caller belongs to the caller: shutting that one
-# down leaves them holding something dead, which is a rude way to end a test
-# and a worse way to end a reload.
+# A caller's provider is theirs to shut down, not ours.
 _provider_is_ours = False
 
 
 def configure_logs(*, logger_provider: LoggerProvider | None = None) -> None:
     """Bridge the `dss` logger to OTLP at INFO and above.
 
-    Called from `configure_telemetry`, so logs cannot be on with tracing off —
-    they share the one endpoint, as metrics do.
-
-    `logger_provider` is for a test that needs to read the records back. Left
-    unset, one is built here around the OTLP exporter.
+    - Only `configure_telemetry` calls this, so logs never run without tracing.
+    - `logger_provider` lets a test read the records back.
     """
 
     global _provider, _provider_is_ours
 
-    # The handler comes from the instrumentation package, not the SDK: the
-    # SDK's own `LoggingHandler` is deprecated in favour of this one and warns
-    # on construction.
+    # The SDK's own `LoggingHandler` is deprecated and warns when built.
     from opentelemetry.instrumentation.logging.handler import LoggingHandler
     from opentelemetry.sdk._logs import LoggerProvider as SdkLoggerProvider
     from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
@@ -84,7 +51,7 @@ def configure_logs(*, logger_provider: LoggerProvider | None = None) -> None:
             BatchLogRecordProcessor(OTLPLogExporter())
         )
 
-    # INFO on the handler. See the module docstring — this line is the control.
+    # On the handler, not the logger: DEBUG still prints locally, never exports.
     handler = LoggingHandler(level=logging.INFO, logger_provider=logger_provider)
     setattr(handler, _MARKER, True)
     logging.getLogger(_DSS_LOGGER).addHandler(handler)
@@ -94,11 +61,7 @@ def configure_logs(*, logger_provider: LoggerProvider | None = None) -> None:
 
 
 def reset_logs() -> None:
-    """Take the bridge away again.
-
-    `create_app` runs more than once in a process (tests, `--reload`), and a
-    boot with no OTLP endpoint must leave nothing behind from the last one.
-    """
+    """Take the bridge away, so a later boot without an endpoint starts clean."""
 
     global _provider, _provider_is_ours
 
@@ -108,11 +71,9 @@ def reset_logs() -> None:
 
 
 def _detach() -> None:
-    """Remove our handler, and flush whatever it had not sent yet.
+    """Remove our handler and flush it.
 
-    Shutting our own provider down rather than dropping it: a batch processor
-    holds records for up to its schedule, and on a `--reload` those are the
-    lines explaining whatever prompted the reload.
+    Shut down, not dropped: the batch still holds lines that may explain a reload.
     """
 
     dss_logger = logging.getLogger(_DSS_LOGGER)

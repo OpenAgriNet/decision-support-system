@@ -192,8 +192,7 @@ async def test_a_turn_closed_after_it_finished_keeps_its_status(spans) -> None:
 
 
 async def test_the_turn_carries_the_shape_of_what_was_asked(spans) -> None:
-    """Category, interaction and subject per ask, in order, so one row per turn
-    says what was asked. Never the question itself."""
+    """One row per turn says what was asked, never the question itself."""
 
     orch, _ = _build(
         intent=_one_ask(),

@@ -33,28 +33,16 @@ services:
       # The DSS's own credential for the gateway, and the only key it holds.
       # Vendor keys live in the gateway and never reach this process.
       DSS_GATEWAY_API_KEY: ${DSS_GATEWAY_API_KEY:-}
-      # The collector below, not Langfuse (ADR-0013). It is in this compose
-      # file, so it is always there — which is why this has a default at all,
-      # where before it was empty and telemetry was off unless someone asked.
-      # No credentials here any more: the collector holds Langfuse's, because
-      # it is the thing that talks to Langfuse.
+      # The collector, not Langfuse. It always runs, so this can default.
+      # No credentials: the collector holds Langfuse's.
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318}
-      # On by default now. It shipped as `none` because the endpoint was
-      # Langfuse and Langfuse discards metrics; the endpoint is a collector
-      # that forwards them to ClickHouse, so the reason is gone. `dss.turn.*`,
-      # `dss.stage.*` and the HTTP request metrics are what a dashboard reads;
-      # Pydantic AI's own `gen_ai.*` token metrics come along with them.
+      # On: the collector forwards metrics to ClickHouse.
       OTEL_METRICS_EXPORTER: ${OTEL_METRICS_EXPORTER:-otlp}
-      # Delta, not OTLP's default of cumulative. ClickHouse stores what it is
-      # given, so a cumulative counter makes every rate panel compute a
-      # windowed difference in SQL. Delta means a panel sums rows.
+      # Delta, not cumulative: a rate panel then just sums rows.
       OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE: ${OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE:-delta}
-      # What identifies these rows in a ClickHouse other services also write
-      # to. Unset, every span and metric says `unknown_service` and no
-      # dashboard can tell the DSS apart from anything else.
+      # Tells DSS rows apart in a shared ClickHouse. Unset: `unknown_service`.
       OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-dss}
-      # The second half of that: which deployment. Without it a staging turn
-      # and a production turn land in the same panel.
+      # Keeps staging and production turns out of the same panel.
       OTEL_RESOURCE_ATTRIBUTES: deployment.environment.name=${DSS_ENV:-dev}
       # One name for the whole model configuration above, labelling every
       # turn-level metric. Nothing derives it — two deployments running the
@@ -81,10 +69,8 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # The export hub (ADR-0013). No longer behind a profile: the DSS now points
-  # at it by default, so it is part of the deployment rather than something to
-  # start when you want to look. It fans one OTLP stream out to Langfuse (with
-  # message content) and ClickHouse (without it — see otel/collector.yaml).
+  # Export hub. No profile: the DSS points at it by default.
+  # Sends content to Langfuse, and a content-free copy to ClickHouse.
   otel-collector:
     image: otel/opentelemetry-collector-contrib:${OTEL_COLLECTOR_TAG:-latest}
     command:
@@ -92,23 +78,17 @@ services:
     volumes:
       - ./otel/collector.yaml:/etc/otel/collector.yaml:ro
     environment:
-      # Where the traces that keep their content go. Reached by service name
-      # over oan-edge, which is the network Langfuse's own compose file
-      # declares.
+      # Reached by name over oan-edge, Langfuse's network.
       LANGFUSE_OTLP_ENDPOINT: ${LANGFUSE_OTLP_ENDPOINT:-http://langfuse-web:3000/api/public/otel}
-      # Moved here from the DSS. The collector is what talks to Langfuse, so
-      # it is what needs the credential. Build it as
-      # `Basic $(printf '%s:%s' "$PUBLIC_KEY" "$SECRET_KEY" | base64)` —
-      # note this one is a plain header value, not the URL-encoded
-      # OTEL_EXPORTER_OTLP_HEADERS list, so a literal space is correct here.
+      # `Basic $(printf '%s:%s' "$PUBLIC_KEY" "$SECRET_KEY" | base64)`.
+      # A plain header value, so a literal space (not `%20`) is correct.
       LANGFUSE_AUTH_HEADER: ${LANGFUSE_AUTH_HEADER:-}
-      # Native protocol, not HTTP: tcp://host:9000. No default — a wrong guess
-      # here writes telemetry somewhere nobody is looking.
+      # Native protocol: tcp://host:9000. No default: a wrong guess sends
+      # telemetry where nobody looks.
       CLICKHOUSE_ENDPOINT: ${CLICKHOUSE_ENDPOINT:-}
       CLICKHOUSE_USER: ${CLICKHOUSE_USER:-}
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-}
-      # Shared with whatever else writes OTLP to this server. Check the
-      # existing tables' schema before pointing a second collector at it.
+      # May be shared. Check the tables' schema before a second collector writes.
       CLICKHOUSE_DATABASE: ${CLICKHOUSE_DATABASE:-otel}
     ports:
       # OTLP/HTTP. The DSS reaches it as http://otel-collector:4318 from

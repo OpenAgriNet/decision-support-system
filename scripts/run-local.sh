@@ -89,10 +89,9 @@ done
 
 if [ "$DOWN" = true ]; then
   $COMPOSE -f docker-compose.langfuse.yml --env-file .env.langfuse down
-  # Stopped whether or not this run started it. Its data volume is kept.
+  # Stopped even if this run did not start it. Data volume is kept.
   $COMPOSE -f docker-compose.observability.yml down
-  # Started with `run`, not compose, so it is stopped by name. See where it
-  # starts, below, for why it is not a compose service here.
+  # Started with `run`, not compose, so stopped by name.
   "$R" rm -f "$COLLECTOR" >/dev/null 2>&1 || true
   # The mock is not a container, so compose does not own it.
   pkill -f 'tools.mock_network' 2>/dev/null || true
@@ -199,8 +198,7 @@ fi
 
 # --- clickhouse + grafana (--with-grafana) ---------------------------------
 #
-# Waited on, unlike Langfuse. The collector checks its ClickHouse exporter at
-# startup, so starting it before ClickHouse answers stops the collector.
+# Waited on, unlike Langfuse: a collector started before ClickHouse answers exits.
 
 if [ "$WITH_GRAFANA" = true ]; then
   echo "==> starting clickhouse + grafana"
@@ -215,20 +213,9 @@ fi
 
 # --- collector -------------------------------------------------------------
 #
-# The DSS talks to the collector, and the collector talks to Langfuse
-# (ADR-0013). Locally it uses `collector.local.yaml`, which has no ClickHouse
-# exporter: the collector validates exporters at startup, so one pointed at a
-# ClickHouse that is not there stops the process rather than degrading. The
-# allowlisted branch still runs and prints, so `docker logs` shows what a
-# deployment would have sent to ClickHouse — with the farmer's words removed.
-#
-# `--with-grafana` swaps in `collector.yaml`, the deployment config, pointed at
-# the local ClickHouse. The config is stored as a label, so a collector left
-# running with the other one is replaced rather than silently reused.
-#
-# `run`, not a compose service, because the compose one mounts the deployment
-# config. One container started by name is less machinery than a second
-# compose file whose only job is to swap one path.
+# - No ClickHouse by default: an exporter with nowhere to send stops the collector.
+# - Config is kept as a label, so a collector on the other config is replaced.
+# - `run`, not compose: the compose service hard-mounts the deployment config.
 
 if [ "$WITH_GRAFANA" = true ]; then
   COLLECTOR_CONFIG=otel/collector.yaml
@@ -253,7 +240,7 @@ else
 
   echo "==> starting collector on :$OTEL_PORT ($COLLECTOR_CONFIG)"
   "$R" rm -f "$COLLECTOR" >/dev/null 2>&1 || true
-  # Matches docker-compose.observability.yml. Unused by collector.local.yaml.
+  # Must match the local ClickHouse's credentials.
   clickhouse_env=()
   if [ "$WITH_GRAFANA" = true ]; then
     clickhouse_env=(
@@ -263,9 +250,7 @@ else
       -e CLICKHOUSE_DATABASE=otel
     )
   fi
-  # A plain header value, not the URL-encoded OTEL_EXPORTER_OTLP_HEADERS list
-  # the DSS used to build — so a literal space after "Basic" is correct here
-  # and `%20` would be wrong. The hazard moved rather than disappeared.
+  # A plain header value: a literal space after "Basic" is right, `%20` is wrong.
   "$R" run -d --name "$COLLECTOR" \
     --label "dss.collector-config=$COLLECTOR_CONFIG" \
     --network oan-edge \
@@ -298,21 +283,16 @@ fi
 lsof -ti:"$DSS_PORT" >/dev/null 2>&1 && \
   die "port $DSS_PORT is already in use — another DSS is running."
 
-# The collector, not Langfuse. It holds the Langfuse credential now, so there
-# is no OTEL_EXPORTER_OTLP_HEADERS here at all — which also retires the `%20`
-# trap that used to live on this line.
+# The collector, not Langfuse. It holds the Langfuse credential, so no headers here.
 export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:${OTEL_PORT}"
-# On, because the collector forwards metrics. It was `none` while the endpoint
-# was Langfuse, which discards them and filled the log with failed exports.
+# On: the collector forwards metrics.
 export OTEL_METRICS_EXPORTER=otlp
-# Matches the deployment, so a dashboard query written against local data still
-# works against real data.
+# Match the deployment, so dashboard queries work on local data too.
 export OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=delta
 export OTEL_SERVICE_NAME=dss
 export OTEL_RESOURCE_ATTRIBUTES="deployment.environment.name=local"
 # A laptop, where seeing the prompt is the point. ADR-0007 §5 does not permit
-# this in a deployment. It reaches Langfuse and is dropped before the branch
-# that would go to ClickHouse — `docker logs` on the collector shows both.
+# this in a deployment. The collector strips it before ClickHouse.
 export DSS_TRACE_INCLUDE_MESSAGE_CONTENT=true
 
 export DSS_DISCOVERY_BASE_URL="http://127.0.0.1:${MOCK_PORT}"

@@ -186,9 +186,7 @@ async def test_the_span_counts_what_the_provider_returned(spans) -> None:
 
 
 async def test_the_span_names_the_providers_offered(spans) -> None:
-    """Who the catalog offered for this ask, so a dashboard can find a
-    provider that is offered often and answers rarely. Provider ids are the
-    network's own names, not the farmer's data."""
+    """Finds providers offered often but rarely answering. Ids aren't PII."""
 
     catalog = {
         "provider": {"id": "agmarknet", "descriptor": {"name": "Agmarknet"}},
@@ -214,8 +212,7 @@ async def test_the_span_names_the_providers_offered(spans) -> None:
 
 
 async def test_the_span_names_the_providers_that_answered_directly(spans) -> None:
-    """A direct answer needs no /select, so without this the provider that
-    served it never shows up as having answered anything."""
+    """A direct answer skips /select, so it must count as answered here."""
 
     body = json.loads((FIXTURES / "discover_response_direct.json").read_text())
 

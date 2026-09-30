@@ -1,14 +1,7 @@
-# The collector for a laptop. Same shape as `collector.yaml`, no ClickHouse.
-#
-# A separate file rather than an empty `CLICKHOUSE_ENDPOINT`, because the
-# collector validates its exporters at startup: an exporter configured with
-# nowhere to go stops the process, it does not degrade. So "ClickHouse is
-# optional locally" has to be two configs.
-#
-# The second traces pipeline still runs the ClickHouse allowlist and prints the
-# result. That is the point of having it here: you can read the debug output
-# and see that the query and the answer are in Langfuse and not in the branch
-# that would have gone to ClickHouse — without running a ClickHouse.
+# Laptop collector: the deployment shape, minus ClickHouse.
+# - A separate file: an exporter with nowhere to send stops the collector.
+# - The allowlist still runs and prints, so you can see farmer text
+#   stripped without running ClickHouse.
 
 receivers:
   otlp:
@@ -19,30 +12,17 @@ receivers:
 processors:
   batch:
 
-  # Kept identical to `collector.yaml`: tests/unit/test_collector_allowlist.py
-  # fails if they drift.
-  # An allowlist, not a denylist. Nothing redacts a farmer's words before this
-  # yet (DSS_ARCHITECTURE.md §6.2), so this is the only thing between them and
-  # a shared database. The denylist it replaces named six content keys and
-  # missed `final_result` — every agent run's full output — and exception text.
-  # A key pydantic-ai adds or renames is now dropped rather than shipped.
-  #
-  # Kept: our own attributes (`dss.*`, status, timings, ask counts, model
-  # names), ids for joining to Langfuse, and gen_ai model, usage and tool
-  # *names*. Dropped: everything else, including tool arguments and results.
-  # To send something new to ClickHouse, add it here and to the test that
-  # reads this list (tests/unit/test_collector_allowlist.py).
-  #
-  # `propagate`: a statement that errors drops the batch instead of passing it
-  # through unfiltered.
+  # Must match the deployment config; a test fails if they drift.
+  # Only named attributes pass; anything unknown is dropped.
+  # Fails closed: an erroring statement drops the batch.
   transform/clickhouse_allowlist:
     error_mode: propagate
     trace_statements:
       - statements:
           - 'keep_matching_keys(span.attributes, "^(dss\\..+|status|first_delta_ms|composed_ms|asks_(total|failed)|answer_count|attempts|capabilities|capability_count|capability|provider_id|(offered|answered)_provider_ids|answered|failure_class|(intent|moderation|planner|composer)_model|agent_name|model_name|session\\.id|langfuse\\.(session\\.id|trace\\.metadata\\.(transaction_id|message_id))|gen_ai\\.(agent\\.(name|call\\.id)|conversation\\.id|operation\\.name|provider\\.name|system|request\\.(model|temperature)|response\\.(finish_reasons|id|model)|tool\\.(name|call\\.id)|usage\\..+|aggregated_usage\\..+|client\\.operation\\.time_to_first_chunk)|operation\\.cost|server\\.address|http\\.status_code|logfire\\.(span_type|level_num))$")'
-          # The status says a span failed; its message is exception text.
+          # Status messages carry exception text.
           - 'set(span.status.message, "") where span.status.message != ""'
-      # `exception` events keep what failed by type, never by message.
+      # Exceptions keep their type, not their message.
       - statements:
           - 'keep_keys(spanevent.attributes, ["exception.type", "exception.escaped", "elapsed_ms"])'
 
@@ -53,7 +33,7 @@ exporters:
       Authorization: ${env:LANGFUSE_AUTH_HEADER}
 
   debug:
-    # `detailed` prints every attribute, which is what makes the strip visible.
+    # Prints every attribute, so the strip is visible.
     verbosity: detailed
 
 service:
