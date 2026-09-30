@@ -1,0 +1,69 @@
+# Redaction rules for India (#133). Nothing reads this file unless a deployment
+# sets DSS_REDACTION_ENABLED=true and points DSS_REDACTION_CONFIG_PATH at it.
+#
+# Each rule:
+#   entity     the tag it leaves behind — «phone_1», «aadhaar_1». Lower case.
+#   kind       pattern | declaring_phrase
+#   pattern    a Python regular expression, run over the text with number gaps
+#              joined (so "98765 43210" is seen as "9876543210")
+#   validator  format | verhoeff | luhn | gstin — confirms a match is real
+#   value      keep    — held for this turn so a provider can be sent it
+#              destroy — replaced and never held, not even for a provider
+#
+# Aadhaar and card are destroyed: the Aadhaar Act limits who may hold an Aadhaar
+# number, and card data brings PCI scope. Confirm with counsel before changing.
+
+normalise:
+  join_separators: [" ", "-"]
+  max_separators: 2
+
+rules:
+  - entity: aadhaar
+    kind: pattern
+    pattern: '(?<!\d)[2-9]\d{11}(?!\d)'
+    validator: verhoeff
+    value: destroy
+
+  - entity: card
+    kind: pattern
+    pattern: '(?<!\d)\d{13,19}(?!\d)'
+    validator: luhn
+    value: destroy
+
+  - entity: gstin
+    kind: pattern
+    pattern: '(?i)\b\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]\b'
+    validator: gstin
+    value: keep
+
+  # 5 letters, 4 digits, 1 letter. The 4th letter is the holder type.
+  - entity: pan
+    kind: pattern
+    pattern: '(?i)\b[A-Z]{3}[ABCFGHJLPT][A-Z]\d{4}[A-Z]\b'
+    value: keep
+
+  # 4 letters, a zero, 6 letters or digits.
+  - entity: ifsc
+    kind: pattern
+    pattern: '(?i)\b[A-Z]{4}0[A-Z0-9]{6}\b'
+    value: keep
+
+  # 10 digits starting 6-9, with an optional +91, 0091, 91 or 0 in front.
+  - entity: phone
+    kind: pattern
+    pattern: '(?<![\d+])(?:(?:\+|00)?91|0)?[6-9]\d{9}(?!\d)'
+    value: keep
+
+  - entity: email
+    kind: pattern
+    pattern: '[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}'
+    value: keep
+
+  # A name only when the farmer announces it. A name mentioned in passing is
+  # not caught here (#136). Add phrases per language as speakers supply them.
+  - entity: person
+    kind: declaring_phrase
+    phrases: ["my name is", "my name's"]
+    max_tokens: 3
+    stopwords: [and, from, in, i, my, here, please, sir, madam]
+    value: keep
