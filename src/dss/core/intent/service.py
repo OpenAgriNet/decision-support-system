@@ -109,8 +109,7 @@ def build_intent_prompt(history: Sequence[ConversationMessage]) -> str:
         "user's own location, not a place named elsewhere in the query.",
         "  Conversation: user 'tomato rate?', assistant 'At Vashi market, "
         "tomato is 20 a kg.', then 'and next week?' -> place_name null. A "
-        "place only the assistant named is not the user's, unless the user "
-        "picks it from a list the assistant offered.",
+        "place only the assistant named is not the user's.",
         "  Conversation: user 'weather in Bilaspur', assistant 'Bilaspur is in "
         "several places. Which one: 1. Bilaspur, Himachal Pradesh 2. Bilaspur, "
         "Chhattisgarh', then '2' -> one ask: Weather / observe, place_name "
