@@ -330,6 +330,142 @@
       "options": {}
     },
     {
+      "id": 19,
+      "type": "row",
+      "title": "What farmers ask",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 15
+      },
+      "panels": []
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "Asks by category",
+      "description": "What farmers ask about, one count per ask, from the intent classifier. Never the question itself \u2014 only its category and interaction. Refused turns are not counted.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "dss-clickhouse-otel"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "dss-clickhouse-otel"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "meta": {
+            "builderOptions": {}
+          },
+          "pluginVersion": "4.0.0",
+          "queryType": "sql",
+          "rawSql": "SELECT $__timeInterval(TimeUnix) AS time, concat(Attributes['category'], ' \u00b7 ', Attributes['interaction']) AS ask, sum(Value) AS asks FROM $database.otel_metrics_sum WHERE MetricName = 'dss.ask.count' AND ServiceName = 'dss' AND ResourceAttributes['deployment.environment.name'] = '$env' AND $__timeFilter(TimeUnix) GROUP BY time, ask ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 21,
+      "type": "table",
+      "title": "Top subjects",
+      "description": "The crop, animal or scheme each ask named, as the classifier extracted it. A short label, not the farmer's words.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "dss-clickhouse-otel"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 12,
+        "y": 16
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "dss-clickhouse-otel"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "meta": {
+            "builderOptions": {}
+          },
+          "pluginVersion": "4.0.0",
+          "queryType": "sql",
+          "rawSql": "SELECT subject, count() AS asks FROM (SELECT arrayJoin(JSONExtract(SpanAttributes['dss.ask.subjects'], 'Array(String)')) AS subject FROM $database.otel_traces WHERE SpanName = 'dss.turn' AND ServiceName = 'dss' AND ResourceAttributes['deployment.environment.name'] = '$env' AND $__timeFilter(Timestamp)) WHERE subject != '' GROUP BY subject ORDER BY asks DESC LIMIT 20",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 22,
+      "type": "table",
+      "title": "Outcome by category",
+      "description": "How each kind of ask ended. A category that mostly ends no_match is one the network cannot serve yet.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "dss-clickhouse-otel"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 16
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "dss-clickhouse-otel"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "meta": {
+            "builderOptions": {}
+          },
+          "pluginVersion": "4.0.0",
+          "queryType": "sql",
+          "rawSql": "SELECT category, status, count() AS turns FROM (SELECT arrayJoin(JSONExtract(SpanAttributes['dss.ask.categories'], 'Array(String)')) AS category, SpanAttributes['status'] AS status FROM $database.otel_traces WHERE SpanName = 'dss.turn' AND ServiceName = 'dss' AND ResourceAttributes['deployment.environment.name'] = '$env' AND $__timeFilter(Timestamp)) GROUP BY category, status ORDER BY category, turns DESC",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
       "id": 7,
       "type": "row",
       "title": "Stage breakdown",
@@ -338,7 +474,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 15
+        "y": 24
       },
       "panels": []
     },
@@ -355,7 +491,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 16
+        "y": 25
       },
       "targets": [
         {
@@ -396,7 +532,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 16
+        "y": 25
       },
       "targets": [
         {
@@ -433,7 +569,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 24
+        "y": 33
       },
       "panels": []
     },
@@ -450,7 +586,7 @@
         "h": 6,
         "w": 6,
         "x": 0,
-        "y": 25
+        "y": 34
       },
       "targets": [
         {
@@ -499,7 +635,7 @@
         "h": 6,
         "w": 6,
         "x": 6,
-        "y": 25
+        "y": 34
       },
       "targets": [
         {
@@ -540,7 +676,7 @@
         "h": 6,
         "w": 12,
         "x": 12,
-        "y": 25
+        "y": 34
       },
       "targets": [
         {
@@ -577,7 +713,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 31
+        "y": 40
       },
       "panels": []
     },
@@ -594,7 +730,7 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 32
+        "y": 41
       },
       "targets": [
         {
@@ -635,7 +771,7 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 32
+        "y": 41
       },
       "targets": [
         {
@@ -676,7 +812,7 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 39
+        "y": 48
       },
       "targets": [
         {
@@ -717,7 +853,7 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 39
+        "y": 48
       },
       "targets": [
         {

@@ -26,6 +26,7 @@ test holds us to.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
 from dss.observability.stages import Stage
@@ -42,6 +43,7 @@ TURN_FIRST_DELTA = "dss.turn.first_delta.duration"
 TURN_COMPOSED = "dss.turn.composed.duration"
 TURN_COUNT = "dss.turn.count"
 TURN_COST = "dss.turn.cost"
+ASK_COUNT = "dss.ask.count"
 STAGE_DURATION = "dss.stage.duration"
 STAGE_TOKENS = "dss.stage.tokens"
 
@@ -58,6 +60,9 @@ LABEL_KEYS: dict[str, frozenset[str]] = {
     TURN_COUNT: frozenset({"status", "model_profile"}),
     STAGE_TOKENS: frozenset({"stage", "model", "direction"}),
     TURN_COST: frozenset({"model_profile"}),
+    # Both closed sets. The crop or scheme asked about is not a label: it is
+    # open-ended, so it goes on the turn span instead.
+    ASK_COUNT: frozenset({"category", "interaction"}),
 }
 
 # Seconds, not milliseconds, although the spans carry `*_ms`. The same
@@ -138,6 +143,13 @@ class _Instruments:
                 "Cost of a turn, where the model has a published price. A "
                 "self-hosted model has none, so this reads zero and the token "
                 "counts are the number that matters instead."
+            ),
+        )
+        self.ask_count: Counter = meter.create_counter(
+            ASK_COUNT,
+            description=(
+                "What farmers ask, one per ask: the classifier's category and "
+                "interaction. Never the question itself."
             ),
         )
 
@@ -265,6 +277,17 @@ def record_composed(elapsed_ms: float) -> None:
     if _instruments is None:
         return
     _instruments.turn_composed.record(elapsed_ms / 1000, _instruments.turn_labels())
+
+
+def record_asks(asks: Iterable[tuple[str, str]]) -> None:
+    """One count per ask, by (category, interaction)."""
+
+    if _instruments is None:
+        return
+    for category, interaction in asks:
+        _instruments.ask_count.add(
+            1, {"category": category, "interaction": interaction}
+        )
 
 
 def record_turn(*, status: str, elapsed_ms: float, cost: float) -> None:

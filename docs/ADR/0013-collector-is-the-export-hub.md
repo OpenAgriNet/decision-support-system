@@ -74,18 +74,27 @@ profile and becomes infrastructure.
 
 ```
 DSS ──OTLP──> collector ──┬── traces (with content) ──> Langfuse
-                          ├── traces (stripped)      ──> ClickHouse ──> Grafana
+                          ├── traces (allowlisted)   ──> ClickHouse ──> Grafana
                           ├── metrics                ──> ClickHouse ──> Grafana
                           └── logs                   ──> ClickHouse ──> Grafana
 ```
 
-**Content is deleted on the ClickHouse branch.** Six span attributes carry
-message text — `gen_ai.input.messages`, `gen_ai.output.messages`,
-`gen_ai.system_instructions`, `pydantic_ai.all_messages`,
-`gen_ai.tool.call.arguments`, `gen_ai.tool.call.result`. An `attributes`
-processor deletes all six before the ClickHouse exporter sees them. Grafana's
-question is "how often, how slow, how much", and none of it needs a farmer's
-words.
+**Only named attributes reach ClickHouse.** A `transform` processor keeps an
+allowlist — our own `dss.*` fields, status and timings, ids for joining to
+Langfuse, and model, token and tool names — and drops the rest. Exception
+events keep their type and lose their message, and a span's status message is
+cleared. Grafana's question is "how often, how slow, how much", and none of it
+needs a farmer's words.
+
+An allowlist, not a denylist of content keys. The first version deleted six
+known keys and still shipped each agent run's `final_result` — the full
+answer — and exception text. A denylist is only as good as its knowledge of
+every key; an allowlist drops what it has never heard of.
+
+What farmers ask reaches ClickHouse as its shape, not its words:
+`dss.ask.categories`, `dss.ask.interactions` and `dss.ask.subjects` on the turn
+span, and a `dss.ask.count` counter by category and interaction. The raw
+question stays in Langfuse until a redaction step exists (§6.2).
 
 This is why there are two `traces/*` pipelines rather than one: a pipeline
 cannot branch after a processor, so a single pipeline would have to strip for
@@ -166,10 +175,10 @@ until someone looks at a graph. Retry and queue are left at their defaults —
 in memory, drop on overflow — because a disk buffer trades lost telemetry for
 a disk-full failure that takes the collector down with it.
 
-**Bad.** The strip list is a copy of attribute names Pydantic AI chose. A
-version bump that renames one sends content to ClickHouse, and nothing fails
-loudly. The list names its instrumentation version so a reader knows what to
-re-check.
+**Bad.** The allowlist must name every attribute worth keeping. A new useful
+key a Pydantic AI upgrade adds is dropped until someone adds it — silent in
+the other direction, but the safe one. `tests/unit/test_collector_allowlist.py`
+pins what is kept and what is not.
 
 **Bad.** Two collector configs — one for a deployment, one for a laptop — kept
 in step by hand. The collector validates exporters at startup, so an exporter

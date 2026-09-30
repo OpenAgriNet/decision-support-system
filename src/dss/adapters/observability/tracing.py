@@ -24,7 +24,7 @@ from __future__ import annotations
 import logging
 import os
 import time
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
@@ -33,6 +33,7 @@ from opentelemetry.sdk.trace import SpanProcessor
 from dss.adapters.observability.logs import configure_logs, reset_logs
 from dss.adapters.observability.metrics import (
     configure_metrics,
+    record_asks,
     record_composed,
     record_first_delta,
     record_turn,
@@ -398,6 +399,26 @@ class TurnRecorder:
         self._span.set_attribute(attribute, elapsed_ms)
         self._span.add_event(attribute, {"elapsed_ms": elapsed_ms})
         return elapsed_ms
+
+    def asked(
+        self,
+        *,
+        categories: Sequence[str],
+        interactions: Sequence[str],
+        subjects: Sequence[str],
+    ) -> None:
+        """What the turn asked, in shape only: one entry per ask, in order, so
+        the three lists line up. Never the question itself.
+
+        `subjects` is the crop or scheme ("wheat", "PM-KISAN"), empty where the
+        ask names none. Open-ended, so a span attribute rather than a metric
+        label; the counter carries only the two closed sets.
+        """
+
+        self._span.set_attribute("dss.ask.categories", list(categories))
+        self._span.set_attribute("dss.ask.interactions", list(interactions))
+        self._span.set_attribute("dss.ask.subjects", list(subjects))
+        record_asks(zip(categories, interactions, strict=True))
 
     def status(self, status: str) -> None:
         """How the turn ended — one of the contract's statuses, or ``error``
