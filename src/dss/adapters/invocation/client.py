@@ -19,7 +19,6 @@ from dss.adapters.network_common import (
     NO_STATUS_CODE,
     classify_status_code,
     extract_source_reference,
-    extract_validity,
 )
 from dss.adapters.observability.tracing import open_span
 from dss.core.provider_discovery.models import (
@@ -103,12 +102,15 @@ def map_select_response(
 ) -> DiscoveredAnswer:
     """The provider may assign its own resource id in the response — distinct
     from the discovered id we named in the request. A search resource answers
-    with one id per result found, not the id that was selected."""
+    with one id per result found, not the id that was selected.
 
-    commitment = response["message"]["contract"]["commitments"][0]
-    resource = commitment["resources"][0]
-    attributes = resource["resourceAttributes"]
-    source_id, source_name, source_url = extract_source_reference(attributes) or (
+    Every resource goes into ``attributes["resources"]``, even when there is
+    only one, so the model always reads the same shape. A forecast sends one
+    resource per day, and the model needs all of them."""
+
+    resources = response["message"]["contract"]["commitments"][0]["resources"]
+    first = resources[0]["resourceAttributes"]
+    source_id, source_name, source_url = extract_source_reference(first) or (
         None,
         None,
         None,
@@ -116,10 +118,16 @@ def map_select_response(
     return DiscoveredAnswer(
         provider_id=provider_id,
         provider_name=provider_name,
-        capability=attributes["@type"],
-        resource_id=resource["id"],
-        attributes=attributes,
-        validity=extract_validity(attributes),
+        capability=first["@type"],
+        resource_id=resources[0]["id"],
+        attributes={
+            "resources": [
+                {"id": resource["id"], **resource["resourceAttributes"]}
+                for resource in resources
+            ]
+        },
+        # Each resource keeps its own validity in `attributes`.
+        validity=None,
         source_id=source_id,
         source_name=source_name,
         source_url=source_url,
@@ -290,13 +298,15 @@ class HttpCapabilityInvocation:
 
 
 def _has_data(answer: DiscoveredAnswer) -> bool:
-    """Whether the provider returned anything beyond the JSON-LD envelope.
+    """Whether any resource carries anything beyond the JSON-LD envelope and
+    its id.
 
     Empty lists count as nothing: valid, but they tell the farmer nothing.
     """
 
     return any(
         value not in (None, "", [], {})
-        for key, value in answer.attributes.items()
-        if not key.startswith("@")
+        for resource in answer.attributes["resources"]
+        for key, value in resource.items()
+        if not key.startswith("@") and key != "id"
     )

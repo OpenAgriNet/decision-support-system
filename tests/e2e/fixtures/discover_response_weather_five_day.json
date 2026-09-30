@@ -1,0 +1,109 @@
+{
+  "context": {
+    "action": "on_discover",
+    "version": "2.0.0",
+    "transactionId": "7ea148b1-53f8-41ab-bad5-69208311b88b",
+    "messageId": "7e71ca74-3b3a-432b-8e9c-1e24cd5d518c",
+    "timestamp": "2026-09-30T12:58:13Z"
+  },
+  "message": {
+    "catalogs": [
+      {
+        "descriptor": {
+          "code": "WEATHER_MAUSAMGRAM",
+          "name": "IMD Mausamgram daily weather forecast",
+          "longDesc": "One Resource, not one per place. The Provider forecasts on a 0.25 degree grid and accepts any coordinate inside its domain, snapping it to the nearest grid centre, so there is no enumerable list of locations to publish. Consumers discover this Resource by falling inside its coverage area and then invoke the Provider with the point they care about to obtain a Direct WeatherObservation Resource per forecast day.",
+          "shortDesc": "On-demand five-day daily weather forecast for any point in the IMD numerical weather prediction domain."
+        },
+        "id": "catalog:weather-observation:mausamgram",
+        "isActive": true,
+        "provider": {
+          "id": "mausamgram",
+          "descriptor": {
+            "code": "MAUSAMGRAM",
+            "name": "IMD Mausamgram",
+            "shortDesc": "Provider of IMD numerical weather prediction point forecasts."
+          }
+        },
+        "resources": [
+          {
+            "id": "resource:weather-observation:mausamgram:daily-forecast",
+            "descriptor": {
+              "code": "WEATHER_MAUSAMGRAM_DAILY_FORECAST",
+              "name": "Five-day daily point weather forecast",
+              "longDesc": "Invoke this Resource with a Point location to obtain one Direct WeatherObservation Resource per forecast day, each carrying that day's parameters. Values are bias-corrected model output, not station observations.",
+              "shortDesc": "Daily rainfall, temperature, humidity, wind and warning forecast for a requested coordinate."
+            },
+            "resourceAttributes": {
+              "@type": "openagrinet:WeatherObservation",
+              "source": {
+                "sourceId": "mausamgram",
+                "sourceUri": "https://mausamgram.imd.gov.in/",
+                "sourceName": "IMD Mausamgram NWP"
+              },
+              "@context": "https://openagrinet.github.io/network-specs/schema/WeatherObservation/v0.1/context.jsonld",
+              "languages": [
+                "en"
+              ],
+              "coverageAreas": [
+                {
+                  "areaCode": "IN",
+                  "areaName": "India",
+                  "areaLevel": "Country",
+                  "codeScheme": "ISO-3166-1"
+                },
+                {
+                  "type": "Polygon",
+                  "coordinates": [
+                    [
+                      [
+                        68,
+                        6.5
+                      ],
+                      [
+                        97.5,
+                        6.5
+                      ],
+                      [
+                        97.5,
+                        37.5
+                      ],
+                      [
+                        68,
+                        37.5
+                      ],
+                      [
+                        68,
+                        6.5
+                      ]
+                    ]
+                  ]
+                }
+              ],
+              "forecastHorizon": "P5D",
+              "informationMode": "OnDemand",
+              "updateFrequency": "P1D",
+              "subjectCategories": [
+                "Weather"
+              ],
+              "supportedParameters": [
+                "Rainfall",
+                "Temperature",
+                "Humidity",
+                "WindSpeed",
+                "WindDirection",
+                "Alert"
+              ],
+              "geographicGranularities": [
+                "Point"
+              ],
+              "supportedObservationTypes": [
+                "Forecast"
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

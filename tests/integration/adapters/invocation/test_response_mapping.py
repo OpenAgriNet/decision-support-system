@@ -33,9 +33,10 @@ def test_attributes_carry_the_real_data() -> None:
         response, provider_id="mausamgram", provider_name="IMD Mausamgram NWP"
     )
 
-    assert answer.attributes["observationType"] == "Forecast"
-    assert len(answer.attributes["parameters"]) == 7
-    assert answer.attributes["parameters"][0] == {
+    [resource] = answer.attributes["resources"]
+    assert resource["observationType"] == "Forecast"
+    assert len(resource["parameters"]) == 7
+    assert resource["parameters"][0] == {
         "parameter": "Rainfall",
         "aggregation": "Total",
         "unit": "mm",
@@ -43,16 +44,44 @@ def test_attributes_carry_the_real_data() -> None:
     }
 
 
-def test_validity_is_parsed_and_tz_aware() -> None:
-    response = json.loads((FIXTURES / "select_response.json").read_text())
+def test_every_resource_in_the_response_reaches_the_answer() -> None:
+    """A forecast sends one resource per day. Keeping only the first told the
+    farmer we had one day of a five-day forecast."""
 
-    answer = map_select_response(
-        response, provider_id="mausamgram", provider_name="IMD Mausamgram NWP"
+    response = json.loads(
+        (FIXTURES / "select_response_five_day_forecast.json").read_text()
     )
 
-    assert answer.validity is not None
-    assert answer.validity.starts_at.isoformat() == "2026-08-26T00:00:00+00:00"
-    assert answer.validity.ends_at.isoformat() == "2026-08-26T23:59:59+00:00"
+    answer = map_select_response(
+        response, provider_id="mausamgram", provider_name="IMD Mausamgram"
+    )
+
+    assert [r["id"] for r in answer.attributes["resources"]] == [
+        "res:mausamgram:forecast:2026-09-30",
+        "res:mausamgram:forecast:2026-10-01",
+        "res:mausamgram:forecast:2026-10-02",
+        "res:mausamgram:forecast:2026-10-03",
+        "res:mausamgram:forecast:2026-10-04",
+    ]
+
+
+def test_validity_stays_on_each_resource_not_the_answer() -> None:
+    """One validity cannot describe five days. Nothing filters a select
+    answer on it, and the model reads each day's own."""
+
+    response = json.loads(
+        (FIXTURES / "select_response_five_day_forecast.json").read_text()
+    )
+
+    answer = map_select_response(
+        response, provider_id="mausamgram", provider_name="IMD Mausamgram"
+    )
+
+    assert answer.validity is None
+    assert answer.attributes["resources"][4]["validity"] == {
+        "startsAt": "2026-10-04T00:00:00+05:30",
+        "endsAt": "2026-10-04T23:59:59+05:30",
+    }
 
 
 def test_the_payloads_source_block_is_promoted() -> None:
@@ -109,4 +138,5 @@ def test_the_source_block_stays_in_attributes_as_well() -> None:
         response, provider_id="mausamgram", provider_name="IMD"
     )
 
-    assert answer.attributes["source"]["sourceName"] == "IMD Mausamgram NWP"
+    [resource] = answer.attributes["resources"]
+    assert resource["source"]["sourceName"] == "IMD Mausamgram NWP"
