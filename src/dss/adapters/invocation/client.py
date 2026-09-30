@@ -172,16 +172,23 @@ class HttpCapabilityInvocation:
         """
 
         with open_span(
-            "dss.select", attributes={"provider_id": capability.provider_id}
+            "dss.select",
+            attributes={
+                "provider_id": capability.provider_id,
+                "capability": capability.capability,
+            },
         ) as call:
             for attempt in range(1, self._attempts + 1):
                 call.set_attribute("attempts", attempt)
                 try:
                     with open_span("dss.select.attempt") as span:
                         try:
-                            return await self._select_once(
+                            answer = await self._select_once(
                                 capability, resource_attributes, transaction_id
                             )
+                            # A 200 with nothing in it looks healthy otherwise.
+                            call.set_attribute("answered", _has_data(answer))
+                            return answer
                         except SelectFailed as failure:
                             # The code, not `detail` — that carries the
                             # provider's response body, which echoes the
@@ -196,6 +203,8 @@ class HttpCapabilityInvocation:
                         failure.failure_class is not FailureClass.TRANSIENT
                         or last_chance
                     ):
+                        # The class, never `detail`: see the attempt above.
+                        call.set_attribute("failure_class", failure.failure_class.value)
                         raise
                     await anyio.sleep(self._backoff_seconds * 2 ** (attempt - 1))
         raise AssertionError("unreachable: the loop either returns or raises")
@@ -278,3 +287,17 @@ class HttpCapabilityInvocation:
                 FailureClass.DEFECT,
                 f"malformed response: {exc!r}",
             ) from exc
+
+
+def _has_data(answer: DiscoveredAnswer) -> bool:
+    """Whether the provider returned anything beyond the JSON-LD envelope.
+
+    An empty list or object counts as nothing: `"parameters": []` is a
+    well-formed answer that tells the farmer nothing.
+    """
+
+    return any(
+        value not in (None, "", [], {})
+        for key, value in answer.attributes.items()
+        if not key.startswith("@")
+    )

@@ -378,4 +378,15 @@ class HttpCapabilityDiscovery:
             first = ask_indices[0]
             span.set_attribute("capability_count", len(result.capabilities[first]))
             span.set_attribute("answer_count", len(result.answers[first]))
+            # Who, not what: provider ids are the network's own names. Offered
+            # is who a /select could reach; answered is who served it straight
+            # from the catalog, which no /select span would ever show.
+            span.set_attribute(
+                "offered_provider_ids",
+                sorted({c.provider_id for c in result.capabilities[first]}),
+            )
+            span.set_attribute(
+                "answered_provider_ids",
+                sorted({a.provider_id for a in result.answers[first]}),
+            )
             return result
