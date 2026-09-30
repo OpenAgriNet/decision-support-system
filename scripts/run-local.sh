@@ -4,6 +4,9 @@
 #     ./scripts/run-local.sh
 #     ./scripts/run-local.sh --with-grafana   # also ClickHouse + Grafana
 #
+# Traces go to the local Langfuse unless .env.local sets
+# OTEL_EXPORTER_OTLP_ENDPOINT, in which case the local Langfuse is not started.
+#
 # Ctrl-C stops the DSS. Langfuse and the mock keep running — they are slow to
 # start and you usually want them across several DSS restarts. Stop them with
 # `./scripts/run-local.sh --down`.
@@ -188,12 +191,26 @@ fi
 #
 # Not waited on. A cold start spends minutes in ClickHouse migrations, and the
 # DSS's exporter retries — early spans land late rather than being lost.
+#
+# An endpoint set in .env.local wins: traces go straight there (a deployed
+# Langfuse, say), and the local Langfuse and collector are left alone. Unset, it
+# is the local collector, which forwards to the local Langfuse.
 
-if [ -n "$("$R" ps --filter "name=${COMPOSE_PROJECT}.*langfuse-web" --format '{{.Names}}' 2>/dev/null || true)" ]; then
-  echo "==> langfuse already up"
+LOCAL_OTLP="http://localhost:${OTEL_PORT}"
+if [ -n "${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] && [ "$OTEL_EXPORTER_OTLP_ENDPOINT" != "$LOCAL_OTLP" ]; then
+  LOCAL_LANGFUSE=false
+  echo "==> tracing to $OTEL_EXPORTER_OTLP_ENDPOINT (from $ENV_LOCAL); local langfuse and collector not started"
 else
-  echo "==> starting langfuse"
-  $COMPOSE -f docker-compose.langfuse.yml --env-file .env.langfuse up -d
+  LOCAL_LANGFUSE=true
+fi
+
+if [ "$LOCAL_LANGFUSE" = true ]; then
+  if [ -n "$("$R" ps --filter "name=${COMPOSE_PROJECT}.*langfuse-web" --format '{{.Names}}' 2>/dev/null || true)" ]; then
+    echo "==> langfuse already up"
+  else
+    echo "==> starting langfuse"
+    $COMPOSE -f docker-compose.langfuse.yml --env-file .env.langfuse up -d
+  fi
 fi
 
 # --- clickhouse + grafana (--with-grafana) ---------------------------------
@@ -216,6 +233,7 @@ fi
 # - No ClickHouse by default: an exporter with nowhere to send stops the collector.
 # - Config is kept as a label, so a collector on the other config is replaced.
 # - `run`, not compose: the compose service hard-mounts the deployment config.
+# - Not started when .env.local sends traces to another Langfuse.
 
 if [ "$WITH_GRAFANA" = true ]; then
   COLLECTOR_CONFIG=otel/collector.yaml
@@ -230,7 +248,9 @@ if [ -n "$running_config" ] && [ "$running_config" != "$COLLECTOR_CONFIG" ]; the
   running_config=""
 fi
 
-if [ -n "$running_config" ]; then
+if [ "$LOCAL_LANGFUSE" != true ]; then
+  :
+elif [ -n "$running_config" ]; then
   echo "==> collector already up on :$OTEL_PORT"
 else
   lsof -ti:"$OTEL_PORT" >/dev/null 2>&1 && \
@@ -283,26 +303,46 @@ fi
 lsof -ti:"$DSS_PORT" >/dev/null 2>&1 && \
   die "port $DSS_PORT is already in use — another DSS is running."
 
-# The collector, not Langfuse. It holds the Langfuse credential, so no headers here.
-export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:${OTEL_PORT}"
-# On: the collector forwards metrics.
-export OTEL_METRICS_EXPORTER=otlp
-# Match the deployment, so dashboard queries work on local data too.
-export OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=delta
-export OTEL_SERVICE_NAME=dss
-export OTEL_RESOURCE_ATTRIBUTES="deployment.environment.name=local"
-# A laptop, where seeing the prompt is the point. ADR-0007 §5 does not permit
-# this in a deployment. The collector strips it before ClickHouse.
-export DSS_TRACE_INCLUDE_MESSAGE_CONTENT=true
+if [ "$LOCAL_LANGFUSE" = true ]; then
+  # The collector, not Langfuse. It holds the Langfuse credential, so no headers here.
+  export OTEL_EXPORTER_OTLP_ENDPOINT="$LOCAL_OTLP"
+  # On: the collector forwards metrics.
+  export OTEL_METRICS_EXPORTER=otlp
+  # Match the deployment, so dashboard queries work on local data too.
+  export OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=delta
+  export OTEL_SERVICE_NAME=dss
+  export OTEL_RESOURCE_ATTRIBUTES="deployment.environment.name=local"
+  # A laptop, where seeing the prompt is the point. ADR-0007 §5 does not permit
+  # this in a deployment. The collector strips it before ClickHouse.
+  export DSS_TRACE_INCLUDE_MESSAGE_CONTENT=true
+else
+  # Straight to another Langfuse. Each of these keeps a value .env.local already
+  # set; only what is unset gets a default.
+  #
+  # The header is built here rather than by hand: the endpoint alone is a 401 on
+  # every export batch, and it is the easy half to forget.
+  # `%20`, not a literal space. This variable is a comma-separated key=value list
+  # and the spec says values are URL-encoded, so a raw space truncates the value
+  # at "Basic" — which reaches Langfuse as a credential-less Authorization header
+  # and 401s every batch. Nothing in the DSS log says so: the export failure is
+  # the exporter's own retry warning, and the turn answers normally either way.
+  export OTEL_EXPORTER_OTLP_HEADERS="${OTEL_EXPORTER_OTLP_HEADERS:-Authorization=Basic%20$(printf '%s:%s' "$LANGFUSE_PUBLIC_KEY" "$LANGFUSE_SECRET_KEY" | base64 | tr -d '\n')}"
+  # Langfuse takes traces only; left on, the log fills with failed metric exports.
+  export OTEL_METRICS_EXPORTER="${OTEL_METRICS_EXPORTER:-none}"
+  export OTEL_SERVICE_NAME="${OTEL_SERVICE_NAME:-dss}"
+  # Full prompts stay out unless .env.local asks (ADR-0007 §5).
+fi
 
-export DSS_DISCOVERY_BASE_URL="http://127.0.0.1:${MOCK_PORT}"
-export DSS_INVOCATION_BASE_URL="http://127.0.0.1:${MOCK_PORT}"
+export DSS_DISCOVERY_BASE_URL="${DSS_DISCOVERY_BASE_URL:-http://127.0.0.1:${MOCK_PORT}}"
+export DSS_INVOCATION_BASE_URL="${DSS_INVOCATION_BASE_URL:-http://127.0.0.1:${MOCK_PORT}}"
 
 echo
-echo "    langfuse   http://localhost:${LANGFUSE_PORT}"
+echo "    traces     ${OTEL_EXPORTER_OTLP_ENDPOINT}"
 echo "    dss        http://127.0.0.1:${DSS_PORT}/docs"
 echo "    mock log   tail -f var/mock-network.log"
-echo "    otel log   $R logs -f $COLLECTOR"
+if [ "$LOCAL_LANGFUSE" = true ]; then
+  echo "    otel log   $R logs -f $COLLECTOR"
+fi
 if [ "$WITH_GRAFANA" = true ]; then
   echo "    grafana    http://localhost:${GRAFANA_PORT:-3001}  (DSS folder; Environment = local)"
   echo "    clickhouse http://localhost:${CLICKHOUSE_HTTP_PORT:-18123}  (user dss / dss)"
