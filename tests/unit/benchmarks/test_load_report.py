@@ -41,6 +41,7 @@ def test_the_printed_table_shows_each_step_and_the_pinned_limits():
         limits={"cpus": 1.0, "memory_gib": 1.0},
         machine={"processor": "test-cpu"},
         commit="abc1234",
+        session_id="run-session",
     )
 
     text = render_load_text(report)
@@ -49,6 +50,7 @@ def test_the_printed_table_shows_each_step_and_the_pinned_limits():
     assert "   4*" in text and "cut short" in text
     assert "limits: 1 CPU · 1.0 GiB" in text
     assert "test-cpu" in text and "abc1234" in text
+    assert "langfuse session: run-session" in text
 
 
 def test_each_step_row_says_how_its_turns_ended():
