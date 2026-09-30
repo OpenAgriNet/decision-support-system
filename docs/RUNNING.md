@@ -724,13 +724,75 @@ uv run pytest tests/integration/adapters/observability/test_metrics.py -v --no-c
 answered. The providers are the mock. The models are real, so each turn costs
 a model call.
 
+### Against the local stack
+
 Start the stack (`scripts/run-local.sh`), then:
 
 ```bash
-export LANGFUSE_PUBLIC_KEY=... LANGFUSE_SECRET_KEY=...
-uv run python -m benchmarks                                      # full run
+set -a; source .env.local; set +a
 uv run python -m benchmarks --warmup 0 --repeats 1 --max-turns 10  # quick check
+uv run python -m benchmarks                                        # full run
 ```
+
+### Against the deployed Langfuse and model gateway
+
+The DSS and the mock still run on your laptop. Traces go to the deployed
+Langfuse, and model calls go through the deployed LiteLLM.
+
+`.env` names the four gateway models:
+
+```bash
+DSS_INTENT_MODEL=dss-intent
+DSS_MODERATION_MODEL=dss-moderation
+DSS_PLANNER_MODEL=dss-planner
+DSS_COMPOSER_MODEL=dss-composer
+```
+
+`.env.local` holds the addresses and keys:
+
+```bash
+# run-local.sh checks these are set, even though the gateway is used instead
+export AZURE_OPENAI_ENDPOINT="https://<res>.services.ai.azure.com/openai/v1"
+export AZURE_OPENAI_API_KEY="<key>"
+
+# Model gateway: a gateway key, not the master key
+export DSS_GATEWAY_URL=https://dpg-dev.openagrinet.global/litellm/v1
+export DSS_GATEWAY_API_KEY="<gateway key>"
+
+# The Langfuse project the runs go to (Settings -> API Keys in that project)
+export LANGFUSE_PUBLIC_KEY="pk-lf-..."
+export LANGFUSE_SECRET_KEY="sk-lf-..."
+export LF_URL="https://dpg-dev.openagrinet.global/langfuse"
+export OTEL_EXPORTER_OTLP_ENDPOINT="$LF_URL/api/public/otel"
+```
+
+Check the keys before a long run. Both should print `200`:
+
+```bash
+set -a; source .env.local; set +a
+curl -s -o /dev/null -w "langfuse %{http_code}\n" -u "$LANGFUSE_PUBLIC_KEY:$LANGFUSE_SECRET_KEY" "$LF_URL/api/public/projects"
+curl -s -o /dev/null -w "gateway  %{http_code}\n" -H "Authorization: Bearer $DSS_GATEWAY_API_KEY" "$DSS_GATEWAY_URL/models"
+```
+
+Then, in two terminals:
+
+```bash
+# 1. The DSS and the mock. It says "tracing to https://…/langfuse/…" and
+#    does not start the local Langfuse.
+./scripts/run-local.sh
+
+# 2. The benchmark. --langfuse-url is where it reads the traces back.
+set -a; source .env.local; set +a
+uv run python -m benchmarks --langfuse-url "$LF_URL" --warmup 0 --repeats 1 --max-turns 3  # quick check
+uv run python -m benchmarks --langfuse-url "$LF_URL"                                       # full run
+```
+
+A new terminal has none of these settings until it sources `.env.local`. A
+change to `.env.local` reaches the DSS only when it restarts.
+
+If the DSS log shows `Failed to export span batch code: 401`, the Langfuse keys
+do not belong to that Langfuse. If the benchmark fails with `401` on
+`/api/public/v2/observations`, `--langfuse-url` is missing or wrong.
 
 It prints p50, p95 and max for:
 
@@ -763,6 +825,10 @@ Load mode runs its own DSS in a container, limited to 1 CPU and 1 GiB. The
 container only gets what your shell exports, so source both files first:
 `.env.local` has the keys, `.env` has the `DSS_*_MODEL` settings. The
 container's log is saved next to the report.
+
+With the deployed setup above, the container gets the gateway and trace
+settings from `.env.local` as well, so its turns go to the same Langfuse
+project. Load mode reads no traces back, so it takes no `--langfuse-url`.
 
 ## What is fake, and where to swap it
 
