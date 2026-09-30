@@ -45,7 +45,7 @@ class TraceFacts:
 
 async def fetch_trace(
     client: httpx.AsyncClient,
-    session_id: str,
+    trace_id: str,
     *,
     since: datetime,
     deadline_s: float = 60,
@@ -54,24 +54,21 @@ async def fetch_trace(
     """One turn's trace, or None if Langfuse has not ingested it by the
     deadline.
 
-    Two steps, because only `dss.turn` carries the session: find that root,
-    then fetch every observation of its trace. The root ends last, so once it
-    is visible its children have been exported too.
+    Found by the trace id the benchmark sent as `traceparent`: a run's turns
+    share one session, so the session cannot pick out a turn. Read once
+    `dss.turn` is in: the root ends last, so its children are in by then.
     """
 
-    params = {"fromStartTime": since.isoformat(), "limit": 100}
+    params = {"fromStartTime": since.isoformat(), "limit": 100, "traceId": trace_id}
     waited = 0.0
     while True:
-        roots = await _observations(client, {**params, "sessionId": session_id})
-        if roots:
-            break
+        rows = await _observations(client, params)
+        if any(row["name"] == "dss.turn" for row in rows):
+            return to_trace_facts(rows)
         if waited >= deadline_s:
             return None
         await anyio.sleep(poll_s)
         waited += poll_s
-    return to_trace_facts(
-        await _observations(client, {**params, "traceId": roots[0]["traceId"]})
-    )
 
 
 async def _observations(client: httpx.AsyncClient, params: dict) -> list[dict]:

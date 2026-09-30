@@ -8,7 +8,6 @@ load would show queueing more honestly, but its cost has no upper limit.
 
 from __future__ import annotations
 
-import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass
 from time import perf_counter
@@ -17,7 +16,7 @@ import anyio
 
 from benchmarks.questions import Question
 from benchmarks.runner import ReadMisses, SendTurn
-from benchmarks.turn import TurnTiming
+from benchmarks.turn import TurnIds, TurnTiming
 
 
 @dataclass(frozen=True)
@@ -46,6 +45,7 @@ async def run_load(
     *,
     turn: SendTurn,
     misses: ReadMisses,
+    session_id: str,
     max_turns: int | None = None,
     warmup: int = 0,
 ) -> list[StepResult]:
@@ -55,15 +55,16 @@ async def run_load(
     `warmup` turns go first, one at a time, and are not counted: a container
     that has just started pays for cold imports and a first model connection,
     which would otherwise land on the first step — the baseline.
+
+    Every turn goes under `session_id`, so the run is one Langfuse session.
     """
 
-    run_id = uuid.uuid4().hex[:8]
     results = []
     total = warmup + len(questions) * len(steps)
     budget = total if max_turns is None else max_turns
     warm = questions[: min(warmup, budget)]
     for question in warm:
-        await turn(question, f"bench-{run_id}-warmup-{question.id}")
+        await turn(question, TurnIds.new(session_id))
     budget -= len(warm)
     for concurrency in steps:
         if budget <= 0:
@@ -72,11 +73,10 @@ async def run_load(
         budget -= len(allowed)
         pending = iter(allowed)
         sent: list[tuple[str, TurnTiming]] = []
-        prefix = f"bench-{run_id}-n{concurrency}"
         started = perf_counter()
         async with anyio.create_task_group() as group:
             for _ in range(concurrency):
-                group.start_soon(_worker, pending, sent, prefix, turn)
+                group.start_soon(_worker, pending, sent, session_id, turn)
         wall_s = perf_counter() - started
         # Keyed by transaction id, so each miss is tied to its own turn even
         # with several turns in flight.
@@ -84,8 +84,8 @@ async def run_load(
         results.append(
             StepResult(
                 concurrency=concurrency,
-                timings=[timing for session, timing in sent if session not in missed],
-                missed=sum(session in missed for session, _ in sent),
+                timings=[timing for txn, timing in sent if txn not in missed],
+                missed=sum(txn in missed for txn, _ in sent),
                 wall_s=wall_s,
                 truncated=len(allowed) < len(questions),
             )
@@ -96,7 +96,7 @@ async def run_load(
 async def _worker(
     pending: Iterator[Question],
     sent: list[tuple[str, TurnTiming]],
-    prefix: str,
+    session_id: str,
     turn: SendTurn,
 ) -> None:
     """Send the next question each time the last turn is answered.
@@ -106,5 +106,5 @@ async def _worker(
     """
 
     for question in pending:
-        session_id = f"{prefix}-{question.id}"
-        sent.append((session_id, await turn(question, session_id)))
+        ids = TurnIds.new(session_id)
+        sent.append((ids.transaction_id, await turn(question, ids)))
