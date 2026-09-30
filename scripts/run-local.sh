@@ -3,6 +3,9 @@
 #
 #     ./scripts/run-local.sh
 #
+# Traces go to the local Langfuse unless .env.local sets
+# OTEL_EXPORTER_OTLP_ENDPOINT, in which case the local Langfuse is not started.
+#
 # Ctrl-C stops the DSS. Langfuse and the mock keep running — they are slow to
 # start and you usually want them across several DSS restarts. Stop them with
 # `./scripts/run-local.sh --down`.
@@ -171,12 +174,25 @@ fi
 #
 # Not waited on. A cold start spends minutes in ClickHouse migrations, and the
 # DSS's exporter retries — early spans land late rather than being lost.
+#
+# An endpoint set in .env.local wins: traces go there (a deployed Langfuse, say)
+# and the local one is left alone. Unset, it is the local Langfuse, as before.
 
-if [ -n "$("$R" ps --filter "name=${COMPOSE_PROJECT}.*langfuse-web" --format '{{.Names}}' 2>/dev/null || true)" ]; then
-  echo "==> langfuse already up"
+LOCAL_OTLP="http://localhost:${LANGFUSE_PORT}/api/public/otel"
+if [ -n "${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] && [ "$OTEL_EXPORTER_OTLP_ENDPOINT" != "$LOCAL_OTLP" ]; then
+  LOCAL_LANGFUSE=false
+  echo "==> tracing to $OTEL_EXPORTER_OTLP_ENDPOINT (from $ENV_LOCAL); local langfuse not started"
 else
-  echo "==> starting langfuse"
-  $COMPOSE -f docker-compose.langfuse.yml --env-file .env.langfuse up -d
+  LOCAL_LANGFUSE=true
+fi
+
+if [ "$LOCAL_LANGFUSE" = true ]; then
+  if [ -n "$("$R" ps --filter "name=${COMPOSE_PROJECT}.*langfuse-web" --format '{{.Names}}' 2>/dev/null || true)" ]; then
+    echo "==> langfuse already up"
+  else
+    echo "==> starting langfuse"
+    $COMPOSE -f docker-compose.langfuse.yml --env-file .env.langfuse up -d
+  fi
 fi
 
 # --- mock network ----------------------------------------------------------
@@ -199,27 +215,33 @@ fi
 lsof -ti:"$DSS_PORT" >/dev/null 2>&1 && \
   die "port $DSS_PORT is already in use — another DSS is running."
 
-# Built here rather than by hand: the endpoint alone is a 401 on every export
-# batch, and it is the easy half to forget.
-export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:${LANGFUSE_PORT}/api/public/otel"
+# Each of these keeps a value .env.local already set; only what is unset gets
+# the local default.
+#
+# The header is built here rather than by hand: the endpoint alone is a 401 on
+# every export batch, and it is the easy half to forget.
+export OTEL_EXPORTER_OTLP_ENDPOINT="${OTEL_EXPORTER_OTLP_ENDPOINT:-$LOCAL_OTLP}"
 # `%20`, not a literal space. This variable is a comma-separated key=value list
 # and the spec says values are URL-encoded, so a raw space truncates the value
 # at "Basic" — which reaches Langfuse as a credential-less Authorization header
 # and 401s every batch. Nothing in the DSS log says so: the export failure is
 # the exporter's own retry warning, and the turn answers normally either way.
-export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Basic%20$(printf '%s:%s' "$LANGFUSE_PUBLIC_KEY" "$LANGFUSE_SECRET_KEY" | base64 | tr -d '\n')"
+export OTEL_EXPORTER_OTLP_HEADERS="${OTEL_EXPORTER_OTLP_HEADERS:-Authorization=Basic%20$(printf '%s:%s' "$LANGFUSE_PUBLIC_KEY" "$LANGFUSE_SECRET_KEY" | base64 | tr -d '\n')}"
 # Pydantic AI counts tokens as metrics and Langfuse discards them; left on, the
 # log fills with failed metric exports.
-export OTEL_METRICS_EXPORTER=none
+export OTEL_METRICS_EXPORTER="${OTEL_METRICS_EXPORTER:-none}"
 # A laptop, where seeing the prompt is the point. ADR-0007 §5 does not permit
-# this in a deployment.
-export DSS_TRACE_INCLUDE_MESSAGE_CONTENT=true
+# this in a deployment, so a Langfuse other than the local one does not get it
+# unless .env.local asks.
+if [ "$LOCAL_LANGFUSE" = true ]; then
+  export DSS_TRACE_INCLUDE_MESSAGE_CONTENT="${DSS_TRACE_INCLUDE_MESSAGE_CONTENT:-true}"
+fi
 
-export DSS_DISCOVERY_BASE_URL="http://127.0.0.1:${MOCK_PORT}"
-export DSS_INVOCATION_BASE_URL="http://127.0.0.1:${MOCK_PORT}"
+export DSS_DISCOVERY_BASE_URL="${DSS_DISCOVERY_BASE_URL:-http://127.0.0.1:${MOCK_PORT}}"
+export DSS_INVOCATION_BASE_URL="${DSS_INVOCATION_BASE_URL:-http://127.0.0.1:${MOCK_PORT}}"
 
 echo
-echo "    langfuse   http://localhost:${LANGFUSE_PORT}"
+echo "    traces     ${OTEL_EXPORTER_OTLP_ENDPOINT}"
 echo "    dss        http://127.0.0.1:${DSS_PORT}/docs"
 echo "    mock log   tail -f var/mock-network.log"
 echo

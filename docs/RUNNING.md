@@ -58,6 +58,20 @@ in the gateway instead. Without it, `azure:<deployment>` uses the first pair.
 See [`RUNNING-GATEWAY.md`](./RUNNING-GATEWAY.md). The Langfuse keys come from
 Settings → API Keys at <http://localhost:3000>.
 
+**To trace to another Langfuse** (a deployed one, say), set the endpoint in
+`.env.local` too. The script keeps it and does not start the local Langfuse:
+
+```bash
+export LANGFUSE_PUBLIC_KEY="pk-lf-..."   # that Langfuse's project keys
+export LANGFUSE_SECRET_KEY="sk-lf-..."
+export OTEL_EXPORTER_OTLP_ENDPOINT="https://<host>/langfuse/api/public/otel"
+```
+
+The auth header is built from the keys unless `OTEL_EXPORTER_OTLP_HEADERS` is
+set as well. Full prompts stay out of those traces unless
+`DSS_TRACE_INCLUDE_MESSAGE_CONTENT=true` is set (ADR-0007 §5). The mock URLs
+(`DSS_DISCOVERY_BASE_URL`, `DSS_INVOCATION_BASE_URL`) are kept the same way.
+
 Ctrl-C stops the DSS and leaves Langfuse and the mock up — they are slow to
 start and a local session restarts the DSS often.
 `./scripts/run-local.sh --down` stops everything.
