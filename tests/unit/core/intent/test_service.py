@@ -168,6 +168,15 @@ def test_prompt_shows_an_assistant_named_place_is_not_carried() -> None:
     assert "only the assistant named" in prompt
 
 
+def test_prompt_shows_a_reply_by_number_finishes_the_first_question() -> None:
+    """A reply of "2" means nothing alone. The example shows the model reading
+    our numbered list in the history and copying the picked line."""
+
+    prompt = build_intent_prompt([])
+
+    assert "'Bilaspur, Chhattisgarh'" in prompt
+
+
 def test_prompt_forbids_guessing_a_place_nobody_said() -> None:
     """Carry-forward lets the model look past the latest query. This line keeps
     it from inventing a place from the crop or language instead.

@@ -281,3 +281,161 @@ async def test_a_place_only_the_assistant_said_is_not_carried() -> None:
     assert classification.asks, "the model returned no asks"
     place_name = classification.asks[0].place_name
     assert place_name is None, f"carried the assistant's {place_name!r}"
+
+
+# The question our own code sends when a name matches several places, verbatim
+# (`core/channel/service.py`, `clarification-text.yaml`). The reply turn works
+# only if the model copies one of these lines exactly.
+_RAMPUR_LINES = [
+    "Rampur, Uttar Pradesh",
+    "Rampur, Himachal Pradesh",
+    "Rampur, Odisha",
+]
+_RAMPUR_QUESTION = "Which Rampur?\n" + "\n".join(
+    f"{number}. {line}" for number, line in enumerate(_RAMPUR_LINES, start=1)
+)
+
+
+def _asked_which_rampur() -> list[ConversationMessage]:
+    return [
+        ConversationMessage(role="user", text="What is the weather in Rampur?"),
+        ConversationMessage(role="assistant", text=_RAMPUR_QUESTION),
+    ]
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        "Himachal",
+        "2",
+        "the one in Himachal Pradesh",
+        "Rampur himachal",
+        "HP",
+        "हिमाचल",
+    ],
+    ids=["state", "number", "the-one-in", "name-and-state", "abbreviation", "hindi"],
+)
+async def test_a_reply_to_which_place_finishes_the_first_question(
+    reply: str,
+) -> None:
+    """The farmer's reply means nothing alone. The model must answer the
+    question asked before, with the picked line copied as listed — the code
+    that narrows the place matches the part after the comma exactly."""
+
+    classification = await classify_intent(
+        _turn(reply, history=_asked_which_rampur()), _live_llm()
+    )
+
+    assert len(classification.asks) == 1, f"expected one ask, got {classification!r}"
+    ask = classification.asks[0]
+    assert ask.subject_categories is SubjectCategory.WEATHER, (
+        f"the first question was lost: {classification!r}"
+    )
+    assert ask.place_name == "Rampur, Himachal Pradesh"
+
+
+async def test_a_pick_from_the_grouped_list_keeps_the_name() -> None:
+    """A long list is grouped one level up: the lines are the states. Picking
+    one gives the name and that part, which narrows the matches."""
+
+    history = [
+        ConversationMessage(role="user", text="What is the weather in Rampur?"),
+        ConversationMessage(
+            role="assistant",
+            text=(
+                "Rampur is in several places. Which one:\n"
+                "1. Rampur, Uttar Pradesh\n2. Rampur, Himachal Pradesh\n"
+                "3. Rampur, Odisha\n4. Rampur, Bihar\n5. Rampur, Jharkhand\n"
+                "Not in this list? Tell me the area it is in."
+            ),
+        ),
+    ]
+
+    classification = await classify_intent(
+        _turn("Uttar Pradesh", history=history), _live_llm()
+    )
+
+    assert len(classification.asks) == 1, f"expected one ask, got {classification!r}"
+    assert classification.asks[0].place_name == "Rampur, Uttar Pradesh"
+
+
+async def test_a_new_question_after_the_list_is_not_a_reply() -> None:
+    """The farmer ignored the question and asked something else. The old
+    Rampur must not leak into it."""
+
+    classification = await classify_intent(
+        _turn("What is the wheat price in Pune?", history=_asked_which_rampur()),
+        _live_llm(),
+    )
+
+    assert len(classification.asks) == 1, f"expected one ask, got {classification!r}"
+    ask = classification.asks[0]
+    assert ask.subject_categories is SubjectCategory.MARKET
+    assert ask.place_name == "Pune"
+
+
+async def test_a_follow_up_after_the_pick_keeps_the_picked_place() -> None:
+    """ "And tomorrow?" after the farmer chose. The history now holds a bare
+    "Rampur", the list, the pick and the answer; the picked line is the place
+    the farmer means, not the bare name asked again."""
+
+    history = [
+        *_asked_which_rampur(),
+        ConversationMessage(role="user", text="Himachal"),
+        ConversationMessage(
+            role="assistant",
+            text="Rampur, Himachal Pradesh: clear skies, 18°C today.",
+        ),
+    ]
+
+    classification = await classify_intent(
+        _turn("And tomorrow?", history=history), _live_llm()
+    )
+
+    assert len(classification.asks) == 1, f"expected one ask, got {classification!r}"
+    assert classification.asks[0].place_name == "Rampur, Himachal Pradesh"
+
+
+@pytest.mark.xfail(
+    reason="TODO(#131): the model asks the answered place again; see TODO.md",
+    strict=False,
+)
+async def test_a_pick_on_a_partial_turn_asks_only_what_was_left() -> None:
+    """Pune was answered in the same message that asked which Aurangabad.
+    The pick finishes Aurangabad; asking Pune again would repeat the answer."""
+
+    history = [
+        ConversationMessage(
+            role="user", text="What is the weather in Pune and Aurangabad?"
+        ),
+        ConversationMessage(
+            role="assistant",
+            text=(
+                "Pune: clear skies, 31°C today.\n"
+                "Which Aurangabad?\n"
+                "1. Aurangabad, Maharashtra\n2. Aurangabad, Bihar"
+            ),
+        ),
+    ]
+
+    classification = await classify_intent(_turn("2", history=history), _live_llm())
+
+    assert len(classification.asks) == 1, f"expected one ask, got {classification!r}"
+    assert classification.asks[0].place_name == "Aurangabad, Bihar"
+
+
+@pytest.mark.parametrize("reply", ["Kerala", "5"], ids=["not-listed", "no-such-line"])
+async def test_a_reply_that_picks_nothing_listed_is_not_turned_into_a_pick(
+    reply: str,
+) -> None:
+    """A guess would give the farmer the wrong Rampur without a word. Whatever
+    the model returns, it must not be one of the lines we offered."""
+
+    classification = await classify_intent(
+        _turn(reply, history=_asked_which_rampur()), _live_llm()
+    )
+
+    for ask in classification.asks:
+        assert ask.place_name not in _RAMPUR_LINES, (
+            f"guessed {ask.place_name!r} from {reply!r}"
+        )

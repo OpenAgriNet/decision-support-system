@@ -95,9 +95,12 @@ OpenAgriNet/engineering-tracker#131.
 - **Tier 5, new tests in `tests/llm/structural/test_intent_place_name.py`:**
   reply by state ("Himachal"), by number ("2"), by "the one in X", by a short
   or loose form ("Rampur himachal", "HP" — the model must copy the full listed
-  line, since code only matches the part exactly); a new
-  question after our list is classified as new; a follow-up after the pick
-  ("and tomorrow?") carries the picked place. Run the **whole file on Gemma
+  line, since code only matches the part exactly); a pick from the
+  grouped long list ("Uttar Pradesh"); a reply in another language or script;
+  a new question after our list is classified as new; a follow-up after the
+  pick ("and tomorrow?") carries the picked place (likely the hardest — the
+  history then holds a bare "Bilaspur"); Vashi/Lasalgaon still stay null
+  (the new exception must not leak). Run the **whole file on Gemma
   and luna**; all must pass (today's lesson: any prompt line can break
   splitting).
 - **Manual (acceptance: "a product owner can…"):** local run per
