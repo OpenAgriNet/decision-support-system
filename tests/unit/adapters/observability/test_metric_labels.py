@@ -47,6 +47,7 @@ EXPECTED = {
     "dss.turn.count": {"status", "model_profile"},
     "dss.stage.tokens": {"stage", "model", "direction"},
     "dss.turn.cost": {"model_profile"},
+    "dss.ask.count": {"category", "interaction"},
 }
 
 

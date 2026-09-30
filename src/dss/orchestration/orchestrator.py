@@ -191,6 +191,14 @@ class Orchestrator:
                 return
 
             self._note("intent", ctx, _classified(result.intent))
+            # After the moderation gate, so a refused turn's asks are not
+            # counted as something farmers asked for.
+            asks = result.intent.asks
+            recorder.asked(
+                categories=[ask.subject_categories.value for ask in asks],
+                interactions=[ask.interaction_type.value for ask in asks],
+                subjects=[ask.agriculture_subjects or "" for ask in asks],
+            )
 
             # Nowhere to search: the turn carried no coordinates, no area, and the
             # classifier found no place name the area index could resolve. Ask for a

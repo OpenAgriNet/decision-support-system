@@ -30,8 +30,13 @@
   (`docker-compose.observability.yml`) with the collector on its deployment
   config, so the dashboard can be watched on a laptop (#141)
 - `otel/collector.local.yaml` — a collector for a laptop, with no ClickHouse
-  exporter but the same content-stripping branch, printed rather than stored
+  exporter but the same ClickHouse allowlist, printed rather than stored
   (#141)
+- The ClickHouse branch keeps an allowlist of attributes instead of deleting
+  six content keys, which missed each agent run's `final_result` and exception
+  text (#141)
+- What farmers ask, without their words: `dss.ask.*` on the turn span and a
+  `dss.ask.count` counter, plus a "What farmers ask" dashboard row (#141)
 - `scripts/run-local.sh`: one command for a local stack — Langfuse, the mock
   network and the DSS. Prerequisites are checked before anything starts and
   refused with the fix, never repaired: a missing `oan-edge` network, an

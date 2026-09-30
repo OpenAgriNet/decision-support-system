@@ -661,21 +661,22 @@ token counts and latency, but not the farmer's query or the composed answer.
 saying not to do that in a deployment. Only a literal `true` counts — `1` and
 `yes` read as off, so a typo cannot enable it.
 
-**Even with it on, ClickHouse never sees the words.** The collector deletes the
-six attributes that carry message text before the ClickHouse branch:
-`gen_ai.input.messages`, `gen_ai.output.messages`, `gen_ai.system_instructions`,
-`pydantic_ai.all_messages`, `gen_ai.tool.call.arguments`,
-`gen_ai.tool.call.result`. Locally you can watch this happen — the collector
-prints the stripped branch:
+**Even with it on, ClickHouse never sees the words.** The ClickHouse branch
+keeps only a named allowlist of attributes (`transform/clickhouse_allowlist` in
+`otel/collector.yaml`): our own `dss.*` fields, status and timings, ids for
+joining to Langfuse, and model, token and tool *names*. Everything else is
+dropped — prompts, completions, tool arguments and results, each agent run's
+`final_result`, and exception messages (their type is kept). Locally you can
+watch this happen — the collector prints that branch:
 
 ```bash
 docker logs -f dss-otel-collector
 ```
 
-Langfuse shows the prompt; the same turn in that log does not. If you upgrade
-`pydantic-ai` and one of those attribute names changes, content starts flowing
-to ClickHouse and nothing fails — re-check the list in `otel/collector.yaml`
-against the installed version.
+Langfuse shows the prompt; the same turn in that log does not. An allowlist
+fails safe: a key a `pydantic-ai` upgrade adds or renames is dropped, not
+shipped. To send something new to ClickHouse, add it to the allowlist and to
+`tests/unit/test_collector_allowlist.py`, which fails otherwise.
 
 To see spans with no container at all, the tests read them back in memory:
 
@@ -711,6 +712,7 @@ What gets published:
 | `dss.turn.cost` | what a turn cost, where the model has a published price |
 | `dss.stage.duration` | how long one stage took, and which model ran it |
 | `dss.stage.tokens` | tokens per stage, split into input and output |
+| `dss.ask.count` | what farmers ask, one per ask, by category and interaction |
 | `http.server.request.duration` | every request at the edge, by route and status |
 
 Durations are in **seconds**, which is what the HTTP convention uses. The DSS
