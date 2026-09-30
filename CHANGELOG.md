@@ -37,6 +37,10 @@
   missing (#138)
 
 ### Added
+- Redaction engine: finds Aadhaar, PAN, GSTIN, IFSC, card, phone, email and
+  announced names in a farmer's text and replaces them with tags such as
+  `«phone_1»`. Rules are config, checked at boot; off unless
+  `DSS_REDACTION_ENABLED=true`. Not yet wired into the turn. ADR-0015 (#133)
 - The OpenTelemetry Collector as the export hub: one OTLP stream from the DSS,
   fanned out to Langfuse (traces, with message content) and ClickHouse (traces,
   metrics and logs, with it removed). Grafana reads ClickHouse. ADR-0014 (#141)

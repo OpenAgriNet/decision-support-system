@@ -72,7 +72,7 @@ Hexagonal / ports-and-adapters. The hard rule: **only `orchestration/` imports t
 src/dss/
 ├── core/                     # Framework-agnostic domain logic — plain Python in, plain Python out.
 │                             # One subpackage per DSS logical function (see docs/DSS_ARCHITECTURE.md §3):
-│                             # moderation, intent, enrichment, routing, persona, execution, review, channel,
+│                             # moderation, intent, enrichment, routing, persona, execution, review, channel, redaction,
 │                             # stream_response (the composer's answer, yielded as it is written).
 │                             # Create a subpackage when its slice is built, not ahead of it.
 │                             # Never imports Pydantic AI, pydantic-graph, MCP, or any vendor SDK.
