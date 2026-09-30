@@ -190,6 +190,13 @@ class Settings(BaseSettings):
     # loader warns once at boot. Set-but-missing raises, as the policy pack does.
     schemes_config_path: Path | None = None
 
+    # Redaction of identity details before anything sees the turn (ADR-0015).
+    # Off unless switched on; on, the rules path must name a file that loads,
+    # or the app refuses to boot. `config/examples/redaction-rules.yaml` is a
+    # ready file for India.
+    redaction_enabled: bool = False
+    redaction_config_path: Path | None = None
+
     # How close a farmer's spelling has to be to count as an alias ("makna"
     # for "makhana"). Tried only after every exact lookup misses. `None` turns
     # similarity matching off; the floor is above 0, which matches anything.
