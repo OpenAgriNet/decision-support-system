@@ -68,6 +68,22 @@ with an exporter pointed at one that is not there. It still runs the branch
 that would have gone to ClickHouse and prints the result, so
 `docker logs -f dss-otel-collector` shows the farmer's words reaching Langfuse
 and not reaching the other branch.
+
+**To trace to another Langfuse** (a deployed one, say), set the endpoint in
+`.env.local` too. The script sends traces straight there and does not start
+the local Langfuse or the collector:
+
+```bash
+export LANGFUSE_PUBLIC_KEY="pk-lf-..."   # that Langfuse's project keys
+export LANGFUSE_SECRET_KEY="sk-lf-..."
+export OTEL_EXPORTER_OTLP_ENDPOINT="https://<host>/langfuse/api/public/otel"
+```
+
+The auth header is built from the keys unless `OTEL_EXPORTER_OTLP_HEADERS` is
+set as well. Full prompts stay out of those traces unless
+`DSS_TRACE_INCLUDE_MESSAGE_CONTENT=true` is set (ADR-0007 §5). The mock URLs
+(`DSS_DISCOVERY_BASE_URL`, `DSS_INVOCATION_BASE_URL`) are kept the same way.
+
 `./scripts/run-local.sh --down` stops everything.
 
 **It picks a container runtime that answers**, not merely one that is
