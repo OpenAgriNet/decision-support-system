@@ -396,10 +396,6 @@ async def test_a_follow_up_after_the_pick_keeps_the_picked_place() -> None:
     assert classification.asks[0].place_name == "Rampur, Himachal Pradesh"
 
 
-@pytest.mark.xfail(
-    reason="TODO(#131): the model asks the answered place again; see TODO.md",
-    strict=False,
-)
 async def test_a_pick_on_a_partial_turn_asks_only_what_was_left() -> None:
     """Pune was answered in the same message that asked which Aurangabad.
     The pick finishes Aurangabad; asking Pune again would repeat the answer."""

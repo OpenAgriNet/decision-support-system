@@ -190,14 +190,6 @@
   request-side hint; MandiPrice has none. So the schema cannot drive this
   cleanly. Fix: ask the network-specs owners for a request-side flag, e.g.
   `requiresLocation` on `OnDemand` entries.
-- **Picking a place on a partly answered turn asks the answered place again
-  (#131).** "Weather in Pune and Aurangabad" answers Pune and asks which
-  Aurangabad. The farmer replies "2". The intent model returns two asks, Pune
-  and "Aurangabad, Bihar", so the farmer reads the Pune weather twice. The pick
-  itself is right. Fix: a worked example in the intent prompt that asks only
-  what was left. Rerun the whole tier-5 file on both models after it.
-  `test_a_pick_on_a_partial_turn_asks_only_what_was_left` is marked `xfail`
-  until then.
 - **A block's coordinate is its district's, not its own.** Every one of the
   7,092 Block rows in the 2026-09-03 LGD snapshot has `point_method` starting
   `inherited:` — none has a real point of its own. A farmer naming their

@@ -41,9 +41,9 @@ Option 4 adds a call to every turn, and most turns are not replies.
 - **Our question is fixed text, not translated.** Each line reads "Rampur,
   Himachal Pradesh", so the model can copy it exactly.
 - **The model copies the picked line** as the place name. The intent prompt
-  has one worked example of this, and no rule. A rule saying a listed place
-  can be the farmer's own made a model carry a place only the assistant had
-  named.
+  has one worked example of this, with one line for a reply that matches no
+  listed option: it is a new question. A rule saying a listed place can be
+  the farmer's own made a model guess a line for such a reply.
 - **Code splits at the last comma**, looks up the name, and keeps the match
   whose parent places hold the second part.
 - **Still not one place? Ask the same question again.** Never guess.

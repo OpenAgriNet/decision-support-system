@@ -177,6 +177,24 @@ def test_prompt_shows_a_reply_by_number_finishes_the_first_question() -> None:
     assert "'Bilaspur, Chhattisgarh'" in prompt
 
 
+def test_prompt_shows_the_place_a_data_answer_came_from_is_not_the_users() -> None:
+    """One example was no longer enough: a live model carried the market an
+    answer named. A second, with different places, held on both models."""
+
+    prompt = build_intent_prompt([])
+
+    assert "where the answer came from" in prompt
+
+
+def test_prompt_says_a_reply_matching_no_listed_option_is_not_a_pick() -> None:
+    """Without this a live model mapped a reply of "5" onto the last line of a
+    three-line list, which would give the farmer the wrong place silently."""
+
+    prompt = build_intent_prompt([])
+
+    assert "matches none of the listed options" in prompt
+
+
 def test_prompt_forbids_guessing_a_place_nobody_said() -> None:
     """Carry-forward lets the model look past the latest query. This line keeps
     it from inventing a place from the crop or language instead.
