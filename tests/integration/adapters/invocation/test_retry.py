@@ -80,7 +80,7 @@ def _invocation(handler: _CountingHandler, **kwargs) -> HttpCapabilityInvocation
 async def test_a_transient_failure_is_retried_until_it_succeeds() -> None:
     handler = _CountingHandler(429, fail_times=2)
 
-    answer = await _invocation(handler).select(CAPABILITY, {}, "txn-1")
+    [answer] = await _invocation(handler).select(CAPABILITY, {}, "txn-1")
 
     assert handler.calls == 3
     assert answer.provider_id == CAPABILITY.provider_id

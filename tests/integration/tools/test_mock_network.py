@@ -323,7 +323,7 @@ async def test_select_returns_the_values_the_composer_will_quote(
         provider_code="IMD-NWP-01",
     )
 
-    answer = await invocation.select(
+    [answer] = await invocation.select(
         capability,
         _planner_attributes(capability, {"observationType": "Forecast"}),
         "9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44",
@@ -334,8 +334,12 @@ async def test_select_returns_the_values_the_composer_will_quote(
     assert answer.provider_name == "IMD Mausamgram NWP"
     # and the values themselves — what the composer quotes back: the built
     # answer for this point, every parameter the pack names
-    assert answer.attributes == weather_answer(lon=77.056016, lat=20.748005)
-    assert len(answer.attributes["parameters"]) == 8
+    [resource] = answer.attributes["resources"]
+    assert resource == {
+        "id": capability.resource_id,
+        **weather_answer(lon=77.056016, lat=20.748005),
+    }
+    assert len(resource["parameters"]) == 8
 
 
 async def test_mandi_select_answers_one_price_for_the_advertised_market(
@@ -376,12 +380,17 @@ async def test_mandi_select_answers_one_price_for_the_advertised_market(
         client=client, base_url="http://mock.test", sender_id="dss", receiver_id="x"
     )
 
-    answer = await invocation.select(mumbai, attrs, "txn-mandi")
+    [answer] = await invocation.select(mumbai, attrs, "txn-mandi")
 
-    assert answer.attributes == mandi_answer(
-        commodity={"code": "24", "name": "Potato"},
-        market=mumbai.advertised["market"],
-    )
+    assert answer.attributes["resources"] == [
+        {
+            "id": mumbai.resource_id,
+            **mandi_answer(
+                commodity={"code": "24", "name": "Potato"},
+                market=mumbai.advertised["market"],
+            ),
+        }
+    ]
 
 
 async def test_advisory_select_answers_with_the_questions_written_answer(
@@ -413,10 +422,12 @@ async def test_advisory_select_answers_with_the_questions_written_answer(
         client=client, base_url="http://mock.test", sender_id="dss", receiver_id="x"
     )
 
-    answer = await invocation.select(capability, attrs, "txn-advisory")
+    [answer] = await invocation.select(capability, attrs, "txn-advisory")
 
     ginger = next(q for q in _benchmark_questions() if q["id"] == "7-1")
-    assert answer.attributes == advisory_answer(ginger["answer"])
+    assert answer.attributes["resources"] == [
+        {"id": capability.resource_id, **advisory_answer(ginger["answer"])}
+    ]
 
 
 async def test_a_select_the_mock_cannot_answer_is_refused_and_counted(

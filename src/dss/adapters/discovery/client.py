@@ -378,4 +378,14 @@ class HttpCapabilityDiscovery:
             first = ask_indices[0]
             span.set_attribute("capability_count", len(result.capabilities[first]))
             span.set_attribute("answer_count", len(result.answers[first]))
+            # Ids only, never content. Catalog answers get no /select span,
+            # so this is the only place they show up.
+            span.set_attribute(
+                "offered_provider_ids",
+                sorted({c.provider_id for c in result.capabilities[first]}),
+            )
+            span.set_attribute(
+                "answered_provider_ids",
+                sorted({a.provider_id for a in result.answers[first]}),
+            )
             return result

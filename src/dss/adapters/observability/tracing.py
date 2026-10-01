@@ -24,14 +24,16 @@ from __future__ import annotations
 import logging
 import os
 import time
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
 from opentelemetry.sdk.trace import SpanProcessor
 
+from dss.adapters.observability.logs import configure_logs, reset_logs
 from dss.adapters.observability.metrics import (
     configure_metrics,
+    record_asks,
     record_composed,
     record_first_delta,
     record_turn,
@@ -172,6 +174,7 @@ def configure_telemetry(
         set_stage_span_opener(None)
         set_model_names()
         reset_metrics()
+        reset_logs()
         return
 
     set_model_names(
@@ -259,6 +262,9 @@ def configure_telemetry(
 
     # Fills the second slot too, so a stage cannot be spanned but unmeasured.
     configure_metrics(model_profile=model_profile)
+
+    # One endpoint for all three signals, so a dashboard can join them.
+    configure_logs()
 
     logger.info("telemetry on, exporting to %s", endpoint)
 
@@ -391,6 +397,24 @@ class TurnRecorder:
         self._span.set_attribute(attribute, elapsed_ms)
         self._span.add_event(attribute, {"elapsed_ms": elapsed_ms})
         return elapsed_ms
+
+    def asked(
+        self,
+        *,
+        categories: Sequence[str],
+        interactions: Sequence[str],
+        subjects: Sequence[str],
+    ) -> None:
+        """What the turn asked, in shape only — never the question itself.
+
+        - One entry per ask, in order, so the three lists line up.
+        - `subjects` is open-ended, so it stays off the metric labels.
+        """
+
+        self._span.set_attribute("dss.ask.categories", list(categories))
+        self._span.set_attribute("dss.ask.interactions", list(interactions))
+        self._span.set_attribute("dss.ask.subjects", list(subjects))
+        record_asks(zip(categories, interactions, strict=True))
 
     def status(self, status: str) -> None:
         """How the turn ended — one of the contract's statuses, or ``error``

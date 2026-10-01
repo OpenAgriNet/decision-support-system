@@ -7,6 +7,7 @@ envelope.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
@@ -19,7 +20,6 @@ from dss.adapters.network_common import (
     NO_STATUS_CODE,
     classify_status_code,
     extract_source_reference,
-    extract_validity,
 )
 from dss.adapters.observability.tracing import open_span
 from dss.core.provider_discovery.models import (
@@ -100,26 +100,67 @@ def build_select_request(
 
 def map_select_response(
     response: dict[str, Any], *, provider_id: str, provider_name: str
-) -> DiscoveredAnswer:
+) -> list[DiscoveredAnswer]:
     """The provider may assign its own resource id in the response — distinct
     from the discovered id we named in the request. A search resource answers
-    with one id per result found, not the id that was selected."""
+    with one id per result found, not the id that was selected.
 
-    commitment = response["message"]["contract"]["commitments"][0]
-    resource = commitment["resources"][0]
-    attributes = resource["resourceAttributes"]
-    source_id, source_name, source_url = extract_source_reference(attributes) or (
-        None,
-        None,
-        None,
-    )
+    Every resource goes into ``attributes["resources"]``, even when there is
+    only one, so the model always reads the same shape. A forecast sends one
+    resource per day, and the model needs all of them.
+
+    Resources are grouped by the document they came from, one answer per
+    document. A forecast's five days share a source and stay one answer. A
+    knowledge search returning passages from two documents becomes two, because
+    a single answer carries a single source: lumping them together made every
+    passage inherit the first one's, and half the advice was then cited to a
+    document it never came from.
+
+    Resources from every commitment are read, and a response committing to
+    nothing yields no answers — an empty 200 is a real answer shape, not a body
+    we failed to parse.
+    """
+
+    grouped: dict[tuple[str | None, str | None, str | None], list[dict[str, Any]]] = {}
+    for commitment in response["message"]["contract"]["commitments"]:
+        for resource in commitment["resources"]:
+            attributes = resource["resourceAttributes"]
+            reference = extract_source_reference(attributes) or (None, None, None)
+            grouped.setdefault(reference, []).append(resource)
+
+    return [
+        _to_answer(
+            resources,
+            provider_id=provider_id,
+            provider_name=provider_name,
+            reference=reference,
+        )
+        for reference, resources in grouped.items()
+    ]
+
+
+def _to_answer(
+    resources: list[dict[str, Any]],
+    *,
+    provider_id: str,
+    provider_name: str,
+    reference: tuple[str | None, str | None, str | None],
+) -> DiscoveredAnswer:
+    source_id, source_name, source_url = reference
+    first = resources[0]["resourceAttributes"]
     return DiscoveredAnswer(
         provider_id=provider_id,
         provider_name=provider_name,
-        capability=attributes["@type"],
-        resource_id=resource["id"],
-        attributes=attributes,
-        validity=extract_validity(attributes),
+        capability=first["@type"],
+        resource_id=resources[0]["id"],
+        attributes={
+            "resources": [
+                {"id": resource["id"], **resource["resourceAttributes"]}
+                for resource in resources
+            ]
+        },
+        # Each resource keeps its own validity in `attributes`.
+        validity=None,
         source_id=source_id,
         source_name=source_name,
         source_url=source_url,
@@ -154,7 +195,7 @@ class HttpCapabilityInvocation:
         capability: ProviderCapability,
         resource_attributes: dict,
         transaction_id: str,
-    ) -> DiscoveredAnswer:
+    ) -> list[DiscoveredAnswer]:
         """Call /select, retrying a transient failure.
 
         Only ``TRANSIENT`` failures are retried: a ``DEFECT`` (400/401/403) is
@@ -172,16 +213,26 @@ class HttpCapabilityInvocation:
         """
 
         with open_span(
-            "dss.select", attributes={"provider_id": capability.provider_id}
+            "dss.select",
+            attributes={
+                "provider_id": capability.provider_id,
+                "capability": capability.capability,
+            },
         ) as call:
             for attempt in range(1, self._attempts + 1):
                 call.set_attribute("attempts", attempt)
                 try:
                     with open_span("dss.select.attempt") as span:
                         try:
-                            return await self._select_once(
+                            answers = await self._select_once(
                                 capability, resource_attributes, transaction_id
                             )
+                            # A 200 with nothing in it looks healthy otherwise.
+                            call.set_attribute("answered", _has_data(answers))
+                            # How many documents one call drew on — a search
+                            # provider's passages may come from several.
+                            call.set_attribute("answer_count", len(answers))
+                            return answers
                         except SelectFailed as failure:
                             # The code, not `detail` — that carries the
                             # provider's response body, which echoes the
@@ -196,6 +247,8 @@ class HttpCapabilityInvocation:
                         failure.failure_class is not FailureClass.TRANSIENT
                         or last_chance
                     ):
+                        # The class, never `detail`: see the attempt above.
+                        call.set_attribute("failure_class", failure.failure_class.value)
                         raise
                     await anyio.sleep(self._backoff_seconds * 2 ** (attempt - 1))
         raise AssertionError("unreachable: the loop either returns or raises")
@@ -205,7 +258,7 @@ class HttpCapabilityInvocation:
         capability: ProviderCapability,
         resource_attributes: dict,
         transaction_id: str,
-    ) -> DiscoveredAnswer:
+    ) -> list[DiscoveredAnswer]:
         request_body = build_select_request(
             capability,
             resource_attributes,
@@ -278,3 +331,20 @@ class HttpCapabilityInvocation:
                 FailureClass.DEFECT,
                 f"malformed response: {exc!r}",
             ) from exc
+
+
+def _has_data(answers: Sequence[DiscoveredAnswer]) -> bool:
+    """Whether any resource carries anything beyond the JSON-LD envelope and
+    its id.
+
+    Empty lists count as nothing: valid, but they tell the farmer nothing.
+    One answer with data is enough — the call was not wasted.
+    """
+
+    return any(
+        value not in (None, "", [], {})
+        for answer in answers
+        for resource in answer.attributes["resources"]
+        for key, value in resource.items()
+        if not key.startswith("@") and key != "id"
+    )

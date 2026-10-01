@@ -2,6 +2,7 @@
 # Start the whole local stack: Langfuse, the mock network, and the DSS.
 #
 #     ./scripts/run-local.sh
+#     ./scripts/run-local.sh --with-grafana   # also ClickHouse + Grafana
 #
 # Ctrl-C stops the DSS. Langfuse and the mock keep running — they are slow to
 # start and you usually want them across several DSS restarts. Stop them with
@@ -17,6 +18,8 @@ cd "$(dirname "$0")/.."
 DSS_PORT="${DSS_PORT:-8077}"
 MOCK_PORT="${MOCK_PORT:-8078}"
 LANGFUSE_PORT="${LANGFUSE_PORT:-3000}"
+OTEL_PORT="${OTEL_PORT:-4318}"
+COLLECTOR="${COLLECTOR:-dss-otel-collector}"
 SCHEMA_PACK_REF="${SCHEMA_PACK_REF:-schema-packs-v0.1}"
 COMPOSE_PROJECT="${COMPOSE_PROJECT:-decision-support-system}"
 ENV_LOCAL="${ENV_LOCAL:-.env.local}"
@@ -72,10 +75,24 @@ fi
 
 echo "==> container runtime: $R"
 
+WITH_GRAFANA=false
+DOWN=false
+for arg in "$@"; do
+  case "$arg" in
+    --with-grafana) WITH_GRAFANA=true ;;
+    --down) DOWN=true ;;
+    *) die "unknown flag: $arg (expected --with-grafana or --down)" ;;
+  esac
+done
+
 # --- stop ------------------------------------------------------------------
 
-if [ "${1:-}" = "--down" ]; then
+if [ "$DOWN" = true ]; then
   $COMPOSE -f docker-compose.langfuse.yml --env-file .env.langfuse down
+  # Stopped even if this run did not start it. Data volume is kept.
+  $COMPOSE -f docker-compose.observability.yml down
+  # Started with `run`, not compose, so stopped by name.
+  "$R" rm -f "$COLLECTOR" >/dev/null 2>&1 || true
   # The mock is not a container, so compose does not own it.
   pkill -f 'tools.mock_network' 2>/dev/null || true
   echo "stopped"
@@ -179,6 +196,73 @@ else
   $COMPOSE -f docker-compose.langfuse.yml --env-file .env.langfuse up -d
 fi
 
+# --- clickhouse + grafana (--with-grafana) ---------------------------------
+#
+# Waited on, unlike Langfuse: a collector started before ClickHouse answers exits.
+
+if [ "$WITH_GRAFANA" = true ]; then
+  echo "==> starting clickhouse + grafana"
+  $COMPOSE -f docker-compose.observability.yml up -d
+  for _ in $(seq 1 30); do
+    [ "$("$R" inspect -f '{{.State.Health.Status}}' dss-clickhouse 2>/dev/null || true)" = healthy ] && break
+    sleep 2
+  done
+  [ "$("$R" inspect -f '{{.State.Health.Status}}' dss-clickhouse 2>/dev/null || true)" = healthy ] || \
+    die "dss-clickhouse did not become healthy in 60s. See: $R logs dss-clickhouse"
+fi
+
+# --- collector -------------------------------------------------------------
+#
+# - No ClickHouse by default: an exporter with nowhere to send stops the collector.
+# - Config is kept as a label, so a collector on the other config is replaced.
+# - `run`, not compose: the compose service hard-mounts the deployment config.
+
+if [ "$WITH_GRAFANA" = true ]; then
+  COLLECTOR_CONFIG=otel/collector.yaml
+else
+  COLLECTOR_CONFIG=otel/collector.local.yaml
+fi
+
+running_config="$("$R" ps --filter "name=^${COLLECTOR}$" --format '{{.Label "dss.collector-config"}}' 2>/dev/null || true)"
+if [ -n "$running_config" ] && [ "$running_config" != "$COLLECTOR_CONFIG" ]; then
+  echo "==> collector is running $running_config; replacing it"
+  "$R" rm -f "$COLLECTOR" >/dev/null
+  running_config=""
+fi
+
+if [ -n "$running_config" ]; then
+  echo "==> collector already up on :$OTEL_PORT"
+else
+  lsof -ti:"$OTEL_PORT" >/dev/null 2>&1 && \
+    die "port $OTEL_PORT is in use, and the collector needs it. Another
+  collector (HyperDX runs one) or a stale container — find it with
+  \`lsof -i:$OTEL_PORT\`, or set OTEL_PORT to something else."
+
+  echo "==> starting collector on :$OTEL_PORT ($COLLECTOR_CONFIG)"
+  "$R" rm -f "$COLLECTOR" >/dev/null 2>&1 || true
+  # Must match the local ClickHouse's credentials.
+  clickhouse_env=()
+  if [ "$WITH_GRAFANA" = true ]; then
+    clickhouse_env=(
+      -e CLICKHOUSE_ENDPOINT=tcp://dss-clickhouse:9000
+      -e CLICKHOUSE_USER=dss
+      -e CLICKHOUSE_PASSWORD=dss
+      -e CLICKHOUSE_DATABASE=otel
+    )
+  fi
+  # A plain header value: a literal space after "Basic" is right, `%20` is wrong.
+  "$R" run -d --name "$COLLECTOR" \
+    --label "dss.collector-config=$COLLECTOR_CONFIG" \
+    --network oan-edge \
+    -p "127.0.0.1:${OTEL_PORT}:4318" \
+    -e LANGFUSE_OTLP_ENDPOINT="http://langfuse-web:3000/api/public/otel" \
+    -e LANGFUSE_AUTH_HEADER="Basic $(printf '%s:%s' "$LANGFUSE_PUBLIC_KEY" "$LANGFUSE_SECRET_KEY" | base64 | tr -d '\n')" \
+    ${clickhouse_env[@]+"${clickhouse_env[@]}"} \
+    -v "$PWD/$COLLECTOR_CONFIG:/etc/otel/collector.yaml:ro" \
+    "otel/opentelemetry-collector-contrib:${OTEL_COLLECTOR_TAG:-latest}" \
+    --config=/etc/otel/collector.yaml >/dev/null
+fi
+
 # --- mock network ----------------------------------------------------------
 #
 # --reload because the @type-to-response map is read at import: a mock started
@@ -199,20 +283,16 @@ fi
 lsof -ti:"$DSS_PORT" >/dev/null 2>&1 && \
   die "port $DSS_PORT is already in use — another DSS is running."
 
-# Built here rather than by hand: the endpoint alone is a 401 on every export
-# batch, and it is the easy half to forget.
-export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:${LANGFUSE_PORT}/api/public/otel"
-# `%20`, not a literal space. This variable is a comma-separated key=value list
-# and the spec says values are URL-encoded, so a raw space truncates the value
-# at "Basic" — which reaches Langfuse as a credential-less Authorization header
-# and 401s every batch. Nothing in the DSS log says so: the export failure is
-# the exporter's own retry warning, and the turn answers normally either way.
-export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Basic%20$(printf '%s:%s' "$LANGFUSE_PUBLIC_KEY" "$LANGFUSE_SECRET_KEY" | base64 | tr -d '\n')"
-# Pydantic AI counts tokens as metrics and Langfuse discards them; left on, the
-# log fills with failed metric exports.
-export OTEL_METRICS_EXPORTER=none
+# The collector, not Langfuse. It holds the Langfuse credential, so no headers here.
+export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:${OTEL_PORT}"
+# On: the collector forwards metrics.
+export OTEL_METRICS_EXPORTER=otlp
+# Match the deployment, so dashboard queries work on local data too.
+export OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=delta
+export OTEL_SERVICE_NAME=dss
+export OTEL_RESOURCE_ATTRIBUTES="deployment.environment.name=local"
 # A laptop, where seeing the prompt is the point. ADR-0007 §5 does not permit
-# this in a deployment.
+# this in a deployment. The collector strips it before ClickHouse.
 export DSS_TRACE_INCLUDE_MESSAGE_CONTENT=true
 
 export DSS_DISCOVERY_BASE_URL="http://127.0.0.1:${MOCK_PORT}"
@@ -222,6 +302,11 @@ echo
 echo "    langfuse   http://localhost:${LANGFUSE_PORT}"
 echo "    dss        http://127.0.0.1:${DSS_PORT}/docs"
 echo "    mock log   tail -f var/mock-network.log"
+echo "    otel log   $R logs -f $COLLECTOR"
+if [ "$WITH_GRAFANA" = true ]; then
+  echo "    grafana    http://localhost:${GRAFANA_PORT:-3001}  (DSS folder; Environment = local)"
+  echo "    clickhouse http://localhost:${CLICKHOUSE_HTTP_PORT:-18123}  (user dss / dss)"
+fi
 echo
 echo "    curl -s -X POST http://127.0.0.1:${DSS_PORT}/v1/turns \\"
 echo "      -H 'Content-Type: application/json' -H 'Accept: application/json' \\"

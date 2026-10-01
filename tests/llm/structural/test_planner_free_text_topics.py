@@ -115,20 +115,22 @@ class _RecordingInvocation:
         capability: ProviderCapability,
         resource_attributes: dict,
         transaction_id: str,
-    ) -> DiscoveredAnswer:
+    ) -> list[DiscoveredAnswer]:
         self.calls.append(resource_attributes)
-        return DiscoveredAnswer(
-            provider_id=capability.provider_id,
-            provider_name=capability.provider_name,
-            capability=capability.capability,
-            resource_id="res:krishi-kb:crop-advisory:2026-09-11",
-            attributes={
-                "recommendations": [
-                    {"message": "Plant certified seed tubers in well-drained soil."}
-                ]
-            },
-            validity=None,
-        )
+        return [
+            DiscoveredAnswer(
+                provider_id=capability.provider_id,
+                provider_name=capability.provider_name,
+                capability=capability.capability,
+                resource_id="res:krishi-kb:crop-advisory:2026-09-11",
+                attributes={
+                    "recommendations": [
+                        {"message": "Plant certified seed tubers in well-drained soil."}
+                    ]
+                },
+                validity=None,
+            )
+        ]
 
 
 def _turn() -> UserTurn:

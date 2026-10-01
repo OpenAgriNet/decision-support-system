@@ -1,4 +1,4 @@
-# ADR-0014: The Place the Farmer Named Beats the Device Location
+# ADR-0016: The Place the Farmer Named Beats the Device Location
 
 - **Status:** ACCEPTED
 - **Date:** 2026-09-24

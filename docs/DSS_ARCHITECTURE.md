@@ -127,6 +127,8 @@ Consequences of the split:
 
 Releasing pieces is one-way: the DSS cannot recall what it has sent, so a composition failure after the first piece is reported as a failed turn rather than retried into a different answer (ADR-0011 §4).
 
+**One question is answered from one source (ADR-0015).** A single `/select` can return passages from several documents, and two documents can disagree without saying so — written for different states, seasons or varieties. The composer is therefore told to read the sources that answer a question, pick the one that answers it best, and write from that one alone, citing only it. The rule is per question, not per reply: a turn asking two things may be served by two providers and name both. Evidence is laid out by question and then by source, with a document's passages gathered under one heading, so the grouping the rule talks about is visible. The rule is an instruction the model follows, not a check the code enforces; enforcing it would belong to the response reviewer, which is not built.
+
 ---
 
 ## 4. Extension model
@@ -177,18 +179,9 @@ The sections below refine implementation decisions this repo makes on top of the
 
 The DSS receives every turn as a structured envelope from the Experience API. **Language is a first-class field on the envelope**, not a projected Context Provider variable — it is a channel/session property, not user-profile data.
 
-**Inbound envelope (as implemented on this branch — ADR-0004).** The wire contract is an OpenAI-style thread plus `user_context` and `attributes`:
+**Inbound envelope.** The wire contract is `POST /v1/turns` (ADR-0006), specified in `docs/api-contracts/api-contract.md` and typed in `adapters/http/v1/schema.py`.
 
-```jsonc
-{
-  "context": { "id", "version", "transactionId", "messageId", "timestamp", "sessionId" },
-  "input": [ { "role": "user", "content": [ { "type": "text", "text": "…" } ] }, … ],
-  "user_context": { "user_id", "reference_token", "issuer", "expires_at" },
-  "attributes": { "sourceLanguage", "targetLanguage", "channel", "location", "response": { "max_characters" } }
-}
-```
-
-`orchestration/envelope.py::to_user_turn` normalizes this into the domain `UserTurn` — camelCase and provider JSON never reach the core. The last `user` message is the current query; earlier messages become typed `history`; an expired `reference_token` (`expires_at <= now`) is treated as absent. `session_id` and `transaction_id` come from the request's top-level `context` object (`context.sessionId`, `context.transactionId` — both required per `docs/api-contracts/api-contract.md`), not from `user_context`. `transaction_id` is passed through unchanged to every `/discover` and `/select` call the turn makes, so a Provider can correlate them.
+`adapters/http/v1/mapping.py::to_user_turn` normalizes it into the domain `UserTurn` — camelCase and provider JSON never reach the core. The last `user` message in `message.input` is the current query; earlier messages become typed `history`. `session_id` and `transaction_id` come from the request's top-level `context` object; a missing `transactionId` is minted. `transaction_id` is passed through unchanged to every `/discover` and `/select` call the turn makes, so a Provider can correlate them.
 
 **Domain `UserTurn` (normalized shape the core works with).**
 
@@ -231,7 +224,7 @@ class UserTurn:
 
 The DSS uses **intent-based routing**: extract an intent once, then match uniformly against skills, tools, and Provider capabilities.
 
-**Intent object (as implemented on this branch — spec 0002, ADR-0003, ADR-0014).** The classifier (`core/intent/service.py::classify_intent`) returns a `IntentClassification` — words only, no geometry — and a separate step, `core/location/service.py::resolve_places`, builds the domain `Intent` from it, filling each ask's `place`:
+**Intent object (as implemented on this branch — spec 0002, ADR-0003, ADR-0016).** The classifier (`core/intent/service.py::classify_intent`) returns a `IntentClassification` — words only, no geometry — and a separate step, `core/location/service.py::resolve_places`, builds the domain `Intent` from it, filling each ask's `place`:
 ```jsonc
 {
   "asks": [
@@ -252,7 +245,7 @@ The DSS uses **intent-based routing**: extract an intent once, then match unifor
 ```
 `interaction_type` names what the farmer wants done — **advise** (explain/guide), **observe** (look up a value/record/status), **act** (book, apply, submit, update, escalate). A turn holding several needs ("wheat price and will it rain?") yields several asks, each with its own `place` — a turn is not grounded in one location, an ask is. The layered-extraction cache pipeline below remains directional; this branch implements the LLM-classifier axis only, run in parallel with moderation.
 
-**Why the LLM never fills `place` directly (ADR-0014).** The schema handed to `llm.structured` (`IntentClassification`/`ClassifiedAsk`) carries a `place_name: str | None` — words, in English — never a geometry field. It also carries `place_from_history: bool`, which the model sets when the name came from an earlier turn; the resolver labels that place `carried`. A model asked for coordinates invents plausible ones; keeping the field off its schema entirely makes that structurally impossible rather than merely prompted against. `resolve_places` is the only place a domain `Ask` is built, matching a name against an area index (districts and blocks, an LGD-derived CSV) and filling `place`.
+**Why the LLM never fills `place` directly (ADR-0016).** The schema handed to `llm.structured` (`IntentClassification`/`ClassifiedAsk`) carries a `place_name: str | None` — words, in English — never a geometry field. It also carries `place_from_history: bool`, which the model sets when the name came from an earlier turn; the resolver labels that place `carried`. A model asked for coordinates invents plausible ones; keeping the field off its schema entirely makes that structurally impossible rather than merely prompted against. `resolve_places` is the only place a domain `Ask` is built, matching a name against an area index (districts and blocks, an LGD-derived CSV) and filling `place`.
 
 **Scheme enrichment (as implemented on this branch — ADR-0008).** Between classification and discovery, `core/enrichment/service.py::resolve_scheme_subjects` rewrites a scheme ask's `agriculture_subjects` to the official scheme name, matched against a **scheme catalog** the tenant mounts as CSV (`DSS_SCHEMES_CONFIG_PATH`; nothing ships in the image). It is deterministic — a lookup, not a model call — and matches the longest whole-token **alias** span, trying the ask's own subject before the raw query.
 
@@ -361,7 +354,7 @@ Any DPG code path that writes to durable storage — logs, traces, telemetry pay
 - **Baseline rules ship with DSS.** Phone / mobile numbers and Aadhaar-like patterns covered out of the box.
 - **Adopter-extensible.** Adopters declare additional patterns (farmer IDs, land-record numbers, coordinates precise enough to identify a plot, jurisdiction-specific identifiers) via mounted config.
 - **Redaction vs pseudonymisation.** Baseline is redaction (`phone=***`). Adopters may opt fields into pseudonymisation (`phone=usr_a1b2c3`) when stable trace-correlation across a session is needed without leaking the raw value.
-- **Consequence, once built.** Persisted artifacts observable by the DPG — Langfuse traces, application logs, telemetry, on-disk error dumps — never contain raw PII. Correlation across a session is preserved through pseudonymous tokens where declared. **This is the target, not the present state**: the interceptor does not exist (§8), and the deployed tracing described in ADR-0007 writes message content to spans without it. Application logs are the one part already honoured — external request *and* response bodies go to DEBUG, so an INFO-level deployment logs the shape of a call and not its words.
+- **Consequence, once built.** Persisted artifacts observable by the DPG — Langfuse traces, application logs, telemetry, on-disk error dumps — never contain raw PII. Correlation across a session is preserved through pseudonymous tokens where declared. **This is the target, and it is now partly the present state.** ADR-0014 built the sink-layer step this section describes, for the sinks that face the wider audience. It sits in the OpenTelemetry Collector rather than in the process: spans are stripped of the six attributes carrying message text before they reach ClickHouse, and the log bridge exports INFO and above so provider request and response bodies — DEBUG-only — never leave the process at all. What is still missing is the rest of the design: pattern-based redaction of PII appearing *inside* text that is exported, the baseline phone/Aadhaar rules, adopter-declared patterns, and pseudonymisation. And one sink is deliberately exempt: Langfuse still receives message content verbatim, which is the bounded deviation ADR-0007 §5 recorded and ADR-0014 narrowed rather than closed. Application logs were already honoured — external request *and* response bodies go to DEBUG, so an INFO-level deployment logs the shape of a call and not its words.
 
 Concrete redaction-interceptor design (library integration vs sink processor, wire format for pseudonymisation tokens, adopter rule schema, per-sink coverage) is a v1 implementation detail — tracked in §8.
 
@@ -434,7 +427,7 @@ DSS-scoped, deferred to v1 design and later governance:
 - **Router scope.** Whether Skills go through the same Router as tools/Providers.
 - **Voice-channel specifics.** Concurrent moderation patterns and voice-specific latency budgets.
 - **Registry of MCP tool schemas.** Currently spec/docs contracts only; promote to Schema Registry later if cross-adopter interop needs emerge.
-- **Redaction interceptor implementation.** §6.2 fixes the PII posture and sink-layer enforcement model. Open: library integration vs sink processor, pseudonymisation-token wire format, adopter rule-schema shape, per-sink coverage. **Now load-bearing rather than theoretical:** ADR-0007 ships tracing that records message content with no redaction in front of it, bounded only by self-hosting and a 30-day retention window. The OpenTelemetry span processor in front of the OTLP exporter is the sink §6.2 describes, and is where this should land.
+- **Redaction interceptor implementation.** §6.2 fixes the PII posture and sink-layer enforcement model. Open: library integration vs sink processor, pseudonymisation-token wire format, adopter rule-schema shape, per-sink coverage. **Partly built, by ADR-0014.** The sink-layer step exists in the OpenTelemetry Collector: message-carrying span attributes are deleted before ClickHouse, and the log bridge exports INFO and above so provider bodies never leave the process. That is placement and coarse suppression, not redaction. Still open: pattern-based redaction of PII inside exported text, the baseline phone/Aadhaar rules, the adopter rule-schema shape, pseudonymisation-token wire format, and whether the remaining sink — Langfuse, which still gets content verbatim under ADR-0007 §5 — should keep its exemption or be brought behind the same step.
 - **Stream resumability.** A dropped connection loses the pieces already sent; the DSS finishes the turn server-side and the caller recovers it from session history. ADR-0011 keeps this unchanged — no `id:` line, no `Last-Event-ID`. The known pattern is buffering each piece against `trace_id` so any replica can serve the rest on reconnect, which matters most on voice.
 - **Request envelope `history` typing.** Concrete `TurnHistoryEntry` shape (roles, tool-call trace inclusion, redaction posture) deferred.
 - **`UserDetails` extensibility.** Whether tenant-specific profile fields (farmer ID, region, land size) attach through an open `extra` dict on `UserDetails` or route through Context Providers projecting from a separate `user_context` payload. Leaning toward the latter.

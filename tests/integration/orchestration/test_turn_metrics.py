@@ -251,3 +251,35 @@ async def test_a_turn_that_fails_to_record_is_counted_as_an_error(reader) -> Non
 
     (count,) = points(reader, "dss.turn.count")
     assert dict(count.attributes) == {"status": "error", "model_profile": "tier3"}
+
+
+async def test_each_ask_is_counted_by_category_and_interaction(reader) -> None:
+    """Shows what farmers ask, without their words."""
+
+    orch, _ = _build(
+        intent=_one_ask(2),
+        discovery=_served_discovery(),
+        plan=_FakePlan(_ANSWERED_EVIDENCE),
+        compose=_FakeCompose("Wheat is 2,275 Rs [1]."),
+    )
+
+    await _collect(orch)
+
+    (asks,) = points(reader, "dss.ask.count")
+    assert asks.value == 2
+    assert dict(asks.attributes) == {"category": "Market", "interaction": "observe"}
+
+
+async def test_a_refused_turn_counts_no_asks(reader) -> None:
+    orch, _ = _build(
+        intent=_one_ask(),
+        discovery=_served_discovery(),
+        plan=_FakePlan(_ANSWERED_EVIDENCE),
+        compose=_FakeCompose("unused"),
+        violated="delete-command",
+        policies=(DELETE_COMMAND,),
+    )
+
+    await _collect(orch)
+
+    assert points(reader, "dss.ask.count") == []

@@ -6,6 +6,7 @@ enforceable, even before anything calls it.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Protocol
 
 from dss.core.provider_discovery.models import (
@@ -48,6 +49,12 @@ class CapabilityInvocation(Protocol):
         capability: ProviderCapability,
         resource_attributes: dict,
         transaction_id: NetworkTransactionID,
-    ) -> DiscoveredAnswer:
-        """Return the provider's answer, or raise ``SelectFailed``."""
+    ) -> Sequence[DiscoveredAnswer]:
+        """Return every answer the provider gave, or raise ``SelectFailed``.
+
+        A sequence, not one answer: one call's resources are grouped by the
+        document they came from, and a search provider can draw on several.
+        It may be empty — a provider that committed to nothing succeeded at
+        saying so.
+        """
         ...

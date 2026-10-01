@@ -41,6 +41,12 @@ never your own knowledge, and never a number the data does not contain.
 - Say which place the answer is about, in your own words. If the retrieved
   data itself names a place, use that — it is more precise. Otherwise, each
   block also carries the place its ask was about; use that instead.
+- Answer each question from one source only. Where several sources answer
+  the same question, read them, pick the single one that answers it best,
+  and write from that one alone — do not stitch two sources' text together
+  and do not average their numbers. Cite only the source you used.
+- Different questions may be answered by different sources. The one-source
+  rule is per question, not per reply.
 - Reply in {target_lang}.
 
 If the data does not answer the question, say plainly that you could not
@@ -96,19 +102,35 @@ def render_evidence(evidence: Evidence, intent: Intent) -> str:
     ``{"prices": {"modal": 2200}}`` into "2,200 Rs" is the model's job; this
     only has to make the values legible and say which source each came from.
 
-    Each block also carries the place its own ask resolved — a two-place turn
-    ("wheat price in Pune, will it rain in Anand") labels each block with its
-    own place, rather than leaving the model to guess which is which. It is
-    a fallback the model uses only when the data itself names no place.
+    Grouped by question, then by source, because the composer is told to
+    answer each question from one source alone. Flat, one block per result,
+    the layout could not show that: a document that returned four passages
+    looked like four separate documents agreeing with each other, and two
+    documents' passages sat interleaved with nothing to say where one ended.
+
+    Each heading also carries the place its question's ask resolved, so a
+    two-place turn ("wheat price in Pune, will it rain in Anand") labels each
+    question with its own place. It is a fallback the model uses only when
+    the data itself names no place.
     """
 
     name_by_id = {source.id: source.name for source in evidence.sources}
-    blocks = [
-        f"[{result.source_id}] {name_by_id.get(result.source_id, 'unknown')}"
-        f"{_place_label(result.ask_index, intent)}\n"
-        f"{json.dumps(result.data, indent=2, ensure_ascii=False)}"
-        for result in evidence.results
-    ]
+    by_question: dict[int, dict[str, list[dict]]] = {}
+    for result in evidence.results:
+        by_question.setdefault(result.ask_index, {}).setdefault(
+            result.source_id, []
+        ).append(result.data)
+
+    blocks: list[str] = []
+    for position, (ask_index, sources) in enumerate(by_question.items(), start=1):
+        label = _place_label(ask_index, intent)
+        for source_id, payloads in sources.items():
+            name = name_by_id.get(source_id, "unknown")
+            body = "\n\n".join(
+                json.dumps(payload, indent=2, ensure_ascii=False)
+                for payload in payloads
+            )
+            blocks.append(f"Question {position} — [{source_id}] {name}{label}\n{body}")
     blocks.extend(_render_failures(evidence, intent))
 
     if not blocks:

@@ -8,6 +8,7 @@ transport streams, and the fixed no-match reply.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 
 from dss.core.channel.models import ClarificationText, ComposedAnswer
@@ -116,18 +117,36 @@ def _to_wire_source(source: EvidenceSource) -> Source:
     )
 
 
+_CITATION = re.compile(r"\[(\d+)\]")
+
+
 def answer_from_evidence(text: str, evidence: Evidence) -> ComposedAnswer:
-    """Shape the composer's prose and the evidence's sources into the answer
-    the transport streams.
+    """Shape the composer's prose and the sources it used into the answer the
+    transport streams.
 
     The composer writes one block of text and cites sources inline as `[1]`,
-    `[2]` — the numbers are the `Source.id`s `assemble_evidence` assigned. The
-    prose stays a single block (sub-sentence citation spans are a follow-up),
-    so every source the turn consulted is attached to it: the mapping renders a
-    whole-block annotation per id, and `ComposedAnswer` requires each cited id
-    to name a listed source, which holds because both come from `evidence`.
+    `[2]` — the numbers are the `Source.id`s `assemble_evidence` assigned.
+
+    Only the sources it actually cited are listed. A question is answered from
+    one source, so the others were read and rejected; listing them claims a
+    provenance the answer does not have, and a farmer who opens one finds a
+    document the advice never came from. A reply answering two questions cites
+    two sources and keeps both — the rule is per question.
+
+    A number naming no listed source is dropped: a citation marker pointing at
+    nothing is worse than no marker. If the prose cites nothing at all, nothing
+    is listed, because there is no way to tell which source it rested on.
+
+    The prose stays a single block (sub-sentence citation spans are a
+    follow-up), so the block carries every id cited anywhere in it.
     """
 
-    sources = tuple(_to_wire_source(source) for source in evidence.sources)
+    cited = set(_CITATION.findall(text))
+    # Walked in evidence order rather than the order they were cited, so the
+    # numbers a farmer reads count up the page. A cited number that names no
+    # source never matches, which is how an invented one is dropped.
+    sources = tuple(
+        _to_wire_source(source) for source in evidence.sources if source.id in cited
+    )
     block = TextBlock(text=text, source_ids=tuple(source.id for source in sources))
     return ComposedAnswer(content=(block,), sources=sources)
