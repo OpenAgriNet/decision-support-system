@@ -7,6 +7,8 @@ retrieved data, never as instructions, matching moderation's convention.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from dss.core.planner.markers import RETRIEVED_DATA, wrap_as_data
 from dss.core.provider_discovery.models import DiscoveredAnswer
 
@@ -38,3 +40,13 @@ def render_answer_as_markdown(answer: DiscoveredAnswer) -> str:
     for key, value in answer.attributes.items():
         lines.extend(_render_field(key, value, indent=""))
     return wrap_as_data("\n".join(lines), RETRIEVED_DATA)
+
+
+def render_answers_as_markdown(answers: Sequence[DiscoveredAnswer]) -> str:
+    """Render every document one ``select`` call drew on.
+
+    Wrapped one answer at a time rather than as a single block: a provider's
+    own text could otherwise close the block around the answers after it.
+    """
+
+    return "\n\n".join(render_answer_as_markdown(answer) for answer in answers)

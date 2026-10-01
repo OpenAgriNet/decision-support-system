@@ -47,7 +47,7 @@ async def test_select_against_a_real_local_server(httpserver: HTTPServer) -> Non
             receiver_id="provider-network-vistaar.da.gov.in",
         )
 
-        answer = await invocation.select(
+        (answer,) = await invocation.select(
             CAPABILITY,
             {"@type": "openagrinet:WeatherObservation"},
             transaction_id="txn-test",

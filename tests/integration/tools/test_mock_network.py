@@ -328,7 +328,7 @@ async def test_select_returns_the_values_the_composer_will_quote(
         provider_code="IMD-NWP-01",
     )
 
-    answer = await invocation.select(
+    (answer,) = await invocation.select(
         capability,
         _planner_attributes(capability, {"observationType": "Forecast"}),
         "9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44",
@@ -393,7 +393,7 @@ async def test_mandi_select_answers_one_price_for_the_advertised_market(
         client=client, base_url="http://mock.test", sender_id="dss", receiver_id="x"
     )
 
-    answer = await invocation.select(mumbai, attrs, "txn-mandi")
+    (answer,) = await invocation.select(mumbai, attrs, "txn-mandi")
 
     assert answer.attributes["resources"] == [
         {
@@ -443,7 +443,7 @@ async def test_advisory_select_answers_with_the_questions_written_answer(
         client=client, base_url="http://mock.test", sender_id="dss", receiver_id="x"
     )
 
-    answer = await invocation.select(capability, attrs, "txn-advisory")
+    (answer,) = await invocation.select(capability, attrs, "txn-advisory")
 
     ginger = next(q for q in _benchmark_questions() if q["id"] == "7-1")
     assert answer.attributes["resources"] == [
