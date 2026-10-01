@@ -113,10 +113,10 @@ def build_intent_prompt(history: Sequence[ConversationMessage]) -> str:
         "  Conversation: user 'cotton rate?', assistant 'At Akola market, "
         "cotton is 6,500 a quintal.', then 'and yesterday?' -> place_name "
         "null. Akola is where the answer came from, not where the user is.",
-        "  Conversation: user 'weather in Bilaspur', assistant 'Bilaspur is in "
-        "several places. Which one: 1. Bilaspur, Himachal Pradesh 2. Bilaspur, "
-        "Chhattisgarh', then '2' -> one ask: Weather / observe, place_name "
-        "'Bilaspur, Chhattisgarh'. The user picked one of the listed options, "
+        "  Conversation: user 'weather in Sonagiri', assistant 'Which Sonagiri? "
+        "1. Sonagiri, Gujarat 2. Sonagiri, Odisha', then '2' -> one ask: "
+        "Weather / observe, place_name 'Sonagiri, Odisha'. The user picked one "
+        "of the listed options, "
         "so answer the first question. Copy the option as listed. If the "
         "reply matches none of the listed options, it is not a pick: read it "
         "as a new question.",

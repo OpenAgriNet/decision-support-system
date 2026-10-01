@@ -170,11 +170,13 @@ def test_prompt_shows_an_assistant_named_place_is_not_carried() -> None:
 
 def test_prompt_shows_a_reply_by_number_finishes_the_first_question() -> None:
     """A reply of "2" means nothing alone. The example shows the model reading
-    our numbered list in the history and copying the picked line."""
+    our numbered list in the history and copying the picked line. Its name is
+    made up: a real one, listed in another order, could teach a wrong pick."""
 
     prompt = build_intent_prompt([])
 
-    assert "'Bilaspur, Chhattisgarh'" in prompt
+    assert "Which Sonagiri? 1. Sonagiri, Gujarat 2. Sonagiri, Odisha" in prompt
+    assert "'Sonagiri, Odisha'" in prompt
 
 
 def test_prompt_shows_the_place_a_data_answer_came_from_is_not_the_users() -> None:
