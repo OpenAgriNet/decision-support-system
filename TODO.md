@@ -204,6 +204,18 @@
       wrongly.
   - A repeat is better than silently dropping a question. A real fix needs us
     to remember what was answered, and ADR-0015 chose not to keep that.
+- **A reply in Hindi numbers is not tested (#131).** A farmer may reply "२"
+  or "दूसरा" ("second") to "Which Rampur?". The model probably reads it, but no
+  tier 5 test checks it. Add both to the reply test.
+- **A pick is forgotten after about 3 back-and-forths (#131).** The intent
+  model sees the last 6 messages. After that, neither our list nor the
+  farmer's pick is in view, and a follow-up like "and next week?" can lose the
+  picked Rampur. Fix needs a longer window or the place carried another way.
+- **A long message in the history is not indented (#131).** In the intent
+  prompt, the second line of our "Which Rampur?" message starts at the left
+  edge, with no "assistant:" in front. A weak model could read the list as
+  part of the instructions. Fix: indent every line, or wrap the history as
+  data like the planner does.
 - **Direct replies skip the stream.** A no-match, a refusal, or "which
   place?" with nothing else answered arrives only in the final event, with no
   `claim.delta`. The composed answer streams. Sending every reply the same way
