@@ -193,5 +193,6 @@ async def test_the_real_component_streams_through_the_runner() -> None:
 
     events = await _collect(orch)
 
-    assert [e.text for e in events if isinstance(e, ClaimDelta)] == list(chunks)
-    assert events[-1].content[0].text == "".join(chunks)
+    streamed = "".join(e.text for e in events if isinstance(e, ClaimDelta))
+    assert streamed == "Wheat is 2,275 Rs. [1]"
+    assert events[-1].content[0].text == streamed

@@ -8,11 +8,12 @@ back is pure waiting for the farmer.
 So it yields. A piece goes out the moment the model produces it, and the caller
 decides what to do with it — frame it, buffer it, or drop it.
 
-**Pieces are passed on exactly as they arrive.** The model breaks text wherever
-it likes: mid-word, mid-number, mid-citation. Nothing here re-splits them onto
-tidier boundaries, because the one guarantee everything downstream rests on is
-that joining the pieces gives the answer. A "helpful" reshape is how that gets
-lost.
+**Pieces are passed on as they arrive, except citations.** The model breaks
+text wherever it likes: mid-word, mid-number, mid-citation. Nothing here
+re-splits them onto tidier boundaries, because the one guarantee everything
+downstream rests on is that joining the pieces gives the answer. The one
+exception is `[n]` markers, which `cite_at_end` moves to the end: a small model
+cites every sentence, and no prompt stopped it.
 
 **No retry, and none available.** `LLMProvider.stream_text` does not offer one
 (`ports/llm.py`): re-issuing after pieces are out would write a *different*
@@ -33,6 +34,7 @@ from typing import Protocol
 from dss.core.channel.prompt import system_prompt, user_prompt
 from dss.core.planner.models import Evidence, Identity
 from dss.core.shared.models import UserTurn
+from dss.core.stream_response.citations import cite_at_end
 from dss.ports.llm import LLMProvider
 
 
@@ -70,11 +72,14 @@ async def stream_response(
     # `GeneratorExit` stops here and the model's stream stays suspended until
     # the garbage collector finalises it — holding the HTTP connection to the
     # model open after the farmer has already hung up.
-    async with aclosing(
-        llm.stream_text(
-            system_prompt=system_prompt(identity, turn=turn),
-            user_query=user_prompt(evidence, turn=turn),
-        )
-    ) as pieces:
+    async with (
+        aclosing(
+            llm.stream_text(
+                system_prompt=system_prompt(identity, turn=turn),
+                user_query=user_prompt(evidence, turn=turn),
+            )
+        ) as written,
+        aclosing(cite_at_end(written)) as pieces,
+    ):
         async for delta in pieces:
             yield delta
