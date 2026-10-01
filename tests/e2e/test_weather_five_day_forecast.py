@@ -31,7 +31,9 @@ pytestmark = pytest.mark.skipif(
     "OPENAI_API_KEY for a deployment bound the other way",
 )
 
-MODEL = "azure:gpt-5.6-luna"
+# Overridable, because how well a prompt rule holds depends on the model: the
+# dev environment runs a smaller one than this default.
+MODEL = os.getenv("DSS_E2E_MODEL", "azure:gpt-5.6-luna")
 QUERY = "Can you give me weather for next 5 days for Nashik?"
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -124,10 +126,8 @@ def _quoted(value: float, text: str) -> bool:
     return f"{value:g}" in text or str(round(value)) in text
 
 
-def test_a_live_model_answers_every_day_of_the_forecast(
-    live_app, live_network, a_body
-) -> None:
-    response = TestClient(live_app).post(
+def _ask(app, a_body, *, accept: str):
+    return TestClient(app).post(
         "/v1/turns",
         json=a_body(
             message__input=[
@@ -145,8 +145,26 @@ def test_a_live_model_answers_every_day_of_the_forecast(
                 "response": {"maxCharacters": 1200},
             },
         ),
-        headers={"Accept": "application/json"},
+        headers={"Accept": accept},
     )
+
+
+def _streamed_text(sse: str) -> str:
+    """The answer as a client renders it: every `claim.delta` piece, joined."""
+
+    text = ""
+    for frame in sse.strip().split("\n\n"):
+        name, data = frame.split("\n")[:2]
+        if name == "event: claim.delta":
+            payload = json.loads(data.removeprefix("data: "))
+            text += payload["message"]["content"][0]["text"]
+    return text
+
+
+def test_a_live_model_answers_every_day_of_the_forecast(
+    live_app, live_network, a_body
+) -> None:
+    response = _ask(live_app, a_body, accept="application/json")
 
     assert response.status_code == 200
     message = response.json()["message"]
@@ -160,4 +178,16 @@ def test_a_live_model_answers_every_day_of_the_forecast(
     assert _quoted(FIRST_DAY_MAXIMUM, text), text
     assert _quoted(LAST_DAY_MAXIMUM, text), text
     # One source, so one citation — not one per day.
+    assert text.count("[1]") == 1, text
+
+
+def test_a_streamed_answer_cites_its_one_source_once(live_app, a_body) -> None:
+    """What a farmer's screen shows: the pieces as they arrived, joined. A
+    citation sent mid-stream cannot be taken back."""
+
+    response = _ask(live_app, a_body, accept="text/event-stream")
+
+    assert response.status_code == 200
+    text = _streamed_text(response.text)
+    print(f"\n  model streamed: {text!r}")
     assert text.count("[1]") == 1, text
