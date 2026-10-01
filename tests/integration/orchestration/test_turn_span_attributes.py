@@ -262,3 +262,36 @@ async def test_the_location_stage_says_what_became_of_each_place(spans) -> None:
             "Pune: found; Aurangabad: 2 matches; Xyzzy: not found"
         ),
     }
+
+
+async def test_the_turn_carries_the_shape_of_what_was_asked(spans) -> None:
+    """One row per turn says what was asked, never the question itself."""
+
+    orch, _ = _build(
+        intent=_one_ask(),
+        discovery=_served_discovery(),
+        plan=_FakePlan(_ANSWERED_EVIDENCE),
+        compose=_FakeCompose("Wheat is 2,275 Rs [1]."),
+    )
+
+    await _collect(orch)
+
+    attributes = _turn_span(spans).attributes
+    assert attributes["dss.ask.categories"] == ("Market",)
+    assert attributes["dss.ask.interactions"] == ("observe",)
+    assert attributes["dss.ask.subjects"] == ("wheat",)
+
+
+async def test_a_refused_turn_carries_no_ask_shape(spans) -> None:
+    orch, _ = _build(
+        intent=_one_ask(),
+        discovery=_served_discovery(),
+        plan=_FakePlan(_ANSWERED_EVIDENCE),
+        compose=_FakeCompose("unused"),
+        violated="delete-command",
+        policies=(DELETE_COMMAND,),
+    )
+
+    await _collect(orch)
+
+    assert "dss.ask.categories" not in _turn_span(spans).attributes

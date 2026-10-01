@@ -136,3 +136,66 @@ async def test_the_call_span_counts_its_attempts(spans) -> None:
 
     call = next(s for s in spans.get_finished_spans() if s.name == "dss.select")
     assert call.attributes["attempts"] == 3
+
+
+def _answer(attributes: dict) -> httpx.Response:
+    return httpx.Response(
+        200,
+        json={
+            "message": {
+                "contract": {
+                    "commitments": [
+                        {
+                            "resources": [
+                                {
+                                    "id": "res:answered",
+                                    "resourceAttributes": {
+                                        "@type": CAPABILITY.capability,
+                                        **attributes,
+                                    },
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+        },
+    )
+
+
+async def test_the_call_span_says_what_was_asked_and_whether_data_came_back(
+    spans,
+) -> None:
+    """An empty 200 would otherwise look like a healthy provider."""
+
+    await _invocation(lambda _: _answer({"parameters": [{"name": "rain"}]})).select(
+        CAPABILITY, {}, "txn-1"
+    )
+
+    call = next(s for s in spans.get_finished_spans() if s.name == "dss.select")
+    assert call.attributes["capability"] == "openagrinet:WeatherObservation"
+    assert call.attributes["answered"] is True
+
+
+async def test_an_empty_answer_is_marked_as_one(spans) -> None:
+    await _invocation(lambda _: _answer({"parameters": []})).select(
+        CAPABILITY, {}, "txn-1"
+    )
+
+    call = next(s for s in spans.get_finished_spans() if s.name == "dss.select")
+    assert call.attributes["answered"] is False
+
+
+async def test_a_failed_call_says_how_it_failed_by_class(spans) -> None:
+    """Provider error text may echo the farmer's query."""
+
+    def forbidden(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(403, json={"error": "secret-query-echo"})
+
+    with pytest.raises(SelectFailed):
+        await _invocation(forbidden).select(CAPABILITY, {}, "txn-1")
+
+    call = next(s for s in spans.get_finished_spans() if s.name == "dss.select")
+    assert call.attributes["failure_class"] == "defect"
+    assert "answered" not in call.attributes
+    assert "secret-query-echo" not in str(dict(call.attributes))

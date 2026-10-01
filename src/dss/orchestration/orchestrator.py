@@ -193,6 +193,14 @@ class Orchestrator:
                 return
 
             self._note("intent", ctx, _classified(result.intent))
+            # After the moderation gate, so a refused turn's asks are not
+            # counted as something farmers asked for.
+            asks = result.intent.asks
+            recorder.asked(
+                categories=[ask.subject_categories.value for ask in asks],
+                interactions=[ask.interaction_type.value for ask in asks],
+                subjects=[ask.agriculture_subjects or "" for ask in asks],
+            )
 
             # No ask has a place to search around: named nowhere, a name the
             # index does not carry, or a name matching several. Ask rather

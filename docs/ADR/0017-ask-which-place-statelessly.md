@@ -1,4 +1,4 @@
-# ADR-0015: Ask Which Place, and Read the Reply, Statelessly
+# ADR-0017: Ask Which Place, and Read the Reply, Statelessly
 
 - **Status:** ACCEPTED
 - **Date:** 2026-09-30
@@ -8,7 +8,7 @@
 
 ## 1. Context and Problem Statement
 
-A name like Rampur can mean several places. ADR-0014 asks the farmer which
+A name like Rampur can mean several places. ADR-0016 asks the farmer which
 one, with a numbered list. The farmer replies "Himachal" or "2". Today that
 reply is a new question and means nothing.
 
@@ -80,7 +80,7 @@ checks it. It is place-only for now.
   is never given a wrong place. The live-model tests (tier 5) measure how
   often this happens, on each model in use.
 - The prompt that reads the question is fragile. One added sentence once made
-  a model merge two separate questions into one (ADR-0014). After any change
+  a model merge two separate questions into one (ADR-0016). After any change
   to that prompt, run all the live-model tests on each model in use, not only
   the new ones.
 - On a partly answered turn, the question is the last streamed piece of the

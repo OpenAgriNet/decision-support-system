@@ -203,7 +203,7 @@
       retry when Pune failed last time, or a new question the model marks
       wrongly.
   - A repeat is better than silently dropping a question. A real fix needs us
-    to remember what was answered, and ADR-0015 chose not to keep that.
+    to remember what was answered, and ADR-0017 chose not to keep that.
 - **A reply in Hindi numbers is not tested (#131).** A farmer may reply "२"
   or "दूसरा" ("second") to "Which Rampur?". The model probably reads it, but no
   tier 5 test checks it. Add both to the reply test.

@@ -21,7 +21,7 @@ from dss.core.intent.models import (
 from dss.core.moderation.models import Outcome
 from dss.core.planner.describe_capability import render_candidates_as_markdown
 from dss.core.planner.lookup import find_capability
-from dss.core.planner.markdown import render_answer_as_markdown
+from dss.core.planner.markdown import render_answers_as_markdown
 from dss.core.planner.models import Failure, Skill, Verdict
 from dss.core.planner.resource_attributes import build_resource_attributes
 from dss.core.planner.skills import tool_names_for
@@ -140,7 +140,7 @@ async def _select(
     )
 
     try:
-        answer = await deps.invocation.select(
+        answers = await deps.invocation.select(
             capability, full_attributes, deps.turn.transaction_id
         )
     except SelectFailed as exc:
@@ -166,8 +166,18 @@ async def _select(
             f"no answer."
         )
 
-    deps.raw_answers.append((ask_index, answer))
-    return render_answer_as_markdown(answer)
+    if not answers:
+        # A 200 that committed to nothing. Not a failure — the provider was
+        # reached and had nothing — so it is not recorded as one, but the
+        # model still has to hear that this candidate is spent.
+        return (
+            f"{capability.provider_name} returned no results for ask "
+            f"{ask_index}. Try another candidate if there is one, or report "
+            f"that this ask has no answer."
+        )
+
+    deps.raw_answers.extend((ask_index, answer) for answer in answers)
+    return render_answers_as_markdown(answers)
 
 
 async def _describe_capability(ctx: RunContext[PlannerDeps], ask_index: int) -> str:

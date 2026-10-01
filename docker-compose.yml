@@ -33,18 +33,17 @@ services:
       # The DSS's own credential for the gateway, and the only key it holds.
       # Vendor keys live in the gateway and never reach this process.
       DSS_GATEWAY_API_KEY: ${DSS_GATEWAY_API_KEY:-}
-      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
-      # Without these three the container exports nothing useful: no auth means
-      # 401 on every batch, and no content means spans that say what ran but not
-      # what was asked. Setting the endpoint alone is the easy mistake.
-      OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS:-}
-      # Off by default, and deliberately: the usual endpoint above is Langfuse,
-      # which discards metrics, so leaving this on means one pointless POST per
-      # interval. Set it to `otlp` when the endpoint is a Collector that
-      # forwards metrics somewhere — then `dss.turn.*`, `dss.stage.*` and the
-      # HTTP request metrics leave the process. Pydantic AI's own `gen_ai.*`
-      # token metrics come along with them; `dss.*` is what a dashboard reads.
-      OTEL_METRICS_EXPORTER: ${OTEL_METRICS_EXPORTER:-none}
+      # The collector, not Langfuse. It always runs, so this can default.
+      # No credentials: the collector holds Langfuse's.
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318}
+      # On: the collector forwards metrics to ClickHouse.
+      OTEL_METRICS_EXPORTER: ${OTEL_METRICS_EXPORTER:-otlp}
+      # Delta, not cumulative: a rate panel then just sums rows.
+      OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE: ${OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE:-delta}
+      # Tells DSS rows apart in a shared ClickHouse. Unset: `unknown_service`.
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-dss}
+      # Keeps staging and production turns out of the same panel.
+      OTEL_RESOURCE_ATTRIBUTES: deployment.environment.name=${DSS_ENV:-dev}
       # One name for the whole model configuration above, labelling every
       # turn-level metric. Nothing derives it — two deployments running the
       # same four models are only comparable if they say which is which.
@@ -70,25 +69,27 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # Somewhere for the spans to go. Behind a profile, so the default `up` does
-  # not start it:
-  #
-  #     docker compose --profile tracing up -d
-  #
-  # Only worth starting when you want to look. Nothing listening on the
-  # endpoint means the DSS's exporter retries loudly and buries the rest of
-  # the log — so leave OTEL_EXPORTER_OTLP_ENDPOINT unset otherwise, which is
-  # its default.
+  # Export hub. No profile: the DSS points at it by default.
+  # Sends content to Langfuse, and a content-free copy to ClickHouse.
   otel-collector:
-    profiles: [tracing]
     image: otel/opentelemetry-collector-contrib:${OTEL_COLLECTOR_TAG:-latest}
-    # Printing to its own log is the whole job here. A deployment replaces
-    # this with a config that forwards to Langfuse or wherever else, which is
-    # why the config is a mounted file rather than baked in.
     command:
       - --config=/etc/otel/collector.yaml
     volumes:
       - ./otel/collector.yaml:/etc/otel/collector.yaml:ro
+    environment:
+      # Reached by name over oan-edge, Langfuse's network.
+      LANGFUSE_OTLP_ENDPOINT: ${LANGFUSE_OTLP_ENDPOINT:-http://langfuse-web:3000/api/public/otel}
+      # `Basic $(printf '%s:%s' "$PUBLIC_KEY" "$SECRET_KEY" | base64)`.
+      # A plain header value, so a literal space (not `%20`) is correct.
+      LANGFUSE_AUTH_HEADER: ${LANGFUSE_AUTH_HEADER:-}
+      # Native protocol: tcp://host:9000. No default: a wrong guess sends
+      # telemetry where nobody looks.
+      CLICKHOUSE_ENDPOINT: ${CLICKHOUSE_ENDPOINT:-}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-}
+      # May be shared. Check the tables' schema before a second collector writes.
+      CLICKHOUSE_DATABASE: ${CLICKHOUSE_DATABASE:-otel}
     ports:
       # OTLP/HTTP. The DSS reaches it as http://otel-collector:4318 from
       # inside the compose network; the published port is for a DSS running on

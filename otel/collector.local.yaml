@@ -1,20 +1,19 @@
-# Export hub: one OTLP stream in, two destinations out.
-# - Langfuse: traces with prompts and answers, for debugging.
-# - ClickHouse: traces, metrics and logs without content, for dashboards.
-# Two trace pipelines, because a pipeline cannot branch after a processor.
+# Laptop collector: the deployment shape, minus ClickHouse.
+# - A separate file: an exporter with nowhere to send stops the collector.
+# - The allowlist still runs and prints, so you can see farmer text
+#   stripped without running ClickHouse.
 
 receivers:
   otlp:
     protocols:
       http:
-        # 0.0.0.0: the DSS connects from another container.
         endpoint: 0.0.0.0:4318
 
 processors:
   batch:
 
-  # Only named attributes reach ClickHouse; anything unknown is dropped.
-  # Nothing redacts farmer text before this point.
+  # Must match the deployment config; a test fails if they drift.
+  # Only named attributes pass; anything unknown is dropped.
   # Fails closed: an erroring statement drops the batch.
   transform/clickhouse_allowlist:
     error_mode: propagate
@@ -28,24 +27,14 @@ processors:
           - 'keep_keys(spanevent.attributes, ["exception.type", "exception.escaped", "elapsed_ms"])'
 
 exporters:
-  # Traces only; Langfuse drops metrics.
   otlphttp/langfuse:
     traces_endpoint: ${env:LANGFUSE_OTLP_ENDPOINT}
     headers:
       Authorization: ${env:LANGFUSE_AUTH_HEADER}
 
-  clickhouse:
-    # Native protocol: tcp://host:9000.
-    endpoint: ${env:CLICKHOUSE_ENDPOINT}
-    username: ${env:CLICKHOUSE_USER}
-    password: ${env:CLICKHOUSE_PASSWORD}
-    # Shared database; rows are told apart by service.name.
-    database: ${env:CLICKHOUSE_DATABASE}
-    # Creates tables if absent. Check the schema before sharing a database.
-    create_schema: true
-    # 30 days, same as Langfuse. Set at table creation; changing it needs an ALTER.
-    ttl: 720h
-    # Default retry and queue: in memory, drop on overflow.
+  debug:
+    # Prints every attribute, so the strip is visible.
+    verbosity: detailed
 
 service:
   pipelines:
@@ -54,18 +43,17 @@ service:
       processors: [batch]
       exporters: [otlphttp/langfuse]
 
-    traces/clickhouse:
+    traces/stripped:
       receivers: [otlp]
-      # Allowlist first, so nothing downstream sees content.
       processors: [transform/clickhouse_allowlist, batch]
-      exporters: [clickhouse]
+      exporters: [debug]
 
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [clickhouse]
+      exporters: [debug]
 
     logs:
       receivers: [otlp]
       processors: [batch]
-      exporters: [clickhouse]
+      exporters: [debug]

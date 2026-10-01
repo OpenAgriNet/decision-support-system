@@ -104,7 +104,6 @@ def _invocation_returning_body(body: dict) -> HttpCapabilityInvocation:
     [
         ("no contract", {"message": {}}),
         ("no commitments", {"message": {"contract": {}}}),
-        ("empty commitments", {"message": {"contract": {"commitments": []}}}),
         (
             "resource missing resourceAttributes",
             {"message": {"contract": {"commitments": [{"resources": [{"id": "r"}]}]}}},
@@ -132,6 +131,18 @@ async def test_a_malformed_200_raises_selectfailed_not_a_bare_keyerror(
     # a defect, not transient: the same body will fail the same way
     assert exc_info.value.failure_class == FailureClass.DEFECT
     assert exc_info.value.capability == "openagrinet:WeatherObservation"
+
+
+async def test_a_200_that_committed_to_nothing_is_empty_not_malformed() -> None:
+    """An empty commitments list is readable — it says the provider found
+    nothing. That is an answer of zero results, not a body we could not parse,
+    so the caller gets an empty sequence and can try another candidate."""
+
+    invocation = _invocation_returning_body(
+        {"message": {"contract": {"commitments": []}}}
+    )
+
+    assert await invocation.select(CAPABILITY, {}, transaction_id="txn-test") == []
 
 
 async def test_a_malformed_200_is_not_retried() -> None:

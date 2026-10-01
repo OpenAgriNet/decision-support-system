@@ -1,0 +1,446 @@
+{
+  "context": {
+    "action": "on_select",
+    "messageId": "6549b047-2923-4175-a021-5dcaf46c0853",
+    "timestamp": "2026-09-30T12:58:15.347Z",
+    "transactionId": "7ea148b1-53f8-41ab-bad5-69208311b88b",
+    "version": "2.0.0"
+  },
+  "message": {
+    "contract": {
+      "commitments": [
+        {
+          "offer": {
+            "id": "offer:open-data",
+            "provider": {
+              "descriptor": {
+                "name": "IMD Mausamgram"
+              },
+              "id": "mausamgram"
+            },
+            "resourceIds": [
+              "res:mausamgram:forecast:2026-09-30",
+              "res:mausamgram:forecast:2026-10-01",
+              "res:mausamgram:forecast:2026-10-02",
+              "res:mausamgram:forecast:2026-10-03",
+              "res:mausamgram:forecast:2026-10-04"
+            ]
+          },
+          "resources": [
+            {
+              "id": "res:mausamgram:forecast:2026-09-30",
+              "quantity": {
+                "count": 1
+              },
+              "resourceAttributes": {
+                "@context": "https://openagrinet.github.io/network-specs/schema/WeatherObservation/v0.1/context.jsonld",
+                "@type": "openagrinet:WeatherObservation",
+                "generatedAt": "2026-09-30T12:58:15.347Z",
+                "informationMode": "Direct",
+                "location": {
+                  "geo": {
+                    "coordinates": [
+                      73.75,
+                      19.875
+                    ],
+                    "type": "Point"
+                  }
+                },
+                "modelRunAt": "2026-09-30T00:00:00+05:30",
+                "observationType": "Forecast",
+                "parameters": [
+                  {
+                    "parameter": "Rainfall",
+                    "unit": "mm",
+                    "values": {
+                      "sum": 0
+                    }
+                  },
+                  {
+                    "parameter": "Temperature",
+                    "unit": "Cel",
+                    "values": {
+                      "maximum": 26.97,
+                      "minimum": 22.17
+                    }
+                  },
+                  {
+                    "parameter": "Humidity",
+                    "unit": "%",
+                    "values": {
+                      "maximum": 62.31,
+                      "minimum": 48.38
+                    }
+                  },
+                  {
+                    "parameter": "WindSpeed",
+                    "unit": "m/s",
+                    "values": {
+                      "mean": 1.68
+                    }
+                  },
+                  {
+                    "parameter": "WindDirection",
+                    "unit": "deg",
+                    "values": {
+                      "instantaneous": 117.64
+                    }
+                  },
+                  {
+                    "parameter": "Alert",
+                    "unit": "1",
+                    "values": {
+                      "instantaneous": "Partly Cloudy Sky"
+                    }
+                  }
+                ],
+                "source": {
+                  "sourceId": "mausamgram",
+                  "sourceName": "IMD Mausamgram NWP",
+                  "sourceUri": "https://mausamgram.imd.gov.in/"
+                },
+                "subjectCategories": [
+                  "Weather"
+                ],
+                "validity": {
+                  "endsAt": "2026-09-30T23:59:59+05:30",
+                  "startsAt": "2026-09-30T00:00:00+05:30"
+                }
+              }
+            },
+            {
+              "id": "res:mausamgram:forecast:2026-10-01",
+              "quantity": {
+                "count": 1
+              },
+              "resourceAttributes": {
+                "@context": "https://openagrinet.github.io/network-specs/schema/WeatherObservation/v0.1/context.jsonld",
+                "@type": "openagrinet:WeatherObservation",
+                "generatedAt": "2026-09-30T12:58:15.347Z",
+                "informationMode": "Direct",
+                "location": {
+                  "geo": {
+                    "coordinates": [
+                      73.75,
+                      19.875
+                    ],
+                    "type": "Point"
+                  }
+                },
+                "modelRunAt": "2026-09-30T00:00:00+05:30",
+                "observationType": "Forecast",
+                "parameters": [
+                  {
+                    "parameter": "Rainfall",
+                    "unit": "mm",
+                    "values": {
+                      "sum": 0
+                    }
+                  },
+                  {
+                    "parameter": "Temperature",
+                    "unit": "Cel",
+                    "values": {
+                      "maximum": 32.47,
+                      "minimum": 23
+                    }
+                  },
+                  {
+                    "parameter": "Humidity",
+                    "unit": "%",
+                    "values": {
+                      "maximum": 56.19,
+                      "minimum": 36.19
+                    }
+                  },
+                  {
+                    "parameter": "WindSpeed",
+                    "unit": "m/s",
+                    "values": {
+                      "mean": 2.38
+                    }
+                  },
+                  {
+                    "parameter": "WindDirection",
+                    "unit": "deg",
+                    "values": {
+                      "instantaneous": 56.47
+                    }
+                  },
+                  {
+                    "parameter": "Alert",
+                    "unit": "1",
+                    "values": {
+                      "instantaneous": "Mainly Clear Sky"
+                    }
+                  }
+                ],
+                "source": {
+                  "sourceId": "mausamgram",
+                  "sourceName": "IMD Mausamgram NWP",
+                  "sourceUri": "https://mausamgram.imd.gov.in/"
+                },
+                "subjectCategories": [
+                  "Weather"
+                ],
+                "validity": {
+                  "endsAt": "2026-10-01T23:59:59+05:30",
+                  "startsAt": "2026-10-01T00:00:00+05:30"
+                }
+              }
+            },
+            {
+              "id": "res:mausamgram:forecast:2026-10-02",
+              "quantity": {
+                "count": 1
+              },
+              "resourceAttributes": {
+                "@context": "https://openagrinet.github.io/network-specs/schema/WeatherObservation/v0.1/context.jsonld",
+                "@type": "openagrinet:WeatherObservation",
+                "generatedAt": "2026-09-30T12:58:15.347Z",
+                "informationMode": "Direct",
+                "location": {
+                  "geo": {
+                    "coordinates": [
+                      73.75,
+                      19.875
+                    ],
+                    "type": "Point"
+                  }
+                },
+                "modelRunAt": "2026-09-30T00:00:00+05:30",
+                "observationType": "Forecast",
+                "parameters": [
+                  {
+                    "parameter": "Rainfall",
+                    "unit": "mm",
+                    "values": {
+                      "sum": 0
+                    }
+                  },
+                  {
+                    "parameter": "Temperature",
+                    "unit": "Cel",
+                    "values": {
+                      "maximum": 32.5,
+                      "minimum": 23.5
+                    }
+                  },
+                  {
+                    "parameter": "Humidity",
+                    "unit": "%",
+                    "values": {
+                      "maximum": 55.5,
+                      "minimum": 34.69
+                    }
+                  },
+                  {
+                    "parameter": "WindSpeed",
+                    "unit": "m/s",
+                    "values": {
+                      "mean": 2.77
+                    }
+                  },
+                  {
+                    "parameter": "WindDirection",
+                    "unit": "deg",
+                    "values": {
+                      "instantaneous": 80.62
+                    }
+                  },
+                  {
+                    "parameter": "Alert",
+                    "unit": "1",
+                    "values": {
+                      "instantaneous": "Sunny Day"
+                    }
+                  }
+                ],
+                "source": {
+                  "sourceId": "mausamgram",
+                  "sourceName": "IMD Mausamgram NWP",
+                  "sourceUri": "https://mausamgram.imd.gov.in/"
+                },
+                "subjectCategories": [
+                  "Weather"
+                ],
+                "validity": {
+                  "endsAt": "2026-10-02T23:59:59+05:30",
+                  "startsAt": "2026-10-02T00:00:00+05:30"
+                }
+              }
+            },
+            {
+              "id": "res:mausamgram:forecast:2026-10-03",
+              "quantity": {
+                "count": 1
+              },
+              "resourceAttributes": {
+                "@context": "https://openagrinet.github.io/network-specs/schema/WeatherObservation/v0.1/context.jsonld",
+                "@type": "openagrinet:WeatherObservation",
+                "generatedAt": "2026-09-30T12:58:15.347Z",
+                "informationMode": "Direct",
+                "location": {
+                  "geo": {
+                    "coordinates": [
+                      73.75,
+                      19.875
+                    ],
+                    "type": "Point"
+                  }
+                },
+                "modelRunAt": "2026-09-30T00:00:00+05:30",
+                "observationType": "Forecast",
+                "parameters": [
+                  {
+                    "parameter": "Rainfall",
+                    "unit": "mm",
+                    "values": {
+                      "sum": 0
+                    }
+                  },
+                  {
+                    "parameter": "Temperature",
+                    "unit": "Cel",
+                    "values": {
+                      "maximum": 32.8,
+                      "minimum": 23.4
+                    }
+                  },
+                  {
+                    "parameter": "Humidity",
+                    "unit": "%",
+                    "values": {
+                      "maximum": 59.91,
+                      "minimum": 34.5
+                    }
+                  },
+                  {
+                    "parameter": "WindSpeed",
+                    "unit": "m/s",
+                    "values": {
+                      "mean": 2.21
+                    }
+                  },
+                  {
+                    "parameter": "WindDirection",
+                    "unit": "deg",
+                    "values": {
+                      "instantaneous": 80.85
+                    }
+                  },
+                  {
+                    "parameter": "Alert",
+                    "unit": "1",
+                    "values": {
+                      "instantaneous": "Mainly Clear Sky"
+                    }
+                  }
+                ],
+                "source": {
+                  "sourceId": "mausamgram",
+                  "sourceName": "IMD Mausamgram NWP",
+                  "sourceUri": "https://mausamgram.imd.gov.in/"
+                },
+                "subjectCategories": [
+                  "Weather"
+                ],
+                "validity": {
+                  "endsAt": "2026-10-03T23:59:59+05:30",
+                  "startsAt": "2026-10-03T00:00:00+05:30"
+                }
+              }
+            },
+            {
+              "id": "res:mausamgram:forecast:2026-10-04",
+              "quantity": {
+                "count": 1
+              },
+              "resourceAttributes": {
+                "@context": "https://openagrinet.github.io/network-specs/schema/WeatherObservation/v0.1/context.jsonld",
+                "@type": "openagrinet:WeatherObservation",
+                "generatedAt": "2026-09-30T12:58:15.347Z",
+                "informationMode": "Direct",
+                "location": {
+                  "geo": {
+                    "coordinates": [
+                      73.75,
+                      19.875
+                    ],
+                    "type": "Point"
+                  }
+                },
+                "modelRunAt": "2026-09-30T00:00:00+05:30",
+                "observationType": "Forecast",
+                "parameters": [
+                  {
+                    "parameter": "Rainfall",
+                    "unit": "mm",
+                    "values": {
+                      "sum": 0
+                    }
+                  },
+                  {
+                    "parameter": "Temperature",
+                    "unit": "Cel",
+                    "values": {
+                      "maximum": 35.4,
+                      "minimum": 22.8
+                    }
+                  },
+                  {
+                    "parameter": "Humidity",
+                    "unit": "%",
+                    "values": {
+                      "maximum": 66.51,
+                      "minimum": 35.31
+                    }
+                  },
+                  {
+                    "parameter": "WindSpeed",
+                    "unit": "m/s",
+                    "values": {
+                      "mean": 2.03
+                    }
+                  },
+                  {
+                    "parameter": "WindDirection",
+                    "unit": "deg",
+                    "values": {
+                      "instantaneous": 344.86
+                    }
+                  },
+                  {
+                    "parameter": "Alert",
+                    "unit": "1",
+                    "values": {
+                      "instantaneous": "Mainly Clear Sky"
+                    }
+                  }
+                ],
+                "source": {
+                  "sourceId": "mausamgram",
+                  "sourceName": "IMD Mausamgram NWP",
+                  "sourceUri": "https://mausamgram.imd.gov.in/"
+                },
+                "subjectCategories": [
+                  "Weather"
+                ],
+                "validity": {
+                  "endsAt": "2026-10-04T23:59:59+05:30",
+                  "startsAt": "2026-10-04T00:00:00+05:30"
+                }
+              }
+            }
+          ],
+          "status": {
+            "descriptor": {
+              "code": "ACTIVE",
+              "name": "active"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

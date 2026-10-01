@@ -1,0 +1,15 @@
+# No UI edits: the checked-in JSON is the metric-name contract.
+# A UI edit drifts from the file and nobody knows which is real.
+apiVersion: 1
+
+providers:
+  - name: dss
+    orgId: 1
+    folder: DSS
+    type: file
+    disableDeletion: false
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/dashboards
+      foldersFromFilesStructure: false

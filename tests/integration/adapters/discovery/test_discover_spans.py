@@ -9,7 +9,9 @@ that answered. The span has to read the result and mark itself.
 
 from __future__ import annotations
 
+import json
 import logging
+from pathlib import Path
 
 import httpx
 import pytest
@@ -20,6 +22,8 @@ from opentelemetry.trace import StatusCode
 
 from dss.adapters.discovery.client import HttpCapabilityDiscovery
 from dss.core.provider_discovery.models import ProviderQuery
+
+FIXTURES = Path(__file__).parent / "fixtures"
 
 QUERY = ProviderQuery(
     capabilities=("openagrinet:MandiPrice",),
@@ -179,3 +183,43 @@ async def test_the_span_counts_what_the_provider_returned(spans) -> None:
     (span,) = spans.get_finished_spans()
     assert span.attributes["capability_count"] == 1
     assert span.attributes["answer_count"] == 0
+
+
+async def test_the_span_names_the_providers_offered(spans) -> None:
+    """Finds providers offered often but rarely answering. Ids aren't PII."""
+
+    catalog = {
+        "provider": {"id": "agmarknet", "descriptor": {"name": "Agmarknet"}},
+        "resources": [
+            {
+                "id": "res:agmarknet:daily-price",
+                "resourceAttributes": {
+                    "@type": "openagrinet:MandiPrice",
+                    "informationMode": "OnDemand",
+                },
+            }
+        ],
+    }
+
+    def answers(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"message": {"catalogs": [catalog]}})
+
+    await _discovery(answers).discover(QUERY, (0,), "txn-1")
+
+    (span,) = spans.get_finished_spans()
+    assert span.attributes["offered_provider_ids"] == ("agmarknet",)
+    assert span.attributes["answered_provider_ids"] == ()
+
+
+async def test_the_span_names_the_providers_that_answered_directly(spans) -> None:
+    """A direct answer skips /select, so it must count as answered here."""
+
+    body = json.loads((FIXTURES / "discover_response_direct.json").read_text())
+
+    def answers(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=body)
+
+    await _discovery(answers).discover(QUERY, (0,), "txn-1")
+
+    (span,) = spans.get_finished_spans()
+    assert span.attributes["answered_provider_ids"] == ("agmarknet",)

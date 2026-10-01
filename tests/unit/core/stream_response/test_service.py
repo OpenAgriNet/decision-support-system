@@ -173,20 +173,31 @@ async def test_the_pieces_join_back_to_the_whole_answer() -> None:
     assert "".join(await _collect(_FakeLLM())) == WHOLE
 
 
+# No citation and no trailing space, so nothing in them is held back.
+UNCITED_CHUNKS = ("Paddy is", " Rs 2,2", "00 per quin", "tal.")
+
+
 async def test_pieces_are_handed_on_in_the_order_the_model_wrote_them() -> None:
-    assert await _collect(_FakeLLM()) == list(CHUNKS)
+    assert await _collect(_FakeLLM(UNCITED_CHUNKS)) == list(UNCITED_CHUNKS)
 
 
-async def test_nothing_is_reshaped_on_the_way_through() -> None:
+async def test_nothing_but_citations_is_reshaped_on_the_way_through() -> None:
     """A piece may end mid-word or mid-number. Tidying that up would break the
-    join, so the component must pass pieces on exactly as they came."""
+    join, so only citation markers are moved; everything else passes as it
+    came."""
 
-    assert await _collect(_FakeLLM()) == [
-        "Paddy is ",
-        "Rs 2,2",
+    assert await _collect(_FakeLLM(UNCITED_CHUNKS)) == [
+        "Paddy is",
+        " Rs 2,2",
         "00 per quin",
-        "tal. [1]",
+        "tal.",
     ]
+
+
+async def test_a_model_citing_every_sentence_reaches_the_farmer_cited_once() -> None:
+    llm = _FakeLLM(("Paddy is Rs 2,200 [1]. ", "Wheat is Rs 2,400 [1]."))
+
+    assert "".join(await _collect(llm)) == "Paddy is Rs 2,200. Wheat is Rs 2,400. [1]"
 
 
 async def test_the_prompt_carries_the_question_and_the_providers_values() -> None:
@@ -264,7 +275,7 @@ async def test_a_failure_part_way_through_is_not_swallowed() -> None:
         ):
             seen.append(delta)
 
-    assert seen == ["Paddy is ", "Rs 2,2"], "pieces already out stay out"
+    assert "".join(seen) == "Paddy is Rs 2,2", "pieces already out stay out"
 
 
 async def test_abandoning_the_stream_closes_the_model_call() -> None:

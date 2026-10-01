@@ -62,16 +62,18 @@ class _FakeInvocation:
         capability: ProviderCapability,
         resource_attributes: dict,
         _transaction_id: str,
-    ) -> DiscoveredAnswer:
+    ) -> list[DiscoveredAnswer]:
         self.calls.append(resource_attributes)
-        return DiscoveredAnswer(
-            provider_id=capability.provider_id,
-            provider_name=capability.provider_name,
-            capability=capability.capability,
-            resource_id="res:agmarknet:daily-price:2026-08-25",
-            attributes={"prices": {"modal": 2200}},
-            validity=None,
-        )
+        return [
+            DiscoveredAnswer(
+                provider_id=capability.provider_id,
+                provider_name=capability.provider_name,
+                capability=capability.capability,
+                resource_id="res:agmarknet:daily-price:2026-08-25",
+                attributes={"prices": {"modal": 2200}},
+                validity=None,
+            )
+        ]
 
 
 def _cleared_verdict() -> Verdict:

@@ -1,0 +1,26 @@
+# Provisioned so the uid is fixed. A hand-made datasource gets a random
+# uid, and the dashboard comes up empty with no useful error.
+apiVersion: 1
+
+datasources:
+  - name: ClickHouse-OTEL
+    # The dashboard JSON refers to this uid; change both together.
+    uid: dss-clickhouse-otel
+    type: grafana-clickhouse-datasource
+    isDefault: false
+    jsonData:
+      host: ${CLICKHOUSE_HOST}
+      port: 9000
+      protocol: native
+      secure: false
+      username: ${CLICKHOUSE_USER}
+      defaultDatabase: ${CLICKHOUSE_DATABASE}
+      # For the plugin's built-in Explore views.
+      logs:
+        defaultDatabase: ${CLICKHOUSE_DATABASE}
+        defaultTable: otel_logs
+      traces:
+        defaultDatabase: ${CLICKHOUSE_DATABASE}
+        defaultTable: otel_traces
+    secureJsonData:
+      password: ${CLICKHOUSE_PASSWORD}

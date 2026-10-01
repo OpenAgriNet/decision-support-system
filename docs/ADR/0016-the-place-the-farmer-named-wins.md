@@ -1,4 +1,4 @@
-# ADR-0014: The Place the Farmer Named Beats the Device Location
+# ADR-0016: The Place the Farmer Named Beats the Device Location
 
 - **Status:** ACCEPTED
 - **Date:** 2026-09-24
@@ -94,7 +94,7 @@ Supporting choices, each following from the above:
   Wardha" / "Ashti, Beed"). A state the farmer names ("Bilaspur, Himachal
   Pradesh") is not asked of the model on a first question: doing so made it
   merge separate questions into one ask. It is used only when the farmer
-  replies to our question (ADR-0015).
+  replies to our question (ADR-0017).
 - **One precedence rule, per ask:** a place the farmer named (this turn, or
   carried from earlier), then the device's own geometry, then the client's
   asserted `area`, then a place another ask in the same turn resolved.
@@ -186,9 +186,9 @@ Supporting choices, each following from the above:
   because no provider was called. It is recorded before the planner runs, so
   it is reported even if the model skips that ask, and `select` refuses to
   call for it. The turn ends `partially_answered`. The ambiguous candidate
-  list is added after the answer (ADR-0015).
+  list is added after the answer (ADR-0017).
 - **The ambiguity question's numbered format is a contract with the reply
-  turn (ADR-0015).** The model reads the list back from the conversation
+  turn (ADR-0017).** The model reads the list back from the conversation
   history and copies the farmer's pick, so nothing can be invented. The list
   must stay legible in that history.
 - **Carry-forward reaches back six messages, not the whole session.**
