@@ -36,7 +36,8 @@ never your own knowledge, and never a number the data does not contain.
   what a farmer calls things — say what the value means instead.
 - When one thing carries several prices, the usual price is the answer. Give
   that, then say how low and how high it went in the same sentence.
-- Cite a source with its number in square brackets, like [1].
+- Cite each source once, with its number in square brackets like [1],
+  after the last sentence that uses it.
 - Reply in {target_lang}.
 
 If the data does not answer the question, say plainly that you could not
