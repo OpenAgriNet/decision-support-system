@@ -431,6 +431,52 @@ async def test_an_ambiguous_place_is_asked_after_the_answer_for_the_other() -> N
     assert [b.text for b in finished.content] == [c.content.text for c in claims]
 
 
+async def test_no_provider_still_asks_which_place() -> None:
+    """Nobody serves the Pune ask, and Rampur matches several. The farmer must
+    still be asked which Rampur, or a reply can never finish it."""
+
+    def weather_in(place_name: str) -> ClassifiedAsk:
+        return ClassifiedAsk(
+            subject_categories=SubjectCategory.WEATHER,
+            interaction_type=InteractionType.OBSERVE,
+            place_name=place_name,
+        )
+
+    def rampur(state: str) -> AreaMatch:
+        return AreaMatch(
+            name="Rampur",
+            region="IN-XX",
+            within=("India", state),
+            geometry=Geometry(coordinates=[79.0, 28.8]),
+        )
+
+    plan = _FakePlan(_ANSWERED_EVIDENCE)
+    nobody = DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
+    orch, _ = _build(
+        intent=IntentClassification(
+            asks=(weather_in("Pune"), weather_in("Rampur")), confidence=0.9
+        ),
+        discovery=nobody,
+        plan=plan,
+        compose=_FakeCompose("unused"),
+        area_lookup=FakeAreaLookup(
+            {
+                "pune": [_PUNE_MATCH],
+                "rampur": [rampur("Uttar Pradesh"), rampur("Himachal Pradesh")],
+            }
+        ),
+    )
+
+    events = await _collect(orch, _turn("weather in Pune and Rampur", location=None))
+
+    finished = events[-1]
+    assert finished.outcome.status is TurnStatus.REQUIRES_INPUT
+    assert finished.content[-1].text == (
+        "Which Rampur?\n1. Rampur, Uttar Pradesh\n2. Rampur, Himachal Pradesh"
+    )
+    assert plan.calls == 0
+
+
 async def test_all_calls_failing_is_unavailable() -> None:
     plan = _FakePlan(
         _evidence(

@@ -220,11 +220,19 @@ class Orchestrator:
             # from. Answer NO_MATCH here rather than spend a planner and composer
             # round-trip to arrive at the same empty-handed place.
             if _nobody_serves(result.discovery):
-                yield self._finish(
-                    ctx,
-                    (outcome_for(TurnStatus.NO_MATCH), no_match_answer()),
-                    recorder,
+                status = TurnStatus.NO_MATCH
+                answer = no_match_answer()
+                # An ask whose place matched several was never searched. Still
+                # ask which one, so the farmer's reply can finish it.
+                question = question_for_ambiguous_asks(
+                    result.intent.asks, self._clarification_text
                 )
+                if question is not None:
+                    status = TurnStatus.REQUIRES_INPUT
+                    answer = ComposedAnswer(
+                        content=(*answer.content, TextBlock(text=question))
+                    )
+                yield self._finish(ctx, (outcome_for(status), answer), recorder)
                 return
 
             # Past the barrier: the decision cleared, so the planner's `select` tool

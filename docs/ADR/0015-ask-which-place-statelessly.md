@@ -58,7 +58,9 @@ Option 4 adds a call to every turn, and most turns are not replies.
 - **No expiry.** A new question is new. A late "2" still answers the old one.
 - **The answer names the place it used**, such as "Rampur, Himachal Pradesh",
   for every resolved place. This avoids a new flag for "picked from several".
-- **A partly answered turn adds the question** after the answer.
+- **The question is always shown when a place is unclear**: after the answer
+  on a partly answered turn, and after "I could not find a way to help" when
+  nothing could be served. That turn is labelled "needs input".
 
 The pattern may be reused: a fixed list, the model copies the pick, code
 checks it. It is place-only for now.
