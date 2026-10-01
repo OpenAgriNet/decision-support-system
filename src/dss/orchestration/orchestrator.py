@@ -267,22 +267,20 @@ class Orchestrator:
                 # A failure before this line propagates: the pieces already
                 # yielded cannot be recalled, so there is no retry to make and
                 # nothing to roll back. The transport reports a failed turn.
+                # An ask whose place matched several was not answered. Ask
+                # which one as the last piece of the same answer, so it is one
+                # bubble and the farmer's next reply can finish it.
+                question = question_for_ambiguous_asks(
+                    result.intent.asks, self._clarification_text
+                )
+                if question is not None:
+                    written.append(f"\n\n{question}")
+                    yield ClaimDelta(text=written[-1])
                 text = "".join(written)
             answer = answer_from_evidence(text, evidence)
             recorder.composed()
             for block in answer.content:
                 yield Claim(content=block, sources=answer.sources)
-            # An ask whose place matched several was not answered. Ask which one
-            # after the answer, so the farmer's next reply can finish it.
-            question = question_for_ambiguous_asks(
-                result.intent.asks, self._clarification_text
-            )
-            if question is not None:
-                block = TextBlock(text=question)
-                yield Claim(content=block)
-                answer = ComposedAnswer(
-                    content=(*answer.content, block), sources=answer.sources
-                )
             self._note("channel", ctx, str(len(answer.content)))
 
             status, cause = _status_for(evidence, result.intent)

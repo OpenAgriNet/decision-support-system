@@ -30,6 +30,7 @@ from dss.core.policy.models import (
 from dss.core.provider_discovery.models import DiscoveryResult, ProviderCapability
 from dss.core.shared.models import (
     Claim,
+    ClaimDelta,
     Geometry,
     Location,
     RefusalBlock,
@@ -421,14 +422,16 @@ async def test_an_ambiguous_place_is_asked_after_the_answer_for_the_other() -> N
         orch, _turn("weather in Pune and Aurangabad", location=None)
     )
 
+    # One bubble: the question is the last piece of the same streamed answer.
+    question = "Which Aurangabad?\n1. Aurangabad, Maharashtra\n2. Aurangabad, Bihar"
+    deltas = [e.text for e in events if isinstance(e, ClaimDelta)]
     claims = [e for e in events if isinstance(e, Claim)]
-    assert [c.content.text for c in claims] == [
-        "No rain in Pune [1].",
-        "Which Aurangabad?\n1. Aurangabad, Maharashtra\n2. Aurangabad, Bihar",
-    ]
+    assert deltas[-1] == f"\n\n{question}"
+    assert [c.content.text for c in claims] == [f"No rain in Pune [1].\n\n{question}"]
+    assert "".join(deltas) == claims[0].content.text
     finished = events[-1]
     assert finished.outcome.status is TurnStatus.PARTIALLY_ANSWERED
-    assert [b.text for b in finished.content] == [c.content.text for c in claims]
+    assert [b.text for b in finished.content] == [claims[0].content.text]
 
 
 async def test_no_provider_still_asks_which_place() -> None:

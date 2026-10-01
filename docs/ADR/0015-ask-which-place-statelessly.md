@@ -76,6 +76,6 @@ checks it. It is place-only for now.
   a model merge two separate questions into one (ADR-0014). After any change
   to that prompt, run all the live-model tests on each model in use, not only
   the new ones.
-- A partly answered turn streams one more claim, and it is in the finished
-  content.
+- On a partly answered turn, the question is the last streamed piece of the
+  same answer. The farmer sees one bubble, as the API contract promises.
 - Every place label is longer ("Pune, Maharashtra").

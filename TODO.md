@@ -190,6 +190,11 @@
   request-side hint; MandiPrice has none. So the schema cannot drive this
   cleanly. Fix: ask the network-specs owners for a request-side flag, e.g.
   `requiresLocation` on `OnDemand` entries.
+- **Direct replies skip the stream.** A no-match, a refusal, or "which
+  place?" with nothing else answered arrives only in the final event, with no
+  `claim.delta`. The composed answer streams. Sending every reply the same way
+  would give the app one way to show it. Changes the API contract and touches
+  ADR-0011, so it needs an ADR and the app team's agreement.
 - **"Name, Part" can be split into two places when one was meant (#131).**
   When the part fits no match but is itself a place, the code treats it as
   two places, to undo a model joining "Pune and Mumbai" into "Pune, Mumbai".
