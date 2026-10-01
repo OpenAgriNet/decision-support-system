@@ -195,8 +195,8 @@
     Aurangabad. The farmer replies "2".
   - About 1 time in 8, the model asks for Pune again, so the farmer reads the
     Pune weather twice. The test
-    `test_a_pick_on_a_partial_turn_asks_only_what_was_left` fails now and
-    then because of this.
+    `test_a_pick_on_a_partial_turn_asks_only_what_was_left` is marked `xfail`
+    because of this: it still runs, but a failure does not break the run.
   - Tried, and why we stopped:
     - A prompt example fixed it, but broke other answers.
     - A code rule that drops Pune would also drop things the farmer wants: a
