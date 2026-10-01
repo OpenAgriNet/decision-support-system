@@ -49,8 +49,67 @@ def test_every_block_citation_names_a_listed_source() -> None:
         Source(id="2", name="IMD", kind=SourceKind.PROVIDER, url=None),
     )
 
-    answer = answer_from_evidence("...", _evidence(*sources))
+    answer = answer_from_evidence("Wheat [1]. Rain [2].", _evidence(*sources))
 
     listed = {s.id for s in answer.sources}
     assert all(cited in listed for cited in answer.content[0].source_ids)
     assert answer.content[0].source_ids == ("1", "2")
+
+
+def test_only_the_cited_source_is_listed() -> None:
+    """One question is answered from one source. The other source was read
+    and rejected, so listing it claims a provenance the answer does not
+    have — and a farmer checking it finds a document the advice never
+    came from."""
+
+    sources = (
+        Source(id="1", name="PulsesGuidelines2025", kind=SourceKind.PROVIDER, url=None),
+        Source(id="2", name="ICAR Advisories", kind=SourceKind.PROVIDER, url=None),
+    )
+
+    answer = answer_from_evidence(
+        "Sow masoor in late October [2].", _evidence(*sources)
+    )
+
+    assert [s.id for s in answer.sources] == ["2"]
+    assert answer.sources[0].name == "ICAR Advisories"
+    assert answer.content[0].source_ids == ("2",)
+
+
+def test_several_questions_may_cite_several_sources() -> None:
+    """The one-source rule is per question, so a reply answering two things
+    keeps both sources it actually used."""
+
+    sources = (
+        Source(id="1", name="Agmarknet", kind=SourceKind.PROVIDER, url=None),
+        Source(id="2", name="IMD", kind=SourceKind.PROVIDER, url=None),
+    )
+
+    answer = answer_from_evidence(
+        "Onions are 2,275 Rs [1]. Rain is likely tomorrow [2].", _evidence(*sources)
+    )
+
+    assert [s.id for s in answer.sources] == ["1", "2"]
+
+
+def test_a_citation_naming_no_listed_source_is_dropped() -> None:
+    """A marker pointing at nothing is worse than no marker, so an invented
+    number never reaches the wire."""
+
+    source = Source(id="1", name="Agmarknet", kind=SourceKind.PROVIDER, url=None)
+
+    answer = answer_from_evidence("Onions are 2,275 Rs [7].", _evidence(source))
+
+    assert answer.sources == ()
+    assert answer.content[0].source_ids == ()
+
+
+def test_sources_are_listed_once_and_in_evidence_order() -> None:
+    sources = (
+        Source(id="1", name="Agmarknet", kind=SourceKind.PROVIDER, url=None),
+        Source(id="2", name="IMD", kind=SourceKind.PROVIDER, url=None),
+    )
+
+    answer = answer_from_evidence("... [2] ... [1] ... [2].", _evidence(*sources))
+
+    assert [s.id for s in answer.sources] == ["1", "2"]
