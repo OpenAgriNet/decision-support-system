@@ -190,13 +190,43 @@
   request-side hint; MandiPrice has none. So the schema cannot drive this
   cleanly. Fix: ask the network-specs owners for a request-side flag, e.g.
   `requiresLocation` on `OnDemand` entries.
-- **An ambiguous place in a partly answered turn does not show its choices
-  (#131).** "Weather in Pune and Aurangabad" answers Pune and reports
-  Aurangabad as a failure, "matches several places". The numbered candidate
-  list only reaches the farmer when *every* ask fails, through the gate's
-  question. In a partial turn the composer never sees the list, so it cannot
-  show the farmer what to pick from. #131, which reads the farmer's pick,
-  decides how the list reaches them.
+- **A reply can bring back a place we already answered (#131).**
+  - Example: "Weather in Pune and Aurangabad". We answer Pune and ask which
+    Aurangabad. The farmer replies "2".
+  - About 1 time in 8, the model asks for Pune again, so the farmer reads the
+    Pune weather twice. The test
+    `test_a_pick_on_a_partial_turn_asks_only_what_was_left` is marked `xfail`
+    because of this: it still runs, but a failure does not break the run.
+  - Tried, and why we stopped:
+    - A prompt example fixed it, but broke other answers.
+    - A code rule that drops Pune would also drop things the farmer wants: a
+      retry when Pune failed last time, or a new question the model marks
+      wrongly.
+  - A repeat is better than silently dropping a question. A real fix needs us
+    to remember what was answered, and ADR-0017 chose not to keep that.
+- **A reply in Hindi numbers is not tested (#131).** A farmer may reply "२"
+  or "दूसरा" ("second") to "Which Rampur?". The model probably reads it, but no
+  tier 5 test checks it. Add both to the reply test.
+- **A pick is forgotten after about 3 back-and-forths (#131).** The intent
+  model sees the last 6 messages. After that, neither our list nor the
+  farmer's pick is in view, and a follow-up like "and next week?" can lose the
+  picked Rampur. Fix needs a longer window or the place carried another way.
+- **A long message in the history is not indented (#131).** In the intent
+  prompt, the second line of our "Which Rampur?" message starts at the left
+  edge, with no "assistant:" in front. A weak model could read the list as
+  part of the instructions. Fix: indent every line, or wrap the history as
+  data like the planner does.
+- **Direct replies skip the stream.** A no-match, a refusal, or "which
+  place?" with nothing else answered arrives only in the final event, with no
+  `claim.delta`. The composed answer streams. Sending every reply the same way
+  would give the app one way to show it. Changes the API contract and touches
+  ADR-0011, so it needs an ADR and the app team's agreement.
+- **"Name, Part" can be split into two places when one was meant (#131).**
+  When the part fits no match but is itself a place, the code treats it as
+  two places, to undo a model joining "Pune and Mumbai" into "Pune, Mumbai".
+  "Ashti, Nagpur" (the Ashti near Nagpur) then also answers Nagpur, and
+  "Bihar" is both a state and a block. Fix needs a way to tell "near" from
+  "and" that does not rely on the comma.
 - **A block's coordinate is its district's, not its own.** Every one of the
   7,092 Block rows in the 2026-09-03 LGD snapshot has `point_method` starting
   `inherited:` — none has a real point of its own. A farmer naming their

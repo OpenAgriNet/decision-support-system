@@ -53,6 +53,35 @@ def _drop_nested(matches: list[AreaMatch]) -> list[AreaMatch]:
     ]
 
 
+def _name_and_part(name: str) -> tuple[str, str]:
+    """ "Rampur, Himachal Pradesh" is a line we listed and the farmer picked:
+    the name, then a place that contains it. No area name holds a comma."""
+
+    lookup_name, comma, part = name.rpartition(",")
+    if not comma:
+        return name.strip(), ""
+    return lookup_name.strip(), part.strip()
+
+
+def _split_joined(classified: ClassifiedAsk, lookup: AreaLookup) -> list[ClassifiedAsk]:
+    """The model may join "Pune and Mumbai" into "Pune, Mumbai". If the part
+    is a place of its own and not above the name, treat it as two places."""
+
+    if not classified.place_name:
+        return [classified]
+    name, part = _name_and_part(classified.place_name)
+    if not part or not lookup.resolve(part):
+        return [classified]
+    folded = part.casefold()
+    matches = _drop_nested(lookup.resolve(name))
+    if any(folded in {w.casefold() for w in m.within} for m in matches):
+        return [classified]
+    return [
+        classified.model_copy(update={"place_name": name}),
+        classified.model_copy(update={"place_name": part}),
+    ]
+
+
 def _resolve_named(
     name: str, lookup: AreaLookup, region: str | None, source: PlaceSource
 ) -> Place:
@@ -60,7 +89,20 @@ def _resolve_named(
     that can fail loud (`AmbiguousPlace`/`UnresolvedPlace`) rather than fall
     through."""
 
-    matches = _drop_nested(lookup.resolve(name))
+    lookup_name, part = _name_and_part(name)
+    matches = _drop_nested(lookup.resolve(lookup_name))
+    part = part.casefold()
+    # A match that sits directly in the part comes first. "Madhubani, Bihar"
+    # is the line for the Madhubani district; a Madhubani block elsewhere in
+    # Bihar is also inside Bihar, and keeping both asks the same question
+    # forever.
+    directly = [m for m in matches if m.within and m.within[-1].casefold() == part]
+    inside = [m for m in matches if part in {w.casefold() for w in m.within}]
+    # A part that fits no match is not ignored: dropping it could answer for
+    # a place the farmer did not mean.
+    if part and not inside:
+        return UnresolvedPlace(unresolved_name=name)
+    matches = directly or inside or matches
     # The region is where the farmer is, not what they asked about: it only
     # breaks a tie between same-name places, never hides the one they named.
     if len(matches) > 1 and region is not None:
@@ -119,6 +161,11 @@ def resolve_places(
 ) -> Intent:
     location = turn.location
     region = location.region if location is not None else None
+    classified_asks = [
+        split
+        for classified in classification.asks
+        for split in _split_joined(classified, lookup)
+    ]
 
     # Pass 1: each ask resolves only what it names itself. A named place can
     # come back ambiguous or unresolved; those are per-ask, not fixed by a
@@ -132,7 +179,7 @@ def resolve_places(
         )
         if classified.place_name
         else None
-        for classified in classification.asks
+        for classified in classified_asks
     ]
 
     # Pass 2: an ask that named nothing uses the turn's device/asserted
@@ -140,12 +187,12 @@ def resolve_places(
     # sibling's place. The classifier repeats a place that covers several
     # asks, so borrowing is the fallback, not the rule.
     sibling_place = _first_resolved(places)
-    for index, classified in enumerate(classification.asks):
+    for index, classified in enumerate(classified_asks):
         if places[index] is None and not classified.place_name:
             places[index] = _resolve_from_location(location, lookup) or sibling_place
 
     asks = tuple(
         _build_ask(classified, place)
-        for classified, place in zip(classification.asks, places, strict=True)
+        for classified, place in zip(classified_asks, places, strict=True)
     )
     return Intent(asks=asks, confidence=classification.confidence)

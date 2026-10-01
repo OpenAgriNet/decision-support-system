@@ -243,6 +243,177 @@ def test_a_region_that_fits_no_match_still_asks_which_one() -> None:
     assert place.candidates == (_BILASPUR_HP, _BILASPUR_CT)
 
 
+_RAMPUR_UP = AreaMatch(
+    name="Rampur",
+    region="IN-UP",
+    within=("India", "Uttar Pradesh"),
+    geometry=Geometry(coordinates=[79.03, 28.81]),
+)
+_RAMPUR_HP = AreaMatch(
+    name="Rampur",
+    region="IN-HP",
+    within=("India", "Himachal Pradesh"),
+    geometry=Geometry(coordinates=[77.63, 31.45]),
+)
+
+
+def test_a_name_with_a_part_picks_the_match_inside_that_part() -> None:
+    """The farmer answered "which Rampur?" — the model copies the line we
+    listed, "Rampur, Himachal Pradesh". The part after the comma picks one."""
+
+    classification = IntentClassification(
+        asks=(_weather_ask("Rampur, Himachal Pradesh"),)
+    )
+    lookup = _FakeLookup({"rampur": [_RAMPUR_UP, _RAMPUR_HP]})
+
+    intent = resolve_places(classification, _turn(), lookup=lookup)
+
+    place = intent.asks[0].place
+    assert isinstance(place, ResolvedPlace)
+    assert place.name == "Rampur"
+    assert place.geometry == _RAMPUR_HP.geometry
+
+
+def test_the_region_narrows_a_long_list_before_anything_is_listed() -> None:
+    """Six Rampurs are too many to list. A farmer in Himachal is asked
+    nothing: the region already leaves one."""
+
+    others = [
+        AreaMatch(
+            name="Rampur",
+            region=f"IN-{code}",
+            within=("India", state),
+            geometry=Geometry(coordinates=[80.0 + i, 25.0]),
+        )
+        for i, (code, state) in enumerate(
+            [
+                ("OD", "Odisha"),
+                ("BR", "Bihar"),
+                ("JH", "Jharkhand"),
+                ("MP", "Madhya Pradesh"),
+            ]
+        )
+    ]
+    classification = IntentClassification(asks=(_weather_ask("Rampur"),))
+    lookup = _FakeLookup({"rampur": [_RAMPUR_UP, *others, _RAMPUR_HP]})
+
+    intent = resolve_places(classification, _turn(region="IN-HP"), lookup=lookup)
+
+    place = intent.asks[0].place
+    assert isinstance(place, ResolvedPlace)
+    assert place.geometry == _RAMPUR_HP.geometry
+
+
+def test_a_part_that_leaves_several_asks_again_with_only_those() -> None:
+    """Two Rampurs in Uttar Pradesh: "Rampur, Uttar Pradesh" drops the
+    Himachal one but cannot choose between the rest. The next question lists
+    just those two, one level down."""
+
+    rampur_up_b = AreaMatch(
+        name="Rampur",
+        region="IN-UP",
+        within=("India", "Uttar Pradesh", "Moradabad"),
+        geometry=Geometry(coordinates=[78.9, 28.8]),
+    )
+    rampur_up_a = AreaMatch(
+        name="Rampur",
+        region="IN-UP",
+        within=("India", "Uttar Pradesh", "Rampur"),
+        geometry=Geometry(coordinates=[79.03, 28.81]),
+    )
+    classification = IntentClassification(asks=(_weather_ask("Rampur, Uttar Pradesh"),))
+    lookup = _FakeLookup({"rampur": [rampur_up_a, _RAMPUR_HP, rampur_up_b]})
+
+    intent = resolve_places(classification, _turn(), lookup=lookup)
+
+    place = intent.asks[0].place
+    assert isinstance(place, AmbiguousPlace)
+    assert place.candidates == (rampur_up_a, rampur_up_b)
+
+
+def test_a_part_picks_the_match_that_sits_directly_in_it() -> None:
+    """Madhubani is a district in Bihar and a block in another Bihar district.
+    The question lists "Madhubani, Bihar" for the district. Every match is in
+    Bihar, so reading the part as "anywhere inside" asks the same question
+    forever. The district sits directly in Bihar, so it is the one meant."""
+
+    district = AreaMatch(
+        name="Madhubani",
+        region="IN-BR",
+        within=("India", "Bihar"),
+        geometry=Geometry(coordinates=[86.08, 26.35]),
+    )
+    block = AreaMatch(
+        name="Madhubani",
+        region="IN-BR",
+        within=("India", "Bihar", "Pashchim Champaran"),
+        geometry=Geometry(coordinates=[84.5, 27.0]),
+    )
+    classification = IntentClassification(asks=(_weather_ask("Madhubani, Bihar"),))
+    lookup = _FakeLookup({"madhubani": [district, block]})
+
+    intent = resolve_places(classification, _turn(), lookup=lookup)
+
+    place = intent.asks[0].place
+    assert isinstance(place, ResolvedPlace)
+    assert place.within == ("India", "Bihar")
+
+
+def test_reply_not_in_list_is_not_found() -> None:
+    """A reply naming a state that is not on our list is not found. The list
+    is still in the history to pick from."""
+
+    classification = IntentClassification(asks=(_weather_ask("Rampur, Kerala"),))
+    lookup = _FakeLookup({"rampur": [_RAMPUR_UP, _RAMPUR_HP]})
+
+    intent = resolve_places(classification, _turn(), lookup=lookup)
+
+    assert intent.asks[0].place == UnresolvedPlace(unresolved_name="Rampur, Kerala")
+
+
+def test_part_we_do_not_have_is_not_found() -> None:
+    """Only the Bihar Aurangabad is in the list. Ignoring "Maharashtra" would
+    answer for a place about 1,000 km away."""
+
+    bihar = AreaMatch(
+        name="Aurangabad",
+        region="IN-BR",
+        within=("India", "Bihar"),
+        geometry=Geometry(coordinates=[84.37, 24.75]),
+    )
+    classification = IntentClassification(
+        asks=(_weather_ask("Aurangabad, Maharashtra"),)
+    )
+    lookup = _FakeLookup({"aurangabad": [bihar]})
+
+    intent = resolve_places(classification, _turn(), lookup=lookup)
+
+    assert intent.asks[0].place == UnresolvedPlace(
+        unresolved_name="Aurangabad, Maharashtra"
+    )
+
+
+def test_split_two_joined_places() -> None:
+    """The model joined "Pune and Mumbai" into "Pune, Mumbai". Mumbai is a
+    place, not above Pune, so both are answered."""
+
+    mumbai = AreaMatch(
+        name="Mumbai",
+        region="IN-MH",
+        within=("India", "Maharashtra"),
+        geometry=Geometry(coordinates=[72.88, 19.08]),
+    )
+    classification = IntentClassification(asks=(_weather_ask("Pune, Mumbai"),))
+    lookup = _FakeLookup({"pune": [_PUNE], "mumbai": [mumbai]})
+
+    intent = resolve_places(classification, _turn(), lookup=lookup)
+
+    places = [ask.place for ask in intent.asks]
+    assert all(isinstance(place, ResolvedPlace) for place in places)
+    assert [place.name for place in places] == ["Pune", "Mumbai"]
+    assert all(ask.subject_categories is SubjectCategory.WEATHER for ask in intent.asks)
+
+
 def test_a_block_inside_its_same_name_district_resolves_to_the_district() -> None:
     """Nashik district holds a Nashik block. The district covers the block, so
     asking "which Nashik?" would make the farmer pick between near-equal

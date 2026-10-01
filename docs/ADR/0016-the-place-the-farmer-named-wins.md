@@ -92,8 +92,9 @@ Supporting choices, each following from the above:
   place the farmer named is never hidden by where their phone is. Each
   remaining choice shows the part of its chain that sets it apart ("Ashti,
   Wardha" / "Ashti, Beed"). A state the farmer names ("Bilaspur, Himachal
-  Pradesh") is not used yet: asking the model for it made it merge separate
-  questions into one ask. #131 picks the place from the farmer's reply.
+  Pradesh") is not asked of the model on a first question: doing so made it
+  merge separate questions into one ask. It is used only when the farmer
+  replies to our question (ADR-0017).
 - **One precedence rule, per ask:** a place the farmer named (this turn, or
   carried from earlier), then the device's own geometry, then the client's
   asserted `area`, then a place another ask in the same turn resolved.
@@ -184,13 +185,12 @@ Supporting choices, each following from the above:
   ambiguous or unresolved ask becomes a `Failure` with no `capability`,
   because no provider was called. It is recorded before the planner runs, so
   it is reported even if the model skips that ask, and `select` refuses to
-  call for it. The turn ends `partially_answered`. Gap: in a partial turn the
-  ambiguous candidate list does not reach the farmer (#131, noted in
-  `TODO.md`).
-- **The ambiguity question's numbered format is a contract with a future
-  story that reads the farmer's reply.** That story gives the LLM the
-  candidate list and has it pick, so nothing can be invented. The list must
-  therefore be legible in the conversation history that story reads back.
+  call for it. The turn ends `partially_answered`. The ambiguous candidate
+  list is added after the answer (ADR-0017).
+- **The ambiguity question's numbered format is a contract with the reply
+  turn (ADR-0017).** The model reads the list back from the conversation
+  history and copies the farmer's pick, so nothing can be invented. The list
+  must stay legible in that history.
 - **Carry-forward reaches back six messages, not the whole session.**
   `_HISTORY_WINDOW = 6` bounds how far the prompt looks. If that proves too
   short, the durable fix is session history the Experience API owns

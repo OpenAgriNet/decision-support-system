@@ -45,6 +45,7 @@ from dss.core.channel.service import (
     answer_for_unplaced_asks,
     answer_from_evidence,
     no_match_answer,
+    question_for_ambiguous_asks,
 )
 from dss.core.intent.models import Intent
 from dss.core.moderation.messages import messages_for
@@ -58,6 +59,7 @@ from dss.core.shared.models import (
     Claim,
     ClaimDelta,
     RefusalBlock,
+    TextBlock,
     TurnContext,
     TurnEvent,
     TurnFinished,
@@ -226,11 +228,19 @@ class Orchestrator:
             # from. Answer NO_MATCH here rather than spend a planner and composer
             # round-trip to arrive at the same empty-handed place.
             if _nobody_serves(result.discovery):
-                yield self._finish(
-                    ctx,
-                    (outcome_for(TurnStatus.NO_MATCH), no_match_answer()),
-                    recorder,
+                status = TurnStatus.NO_MATCH
+                answer = no_match_answer()
+                # An ask whose place matched several was never searched. Still
+                # ask which one, so the farmer's reply can finish it.
+                question = question_for_ambiguous_asks(
+                    result.intent.asks, self._clarification_text
                 )
+                if question is not None:
+                    status = TurnStatus.REQUIRES_INPUT
+                    answer = ComposedAnswer(
+                        content=(*answer.content, TextBlock(text=question))
+                    )
+                yield self._finish(ctx, (outcome_for(status), answer), recorder)
                 return
 
             # Past the barrier: the decision cleared, so the planner's `select` tool
@@ -265,6 +275,15 @@ class Orchestrator:
                 # A failure before this line propagates: the pieces already
                 # yielded cannot be recalled, so there is no retry to make and
                 # nothing to roll back. The transport reports a failed turn.
+                # An ask whose place matched several was not answered. Ask
+                # which one as the last piece of the same answer, so it is one
+                # bubble and the farmer's next reply can finish it.
+                question = question_for_ambiguous_asks(
+                    result.intent.asks, self._clarification_text
+                )
+                if question is not None:
+                    written.append(f"\n\n{question}")
+                    yield ClaimDelta(text=written[-1])
                 text = "".join(written)
             answer = answer_from_evidence(text, evidence)
             recorder.composed()
