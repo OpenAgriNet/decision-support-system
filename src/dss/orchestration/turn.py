@@ -36,8 +36,15 @@ from datetime import UTC, datetime
 import anyio
 from pydantic import BaseModel, ConfigDict
 
+from dss.adapters.observability.tracing import set_current_span_attributes
 from dss.core.enrichment.service import resolve_scheme_subjects
-from dss.core.intent.models import Intent
+from dss.core.intent.models import (
+    AmbiguousPlace,
+    Classification,
+    Intent,
+    ResolvedPlace,
+    UnresolvedPlace,
+)
 from dss.core.intent.service import classify_intent
 from dss.core.location.service import resolve_places
 from dss.core.moderation.models import (
@@ -70,6 +77,52 @@ def _nothing_discovered() -> DiscoveryResult:
     """
 
     return DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
+
+
+def place_attributes(
+    classification: Classification, intent: Intent
+) -> dict[str, str | int]:
+    """What happened to each ask's place, for the `location` span.
+
+    Counts and names only. Never coordinates. Langfuse shows the last two
+    keys in its Input and Output boxes.
+    """
+
+    resolved = ambiguous = unresolved = none = candidates = 0
+    names: list[str] = []
+    outcomes: list[str] = []
+    for ask in intent.asks:
+        place = ask.place
+        if isinstance(place, ResolvedPlace):
+            resolved += 1
+            # A device point can have no name.
+            if place.name:
+                names.append(place.name)
+            outcomes.append(f"{place.name or 'device point'}: found")
+        elif isinstance(place, AmbiguousPlace):
+            ambiguous += 1
+            candidates += len(place.candidates)
+            names.append(place.unresolved_name)
+            outcomes.append(f"{place.unresolved_name}: {len(place.candidates)} matches")
+        elif isinstance(place, UnresolvedPlace):
+            unresolved += 1
+            names.append(place.unresolved_name)
+            outcomes.append(f"{place.unresolved_name}: not found")
+        else:
+            none += 1
+            outcomes.append("no place")
+    asked = [ask.place_name for ask in classification.asks if ask.place_name]
+    return {
+        "asks_total": len(intent.asks),
+        "places_resolved": resolved,
+        "places_ambiguous": ambiguous,
+        "places_unresolved": unresolved,
+        "places_none": none,
+        "ambiguous_candidates": candidates,
+        "place_names": ", ".join(names),
+        "langfuse.observation.input": ", ".join(asked),
+        "langfuse.observation.output": "; ".join(outcomes),
+    }
 
 
 def _enrich(
@@ -168,6 +221,7 @@ async def run_turn(
             classification = await classify_intent(turn, intent_llm)
         with trace_component(Stage.LOCATION, turn.transaction_id):
             intent = resolve_places(classification, turn, lookup=area_lookup)
+            set_current_span_attributes(**place_attributes(classification, intent))
         with trace_component(Stage.ENRICHMENT, turn.transaction_id):
             intent = _enrich(intent, turn, scheme_catalog, scheme_fuzzy_threshold)
         with trace_component(Stage.DISCOVERY, turn.transaction_id):
