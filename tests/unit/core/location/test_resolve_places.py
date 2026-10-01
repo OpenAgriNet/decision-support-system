@@ -331,6 +331,34 @@ def test_a_part_that_leaves_several_asks_again_with_only_those() -> None:
     assert place.candidates == (rampur_up_a, rampur_up_b)
 
 
+def test_a_part_picks_the_match_that_sits_directly_in_it() -> None:
+    """Madhubani is a district in Bihar and a block in another Bihar district.
+    The question lists "Madhubani, Bihar" for the district. Every match is in
+    Bihar, so reading the part as "anywhere inside" asks the same question
+    forever. The district sits directly in Bihar, so it is the one meant."""
+
+    district = AreaMatch(
+        name="Madhubani",
+        region="IN-BR",
+        within=("India", "Bihar"),
+        geometry=Geometry(coordinates=[86.08, 26.35]),
+    )
+    block = AreaMatch(
+        name="Madhubani",
+        region="IN-BR",
+        within=("India", "Bihar", "Pashchim Champaran"),
+        geometry=Geometry(coordinates=[84.5, 27.0]),
+    )
+    classification = IntentClassification(asks=(_weather_ask("Madhubani, Bihar"),))
+    lookup = _FakeLookup({"madhubani": [district, block]})
+
+    intent = resolve_places(classification, _turn(), lookup=lookup)
+
+    place = intent.asks[0].place
+    assert isinstance(place, ResolvedPlace)
+    assert place.within == ("India", "Bihar")
+
+
 def test_a_part_that_fits_no_match_still_asks_which_one() -> None:
     """A garbled pick must never become a guess: ask the same question again."""
 

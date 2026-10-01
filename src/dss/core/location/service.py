@@ -67,8 +67,13 @@ def _resolve_named(
         lookup_name, part = name, ""
     matches = _drop_nested(lookup.resolve(lookup_name.strip()))
     part = part.strip().casefold()
+    # A match that sits directly in the part comes first. "Madhubani, Bihar"
+    # is the line for the Madhubani district; a Madhubani block elsewhere in
+    # Bihar is also inside Bihar, and keeping both asks the same question
+    # forever.
+    directly = [m for m in matches if m.within and m.within[-1].casefold() == part]
     inside = [m for m in matches if part in {w.casefold() for w in m.within}]
-    matches = inside or matches
+    matches = directly or inside or matches
     # The region is where the farmer is, not what they asked about: it only
     # breaks a tie between same-name places, never hides the one they named.
     if len(matches) > 1 and region is not None:

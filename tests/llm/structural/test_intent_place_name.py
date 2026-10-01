@@ -23,9 +23,18 @@ from dotenv import dotenv_values
 
 from dss.adapters.area_lookup.csv_lookup import CsvAreaLookup
 from dss.adapters.llm.pydantic_ai_provider import PydanticAILLMProvider
+from dss.config.clarification_text_loader import load_clarification_text
 from dss.config.settings import DEFAULT_AREA_CSV, Settings
-from dss.core.intent.models import SubjectCategory
+from dss.core.channel.service import answer_for_unplaced_asks
+from dss.core.intent.models import (
+    ClassifiedAsk,
+    IntentClassification,
+    InteractionType,
+    ResolvedPlace,
+    SubjectCategory,
+)
 from dss.core.intent.service import classify_intent
+from dss.core.location.service import resolve_places
 from dss.core.shared.models import ConversationMessage, UserTurn
 from dss.entrypoint.composition import _resolve_model
 from dss.observability.stages import Stage
@@ -435,3 +444,54 @@ async def test_a_reply_that_picks_nothing_listed_is_not_turned_into_a_pick(
         assert ask.place_name not in _RAMPUR_LINES, (
             f"guessed {ask.place_name!r} from {reply!r}"
         )
+
+
+def _question_we_send(name: str) -> str:
+    """The question our code sends for `name`, built from the real place list."""
+
+    ask = ClassifiedAsk(
+        subject_categories=SubjectCategory.WEATHER,
+        interaction_type=InteractionType.OBSERVE,
+        place_name=name,
+    )
+    intent = resolve_places(
+        IntentClassification(asks=(ask,)), _turn("q"), lookup=LOOKUP
+    )
+    answer = answer_for_unplaced_asks(intent.asks, load_clarification_text())
+    assert answer is not None, f"{name} is not ambiguous in the place list"
+    return answer.content[0].text
+
+
+async def _place_for_reply(name: str, reply: str) -> ResolvedPlace:
+    """Ask about `name`, reply with `reply`, and return the place the code uses."""
+
+    history = [
+        ConversationMessage(role="user", text=f"What is the weather in {name}?"),
+        ConversationMessage(role="assistant", text=_question_we_send(name)),
+    ]
+    turn = _turn(reply, history=history)
+    classification = await classify_intent(turn, _live_llm())
+    intent = resolve_places(classification, turn, lookup=LOOKUP)
+
+    assert len(intent.asks) == 1, f"expected one ask, got {classification!r}"
+    place = intent.asks[0].place
+    assert isinstance(place, ResolvedPlace), f"not one place: {place!r}"
+    return place
+
+
+async def test_pick_district_with_same_name_block() -> None:
+    """Madhubani is a district and a block in Bihar. Line 1 is the district.
+    It used to loop."""
+
+    place = await _place_for_reply("Madhubani", "1")
+
+    assert place.within == ("India", "Bihar")
+
+
+async def test_pick_state_from_long_list() -> None:
+    """Fatehpur has 7 matches, so we list states. Picking Uttar Pradesh gives
+    its district without asking again. We chose this; the test pins it."""
+
+    place = await _place_for_reply("Fatehpur", "Uttar Pradesh")
+
+    assert place.within == ("India", "Uttar Pradesh")
