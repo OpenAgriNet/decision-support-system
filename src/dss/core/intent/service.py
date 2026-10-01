@@ -1,6 +1,6 @@
 """The intent classifier.
 
-One LLM call turns a turn into a ``Classification`` — words only, no
+One LLM call turns a turn into a ``IntentClassification`` — words only, no
 geometry. The recent conversation goes into the prompt so a follow-up ("And
 potato?") is read against what came before.
 
@@ -16,7 +16,11 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from dss.core.intent.models import Classification, InteractionType, SubjectCategory
+from dss.core.intent.models import (
+    IntentClassification,
+    InteractionType,
+    SubjectCategory,
+)
 from dss.core.shared.models import ConversationMessage, UserTurn
 from dss.ports.llm import LLMProvider
 
@@ -113,11 +117,11 @@ def build_intent_prompt(history: Sequence[ConversationMessage]) -> str:
     return "\n".join(lines)
 
 
-async def classify_intent(turn: UserTurn, llm: LLMProvider) -> Classification:
+async def classify_intent(turn: UserTurn, llm: LLMProvider) -> IntentClassification:
     """Classify the raw query in the context of the turn's recent history."""
 
     return await llm.structured(
         system_prompt=build_intent_prompt(turn.history),
         user_query=turn.original_query,
-        schema=Classification,
+        schema=IntentClassification,
     )

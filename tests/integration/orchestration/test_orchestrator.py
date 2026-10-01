@@ -13,8 +13,8 @@ from __future__ import annotations
 from dss.adapters.sinks.memory import MemoryTurnSink
 from dss.config.clarification_text_loader import load_clarification_text
 from dss.core.intent.models import (
-    Classification,
     ClassifiedAsk,
+    IntentClassification,
     InteractionType,
     SubjectCategory,
 )
@@ -99,8 +99,8 @@ def _ctx() -> TurnContext:
     return TurnContext(trace_id="t1", message_id="m1", session_id="s1")
 
 
-def _one_ask(n: int = 1) -> Classification:
-    return Classification(
+def _one_ask(n: int = 1) -> IntentClassification:
+    return IntentClassification(
         asks=tuple(
             ClassifiedAsk(
                 agriculture_subjects="wheat",
@@ -138,7 +138,7 @@ _ANSWERED_EVIDENCE = _evidence(
 
 
 class _FakeIntentLLM:
-    def __init__(self, result: Classification) -> None:
+    def __init__(self, result: IntentClassification) -> None:
         self._result = result
 
     async def structured(self, *, system_prompt, user_query, schema):
@@ -211,7 +211,7 @@ class _Telemetry:
 
 def _build(
     *,
-    intent: Classification,
+    intent: IntentClassification,
     discovery: DiscoveryResult,
     plan: Plan,
     compose: _FakeCompose,
@@ -362,7 +362,7 @@ async def test_one_place_not_found_still_answers_the_other() -> None:
     )
     compose = _FakeCompose("No rain in Pune [1]. I could not find Xyzzy.")
     orch, _ = _build(
-        intent=Classification(
+        intent=IntentClassification(
             asks=(weather_in("Pune"), weather_in("Xyzzy")), confidence=0.9
         ),
         discovery=_served_discovery(),

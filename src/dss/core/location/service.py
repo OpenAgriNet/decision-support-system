@@ -20,9 +20,9 @@ from __future__ import annotations
 from dss.core.intent.models import (
     AmbiguousPlace,
     Ask,
-    Classification,
     ClassifiedAsk,
     Intent,
+    IntentClassification,
     PlaceSource,
     ResolvedPlace,
     UnresolvedPlace,
@@ -115,7 +115,7 @@ def _build_ask(classified: ClassifiedAsk, place: Place) -> Ask:
 
 
 def resolve_places(
-    classification: Classification, turn: UserTurn, *, lookup: AreaLookup
+    classification: IntentClassification, turn: UserTurn, *, lookup: AreaLookup
 ) -> Intent:
     location = turn.location
     region = location.region if location is not None else None

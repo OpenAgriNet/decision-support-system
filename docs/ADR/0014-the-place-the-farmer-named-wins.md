@@ -122,7 +122,7 @@ Supporting choices, each following from the above:
   `place_name`.
 - **The LLM's schema is split from the domain model.** `Intent` is handed to
   `llm.structured`, so any field on it is a field the model is asked to fill.
-  `classify_intent` now returns `Classification` — words only, `place_name`
+  `classify_intent` now returns `IntentClassification` — words only, `place_name`
   per ask, no geometry — and never builds an `Ask` itself. `resolve_places`
   is the only place a domain `Ask` is built, turning each `place_name` into a
   `place`. Driver 3 becomes structural rather than prompt-enforced.
@@ -148,7 +148,7 @@ Supporting choices, each following from the above:
 ## 5. Consequences
 
 - `core/location/` is created for the resolver, alongside `core/enrichment/`
-  and shaped like it: take a `Classification`, look names up, return an
+  and shaped like it: take a `IntentClassification`, look names up, return an
   `Intent`.
 - **`coverage_for` is deleted.** Its precedence moves into the resolver.
   `coverage_for_ask` reads `ask.place` directly, no lookup — resolution

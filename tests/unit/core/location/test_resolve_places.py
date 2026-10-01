@@ -5,8 +5,8 @@ from __future__ import annotations
 
 from dss.core.intent.models import (
     AmbiguousPlace,
-    Classification,
     ClassifiedAsk,
+    IntentClassification,
     InteractionType,
     PlaceSource,
     ResolvedPlace,
@@ -81,7 +81,7 @@ def test_named_place_beats_device_geometry() -> None:
     """The headline test: today's bug. A farmer in Anand asking about Pune
     must get Pune, not the device's own location."""
 
-    classification = Classification(asks=(_weather_ask("Pune"),))
+    classification = IntentClassification(asks=(_weather_ask("Pune"),))
     turn = _turn(geometry=_DEVICE_GEOMETRY)
     lookup = _FakeLookup({"pune": [_PUNE]})
 
@@ -105,7 +105,7 @@ def test_a_place_from_history_resolves_as_carried() -> None:
     )
     lookup = _FakeLookup({"pune": [_PUNE]})
 
-    intent = resolve_places(Classification(asks=(ask,)), _turn(), lookup=lookup)
+    intent = resolve_places(IntentClassification(asks=(ask,)), _turn(), lookup=lookup)
 
     place = intent.asks[0].place
     assert isinstance(place, ResolvedPlace)
@@ -116,7 +116,7 @@ def test_named_place_beats_asserted_area() -> None:
     """The platform's repeated `location.area` is what it asserts about the
     farmer, not what the farmer said this turn — it must not outrank that."""
 
-    classification = Classification(asks=(_weather_ask("Pune"),))
+    classification = IntentClassification(asks=(_weather_ask("Pune"),))
     turn = _turn(area="Anand")
     lookup = _FakeLookup({"pune": [_PUNE], "anand": [_ANAND]})
 
@@ -131,7 +131,7 @@ def test_device_geometry_beats_asserted_area() -> None:
     """Live device geometry, sent this turn with location consent, is fresher
     than an area the platform is only repeating from an earlier turn."""
 
-    classification = Classification(asks=(_weather_ask(),))
+    classification = IntentClassification(asks=(_weather_ask(),))
     turn = _turn(area="Anand", geometry=_DEVICE_GEOMETRY)
     lookup = _FakeLookup({"anand": [_ANAND]})
 
@@ -159,7 +159,7 @@ def test_named_place_matching_several_is_ambiguous() -> None:
         within=("India", "Chhattisgarh"),
         geometry=Geometry(coordinates=[82.15, 22.09]),
     )
-    classification = Classification(asks=(_weather_ask("Bilaspur"),))
+    classification = IntentClassification(asks=(_weather_ask("Bilaspur"),))
     turn = _turn()
     lookup = _FakeLookup({"bilaspur": [bilaspur_hp, bilaspur_ct]})
 
@@ -172,7 +172,7 @@ def test_named_place_matching_several_is_ambiguous() -> None:
 
 
 def test_named_place_not_in_the_index_is_unresolved() -> None:
-    classification = Classification(asks=(_weather_ask("Xyzzy"),))
+    classification = IntentClassification(asks=(_weather_ask("Xyzzy"),))
     turn = _turn()
     lookup = _FakeLookup({})
 
@@ -187,7 +187,7 @@ def test_the_farmers_region_never_hides_the_place_they_named() -> None:
     """A farmer in Gujarat asks about Pune. The region says where they are, not
     what they asked about, so it must not filter Pune out."""
 
-    classification = Classification(asks=(_weather_ask("Pune"),))
+    classification = IntentClassification(asks=(_weather_ask("Pune"),))
     turn = _turn(region="IN-GJ")
     lookup = _FakeLookup({"pune": [_PUNE]})
 
@@ -216,7 +216,7 @@ def test_region_hint_narrows_an_otherwise_ambiguous_name() -> None:
     """`turn.location.region` disambiguates a name that would otherwise match
     several — "Bilaspur in IN-HP" is not a contradiction, it is a hint."""
 
-    classification = Classification(asks=(_weather_ask("Bilaspur"),))
+    classification = IntentClassification(asks=(_weather_ask("Bilaspur"),))
     turn = _turn(region="IN-HP")
     lookup = _FakeLookup({"bilaspur": [_BILASPUR_HP, _BILASPUR_CT]})
 
@@ -232,7 +232,7 @@ def test_a_region_that_fits_no_match_still_asks_which_one() -> None:
     """A farmer in Gujarat asks about Bilaspur, which is in six states but not
     Gujarat. "I could not find Bilaspur" would be false; ask which one."""
 
-    classification = Classification(asks=(_weather_ask("Bilaspur"),))
+    classification = IntentClassification(asks=(_weather_ask("Bilaspur"),))
     turn = _turn(region="IN-GJ")
     lookup = _FakeLookup({"bilaspur": [_BILASPUR_HP, _BILASPUR_CT]})
 
@@ -260,7 +260,7 @@ def test_a_block_inside_its_same_name_district_resolves_to_the_district() -> Non
         within=("India", "Maharashtra", "Nashik"),
         geometry=Geometry(coordinates=[73.79, 20.0]),
     )
-    classification = Classification(asks=(_weather_ask("Nashik"),))
+    classification = IntentClassification(asks=(_weather_ask("Nashik"),))
     lookup = _FakeLookup({"nashik": [block, district]})
 
     intent = resolve_places(classification, _turn(), lookup=lookup)
@@ -280,7 +280,7 @@ def test_two_asks_two_places() -> None:
         agriculture_subjects="wheat",
         place_name="Pune",
     )
-    classification = Classification(asks=(market_ask, _weather_ask("Anand")))
+    classification = IntentClassification(asks=(market_ask, _weather_ask("Anand")))
     turn = _turn()
     lookup = _FakeLookup({"pune": [_PUNE], "anand": [_ANAND]})
 
@@ -296,7 +296,7 @@ def test_an_ask_naming_no_place_uses_the_device_before_a_sibling() -> None:
     the device, not Pune."""
 
     rain_here = _weather_ask()
-    classification = Classification(asks=(_weather_ask("Pune"), rain_here))
+    classification = IntentClassification(asks=(_weather_ask("Pune"), rain_here))
     turn = _turn(geometry=_DEVICE_GEOMETRY)
     lookup = _FakeLookup({"pune": [_PUNE]})
 
@@ -318,7 +318,7 @@ def test_two_asks_one_place() -> None:
         agriculture_subjects="wheat",
         place_name=None,
     )
-    classification = Classification(asks=(market_ask, _weather_ask("Pune")))
+    classification = IntentClassification(asks=(market_ask, _weather_ask("Pune")))
     turn = _turn()
     lookup = _FakeLookup({"pune": [_PUNE]})
 
@@ -333,14 +333,14 @@ def test_two_asks_one_place() -> None:
 def test_empty_classification_never_touches_the_lookup() -> None:
     lookup = _FakeLookup({})
 
-    intent = resolve_places(Classification(), _turn(), lookup=lookup)
+    intent = resolve_places(IntentClassification(), _turn(), lookup=lookup)
 
     assert intent.asks == ()
     assert lookup.calls == 0
 
 
 def test_nothing_named_and_no_location_leaves_place_none() -> None:
-    classification = Classification(asks=(_weather_ask(),))
+    classification = IntentClassification(asks=(_weather_ask(),))
     turn = _turn()
     lookup = _FakeLookup({})
 

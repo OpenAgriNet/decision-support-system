@@ -6,7 +6,7 @@ Order is code, not config. What this function does *is* the sequence.
 
 Five components so far: intent, place resolution, scheme enrichment,
 moderation, provider discovery. ``classify_intent`` returns a
-``Classification`` — words only, no geometry — and place resolution
+``IntentClassification`` — words only, no geometry — and place resolution
 (``core.location.resolve_places``) is what turns that into the domain
 ``Intent``, filling each ask's ``place``. Enrichment sits after that and
 before discovery — it needs the classified asks, and discovery routes on what
@@ -40,8 +40,8 @@ from dss.adapters.observability.tracing import set_current_span_attributes
 from dss.core.enrichment.service import resolve_scheme_subjects
 from dss.core.intent.models import (
     AmbiguousPlace,
-    Classification,
     Intent,
+    IntentClassification,
     ResolvedPlace,
     UnresolvedPlace,
 )
@@ -80,7 +80,7 @@ def _nothing_discovered() -> DiscoveryResult:
 
 
 def place_attributes(
-    classification: Classification, intent: Intent
+    classification: IntentClassification, intent: Intent
 ) -> dict[str, str | int]:
     """What happened to each ask's place, for the `location` span.
 

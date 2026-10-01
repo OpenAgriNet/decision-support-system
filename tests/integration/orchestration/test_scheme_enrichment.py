@@ -11,9 +11,9 @@ import logging
 from datetime import UTC, datetime
 
 from dss.core.intent.models import (
-    Classification,
     ClassifiedAsk,
     Intent,
+    IntentClassification,
     InteractionType,
     SubjectCategory,
 )
@@ -39,8 +39,8 @@ def _turn(query: str) -> UserTurn:
     )
 
 
-def _intent(subject: str, category: SubjectCategory) -> Classification:
-    return Classification(
+def _intent(subject: str, category: SubjectCategory) -> IntentClassification:
+    return IntentClassification(
         asks=(
             ClassifiedAsk(
                 agriculture_subjects=subject,
@@ -58,7 +58,7 @@ class _FakeLLM:
 
     async def structured(self, *, system_prompt, user_query, schema):
         # One fake for both components; each asks for a different schema.
-        if schema is Classification:
+        if schema is IntentClassification:
             return self._result
         return schema()
 
@@ -74,7 +74,7 @@ class _RecordingDiscovery:
         return DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
 
 
-async def _run(intent: Classification, query: str, *, catalog=CATALOG, **kwargs):
+async def _run(intent: IntentClassification, query: str, *, catalog=CATALOG, **kwargs):
     discovery = _RecordingDiscovery()
     result = await run_turn(
         _turn(query),

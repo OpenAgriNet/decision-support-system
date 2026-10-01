@@ -8,9 +8,9 @@ from pydantic import ValidationError
 from dss.core.intent.models import (
     AmbiguousPlace,
     Ask,
-    Classification,
     ClassifiedAsk,
     Intent,
+    IntentClassification,
     InteractionType,
     PlaceSource,
     ResolvedPlace,
@@ -209,7 +209,7 @@ def test_classification_rejects_a_domain_ask() -> None:
         interaction_type=InteractionType.OBSERVE,
     )
     with pytest.raises(ValidationError):
-        Classification(asks=(ask,))
+        IntentClassification(asks=(ask,))
 
 
 def test_intent_carries_asks_and_confidence() -> None:

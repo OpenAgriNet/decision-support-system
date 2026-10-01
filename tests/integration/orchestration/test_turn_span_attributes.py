@@ -23,8 +23,8 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 
 from dss.adapters.observability.tracing import open_span
 from dss.core.intent.models import (
-    Classification,
     ClassifiedAsk,
+    IntentClassification,
     InteractionType,
     SubjectCategory,
 )
@@ -229,7 +229,7 @@ async def test_the_location_stage_says_what_became_of_each_place(spans) -> None:
             ],
         }
     )
-    classification = Classification(
+    classification = IntentClassification(
         asks=(
             weather_in("Pune"),
             weather_in("Aurangabad"),

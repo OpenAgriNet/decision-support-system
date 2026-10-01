@@ -21,8 +21,8 @@ from typing import Any
 from pydantic import BaseModel
 
 from dss.core.intent.models import (
-    Classification,
     ClassifiedAsk,
+    IntentClassification,
     InteractionType,
     SubjectCategory,
 )
@@ -37,7 +37,7 @@ DEFAULT_ANSWERS: dict[type[BaseModel], object] = {
     # turns every turn into `moderation_unavailable` — which is exactly what
     # happened before this entry existed.
     LlmModerationVerdict: LlmModerationVerdict(violated_policy_id=None),
-    Classification: Classification(
+    IntentClassification: IntentClassification(
         asks=(
             ClassifiedAsk(
                 agriculture_subjects="wheat",

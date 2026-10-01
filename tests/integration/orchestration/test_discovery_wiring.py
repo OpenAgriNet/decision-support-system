@@ -16,9 +16,9 @@ from dss.adapters.observability.tracing import open_span
 from dss.adapters.schema_packs.filesystem import FilesystemSchemaPackSource
 from dss.core.intent.models import (
     Ask,
-    Classification,
     ClassifiedAsk,
     Intent,
+    IntentClassification,
     InteractionType,
     SubjectCategory,
 )
@@ -253,7 +253,7 @@ async def test_the_fan_out_span_counts_how_many_asks_went_unanswered(
 
 
 class _FakeIntentLLM:
-    def __init__(self, result: Classification) -> None:
+    def __init__(self, result: IntentClassification) -> None:
         self._result = result
 
     async def structured(self, *, system_prompt, user_query, schema):
@@ -308,7 +308,7 @@ async def test_run_turn_can_call_the_composed_discover_providers() -> None:
                 ),
             ),
             intent_llm=_FakeIntentLLM(
-                Classification(
+                IntentClassification(
                     asks=(
                         ClassifiedAsk(
                             subject_categories=SubjectCategory.MARKET,

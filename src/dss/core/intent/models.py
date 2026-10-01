@@ -1,6 +1,6 @@
 """The intent contract — what a farmer is asking for (spec 0002).
 
-Classification lives here; it runs independently of moderation (they no longer
+IntentClassification lives here; it runs independently of moderation (they no longer
 share a context — see ADR-0003). A turn can carry more than one ask (e.g. "wheat
 price and will it rain?"), so an ``Intent`` is a tuple of ``Ask``s, each naming a
 single subject on a single interaction type, plus one overall ``confidence``.
@@ -145,7 +145,7 @@ class ClassifiedAsk(BaseModel):
         return value.strip(_PLACE_NAME_EDGE_JUNK) or None
 
 
-class Classification(BaseModel):
+class IntentClassification(BaseModel):
     """The LLM's structured-output schema for a turn — the raw finding before
     place resolution builds the domain ``Intent`` from it.
     """

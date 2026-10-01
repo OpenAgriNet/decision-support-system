@@ -6,8 +6,8 @@ Plain Python in/out; the ``LLMProvider`` port is faked. No framework, no network
 from __future__ import annotations
 
 from dss.core.intent.models import (
-    Classification,
     ClassifiedAsk,
+    IntentClassification,
     InteractionType,
     SubjectCategory,
 )
@@ -29,9 +29,9 @@ def _turn(query: str, history: list[ConversationMessage] | None = None) -> UserT
 
 
 class _FakeLLM:
-    """Records what it was asked and returns a scripted Classification."""
+    """Records what it was asked and returns a scripted IntentClassification."""
 
-    def __init__(self, result: Classification) -> None:
+    def __init__(self, result: IntentClassification) -> None:
         self._result = result
         self.seen_query: str | None = None
         self.seen_prompt: str | None = None
@@ -39,13 +39,13 @@ class _FakeLLM:
     async def structured(self, *, system_prompt, user_query, schema):
         self.seen_prompt = system_prompt
         self.seen_query = user_query
-        assert schema is Classification
+        assert schema is IntentClassification
         return self._result
 
 
 async def test_classify_returns_asks_and_confidence() -> None:
     llm = _FakeLLM(
-        Classification(
+        IntentClassification(
             asks=(
                 ClassifiedAsk(
                     agriculture_subjects="potato",
@@ -59,7 +59,7 @@ async def test_classify_returns_asks_and_confidence() -> None:
 
     classification = await classify_intent(_turn("What is the potato price?"), llm)
 
-    assert classification == Classification(
+    assert classification == IntentClassification(
         asks=(
             ClassifiedAsk(
                 agriculture_subjects="potato",
@@ -73,7 +73,7 @@ async def test_classify_returns_asks_and_confidence() -> None:
 
 
 async def test_history_reaches_the_prompt_for_followups() -> None:
-    llm = _FakeLLM(Classification())
+    llm = _FakeLLM(IntentClassification())
     history = [
         ConversationMessage(role="user", text="What is the wheat price?"),
         ConversationMessage(role="assistant", text="Wheat is ₹2,275 per quintal."),
