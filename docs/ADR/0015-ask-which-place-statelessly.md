@@ -69,6 +69,8 @@ checks it. It is place-only for now.
 
 - The Experience API must send our message back unchanged. To confirm with
   that team.
+- The composer sees the last 3 messages, so a reply like "2" reads as an
+  answer to our question. Without them it said it could not find an answer.
 - The model may copy a line wrongly. The code then asks again, so the farmer
   is never given a wrong place. The live-model tests (tier 5) measure how
   often this happens, on each model in use.

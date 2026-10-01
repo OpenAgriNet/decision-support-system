@@ -6,7 +6,7 @@ No framework, no network — plain strings in, plain strings out.
 
 from __future__ import annotations
 
-from dss.core.channel.prompt import SYSTEM_PROMPT, render_evidence
+from dss.core.channel.prompt import SYSTEM_PROMPT, render_evidence, user_prompt
 from dss.core.intent.models import (
     Ask,
     Intent,
@@ -16,7 +16,7 @@ from dss.core.intent.models import (
     SubjectCategory,
 )
 from dss.core.planner.models import Evidence, Failure, Result, Source, SourceKind
-from dss.core.shared.models import Geometry
+from dss.core.shared.models import ConversationMessage, Geometry, UserTurn
 
 
 def _place(name: str) -> ResolvedPlace:
@@ -188,3 +188,34 @@ def test_system_prompt_prefers_the_datas_own_place() -> None:
     prompt = SYSTEM_PROMPT.lower()
     assert "data itself names a place" in prompt
     assert "more precise" in prompt
+
+
+def test_composer_sees_last_three_messages() -> None:
+    """A reply like "2" means nothing alone. The composer sees the last three
+    messages, wrapped as data, and nothing older."""
+
+    history = [
+        ConversationMessage(role="user", text="My cotton looks fine."),
+        ConversationMessage(role="assistant", text="Good to hear."),
+        ConversationMessage(role="user", text="What is the weather in Rampur?"),
+        ConversationMessage(role="assistant", text="Which Rampur? 1. … 2. …"),
+    ]
+    turn = UserTurn(
+        original_query="2",
+        enriched_query="2",
+        session_id="s1",
+        transaction_id="t1",
+        source_lang="en",
+        target_lang="en",
+        channel="web",
+        history=history,
+    )
+    evidence = Evidence(sources=(), results=(), served=(), failed=(), sufficient=False)
+
+    prompt = user_prompt(evidence, Intent(), turn=turn)
+
+    assert "<BEGIN CONVERSATION>" in prompt
+    assert "Good to hear." in prompt
+    assert "What is the weather in Rampur?" in prompt
+    assert "Which Rampur? 1. … 2. …" in prompt
+    assert "My cotton looks fine." not in prompt

@@ -16,12 +16,17 @@ import json
 
 from dss.core.intent.models import Intent, ResolvedPlace
 from dss.core.planner.markers import (
+    CONVERSATION,
     QUESTION,
     RETRIEVED_DATA,
     wrap_as_data,
 )
 from dss.core.planner.models import Evidence, Failure, Identity
 from dss.core.shared.models import UserTurn
+
+# A reply like "2" means nothing without the question it answers. Three
+# messages hold that question; the whole chat would make every answer slower.
+_HISTORY_WINDOW = 3
 
 SYSTEM_PROMPT = """You are {name}, {persona}
 
@@ -71,11 +76,16 @@ def user_prompt(evidence: Evidence, intent: Intent, *, turn: UserTurn) -> str:
     instruction, even though it traces back to the farmer's own words.
     """
 
-    return (
+    question = (
         wrap_as_data(turn.enriched_query, QUESTION)
         + "\n\n"
         + wrap_as_data(render_evidence(evidence, intent), RETRIEVED_DATA)
     )
+    recent = turn.history[-_HISTORY_WINDOW:]
+    if not recent:
+        return question
+    lines = "\n".join(f"{message.role}: {message.text}" for message in recent)
+    return wrap_as_data(lines, CONVERSATION) + "\n\n" + question
 
 
 def _place_label(ask_index: int, intent: Intent) -> str:
