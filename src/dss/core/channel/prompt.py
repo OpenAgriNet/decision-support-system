@@ -37,6 +37,12 @@ never your own knowledge, and never a number the data does not contain.
 - When one thing carries several prices, the usual price is the answer. Give
   that, then say how low and how high it went in the same sentence.
 - Cite a source with its number in square brackets, like [1].
+- Answer each question from one source only. Where several sources answer
+  the same question, read them, pick the single one that answers it best,
+  and write from that one alone — do not stitch two sources' text together
+  and do not average their numbers. Cite only the source you used.
+- Different questions may be answered by different sources. The one-source
+  rule is per question, not per reply.
 - Reply in {target_lang}.
 
 If the data does not answer the question, say plainly that you could not
@@ -79,14 +85,30 @@ def render_evidence(evidence: Evidence) -> str:
     pack has its own shape, so this does not try to interpret them. Turning
     ``{"prices": {"modal": 2200}}`` into "2,200 Rs" is the model's job; this
     only has to make the values legible and say which source each came from.
+
+    Grouped by question, then by source, because the composer is told to
+    answer each question from one source alone. Flat, one block per result,
+    the layout could not show that: a document that returned four passages
+    looked like four separate documents agreeing with each other, and two
+    documents' passages sat interleaved with nothing to say where one ended.
     """
 
     name_by_id = {source.id: source.name for source in evidence.sources}
-    blocks = [
-        f"[{result.source_id}] {name_by_id.get(result.source_id, 'unknown')}\n"
-        f"{json.dumps(result.data, indent=2, ensure_ascii=False)}"
-        for result in evidence.results
-    ]
+    by_question: dict[int, dict[str, list[dict]]] = {}
+    for result in evidence.results:
+        by_question.setdefault(result.ask_index, {}).setdefault(
+            result.source_id, []
+        ).append(result.data)
+
+    blocks: list[str] = []
+    for position, sources in enumerate(by_question.values(), start=1):
+        for source_id, payloads in sources.items():
+            name = name_by_id.get(source_id, "unknown")
+            body = "\n\n".join(
+                json.dumps(payload, indent=2, ensure_ascii=False)
+                for payload in payloads
+            )
+            blocks.append(f"Question {position} — [{source_id}] {name}\n{body}")
     blocks.extend(_render_failures(evidence))
 
     if not blocks:

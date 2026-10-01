@@ -127,6 +127,8 @@ Consequences of the split:
 
 Releasing pieces is one-way: the DSS cannot recall what it has sent, so a composition failure after the first piece is reported as a failed turn rather than retried into a different answer (ADR-0011 §4).
 
+**One question is answered from one source (ADR-0015).** A single `/select` can return passages from several documents, and two documents can disagree without saying so — written for different states, seasons or varieties. The composer is therefore told to read the sources that answer a question, pick the one that answers it best, and write from that one alone, citing only it. The rule is per question, not per reply: a turn asking two things may be served by two providers and name both. Evidence is laid out by question and then by source, with a document's passages gathered under one heading, so the grouping the rule talks about is visible. The rule is an instruction the model follows, not a check the code enforces; enforcing it would belong to the response reviewer, which is not built.
+
 ---
 
 ## 4. Extension model

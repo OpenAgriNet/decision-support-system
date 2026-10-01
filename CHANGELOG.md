@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Changed
+- An answer to one question comes from one source. Where several documents
+  answer the same question the composer picks the one that answers best and
+  writes from it alone, rather than joining two documents' sentences into
+  advice that neither of them gave. The rule is per question, so a turn
+  asking two things may still name two sources. Evidence is laid out by
+  question and then by source, so a document that returned four passages
+  reads as one source and not as four agreeing ones. The reply lists only the
+  sources the answer cited, not every source the turn read — a document the
+  composer rejected is no longer offered to the farmer as provenance.
+  ADR-0015
+
 ### Fixed
 - `scripts/run-local.sh` exports what `.env.local` sets, so a line written
   without `export` still reaches the DSS. It used to make a shell variable
