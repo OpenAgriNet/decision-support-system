@@ -17,7 +17,7 @@ FIXTURES = Path(__file__).parent / "fixtures"
 def test_maps_the_response_into_a_discovered_answer() -> None:
     response = json.loads((FIXTURES / "select_response.json").read_text())
 
-    (answer,) = map_select_response(
+    [answer] = map_select_response(
         response, provider_id="mausamgram", provider_name="IMD Mausamgram NWP"
     )
 
@@ -30,7 +30,7 @@ def test_maps_the_response_into_a_discovered_answer() -> None:
 def test_attributes_carry_the_real_data() -> None:
     response = json.loads((FIXTURES / "select_response.json").read_text())
 
-    (answer,) = map_select_response(
+    [answer] = map_select_response(
         response, provider_id="mausamgram", provider_name="IMD Mausamgram NWP"
     )
 
@@ -53,7 +53,7 @@ def test_every_resource_in_the_response_reaches_the_answer() -> None:
         (FIXTURES / "select_response_five_day_forecast.json").read_text()
     )
 
-    (answer,) = map_select_response(
+    [answer] = map_select_response(
         response, provider_id="mausamgram", provider_name="IMD Mausamgram"
     )
 
@@ -74,7 +74,7 @@ def test_validity_stays_on_each_resource_not_the_answer() -> None:
         (FIXTURES / "select_response_five_day_forecast.json").read_text()
     )
 
-    (answer,) = map_select_response(
+    [answer] = map_select_response(
         response, provider_id="mausamgram", provider_name="IMD Mausamgram"
     )
 
@@ -91,7 +91,7 @@ def test_the_payloads_source_block_is_promoted() -> None:
 
     response = json.loads((FIXTURES / "select_response.json").read_text())
 
-    (answer,) = map_select_response(
+    [answer] = map_select_response(
         response, provider_id="aws-network", provider_name="Weather Station Network"
     )
 
@@ -106,7 +106,7 @@ def test_a_response_without_a_source_block_maps_to_none() -> None:
     resource = response["message"]["contract"]["commitments"][0]["resources"][0]
     del resource["resourceAttributes"]["source"]
 
-    (answer,) = map_select_response(
+    [answer] = map_select_response(
         response, provider_id="mausamgram", provider_name="IMD"
     )
 
@@ -122,7 +122,7 @@ def test_a_source_uri_is_promoted_when_a_farmer_can_open_it() -> None:
     resource = response["message"]["contract"]["commitments"][0]["resources"][0]
     resource["resourceAttributes"]["source"]["sourceUri"] = "https://mausam.imd.gov.in"
 
-    (answer,) = map_select_response(
+    [answer] = map_select_response(
         response, provider_id="mausamgram", provider_name="IMD"
     )
 
@@ -135,7 +135,7 @@ def test_the_source_block_stays_in_attributes_as_well() -> None:
 
     response = json.loads((FIXTURES / "select_response.json").read_text())
 
-    (answer,) = map_select_response(
+    [answer] = map_select_response(
         response, provider_id="mausamgram", provider_name="IMD"
     )
 
