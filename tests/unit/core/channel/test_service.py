@@ -29,6 +29,7 @@ from dss.ports.area_lookup import AreaMatch
 _TEXT = ClarificationText(
     needs_place="Which place are you asking about?",
     unknown_place="I could not find {name}.",
+    unknown_place_in="I could not find {name} in {part}.",
     ambiguous_place_header="Which {name}?",
     grouped_place_header="{name} is in several places. Which one:",
     more_places_hint="Not in this list? Tell me the area it is in.",
@@ -117,6 +118,17 @@ def test_the_same_failed_place_is_reported_once() -> None:
 
     assert answer is not None
     assert answer.content[0].text.count("I could not find Xyzzy.") == 1
+
+
+def test_not_found_says_in_not_comma() -> None:
+    """A farmer may not read "Aurangabad, Maharashtra" as "in". Say it."""
+
+    place = UnresolvedPlace(unresolved_name="Aurangabad, Maharashtra")
+
+    answer = answer_for_unplaced_asks((_ask(place=place),), _TEXT)
+
+    assert answer is not None
+    assert answer.content[0].text == "I could not find Aurangabad in Maharashtra."
 
 
 def test_each_choice_stops_where_it_stands_apart_from_every_other() -> None:

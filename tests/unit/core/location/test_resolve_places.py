@@ -359,17 +359,59 @@ def test_a_part_picks_the_match_that_sits_directly_in_it() -> None:
     assert place.within == ("India", "Bihar")
 
 
-def test_a_part_that_fits_no_match_still_asks_which_one() -> None:
-    """A garbled pick must never become a guess: ask the same question again."""
+def test_reply_not_in_list_is_not_found() -> None:
+    """A reply naming a state that is not on our list is not found. The list
+    is still in the history to pick from."""
 
     classification = IntentClassification(asks=(_weather_ask("Rampur, Kerala"),))
     lookup = _FakeLookup({"rampur": [_RAMPUR_UP, _RAMPUR_HP]})
 
     intent = resolve_places(classification, _turn(), lookup=lookup)
 
-    place = intent.asks[0].place
-    assert isinstance(place, AmbiguousPlace)
-    assert place.candidates == (_RAMPUR_UP, _RAMPUR_HP)
+    assert intent.asks[0].place == UnresolvedPlace(unresolved_name="Rampur, Kerala")
+
+
+def test_part_we_do_not_have_is_not_found() -> None:
+    """Only the Bihar Aurangabad is in the list. Ignoring "Maharashtra" would
+    answer for a place about 1,000 km away."""
+
+    bihar = AreaMatch(
+        name="Aurangabad",
+        region="IN-BR",
+        within=("India", "Bihar"),
+        geometry=Geometry(coordinates=[84.37, 24.75]),
+    )
+    classification = IntentClassification(
+        asks=(_weather_ask("Aurangabad, Maharashtra"),)
+    )
+    lookup = _FakeLookup({"aurangabad": [bihar]})
+
+    intent = resolve_places(classification, _turn(), lookup=lookup)
+
+    assert intent.asks[0].place == UnresolvedPlace(
+        unresolved_name="Aurangabad, Maharashtra"
+    )
+
+
+def test_split_two_joined_places() -> None:
+    """The model joined "Pune and Mumbai" into "Pune, Mumbai". Mumbai is a
+    place, not above Pune, so both are answered."""
+
+    mumbai = AreaMatch(
+        name="Mumbai",
+        region="IN-MH",
+        within=("India", "Maharashtra"),
+        geometry=Geometry(coordinates=[72.88, 19.08]),
+    )
+    classification = IntentClassification(asks=(_weather_ask("Pune, Mumbai"),))
+    lookup = _FakeLookup({"pune": [_PUNE], "mumbai": [mumbai]})
+
+    intent = resolve_places(classification, _turn(), lookup=lookup)
+
+    places = [ask.place for ask in intent.asks]
+    assert all(isinstance(place, ResolvedPlace) for place in places)
+    assert [place.name for place in places] == ["Pune", "Mumbai"]
+    assert all(ask.subject_categories is SubjectCategory.WEATHER for ask in intent.asks)
 
 
 def test_a_block_inside_its_same_name_district_resolves_to_the_district() -> None:

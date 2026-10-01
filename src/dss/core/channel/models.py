@@ -32,6 +32,8 @@ class ClarificationText(BaseModel):
 
     needs_place: str
     unknown_place: str
+    # For "Aurangabad, Maharashtra": a farmer may not read a comma as "in".
+    unknown_place_in: str
     ambiguous_place_header: str
     grouped_place_header: str
     # Closes a grouped list that was cut at `max_choices`.

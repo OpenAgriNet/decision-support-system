@@ -46,7 +46,11 @@ Option 4 adds a call to every turn, and most turns are not replies.
   the farmer's own made a model guess a line for such a reply.
 - **Code splits at the last comma**, looks up the name, and keeps the match
   whose parent places hold the second part.
-- **Still not one place? Ask the same question again.** Never guess.
+- **Still not one place? Ask again.** If the part after the comma fits none
+  of the matches, say "I could not find Aurangabad in Maharashtra." A farmer
+  may not read a comma as "in". Never guess.
+- **Two places joined by mistake** ("Pune, Mumbai") are split back into two,
+  when the part is a place of its own and not above the name.
 - **At most 5 choices.** The farmer's region narrows first. If more than 5
   remain, list the groups one level up. The level is never named. Past 5
   groups, add "Not in this list? Tell me the area it is in." The limit is the

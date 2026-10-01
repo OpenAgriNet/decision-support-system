@@ -190,6 +190,12 @@
   request-side hint; MandiPrice has none. So the schema cannot drive this
   cleanly. Fix: ask the network-specs owners for a request-side flag, e.g.
   `requiresLocation` on `OnDemand` entries.
+- **"Name, Part" can be split into two places when one was meant (#131).**
+  When the part fits no match but is itself a place, the code treats it as
+  two places, to undo a model joining "Pune and Mumbai" into "Pune, Mumbai".
+  "Ashti, Nagpur" (the Ashti near Nagpur) then also answers Nagpur, and
+  "Bihar" is both a state and a block. Fix needs a way to tell "near" from
+  "and" that does not rely on the comma.
 - **A block's coordinate is its district's, not its own.** Every one of the
   7,092 Block rows in the 2026-09-03 LGD snapshot has `point_method` starting
   `inherited:` — none has a real point of its own. A farmer naming their

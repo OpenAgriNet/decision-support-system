@@ -98,6 +98,16 @@ def _ambiguous_lines(place: AmbiguousPlace, text: ClarificationText) -> list[str
     ]
 
 
+def _not_found_line(name: str, text: ClarificationText) -> str:
+    """ "Aurangabad, Maharashtra" reads as "I could not find Aurangabad in
+    Maharashtra": a farmer may not read the comma as "in"."""
+
+    place, comma, part = name.rpartition(",")
+    if not comma:
+        return text.unknown_place.format(name=name)
+    return text.unknown_place_in.format(name=place.strip(), part=part.strip())
+
+
 def question_for_ambiguous_asks(
     asks: Sequence[Ask], text: ClarificationText
 ) -> str | None:
@@ -143,7 +153,7 @@ def answer_for_unplaced_asks(
         if isinstance(ask.place, AmbiguousPlace):
             lines.extend(_ambiguous_lines(ask.place, text))
         elif isinstance(ask.place, UnresolvedPlace):
-            lines.append(text.unknown_place.format(name=ask.place.unresolved_name))
+            lines.append(_not_found_line(ask.place.unresolved_name, text))
         else:
             needs_place = True
 

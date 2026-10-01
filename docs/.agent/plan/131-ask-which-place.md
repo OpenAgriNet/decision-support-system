@@ -112,3 +112,8 @@ OpenAgriNet/engineering-tracker#131.
   measured by tier 5.
 - The Experience layer must send our assistant message back verbatim in
   history (the story lists this as a dependency to confirm with that team).
+- A "Name, Part" whose part fits no match but is itself a place is split into
+  two places, to undo a model joining "Pune and Mumbai" into "Pune, Mumbai".
+  Side effect: "Ashti, Nagpur" (meaning the Ashti near Nagpur, none inside
+  it) also answers Nagpur. Same for a part like "Bihar", which is also a
+  block name. Not a silent wrong place: the answer names each place.
