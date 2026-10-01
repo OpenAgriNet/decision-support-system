@@ -261,7 +261,9 @@ def test_a_name_with_a_part_picks_the_match_inside_that_part() -> None:
     """The farmer answered "which Rampur?" — the model copies the line we
     listed, "Rampur, Himachal Pradesh". The part after the comma picks one."""
 
-    classification = Classification(asks=(_weather_ask("Rampur, Himachal Pradesh"),))
+    classification = IntentClassification(
+        asks=(_weather_ask("Rampur, Himachal Pradesh"),)
+    )
     lookup = _FakeLookup({"rampur": [_RAMPUR_UP, _RAMPUR_HP]})
 
     intent = resolve_places(classification, _turn(), lookup=lookup)
@@ -292,7 +294,7 @@ def test_the_region_narrows_a_long_list_before_anything_is_listed() -> None:
             ]
         )
     ]
-    classification = Classification(asks=(_weather_ask("Rampur"),))
+    classification = IntentClassification(asks=(_weather_ask("Rampur"),))
     lookup = _FakeLookup({"rampur": [_RAMPUR_UP, *others, _RAMPUR_HP]})
 
     intent = resolve_places(classification, _turn(region="IN-HP"), lookup=lookup)
@@ -319,7 +321,7 @@ def test_a_part_that_leaves_several_asks_again_with_only_those() -> None:
         within=("India", "Uttar Pradesh", "Rampur"),
         geometry=Geometry(coordinates=[79.03, 28.81]),
     )
-    classification = Classification(asks=(_weather_ask("Rampur, Uttar Pradesh"),))
+    classification = IntentClassification(asks=(_weather_ask("Rampur, Uttar Pradesh"),))
     lookup = _FakeLookup({"rampur": [rampur_up_a, _RAMPUR_HP, rampur_up_b]})
 
     intent = resolve_places(classification, _turn(), lookup=lookup)
@@ -332,7 +334,7 @@ def test_a_part_that_leaves_several_asks_again_with_only_those() -> None:
 def test_a_part_that_fits_no_match_still_asks_which_one() -> None:
     """A garbled pick must never become a guess: ask the same question again."""
 
-    classification = Classification(asks=(_weather_ask("Rampur, Kerala"),))
+    classification = IntentClassification(asks=(_weather_ask("Rampur, Kerala"),))
     lookup = _FakeLookup({"rampur": [_RAMPUR_UP, _RAMPUR_HP]})
 
     intent = resolve_places(classification, _turn(), lookup=lookup)

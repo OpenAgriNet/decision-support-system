@@ -403,7 +403,7 @@ async def test_an_ambiguous_place_is_asked_after_the_answer_for_the_other() -> N
         )
     )
     orch, _ = _build(
-        intent=Classification(
+        intent=IntentClassification(
             asks=(weather_in("Pune"), weather_in("Aurangabad")), confidence=0.9
         ),
         discovery=_served_discovery(),
