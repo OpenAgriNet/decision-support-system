@@ -495,3 +495,13 @@ async def test_pick_state_from_long_list() -> None:
     place = await _place_for_reply("Fatehpur", "Uttar Pradesh")
 
     assert place.within == ("India", "Uttar Pradesh")
+
+
+async def test_reply_to_not_in_list_hint() -> None:
+    """Narayanpur has 7 matches; the list shows 5 states and says "Not in this
+    list? Tell me the area it is in." The farmer's is in Telangana, which is
+    not shown. Replying "Telangana" must still find it."""
+
+    place = await _place_for_reply("Narayanpur", "Telangana")
+
+    assert "Telangana" in place.within

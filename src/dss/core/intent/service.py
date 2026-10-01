@@ -118,8 +118,10 @@ def build_intent_prompt(history: Sequence[ConversationMessage]) -> str:
         "Weather / observe, place_name 'Sonagiri, Odisha'. The user picked one "
         "of the listed options, "
         "so answer the first question. Copy the option as listed. If the "
-        "reply matches none of the listed options, it is not a pick: read it "
-        "as a new question.",
+        "reply is not one of the listed options but names a place, it is the "
+        "answer to our question: copy the name with that place, as "
+        "'Sonagiri, Kerala'. If it is not a place at all, read it as a new "
+        "question.",
         "  'weather in Pune, Maharashtra' -> one ask, place_name 'Pune'. A "
         "state after a place narrows it; it is not a second place.",
     ]

@@ -190,11 +190,14 @@ def test_prompt_shows_the_place_a_data_answer_came_from_is_not_the_users() -> No
 
 def test_prompt_says_a_reply_matching_no_listed_option_is_not_a_pick() -> None:
     """Without this a live model mapped a reply of "5" onto the last line of a
-    three-line list, which would give the farmer the wrong place silently."""
+    three-line list, which would give the farmer the wrong place silently. A
+    reply naming an unlisted place still answers our question: that is what
+    the "Not in this list?" hint asks for."""
 
     prompt = build_intent_prompt([])
 
-    assert "matches none of the listed options" in prompt
+    assert "not one of the listed options but names a place" in prompt
+    assert "If it is not a place at all, read it as a new question." in prompt
 
 
 def test_prompt_forbids_guessing_a_place_nobody_said() -> None:

@@ -40,10 +40,15 @@ Option 4 adds a call to every turn, and most turns are not replies.
 
 - **Our question is fixed text, not translated.** Each line reads "Rampur,
   Himachal Pradesh", so the model can copy it exactly.
-- **The model copies the picked line** as the place name. The intent prompt
-  has one worked example of this, with one line for a reply that matches no
-  listed option: it is a new question. A rule saying a listed place can be
-  the farmer's own made a model guess a line for such a reply.
+- **The model copies the line the farmer picked.** The prompt shows one
+  example of this. It also says what to do with a reply that is not on our
+  list:
+  - If the reply is a place, such as "Telangana", it answers our question.
+  - If it is a number with no line, such as "5" when we listed 3 choices, it
+    is a new question.
+
+  We tried a broader rule before. With it, a model turned "5" into the last
+  line, a wrong place.
 - **Code splits at the last comma**, looks up the name, and keeps the match
   whose parent places hold the second part.
 - **Still not one place? Ask again.** If the part after the comma fits none
