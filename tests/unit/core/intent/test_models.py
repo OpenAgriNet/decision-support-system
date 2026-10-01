@@ -187,6 +187,20 @@ def test_classified_ask_keeps_punctuation_inside_the_place_name() -> None:
     assert ask.place_name == "St. Thomas"
 
 
+@pytest.mark.parametrize(
+    "raw", ["2. Rampur, Himachal Pradesh", "2) Rampur, Himachal Pradesh"]
+)
+def test_line_number_is_dropped(raw: str) -> None:
+    """The model may copy a listed line with its number."""
+
+    ask = ClassifiedAsk(
+        subject_categories=SubjectCategory.WEATHER,
+        interaction_type=InteractionType.OBSERVE,
+        place_name=raw,
+    )
+    assert ask.place_name == "Rampur, Himachal Pradesh"
+
+
 def test_classified_ask_with_only_punctuation_names_no_place() -> None:
     """An empty name would reach the farmer as "I could not find ." — no name
     is the honest reading, and lets the device or asserted area apply.
