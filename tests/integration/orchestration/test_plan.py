@@ -18,7 +18,13 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
-from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
+from dss.core.intent.models import (
+    Ask,
+    Intent,
+    InteractionType,
+    SubjectCategory,
+    UnresolvedPlace,
+)
 from dss.core.moderation.models import ModerationDecision, Outcome, ReasonCode
 from dss.core.planner.models import Identity, Skill, Verdict
 from dss.core.planner.validation import DomainSchema
@@ -263,6 +269,37 @@ async def test_a_direct_answer_reaches_the_evidence_through_plan() -> None:
     assert evidence.results[0].data == {"soilType": "sandy loam"}
     assert evidence.served == (0,)
     assert evidence.sufficient is True
+
+
+async def test_an_ask_whose_place_failed_is_a_failure_even_if_never_called() -> None:
+    """Xyzzy has no place, so the model never calls select for it. Its failure
+    must still reach the evidence, or the farmer never hears about Xyzzy."""
+
+    xyzzy_ask = PRICE_ASK.model_copy(
+        update={"place": UnresolvedPlace(unresolved_name="Xyzzy")}
+    )
+    plan = build_plan(
+        schemas=SCHEMAS,
+        schema_context_index={},
+        invocation=_FakeInvocation(),
+        identity=IDENTITY,
+        skills=(SKILL,),
+        model=FunctionModel(_answers_without_calling),
+    )
+
+    evidence = await plan(
+        _turn(),
+        intent=Intent(asks=(PRICE_ASK, xyzzy_ask), confidence=0.9),
+        discovery=DiscoveryResult(
+            answers={},
+            capabilities={0: (CAPABILITY,), 1: (CAPABILITY,)},
+            failures={},
+            events=(),
+        ),
+        verdict=_cleared_verdict(),
+    )
+
+    assert [(f.ask_index, f.capability) for f in evidence.failed] == [(1, None)]
 
 
 async def test_the_planner_binds_its_own_model_settings() -> None:

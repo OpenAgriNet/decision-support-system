@@ -183,6 +183,7 @@ async def test_every_stage_publishes_its_duration(reader) -> None:
     }
     assert stages == {
         "intent",
+        "location",
         "enrichment",
         "moderation",
         "discovery",

@@ -10,15 +10,15 @@ from pathlib import Path
 
 import pytest
 
-from dss.adapters.area_lookup.csv_lookup import CsvAreaLookup, DistrictCsvUnusable
+from dss.adapters.area_lookup.csv_lookup import AreaCsvUnusable, CsvAreaLookup
 from dss.core.shared.models import Geometry
 from dss.ports.area_lookup import AreaMatch
 
-HEADER = "area_code,area_name,region,latitude,longitude,aliases\n"
+HEADER = "area_code,area_name,region,latitude,longitude,aliases,within\n"
 
 
 def _write(tmp_path: Path, *rows: str) -> Path:
-    path = tmp_path / "districts.csv"
+    path = tmp_path / "areas.csv"
     path.write_text(HEADER + "".join(f"{row}\n" for row in rows), encoding="utf-8")
     return path
 
@@ -30,7 +30,7 @@ def test_resolves_a_district_name_to_its_coordinates(tmp_path: Path) -> None:
     the Arabian Sea and still look like a plausible pair of numbers.
     """
 
-    path = _write(tmp_path, "490,Pune,IN-MH,18.571118,74.067998,")
+    path = _write(tmp_path, "490,Pune,IN-MH,18.571118,74.067998,,India;Maharashtra")
 
     lookup = CsvAreaLookup.load(path)
 
@@ -38,6 +38,7 @@ def test_resolves_a_district_name_to_its_coordinates(tmp_path: Path) -> None:
         AreaMatch(
             name="Pune",
             region="IN-MH",
+            within=("India", "Maharashtra"),
             geometry=Geometry(coordinates=[74.067998, 18.571118]),
         )
     ]
@@ -49,7 +50,7 @@ def test_matches_the_name_regardless_of_case_and_padding(tmp_path: Path) -> None
     caller's — that string is what a follow-up question would show the farmer.
     """
 
-    path = _write(tmp_path, "490,Pune,IN-MH,18.571118,74.067998,")
+    path = _write(tmp_path, "490,Pune,IN-MH,18.571118,74.067998,,India;Maharashtra")
 
     lookup = CsvAreaLookup.load(path)
 
@@ -59,8 +60,8 @@ def test_matches_the_name_regardless_of_case_and_padding(tmp_path: Path) -> None
 
 # The two real Bilaspurs, verbatim from the generated CSV. One of exactly three
 # district names in India that collide (also Hamirpur, Pratapgarh).
-_BILASPUR_CT = "375,Bilaspur,IN-CT,22.179960,82.115906,"
-_BILASPUR_HP = "15,Bilaspur,IN-HP,31.370997,76.670218,"
+_BILASPUR_CT = "375,Bilaspur,IN-CT,22.179960,82.115906,,India;Chhattisgarh"
+_BILASPUR_HP = "15,Bilaspur,IN-HP,31.370997,76.670218,,India;Himachal Pradesh"
 
 
 def test_reports_every_match_when_a_name_is_ambiguous(tmp_path: Path) -> None:
@@ -96,7 +97,7 @@ def test_returns_no_match_for_a_name_the_index_does_not_carry(tmp_path: Path) ->
     caller to ask the farmer which district they are in.
     """
 
-    path = _write(tmp_path, "490,Pune,IN-MH,18.571118,74.067998,")
+    path = _write(tmp_path, "490,Pune,IN-MH,18.571118,74.067998,,India;Maharashtra")
 
     lookup = CsvAreaLookup.load(path)
 
@@ -105,26 +106,26 @@ def test_returns_no_match_for_a_name_the_index_does_not_carry(tmp_path: Path) ->
 
 def test_a_missing_file_refuses_to_load_and_names_the_path(tmp_path: Path) -> None:
     """The CSV is checked in, so a missing one is a broken build or a bad
-    DSS_DISTRICT_CSV_PATH. Failing at load makes the app refuse to boot, rather
+    DSS_AREA_CSV_PATH. Failing at load makes the app refuse to boot, rather
     than serving turns that have quietly lost every spatial filter.
     """
 
-    missing = tmp_path / "districts.csv"
+    missing = tmp_path / "areas.csv"
 
-    with pytest.raises(DistrictCsvUnusable) as raised:
+    with pytest.raises(AreaCsvUnusable) as raised:
         CsvAreaLookup.load(missing)
 
     assert str(missing) in str(raised.value)
 
 
-def test_a_file_with_no_districts_refuses_to_load(tmp_path: Path) -> None:
+def test_a_file_with_no_areas_refuses_to_load(tmp_path: Path) -> None:
     """Header-only reads as a successful parse but resolves nothing, which is
     the same silent failure as a missing file."""
 
-    path = tmp_path / "districts.csv"
+    path = tmp_path / "areas.csv"
     path.write_text(HEADER, encoding="utf-8")
 
-    with pytest.raises(DistrictCsvUnusable):
+    with pytest.raises(AreaCsvUnusable):
         CsvAreaLookup.load(path)
 
 
@@ -139,7 +140,8 @@ def test_an_alias_resolves_to_its_district(tmp_path: Path) -> None:
 
     path = _write(
         tmp_path,
-        "525,Bengaluru Urban,IN-KA,12.951773,77.593709,Bangalore;Bangalore City",
+        "525,Bengaluru Urban,IN-KA,12.951773,77.593709,"
+        "Bangalore;Bangalore City,India;Karnataka",
     )
 
     lookup = CsvAreaLookup.load(path)
@@ -161,9 +163,9 @@ def test_a_bare_name_falls_back_to_the_districts_that_qualify_it(
 
     path = _write(
         tmp_path,
-        "525,Bengaluru Urban,IN-KA,12.951773,77.593709,",
-        "526,Bengaluru Rural,IN-KA,13.200000,77.600000,",
-        "490,Pune,IN-MH,18.571118,74.067998,",
+        "525,Bengaluru Urban,IN-KA,12.951773,77.593709,,India;Karnataka",
+        "526,Bengaluru Rural,IN-KA,13.200000,77.600000,,India;Karnataka",
+        "490,Pune,IN-MH,18.571118,74.067998,,India;Maharashtra",
     )
 
     lookup = CsvAreaLookup.load(path)
@@ -172,6 +174,23 @@ def test_a_bare_name_falls_back_to_the_districts_that_qualify_it(
         "Bengaluru Urban",
         "Bengaluru Rural",
     }
+
+
+def test_a_file_generated_before_within_existed_still_loads(tmp_path: Path) -> None:
+    """A regeneration reads the existing file forward; loading one predating
+    the `within` column must not raise, matching how `aliases` already
+    degrades gracefully."""
+
+    path = tmp_path / "areas.csv"
+    path.write_text(
+        "area_code,area_name,region,latitude,longitude,aliases\n"
+        "490,Pune,IN-MH,18.571118,74.067998,\n",
+        encoding="utf-8",
+    )
+
+    lookup = CsvAreaLookup.load(path)
+
+    assert lookup.resolve("Pune")[0].within == ()
 
 
 def test_an_exact_match_wins_over_a_longer_name_that_starts_with_it(
@@ -185,8 +204,8 @@ def test_an_exact_match_wins_over_a_longer_name_that_starts_with_it(
 
     path = _write(
         tmp_path,
-        "519,Mumbai,IN-MH,18.940000,72.830000,",
-        "518,Mumbai Suburban,IN-MH,19.100000,72.870000,",
+        "519,Mumbai,IN-MH,18.940000,72.830000,,India;Maharashtra",
+        "518,Mumbai Suburban,IN-MH,19.100000,72.870000,,India;Maharashtra",
     )
 
     lookup = CsvAreaLookup.load(path)

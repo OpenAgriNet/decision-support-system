@@ -1,19 +1,26 @@
-"""The intent classifier (spec 0002).
+"""The intent classifier.
 
-One batched, structured LLM call maps a turn to an ``Intent``. The recent
-conversation is rendered into the prompt so a follow-up ("And potato?") is
-classified against what came before rather than in isolation.
+One LLM call turns a turn into a ``IntentClassification`` — words only, no
+geometry. The recent conversation goes into the prompt so a follow-up ("And
+potato?") is read against what came before.
 
-Framework-agnostic: this builds a plain prompt and depends only on the
-``LLMProvider`` port. The adapter turns the returned ``Intent`` schema into
-structured output.
+Turning that into an ``Intent`` — resolving each ask's ``place_name`` to a
+``ResolvedPlace`` — is ``core.location``'s job. This module never builds an
+``Ask``.
+
+Plain Python: builds a prompt, calls the ``LLMProvider`` port. No framework
+here.
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
 
-from dss.core.intent.models import Intent, InteractionType, SubjectCategory
+from dss.core.intent.models import (
+    IntentClassification,
+    InteractionType,
+    SubjectCategory,
+)
 from dss.core.shared.models import ConversationMessage, UserTurn
 from dss.ports.llm import LLMProvider
 
@@ -88,18 +95,33 @@ def build_intent_prompt(history: Sequence[ConversationMessage]) -> str:
         "place_name: the place the user says they are in or asks about, "
         "written in English (transliterate: 'मी पुण्याहून' -> 'Pune'). "
         "Return the place only — no district/taluka/village word, no state, "
-        "no coordinates. Use null if no place is named; do not guess one from "
-        "the crop, the language, or the conversation's subject.",
+        "no coordinates. If the latest query names no place, use the most "
+        "recent place named earlier in this conversation, and set "
+        "place_from_history to true. Only ever copy a "
+        "place the user actually said — never guess one from the crop, the "
+        "language, or the subject. Use null if no place was said anywhere.",
+        "  'weather in Pune and Mumbai' -> two asks, place_name 'Pune' and "
+        "'Mumbai'. Two places are two asks, even with one subject.",
+        "  'wheat price and will it rain in Pune' -> two asks, place_name "
+        "'Pune' on each. If one place covers several asks, put it on each.",
+        "  'mandi rate in Nashik and is it raining here' -> two asks: "
+        "place_name 'Nashik' on the rate, null on the rain. 'Here' is the "
+        "user's own location, not a place named elsewhere in the query.",
+        "  Conversation: user 'tomato rate?', assistant 'At Vashi market, "
+        "tomato is 20 a kg.', then 'and next week?' -> place_name null. A "
+        "place only the assistant named is not the user's.",
+        "  'weather in Pune, Maharashtra' -> one ask, place_name 'Pune'. A "
+        "state after a place narrows it; it is not a second place.",
     ]
     lines += _render_history(history)
     return "\n".join(lines)
 
 
-async def classify_intent(turn: UserTurn, llm: LLMProvider) -> Intent:
+async def classify_intent(turn: UserTurn, llm: LLMProvider) -> IntentClassification:
     """Classify the raw query in the context of the turn's recent history."""
 
     return await llm.structured(
         system_prompt=build_intent_prompt(turn.history),
         user_query=turn.original_query,
-        schema=Intent,
+        schema=IntentClassification,
     )

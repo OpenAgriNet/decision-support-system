@@ -22,8 +22,17 @@ from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from dss.adapters.observability.tracing import open_span
-from dss.core.shared.models import ClaimDelta, TurnFinished
+from dss.core.intent.models import (
+    ClassifiedAsk,
+    IntentClassification,
+    InteractionType,
+    SubjectCategory,
+)
+from dss.core.shared.models import ClaimDelta, Geometry, TurnFinished
 from dss.observability.trace_log import set_stage_span_opener
+from dss.orchestration.turn import run_turn
+from dss.ports.area_lookup import AreaMatch
+from tests.support.fakes import FakeAreaLookup
 
 from .test_orchestrator import (
     _ANSWERED_EVIDENCE,
@@ -37,6 +46,7 @@ from .test_orchestrator import (
     _served_discovery,
     _turn,
 )
+from .test_turn import _FakeDiscovery, _FakeIntentLLM, _FakeModerationLLM
 
 
 @pytest.fixture
@@ -189,6 +199,69 @@ async def test_a_turn_closed_after_it_finished_keeps_its_status(spans) -> None:
     await events.aclose()
 
     assert _turn_span(spans).attributes["status"] == "answered"
+
+
+async def test_the_location_stage_says_what_became_of_each_place(spans) -> None:
+    """The location span says what happened to each place: found, matched
+    several, or not found. It shows names, never coordinates."""
+
+    def weather_in(place_name: str | None) -> ClassifiedAsk:
+        return ClassifiedAsk(
+            subject_categories=SubjectCategory.WEATHER,
+            interaction_type=InteractionType.OBSERVE,
+            place_name=place_name,
+        )
+
+    def area(name: str, state: str) -> AreaMatch:
+        return AreaMatch(
+            name=name,
+            region="IN-XX",
+            within=("India", state),
+            geometry=Geometry(coordinates=[75.3, 19.9]),
+        )
+
+    lookup = FakeAreaLookup(
+        {
+            "pune": [area("Pune", "Maharashtra")],
+            "aurangabad": [
+                area("Aurangabad", "Maharashtra"),
+                area("Aurangabad", "Bihar"),
+            ],
+        }
+    )
+    classification = IntentClassification(
+        asks=(
+            weather_in("Pune"),
+            weather_in("Aurangabad"),
+            weather_in("Xyzzy"),
+        ),
+        confidence=0.9,
+    )
+
+    await run_turn(
+        _turn("weather", location=None),
+        intent_llm=_FakeIntentLLM(classification),
+        moderation_llm=_FakeModerationLLM(violated=None),
+        policies=[],
+        discover_providers=_FakeDiscovery(),
+        area_lookup=lookup,
+    )
+
+    (span,) = [s for s in spans.get_finished_spans() if s.name == "dss.stage.location"]
+    assert dict(span.attributes) == {
+        "asks_total": 3,
+        "places_resolved": 1,
+        "places_ambiguous": 1,
+        "places_unresolved": 1,
+        "places_none": 0,
+        "ambiguous_candidates": 2,
+        "place_names": "Pune, Aurangabad, Xyzzy",
+        # The two Langfuse shows in its Input and Output boxes.
+        "langfuse.observation.input": "Pune, Aurangabad, Xyzzy",
+        "langfuse.observation.output": (
+            "Pune: found; Aurangabad: 2 matches; Xyzzy: not found"
+        ),
+    }
 
 
 async def test_the_turn_carries_the_shape_of_what_was_asked(spans) -> None:

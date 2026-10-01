@@ -11,7 +11,13 @@ the four ways out map from the verdict and the evidence.
 from __future__ import annotations
 
 from dss.adapters.sinks.memory import MemoryTurnSink
-from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
+from dss.config.clarification_text_loader import load_clarification_text
+from dss.core.intent.models import (
+    ClassifiedAsk,
+    IntentClassification,
+    InteractionType,
+    SubjectCategory,
+)
 from dss.core.moderation.models import Outcome
 from dss.core.planner.models import Evidence, Failure, Result, Source, SourceKind
 from dss.core.policy.models import (
@@ -63,6 +69,7 @@ _PUNE = Location(geometry=Geometry(coordinates=[74.067998, 18.571118]))
 _PUNE_MATCH = AreaMatch(
     name="Pune",
     region="IN-MH",
+    within=("India", "Maharashtra"),
     geometry=Geometry(coordinates=[74.067998, 18.571118]),
 )
 
@@ -92,10 +99,10 @@ def _ctx() -> TurnContext:
     return TurnContext(trace_id="t1", message_id="m1", session_id="s1")
 
 
-def _one_ask(n: int = 1) -> Intent:
-    return Intent(
+def _one_ask(n: int = 1) -> IntentClassification:
+    return IntentClassification(
         asks=tuple(
-            Ask(
+            ClassifiedAsk(
                 agriculture_subjects="wheat",
                 subject_categories=SubjectCategory.MARKET,
                 interaction_type=InteractionType.OBSERVE,
@@ -131,7 +138,7 @@ _ANSWERED_EVIDENCE = _evidence(
 
 
 class _FakeIntentLLM:
-    def __init__(self, result: Intent) -> None:
+    def __init__(self, result: IntentClassification) -> None:
         self._result = result
 
     async def structured(self, *, system_prompt, user_query, schema):
@@ -183,7 +190,7 @@ class _FakeCompose:
         self.calls = 0
         self.closed = False
 
-    async def __call__(self, evidence, *, turn):  # noqa: ANN001
+    async def __call__(self, evidence, intent, *, turn):  # noqa: ANN001
         self.calls += 1
         try:
             for index, chunk in enumerate(self._chunks):
@@ -204,7 +211,7 @@ class _Telemetry:
 
 def _build(
     *,
-    intent: Intent,
+    intent: IntentClassification,
     discovery: DiscoveryResult,
     plan: Plan,
     compose: _FakeCompose,
@@ -224,7 +231,7 @@ def _build(
         turns=turns,
         telemetry=_Telemetry(),
         area_lookup=FakeAreaLookup({"pune": [_PUNE_MATCH]}),
-        discovery_radius_m=25_000,
+        clarification_text=load_clarification_text(),
     )
     return orch, turns
 
@@ -294,10 +301,11 @@ async def test_nobody_serving_is_no_match_without_planning() -> None:
     assert plan.calls == 0 and compose.calls == 0
 
 
-async def test_an_unlocated_turn_asks_for_a_district() -> None:
+async def test_an_unlocated_turn_asks_for_a_place() -> None:
     """No coordinates, no area, and the classifier found no place name: there is
     nowhere to search, so ask the farmer instead of discovering, planning and
-    composing an answer that could not be local to them.
+    composing an answer that could not be local to them. The question asks for
+    a place, not a district: a block answers too.
     """
 
     plan = _FakePlan(_ANSWERED_EVIDENCE)
@@ -310,7 +318,7 @@ async def test_an_unlocated_turn_asks_for_a_district() -> None:
 
     finished = events[-1]
     assert finished.outcome.status is TurnStatus.REQUIRES_INPUT
-    assert "district" in finished.content[0].text.lower()
+    assert "place" in finished.content[0].text.lower()
     # discovery ran and was discarded — read-only and cheap, and it already
     # starts before moderation clears the turn. What matters is that the planner
     # and composer, which cost real model calls, never ran.
@@ -334,6 +342,40 @@ async def test_some_asks_unserved_is_partial() -> None:
     assert events[-1].outcome.status is TurnStatus.PARTIALLY_ANSWERED
 
 
+async def test_one_place_not_found_still_answers_the_other() -> None:
+    """ "Weather in Pune and Xyzzy": stopping to ask about Xyzzy would leave
+    Pune unanswered. Pune is answered; Xyzzy reaches the composer as a
+    failure."""
+
+    def weather_in(place_name: str) -> ClassifiedAsk:
+        return ClassifiedAsk(
+            subject_categories=SubjectCategory.WEATHER,
+            interaction_type=InteractionType.OBSERVE,
+            place_name=place_name,
+        )
+
+    plan = _FakePlan(
+        _evidence(
+            results=(Result(ask_index=0, source_id="1", data={"rain": "none"}),),
+            served=(0,),
+        )
+    )
+    compose = _FakeCompose("No rain in Pune [1]. I could not find Xyzzy.")
+    orch, _ = _build(
+        intent=IntentClassification(
+            asks=(weather_in("Pune"), weather_in("Xyzzy")), confidence=0.9
+        ),
+        discovery=_served_discovery(),
+        plan=plan,
+        compose=compose,
+    )
+
+    events = await _collect(orch, _turn("weather in Pune and Xyzzy", location=None))
+
+    assert plan.calls == 1
+    assert events[-1].outcome.status is TurnStatus.PARTIALLY_ANSWERED
+
+
 async def test_all_calls_failing_is_unavailable() -> None:
     plan = _FakePlan(
         _evidence(
@@ -341,7 +383,10 @@ async def test_all_calls_failing_is_unavailable() -> None:
             served=(),
             failed=(
                 Failure(
-                    capability="openagrinet:MandiPrice", reason="502", retryable=True
+                    ask_index=0,
+                    capability="openagrinet:MandiPrice",
+                    reason="502",
+                    retryable=True,
                 ),
             ),
         )
@@ -359,6 +404,34 @@ async def test_all_calls_failing_is_unavailable() -> None:
         finished.outcome.cause is not None
         and finished.outcome.cause.value == "provider_unavailable"
     )
+
+
+async def test_a_place_failure_alone_is_not_an_outage() -> None:
+    """Pune's provider had nothing, and Xyzzy was never searched. No service
+    was down, so the farmer must not be told to retry one."""
+
+    plan = _FakePlan(
+        _evidence(
+            results=(),
+            served=(),
+            failed=(
+                Failure(
+                    ask_index=1,
+                    capability=None,
+                    reason="Xyzzy: place not found",
+                    retryable=False,
+                ),
+            ),
+        )
+    )
+    compose = _FakeCompose("No weather for Pune today. I could not find Xyzzy.")
+    orch, _ = _build(
+        intent=_one_ask(2), discovery=_served_discovery(), plan=plan, compose=compose
+    )
+
+    events = await _collect(orch)
+
+    assert events[-1].outcome.status is TurnStatus.NO_MATCH
 
 
 async def test_a_streamed_claim_carries_the_sources_it_cites() -> None:

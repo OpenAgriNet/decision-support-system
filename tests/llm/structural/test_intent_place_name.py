@@ -1,7 +1,7 @@
-"""Tier 5 — does a real model fill `Intent.place_name`?
+"""Tier 5 — does a real model fill `ClassifiedAsk.place_name`?
 
 Structural only: the assertion is that whatever the model extracted *resolves*
-against the shipped district index, never that it produced a particular string.
+against the shipped area index, never that it produced a particular string.
 
 The prompt asks for the place in English, so the Marathi query is the case that
 matters — the index carries English names only, and a model that echoes "पुणे"
@@ -23,9 +23,10 @@ from dotenv import dotenv_values
 
 from dss.adapters.area_lookup.csv_lookup import CsvAreaLookup
 from dss.adapters.llm.pydantic_ai_provider import PydanticAILLMProvider
-from dss.config.settings import DEFAULT_DISTRICT_CSV, Settings
+from dss.config.settings import DEFAULT_AREA_CSV, Settings
+from dss.core.intent.models import SubjectCategory
 from dss.core.intent.service import classify_intent
-from dss.core.shared.models import UserTurn
+from dss.core.shared.models import ConversationMessage, UserTurn
 from dss.entrypoint.composition import _resolve_model
 from dss.observability.stages import Stage
 from tests.support.live_model import missing_model_key
@@ -69,8 +70,8 @@ def _live_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 # The real shipped index, not a fixture: the point is that a model's output
-# lands on one of these 784 districts.
-LOOKUP = CsvAreaLookup.load(DEFAULT_DISTRICT_CSV)
+# lands on one of these areas.
+LOOKUP = CsvAreaLookup.load(DEFAULT_AREA_CSV)
 
 
 def _live_llm() -> PydanticAILLMProvider:
@@ -89,7 +90,12 @@ def _live_llm() -> PydanticAILLMProvider:
     )
 
 
-def _turn(query: str, *, source_lang: str = "en") -> UserTurn:
+def _turn(
+    query: str,
+    *,
+    source_lang: str = "en",
+    history: list[ConversationMessage] | None = None,
+) -> UserTurn:
     return UserTurn(
         original_query=query,
         enriched_query=query,
@@ -98,6 +104,7 @@ def _turn(query: str, *, source_lang: str = "en") -> UserTurn:
         source_lang=source_lang,
         target_lang=source_lang,
         channel="web",
+        history=history or [],
     )
 
 
@@ -113,13 +120,80 @@ def _turn(query: str, *, source_lang: str = "en") -> UserTurn:
 async def test_a_named_place_resolves_to_one_district(
     query: str, source_lang: str
 ) -> None:
-    intent = await classify_intent(_turn(query, source_lang=source_lang), _live_llm())
+    classification = await classify_intent(
+        _turn(query, source_lang=source_lang), _live_llm()
+    )
 
-    assert intent.place_name is not None, "the model named no place"
+    assert classification.asks, "the model returned no asks"
+    place_name = classification.asks[0].place_name
+    assert place_name is not None, "the model named no place"
     # Exactly one: a name resolving to none would leave the turn without a
     # spatial filter, and one resolving to several is the ambiguous case.
-    matches = LOOKUP.resolve(intent.place_name)
-    assert len(matches) == 1, f"{intent.place_name!r} resolved to {len(matches)}"
+    matches = LOOKUP.resolve(place_name)
+    assert len(matches) == 1, f"{place_name!r} resolved to {len(matches)}"
+    assert classification.asks[0].place_from_history is False, (
+        "a place said this turn was flagged as carried"
+    )
+
+
+async def test_a_place_named_earlier_carries_to_a_follow_up() -> None:
+    """ "And tomorrow?" names no place. The one the farmer said a turn ago
+    should come back, not null — else the answer is for the device's point.
+    """
+
+    history = [
+        ConversationMessage(role="user", text="What is the weather in Pune?"),
+        ConversationMessage(role="assistant", text="Pune: clear skies, 31°C today."),
+    ]
+
+    classification = await classify_intent(
+        _turn("And tomorrow?", history=history), _live_llm()
+    )
+
+    assert classification.asks, "the model returned no asks"
+    place_name = classification.asks[0].place_name
+    assert place_name is not None, "the model dropped the earlier place"
+    matches = LOOKUP.resolve(place_name)
+    assert len(matches) == 1, f"{place_name!r} resolved to {len(matches)}"
+    assert classification.asks[0].place_from_history is True, (
+        "a carried place was not flagged as carried"
+    )
+
+
+async def test_two_places_in_one_sentence_become_two_asks() -> None:
+    """One subject, two places. A model that folds them into one ask answers
+    for one city and silently drops the other.
+    """
+
+    classification = await classify_intent(
+        _turn("What is the weather in Pune and Mumbai?"), _live_llm()
+    )
+
+    place_names = [ask.place_name for ask in classification.asks]
+    assert len(place_names) == 2, f"expected two asks, got {classification!r}"
+    resolved = set()
+    for place_name in place_names:
+        assert place_name is not None, f"an ask named no place: {classification!r}"
+        matches = LOOKUP.resolve(place_name)
+        assert len(matches) == 1, f"{place_name!r} resolved to {len(matches)}"
+        resolved.add(matches[0].name)
+    assert len(resolved) == 2, f"both asks resolved to {resolved}"
+
+
+async def test_a_place_with_its_state_stays_one_ask() -> None:
+    """The state narrows Pune; it is not a second place. Two asks here would
+    fetch Maharashtra's weather as well as Pune's.
+    """
+
+    classification = await classify_intent(
+        _turn("What is the weather in Pune, Maharashtra?"), _live_llm()
+    )
+
+    assert len(classification.asks) == 1, f"expected one ask, got {classification!r}"
+    place_name = classification.asks[0].place_name
+    assert place_name is not None, f"the ask named no place: {classification!r}"
+    matches = LOOKUP.resolve(place_name)
+    assert len(matches) == 1, f"{place_name!r} resolved to {len(matches)}"
 
 
 async def test_no_place_named_leaves_it_none() -> None:
@@ -128,6 +202,82 @@ async def test_no_place_named_leaves_it_none() -> None:
     "Pune" here would send every advisory turn to one arbitrary district.
     """
 
-    intent = await classify_intent(_turn("How do I treat potato blight?"), _live_llm())
+    classification = await classify_intent(
+        _turn("How do I treat potato blight?"), _live_llm()
+    )
 
-    assert intent.place_name is None, f"invented {intent.place_name!r}"
+    assert classification.asks, "the model returned no asks"
+    place_name = classification.asks[0].place_name
+    assert place_name is None, f"invented {place_name!r}"
+
+
+async def test_a_conversation_with_no_place_carries_none_forward() -> None:
+    """Carry-forward tells the model to look back. This proves looking back
+    finds nothing when nobody said a place — the relaxation's price.
+    """
+
+    history = [
+        ConversationMessage(role="user", text="My potato leaves have dark spots."),
+        ConversationMessage(
+            role="assistant", text="That sounds like late blight on potato."
+        ),
+    ]
+
+    classification = await classify_intent(
+        _turn("When should I spray?", history=history), _live_llm()
+    )
+
+    assert classification.asks, "the model returned no asks"
+    place_name = classification.asks[0].place_name
+    assert place_name is None, f"invented {place_name!r}"
+
+
+async def test_one_place_covering_two_asks_is_on_both() -> None:
+    """Code lends a sibling's place only when the turn has no location, so
+    the model must put Pune on the rain ask itself."""
+
+    classification = await classify_intent(
+        _turn("What is the wheat price and will it rain in Pune?"), _live_llm()
+    )
+
+    assert len(classification.asks) == 2, f"expected two asks, got {classification!r}"
+    for ask in classification.asks:
+        assert ask.place_name is not None, f"an ask lost Pune: {classification!r}"
+        assert len(LOOKUP.resolve(ask.place_name)) == 1
+
+
+async def test_here_is_left_for_the_device() -> None:
+    """ "Here" is where the farmer is. Filling it with the sibling's Pune
+    would answer the rain for the wrong place."""
+
+    classification = await classify_intent(
+        _turn("Onion price in Pune, and will it rain here?"), _live_llm()
+    )
+
+    rain = [
+        ask
+        for ask in classification.asks
+        if ask.subject_categories is SubjectCategory.WEATHER
+    ]
+    assert len(rain) == 1, f"expected one weather ask, got {classification!r}"
+    assert rain[0].place_name is None, f"'here' became {rain[0].place_name!r}"
+
+
+async def test_a_place_only_the_assistant_said_is_not_carried() -> None:
+    """Lasalgaon is the market the answer came from, not where the farmer is.
+    Carrying it would answer the follow-up for the wrong place."""
+
+    history = [
+        ConversationMessage(role="user", text="What is the onion price?"),
+        ConversationMessage(
+            role="assistant", text="At Lasalgaon APMC, onion is 1,800 a quintal."
+        ),
+    ]
+
+    classification = await classify_intent(
+        _turn("And tomorrow?", history=history), _live_llm()
+    )
+
+    assert classification.asks, "the model returned no asks"
+    place_name = classification.asks[0].place_name
+    assert place_name is None, f"carried the assistant's {place_name!r}"

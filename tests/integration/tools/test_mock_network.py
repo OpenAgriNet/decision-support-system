@@ -24,10 +24,11 @@ import pytest
 from dss.adapters.discovery.client import HttpCapabilityDiscovery
 from dss.adapters.invocation.client import HttpCapabilityInvocation
 from dss.adapters.schema_packs.filesystem import FilesystemSchemaPackSource
+from dss.core.intent.models import PlaceSource, ResolvedPlace
 from dss.core.planner.resource_attributes import build_resource_attributes
 from dss.core.provider_discovery.models import ProviderCapability, ProviderQuery
 from dss.core.provider_discovery.schema_pack_cache import SchemaPackCache
-from dss.core.shared.models import Geometry, Location, UserTurn
+from dss.core.shared.models import Geometry
 from dss.ports.invocation import SelectFailed
 from tools.mock_network.app import DEFAULT_QUESTIONS, build_mock_app
 from tools.mock_network.generators import (
@@ -120,17 +121,11 @@ def _planner_attributes(capability: ProviderCapability, model_filled: dict) -> d
     return build_resource_attributes(
         capability=capability,
         subject_category="Weather",
-        turn=UserTurn(
-            original_query="q",
-            enriched_query="q",
-            source_lang="en",
-            target_lang="en",
-            channel="web",
-            session_id="conv_1",
-            transaction_id="txn_1",
-            location=Location(
-                area="Akola", geometry=Geometry(coordinates=[77.056016, 20.748005])
-            ),
+        place=ResolvedPlace(
+            name="Akola",
+            within=("India", "Maharashtra"),
+            geometry=Geometry(coordinates=[77.056016, 20.748005]),
+            source=PlaceSource.ASSERTED_GEOMETRY,
         ),
         model_filled=model_filled,
         schema_context_index={
@@ -372,15 +367,7 @@ async def test_mandi_select_answers_one_price_for_the_advertised_market(
     attrs = build_resource_attributes(
         capability=mumbai,
         subject_category="Market",
-        turn=UserTurn(
-            original_query="q",
-            enriched_query="q",
-            source_lang="en",
-            target_lang="en",
-            channel="web",
-            session_id="conv_1",
-            transaction_id="txn-mandi",
-        ),
+        place=None,
         model_filled={"supportedCommodities": [{"code": "24"}]},
         schema_context_index={_MANDI: "https://example.test/MandiPrice/context"},
         filterable=("market", "supportedCommodities[].code"),
@@ -422,15 +409,7 @@ async def test_advisory_select_answers_with_the_questions_written_answer(
     attrs = build_resource_attributes(
         capability=capability,
         subject_category="Crop",
-        turn=UserTurn(
-            original_query="q",
-            enriched_query="q",
-            source_lang="en",
-            target_lang="en",
-            channel="web",
-            session_id="conv_1",
-            transaction_id="txn-advisory",
-        ),
+        place=None,
         model_filled={"topics": ["Ginger seed rate in Sangli"]},
         schema_context_index={_ADVISORY: "https://example.test/Advisory/context"},
         filterable=("topics",),

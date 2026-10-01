@@ -1,4 +1,4 @@
-"""The six stages a turn passes through.
+"""The seven stages a turn passes through.
 
 The names were already a contract before they were a type: `trace_component`
 builds `dss.stage.<name>` from them, and the metrics story labels
@@ -18,6 +18,7 @@ class Stage(StrEnum):
     """One step of a turn. The value is the span suffix and the metric label."""
 
     INTENT = "intent"
+    LOCATION = "location"
     ENRICHMENT = "enrichment"
     MODERATION = "moderation"
     DISCOVERY = "discovery"
@@ -26,7 +27,7 @@ class Stage(StrEnum):
 
 
 # The four stages that run a model (ADR-0004 — each binds its own). The other
-# two run none, so `dss.stage.duration` carries no `model` label for them: an
+# three run none, so `dss.stage.duration` carries no `model` label for them: an
 # absent label reads as "not applicable", where a "none" value would read as a
 # model name in a dashboard's dropdown.
 MODEL_BACKED_STAGES = frozenset(

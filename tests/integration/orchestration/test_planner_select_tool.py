@@ -17,7 +17,15 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
-from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
+from dss.core.intent.models import (
+    Ask,
+    Intent,
+    InteractionType,
+    PlaceSource,
+    ResolvedPlace,
+    SubjectCategory,
+    UnresolvedPlace,
+)
 from dss.core.moderation.models import ModerationDecision, Outcome
 from dss.core.planner.models import Skill, Verdict
 from dss.core.planner.validation import DomainSchema
@@ -26,7 +34,7 @@ from dss.core.provider_discovery.models import (
     DiscoveryResult,
     ProviderCapability,
 )
-from dss.core.shared.models import Geometry, Location, UserTurn
+from dss.core.shared.models import Geometry, UserTurn
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
 
 CAPABILITY = ProviderCapability(
@@ -273,15 +281,20 @@ async def test_a_facility_select_carries_the_search_origin() -> None:
             "AgricultureFacility/v0.1/context.jsonld"
         )
     }
-    deps.turn = UserTurn(
-        original_query="what are the krishi kendra near me?",
-        enriched_query="what are the krishi kendra near me?",
-        transaction_id="txn-1",
-        session_id="s-1",
-        source_lang="en",
-        target_lang="en",
-        channel="web",
-        location=Location(geometry=Geometry(coordinates=[73.7898, 19.9975])),
+    deps.intent = Intent(
+        asks=(
+            Ask(
+                subject_categories=SubjectCategory.FACILITY,
+                interaction_type=InteractionType.OBSERVE,
+                place=ResolvedPlace(
+                    name="Anand",
+                    within=("IN-GJ",),
+                    geometry=Geometry(coordinates=[73.7898, 19.9975]),
+                    source=PlaceSource.ASSERTED_GEOMETRY,
+                ),
+            ),
+        ),
+        confidence=1.0,
     )
 
     def call_select(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
@@ -310,6 +323,106 @@ async def test_a_facility_select_carries_the_search_origin() -> None:
     assert invocation.calls[0]["location"] == {
         "geo": {"type": "Point", "coordinates": [73.7898, 19.9975]}
     }
+
+
+async def test_each_select_carries_its_own_asks_place() -> None:
+    """The seam: `_select` must read the place off the ask `ask_index` names.
+
+    "Weather in Pune and Mumbai" is two asks with two places. A tool that took
+    the first ask's place, or one place per turn, would fetch Pune twice and
+    answer for Mumbai with Pune's weather.
+    """
+
+    weather = ProviderCapability(
+        provider_id="imd",
+        provider_name="IMD",
+        capability="openagrinet:WeatherForecast",
+        resource_id="resource:weather:imd:forecast",
+        observed_categories=("Weather",),
+    )
+    pune = Geometry(coordinates=[73.8567, 18.5204])
+    mumbai = Geometry(coordinates=[72.8777, 19.0760])
+
+    def weather_ask(name: str, geometry: Geometry) -> Ask:
+        return Ask(
+            subject_categories=SubjectCategory.WEATHER,
+            interaction_type=InteractionType.OBSERVE,
+            place=ResolvedPlace(
+                name=name,
+                within=("India", "Maharashtra"),
+                geometry=geometry,
+                source=PlaceSource.NAMED,
+            ),
+        )
+
+    invocation = _FakeInvocation()
+    deps = _deps(invocation)
+    deps.discovery = DiscoveryResult(
+        answers={}, capabilities={0: (weather,), 1: (weather,)}, failures={}, events=()
+    )
+    deps.schemas = {
+        "openagrinet:WeatherForecast": DomainSchema(
+            type="WeatherForecast", filterable=(), field_types={"location": "object"}
+        )
+    }
+    deps.schema_context_index = {
+        "openagrinet:WeatherForecast": "https://example.test/context.jsonld"
+    }
+    deps.intent = Intent(
+        asks=(weather_ask("Pune", pune), weather_ask("Mumbai", mumbai)),
+        confidence=1.0,
+    )
+
+    def select_both(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        if len(messages) == 1:
+            return ModelResponse(
+                parts=[
+                    ToolCallPart(
+                        tool_name="select",
+                        args={
+                            "ask_index": index,
+                            "resource_id": weather.resource_id,
+                            "resource_attributes": {},
+                        },
+                    )
+                    for index in (0, 1)
+                ]
+            )
+        return ModelResponse(parts=[TextPart(content="Both forecasts.")])
+
+    agent = build_planner_agent(skills=(_skill_with("select"),))
+    with agent.override(model=FunctionModel(select_both)):
+        await agent.run("weather in Pune and Mumbai", deps=deps)
+
+    points = [call["location"]["geo"]["coordinates"] for call in invocation.calls]
+    assert points == [pune.coordinates, mumbai.coordinates]
+
+
+async def test_select_makes_no_call_for_an_ask_whose_place_failed() -> None:
+    """Xyzzy has nowhere to search. Calling anyway would send no location,
+    and the provider could answer for some other place."""
+
+    invocation = _FakeInvocation()
+    deps = _deps(invocation)
+    deps.intent = Intent(
+        asks=(
+            Ask(
+                agriculture_subjects="paddy",
+                subject_categories=SubjectCategory.MARKET,
+                interaction_type=InteractionType.OBSERVE,
+                place=UnresolvedPlace(unresolved_name="Xyzzy"),
+            ),
+        ),
+        confidence=1.0,
+    )
+
+    agent = build_planner_agent(skills=(_skill_with("select"),))
+    with agent.override(model=FunctionModel(_calls_select_then_answers)):
+        await agent.run("price of paddy in Xyzzy", deps=deps)
+
+    assert invocation.calls == []
+    # `plan()` records the failure up front; this must not add a second one.
+    assert deps.failures == []
 
 
 async def test_select_states_the_ask_category_not_the_advertised_one() -> None:

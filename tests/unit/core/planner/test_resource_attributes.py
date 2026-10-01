@@ -1,7 +1,7 @@
 """Tier 1 — assembling resourceAttributes for a /select call.
 
 Structural fields (@context, @type, subjectCategories, location) are built
-here from the schema pack, the ask and the turn; the model's own
+here from the schema pack, the ask and its resolved place; the model's own
 resource_attributes (e.g. topics, a resolved commodity code) are merged on
 top. No network, no framework.
 """
@@ -13,9 +13,10 @@ from datetime import date
 from pathlib import Path
 
 from dss.adapters.discovery.client import _advertised
+from dss.core.intent.models import PlaceSource, ResolvedPlace
 from dss.core.planner.resource_attributes import build_resource_attributes
 from dss.core.provider_discovery.models import ProviderCapability
-from dss.core.shared.models import Geometry, Location, UserTurn
+from dss.core.shared.models import Geometry
 
 _SCHEMA_CONTEXT_INDEX = {
     "openagrinet:MandiPrice": "https://schemas.openagrinet.global/schema/MandiPrice/v0.1/context.jsonld",
@@ -47,16 +48,12 @@ def _capability(advertised: dict | None = None) -> ProviderCapability:
     )
 
 
-def _turn(*, location: Location | None) -> UserTurn:
-    return UserTurn(
-        original_query="price of potato",
-        enriched_query="price of potato",
-        transaction_id="txn-1",
-        session_id="s-1",
-        source_lang="en",
-        target_lang="en",
-        channel="web",
-        location=location,
+def _place(coordinates: list[float]) -> ResolvedPlace:
+    return ResolvedPlace(
+        name="Anand",
+        within=("IN-GJ",),
+        geometry=Geometry(coordinates=coordinates),
+        source=PlaceSource.NAMED,
     )
 
 
@@ -64,7 +61,7 @@ def test_builds_context_type_and_subject_categories() -> None:
     resource_attributes = build_resource_attributes(
         subject_category="Market",
         capability=_capability(),
-        turn=_turn(location=None),
+        place=None,
         model_filled={},
         schema_context_index=_SCHEMA_CONTEXT_INDEX,
         filterable=_MANDI_FILTERABLE,
@@ -77,11 +74,11 @@ def test_builds_context_type_and_subject_categories() -> None:
     assert resource_attributes["subjectCategories"] == ["Market"]
 
 
-def test_omits_location_when_turn_has_none() -> None:
+def test_omits_location_when_no_place_resolved() -> None:
     resource_attributes = build_resource_attributes(
         subject_category="Market",
         capability=_capability(),
-        turn=_turn(location=None),
+        place=None,
         model_filled={},
         schema_context_index=_SCHEMA_CONTEXT_INDEX,
         filterable=_MANDI_FILTERABLE,
@@ -90,7 +87,7 @@ def test_omits_location_when_turn_has_none() -> None:
     assert "location" not in resource_attributes
 
 
-def test_includes_location_from_turn_geometry() -> None:
+def test_includes_location_from_the_resolved_place() -> None:
     """`location` is a network Location, which wraps the geometry under `geo`.
 
     A bare GeoJSON Point here is rejected: a pack's `location` resolves to
@@ -98,14 +95,13 @@ def test_includes_location_from_turn_geometry() -> None:
 
     WeatherObservation's paths, because it is the one pack that declares a
     top-level `location` — an OnDemand forecast has no fixed point until
-    someone asks, so the turn's geometry is what names the place.
+    someone asks, so the resolved place is what names it.
     """
 
-    location = Location(geometry=Geometry(coordinates=[72.93, 22.56]))
     resource_attributes = build_resource_attributes(
         subject_category="Market",
         capability=_capability(),
-        turn=_turn(location=location),
+        place=_place([72.93, 22.56]),
         model_filled={},
         schema_context_index=_SCHEMA_CONTEXT_INDEX,
         filterable=("location.geo", "supportedParameters"),
@@ -121,7 +117,7 @@ def test_merges_model_filled_fields_on_top() -> None:
     resource_attributes = build_resource_attributes(
         subject_category="Market",
         capability=_capability(),
-        turn=_turn(location=None),
+        place=None,
         model_filled={"commodity": {"code": "PADDY", "name": "Paddy"}},
         schema_context_index=_SCHEMA_CONTEXT_INDEX,
         filterable=_MANDI_FILTERABLE,
@@ -134,7 +130,7 @@ def test_model_filled_cannot_override_a_structural_field() -> None:
     resource_attributes = build_resource_attributes(
         subject_category="Market",
         capability=_capability(),
-        turn=_turn(location=None),
+        place=None,
         model_filled={"@type": "something-else"},
         schema_context_index=_SCHEMA_CONTEXT_INDEX,
         filterable=_MANDI_FILTERABLE,
@@ -166,7 +162,7 @@ def test_the_discovered_attributes_are_echoed_back() -> None:
                 "supportedPriceFields": ["Minimum", "Maximum", "Modal"],
             }
         ),
-        turn=_turn(location=None),
+        place=None,
         model_filled={},
         schema_context_index=_SCHEMA_CONTEXT_INDEX,
         filterable=_MANDI_FILTERABLE,
@@ -199,7 +195,7 @@ def test_the_model_narrows_a_discovered_list() -> None:
                 ]
             }
         ),
-        turn=_turn(location=None),
+        place=None,
         model_filled={"supportedCommodities": [{"code": "23", "name": "Onion"}]},
         schema_context_index=_SCHEMA_CONTEXT_INDEX,
         filterable=_MANDI_FILTERABLE,
@@ -229,7 +225,7 @@ def test_a_provider_fact_is_not_echoed_as_a_filter() -> None:
                 "updateFrequency": "PT12H",
             }
         ),
-        turn=_turn(location=None),
+        place=None,
         model_filled={},
         schema_context_index=_SCHEMA_CONTEXT_INDEX,
         filterable=("supportedParameters", "location"),
@@ -276,7 +272,7 @@ def test_nothing_outside_the_filterable_set_reaches_the_request() -> None:
     resource_attributes = build_resource_attributes(
         subject_category="Market",
         capability=_capability(advertised=advertised),
-        turn=_turn(location=None),
+        place=None,
         model_filled={},
         schema_context_index=_SCHEMA_CONTEXT_INDEX,
         filterable=filterable,
@@ -287,14 +283,14 @@ def test_nothing_outside_the_filterable_set_reaches_the_request() -> None:
     assert not unexpected, f"non-filterable fields reached the request: {unexpected}"
 
 
-def test_a_discovered_location_wins_over_the_turns_geometry() -> None:
+def test_a_discovered_location_wins_over_the_resolved_place() -> None:
     """Where a pack's `location` identifies the resource rather than the query,
     the advertised value stands.
 
     `AgricultureFacility.location` says so in words — "verified facility
     geometry ... do not populate it with the search origin or another inferred
-    point". Sending the farmer's coordinates there would claim the facility is
-    wherever they happen to be asking from.
+    point". Sending the farmer's resolved place there would claim the
+    facility is wherever they happen to be asking from.
     """
 
     facility_geometry = {"geo": {"type": "Point", "coordinates": [72.83, 18.94]}}
@@ -302,7 +298,7 @@ def test_a_discovered_location_wins_over_the_turns_geometry() -> None:
     resource_attributes = build_resource_attributes(
         subject_category="Market",
         capability=_capability(advertised={"location": facility_geometry}),
-        turn=_turn(location=Location(geometry=Geometry(coordinates=[74.06, 18.57]))),
+        place=_place([74.06, 18.57]),
         model_filled={},
         schema_context_index=_SCHEMA_CONTEXT_INDEX,
         filterable=("location",),
@@ -311,15 +307,15 @@ def test_a_discovered_location_wins_over_the_turns_geometry() -> None:
     assert resource_attributes["location"] == facility_geometry
 
 
-def test_the_turns_geometry_fills_a_location_nobody_supplied() -> None:
+def test_the_resolved_place_fills_a_location_nobody_supplied() -> None:
     """An OnDemand weather resource advertises no `location` — there is no
-    fixed point until someone asks — so the turn's geometry is what says which
+    fixed point until someone asks — so the resolved place is what says which
     place the forecast is for."""
 
     resource_attributes = build_resource_attributes(
         subject_category="Market",
         capability=_capability(advertised={"supportedParameters": ["Rainfall"]}),
-        turn=_turn(location=Location(geometry=Geometry(coordinates=[74.06, 18.57]))),
+        place=_place([74.06, 18.57]),
         model_filled={},
         schema_context_index=_SCHEMA_CONTEXT_INDEX,
         filterable=("location", "supportedParameters"),
@@ -350,7 +346,7 @@ def test_narrowing_an_advertised_list_keeps_the_whole_item() -> None:
                 ]
             }
         ),
-        turn=_turn(location=None),
+        place=None,
         model_filled={"supportedCommodities": [{"code": "23"}]},
         schema_context_index=_SCHEMA_CONTEXT_INDEX,
         filterable=("supportedCommodities[].code",),
@@ -369,7 +365,7 @@ def test_an_authored_list_is_not_matched_against_anything() -> None:
     resource_attributes = build_resource_attributes(
         subject_category="Market",
         capability=_capability(advertised={"supportedParameters": ["Rainfall"]}),
-        turn=_turn(location=None),
+        place=None,
         model_filled={"parameters": [{"parameter": "Rainfall"}]},
         schema_context_index=_SCHEMA_CONTEXT_INDEX,
         filterable=("parameters[].parameter", "supportedParameters"),
@@ -387,7 +383,7 @@ def test_an_item_matching_nothing_advertised_is_sent_as_written() -> None:
         capability=_capability(
             advertised={"supportedCommodities": [{"code": "23", "name": "Onion"}]}
         ),
-        turn=_turn(location=None),
+        place=None,
         model_filled={"supportedCommodities": [{"code": "99"}]},
         schema_context_index=_SCHEMA_CONTEXT_INDEX,
         filterable=("supportedCommodities[].code",),
@@ -405,7 +401,7 @@ def test_a_scalar_list_is_left_alone() -> None:
         capability=_capability(
             advertised={"supportedPriceFields": ["Minimum", "Maximum", "Modal"]}
         ),
-        turn=_turn(location=None),
+        place=None,
         model_filled={"supportedPriceFields": ["Modal"]},
         schema_context_index=_SCHEMA_CONTEXT_INDEX,
         filterable=("supportedPriceFields",),
@@ -425,7 +421,7 @@ def test_a_value_of_a_different_kind_is_left_alone() -> None:
     resource_attributes = build_resource_attributes(
         subject_category="Market",
         capability=_capability(advertised={"commodityGroup": "Vegetables"}),
-        turn=_turn(location=None),
+        place=None,
         model_filled={"commodityGroup": {"code": "VEG"}},
         schema_context_index=_SCHEMA_CONTEXT_INDEX,
         filterable=("commodityGroup",),
@@ -454,7 +450,7 @@ def test_a_mixed_advertised_list_skips_what_it_cannot_match() -> None:
                 ]
             }
         ),
-        turn=_turn(location=None),
+        place=None,
         model_filled={"supportedCommodities": [{"code": "23"}]},
         schema_context_index=_SCHEMA_CONTEXT_INDEX,
         filterable=("supportedCommodities[].code",),
@@ -486,7 +482,7 @@ def test_narrowing_an_advertised_object_merges_into_it() -> None:
                 }
             }
         ),
-        turn=_turn(location=None),
+        place=None,
         # "Sholapur" is the district, written into a field holding the
         # market's code — a real model wrote exactly this. The advertised value
         # wins: an advertised field is a fact about the resource, the model's
@@ -504,7 +500,7 @@ def test_narrowing_an_advertised_object_merges_into_it() -> None:
     }
 
 
-def test_the_turns_geometry_is_not_sent_to_a_pack_without_a_location() -> None:
+def test_the_resolved_place_is_not_sent_to_a_pack_without_a_location() -> None:
     """Seven of the eight packs declare no top-level `location`. MandiPrice
     names only `market.location.geo` — the market's own coordinates.
 
@@ -517,7 +513,7 @@ def test_the_turns_geometry_is_not_sent_to_a_pack_without_a_location() -> None:
     resource_attributes = build_resource_attributes(
         subject_category="Market",
         capability=_capability(advertised={"market": {"marketCode": "1806"}}),
-        turn=_turn(location=Location(geometry=Geometry(coordinates=[74.06, 18.57]))),
+        place=_place([74.06, 18.57]),
         model_filled={},
         schema_context_index=_SCHEMA_CONTEXT_INDEX,
         # MandiPrice's own paths: a market location, and no top-level one.
@@ -528,7 +524,7 @@ def test_the_turns_geometry_is_not_sent_to_a_pack_without_a_location() -> None:
     assert "location" not in resource_attributes
 
 
-def test_the_turns_geometry_reaches_a_pack_that_declares_a_location() -> None:
+def test_the_resolved_place_reaches_a_pack_that_declares_a_location() -> None:
     """A facility search is "what is near *here*", and the point is the query.
 
     `AgricultureFacility` declares `location` but does not list it in
@@ -543,9 +539,7 @@ def test_the_turns_geometry_reaches_a_pack_that_declares_a_location() -> None:
         capability=_capability(
             advertised={"supportedFacilityTypes": ["KrishiVigyanKendra"]}
         ),
-        turn=_turn(
-            location=Location(geometry=Geometry(coordinates=[73.7898, 19.9975]))
-        ),
+        place=_place([73.7898, 19.9975]),
         model_filled={"facilityType": "KrishiVigyanKendra"},
         schema_context_index=_SCHEMA_CONTEXT_INDEX,
         filterable=("supportedFacilityTypes", "facilityType"),
@@ -559,21 +553,19 @@ def test_the_turns_geometry_reaches_a_pack_that_declares_a_location() -> None:
     }
 
 
-def test_the_turns_location_wins_over_the_models() -> None:
+def test_the_resolved_place_wins_over_the_models() -> None:
     """The model wrote `{"geo": "Nashik"}` — a place name where the schema
     requires a GeoJSON geometry — and the provider refused the call.
 
-    The turn already carried the point, resolved from the farmer's own words by
-    the district lookup. The model has no way to turn a name into coordinates,
-    so its value here can only be worse than the one it replaced.
+    The resolved place already carried the point, resolved from the farmer's
+    own words. The model has no way to turn a name into coordinates, so its
+    value here can only be worse than the one it replaced.
     """
 
     resource_attributes = build_resource_attributes(
         subject_category="Market",
         capability=_capability(),
-        turn=_turn(
-            location=Location(geometry=Geometry(coordinates=[73.7898, 19.9975]))
-        ),
+        place=_place([73.7898, 19.9975]),
         model_filled={"location": {"geo": "Nashik"}},
         schema_context_index=_SCHEMA_CONTEXT_INDEX,
         filterable=("location.geo", "supportedParameters"),
@@ -605,7 +597,7 @@ def test_the_subject_category_comes_from_the_ask_not_the_advertisement() -> None
     resource_attributes = build_resource_attributes(
         capability=capability,
         subject_category="Scheme",
-        turn=_turn(location=None),
+        place=None,
         model_filled={},
         schema_context_index=_SCHEMA_CONTEXT_INDEX,
         filterable=_MANDI_FILTERABLE,
@@ -638,7 +630,7 @@ def test_mandi_price_carries_a_validity_window_the_pack_does_not_offer() -> None
     resource_attributes = build_resource_attributes(
         capability=_capability(),
         subject_category="Market",
-        turn=_turn(location=None),
+        place=None,
         model_filled={},
         schema_context_index=_SCHEMA_CONTEXT_INDEX,
         filterable=_MANDI_FILTERABLE,
@@ -672,7 +664,7 @@ def test_no_other_capability_gets_a_validity_window() -> None:
     resource_attributes = build_resource_attributes(
         capability=weather,
         subject_category="Weather",
-        turn=_turn(location=None),
+        place=None,
         model_filled={},
         schema_context_index={
             "openagrinet:WeatherObservation": (

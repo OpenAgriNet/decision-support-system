@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-_TEMPLATE = Path(__file__).parent / "defaults" / "planner_prompt.md"
+_TEMPLATE = Path(__file__).parent / "defaults" / "planner-prompt.md"
 
 
 def load_planner_prompt_template() -> str:

@@ -3,6 +3,9 @@
 ## [Unreleased]
 
 ### Changed
+- `DSS_DISTRICT_CSV_PATH` is now `DSS_AREA_CSV_PATH`: the index holds blocks
+  as well as districts. The old name is ignored without a warning, so an
+  adopter who set it gets the bundled `areas.csv` instead — rename it (#130)
 - An answer to one question comes from one source. Where several documents
   answer the same question the composer picks the one that answers best and
   writes from it alone, rather than joining two documents' sentences into

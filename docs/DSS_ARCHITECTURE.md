@@ -139,7 +139,7 @@ Code-level extensions (custom reasoning engines, sidecar model providers, altern
 
 ### 4.1 Configuration primitives
 
-The DSS accepts five primitives, mounted as YAML/Markdown files under `/config/`:
+The DSS accepts six primitives, mounted as YAML/Markdown files under `/config/`:
 
 | Primitive | Add | Override | Disable | Purpose |
 |-----------|-----|----------|---------|---------|
@@ -148,6 +148,7 @@ The DSS accepts five primitives, mounted as YAML/Markdown files under `/config/`
 | **Policies** | Yes | Yes | No | Enforceable guardrails at named checkpoints (Moderation, Pre-tool-call, Post-response). LLM-evaluated or deterministic. Follow the policy's `on_violation` action on rejection. |
 | **Context Providers** | Yes | **No** | No | Declarative mapping from prompt variable → source (`request.user_context.*`, `builtin://clock.date`, …). Override by using a different variable name. |
 | **Response Reviewers** | Yes | Yes | No | Post-hoc quality/safety checks on candidate answers (length, language conformance, presence of citations, …). May merge with post-response Policies in a later refactor. |
+| **Clarification text** | No | Yes | No | The fixed questions a farmer reads when a place is missing, not found, or matches several. Bundled default; the loader takes an override path. |
 
 **Personas.** A Persona is a *composition label* referencing a bundle of primitives (Identity + Skill set + Policy pack + Reviewers). Not a separate primitive; a way to bundle for a tenant.
 
@@ -223,20 +224,28 @@ class UserTurn:
 
 The DSS uses **intent-based routing**: extract an intent once, then match uniformly against skills, tools, and Provider capabilities.
 
-**Intent object (as implemented on this branch — spec 0002, ADR-0003).** The classifier (`core/intent/service.py::classify_intent`) decomposes a turn into one or more **asks** plus one overall confidence:
+**Intent object (as implemented on this branch — spec 0002, ADR-0003, ADR-0016).** The classifier (`core/intent/service.py::classify_intent`) returns a `IntentClassification` — words only, no geometry — and a separate step, `core/location/service.py::resolve_places`, builds the domain `Intent` from it, filling each ask's `place`:
 ```jsonc
 {
   "asks": [
     {
-      "subject_categories": "Market",        // closed enum: Crop | Livestock | Weather | Market | Scheme
+      "subject_categories": "Market",        // closed enum: Crop | Livestock | Weather | Market | Scheme | Facility
       "interaction_type": "observe",         // enum: advise | observe | act
-      "agriculture_subjects": "potato"       // free-text specific; null when the category needs none ("will it rain?")
+      "agriculture_subjects": "potato",      // free-text specific; null when the category needs none ("will it rain?")
+      "place": {                             // ResolvedPlace | AmbiguousPlace | UnresolvedPlace | null — see below
+        "name": "Baramati",
+        "within": ["India", "Maharashtra", "Pune"],   // coarsest first, no level words
+        "geometry": {"type": "Point", "coordinates": [74.58, 18.15]},
+        "source": "named"                    // named | carried | asserted_area | asserted_geometry
+      }
     }
   ],
   "confidence": 0.88
 }
 ```
-`interaction_type` names what the farmer wants done — **advise** (explain/guide), **observe** (look up a value/record/status), **act** (book, apply, submit, update, escalate). A turn holding several needs ("wheat price and will it rain?") yields several asks. The layered-extraction cache pipeline below remains directional; this branch implements the LLM-classifier axis only, run in parallel with moderation.
+`interaction_type` names what the farmer wants done — **advise** (explain/guide), **observe** (look up a value/record/status), **act** (book, apply, submit, update, escalate). A turn holding several needs ("wheat price and will it rain?") yields several asks, each with its own `place` — a turn is not grounded in one location, an ask is. The layered-extraction cache pipeline below remains directional; this branch implements the LLM-classifier axis only, run in parallel with moderation.
+
+**Why the LLM never fills `place` directly (ADR-0016).** The schema handed to `llm.structured` (`IntentClassification`/`ClassifiedAsk`) carries a `place_name: str | None` — words, in English — never a geometry field. It also carries `place_from_history: bool`, which the model sets when the name came from an earlier turn; the resolver labels that place `carried`. A model asked for coordinates invents plausible ones; keeping the field off its schema entirely makes that structurally impossible rather than merely prompted against. `resolve_places` is the only place a domain `Ask` is built, matching a name against an area index (districts and blocks, an LGD-derived CSV) and filling `place`.
 
 **Scheme enrichment (as implemented on this branch — ADR-0008).** Between classification and discovery, `core/enrichment/service.py::resolve_scheme_subjects` rewrites a scheme ask's `agriculture_subjects` to the official scheme name, matched against a **scheme catalog** the tenant mounts as CSV (`DSS_SCHEMES_CONFIG_PATH`; nothing ships in the image). It is deterministic — a lookup, not a model call — and matches the longest whole-token **alias** span, trying the ask's own subject before the raw query.
 
@@ -248,10 +257,14 @@ This is a **pre-discovery hint, not a governed-code source.** Routing uses `subj
 
 | Term | Meaning |
 |---|---|
-| **Ask** | One thing a turn wants: a `subject_categories` + `interaction_type` + optional `agriculture_subjects`. A turn may hold several. |
+| **Ask** | One thing a turn wants: a `subject_categories` + `interaction_type` + optional `agriculture_subjects` + `place`. A turn may hold several, each with its own place. |
+| **ResolvedPlace** | A place that resolved: `name`, an ordered `within` chain of ancestors (coarsest first, no level words — country/state/district for India, whatever levels an adopter's own geography uses), `geometry`, and `source` (how it was decided). |
+| **AmbiguousPlace** | A name that matched more than one area — `unresolved_name` plus every `AreaMatch` candidate, so the farmer can be asked which one. |
+| **UnresolvedPlace** | A name the area index does not carry. |
+| **PlaceSource** | How a `ResolvedPlace` was decided: `named` (the farmer said it, this turn), `carried` (carried forward from earlier in the session), `asserted_area` (the platform's `location.area`, resolved through the same lookup), `asserted_geometry` (the platform's `location.geometry`, used as-is). |
 | **Scheme catalog** | The tenant-mounted list of government schemes the deployment serves — `scheme_code`, `scheme_name`, `scheme_aliases`. Tenant-owned domain data, not operator config. |
 | **Capability index** | `(subject_categories, action_type) → @type` values, inferred from the `subjectCategories` observed in each schema pack's examples. What discovery routes on; a missing pair means the DSS cannot name a type, not that no provider serves it. |
-| **Alias** | One way a farmer might name a scheme ("PKVY", "organic farming scheme"). Indexed normalized; must be scheme-distinctive, never a bare commodity word. |
+| **Alias** | One way a farmer might name a scheme ("PKVY", "organic farming scheme") or a place ("Bangalore" for "Bengaluru Urban"). Indexed normalized; a scheme alias must be scheme-distinctive, never a bare commodity word. |
 | **Canonicalize** | Replace an ask's free-text subject with the catalog's official scheme name, *without* changing what kind of ask it is. |
 | **Governed code** | A value a provider advertises as one it serves (`supportedCommodities: 78=Tomato`). Comes from the network, never from DSS config. |
 | **Network action** | What an outbound message is for. Two: `discover` and `select`. Both answer on the same call, so there is no separate reply message. |

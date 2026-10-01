@@ -22,3 +22,10 @@ def unserved_asks(evidence: Evidence, *, intent: Intent) -> tuple[int, ...]:
 
     served = set(evidence.served)
     return tuple(index for index in range(len(intent.asks)) if index not in served)
+
+
+def provider_failed(evidence: Evidence) -> bool:
+    """A provider call failed. A place failure called no provider, so it is
+    not an outage and must not tell the farmer to retry."""
+
+    return any(failure.capability is not None for failure in evidence.failed)

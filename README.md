@@ -19,7 +19,7 @@ and the turn flow are real.
 See [`docs/RUNNING.md`](./docs/RUNNING.md) for curl recipes, the error paths,
 the runtime knobs, and which parts are still fake. Two pieces of configuration
 are worth knowing before a first run: the **schema packs**, which nothing
-clones, and the **district index** (`src/dss/config/districts.csv`), which the
+clones, and the **area index** (`src/dss/config/areas.csv`), which the
 `/discover` spatial filter needs and without which the app refuses to boot.
 
 ## Docs

@@ -182,7 +182,7 @@ async def sent_topics() -> list[str]:
 
     await plan(
         _turn(),
-        intent=Intent(asks=(ADVICE_ASK,), confidence=0.9, place_name="Pune"),
+        intent=Intent(asks=(ADVICE_ASK,), confidence=0.9),
         discovery=DiscoveryResult(
             answers={0: ()},
             capabilities={0: (CAPABILITY,)},

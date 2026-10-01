@@ -1,4 +1,5 @@
-"""Tier 1 — laying evidence out for the composer.
+"""Tier 1 — laying evidence out for the composer, and the place fallback
+each result/failure can lean on.
 
 Plain Python in, plain Python out: no LLM, no ports. The wording of the
 answer is the model's job; this pins the layout the model reads, which is
@@ -7,12 +8,43 @@ what makes "one source per question" a rule it can follow.
 
 from __future__ import annotations
 
-from dss.core.channel.prompt import render_evidence
-from dss.core.planner.models import Evidence, Result, Source, SourceKind
+from dss.core.channel.prompt import SYSTEM_PROMPT, render_evidence
+from dss.core.intent.models import (
+    Ask,
+    Intent,
+    InteractionType,
+    PlaceSource,
+    ResolvedPlace,
+    SubjectCategory,
+)
+from dss.core.planner.models import Evidence, Failure, Result, Source, SourceKind
+from dss.core.shared.models import Geometry
 
 PULSES = Source(id="1", name="PulsesGuidelines2025", kind=SourceKind.PROVIDER, url=None)
 ICAR = Source(id="2", name="ICAR Agro-Advisories", kind=SourceKind.PROVIDER, url=None)
 AGMARKNET = Source(id="3", name="Agmarknet", kind=SourceKind.PROVIDER, url=None)
+
+
+def _place(name: str) -> ResolvedPlace:
+    return ResolvedPlace(
+        name=name,
+        within=("IN-MH",),
+        geometry=Geometry(coordinates=[73.85, 18.52]),
+        source=PlaceSource.NAMED,
+    )
+
+
+def _ask(place: ResolvedPlace | None = None) -> Ask:
+    return Ask(
+        subject_categories=SubjectCategory.WEATHER,
+        interaction_type=InteractionType.OBSERVE,
+        place=place,
+    )
+
+
+# Two asks naming no place: the layout tests below are about grouping, not
+# the place label, so nothing adds a label to their headings.
+_NO_PLACES = Intent(asks=(_ask(), _ask()))
 
 
 def _evidence(*results: Result, sources: tuple[Source, ...]) -> Evidence:
@@ -36,7 +68,7 @@ def test_one_sources_passages_are_gathered_under_one_heading() -> None:
         sources=(PULSES,),
     )
 
-    rendered = render_evidence(evidence)
+    rendered = render_evidence(evidence, _NO_PLACES)
 
     assert rendered.count("PulsesGuidelines2025") == 1
     assert '"passage": "a"' in rendered
@@ -53,7 +85,7 @@ def test_each_source_answering_one_question_is_its_own_block() -> None:
         sources=(PULSES, ICAR),
     )
 
-    rendered = render_evidence(evidence)
+    rendered = render_evidence(evidence, _NO_PLACES)
 
     assert "[1] PulsesGuidelines2025" in rendered
     assert "[2] ICAR Agro-Advisories" in rendered
@@ -70,7 +102,7 @@ def test_results_are_grouped_by_the_question_they_answer() -> None:
         sources=(PULSES, AGMARKNET),
     )
 
-    rendered = render_evidence(evidence)
+    rendered = render_evidence(evidence, _NO_PLACES)
 
     assert "Question 1" in rendered
     assert "Question 2" in rendered
@@ -78,4 +110,116 @@ def test_results_are_grouped_by_the_question_they_answer() -> None:
 
 
 def test_nothing_retrieved_still_says_so() -> None:
-    assert render_evidence(_evidence(sources=())) == "Nothing was retrieved."
+    assert (
+        render_evidence(_evidence(sources=()), _NO_PLACES) == "Nothing was retrieved."
+    )
+
+
+def test_a_result_is_labelled_with_its_asks_resolved_place() -> None:
+    intent = Intent(asks=(_ask(_place("Pune")),))
+    evidence = Evidence(
+        sources=(Source(id="1", name="Agmarknet", kind=SourceKind.PROVIDER, url=None),),
+        results=(Result(ask_index=0, source_id="1", data={"modal": 2200}),),
+        served=(0,),
+        failed=(),
+        sufficient=True,
+    )
+
+    rendered = render_evidence(evidence, intent)
+
+    assert "Pune" in rendered
+
+
+def test_a_failure_is_labelled_with_its_asks_resolved_place() -> None:
+    intent = Intent(asks=(_ask(_place("Anand")),))
+    evidence = Evidence(
+        sources=(),
+        results=(),
+        served=(),
+        failed=(
+            Failure(
+                ask_index=0,
+                capability="openagrinet:WeatherObservation",
+                reason="timeout",
+                retryable=True,
+            ),
+        ),
+        sufficient=False,
+    )
+
+    rendered = render_evidence(evidence, intent)
+
+    assert "Anand" in rendered
+
+
+def test_a_place_failure_does_not_blame_a_provider() -> None:
+    """No provider was called for Xyzzy. "Could not reach a provider" would
+    have the composer tell the farmer a service is down."""
+
+    intent = Intent(asks=(_ask(_place("Pune")), _ask()))
+    evidence = Evidence(
+        sources=(),
+        results=(),
+        served=(),
+        failed=(
+            Failure(
+                ask_index=1,
+                capability=None,
+                reason="Xyzzy: place not found",
+                retryable=False,
+            ),
+        ),
+        sufficient=False,
+    )
+
+    rendered = render_evidence(evidence, intent)
+
+    assert "Xyzzy: place not found" in rendered
+    assert "Could not reach a provider" not in rendered
+
+
+def test_a_device_point_with_no_name_labels_nothing() -> None:
+    """A device point with no area has no name. "about " with nothing after it
+    is noise the composer might try to fill."""
+
+    intent = Intent(asks=(_ask(_place("")),))
+    evidence = Evidence(
+        sources=(Source(id="1", name="IMD", kind=SourceKind.PROVIDER, url=None),),
+        results=(Result(ask_index=0, source_id="1", data={"rain": "none"}),),
+        served=(0,),
+        failed=(),
+        sufficient=True,
+    )
+
+    assert "about" not in render_evidence(evidence, intent)
+
+
+def test_no_place_resolved_labels_nothing() -> None:
+    """`place=None` — nothing named, no fallback, or the ask needed none —
+    is not a fact worth stating, so no label is added."""
+
+    intent = Intent(asks=(_ask(place=None),))
+    evidence = Evidence(
+        sources=(Source(id="1", name="Agmarknet", kind=SourceKind.PROVIDER, url=None),),
+        results=(Result(ask_index=0, source_id="1", data={"modal": 2200}),),
+        served=(0,),
+        failed=(),
+        sufficient=True,
+    )
+
+    rendered = render_evidence(evidence, intent)
+
+    assert "about" not in rendered.lower()
+
+
+def test_system_prompt_says_which_place_the_answer_is_about() -> None:
+    assert "which place the answer is about" in SYSTEM_PROMPT.lower()
+
+
+def test_system_prompt_prefers_the_datas_own_place() -> None:
+    """The provider's own data is more precise than the district centroid the
+    turn resolved around — a mandi price already names the actual market."""
+
+    prompt = SYSTEM_PROMPT.lower()
+    assert "data itself names a place" in prompt
+    assert "more precise" in prompt

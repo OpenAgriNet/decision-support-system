@@ -4,14 +4,18 @@ objects and returns plain objects.
 
 Order is code, not config. What this function does *is* the sequence.
 
-Four components so far: intent, scheme enrichment, moderation, provider
-discovery. Enrichment sits between intent and discovery — it needs the
-classified asks, and discovery routes on what it leaves behind. Intent and
-moderation are independent — moderation judges harm on the raw query, intent
-classifies capability need, and neither consumes the other's output — so they
-run concurrently (ADR-0003) and the turn's latency is the slower of the two
-rather than their sum. Discovery needs ``Intent.asks``, so it chains off
-intent.
+Five components so far: intent, place resolution, scheme enrichment,
+moderation, provider discovery. ``classify_intent`` returns a
+``IntentClassification`` — words only, no geometry — and place resolution
+(``core.location.resolve_places``) is what turns that into the domain
+``Intent``, filling each ask's ``place``. Enrichment sits after that and
+before discovery — it needs the classified asks, and discovery routes on what
+it leaves behind. Intent and moderation are independent — moderation judges
+harm on the raw query, intent classifies capability need, and neither
+consumes the other's output — so they run concurrently (ADR-0003) and the
+turn's latency is the slower of the two rather than their sum. Discovery
+needs ``Intent.asks``, so it chains off intent, through location resolution
+and enrichment.
 
 Still to come, in order: the planner agent (returns ``Evidence``), then the
 composer (turns ``Evidence`` into text). So ``TurnResult`` is a staging shape
@@ -32,9 +36,17 @@ from datetime import UTC, datetime
 import anyio
 from pydantic import BaseModel, ConfigDict
 
+from dss.adapters.observability.tracing import set_current_span_attributes
 from dss.core.enrichment.service import resolve_scheme_subjects
-from dss.core.intent.models import Intent
+from dss.core.intent.models import (
+    AmbiguousPlace,
+    Intent,
+    IntentClassification,
+    ResolvedPlace,
+    UnresolvedPlace,
+)
 from dss.core.intent.service import classify_intent
+from dss.core.location.service import resolve_places
 from dss.core.moderation.models import (
     ModerationContext,
     ModerationDecision,
@@ -47,6 +59,7 @@ from dss.core.shared.models import UserTurn
 from dss.observability.stages import Stage
 from dss.observability.trace_log import log_event, trace_component
 from dss.orchestration.discovery import DiscoverProviders
+from dss.ports.area_lookup import AreaLookup
 from dss.ports.llm import LLMProvider
 from dss.ports.scheme_catalog import SchemeCatalog
 
@@ -64,6 +77,52 @@ def _nothing_discovered() -> DiscoveryResult:
     """
 
     return DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
+
+
+def place_attributes(
+    classification: IntentClassification, intent: Intent
+) -> dict[str, str | int]:
+    """What happened to each ask's place, for the `location` span.
+
+    Counts and names only. Never coordinates. Langfuse shows the last two
+    keys in its Input and Output boxes.
+    """
+
+    resolved = ambiguous = unresolved = none = candidates = 0
+    names: list[str] = []
+    outcomes: list[str] = []
+    for ask in intent.asks:
+        place = ask.place
+        if isinstance(place, ResolvedPlace):
+            resolved += 1
+            # A device point can have no name.
+            if place.name:
+                names.append(place.name)
+            outcomes.append(f"{place.name or 'device point'}: found")
+        elif isinstance(place, AmbiguousPlace):
+            ambiguous += 1
+            candidates += len(place.candidates)
+            names.append(place.unresolved_name)
+            outcomes.append(f"{place.unresolved_name}: {len(place.candidates)} matches")
+        elif isinstance(place, UnresolvedPlace):
+            unresolved += 1
+            names.append(place.unresolved_name)
+            outcomes.append(f"{place.unresolved_name}: not found")
+        else:
+            none += 1
+            outcomes.append("no place")
+    asked = [ask.place_name for ask in classification.asks if ask.place_name]
+    return {
+        "asks_total": len(intent.asks),
+        "places_resolved": resolved,
+        "places_ambiguous": ambiguous,
+        "places_unresolved": unresolved,
+        "places_none": none,
+        "ambiguous_candidates": candidates,
+        "place_names": ", ".join(names),
+        "langfuse.observation.input": ", ".join(asked),
+        "langfuse.observation.output": "; ".join(outcomes),
+    }
 
 
 def _enrich(
@@ -131,6 +190,7 @@ async def run_turn(
     moderation_llm: LLMProvider,
     policies: Sequence[Policy],
     discover_providers: DiscoverProviders,
+    area_lookup: AreaLookup,
     scheme_catalog: SchemeCatalog | None = None,
     scheme_fuzzy_threshold: float | None = None,
     now: datetime | None = None,
@@ -158,7 +218,10 @@ async def run_turn(
     async def classify_then_discover() -> None:
         nonlocal intent, discovery
         with trace_component(Stage.INTENT, turn.transaction_id):
-            intent = await classify_intent(turn, intent_llm)
+            classification = await classify_intent(turn, intent_llm)
+        with trace_component(Stage.LOCATION, turn.transaction_id):
+            intent = resolve_places(classification, turn, lookup=area_lookup)
+            set_current_span_attributes(**place_attributes(classification, intent))
         with trace_component(Stage.ENRICHMENT, turn.transaction_id):
             intent = _enrich(intent, turn, scheme_catalog, scheme_fuzzy_threshold)
         with trace_component(Stage.DISCOVERY, turn.transaction_id):

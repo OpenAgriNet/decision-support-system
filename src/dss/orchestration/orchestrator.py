@@ -40,20 +40,19 @@ from contextlib import aclosing
 from dataclasses import dataclass
 
 from dss.adapters.observability.tracing import TurnRecorder, turn_span
-from dss.core.channel.models import ComposedAnswer
+from dss.core.channel.models import ClarificationText, ComposedAnswer
 from dss.core.channel.service import (
+    answer_for_unplaced_asks,
     answer_from_evidence,
-    needs_district_answer,
     no_match_answer,
 )
 from dss.core.intent.models import Intent
 from dss.core.moderation.messages import messages_for
 from dss.core.moderation.models import ModerationDecision, Outcome
 from dss.core.planner.models import Evidence, Verdict
-from dss.core.planner.sufficiency import unserved_asks
+from dss.core.planner.sufficiency import provider_failed, unserved_asks
 from dss.core.policy.models import Policy
 from dss.core.provider_discovery.models import DiscoveryResult
-from dss.core.provider_discovery.service import coverage_for
 from dss.core.shared.models import (
     Cause,
     Claim,
@@ -139,7 +138,7 @@ class Orchestrator:
         turns: TurnSink,
         telemetry: TelemetrySink,
         area_lookup: AreaLookup,
-        discovery_radius_m: int,
+        clarification_text: ClarificationText,
     ) -> None:
         self._intent_llm = intent_llm
         self._moderation_llm = moderation_llm
@@ -153,7 +152,7 @@ class Orchestrator:
         self._turns = turns
         self._telemetry = telemetry
         self._area_lookup = area_lookup
-        self._discovery_radius_m = discovery_radius_m
+        self._clarification_text = clarification_text
 
     async def run(self, turn: UserTurn, ctx: TurnContext) -> AsyncIterator[TurnEvent]:
         bind_turn_ids(
@@ -180,6 +179,7 @@ class Orchestrator:
                 moderation_llm=self._moderation_llm,
                 policies=self._policies,
                 discover_providers=self._components.discover,
+                area_lookup=self._area_lookup,
                 scheme_catalog=self._scheme_catalog,
                 scheme_fuzzy_threshold=self._scheme_fuzzy_threshold,
             )
@@ -200,27 +200,23 @@ class Orchestrator:
                 subjects=[ask.agriculture_subjects or "" for ask in asks],
             )
 
-            # Nowhere to search: the turn carried no coordinates, no area, and the
-            # classifier found no place name the area index could resolve. Ask for a
-            # district rather than answer from nowhere.
+            # No ask has a place to search around: named nowhere, a name the
+            # index does not carry, or a name matching several. Ask rather
+            # than answer from nowhere or guess. If any ask has a place, the
+            # turn goes on; the others reach the composer as failures.
             #
-            # Checked here rather than inside `run_turn`, which would have to skip
-            # the discover call to act on it. Discovery is read-only and already
-            # allowed to be wasted (it starts before moderation has cleared the
-            # turn), so letting it run and discarding it costs one cheap call and
-            # keeps the decision in one place.
-            if (
-                coverage_for(
-                    turn,
-                    result.intent,
-                    lookup=self._area_lookup,
-                    radius_m=self._discovery_radius_m,
-                )
-                is None
-            ):
+            # Checked here rather than inside `run_turn`, which would have to
+            # skip the discover call to act on it. Discovery is read-only and
+            # already allowed to be wasted (it starts before moderation has
+            # cleared the turn), so letting it run and discarding it costs one
+            # cheap call and keeps the decision in one place.
+            clarification = answer_for_unplaced_asks(
+                result.intent.asks, self._clarification_text
+            )
+            if clarification is not None:
                 yield self._finish(
                     ctx,
-                    (outcome_for(TurnStatus.REQUIRES_INPUT), needs_district_answer()),
+                    (outcome_for(TurnStatus.REQUIRES_INPUT), clarification),
                     recorder,
                 )
                 return
@@ -259,7 +255,7 @@ class Orchestrator:
                 # closing an async generator does not reach the one it relays
                 # from.
                 async with aclosing(
-                    self._components.compose(evidence, turn=turn)
+                    self._components.compose(evidence, result.intent, turn=turn)
                 ) as pieces:
                     async for delta in pieces:
                         if not written:
@@ -331,15 +327,17 @@ def _status_for(evidence: Evidence, intent: Intent) -> tuple[TurnStatus, Cause |
     """Map what the loop actually gathered to a contract outcome. Reads facts
     off `Evidence` — it invents no rule, so no business `if` escapes `core/`:
 
-    - no results, but calls failed → the providers exist but could not be
-      reached: `unavailable`, which the transport reports as a retryable error.
-    - no results, no failures → nobody served it after all: `no_match`.
+    - no results, but provider calls failed → the providers exist but could
+      not be reached: `unavailable`, which the transport reports as a
+      retryable error.
+    - no results, no provider failures → nobody served it after all:
+      `no_match`. A place failure called no provider, so it lands here.
     - some asks unserved → `partially_answered` (design v2 §6.2).
     - every ask served → `answered`.
     """
 
     if not evidence.results:
-        if evidence.failed:
+        if provider_failed(evidence):
             return TurnStatus.UNAVAILABLE, Cause.PROVIDER_UNAVAILABLE
         return TurnStatus.NO_MATCH, None
     if unserved_asks(evidence, intent=intent):
