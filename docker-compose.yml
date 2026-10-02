@@ -79,7 +79,9 @@ services:
       - ./otel/collector.yaml:/etc/otel/collector.yaml:ro
     environment:
       # Reached by name over oan-edge, Langfuse's network.
-      LANGFUSE_OTLP_ENDPOINT: ${LANGFUSE_OTLP_ENDPOINT:-http://langfuse-web:3000/api/public/otel}
+      # The full path: the exporter posts to exactly this URL, and the bare
+      # `/api/public/otel` is a 404.
+      LANGFUSE_OTLP_ENDPOINT: ${LANGFUSE_OTLP_ENDPOINT:-http://langfuse-web:3000/api/public/otel/v1/traces}
       # `Basic $(printf '%s:%s' "$PUBLIC_KEY" "$SECRET_KEY" | base64)`.
       # A plain header value, so a literal space (not `%20`) is correct.
       LANGFUSE_AUTH_HEADER: ${LANGFUSE_AUTH_HEADER:-}
@@ -93,7 +95,8 @@ services:
     ports:
       # OTLP/HTTP. The DSS reaches it as http://otel-collector:4318 from
       # inside the compose network; the published port is for a DSS running on
-      # the host instead.
+      # the host instead. Move it where another collector (e.g. HyperDX)
+      # already holds 4318 on the host.
       - "127.0.0.1:${OTEL_HOST_PORT:-4318}:4318"
     restart: unless-stopped
 

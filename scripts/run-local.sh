@@ -255,7 +255,7 @@ else
     --label "dss.collector-config=$COLLECTOR_CONFIG" \
     --network oan-edge \
     -p "127.0.0.1:${OTEL_PORT}:4318" \
-    -e LANGFUSE_OTLP_ENDPOINT="http://langfuse-web:3000/api/public/otel" \
+    -e LANGFUSE_OTLP_ENDPOINT="http://langfuse-web:3000/api/public/otel/v1/traces" \
     -e LANGFUSE_AUTH_HEADER="Basic $(printf '%s:%s' "$LANGFUSE_PUBLIC_KEY" "$LANGFUSE_SECRET_KEY" | base64 | tr -d '\n')" \
     ${clickhouse_env[@]+"${clickhouse_env[@]}"} \
     -v "$PWD/$COLLECTOR_CONFIG:/etc/otel/collector.yaml:ro" \
