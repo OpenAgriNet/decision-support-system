@@ -15,6 +15,10 @@
   ADR-0015
 
 ### Fixed
+- Traces reach Langfuse through the collector. Its default address stopped
+  at `/api/public/otel`, which Langfuse answers with a 404, so every trace
+  was dropped. It now ends in `/v1/traces`, in `docker-compose.yml` and
+  `scripts/run-local.sh`.
 - `scripts/run-local.sh` exports what `.env.local` sets, so a line written
   without `export` still reaches the DSS. It used to make a shell variable
   only: the script reported it set and the app then died on a raw
