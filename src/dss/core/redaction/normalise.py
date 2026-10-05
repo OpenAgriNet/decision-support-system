@@ -1,11 +1,11 @@
-"""The shadow copy patterns run over — never the text that is kept.
+"""A shadow copy of a text with number gaps joined — never the text that is kept.
 
-People write ``1234 5678 9012`` and ``98765-43210``. The shadow joins digit runs
-across a short gap so one pattern catches every way of writing the number, and an
-offset map takes a match back to the span in the original text.
+People write ``1234 5678 9012`` and ``98765-43210``. Joining digit runs across a
+short gap lets one comparison match every way of writing a number, and an offset
+map takes a match back to the span in the original text.
 
-Script folding (``१२३४`` → ``1234``) belongs here too, when the translation story
-adds it.
+Used by ``RevealMap.conceal`` and by the regex identifier. Script folding
+(``१२३४`` → ``1234``) belongs here too, when the translation story adds it.
 """
 
 from __future__ import annotations
@@ -13,7 +13,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from dss.core.redaction.models import Normalise
+SEPARATORS = " -"
+MAX_SEPARATORS = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,13 +29,16 @@ class Shadow:
         return self.offsets[start], self.offsets[end - 1] + 1
 
 
-def shadow(text: str, normalise: Normalise) -> Shadow:
-    if normalise.max_separators == 0 or not normalise.join_separators:
+def shadow(
+    text: str,
+    *,
+    separators: str = SEPARATORS,
+    max_separators: int = MAX_SEPARATORS,
+) -> Shadow:
+    if max_separators == 0 or not separators:
         return Shadow(text, tuple(range(len(text))))
 
-    separators = re.escape("".join(normalise.join_separators))
-    gap = re.compile(rf"(?<=\d)[{separators}]{{1,{normalise.max_separators}}}(?=\d)")
-
+    gap = re.compile(rf"(?<=\d)[{re.escape(separators)}]{{1,{max_separators}}}(?=\d)")
     pieces: list[str] = []
     offsets: list[int] = []
     last = 0

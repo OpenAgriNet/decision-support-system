@@ -1,27 +1,29 @@
-"""Redact a turn's texts in one pass: detect → resolve → replace.
+"""Redact a turn's texts from the spans identifiers found: resolve → replace.
 
-The question and every history message go through together, so a number the
-farmer typed twice gets one tag, «phone_1», wherever it appears. The result holds
-the redacted texts, the ``RevealMap`` for the provider call, and how many of each
-entity were found — counts only, never values, so they are safe to send to
-telemetry.
+How the spans were found is not this module's business — regex, a model, an
+HTTP service, or several at once (``ports/pii_identifier.py``). This is the part
+that stays the same whichever identifiers run:
 
-``extra`` is where candidates from another detector join the pass — one list per
-text, in the same order. #136 feeds a model's names in here.
+- overlapping spans are settled (``resolve``);
+- each span becomes a numbered tag, «phone_1»; the same value, in any of the
+  texts, gets the same tag;
+- the policy decides which real values are held in the ``RevealMap`` for the
+  provider call, and which are destroyed.
+
+The result carries counts per entity — never values — so they are safe to send
+to telemetry. No spans means the texts come back unchanged, which is what a
+turn gets when redaction is off.
 """
 
 from __future__ import annotations
 
-import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from dss.core.redaction.detect import detect
-from dss.core.redaction.models import Candidate, RedactionConfig
+from dss.core.redaction.models import PiiSpan, RedactionPolicy
+from dss.core.redaction.normalise import shadow
 from dss.core.redaction.resolve import resolve
 from dss.core.redaction.reveal import RevealMap
-
-_GAPS = re.compile(r"[\s-]+")
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,13 +31,18 @@ class Redaction:
     texts: tuple[str, ...]
     reveal: RevealMap
     found: dict[str, int]  # entity → how many spans were replaced
+    # Identifiers that failed on this turn; the others' spans were still applied.
+    failed: tuple[str, ...] = ()
 
 
 def redact(
     texts: Sequence[str],
-    config: RedactionConfig,
-    extra: Sequence[Sequence[Candidate]] = (),
+    spans: Sequence[Sequence[PiiSpan]],
+    policy: RedactionPolicy,
 ) -> Redaction:
+    """``spans[i]`` are the spans found in ``texts[i]``, from every identifier.
+    A missing entry means none."""
+
     tags: dict[tuple[str, str], str] = {}
     numbers: dict[str, int] = {}
     values: dict[str, str] = {}
@@ -43,37 +50,25 @@ def redact(
     redacted: list[str] = []
 
     for i, text in enumerate(texts):
-        candidates = detect(text, config)
-        if i < len(extra):
-            candidates.extend(extra[i])
-
         out: list[str] = []
         last = 0
-        for candidate in resolve(candidates):
+        for span in resolve(spans[i] if i < len(spans) else ()):
             # The same value, however it was spaced, gets the same tag.
-            key = (candidate.entity, _same_value(candidate, text))
+            key = (span.entity, shadow(span.value).text.lower())
             tag = tags.get(key)
             if tag is None:
-                numbers[candidate.entity] = numbers.get(candidate.entity, 0) + 1
-                tag = f"«{candidate.entity}_{numbers[candidate.entity]}»"
+                numbers[span.entity] = numbers.get(span.entity, 0) + 1
+                tag = f"«{span.entity}_{numbers[span.entity]}»"
                 tags[key] = tag
-                if candidate.value is not None:
-                    values[tag] = candidate.value
-            found[candidate.entity] = found.get(candidate.entity, 0) + 1
-            out.append(text[last : candidate.start])
+                if policy.keeps(span.entity):
+                    values[tag] = span.value
+            found[span.entity] = found.get(span.entity, 0) + 1
+            out.append(text[last : span.start])
             out.append(tag)
-            last = candidate.end
+            last = span.end
         out.append(text[last:])
         redacted.append("".join(out))
 
     return Redaction(
-        texts=tuple(redacted),
-        reveal=RevealMap(values=values, normalise=config.normalise),
-        found=found,
+        texts=tuple(redacted), reveal=RevealMap(values=values), found=found
     )
-
-
-def _same_value(candidate: Candidate, text: str) -> str:
-    if candidate.value is not None:
-        return candidate.value.lower()
-    return _GAPS.sub("", text[candidate.start : candidate.end]).lower()

@@ -74,32 +74,43 @@ intent, moderation and discovery.** It covers the question and every history
 message (both roles — an assistant can echo a number back). Every stage after
 it sees only the redacted text.
 
-**Three steps, in `core/redaction/`:**
+**Identifying PII is a port; redacting it is core.** Finding PII can be done
+many ways — patterns, a name model, an HTTP PII service. What happens to it once
+found is one set of rules. So they are split:
 
 ```
-detect   →  candidates: (start, end, entity, score, source, value)
-resolve  →  drop overlaps: the longest span wins, then rule order
-replace  →  «phone_1», «aadhaar_1» ...  plus a map of kept values
+rules file ── entities: {aadhaar: destroy, phone: keep, ...}      (policy)
+           └─ identifiers: [{type: regex, rules: ...}, ...]       (which adapters)
+
+ports/pii_identifier.py   PiiIdentifier.identify(texts) -> spans per text
+   ▲ adapters/pii_identifier/regex/   patterns, validators, declaring phrases
+   ▲ (#136) spaCy, ONNX name models;  (later) an HTTP PII service
+
+orchestration/redaction.py   runs every identifier side by side, merges spans
+core/redaction/              resolve overlaps → «phone_1» tags → value map
 ```
 
-`detect` runs each pattern over the text *and* over a shadow copy with number
-gaps joined, so `98765 43210` and `9876543210 2 acre` are both caught.
-`resolve` takes extra candidates from any other detector. That is the seam
-#136's model plugs into, without changing this code.
+- **`core/redaction/`** knows what a PII span is, the keep-or-destroy policy,
+  tag numbering, overlap resolution and the value map. It knows nothing about
+  regex, models or HTTP. No spans means the text is unchanged — which is also
+  what a turn gets when redaction is off, so no stand-in is needed.
+- **`ports/pii_identifier.py`** is the seam. A new way of finding PII is a new
+  adapter and a new `identifiers:` entry; core and the orchestrator do not
+  change. An identifier only reports spans and their values; the policy, in
+  core, decides what is kept. So an identifier — even a remote one — can never
+  make an Aadhaar kept.
+- **The regex identifier** runs each pattern over the text *and* over a copy
+  with number gaps joined, so `98765 43210` and `9876543210 2 acre` are both
+  caught. Its validators (Verhoeff, Luhn, GSTIN) are part of the adapter.
+- **Identifiers run side by side.** The turn waits for the slowest. One that
+  fails is dropped for that turn and named in the result; the others still
+  apply. Spans are merged in the order the file lists the identifiers, which
+  breaks ties between equal overlapping spans.
 
-**The orchestrator calls a port, not the engine.** `ports/redactor.py` has one
-call: texts in, redacted texts plus the value map and counts out. Today's
-adapter, `adapters/redaction/local.py`, runs the engine in the process on a
-worker thread. A redaction service over HTTP would be a second adapter, chosen
-by config, with no change to the orchestrator. When redaction is off, a stub
-adapter hands every text back unchanged with an empty map, so the orchestrator
-always calls a redactor and never checks whether there is one. A remote adapter sends real
-values back over the wire, so it needs a protected connection.
-
-**Every rule is configuration.** Its pattern, its validator by name, its label,
-and whether its value is kept or destroyed. The validators are code. A rule
-that does not compile, or names a validator that does not exist, stops the
-boot and names the rule.
+**Every rule is configuration.** The policy per entity; for the regex
+identifier, each rule's pattern and validator by name. An unknown identifier
+type, a pattern that does not compile, or an unknown validator stops the boot
+and says which.
 
 **It is opt-in.** `DSS_REDACTION_ENABLED=true` turns it on, and then
 `DSS_REDACTION_CONFIG_PATH` must point at a rules file. With the flag off,
@@ -132,7 +143,8 @@ mentioned in passing still reaches the model. That is #136.
   identifiers.
 - A provider that needs a farmer's phone still gets it.
 - An adopter adds an identifier by editing YAML.
-- #136 adds a detector without reshaping this one.
+- #136 adds a name model as another identifier; an HTTP PII service would be
+  one more. Neither touches core.
 
 **Known risks and gaps — accepted for now**
 

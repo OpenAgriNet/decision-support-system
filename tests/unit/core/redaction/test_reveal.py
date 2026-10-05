@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-from dss.core.redaction.models import Normalise
 from dss.core.redaction.reveal import RevealMap
 
 MAP = RevealMap(
     values={"«phone_1»": "9876543210", "«person_1»": "Ramesh"},
-    normalise=Normalise(),
 )
 
 
@@ -57,6 +55,6 @@ def test_conceal_matches_whole_words_only() -> None:
 
 
 def test_an_empty_map_changes_nothing() -> None:
-    empty = RevealMap(values={}, normalise=Normalise())
+    empty = RevealMap(values={})
     assert empty.reveal({"a": "«phone_1»"}) == {"a": "«phone_1»"}
     assert empty.conceal("9876543210") == "9876543210"

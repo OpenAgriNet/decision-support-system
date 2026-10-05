@@ -1,10 +1,10 @@
-"""Tier 1 — the checksum validators a rule can name."""
+"""Tier 2 — the checksum validators a regex rule can name."""
 
 from __future__ import annotations
 
 import pytest
 
-from dss.core.redaction.validators import VALIDATORS, is_valid
+from dss.adapters.pii_identifier.regex.validators import VALIDATORS, is_valid
 
 
 @pytest.mark.parametrize(

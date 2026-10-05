@@ -1,69 +1,77 @@
-# Redaction rules for India (#133). Nothing reads this file unless a deployment
-# sets DSS_REDACTION_ENABLED=true and points DSS_REDACTION_CONFIG_PATH at it.
+# Redaction rules for India (ADR-0015). Nothing reads this file unless a
+# deployment sets DSS_REDACTION_ENABLED=true and points DSS_REDACTION_CONFIG_PATH
+# at it.
 #
-# Each rule:
-#   entity     the tag it leaves behind — «phone_1», «aadhaar_1». Lower case.
-#   kind       pattern | declaring_phrase
-#   pattern    a Python regular expression, run over the text with number gaps
-#              joined (so "98765 43210" is seen as "9876543210")
-#   validator  format | verhoeff | luhn | gstin — confirms a match is real
-#   value      keep    — held for this turn so a provider can be sent it
-#              destroy — replaced and never held, not even for a provider
+# Two parts:
+#   entities     the policy, for every identifier: keep the real value for the
+#                one provider call that may need it, or destroy it. An entity
+#                an identifier reports that is not listed here is destroyed.
+#   identifiers  which identifiers find PII, run side by side. Each has a
+#                `type` and its own settings.
 #
 # Aadhaar and card are destroyed: the Aadhaar Act limits who may hold an Aadhaar
 # number, and card data brings PCI scope. Confirm with counsel before changing.
 
-normalise:
-  join_separators: [" ", "-"]
-  max_separators: 2
+entities:
+  aadhaar: destroy
+  card: destroy
+  gstin: keep
+  pan: keep
+  ifsc: keep
+  phone: keep
+  email: keep
+  person: keep
 
-rules:
-  - entity: aadhaar
-    kind: pattern
-    pattern: '(?<!\d)[2-9]\d{11}(?!\d)'
-    validator: verhoeff
-    value: destroy
+identifiers:
+  # Patterns confirmed by a validator, and phrases that announce a name.
+  #   entity     the tag it leaves behind — «phone_1». Lower case.
+  #   kind       pattern | declaring_phrase
+  #   pattern    a Python regular expression, run with number gaps joined
+  #   validator  format | verhoeff | luhn | gstin — confirms a match is real
+  - type: regex
+    normalise:
+      join_separators: [" ", "-"]
+      max_separators: 2
 
-  - entity: card
-    kind: pattern
-    pattern: '(?<!\d)\d{13,19}(?!\d)'
-    validator: luhn
-    value: destroy
+    rules:
+      - entity: aadhaar
+        kind: pattern
+        pattern: '(?<!\d)[2-9]\d{11}(?!\d)'
+        validator: verhoeff
 
-  - entity: gstin
-    kind: pattern
-    pattern: '(?i)\b\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]\b'
-    validator: gstin
-    value: keep
+      - entity: card
+        kind: pattern
+        pattern: '(?<!\d)\d{13,19}(?!\d)'
+        validator: luhn
 
-  # 5 letters, 4 digits, 1 letter. The 4th letter is the holder type.
-  - entity: pan
-    kind: pattern
-    pattern: '(?i)\b[A-Z]{3}[ABCFGHJLPT][A-Z]\d{4}[A-Z]\b'
-    value: keep
+      - entity: gstin
+        kind: pattern
+        pattern: '(?i)\b\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]\b'
+        validator: gstin
 
-  # 4 letters, a zero, 6 letters or digits.
-  - entity: ifsc
-    kind: pattern
-    pattern: '(?i)\b[A-Z]{4}0[A-Z0-9]{6}\b'
-    value: keep
+      # 5 letters, 4 digits, 1 letter. The 4th letter is the holder type.
+      - entity: pan
+        kind: pattern
+        pattern: '(?i)\b[A-Z]{3}[ABCFGHJLPT][A-Z]\d{4}[A-Z]\b'
 
-  # 10 digits starting 6-9, with an optional +91, 0091, 91 or 0 in front.
-  - entity: phone
-    kind: pattern
-    pattern: '(?<![\d+])(?:(?:\+|00)?91|0)?[6-9]\d{9}(?!\d)'
-    value: keep
+      # 4 letters, a zero, 6 letters or digits.
+      - entity: ifsc
+        kind: pattern
+        pattern: '(?i)\b[A-Z]{4}0[A-Z0-9]{6}\b'
 
-  - entity: email
-    kind: pattern
-    pattern: '[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}'
-    value: keep
+      # 10 digits starting 6-9, with an optional +91, 0091, 91 or 0 in front.
+      - entity: phone
+        kind: pattern
+        pattern: '(?<![\d+])(?:(?:\+|00)?91|0)?[6-9]\d{9}(?!\d)'
 
-  # A name only when the farmer announces it. A name mentioned in passing is
-  # not caught here (#136). Add phrases per language as speakers supply them.
-  - entity: person
-    kind: declaring_phrase
-    phrases: ["my name is", "my name's"]
-    max_tokens: 3
-    stopwords: [and, from, in, i, my, here, please, sir, madam]
-    value: keep
+      - entity: email
+        kind: pattern
+        pattern: '[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}'
+
+      # A name only when the farmer announces it. A name mentioned in passing is
+      # not caught here (#136). Add phrases per language as speakers supply them.
+      - entity: person
+        kind: declaring_phrase
+        phrases: ["my name is", "my name's"]
+        max_tokens: 3
+        stopwords: [and, from, in, i, my, here, please, sir, madam]

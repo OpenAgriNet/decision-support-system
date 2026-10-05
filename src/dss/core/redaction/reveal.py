@@ -17,7 +17,6 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from dss.core.redaction.models import Normalise
 from dss.core.redaction.normalise import shadow
 
 TAG = re.compile(r"«[a-z][a-z0-9_]*_\d+»")
@@ -26,7 +25,6 @@ TAG = re.compile(r"«[a-z][a-z0-9_]*_\d+»")
 @dataclass(frozen=True, slots=True)
 class RevealMap:
     values: Mapping[str, str]  # tag → real value
-    normalise: Normalise
 
     def reveal(self, body: Any) -> Any:
         """A copy of ``body`` with every held tag swapped for its value."""
@@ -46,7 +44,7 @@ class RevealMap:
         if not self.values:
             return text
 
-        joined = shadow(text, self.normalise)
+        joined = shadow(text)
         spans: list[tuple[int, int, str]] = []
         for tag, value in self.values.items():
             echo = re.compile(rf"(?<!\w){re.escape(value)}(?!\w)", re.IGNORECASE)

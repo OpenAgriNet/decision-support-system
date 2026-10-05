@@ -1,81 +1,107 @@
-"""Tier 1 — redacting a turn's texts: tags, the reveal map, and the counts."""
+"""Tier 1 — redacting from identified spans: tags, the value map, the counts.
+
+The spans are written by hand. How they were found — regex, a model, a service —
+is not core's business.
+"""
 
 from __future__ import annotations
 
-from dss.core.redaction.models import Candidate
+from dss.core.redaction.models import PiiSpan, RedactionPolicy, ValueHandling
 from dss.core.redaction.service import redact
-from tests.support.redaction_rules import CONFIG
+
+POLICY = RedactionPolicy(
+    entities={
+        "phone": ValueHandling.KEEP,
+        "person": ValueHandling.KEEP,
+        "aadhaar": ValueHandling.DESTROY,
+    }
+)
 
 
-def test_aadhaar_is_replaced_and_not_kept() -> None:
-    result = redact(["mera aadhaar 2345 6789 0124 hai, gehu ka rate kya hai?"], CONFIG)
-    assert result.texts == ("mera aadhaar «aadhaar_1» hai, gehu ka rate kya hai?",)
-    assert result.reveal.values == {}
-    assert result.found == {"aadhaar": 1}
+def span(text: str, part: str, entity: str, value: str | None = None) -> PiiSpan:
+    start = text.index(part)
+    return PiiSpan(
+        start=start,
+        end=start + len(part),
+        entity=entity,
+        score=1.0,
+        source="test",
+        value=value or part,
+    )
 
 
-def test_phone_is_replaced_and_kept_for_the_provider() -> None:
-    result = redact(["mera number 98765 43210 hai"], CONFIG)
+def test_a_kept_entity_is_tagged_and_held() -> None:
+    text = "mera number 98765 43210 hai"
+    spans = [[span(text, "98765 43210", "phone", "9876543210")]]
+    result = redact([text], spans, POLICY)
     assert result.texts == ("mera number «phone_1» hai",)
     assert result.reveal.values == {"«phone_1»": "9876543210"}
+    assert result.found == {"phone": 1}
 
 
-def test_an_ordinary_question_is_unchanged() -> None:
-    result = redact(["champa ka rate kya hai?"], CONFIG)
-    assert result.texts == ("champa ka rate kya hai?",)
+def test_a_destroyed_entity_is_tagged_and_not_held() -> None:
+    text = "aadhaar 2345 6789 0124"
+    result = redact([text], [[span(text, "2345 6789 0124", "aadhaar")]], POLICY)
+    assert result.texts == ("aadhaar «aadhaar_1»",)
+    assert result.reveal.values == {}
+
+
+def test_an_entity_missing_from_the_policy_is_destroyed() -> None:
+    text = "voter id ABC1234567"
+    result = redact([text], [[span(text, "ABC1234567", "voter_id")]], POLICY)
+    assert result.texts == ("voter id «voter_id_1»",)
+    assert result.reveal.values == {}
+
+
+def test_no_spans_leave_the_texts_unchanged() -> None:
+    result = redact(["gehu ka rate?", "aur chana?"], [], POLICY)
+    assert result.texts == ("gehu ka rate?", "aur chana?")
     assert result.found == {}
+    assert result.reveal.values == {}
 
 
 def test_the_same_value_gets_the_same_tag_across_texts() -> None:
+    a, b = "my number is 9876543210", "call 98765 43210 please"
     result = redact(
-        ["my number is 9876543210", "call 98765 43210 please"],
-        CONFIG,
+        [a, b],
+        [[span(a, "9876543210", "phone")], [span(b, "98765 43210", "phone")]],
+        POLICY,
     )
     assert result.texts == ("my number is «phone_1»", "call «phone_1» please")
     assert result.found == {"phone": 2}
 
 
 def test_different_values_are_numbered_in_order() -> None:
-    result = redact(["9876543210 ya 9123456789"], CONFIG)
-    assert result.texts == ("«phone_1» ya «phone_2»",)
-    assert result.reveal.values == {
-        "«phone_1»": "9876543210",
-        "«phone_2»": "9123456789",
-    }
+    text = "9876543210 ya 9123456789"
+    spans = [[span(text, "9876543210", "phone"), span(text, "9123456789", "phone")]]
+    assert redact([text], spans, POLICY).texts == ("«phone_1» ya «phone_2»",)
 
 
 def test_destroyed_values_are_numbered_too() -> None:
-    result = redact(["234567890124 aur 987654321012"], CONFIG)
-    assert result.texts == ("«aadhaar_1» aur «aadhaar_2»",)
-    assert result.reveal.values == {}
+    text = "234567890124 aur 987654321012"
+    spans = [
+        [span(text, "234567890124", "aadhaar"), span(text, "987654321012", "aadhaar")]
+    ]
+    assert redact([text], spans, POLICY).texts == ("«aadhaar_1» aur «aadhaar_2»",)
 
 
-def test_several_entities_in_one_text() -> None:
-    result = redact(["my name is Ramesh Patel, 9876543210, ramesh@example.com"], CONFIG)
-    assert result.texts == ("my name is «person_1», «phone_1», «email_1»",)
-    assert result.found == {"person": 1, "phone": 1, "email": 1}
-
-
-def test_the_longest_overlapping_candidate_wins() -> None:
-    # A phone inside a longer extra candidate: the longer span is kept.
+def test_spans_from_several_identifiers_are_resolved_together() -> None:
+    # A phone from one identifier, a longer span over it from another: the
+    # longer one wins.
     text = "call 9876543210 now"
-    extra = Candidate(start=0, end=15, entity="note", score=0.9, source="test")
-    result = redact([text], CONFIG, extra=[[extra]])
-    assert result.texts == ("«note_1» now",)
+    phone = span(text, "9876543210", "phone")
+    note = PiiSpan(0, 15, "note", 0.9, "other", "call 9876543210")
+    assert redact([text], [[phone, note]], POLICY).texts == ("«note_1» now",)
 
 
-def test_an_extra_candidate_is_merged_with_the_patterns() -> None:
-    # The seam #136 plugs a model into: candidates from elsewhere, same pass.
-    text = "Ramesh ke khet mein, number 9876543210"
-    extra = Candidate(
-        start=0, end=6, entity="person", score=0.8, source="ner", value="Ramesh"
-    )
-    result = redact([text], CONFIG, extra=[[extra]])
-    assert result.texts == ("«person_1» ke khet mein, number «phone_1»",)
-    assert result.reveal.values["«person_1»"] == "Ramesh"
+def test_equal_spans_go_to_the_one_listed_first() -> None:
+    text = "Ramesh ji"
+    first = span(text, "Ramesh", "person")
+    second = PiiSpan(0, 6, "place", 0.9, "other", "Ramesh")
+    assert redact([text], [[first, second]], POLICY).texts == ("«person_1» ji",)
 
 
 def test_empty_input() -> None:
-    result = redact([], CONFIG)
+    result = redact([], [], POLICY)
     assert result.texts == ()
-    assert result.found == {}
+    assert result.failed == ()
