@@ -94,6 +94,10 @@ Hugging Face token to build, and an extra image target to maintain.
   *"gehu"* (wheat) as people. It gives no score, so nothing filters these out.
   An adopter with Hinglish traffic should leave the `spacy` entry out.
 - **English only.** Names in Indian scripts are not found until IndicNER lands.
+- **It misses many Indian names, even in English sentences.** It finds "Sunita
+  Devi" and "Priya Sharma", but not "Anil Kumar" in *"Call Anil Kumar on ..."*,
+  "Suresh Yadav" in *"Suresh Yadav's cow has a fever"*, or "Ramesh Patil" unless
+  he announces it (*"my name is ..."*, which the regex identifier catches).
 - **Crop and variety words that are also names** (Kamal, Tulsi) may be
   replaced. Not handled here.
 - **Cost grows with history.** spaCy runs once per text, about 2 ms each.
