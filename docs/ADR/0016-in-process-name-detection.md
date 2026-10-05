@@ -1,4 +1,4 @@
-# ADR-0016: in-process name detection — spaCy by default, IndicNER optional
+# ADR-0016: in-process name identification with spaCy
 
 - **Status:** PROPOSED
 - **Date:** 2026-10-05
@@ -50,68 +50,52 @@ another adapter.
 
 ## 4. Decision Outcome
 
-**Two more PII identifiers on the ADR-0015 port**, listed in the rules file's
-`identifiers:` beside the regex one:
+**One more PII identifier on the ADR-0015 port: spaCy `en_core_web_sm`**, listed
+in the rules file's `identifiers:` beside the regex one:
 
 ```yaml
 identifiers:
   - type: regex
     rules: [...]
-  - type: spacy                        # the default name identifier
+  - type: spacy
     entity: person
-  # - type: onnx                       # optional: IndicNER or any ONNX name model
-  #   dir: /app/var/models/indicner
-  #   min_score: 0.8
 ```
 
-- **`spacy`** — `en_core_web_sm`, a main dependency
-  (`adapters/pii_identifier/spacy/`). Loaded with only its entity recogniser.
-- **`onnx`** — any token-classification model in a folder of `model.onnx`,
-  `tokenizer.json` and `labels.json` (`adapters/pii_identifier/onnx/`).
-  IndicNER is the documented one. Needs the `ner-indic` extra: `onnxruntime`
-  and `tokenizers`, no torch. Another model is another folder, not a code
-  change.
+- `adapters/pii_identifier/spacy/`. `en_core_web_sm` is a main dependency,
+  loaded with only its entity recogniser.
+- It only reports spans. Whether a name is kept or destroyed is the
+  `entities:` policy's call, in core.
+- It runs side by side with the regex identifier, on a worker thread. If it
+  fails, the regex spans still apply and the result names it in
+  `Redaction.failed`.
+- A missing model stops the boot. It is never discovered on a turn.
 
-Both only report spans. Whether a name is kept or destroyed is the `entities:`
-policy's call, in core. They run side by side with the regex identifier, on
-worker threads; if one fails, the others still apply and the result names it
-in `Redaction.failed`.
-
-**We build our own compressed copy of IndicNER.** No official ONNX or int8
-version exists. `scripts/export_onnx_ner.py` downloads the model, exports it,
-and compresses it to int8 (667 MB → 168 MB). The `dss-indicner` image target
-runs it in a builder stage, so torch never reaches the running image and the
-model is in the container from the start — no download at runtime. IndicNER
-is MIT-licensed, which allows this; credit goes to AI4Bharat.
-
-**A missing model stops the boot**, naming the missing file or library. It is
-never discovered on a turn.
+**IndicNER is the next step, not part of this decision.** It was the only small
+model that found names in Indian scripts (§3). It is built and tested on the
+branch `feat/136-onnx-identifier`: an `onnx` identifier that loads any
+token-classification model exported to ONNX, a script that compresses IndicNER
+to int8 (667 MB → 168 MB), and a `dss-indicner` image target that bakes it in.
+It is held back for now: about 390 MB of memory, a gated download that needs a
+Hugging Face token to build, and an extra image target to maintain.
 
 ## 5. Consequences
 
 **Good**
 
-- A name in English or an Indian script is found without being announced.
-- The default image needs no token and no extra build step.
-- An adopter swaps the model by building a different folder.
+- A name in English is found without being announced.
+- No token, no extra build step, no new image target.
+- Adding IndicNER later is one more identifier and a config entry; core and
+  orchestration do not change.
 
 **Known gaps — accepted for now**
 
 - **spaCy is wrong on romanised Hinglish.** On *"mera naam Suresh Patil hai,
   gehu ka rate kya hai?"* it misses the name and tags *"mera naam"* and
   *"gehu"* (wheat) as people. It gives no score, so nothing filters these out.
-  It is the default because it is small; an adopter with Hinglish traffic
-  should use `onnx` or `none`.
-- **IndicNER on romanised Hinglish depends on context.** *"mera naam Suresh
-  Patil hai"* scores 0.9; the same with *"gehu ka rate kya hai?"* after it finds
-  nothing; *"Ramesh ke khet mein"* scores 0.65, under the 0.8 default.
+  An adopter with Hinglish traffic should leave the `spacy` entry out.
+- **English only.** Names in Indian scripts are not found until IndicNER lands.
 - **Crop and variety words that are also names** (Kamal, Tulsi) may be
   replaced. Not handled here.
-- **IndicNER uses about 390 MB of memory**, the biggest single user in a
-  1 GiB container.
-- **The IndicNER download is gated** (automatic approval). Building the folder
-  needs a Hugging Face token; running the DSS does not.
-- **Cost grows with history.** The model runs once per text, ~11 ms each for
-  IndicNER on a Mac (1 CPU in a container: an estimated 2–3× slower).
+- **Cost grows with history.** spaCy runs once per text, about 2 ms each.
 - **No accuracy measured on our own data yet.** The figures above are published
   numbers and a smoke test.

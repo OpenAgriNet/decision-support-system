@@ -30,17 +30,9 @@ def _spacy(entry: Mapping[str, Any]) -> PiiIdentifier:
     return SpacyIdentifier(SpacySettings.model_validate(entry))
 
 
-def _onnx(entry: Mapping[str, Any]) -> PiiIdentifier:
-    from dss.adapters.pii_identifier.onnx.identifier import OnnxIdentifier
-    from dss.adapters.pii_identifier.onnx.models import OnnxSettings
-
-    return OnnxIdentifier.from_settings(OnnxSettings.model_validate(entry))
-
-
 _BUILDERS: dict[str, Callable[[Mapping[str, Any]], PiiIdentifier]] = {
     "regex": _regex,
     "spacy": _spacy,
-    "onnx": _onnx,
 }
 
 

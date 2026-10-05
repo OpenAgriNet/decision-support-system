@@ -82,11 +82,3 @@ identifiers:
   #          people. Remove this entry for patterns only.
   - type: spacy
     entity: person
-
-  # Or any name model exported by scripts/export_onnx_ner.py — IndicNER covers
-  # English and 11 Indian languages. Needs `uv sync --extra ner-indic` and the
-  # model folder (the dss-indicner image has it at /app/var/models/indicner).
-  # - type: onnx
-  #   dir: /app/var/models/indicner
-  #   entity: person
-  #   min_score: 0.8

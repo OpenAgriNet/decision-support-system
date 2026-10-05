@@ -585,21 +585,6 @@ run side by side).
 |---|---|---|
 | `regex` | Aadhaar, PAN, GSTIN, IFSC, card, phone, email, announced names | nothing |
 | `spacy` | people's names, English only; poor on romanised Hinglish | nothing — `uv sync` installs it |
-| `onnx` | people's names — IndicNER: English + 11 Indian languages, ~170 MB, ~390 MB memory | `uv sync --extra ner-indic` and a model folder |
-
-Build the IndicNER folder once, locally (needs a Hugging Face token; accept the
-model's terms on its page first):
-
-```bash
-HF_TOKEN=... uv run --no-project --python 3.13 \
-  --with torch --with transformers --with onnx --with onnxruntime \
-  python scripts/export_onnx_ner.py --out var/models/indicner
-```
-
-…or bake it into an image: `docker build --target dss-indicner --secret
-id=hf_token,env=HF_TOKEN .` — the model lands in `/app/var/models/indicner`.
-A configured folder that is missing, or missing a file, refuses the boot and
-names what is missing. Once built, restarts reuse it.
 
 ### The district index
 

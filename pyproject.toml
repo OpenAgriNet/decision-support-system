@@ -45,12 +45,6 @@ dependencies = [
     "en-core-web-sm",
 ]
 
-[project.optional-dependencies]
-ner-indic = [
-    "onnxruntime>=1.20",
-    "tokenizers>=0.20",
-]
-
 [build-system]
 requires = ["hatchling>=1.32.0"]
 build-backend = "hatchling.build"
