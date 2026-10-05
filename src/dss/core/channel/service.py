@@ -25,13 +25,39 @@ NO_MATCH_TEXT = (
 
 
 def no_match_answer() -> ComposedAnswer:
-    """What the farmer reads when nothing could serve the ask.
+    """What the farmer reads when moderation finds the ask out of scope and
+    gives no message of its own.
+
+    Not for an ask nobody on the network serves: that is
+    `answer_for_unserved_asks`, which names the place.
 
     Deterministic, so it needs no model. The real version writes in
     `target_lang` and for the channel.
     """
 
     return ComposedAnswer(content=(TextBlock(text=NO_MATCH_TEXT),))
+
+
+def answer_for_unserved_asks(
+    asks: Sequence[Ask], text: ClarificationText
+) -> ComposedAnswer:
+    """What the farmer reads when the ask is understood but nobody on the
+    network serves it. Not `no_match_answer`: that one reads as out of scope.
+
+    The reply names the place, never the schema, so a new schema needs no
+    new text.
+    """
+
+    lines = [
+        text.no_provider_for.format(place=ask.place.name)
+        if ask.place.name
+        else text.no_provider
+        for ask in asks
+        if isinstance(ask.place, ResolvedPlace)
+    ]
+    # Two asks on one place are one thing for the farmer to act on.
+    unique = dict.fromkeys(lines)
+    return ComposedAnswer(content=(TextBlock(text="\n".join(unique)),))
 
 
 def _standout_part(within: tuple[str, ...], others: list[tuple[str, ...]]) -> str:

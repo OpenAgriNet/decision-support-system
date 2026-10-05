@@ -303,6 +303,24 @@ async def test_nobody_serving_is_no_match_without_planning() -> None:
     assert plan.calls == 0 and compose.calls == 0
 
 
+async def test_nobody_serving_names_the_place() -> None:
+    """Understood, but nobody serves it here. Not the out-of-scope reply."""
+
+    empty = DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
+    orch, _ = _build(
+        intent=_one_ask(),
+        discovery=empty,
+        plan=_FakePlan(_ANSWERED_EVIDENCE),
+        compose=_FakeCompose("unused"),
+    )
+
+    events = await _collect(orch, _turn(location=Location(area="Pune")))
+
+    assert [block.text for block in events[-1].content] == [
+        "I could not find a source that answers this for Pune yet."
+    ]
+
+
 async def test_an_unlocated_turn_asks_for_a_place() -> None:
     """No coordinates, no area, and the classifier found no place name: there is
     nowhere to search, so ask the farmer instead of discovering, planning and

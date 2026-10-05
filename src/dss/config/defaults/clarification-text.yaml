@@ -4,4 +4,6 @@ unknown_place_in: I could not find {name} in {part}.
 ambiguous_place_header: Which {name}?
 grouped_place_header: "{name} is in several places. Which one:"
 more_places_hint: Not in this list? Tell me the area it is in.
+no_provider_for: I could not find a source that answers this for {place} yet.
+no_provider: I could not find a source that answers this yet.
 max_choices: 5
