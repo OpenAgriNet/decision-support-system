@@ -110,6 +110,18 @@ def build_intent_prompt(history: Sequence[ConversationMessage]) -> str:
         "  Conversation: user 'tomato rate?', assistant 'At Vashi market, "
         "tomato is 20 a kg.', then 'and next week?' -> place_name null. A "
         "place only the assistant named is not the user's.",
+        "  Conversation: user 'cotton rate?', assistant 'At Akola market, "
+        "cotton is 6,500 a quintal.', then 'and yesterday?' -> place_name "
+        "null. Akola is where the answer came from, not where the user is.",
+        "  Conversation: user 'weather in Sonagiri', assistant 'Which Sonagiri? "
+        "1. Sonagiri, Gujarat 2. Sonagiri, Odisha', then '2' -> one ask: "
+        "Weather / observe, place_name 'Sonagiri, Odisha'. The user picked one "
+        "of the listed options, "
+        "so answer the first question. Copy the option as listed. If the "
+        "reply is not one of the listed options but names a place, it is the "
+        "answer to our question: copy the name with that place, as "
+        "'Sonagiri, Kerala'. If it is not a place at all, read it as a new "
+        "question.",
         "  'weather in Pune, Maharashtra' -> one ask, place_name 'Pune'. A "
         "state after a place narrows it; it is not a second place.",
     ]

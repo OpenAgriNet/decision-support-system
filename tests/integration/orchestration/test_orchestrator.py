@@ -30,6 +30,7 @@ from dss.core.policy.models import (
 from dss.core.provider_discovery.models import DiscoveryResult, ProviderCapability
 from dss.core.shared.models import (
     Claim,
+    ClaimDelta,
     Geometry,
     Location,
     RefusalBlock,
@@ -217,6 +218,7 @@ def _build(
     compose: _FakeCompose,
     violated: str | None = None,
     policies=(),
+    area_lookup: FakeAreaLookup | None = None,
 ) -> tuple[Orchestrator, MemoryTurnSink]:
     turns = MemoryTurnSink()
     orch = Orchestrator(
@@ -230,7 +232,7 @@ def _build(
         ),
         turns=turns,
         telemetry=_Telemetry(),
-        area_lookup=FakeAreaLookup({"pune": [_PUNE_MATCH]}),
+        area_lookup=area_lookup or FakeAreaLookup({"pune": [_PUNE_MATCH]}),
         clarification_text=load_clarification_text(),
     )
     return orch, turns
@@ -374,6 +376,108 @@ async def test_one_place_not_found_still_answers_the_other() -> None:
 
     assert plan.calls == 1
     assert events[-1].outcome.status is TurnStatus.PARTIALLY_ANSWERED
+
+
+async def test_an_ambiguous_place_is_asked_after_the_answer_for_the_other() -> None:
+    """ "Weather in Pune and Aurangabad": Pune is answered, and the farmer is
+    still asked which Aurangabad, so the reply can finish the question."""
+
+    def weather_in(place_name: str) -> ClassifiedAsk:
+        return ClassifiedAsk(
+            subject_categories=SubjectCategory.WEATHER,
+            interaction_type=InteractionType.OBSERVE,
+            place_name=place_name,
+        )
+
+    def aurangabad(state: str) -> AreaMatch:
+        return AreaMatch(
+            name="Aurangabad",
+            region="IN-XX",
+            within=("India", state),
+            geometry=Geometry(coordinates=[75.3, 19.9]),
+        )
+
+    plan = _FakePlan(
+        _evidence(
+            results=(Result(ask_index=0, source_id="1", data={"rain": "none"}),),
+            served=(0,),
+        )
+    )
+    orch, _ = _build(
+        intent=IntentClassification(
+            asks=(weather_in("Pune"), weather_in("Aurangabad")), confidence=0.9
+        ),
+        discovery=_served_discovery(),
+        plan=plan,
+        compose=_FakeCompose("No rain in Pune [1]."),
+        area_lookup=FakeAreaLookup(
+            {
+                "pune": [_PUNE_MATCH],
+                "aurangabad": [aurangabad("Maharashtra"), aurangabad("Bihar")],
+            }
+        ),
+    )
+
+    events = await _collect(
+        orch, _turn("weather in Pune and Aurangabad", location=None)
+    )
+
+    # One bubble: the question is the last piece of the same streamed answer.
+    question = "Which Aurangabad?\n1. Aurangabad, Maharashtra\n2. Aurangabad, Bihar"
+    deltas = [e.text for e in events if isinstance(e, ClaimDelta)]
+    claims = [e for e in events if isinstance(e, Claim)]
+    assert deltas[-1] == f"\n\n{question}"
+    assert [c.content.text for c in claims] == [f"No rain in Pune [1].\n\n{question}"]
+    assert "".join(deltas) == claims[0].content.text
+    finished = events[-1]
+    assert finished.outcome.status is TurnStatus.PARTIALLY_ANSWERED
+    assert [b.text for b in finished.content] == [claims[0].content.text]
+
+
+async def test_no_provider_still_asks_which_place() -> None:
+    """Nobody serves the Pune ask, and Rampur matches several. The farmer must
+    still be asked which Rampur, or a reply can never finish it."""
+
+    def weather_in(place_name: str) -> ClassifiedAsk:
+        return ClassifiedAsk(
+            subject_categories=SubjectCategory.WEATHER,
+            interaction_type=InteractionType.OBSERVE,
+            place_name=place_name,
+        )
+
+    def rampur(state: str) -> AreaMatch:
+        return AreaMatch(
+            name="Rampur",
+            region="IN-XX",
+            within=("India", state),
+            geometry=Geometry(coordinates=[79.0, 28.8]),
+        )
+
+    plan = _FakePlan(_ANSWERED_EVIDENCE)
+    nobody = DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
+    orch, _ = _build(
+        intent=IntentClassification(
+            asks=(weather_in("Pune"), weather_in("Rampur")), confidence=0.9
+        ),
+        discovery=nobody,
+        plan=plan,
+        compose=_FakeCompose("unused"),
+        area_lookup=FakeAreaLookup(
+            {
+                "pune": [_PUNE_MATCH],
+                "rampur": [rampur("Uttar Pradesh"), rampur("Himachal Pradesh")],
+            }
+        ),
+    )
+
+    events = await _collect(orch, _turn("weather in Pune and Rampur", location=None))
+
+    finished = events[-1]
+    assert finished.outcome.status is TurnStatus.REQUIRES_INPUT
+    assert finished.content[-1].text == (
+        "Which Rampur?\n1. Rampur, Uttar Pradesh\n2. Rampur, Himachal Pradesh"
+    )
+    assert plan.calls == 0
 
 
 async def test_all_calls_failing_is_unavailable() -> None:

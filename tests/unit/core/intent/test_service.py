@@ -168,6 +168,38 @@ def test_prompt_shows_an_assistant_named_place_is_not_carried() -> None:
     assert "only the assistant named" in prompt
 
 
+def test_prompt_shows_a_reply_by_number_finishes_the_first_question() -> None:
+    """A reply of "2" means nothing alone. The example shows the model reading
+    our numbered list in the history and copying the picked line. Its name is
+    made up: a real one, listed in another order, could teach a wrong pick."""
+
+    prompt = build_intent_prompt([])
+
+    assert "Which Sonagiri? 1. Sonagiri, Gujarat 2. Sonagiri, Odisha" in prompt
+    assert "'Sonagiri, Odisha'" in prompt
+
+
+def test_prompt_shows_the_place_a_data_answer_came_from_is_not_the_users() -> None:
+    """One example was no longer enough: a live model carried the market an
+    answer named. A second, with different places, held on both models."""
+
+    prompt = build_intent_prompt([])
+
+    assert "where the answer came from" in prompt
+
+
+def test_prompt_says_a_reply_matching_no_listed_option_is_not_a_pick() -> None:
+    """Without this a live model mapped a reply of "5" onto the last line of a
+    three-line list, which would give the farmer the wrong place silently. A
+    reply naming an unlisted place still answers our question: that is what
+    the "Not in this list?" hint asks for."""
+
+    prompt = build_intent_prompt([])
+
+    assert "not one of the listed options but names a place" in prompt
+    assert "If it is not a place at all, read it as a new question." in prompt
+
+
 def test_prompt_forbids_guessing_a_place_nobody_said() -> None:
     """Carry-forward lets the model look past the latest query. This line keeps
     it from inventing a place from the crop or language instead.

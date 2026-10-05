@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from dss.core.shared.models import OutputContent, Source
 
@@ -32,4 +32,11 @@ class ClarificationText(BaseModel):
 
     needs_place: str
     unknown_place: str
+    # For "Aurangabad, Maharashtra": a farmer may not read a comma as "in".
+    unknown_place_in: str
     ambiguous_place_header: str
+    grouped_place_header: str
+    # Closes a grouped list that was cut at `max_choices`.
+    more_places_hint: str
+    # More choices than this are grouped one level up before they are listed.
+    max_choices: int = Field(default=5, gt=0)

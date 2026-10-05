@@ -8,6 +8,7 @@ single subject on a single interaction type, plus one overall ``confidence``.
 
 from __future__ import annotations
 
+import re
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -18,6 +19,10 @@ from dss.ports.area_lookup import AreaMatch
 # What a model leaves around a name it copied out of a sentence or a quoted
 # example. Brackets and hyphens are not here: they can end a real name.
 _PLACE_NAME_EDGE_JUNK = " \t\n'\"‘’“”,.;:"
+
+# "2. " or "2) " in front of a name the model copied from our numbered list.
+# A real name like "24 Parganas" has no dot or bracket after the number.
+_LINE_NUMBER = re.compile(r"^\d+[.)]\s+")
 
 
 class InteractionType(StrEnum):
@@ -142,7 +147,8 @@ class ClassifiedAsk(BaseModel):
     def _trim_place_name(cls, value: str | None) -> str | None:
         if value is None:
             return None
-        return value.strip(_PLACE_NAME_EDGE_JUNK) or None
+        trimmed = _LINE_NUMBER.sub("", value.strip(_PLACE_NAME_EDGE_JUNK))
+        return trimmed.strip(_PLACE_NAME_EDGE_JUNK) or None
 
 
 class IntentClassification(BaseModel):
