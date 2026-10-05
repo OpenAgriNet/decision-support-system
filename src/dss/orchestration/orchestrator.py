@@ -43,6 +43,7 @@ from dss.adapters.observability.tracing import TurnRecorder, turn_span
 from dss.core.channel.models import ClarificationText, ComposedAnswer
 from dss.core.channel.service import (
     answer_for_unplaced_asks,
+    answer_for_unserved_asks,
     answer_from_evidence,
     no_match_answer,
     question_for_ambiguous_asks,
@@ -229,7 +230,9 @@ class Orchestrator:
             # round-trip to arrive at the same empty-handed place.
             if _nobody_serves(result.discovery):
                 status = TurnStatus.NO_MATCH
-                answer = no_match_answer()
+                answer = answer_for_unserved_asks(
+                    result.intent.asks, self._clarification_text
+                )
                 # An ask whose place matched several was never searched. Still
                 # ask which one, so the farmer's reply can finish it.
                 question = question_for_ambiguous_asks(

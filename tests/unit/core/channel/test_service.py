@@ -11,6 +11,7 @@ from dss.core.channel.models import ClarificationText
 from dss.core.channel.service import (
     NO_MATCH_TEXT,
     answer_for_unplaced_asks,
+    answer_for_unserved_asks,
     no_match_answer,
     question_for_ambiguous_asks,
 )
@@ -33,6 +34,8 @@ _TEXT = ClarificationText(
     ambiguous_place_header="Which {name}?",
     grouped_place_header="{name} is in several places. Which one:",
     more_places_hint="Not in this list? Tell me the area it is in.",
+    no_provider_for="I could not find a source that answers this for {place} yet.",
+    no_provider="I could not find a source that answers this yet.",
 )
 
 
@@ -315,4 +318,36 @@ def test_the_question_for_ambiguous_asks_skips_everything_that_resolved() -> Non
 
     assert question == (
         "Which Bilaspur?\n1. Bilaspur, Himachal Pradesh\n2. Bilaspur, Chhattisgarh"
+    )
+
+
+def test_no_provider_names_the_place() -> None:
+    """Nobody serves the ask here. Say so, rather than read as out of scope."""
+
+    answer = answer_for_unserved_asks((_ask(place=_PUNE),), _TEXT)
+
+    assert answer.content[0].text == (
+        "I could not find a source that answers this for Pune yet."
+    )
+
+
+def test_no_provider_without_a_place_name() -> None:
+    """A device point can arrive with no name to show."""
+
+    device_point = _PUNE.model_copy(
+        update={"name": "", "source": PlaceSource.ASSERTED_GEOMETRY}
+    )
+
+    answer = answer_for_unserved_asks((_ask(place=device_point),), _TEXT)
+
+    assert answer.content[0].text == _TEXT.no_provider
+
+
+def test_no_provider_names_each_place_once() -> None:
+    """ "Wheat and onion price in Pune" is one thing the farmer can act on."""
+
+    answer = answer_for_unserved_asks((_ask(place=_PUNE), _ask(place=_PUNE)), _TEXT)
+
+    assert answer.content[0].text == (
+        "I could not find a source that answers this for Pune yet."
     )

@@ -38,5 +38,9 @@ class ClarificationText(BaseModel):
     grouped_place_header: str
     # Closes a grouped list that was cut at `max_choices`.
     more_places_hint: str
+    # Nobody on the network serves the ask. A device point can have no name,
+    # so the second one names no place.
+    no_provider_for: str
+    no_provider: str
     # More choices than this are grouped one level up before they are listed.
     max_choices: int = Field(default=5, gt=0)
