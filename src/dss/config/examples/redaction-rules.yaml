@@ -29,7 +29,7 @@ identifiers:
   #   pattern    a Python regular expression, run with number gaps joined
   #   validator  format | verhoeff | luhn | gstin — confirms a match is real
   - type: regex
-    normalise:
+    normalisation:
       join_separators: [" ", "-"]
       max_separators: 2
 

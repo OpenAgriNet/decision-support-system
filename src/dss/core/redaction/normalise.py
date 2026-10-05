@@ -23,13 +23,13 @@ class Shadow:
     # offsets[i] is where shadow character i sits in the original text.
     offsets: tuple[int, ...]
 
-    def to_original(self, start: int, end: int) -> tuple[int, int]:
+    def map_to_original(self, start: int, end: int) -> tuple[int, int]:
         """The original span a non-empty shadow span ``[start, end)`` came from."""
 
         return self.offsets[start], self.offsets[end - 1] + 1
 
 
-def shadow(
+def join_number_gaps(
     text: str,
     *,
     separators: str = SEPARATORS,

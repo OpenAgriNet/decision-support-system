@@ -17,7 +17,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from dss.core.redaction.normalise import shadow
+from dss.core.redaction.normalise import join_number_gaps
 
 TAG = re.compile(r"«[a-z][a-z0-9_]*_\d+»")
 
@@ -44,12 +44,12 @@ class RevealMap:
         if not self.values:
             return text
 
-        joined = shadow(text)
+        joined = join_number_gaps(text)
         spans: list[tuple[int, int, str]] = []
         for tag, value in self.values.items():
             echo = re.compile(rf"(?<!\w){re.escape(value)}(?!\w)", re.IGNORECASE)
             for match in echo.finditer(joined.text):
-                start, end = joined.to_original(match.start(), match.end())
+                start, end = joined.map_to_original(match.start(), match.end())
                 spans.append((start, end, tag))
 
         out: list[str] = []

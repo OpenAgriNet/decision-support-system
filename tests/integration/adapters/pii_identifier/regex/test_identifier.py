@@ -2,16 +2,24 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
-from dss.adapters.pii_identifier.regex.identify import identify
+from dss.adapters.pii_identifier.regex.identifier import RegexIdentifier
+from dss.core.redaction.models import PiiSpan
 from tests.support.redaction_rules import SETTINGS
+
+
+def identify(text: str) -> list[PiiSpan]:
+    [spans] = asyncio.run(RegexIdentifier(SETTINGS).identify([text]))
+    return spans
 
 
 def found(text: str) -> list[tuple[str, str]]:
     """(entity, the original text it covers) for every candidate."""
 
-    return sorted({(c.entity, text[c.start : c.end]) for c in identify(text, SETTINGS)})
+    return sorted({(c.entity, text[c.start : c.end]) for c in identify(text)})
 
 
 @pytest.mark.parametrize(
@@ -93,7 +101,7 @@ def test_a_name_mentioned_in_passing_is_not_found() -> None:
 
 
 def test_candidates_carry_the_canonical_value() -> None:
-    [candidate] = identify("call +91 98765 43210", SETTINGS)
+    [candidate] = identify("call +91 98765 43210")
     assert candidate.value == "+919876543210"
     assert candidate.score == 1.0
 
@@ -101,5 +109,5 @@ def test_candidates_carry_the_canonical_value() -> None:
 def test_every_span_carries_its_value() -> None:
     # Keep or destroy is the policy's call, in core; the identifier always
     # reports the value.
-    [candidate] = identify("aadhaar 2345 6789 0124", SETTINGS)
+    [candidate] = identify("aadhaar 2345 6789 0124")
     assert candidate.value == "234567890124"

@@ -19,7 +19,7 @@ from dss.core.redaction.models import EntityName
 from dss.core.redaction.normalise import MAX_SEPARATORS, SEPARATORS
 
 
-class Normalise(BaseModel):
+class Normalisation(BaseModel):
     """How number gaps are joined before patterns run (``98765 43210``)."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -79,5 +79,5 @@ class RegexSettings(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     type: Literal["regex"] = "regex"
-    normalise: Normalise = Normalise()
+    normalisation: Normalisation = Normalisation()
     rules: list[Rule] = Field(min_length=1)
