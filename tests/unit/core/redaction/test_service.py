@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dss.core.redaction.models import Candidate
 from dss.core.redaction.service import redact
-from tests.unit.core.redaction.rules import CONFIG
+from tests.support.redaction_rules import CONFIG
 
 
 def test_aadhaar_is_replaced_and_not_kept() -> None:

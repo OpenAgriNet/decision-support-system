@@ -85,7 +85,14 @@ replace  →  «phone_1», «aadhaar_1» ...  plus a map of kept values
 `detect` runs each pattern over the text *and* over a shadow copy with number
 gaps joined, so `98765 43210` and `9876543210 2 acre` are both caught.
 `resolve` takes extra candidates from any other detector. That is the seam
-#136's model plugs into, from `orchestration/`, without changing this code.
+#136's model plugs into, without changing this code.
+
+**The orchestrator calls a port, not the engine.** `ports/redactor.py` has one
+call: texts in, redacted texts plus the value map and counts out. Today's
+adapter, `adapters/redaction/local.py`, runs the engine in the process on a
+worker thread. A redaction service over HTTP would be a second adapter, chosen
+by config, with no change to the orchestrator. A remote adapter sends real
+values back over the wire, so it needs a protected connection.
 
 **Every rule is configuration.** Its pattern, its validator by name, its label,
 and whether its value is kept or destroyed. The validators are code. A rule

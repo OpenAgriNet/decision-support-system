@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from dss.core.redaction.detect import detect
-from tests.unit.core.redaction.rules import CONFIG
+from tests.support.redaction_rules import CONFIG
 
 
 def found(text: str) -> list[tuple[str, str]]:
