@@ -1,7 +1,7 @@
 """Tier 1 — the marker convention that separates data from instructions.
 
 The markers are the stated defence against prompt injection (ADR-0003, and
-``planner_prompt.md``'s standing instruction). That only holds if content
+``planner-prompt.md``'s standing instruction). That only holds if content
 cannot close the wrapper early, so the wrapping function has to neutralise
 the marker literals in whatever it wraps.
 """

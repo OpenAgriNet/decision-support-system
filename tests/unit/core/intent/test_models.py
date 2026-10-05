@@ -6,28 +6,224 @@ import pytest
 from pydantic import ValidationError
 
 from dss.core.intent.models import (
+    AmbiguousPlace,
     Ask,
+    ClassifiedAsk,
     Intent,
+    IntentClassification,
     InteractionType,
+    PlaceSource,
+    ResolvedPlace,
     SubjectCategory,
+    UnresolvedPlace,
 )
-from dss.core.shared.models import UserTurn
+from dss.core.shared.models import Geometry, UserTurn
+from dss.ports.area_lookup import AreaMatch
 
 
 def test_intent_defaults_are_empty() -> None:
     intent = Intent()
     assert intent.asks == ()
     assert intent.confidence == 0.0
-    # Most turns name no place. Absent has to be representable: it is the
-    # common case, and it is what leaves the turn without a spatial filter.
-    assert intent.place_name is None
 
 
-def test_intent_carries_the_place_the_farmer_named() -> None:
-    """One place per turn, not one per ask — "wheat price in Pune and will it
-    rain?" is two asks about a single location."""
+def test_ask_carries_its_own_resolved_place() -> None:
+    """Each ask resolves its own place — "wheat price in Pune and will it rain
+    in Anand?" is two asks, two places."""
 
-    assert Intent(place_name="Pune").place_name == "Pune"
+    place = ResolvedPlace(
+        name="Pune",
+        within=("India", "Maharashtra"),
+        geometry=Geometry(coordinates=[73.85, 18.52]),
+        source=PlaceSource.NAMED,
+    )
+    ask = Ask(
+        subject_categories=SubjectCategory.WEATHER,
+        interaction_type=InteractionType.OBSERVE,
+        place=place,
+    )
+    assert ask.place == place
+
+
+def test_place_source_has_four_values() -> None:
+    """Device geometry and a client-asserted area are different provenances
+    — one is a raw coordinate, the other is a name resolved through the same
+    lookup as a farmer-named place — so they need distinct source values."""
+
+    assert {s.value for s in PlaceSource} == {
+        "asserted_geometry",
+        "named",
+        "carried",
+        "asserted_area",
+    }
+
+
+def test_ask_place_defaults_to_none() -> None:
+    """No place needed and none named — a valid ask, not an error
+    ("how do I grow potatoes" has nothing to resolve)."""
+
+    ask = Ask(
+        subject_categories=SubjectCategory.WEATHER,
+        interaction_type=InteractionType.OBSERVE,
+    )
+    assert ask.place is None
+
+
+def test_ask_carries_an_ambiguous_place() -> None:
+    """A name matching several places is not a resolved place, but it is not
+    nothing either — the candidates ride along so the farmer can be asked
+    which one."""
+
+    candidates = (
+        AreaMatch(
+            name="Bilaspur",
+            region="IN-HP",
+            within=("India", "Himachal Pradesh"),
+            geometry=Geometry(coordinates=[76.75, 31.33]),
+        ),
+        AreaMatch(
+            name="Bilaspur",
+            region="IN-CT",
+            within=("India", "Chhattisgarh"),
+            geometry=Geometry(coordinates=[82.15, 22.09]),
+        ),
+    )
+    ask = Ask(
+        subject_categories=SubjectCategory.WEATHER,
+        interaction_type=InteractionType.OBSERVE,
+        place=AmbiguousPlace(unresolved_name="Bilaspur", candidates=candidates),
+    )
+    assert isinstance(ask.place, AmbiguousPlace)
+    assert ask.place.unresolved_name == "Bilaspur"
+    assert ask.place.candidates == candidates
+
+
+def test_ask_carries_an_unresolved_place() -> None:
+    """A name the index does not carry — different from `None`, which means
+    nothing was named at all."""
+
+    ask = Ask(
+        subject_categories=SubjectCategory.WEATHER,
+        interaction_type=InteractionType.OBSERVE,
+        place=UnresolvedPlace(unresolved_name="Xyzzy"),
+    )
+    assert isinstance(ask.place, UnresolvedPlace)
+    assert ask.place.unresolved_name == "Xyzzy"
+
+
+def test_resolved_place_carries_its_ancestor_chain() -> None:
+    """Coarsest first, no level words — a chain works for any adopter's
+    taxonomy."""
+
+    place = ResolvedPlace(
+        name="Baramati",
+        within=("India", "Maharashtra", "Pune"),
+        geometry=Geometry(coordinates=[74.58, 18.15]),
+        source=PlaceSource.NAMED,
+    )
+    assert place.name == "Baramati"
+    assert place.within == ("India", "Maharashtra", "Pune")
+    assert place.geometry.type == "Point"
+    assert place.geometry.coordinates == [74.58, 18.15]
+    assert place.source == PlaceSource.NAMED
+
+
+def test_resolved_place_is_frozen() -> None:
+    place = ResolvedPlace(
+        name="Pune",
+        within=("India", "Maharashtra"),
+        geometry=Geometry(coordinates=[73.85, 18.52]),
+        source=PlaceSource.ASSERTED_GEOMETRY,
+    )
+    with pytest.raises(ValidationError):
+        place.name = "Anand"
+
+
+def test_resolved_place_unknown_field_raises() -> None:
+    with pytest.raises(ValidationError):
+        ResolvedPlace(
+            name="Pune",
+            within=(),
+            geometry=Geometry(coordinates=[73.85, 18.52]),
+            source=PlaceSource.ASSERTED_GEOMETRY,
+            level="district",
+        )
+
+
+def test_classified_ask_carries_a_place_name_not_a_place() -> None:
+    """This is what the LLM returns — words only. A nested ``ResolvedPlace``
+    here would invite an invented geometry; only the resolver may fill one."""
+
+    ask = ClassifiedAsk(
+        subject_categories=SubjectCategory.WEATHER,
+        interaction_type=InteractionType.OBSERVE,
+        place_name="Pune",
+    )
+    assert ask.place_name == "Pune"
+
+
+@pytest.mark.parametrize("raw", ["Pune, ", "Pune', "])
+def test_classified_ask_trims_stray_punctuation_off_the_place_name(raw: str) -> None:
+    """Both values are what a live model returned. The lookup keys on the
+    exact name, so a trailing comma or quote left the place unresolved.
+    """
+
+    ask = ClassifiedAsk(
+        subject_categories=SubjectCategory.MARKET,
+        interaction_type=InteractionType.OBSERVE,
+        place_name=raw,
+    )
+    assert ask.place_name == "Pune"
+
+
+def test_classified_ask_keeps_punctuation_inside_the_place_name() -> None:
+    """Only the edges are trimmed. A dot inside a real name is part of it."""
+
+    ask = ClassifiedAsk(
+        subject_categories=SubjectCategory.MARKET,
+        interaction_type=InteractionType.OBSERVE,
+        place_name="St. Thomas",
+    )
+    assert ask.place_name == "St. Thomas"
+
+
+@pytest.mark.parametrize(
+    "raw", ["2. Rampur, Himachal Pradesh", "2) Rampur, Himachal Pradesh"]
+)
+def test_line_number_is_dropped(raw: str) -> None:
+    """The model may copy a listed line with its number."""
+
+    ask = ClassifiedAsk(
+        subject_categories=SubjectCategory.WEATHER,
+        interaction_type=InteractionType.OBSERVE,
+        place_name=raw,
+    )
+    assert ask.place_name == "Rampur, Himachal Pradesh"
+
+
+def test_classified_ask_with_only_punctuation_names_no_place() -> None:
+    """An empty name would reach the farmer as "I could not find ." — no name
+    is the honest reading, and lets the device or asserted area apply.
+    """
+
+    ask = ClassifiedAsk(
+        subject_categories=SubjectCategory.MARKET,
+        interaction_type=InteractionType.OBSERVE,
+        place_name="', ",
+    )
+    assert ask.place_name is None
+
+
+def test_classification_rejects_a_domain_ask() -> None:
+    """Proves the split is a real type boundary, not a rename: the LLM schema
+    cannot be handed a domain ``Ask`` carrying a ``ResolvedPlace``."""
+
+    ask = Ask(
+        subject_categories=SubjectCategory.MARKET,
+        interaction_type=InteractionType.OBSERVE,
+    )
+    with pytest.raises(ValidationError):
+        IntentClassification(asks=(ask,))
 
 
 def test_intent_carries_asks_and_confidence() -> None:

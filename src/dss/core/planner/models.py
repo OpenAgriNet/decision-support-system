@@ -94,11 +94,18 @@ class Result(BaseModel):
 
 
 class Failure(BaseModel):
-    """A capability call that did not produce a result."""
+    """An ask that did not produce a result.
+
+    ``ask_index`` names what the call was answering — the position into
+    ``Intent.asks`` — the same way ``Result.ask_index`` does, so the composer
+    can say which ask's place a failure is about.
+    """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    capability: str
+    ask_index: int
+    # None: no provider was called, e.g. the ask's place failed to resolve.
+    capability: str | None
     reason: str
     retryable: bool
 

@@ -25,7 +25,6 @@ from dss.entrypoint.composition import (
 )
 from dss.orchestration.orchestrator import Orchestrator
 from dss.ports.turn import TurnRunner
-from tests.support.fakes import FakeAreaLookup
 
 SCHEMA_PACKS_FIXTURE_ROOT = (
     Path(__file__).parents[1]
@@ -50,7 +49,7 @@ def test_build_runner_returns_a_turn_runner(tmp_path: Path) -> None:
 
 def test_unwired_network_discovers_nothing(tmp_path: Path) -> None:
     discover, _invocation, schemas, schema_context_index, client = _network(
-        _settings(tmp_path), area_lookup=FakeAreaLookup()
+        _settings(tmp_path)
     )
 
     # the seam is the single unwired function, and the planner's dicts are empty
@@ -69,9 +68,7 @@ def test_wired_network_builds_the_planner_schemas(tmp_path: Path) -> None:
     )
     assert settings.network_enabled
 
-    discover, _invocation, schemas, schema_context_index, client = _network(
-        settings, area_lookup=FakeAreaLookup()
-    )
+    discover, _invocation, schemas, schema_context_index, client = _network(settings)
 
     # the real client replaced the unwired stand-in...
     assert discover is not _discovers_nothing
@@ -110,7 +107,7 @@ def test_the_network_refuses_to_boot_with_no_packs(tmp_path: Path) -> None:
         return ()
 
     with pytest.raises(ValueError, match="fetch_schema_packs"):
-        _network(settings, area_lookup=FakeAreaLookup(), fetch=fetches_nothing)
+        _network(settings, fetch=fetches_nothing)
 
 
 async def test_the_runner_builds_inside_a_running_event_loop(tmp_path: Path) -> None:
@@ -158,7 +155,7 @@ def test_packs_already_on_disk_are_not_re_fetched(tmp_path: Path) -> None:
         raise AssertionError("fetched with packs already on disk")
 
     discover, _invocation, _schemas, index, _client = _network(
-        settings, area_lookup=FakeAreaLookup(), fetch=must_not_be_called
+        settings, fetch=must_not_be_called
     )
 
     assert discover is not _discovers_nothing
@@ -294,7 +291,7 @@ def test_a_skipped_pack_is_logged_for_an_operator_to_see(
     )
 
     with caplog.at_level("WARNING"):
-        _network(settings, area_lookup=FakeAreaLookup())
+        _network(settings)
 
     # `SchemaPackSkipped.pack_name` and `.reason` both reach the log — an
     # operator reading it can tell which pack and why, not just "something

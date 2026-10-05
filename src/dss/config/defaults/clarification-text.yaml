@@ -1,0 +1,7 @@
+needs_place: Which place are you asking about?
+unknown_place: I could not find {name}.
+unknown_place_in: I could not find {name} in {part}.
+ambiguous_place_header: Which {name}?
+grouped_place_header: "{name} is in several places. Which one:"
+more_places_hint: Not in this list? Tell me the area it is in.
+max_choices: 5

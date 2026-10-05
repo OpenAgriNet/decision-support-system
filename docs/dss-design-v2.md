@@ -168,9 +168,9 @@ One query can hold several questions:
 
 ```python
 asks = (
-    Ask("potato",   "Market", LOOKUP),
-    Ask("PM-KISAN", "Scheme", ADVISORY),
-    Ask("potato",   "Crop",   ADVISORY),
+    Ask(agriculture_subjects="potato",   subject_categories=MARKET, interaction_type=OBSERVE, place=None),
+    Ask(agriculture_subjects="PM-KISAN", subject_categories=SCHEME, interaction_type=ADVISE,  place=None),
+    Ask(agriculture_subjects="potato",   subject_categories=CROP,   interaction_type=ADVISE,  place=None),
 )
 ```
 
@@ -425,16 +425,26 @@ Intent does not answer, fetch, or pick who to call. It only labels. Everything a
 the labels, not the raw query.
 
 ```python
-class ActionType(StrEnum):
-    ADVISORY = "advisory"
-    LOOKUP = "lookup"                # [Assumption #1]
-    ACT = "act"
+class InteractionType(StrEnum):
+    ADVISE = "advise"     # explain/guide
+    OBSERVE = "observe"   # look up a value/record/status
+    ACT = "act"           # perform an action
+
+
+class SubjectCategory(StrEnum):
+    CROP = "Crop"
+    LIVESTOCK = "Livestock"
+    WEATHER = "Weather"
+    MARKET = "Market"
+    SCHEME = "Scheme"
+    FACILITY = "Facility"
 
 
 class Ask:
-    subject: str | None              # "potato", "PM-KISAN". None for "will it rain"
-    category: str                    # one of the taxonomy's categories
-    action_type: ActionType
+    agriculture_subjects: str | None
+    subject_categories: SubjectCategory
+    interaction_type: InteractionType
+    place: ResolvedPlace | AmbiguousPlace | UnresolvedPlace | None   # see 1a
 
 
 class Intent:
@@ -443,7 +453,7 @@ class Intent:
 ```
 
 ```python
-classify(turn: UserTurn, taxonomy: Taxonomy, ctx: TurnContext) -> Intent
+classify_intent(turn: UserTurn, llm: LLMProvider) -> Intent
 ```
 
 **One sentence can hold several questions.** Each becomes an ask.
@@ -452,20 +462,142 @@ classify(turn: UserTurn, taxonomy: Taxonomy, ctx: TurnContext) -> Intent
 
 ```python
 asks = (
-    Ask("potato",   "Market", LOOKUP),
-    Ask("PM-KISAN", "Scheme", ADVISORY),
-    Ask("potato",   "Crop",   ADVISORY),
+    Ask(agriculture_subjects="potato",   subject_categories=MARKET, interaction_type=OBSERVE, place=None),
+    Ask(agriculture_subjects="PM-KISAN", subject_categories=SCHEME, interaction_type=ADVISE,  place=None),
+    Ask(agriculture_subjects="potato",   subject_categories=CROP,   interaction_type=ADVISE,  place=None),
 )
 ```
 
 **Rules**
 - Empty `asks` means "understood nothing". A valid answer, not an error.
 - A category not in the taxonomy is dropped.
-- `subject` is the farmer's own word. Nothing resolves it to an id — see [Open #7].
+- `agriculture_subjects` is the farmer's own word. Nothing resolves it to an id — see [Open #7].
 - The ask carries no query text. The query stays whole in `UserTurn`.
 - One ask becomes one plan step.
 - Three asks does not mean low confidence.
 - A timeout must raise. Never return a made-up Intent.
+- `place` is never invented. Intent classification never produces a coordinate — see 1a for
+  how `place` gets filled and why that is a separate step, not something Intent does itself.
+
+### 1a. Place resolution
+
+Runs between Intent and Provider Discovery.
+
+**Place is per ask, not per turn.** Each ask carries its own `place` — a turn naming two
+places is two asks, each grounded where it says. Intent itself never fills this field: a model
+asked to produce a coordinate invents one, so place resolution is a separate step with its own
+lookup, not a prompt instruction Intent follows.
+
+*"Wheat price in Pune, and will it rain in Anand?"* is two asks, two places:
+
+```python
+asks = (
+    Ask(agriculture_subjects="wheat", subject_categories=MARKET,  interaction_type=OBSERVE,
+        place=ResolvedPlace(name="Pune",  within=("India", "Maharashtra"), ...)),
+    Ask(agriculture_subjects=None,    subject_categories=WEATHER, interaction_type=OBSERVE,
+        place=ResolvedPlace(name="Anand", within=("India", "Gujarat"), ...)),
+)
+```
+
+A farmer who names no place at all still gets an answer if their device sent a location, or
+the platform already asserts one — see precedence below.
+
+```
+UserTurn ── query, location ──▶ ┌──────────────┐
+                                 │    Intent     │──▶ Ask.place = None (unfilled)
+                                 └──────────────┘
+                                        │
+                                        ▼
+                                 ┌──────────────┐      ┌─────────────┐
+                                 │ Place         │◀────▶│ AreaLookup  │
+                                 │ Resolution    │      │   (port)    │
+                                 └──────────────┘      └─────────────┘
+                                        │
+                                        ▼
+                              Ask.place = ResolvedPlace
+                                       | AmbiguousPlace
+                                       | UnresolvedPlace
+                                       | None
+                                        │
+                                        ▼
+                                 Provider Discovery
+```
+
+**A resolved place is a chain of ancestors, coarsest first, no level words** — e.g.
+`within=("India", "Maharashtra", "Pune")`. Nothing says "state" or "district": a Kenya adopter
+fills the same chain with counties, code unchanged. Same idea as GeoNames, Who's On First,
+Photon.
+
+```python
+class PlaceSource(StrEnum):
+    NAMED = "named"                          # the farmer said it, this turn
+    CARRIED = "carried"                      # carried across turns in the same session
+    ASSERTED_AREA = "asserted_area"          # platform's turn.location.area
+    ASSERTED_GEOMETRY = "asserted_geometry"  # device's turn.location.geometry
+
+
+class ResolvedPlace:
+    name: str
+    within: tuple[str, ...]       # coarsest first, no level words
+    geometry: Geometry
+    source: PlaceSource
+
+
+class AmbiguousPlace:             # a name that matched more than one place
+    unresolved_name: str
+    candidates: tuple[AreaMatch, ...]
+
+
+class UnresolvedPlace:            # a name the index does not carry
+    unresolved_name: str
+```
+
+**Three outcomes when a place doesn't resolve, not one.** `AmbiguousPlace` (name matched
+several areas), `UnresolvedPlace` (matched none), plain `None` (nothing named, no fallback — or
+the ask needs no place, e.g. "how do I grow potatoes"). Three different shapes, not one failure
+flag.
+
+**Precedence, per ask:**
+```
+place this ask names itself
+  > place a sibling ask in this turn already resolved
+  > device geometry (turn.location.geometry)
+  > platform-asserted area (turn.location.area)
+  > nothing
+```
+
+Device geometry outranks the platform-asserted area: live location sent this turn is fresher
+than an area the platform is only repeating from an earlier one.
+
+**Multi-place turns are two asks, not a list.** "Weather in Pune and Mumbai" splits the same
+way two subjects in one sentence already split (see "tomato price and when should I spray"
+above), rather than `place` ever holding more than one location:
+
+```python
+asks = (
+    Ask(agriculture_subjects=None, subject_categories=WEATHER, interaction_type=OBSERVE,
+        place=ResolvedPlace(name="Pune",   within=("India", "Maharashtra"), ...)),
+    Ask(agriculture_subjects=None, subject_categories=WEATHER, interaction_type=OBSERVE,
+        place=ResolvedPlace(name="Mumbai", within=("India", "Maharashtra"), ...)),
+)
+```
+
+**The area lookup is a port — the CSV is one implementation, not the only one.** The design
+converges on `AreaLookup` supporting more than a static file:
+
+| Implementation | What it is |
+|---|---|
+| CSV (shipped default) | A local index built from an LGD-style snapshot, read once at startup. Works with no network dependency. |
+| MCP tool | An adopter-supplied resolver that calls any API endpoint (a geocoding service, an internal gazetteer) behind the same `AreaLookup` port. |
+
+An adopter picks or overrides which one a deployment uses; `core/` only ever sees the port,
+never which implementation answered.
+
+**Rules**
+- Only place resolution builds a filled `Ask` — Intent never does.
+- A name the farmer gave can fail loud (`AmbiguousPlace`/`UnresolvedPlace`). A fallback
+  (device/asserted) never fails loud — it resolves or leaves `place` as `None`.
+- `within` never contains a level word.
 
 ### 2. Moderation
 
@@ -1310,6 +1442,9 @@ trimmed, no markers.
     then, an observed category outside the index is recorded as a divergence and the map is not
     widened. Also: two of the seven categories, `Livestock` and `Scheme`, have no pack of their
     own — they appear only as secondary categories on `KnowledgeResource`.
+16. **A turn proceeds if any one ask resolves a place.** Each ambiguous or unresolved sibling
+    ask is reported as a failure ("place not found" / "matches several places") and no provider
+    is called for it; the turn ends `partially_answered`.
 
 ## 9. Dependencies 
 1. As of now we are considering to read it from GitHub Repo, but if there are some change in the schema location we would need to change as well.

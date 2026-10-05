@@ -21,7 +21,7 @@ from pydantic_ai.usage import RunUsage
 from dss.adapters.observability.metrics import model_that_ran, record_agent_run
 from dss.config.planner_prompt_loader import load_planner_prompt_template
 from dss.core.intent.models import Intent
-from dss.core.planner.evidence import assemble_evidence
+from dss.core.planner.evidence import assemble_evidence, place_failures
 from dss.core.planner.models import Evidence, Identity, Skill, Verdict
 from dss.core.planner.prompt import build_planner_prompt, build_user_message
 from dss.core.planner.validation import DomainSchema
@@ -98,6 +98,9 @@ def build_plan(
             schema_context_index=schema_context_index,
             invocation=invocation,
             verdict=verdict,
+            # An ask with nowhere to search fails up front, so it is reported
+            # whether or not the model tries to call anything for it.
+            failures=place_failures(intent),
         )
         # Our own counter, so a run that fails after several paid round-trips
         # still reports them.

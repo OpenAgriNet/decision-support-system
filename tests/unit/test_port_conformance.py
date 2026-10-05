@@ -60,6 +60,7 @@ def test_the_orchestrator_satisfies_the_port(a_turn, a_context):
     from dss.adapters.llm.stub import StubLLM
     from dss.adapters.sinks.memory import MemoryTurnSink
     from dss.adapters.sinks.stdout import StdoutTelemetrySink
+    from dss.config.clarification_text_loader import load_clarification_text
     from dss.orchestration.orchestrator import Components, Orchestrator
 
     runner = Orchestrator(
@@ -78,7 +79,7 @@ def test_the_orchestrator_satisfies_the_port(a_turn, a_context):
         # Empty: this test is about the port contract, not about where the turn
         # searches. Whichever way the turn ends, it ends in a TurnFinished.
         area_lookup=FakeAreaLookup(),
-        discovery_radius_m=25_000,
+        clarification_text=load_clarification_text(),
     )
 
     events = drive(runner, a_turn(), a_context)

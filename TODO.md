@@ -96,7 +96,7 @@
   surfaced the `provider_code` mismatch above automatically.
 - **The `<BEGIN ...>` markers are hardcoded in three places** —
   `core/planner/markdown.py`, `core/planner/prompt.py`, and
-  `core/planner/planner_prompt.md`. Change one and the prompt's instruction
+  `config/defaults/planner-prompt.md`. Change one and the prompt's instruction
   no longer matches what the code emits. Shared constants would fix it.
 - **Required fields have no source.** Some `filterable` fields matter far
   more than others for a useful answer (`AgricultureFacility`'s
@@ -171,6 +171,71 @@
   `openagrinet.github.io/network-specs/...`, which does resolve. Nothing
   dereferences either at runtime, so this is fixture/reality drift rather than
   a live fault.
+
+## Place resolution (#130) — deferred to separate PRs
+
+- **No per-category "needs a place" fact.** `Ask.place` is `None` both when an
+  ask genuinely has nowhere to search and when the ask never needed a place at
+  all ("how do I grow potatoes"). `answer_for_unplaced_asks`
+  (`core/channel/service.py`) cannot tell the two apart, so it treats every
+  plain `None` as "needs a place" — a category-only ask can wrongly be asked
+  where the farmer is. Fixing this needs a policy decision (which categories
+  require a place) that does not exist yet; today's all-or-nothing gate has
+  the same blind spot and predates this note.
+  What the specs offer (checked 2026-09-29): every pack inherits
+  `coverageAreas`, which says where a provider serves, not what the farmer
+  must give. Weather requires `location` and MandiPrice requires `market`
+  only on a `Direct` resource, i.e. the answer's shape, not the request's.
+  Weather's `OnDemand` entry requires `geographicGranularities`, the nearest
+  request-side hint; MandiPrice has none. So the schema cannot drive this
+  cleanly. Fix: ask the network-specs owners for a request-side flag, e.g.
+  `requiresLocation` on `OnDemand` entries.
+- **A reply can bring back a place we already answered (#131).**
+  - Example: "Weather in Pune and Aurangabad". We answer Pune and ask which
+    Aurangabad. The farmer replies "2".
+  - About 1 time in 8, the model asks for Pune again, so the farmer reads the
+    Pune weather twice. The test
+    `test_a_pick_on_a_partial_turn_asks_only_what_was_left` is marked `xfail`
+    because of this: it still runs, but a failure does not break the run.
+  - Tried, and why we stopped:
+    - A prompt example fixed it, but broke other answers.
+    - A code rule that drops Pune would also drop things the farmer wants: a
+      retry when Pune failed last time, or a new question the model marks
+      wrongly.
+  - A repeat is better than silently dropping a question. A real fix needs us
+    to remember what was answered, and ADR-0017 chose not to keep that.
+- **A reply in Hindi numbers is not tested (#131).** A farmer may reply "२"
+  or "दूसरा" ("second") to "Which Rampur?". The model probably reads it, but no
+  tier 5 test checks it. Add both to the reply test.
+- **A pick is forgotten after about 3 back-and-forths (#131).** The intent
+  model sees the last 6 messages. After that, neither our list nor the
+  farmer's pick is in view, and a follow-up like "and next week?" can lose the
+  picked Rampur. Fix needs a longer window or the place carried another way.
+- **A long message in the history is not indented (#131).** In the intent
+  prompt, the second line of our "Which Rampur?" message starts at the left
+  edge, with no "assistant:" in front. A weak model could read the list as
+  part of the instructions. Fix: indent every line, or wrap the history as
+  data like the planner does.
+- **Direct replies skip the stream.** A no-match, a refusal, or "which
+  place?" with nothing else answered arrives only in the final event, with no
+  `claim.delta`. The composed answer streams. Sending every reply the same way
+  would give the app one way to show it. Changes the API contract and touches
+  ADR-0011, so it needs an ADR and the app team's agreement.
+- **"Name, Part" can be split into two places when one was meant (#131).**
+  When the part fits no match but is itself a place, the code treats it as
+  two places, to undo a model joining "Pune and Mumbai" into "Pune, Mumbai".
+  "Ashti, Nagpur" (the Ashti near Nagpur) then also answers Nagpur, and
+  "Bihar" is both a state and a block. Fix needs a way to tell "near" from
+  "and" that does not rely on the comma.
+- **A block's coordinate is its district's, not its own.** Every one of the
+  7,092 Block rows in the 2026-09-03 LGD snapshot has `point_method` starting
+  `inherited:` — none has a real point of its own. A farmer naming their
+  block now resolves by *name* correctly, but the geometry returned is the
+  district centroid, same precision as before blocks existed. Fixing this
+  needs the snapshot rebuilt with `join_geometry.py --source lgd` (per
+  `network-adapter/tools/area-lookups/README.md`), which is a decision for
+  whoever owns that pipeline, not something regenerating from the current
+  snapshot can fix.
 
 ## Transport
 

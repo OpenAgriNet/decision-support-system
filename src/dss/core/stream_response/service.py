@@ -32,6 +32,7 @@ from contextlib import aclosing
 from typing import Protocol
 
 from dss.core.channel.prompt import system_prompt, user_prompt
+from dss.core.intent.models import Intent
 from dss.core.planner.models import Evidence, Identity
 from dss.core.shared.models import UserTurn
 from dss.core.stream_response.citations import cite_at_end
@@ -45,21 +46,26 @@ class ComposeStream(Protocol):
     calling one returns the iterator without awaiting.
     """
 
-    def __call__(self, evidence: Evidence, *, turn: UserTurn) -> AsyncIterator[str]: ...
+    def __call__(
+        self, evidence: Evidence, intent: Intent, *, turn: UserTurn
+    ) -> AsyncIterator[str]: ...
 
 
 def build_stream_response(*, identity: Identity, llm: LLMProvider) -> ComposeStream:
     """Bind the identity and the model binding once; return the per-turn
     callable, so the composition root is the only place that names either."""
 
-    def compose_stream(evidence: Evidence, *, turn: UserTurn) -> AsyncIterator[str]:
-        return stream_response(evidence, turn=turn, identity=identity, llm=llm)
+    def compose_stream(
+        evidence: Evidence, intent: Intent, *, turn: UserTurn
+    ) -> AsyncIterator[str]:
+        return stream_response(evidence, intent, turn=turn, identity=identity, llm=llm)
 
     return compose_stream
 
 
 async def stream_response(
     evidence: Evidence,
+    intent: Intent,
     *,
     turn: UserTurn,
     identity: Identity,
@@ -76,7 +82,7 @@ async def stream_response(
         aclosing(
             llm.stream_text(
                 system_prompt=system_prompt(identity, turn=turn),
-                user_query=user_prompt(evidence, turn=turn),
+                user_query=user_prompt(evidence, intent, turn=turn),
             )
         ) as written,
         aclosing(cite_at_end(written)) as pieces,

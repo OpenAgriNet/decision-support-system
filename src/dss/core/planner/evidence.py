@@ -17,9 +17,35 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 
-from dss.core.intent.models import Intent
+from dss.core.intent.models import AmbiguousPlace, Intent, UnresolvedPlace
 from dss.core.planner.models import Evidence, Failure, Result, Source, SourceKind
 from dss.core.provider_discovery.models import DiscoveredAnswer
+
+
+def place_failures(intent: Intent) -> list[tuple[int, Failure]]:
+    """One failure per ask whose place has nowhere to search.
+
+    Recorded before the planner runs, so the farmer hears about the ask even
+    when the model never tries to call anything for it.
+    """
+
+    failures: list[tuple[int, Failure]] = []
+    for index, ask in enumerate(intent.asks):
+        if isinstance(ask.place, UnresolvedPlace):
+            reason = f"{ask.place.unresolved_name}: place not found"
+        elif isinstance(ask.place, AmbiguousPlace):
+            reason = f"{ask.place.unresolved_name}: matches several places"
+        else:
+            continue
+        failures.append(
+            (
+                index,
+                Failure(
+                    ask_index=index, capability=None, reason=reason, retryable=False
+                ),
+            )
+        )
+    return failures
 
 
 def assemble_evidence(

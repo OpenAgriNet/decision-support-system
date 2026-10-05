@@ -40,6 +40,7 @@ from dss.adapters.llm.stub import StubLLM
 from dss.adapters.schema_packs.filesystem import FilesystemSchemaPackSource
 from dss.adapters.scheme_catalog.csv_file import load_scheme_catalog
 from dss.adapters.sinks.file import FileTelemetrySink, FileTurnSink
+from dss.config.clarification_text_loader import load_clarification_text
 from dss.config.identity_loader import load_identity
 from dss.config.policy_loader import load_policy_pack
 from dss.config.schema_pack_fetch import SchemaPackFetchFailed, fetch_packs
@@ -61,7 +62,6 @@ from dss.orchestration.discovery import (
 )
 from dss.orchestration.orchestrator import Components, Orchestrator
 from dss.orchestration.plan import build_plan
-from dss.ports.area_lookup import AreaLookup
 from dss.ports.invocation import CapabilityInvocation
 from dss.ports.turn import TurnRunner
 
@@ -115,18 +115,19 @@ def build_runner_with_lifecycle(
         Checkpoint.MODERATION
     )
     identity = load_identity()  # bundled default until an adopter mounts one
+    clarification_text = load_clarification_text()  # bundled default, same as identity
     skills = load_skills()
     # Loaded before the network gate, and unconditionally: the file is checked
     # in, so an unreadable one is a broken build either way, and a boot that
     # skipped it would only surface the problem as missing spatial filters much
     # later. Read once here — every turn shares this index.
-    area_lookup = CsvAreaLookup.load(settings.district_csv_path)
+    area_lookup = CsvAreaLookup.load(settings.area_csv_path)
     # The scheme catalog is the other way round: nothing ships, because which
     # schemes a deployment serves is the tenant's call.
     scheme_catalog = load_scheme_catalog(settings.schemes_config_path)
 
     discover, invocation, schemas, schema_context_index, client = _network(
-        settings, area_lookup=area_lookup, fetch=fetch
+        settings, fetch=fetch
     )
 
     components = Components(
@@ -155,7 +156,7 @@ def build_runner_with_lifecycle(
         turns=FileTurnSink(settings.turns_path),
         telemetry=FileTelemetrySink(settings.telemetry_path),
         area_lookup=area_lookup,
-        discovery_radius_m=settings.discovery_radius_m,
+        clarification_text=clarification_text,
     )
     return runner, _aclose_for(client)
 
@@ -191,7 +192,6 @@ async def _discovers_nothing(
 def _network(
     settings: Settings,
     *,
-    area_lookup: AreaLookup,
     fetch: FetchPacks = fetch_packs,
 ) -> tuple[
     DiscoverProviders,
@@ -237,7 +237,6 @@ def _network(
     discover = build_discover_providers(
         discovery=discovery,
         schema_pack_cache=cache,
-        area_lookup=area_lookup,
         radius_m=settings.discovery_radius_m,
     )
     invocation = HttpCapabilityInvocation(

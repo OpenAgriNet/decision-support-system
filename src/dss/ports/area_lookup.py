@@ -7,15 +7,15 @@ coordinate. Intent extracts the words, this port resolves them.
 they need different handling and a single return value would collapse them:
 
 - empty — no such area. The farmer named a village or city the index does not
-  carry, so the caller should ask for a district.
+  carry, so the caller reports the place as not found.
 - one — resolved.
-- many — the name is genuinely ambiguous (three district names in India collide:
-  Bilaspur, Hamirpur, Pratapgarh). Picking one silently is a ~1000km error, so
-  the caller asks which.
+- many — the name is genuinely ambiguous (648 names in the shipped index
+  collide, across and within states). Picking one silently can be a ~1000km
+  error, so the caller narrows or asks which.
 
-`region` is an optional ISO 3166-2 hint ("IN-MH"). It disambiguates all three
-collisions when the turn carries it, and is absent often enough that no
-implementation may require it.
+`region` is an optional ISO 3166-2 hint ("IN-MH"). It only narrows several
+matches; it must not hide the one match a name has. It is absent often enough
+that no implementation may require it.
 """
 
 from __future__ import annotations
@@ -34,6 +34,9 @@ class AreaMatch(BaseModel):
 
     name: str  # canonical spelling from the index, e.g. "Pune"
     region: str  # ISO 3166-2, e.g. "IN-MH"
+    # Ancestor chain, coarsest first, no level words: ("India", "Maharashtra")
+    # for a district, ("India", "Maharashtra", "Pune") for a block inside it.
+    within: tuple[str, ...]
     geometry: Geometry
 
 
