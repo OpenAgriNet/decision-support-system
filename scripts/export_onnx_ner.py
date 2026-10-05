@@ -77,7 +77,7 @@ def main(argv: list[str] | None = None) -> int:
     manifest = {
         "source": args.model,
         "revision": getattr(model.config, "_commit_hash", None),
-        "sha256": {f: _sha256(args.out / f) for f in files},
+        "sha256": {f: _hash_file(args.out / f) for f in files},
     }
     _write_json(args.out / "manifest.json", manifest)
 
@@ -90,7 +90,7 @@ def _write_json(path: Path, data: object) -> None:
     path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
-def _sha256(path: Path) -> str:
+def _hash_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 

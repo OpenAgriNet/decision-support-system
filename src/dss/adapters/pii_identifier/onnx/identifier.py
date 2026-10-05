@@ -19,7 +19,7 @@ from typing import Any
 import anyio.to_thread
 import numpy as np
 
-from dss.adapters.pii_identifier.onnx.decode import Token, name_spans
+from dss.adapters.pii_identifier.onnx.decode import Token, decode_name_spans
 from dss.adapters.pii_identifier.onnx.models import OnnxSettings
 from dss.core.redaction.models import PiiSpan
 from dss.ports.pii_identifier import IdentifierUnavailable
@@ -130,5 +130,7 @@ class OnnxIdentifier:
                 source=self.name,
                 value=text[start:end],
             )
-            for start, end, score in name_spans(tokens, min_score=self._min_score)
+            for start, end, score in decode_name_spans(
+                tokens, min_score=self._min_score
+            )
         ]

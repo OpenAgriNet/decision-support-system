@@ -32,7 +32,7 @@ class _Word:
     end: int
 
 
-def name_spans(
+def decode_name_spans(
     tokens: Sequence[Token], *, min_score: float
 ) -> list[tuple[int, int, float]]:
     """``(start, end, score)`` for every name whose mean word score reaches
