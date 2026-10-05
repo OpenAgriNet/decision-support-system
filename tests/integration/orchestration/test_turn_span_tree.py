@@ -75,7 +75,7 @@ class _PlanThatCallsSelect:
     def __init__(self, evidence) -> None:  # noqa: ANN001
         self._evidence = evidence
 
-    async def __call__(self, turn, *, intent, discovery, verdict):  # noqa: ANN001
+    async def __call__(self, turn, *, intent, discovery, verdict, reveal):  # noqa: ANN001
         def answers(request: httpx.Request) -> httpx.Response:
             return httpx.Response(200, json=_ON_SELECT)
 
@@ -115,6 +115,7 @@ async def test_every_stage_hangs_off_the_turn(spans) -> None:
     turn = finished["dss.turn"]
 
     assert finished.keys() >= {
+        "dss.stage.redaction",
         "dss.stage.intent",
         "dss.stage.enrichment",
         "dss.stage.discovery",
@@ -126,6 +127,7 @@ async def test_every_stage_hangs_off_the_turn(spans) -> None:
     # group it would parent to nothing and start a second trace of its own.
     assert finished["dss.stage.moderation"].parent.span_id == turn.context.span_id
     assert finished["dss.stage.intent"].parent.span_id == turn.context.span_id
+    assert finished["dss.stage.redaction"].parent.span_id == turn.context.span_id
 
 
 async def test_a_provider_call_nests_under_the_planner_stage(spans) -> None:

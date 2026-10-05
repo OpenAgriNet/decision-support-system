@@ -315,3 +315,52 @@ async def test_aclose_for_none_is_a_safe_noop() -> None:
     # the unwired path opens no client, so the lifespan's close must still be
     # callable without a client to close
     await _aclose_for(None)()
+
+
+# --- redaction -------------------------------------------------------------
+
+_REGEX_ONLY = """\
+entities:
+  phone: keep
+identifiers:
+  - type: regex
+    rules:
+      - entity: phone
+        kind: pattern
+        pattern: '[6-9]\\d{9}'
+"""
+
+
+async def test_redaction_off_passes_the_turn_through(tmp_path: Path) -> None:
+    from dss.entrypoint.composition import _redaction
+    from dss.orchestration.redaction import pass_through
+
+    assert _redaction(_settings(tmp_path)) is pass_through
+
+
+async def test_redaction_on_redacts_with_the_rules_file(tmp_path: Path) -> None:
+    from dss.entrypoint.composition import _redaction
+
+    rules = tmp_path / "redaction-rules.yaml"
+    rules.write_text(_REGEX_ONLY)
+    redact = _redaction(
+        _settings(tmp_path, redaction_enabled=True, redaction_config_path=rules)
+    )
+
+    result = await redact(["call 9876543210"])
+
+    assert result.texts == ("call «phone_1»",)
+    assert result.reveal.values == {"«phone_1»": "9876543210"}
+
+
+def test_an_identifier_that_cannot_be_built_stops_the_boot(tmp_path: Path) -> None:
+    from dss.entrypoint.composition import _redaction
+    from dss.ports.pii_identifier import IdentifierUnavailable
+
+    rules = tmp_path / "redaction-rules.yaml"
+    rules.write_text("entities:\n  phone: keep\nidentifiers:\n  - type: nope\n")
+
+    with pytest.raises(IdentifierUnavailable, match="nope"):
+        _redaction(
+            _settings(tmp_path, redaction_enabled=True, redaction_config_path=rules)
+        )

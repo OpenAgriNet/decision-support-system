@@ -26,7 +26,7 @@ test holds us to.
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from typing import TYPE_CHECKING
 
 from dss.observability.stages import Stage
@@ -47,6 +47,8 @@ ASK_COUNT = "dss.ask.count"
 AREA_LOOKUP_COUNT = "dss.area_lookup.count"
 STAGE_DURATION = "dss.stage.duration"
 STAGE_TOKENS = "dss.stage.tokens"
+REDACTION_FOUND = "dss.redaction.found"
+REDACTION_FAILED = "dss.redaction.failed"
 
 # Every label every instrument is allowed to carry. Read by the guard test, and
 # the place to look before adding one. `model` is absent from the stage
@@ -65,6 +67,9 @@ LABEL_KEYS: dict[str, frozenset[str]] = {
     ASK_COUNT: frozenset({"category", "interaction"}),
     # `source` is the name of a configured source, a handful per deployment.
     AREA_LOOKUP_COUNT: frozenset({"source", "outcome"}),
+    # Both bounded by the rules file: its entities, and its identifiers' names.
+    REDACTION_FOUND: frozenset({"entity"}),
+    REDACTION_FAILED: frozenset({"identifier"}),
 }
 
 # Seconds, not milliseconds, although the spans carry `*_ms`. The same
@@ -88,7 +93,7 @@ _COST_BUCKETS = (
 
 
 class _Instruments:
-    """The seven instruments, built once per configured meter."""
+    """The nine instruments, built once per configured meter."""
 
     def __init__(self, meter, *, model_profile: str) -> None:  # noqa: ANN001
         # Kept with the instruments, so a reset takes both away together.
@@ -160,6 +165,21 @@ class _Instruments:
                 "Calls to each place source and how each went, including the "
                 "checks made while reading a reply. For source health, not a "
                 "count of questions. Never the place name."
+            ),
+        )
+
+        self.redaction_found: Counter = meter.create_counter(
+            REDACTION_FOUND,
+            description=(
+                "Identity details replaced with a tag, by entity. Counts only, "
+                "never values."
+            ),
+        )
+        self.redaction_failed: Counter = meter.create_counter(
+            REDACTION_FAILED,
+            description=(
+                "An identifier that failed on a turn and was dropped; the others' "
+                "spans still applied."
             ),
         )
 
@@ -306,6 +326,18 @@ def record_area_lookup(*, source: str, outcome: str) -> None:
     if _instruments is None:
         return
     _instruments.area_lookup_count.add(1, {"source": source, "outcome": outcome})
+
+
+def record_redaction(*, found: Mapping[str, int], failed: Iterable[str]) -> None:
+    """How many of each entity a turn's redaction replaced, and which
+    identifiers failed on it."""
+
+    if _instruments is None:
+        return
+    for entity, count in found.items():
+        _instruments.redaction_found.add(count, {"entity": entity})
+    for identifier in failed:
+        _instruments.redaction_failed.add(1, {"identifier": identifier})
 
 
 def record_turn(*, status: str, elapsed_ms: float, cost: float) -> None:

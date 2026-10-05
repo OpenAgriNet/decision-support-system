@@ -29,6 +29,7 @@ from dss.core.shared.models import (
 )
 from dss.core.stream_response.service import build_stream_response
 from dss.orchestration.orchestrator import Components, Orchestrator
+from dss.orchestration.redaction import pass_through
 from tests.integration.orchestration.test_orchestrator import (
     _ANSWERED_EVIDENCE,
     _PUNE_MATCH,
@@ -63,6 +64,7 @@ def _build(
         scheme_fuzzy_threshold=None,
         nearest_max_km=50.0,
         components=Components(
+            redact=pass_through,
             discover=_FakeDiscovery(discovery or _served_discovery()),
             plan=_FakePlan(_ANSWERED_EVIDENCE),
             compose=compose or _FakeCompose(WHOLE, chunks=CHUNKS),
@@ -177,6 +179,7 @@ async def test_the_real_component_streams_through_the_runner() -> None:
         scheme_fuzzy_threshold=None,
         nearest_max_km=50.0,
         components=Components(
+            redact=pass_through,
             discover=_FakeDiscovery(_served_discovery()),
             plan=_FakePlan(_ANSWERED_EVIDENCE),
             compose=build_stream_response(

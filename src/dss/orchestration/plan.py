@@ -26,6 +26,7 @@ from dss.core.planner.models import Evidence, Identity, Skill, Verdict
 from dss.core.planner.prompt import build_planner_prompt, build_user_message
 from dss.core.planner.validation import DomainSchema
 from dss.core.provider_discovery.models import DiscoveryResult
+from dss.core.redaction.reveal import NOTHING_HELD, RevealMap
 from dss.core.shared.models import UserTurn
 from dss.observability.stages import Stage
 from dss.observability.trace_log import log_external_response
@@ -43,6 +44,7 @@ class Plan(Protocol):
         intent: Intent,
         discovery: DiscoveryResult,
         verdict: Verdict,
+        reveal: RevealMap = NOTHING_HELD,
     ) -> Evidence: ...
 
 
@@ -78,6 +80,7 @@ def build_plan(
         intent: Intent,
         discovery: DiscoveryResult,
         verdict: Verdict,
+        reveal: RevealMap = NOTHING_HELD,
     ) -> Evidence:
         agent = build_planner_agent(
             skills=skills,
@@ -102,6 +105,7 @@ def build_plan(
             # An ask with nowhere to search fails up front, so it is reported
             # whether or not the model tries to call anything for it.
             failures=place_failures(intent),
+            reveal=reveal,
         )
         # Our own counter, so a run that fails after several paid round-trips
         # still reports them.

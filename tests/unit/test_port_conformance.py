@@ -45,7 +45,7 @@ async def _no_discovery(intent, turn, *, now):
     return DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
 
 
-async def _unreached_plan(turn, *, intent, discovery, verdict):
+async def _unreached_plan(turn, *, intent, discovery, verdict, reveal):
     """With `_no_discovery` nobody serves the ask, so the orchestrator answers
     NO_MATCH before the planner runs — this must never be called."""
 
@@ -62,6 +62,7 @@ def test_the_orchestrator_satisfies_the_port(a_turn, a_context):
     from dss.adapters.sinks.stdout import StdoutTelemetrySink
     from dss.config.clarification_text_loader import load_clarification_text
     from dss.orchestration.orchestrator import Components, Orchestrator
+    from dss.orchestration.redaction import pass_through
 
     runner = Orchestrator(
         intent_llm=StubLLM(),
@@ -71,6 +72,7 @@ def test_the_orchestrator_satisfies_the_port(a_turn, a_context):
         scheme_fuzzy_threshold=None,
         nearest_max_km=50.0,
         components=Components(
+            redact=pass_through,
             discover=_no_discovery,
             plan=_unreached_plan,
             compose=_unreached_compose,

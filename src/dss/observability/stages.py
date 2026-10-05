@@ -17,6 +17,7 @@ from enum import StrEnum
 class Stage(StrEnum):
     """One step of a turn. The value is the span suffix and the metric label."""
 
+    REDACTION = "redaction"
     INTENT = "intent"
     LOCATION = "location"
     ENRICHMENT = "enrichment"

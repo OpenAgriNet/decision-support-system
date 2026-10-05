@@ -12,6 +12,7 @@ def test_values_are_the_names_the_spans_already_use():
     # Renaming any of these renames a span and a metric label at once, which
     # is a breaking change for anything graphing them.
     assert {stage.value for stage in Stage} == {
+        "redaction",
         "intent",
         "location",
         "enrichment",
