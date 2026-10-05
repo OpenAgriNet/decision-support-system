@@ -15,6 +15,11 @@
   missing (#138)
 
 ### Added
+- Name identifiers for redaction: `spacy` (`en_core_web_sm`, the default) and
+  `onnx` (any ONNX name model, such as IndicNER, with `uv sync --extra
+  ner-indic`), listed in the rules file's `identifiers:` beside `regex`.
+  `scripts/export_onnx_ner.py` builds the model folder; the `dss-indicner`
+  image target bakes it in. ADR-0016 (#136)
 - Redaction of identity details in a farmer's text. PII identifiers — regex
   today, behind a `PiiIdentifier` port — find Aadhaar, PAN, GSTIN, IFSC, card,
   phone, email and announced names; core replaces them with tags such as
