@@ -1,5 +1,11 @@
 """Tier 3 — the shipped example rules, end to end: load the file, build its
-identifiers, redact the card's examples."""
+identifiers, run them side by side, redact.
+
+The first test builds only the regex entry, on the card's romanised Hinglish
+examples: the spaCy entry tags "gehu" there, which is the known gap ADR-0016
+records, not behaviour to pin. The second builds every entry, regex and spaCy,
+on English text, where spaCy works.
+"""
 
 from __future__ import annotations
 
@@ -17,7 +23,7 @@ async def test_the_example_rules_redact_the_cards_examples() -> None:
             "mera number 98765 43210 hai, meri application ka status?",
             "champa ka rate kya hai?",
         ],
-        build_identifiers(config.identifiers),
+        build_identifiers([e for e in config.identifiers if e["type"] == "regex"]),
         config.policy,
     )
     assert result.texts == (
@@ -53,3 +59,41 @@ async def test_the_example_rules_redact_agri_identifiers() -> None:
         "«farm_id_1»": "MH123456789012",
         "«phone_1»": "09876543210",
     }
+
+
+async def test_the_example_rules_with_spacy_redact_names_and_numbers() -> None:
+    config = load_redaction_config(enabled=True, path=EXAMPLE_RULES)
+    assert config is not None
+    identifiers = build_identifiers(config.identifiers)
+    assert [i.name for i in identifiers] == ["regex", "spacy"]
+
+    result = await redact_texts(
+        [
+            # Announced name (regex and spaCy both find it) and an Aadhaar.
+            "My name is Ramesh Patil and my Aadhaar is 2345 6789 0124.",
+            # A name only spaCy finds, and a card number.
+            "Please ask Sunita Devi to pay with card 4111 1111 1111 1111.",
+            # A name only spaCy finds, and a phone written with a gap.
+            "Priya Sharma asked about the PM-KISAN instalment, call 98765 43210.",
+            # The same person again: same tag as before.
+            "Sunita Devi wants to know the onion price in Nashik.",
+        ],
+        identifiers,
+        config.policy,
+    )
+
+    assert result.texts == (
+        "My name is «person_1» and my Aadhaar is «aadhaar_1».",
+        "Please ask «person_2» to pay with card «card_1».",
+        "«person_3» asked about the PM-KISAN instalment, call «phone_1».",
+        "«person_2» wants to know the onion price in Nashik.",
+    )
+    # Names and the phone are kept for a provider; Aadhaar and card never are.
+    assert result.reveal.values == {
+        "«person_1»": "Ramesh Patil",
+        "«person_2»": "Sunita Devi",
+        "«person_3»": "Priya Sharma",
+        "«phone_1»": "9876543210",
+    }
+    assert result.found == {"person": 4, "aadhaar": 1, "card": 1, "phone": 1}
+    assert result.failed == ()

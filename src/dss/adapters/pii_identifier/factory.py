@@ -23,8 +23,16 @@ def _regex(entry: Mapping[str, Any]) -> PiiIdentifier:
     return RegexIdentifier(RegexSettings.model_validate(entry))
 
 
+def _spacy(entry: Mapping[str, Any]) -> PiiIdentifier:
+    from dss.adapters.pii_identifier.spacy.identifier import SpacyIdentifier
+    from dss.adapters.pii_identifier.spacy.models import SpacySettings
+
+    return SpacyIdentifier(SpacySettings.model_validate(entry))
+
+
 _BUILDERS: dict[str, Callable[[Mapping[str, Any]], PiiIdentifier]] = {
     "regex": _regex,
+    "spacy": _spacy,
 }
 
 

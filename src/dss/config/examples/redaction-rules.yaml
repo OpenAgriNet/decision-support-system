@@ -26,13 +26,18 @@ entities:
   person: keep
 
 identifiers:
-  # Patterns confirmed by a validator, and phrases that announce a name.
-  #   entity     the tag it leaves behind — «phone_1». Lower case.
-  #   kind       pattern | declaring_phrase
-  #   pattern    a Python regular expression, run with number gaps joined
-  #   validator  format | verhoeff | luhn | gstin — confirms a match is real
-  #   groupings  optional: the digit groups a number must be written in when it
-  #              is found by joining gaps. Stops "98765 43210 102" reading as a card.
+
+  # ---------------------------------------------------------------------------
+  # 1. regex — patterns confirmed by a validator, and phrases that announce a
+  #    name. Each rule:
+  #      entity     the tag it leaves behind — «phone_1». Lower case.
+  #      kind       pattern | declaring_phrase
+  #      pattern    a Python regular expression, run with number gaps joined
+  #      validator  format | verhoeff | luhn | gstin — confirms a match is real
+  #      groupings  optional: the digit groups a number must be written in when
+  #                 it is found by joining gaps. Stops "98765 43210 102" reading
+  #                 as a card.
+  # ---------------------------------------------------------------------------
   - type: regex
     normalisation:
       join_separators: [" ", "-"]
@@ -106,3 +111,12 @@ identifiers:
         phrases: ["my name is", "my name's"]
         max_tokens: 3
         stopwords: [and, from, in, i, my, here, please, sir, madam]
+
+  # ---------------------------------------------------------------------------
+  # 2. spacy — people's names the farmer did not announce, by the
+  #    en_core_web_sm model (ADR-0016). English only. On romanised Hinglish it
+  #    misses names and tags ordinary words ("gehu") as people. Delete this
+  #    entry to run patterns only.
+  # ---------------------------------------------------------------------------
+  - type: spacy
+    entity: person      # the tag its names leave behind — «person_1»
