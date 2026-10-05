@@ -113,3 +113,18 @@ def test_stream_with_an_empty_map_passes_pieces_straight_through() -> None:
     stream = StreamReveal(RevealMap(values={}))
     assert stream.feed("call «phone_1»") == "call «phone_1»"
     assert stream.flush() == ""
+
+
+def test_conceal_body_hides_echoes_in_strings_and_bare_numbers() -> None:
+    body = {
+        "status": "approved for 98765 43210",
+        "mobile": 9876543210,
+        "count": 2,
+        "items": [{"note": "Ramesh ji"}],
+    }
+    assert MAP.conceal_body(body) == {
+        "status": "approved for «phone_1»",
+        "mobile": "«phone_1»",
+        "count": 2,
+        "items": [{"note": "«person_1» ji"}],
+    }

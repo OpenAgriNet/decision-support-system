@@ -14,6 +14,7 @@ from dss.core.provider_discovery.models import (
     FailureClass,
     ProviderCapability,
 )
+from dss.core.redaction.reveal import NOTHING_HELD, RevealMap
 from dss.core.shared.network import NetworkTransactionID
 
 
@@ -49,6 +50,8 @@ class CapabilityInvocation(Protocol):
         capability: ProviderCapability,
         resource_attributes: dict,
         transaction_id: NetworkTransactionID,
+        *,
+        reveal: RevealMap = NOTHING_HELD,
     ) -> Sequence[DiscoveredAnswer]:
         """Return every answer the provider gave, or raise ``SelectFailed``.
 
@@ -56,5 +59,9 @@ class CapabilityInvocation(Protocol):
         document they came from, and a search provider can draw on several.
         It may be empty — a provider that committed to nothing succeeded at
         saying so.
+
+        ``resource_attributes`` holds tags («phone_1»). The adapter swaps in
+        the real values only on the wire, and swaps any value the provider
+        echoes back to its tag, so neither its logs nor the answers hold one.
         """
         ...

@@ -43,6 +43,25 @@ class RevealMap:
             return type(body)(self.reveal(item) for item in body)
         return body
 
+    def conceal_body(self, body: Any) -> Any:
+        """A copy of a parsed provider reply with every held value hidden.
+
+        Walks the parsed JSON rather than the raw text: a phone sent back as a
+        bare number would otherwise become «phone_1» outside any quotes, and
+        the reply would no longer parse."""
+
+        if isinstance(body, str):
+            return self.conceal(body)
+        if isinstance(body, bool):
+            return body
+        if isinstance(body, int) and str(body) in self.values.values():
+            return self.conceal(str(body))
+        if isinstance(body, Mapping):
+            return {key: self.conceal_body(item) for key, item in body.items()}
+        if isinstance(body, list | tuple):
+            return type(body)(self.conceal_body(item) for item in body)
+        return body
+
     def conceal(self, text: str) -> str:
         """``text`` with every held value swapped back to its tag, however it is
         spaced (``98765 43210`` hides as ``9876543210`` does)."""
@@ -103,3 +122,8 @@ class StreamReveal:
     def flush(self) -> str:
         held, self._held = self._held, ""
         return held
+
+
+# Holds nothing: every tag goes out as the tag. What a provider call gets when
+# no map is handed to it, so forgetting one fails closed.
+NOTHING_HELD = RevealMap(values={})
