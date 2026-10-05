@@ -91,7 +91,9 @@ gaps joined, so `98765 43210` and `9876543210 2 acre` are both caught.
 call: texts in, redacted texts plus the value map and counts out. Today's
 adapter, `adapters/redaction/local.py`, runs the engine in the process on a
 worker thread. A redaction service over HTTP would be a second adapter, chosen
-by config, with no change to the orchestrator. A remote adapter sends real
+by config, with no change to the orchestrator. When redaction is off, a stub
+adapter hands every text back unchanged with an empty map, so the orchestrator
+always calls a redactor and never checks whether there is one. A remote adapter sends real
 values back over the wire, so it needs a protected connection.
 
 **Every rule is configuration.** Its pattern, its validator by name, its label,
