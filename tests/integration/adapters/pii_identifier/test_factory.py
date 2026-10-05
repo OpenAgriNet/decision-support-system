@@ -61,3 +61,29 @@ def test_a_bad_rule_stops_the_boot_and_names_it() -> None:
                 }
             ]
         )
+
+
+def test_a_spacy_entry_builds_a_spacy_identifier() -> None:
+    from dss.adapters.pii_identifier.spacy.identifier import SpacyIdentifier
+
+    [identifier] = build_identifiers([{"type": "spacy"}])
+    assert isinstance(identifier, SpacyIdentifier)
+    assert identifier.name == "spacy"
+
+
+def test_an_onnx_entry_with_a_missing_folder_stops_the_boot(tmp_path) -> None:
+    with pytest.raises(IdentifierUnavailable, match="missing"):
+        build_identifiers([{"type": "onnx", "dir": str(tmp_path / "missing")}])
+
+
+def test_identifiers_are_built_in_file_order() -> None:
+    identifiers = build_identifiers(
+        [
+            {
+                "type": "regex",
+                "rules": [{"entity": "phone", "kind": "pattern", "pattern": r"\d"}],
+            },
+            {"type": "spacy"},
+        ]
+    )
+    assert [i.name for i in identifiers] == ["regex", "spacy"]

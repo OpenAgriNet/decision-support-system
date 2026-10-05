@@ -75,3 +75,18 @@ identifiers:
         phrases: ["my name is", "my name's"]
         max_tokens: 3
         stopwords: [and, from, in, i, my, here, please, sir, madam]
+
+  # People's names the farmer did not announce, by a model (ADR-0016).
+  #   spacy  en_core_web_sm: small and fast, English only. On romanised
+  #          Hinglish it misses names and tags ordinary words ("gehu") as
+  #          people. Remove this entry for patterns only.
+  - type: spacy
+    entity: person
+
+  # Or any name model exported by scripts/export_onnx_ner.py — IndicNER covers
+  # English and 11 Indian languages. Needs `uv sync --extra ner-indic` and the
+  # model folder (the dss-indicner image has it at /app/var/models/indicner).
+  # - type: onnx
+  #   dir: /app/var/models/indicner
+  #   entity: person
+  #   min_score: 0.8

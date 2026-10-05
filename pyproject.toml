@@ -41,6 +41,14 @@ dependencies = [
     # The policy loader deserialises the mounted YAML pack (spec 0003), and the
     # schema-pack index parses attributes.yaml.
     "pyyaml>=6.0.3",
+    "spacy>=3.8,<3.9",
+    "en-core-web-sm",
+]
+
+[project.optional-dependencies]
+ner-indic = [
+    "onnxruntime>=1.20",
+    "tokenizers>=0.20",
 ]
 
 [build-system]
@@ -168,3 +176,6 @@ markers = [
     "eval: tier-6 end-to-end quality eval; diagnostic only, never a merge gate",
 ]
 strict_markers = true
+
+[tool.uv.sources]
+en-core-web-sm = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" }
