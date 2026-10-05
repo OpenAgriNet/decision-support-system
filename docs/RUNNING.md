@@ -591,6 +591,19 @@ models (`DSS_PLANNER_MODEL`, `DSS_COMPOSER_MODEL`) — `DSS_STUB_LLM` only stubs
 intent and moderation, so a real provider-backed answer needs both the network
 settings and real model access.
 
+### Redaction
+
+Off unless `DSS_REDACTION_ENABLED=true`; then `DSS_REDACTION_CONFIG_PATH` must
+name a rules file, or the DSS refuses to boot. A ready file for India is
+`src/dss/config/examples/redaction-rules.yaml` (ADR-0015). It has two parts:
+`entities:` (keep or destroy each value) and `identifiers:` (what finds PII,
+run side by side).
+
+| `type` | Finds | Needs |
+|---|---|---|
+| `regex` | Aadhaar, PAN, GSTIN, IFSC, card, phone, email, announced names | nothing |
+| `spacy` | people's names, English only; poor on romanised Hinglish | nothing — `uv sync` installs it |
+
 ### The area index
 
 `src/dss/config/areas.csv` turns a place the farmer names into the point the
