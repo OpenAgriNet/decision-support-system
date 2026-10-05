@@ -68,4 +68,4 @@ def test_the_example_file_destroys_aadhaar_and_card_only() -> None:
     assert config is not None
     destroyed = {e for e in config.entities if not config.policy.keeps(e)}
     assert destroyed == {"aadhaar", "card"}
-    assert [entry["type"] for entry in config.identifiers] == ["regex"]
+    assert [entry["type"] for entry in config.identifiers] == ["regex", "spacy"]
