@@ -1,13 +1,17 @@
 """The one object that holds a turn's real values.
 
-Built each turn and thrown away with it. It goes to exactly one place — the call
-to a provider — which uses it twice:
+Built each turn and thrown away with it. It goes to two places. The call to a
+provider uses it twice:
 
 - ``reveal`` swaps each tag it holds for the real value in the request body. A
   tag it does not hold (a destroyed Aadhaar) goes out as the tag.
 - ``conceal`` swaps a real value back to its tag when the provider echoes it
   ("status for 9876543210"), so it does not re-enter prompts, traces or logs.
   Numbers the farmer did not type, like a KVK officer's, are left alone.
+
+The farmer's own answer uses it once, through ``StreamReveal``: the tags the
+composer wrote are swapped back as the answer goes out, so the farmer reads
+their own number, not «phone_1». The audit record keeps the tags.
 """
 
 from __future__ import annotations
@@ -20,6 +24,8 @@ from typing import Any
 from dss.core.redaction.normalise import join_number_gaps, national_part
 
 TAG = re.compile(r"«[a-z][a-z0-9_]*_\d+»")
+# The start of a tag that has not closed yet — «, then only tag characters.
+_OPEN_TAG = re.compile(r"«[a-z0-9_]*\Z")
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,3 +77,29 @@ def _echo(value: str) -> re.Pattern[str]:
     if national is not None:
         return re.compile(rf"(?<![\w+])(?:(?:\+|00)\d{{1,3}})?{national}(?!\w)")
     return re.compile(rf"(?<!\w){re.escape(value)}(?!\w)", re.IGNORECASE)
+
+
+class StreamReveal:
+    """Reveals an answer that arrives in pieces.
+
+    A tag can be split across two pieces («pho + ne_1»). The unfinished end of
+    a piece is held back until the next one shows whether it is a tag, so the
+    farmer never sees half a tag. ``flush`` returns whatever is still held."""
+
+    def __init__(self, reveal: RevealMap) -> None:
+        self._reveal = reveal
+        self._held = ""
+
+    def feed(self, piece: str) -> str:
+        text = self._held + piece
+        self._held = ""
+        if self._reveal.values:
+            opening = _OPEN_TAG.search(text)
+            if opening is not None:
+                self._held = text[opening.start() :]
+                text = text[: opening.start()]
+        return self._reveal.reveal(text)
+
+    def flush(self) -> str:
+        held, self._held = self._held, ""
+        return held
