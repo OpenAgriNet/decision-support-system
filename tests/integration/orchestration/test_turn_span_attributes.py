@@ -264,6 +264,49 @@ async def test_the_location_stage_says_what_became_of_each_place(spans) -> None:
     }
 
 
+async def test_moderation_span_shows_a_refusal(spans) -> None:
+    """Why a turn was refused. The outcome itself is already the turn's
+    `status`, so only the reason and the policy are added here."""
+
+    orch, _ = _build(
+        intent=_one_ask(),
+        discovery=_served_discovery(),
+        plan=_FakePlan(_ANSWERED_EVIDENCE),
+        compose=_FakeCompose("unused"),
+        violated="delete-command",
+        policies=(DELETE_COMMAND,),
+    )
+
+    await _collect(orch)
+
+    (span,) = [
+        s for s in spans.get_finished_spans() if s.name == "dss.stage.moderation"
+    ]
+    assert dict(span.attributes) == {
+        "reason_code": "role_obfuscation",
+        "violated_policy_id": "delete-command",
+        "langfuse.observation.output": "reject: role_obfuscation, delete-command",
+    }
+
+
+async def test_moderation_span_shows_a_pass(spans) -> None:
+    """A turn that passes has no reason and no policy to show."""
+
+    orch, _ = _build(
+        intent=_one_ask(),
+        discovery=_served_discovery(),
+        plan=_FakePlan(_ANSWERED_EVIDENCE),
+        compose=_FakeCompose("Wheat is 2,275 Rs [1]."),
+    )
+
+    await _collect(orch)
+
+    (span,) = [
+        s for s in spans.get_finished_spans() if s.name == "dss.stage.moderation"
+    ]
+    assert dict(span.attributes) == {"langfuse.observation.output": "proceed"}
+
+
 async def test_the_turn_carries_the_shape_of_what_was_asked(spans) -> None:
     """One row per turn says what was asked, never the question itself."""
 

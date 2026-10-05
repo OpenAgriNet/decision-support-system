@@ -125,6 +125,24 @@ def place_attributes(
     }
 
 
+def moderation_attributes(decision: ModerationDecision) -> dict[str, str]:
+    """Why moderation decided as it did, for the `moderation` span.
+
+    The outcome is not its own key: the turn's `status` already says it.
+    Langfuse shows the last key in its Output box.
+    """
+
+    attributes: dict[str, str] = {}
+    if decision.reason_code:
+        attributes["reason_code"] = decision.reason_code.value
+    if decision.violated_policy_id:
+        attributes["violated_policy_id"] = decision.violated_policy_id
+    why = ", ".join(attributes.values())
+    output = f"{decision.outcome.value}: {why}" if why else decision.outcome.value
+    attributes["langfuse.observation.output"] = output
+    return attributes
+
+
 def _enrich(
     intent: Intent,
     turn: UserTurn,
@@ -235,6 +253,7 @@ async def run_turn(
             decision = await moderate(
                 ModerationContext(turn=turn), policies, moderation_llm
             )
+            set_current_span_attributes(**moderation_attributes(decision))
 
     async with anyio.create_task_group() as task_group:
         task_group.start_soon(run_moderation)
