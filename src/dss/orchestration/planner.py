@@ -35,6 +35,7 @@ from dss.core.provider_discovery.models import (
     DiscoveryResult,
     FailureClass,
 )
+from dss.core.redaction.reveal import NOTHING_HELD, RevealMap
 from dss.core.shared.models import UserTurn
 from dss.ports.invocation import CapabilityInvocation, SelectFailed
 
@@ -56,6 +57,10 @@ class PlannerDeps:
     # mistake into an AttributeError from inside a tool body.
     invocation: CapabilityInvocation
     verdict: Verdict
+    # This turn's real values, for the provider call only. Handed straight to
+    # `select`; nothing in a tool reads it. Holds nothing unless handed one, so
+    # a caller that forgets it sends tags, not values.
+    reveal: RevealMap = NOTHING_HELD
     # TODO(#55): remove with the pack fix — only the MandiPrice validity
     # exception in `build_resource_attributes` reads this. Injected rather
     # than called inside core so a test can fix the day.
@@ -141,7 +146,10 @@ async def _select(
 
     try:
         answers = await deps.invocation.select(
-            capability, full_attributes, deps.turn.transaction_id
+            capability,
+            full_attributes,
+            deps.turn.transaction_id,
+            reveal=deps.reveal,
         )
     except SelectFailed as exc:
         # The adapter has already retried and given up. Not a ModelRetry: the

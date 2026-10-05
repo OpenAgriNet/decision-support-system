@@ -39,6 +39,7 @@ from dss.core.provider_discovery.models import (
     DiscoveryResult,
     ProviderCapability,
 )
+from dss.core.redaction.reveal import NOTHING_HELD, RevealMap
 from dss.core.shared.models import ConversationMessage, UserTurn
 from dss.entrypoint.composition import _resolve_model
 from dss.orchestration.plan import build_plan
@@ -115,6 +116,8 @@ class _RecordingInvocation:
         capability: ProviderCapability,
         resource_attributes: dict,
         transaction_id: str,
+        *,
+        reveal: RevealMap = NOTHING_HELD,
     ) -> list[DiscoveredAnswer]:
         self.calls.append(resource_attributes)
         return [

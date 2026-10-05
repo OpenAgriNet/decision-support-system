@@ -49,6 +49,8 @@ EXPECTED = {
     "dss.turn.cost": {"model_profile"},
     "dss.ask.count": {"category", "interaction"},
     "dss.area_lookup.count": {"source", "outcome"},
+    "dss.redaction.found": {"entity"},
+    "dss.redaction.failed": {"identifier"},
 }
 
 

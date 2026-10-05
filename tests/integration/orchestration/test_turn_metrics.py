@@ -182,6 +182,7 @@ async def test_every_stage_publishes_its_duration(reader) -> None:
         point.attributes["stage"] for point in points(reader, "dss.stage.duration")
     }
     assert stages == {
+        "redaction",
         "intent",
         "location",
         "enrichment",
@@ -283,3 +284,32 @@ async def test_a_refused_turn_counts_no_asks(reader) -> None:
     await _collect(orch)
 
     assert points(reader, "dss.ask.count") == []
+
+
+async def test_redaction_is_counted_by_entity_never_by_value(reader) -> None:
+    from functools import partial
+
+    from dss.core.redaction.models import RedactionPolicy, ValueHandling
+    from dss.orchestration.redaction import redact_texts
+
+    from .test_orchestrator_redaction import _Breaks, _FindsValues
+
+    orch, _ = _build(
+        intent=_one_ask(),
+        discovery=_served_discovery(),
+        plan=_FakePlan(_ANSWERED_EVIDENCE),
+        compose=_FakeCompose("Done [1]."),
+        redact=partial(
+            redact_texts,
+            identifiers=[_Breaks(), _FindsValues(phone="9876543210")],
+            policy=RedactionPolicy(entities={"phone": ValueHandling.KEEP}),
+        ),
+    )
+
+    await _collect(orch, _turn("call 9876543210 or 9876543210"))
+
+    found = points(reader, "dss.redaction.found")
+    # Two in the question, two in its enriched copy: every span replaced.
+    assert [(p.attributes, p.value) for p in found] == [({"entity": "phone"}, 4)]
+    failed = points(reader, "dss.redaction.failed")
+    assert [(p.attributes, p.value) for p in failed] == [({"identifier": "broken"}, 1)]

@@ -26,6 +26,7 @@ from dss.core.provider_discovery.models import (
     FailureClass,
     ProviderCapability,
 )
+from dss.core.redaction.reveal import NOTHING_HELD, RevealMap
 from dss.core.shared.models import UserTurn
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
 
@@ -55,6 +56,8 @@ class _FailingInvocation:
         capability: ProviderCapability,
         resource_attributes: dict,
         transaction_id: str,
+        *,
+        reveal: RevealMap = NOTHING_HELD,
     ) -> DiscoveredAnswer:
         self.calls += 1
         raise SelectFailed(

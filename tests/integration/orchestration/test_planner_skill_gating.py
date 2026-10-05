@@ -33,7 +33,9 @@ class _UnusedInvocation:
     """These tests never reach ``select``, but ``invocation`` is required —
     the tool cannot work without one, so the type says so."""
 
-    async def select(self, capability, resource_attributes, transaction_id):
+    async def select(
+        self, capability, resource_attributes, transaction_id, *, reveal=None
+    ):
         raise AssertionError("select must not be called in this test")
 
 

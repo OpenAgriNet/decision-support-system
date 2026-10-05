@@ -12,15 +12,35 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 from dataclasses import replace
+from typing import Protocol
 
 import anyio
 
 from dss.core.redaction.models import ENTITY_PATTERN, PiiSpan, RedactionPolicy
+from dss.core.redaction.reveal import NOTHING_HELD
 from dss.core.redaction.service import Redaction, redact
 from dss.observability.trace_log import log_event
 from dss.ports.pii_identifier import PiiIdentifier
 
 _ENTITY = re.compile(ENTITY_PATTERN)
+
+
+class RedactTexts(Protocol):
+    """What the orchestrator calls first on every turn. The composition root
+    binds ``redact_texts`` to the configured identifiers and policy, or hands
+    over ``pass_through`` when redaction is off."""
+
+    async def __call__(
+        self, texts: Sequence[str], *, request_id: str | None = None
+    ) -> Redaction: ...
+
+
+async def pass_through(
+    texts: Sequence[str], *, request_id: str | None = None
+) -> Redaction:
+    """Redaction is off: the texts come back unchanged, and nothing is held."""
+
+    return Redaction(texts=tuple(texts), reveal=NOTHING_HELD, found={})
 
 
 async def redact_texts(

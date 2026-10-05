@@ -24,7 +24,7 @@ from __future__ import annotations
 import logging
 import os
 import time
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
@@ -36,6 +36,7 @@ from dss.adapters.observability.metrics import (
     record_asks,
     record_composed,
     record_first_delta,
+    record_redaction,
     record_turn,
     reset_metrics,
 )
@@ -438,6 +439,15 @@ class TurnRecorder:
         self._span.set_attribute("dss.ask.interactions", list(interactions))
         self._span.set_attribute("dss.ask.subjects", list(subjects))
         record_asks(zip(categories, interactions, strict=True))
+
+    def redacted(self, *, found: Mapping[str, int], failed: Sequence[str]) -> None:
+        """What redaction replaced, as counts per entity, and which identifiers
+        failed. Never a value."""
+
+        for entity, count in found.items():
+            self._span.set_attribute(f"dss.redaction.found.{entity}", count)
+        self._span.set_attribute("dss.redaction.failed", list(failed))
+        record_redaction(found=found, failed=failed)
 
     def status(self, status: str) -> None:
         """How the turn ended — one of the contract's statuses, or ``error``

@@ -5,6 +5,9 @@ result to the transport. Components never call each other; every one takes
 plain objects and returns plain objects, and this module is the only place
 that knows the sequence. Order is code, not config.
 
+    redaction                first — every stage below sees tags (ADR-0015)
+          │
+          ▼
     intent ∥ moderation      run together — both need only the turn (ADR-0003)
           │
           ▼
@@ -59,10 +62,13 @@ from dss.core.planner.models import Evidence, Verdict
 from dss.core.planner.sufficiency import provider_failed, unserved_asks
 from dss.core.policy.models import Policy
 from dss.core.provider_discovery.models import DiscoveryResult
+from dss.core.redaction.reveal import RevealMap, StreamReveal
+from dss.core.redaction.turn import texts_of, with_texts
 from dss.core.shared.models import (
     Cause,
     Claim,
     ClaimDelta,
+    OutputContent,
     RefusalBlock,
     TextBlock,
     TurnContext,
@@ -78,6 +84,7 @@ from dss.observability.stages import Stage
 from dss.observability.trace_log import bind_turn_ids, trace_component
 from dss.orchestration.discovery import DiscoverProviders
 from dss.orchestration.plan import Plan
+from dss.orchestration.redaction import RedactTexts
 from dss.orchestration.stage_content import asks_text, evidence_text, sources_text
 from dss.orchestration.turn import run_turn
 from dss.ports.area_lookup import AreaLookup
@@ -117,14 +124,16 @@ class Components:
     phase, each already bound to its model, ports and config in the composition
     root. Swapping an implementation is a change there, not here.
 
-    `discover` chains off intent inside `run_turn`; `plan` and `compose` run
-    here, past the barrier.
+    `redact` runs first, before anything else sees the turn. `discover` chains
+    off intent inside `run_turn`; `plan` and `compose` run here, past the
+    barrier.
 
     `compose` streams. There is no whole-answer variant: a caller who wants one
     body gets it by draining, which the transport already does. That keeps the
     runner ignorant of how its events are delivered — `ports/turn.py` keeps the
     transport's mode on the transport's side of the seam."""
 
+    redact: RedactTexts
     discover: DiscoverProviders
     plan: Plan
     compose: ComposeStream
@@ -178,6 +187,18 @@ class Orchestrator:
             session_id=ctx.session_id,
         ) as recorder:
             yield TurnStarted()
+
+            # First, before the audit write and before any model sees the turn.
+            # From here on `turn` holds tags («phone_1»); the real values live
+            # only in `reveal`, which goes to the planner's provider calls and
+            # back into the farmer's answer, and dies with this turn.
+            with trace_component(Stage.REDACTION, ctx.trace_id):
+                redaction = await self._components.redact(
+                    texts_of(turn), request_id=turn.transaction_id
+                )
+            turn = with_texts(turn, redaction.texts)
+            reveal = redaction.reveal
+            recorder.redacted(found=redaction.found, failed=redaction.failed)
             self._turns.opened(ctx, turn)
 
             # Intent ∥ moderation, discovery chained off intent, and the barrier —
@@ -198,7 +219,7 @@ class Orchestrator:
             self._note("moderation", ctx, decision.outcome.value)
 
             if decision.outcome is not Outcome.PROCEED:
-                yield self._finish(ctx, turn, _refused(decision), recorder)
+                yield self._finish(ctx, turn, _refused(decision), recorder, reveal)
                 return
 
             self._note("intent", ctx, _classified(result.intent))
@@ -230,6 +251,7 @@ class Orchestrator:
                     turn,
                     (outcome_for(TurnStatus.REQUIRES_INPUT), clarification),
                     recorder,
+                    reveal,
                 )
                 return
 
@@ -252,7 +274,9 @@ class Orchestrator:
                     answer = ComposedAnswer(
                         content=(*answer.content, TextBlock(text=question))
                     )
-                yield self._finish(ctx, turn, (outcome_for(status), answer), recorder)
+                yield self._finish(
+                    ctx, turn, (outcome_for(status), answer), recorder, reveal
+                )
                 return
 
             # Past the barrier: the decision cleared, so the planner's `select` tool
@@ -266,6 +290,7 @@ class Orchestrator:
                     intent=result.intent,
                     discovery=result.discovery,
                     verdict=verdict,
+                    reveal=reveal,
                 )
                 set_current_span_content(
                     input=asks_text(result.intent.asks),
@@ -276,6 +301,8 @@ class Orchestrator:
             # whole composition rather than closing on the first piece.
             with trace_component(Stage.COMPOSER, ctx.trace_id):
                 written: list[str] = []
+                # The farmer reads their own values; `written` keeps the tags.
+                shown = StreamReveal(reveal)
                 # `aclosing`, not a bare `async for`: a farmer who closes the
                 # screen mid-answer must close the model's stream too, and
                 # closing an async generator does not reach the one it relays
@@ -287,7 +314,10 @@ class Orchestrator:
                         if not written:
                             recorder.first_delta()
                         written.append(delta)
-                        yield ClaimDelta(text=delta)
+                        if piece := shown.feed(delta):
+                            yield ClaimDelta(text=piece)
+                if rest := shown.flush():
+                    yield ClaimDelta(text=rest)
                 # A failure before this line propagates: the pieces already
                 # yielded cannot be recalled, so there is no retry to make and
                 # nothing to roll back. The transport reports a failed turn.
@@ -305,12 +335,12 @@ class Orchestrator:
             answer = answer_from_evidence(text, evidence)
             recorder.composed()
             for block in answer.content:
-                yield Claim(content=block, sources=answer.sources)
+                yield Claim(content=_revealed(block, reveal), sources=answer.sources)
             self._note("channel", ctx, str(len(answer.content)))
 
             status, cause = _status_for(evidence, result.intent)
             yield self._finish(
-                ctx, turn, (outcome_for(status, cause), answer), recorder
+                ctx, turn, (outcome_for(status, cause), answer), recorder, reveal
             )
 
     def _finish(
@@ -319,8 +349,12 @@ class Orchestrator:
         turn: UserTurn,
         resolved: tuple[TurnOutcome, ComposedAnswer],
         recorder: TurnRecorder,
+        reveal: RevealMap,
     ) -> TurnFinished:
         """Build the terminal event and record it.
+
+        The record keeps the tags; the event the farmer gets has their own
+        values back in it.
 
         The turn sink is required, so a failure here is deliberately not caught —
         answering while silently failing to record the turn is not a success
@@ -338,11 +372,18 @@ class Orchestrator:
         )
         self._turns.closed(ctx, finished)
         recorder.status(outcome.status.value)
+        # The trace gets the redacted question and the tagged answer.
         recorder.content(
             query=turn.original_query,
             answer=[block.text for block in answer.content],
         )
-        return finished
+        if not reveal.values:
+            return finished
+        return finished.model_copy(
+            update={
+                "content": tuple(_revealed(block, reveal) for block in finished.content)
+            }
+        )
 
     def _note(self, stage: str, ctx: TurnContext, outcome: str) -> None:
         """Telemetry is optional (`ports/sinks.py`), so losing a span must never
@@ -352,6 +393,10 @@ class Orchestrator:
             self._telemetry.stage(stage, ctx, outcome)
         except Exception:  # noqa: BLE001 - an optional sink may fail any way it likes
             pass
+
+
+def _revealed(block: OutputContent, reveal: RevealMap) -> OutputContent:
+    return block.model_copy(update={"text": reveal.reveal(block.text)})
 
 
 def _nobody_serves(discovery: DiscoveryResult) -> bool:

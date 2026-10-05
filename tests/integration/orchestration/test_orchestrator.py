@@ -43,6 +43,7 @@ from dss.core.shared.models import (
 )
 from dss.orchestration.orchestrator import Components, Orchestrator
 from dss.orchestration.plan import Plan
+from dss.orchestration.redaction import RedactTexts, pass_through
 from dss.ports.area_lookup import AreaMatch
 from tests.support.fakes import FakeAreaLookup, FakeSchemeCatalog
 
@@ -168,9 +169,11 @@ class _FakePlan:
         self.calls = 0
         self.verdict_was_set: bool | None = None
 
-    async def __call__(self, turn, *, intent, discovery, verdict) -> Evidence:  # noqa: ANN001
+    async def __call__(self, turn, *, intent, discovery, verdict, reveal) -> Evidence:  # noqa: ANN001
         self.calls += 1
         self.verdict_was_set = verdict.is_set()
+        self.turn = turn
+        self.reveal = reveal
         return self._evidence
 
 
@@ -193,6 +196,7 @@ class _FakeCompose:
 
     async def __call__(self, evidence, intent, *, turn):  # noqa: ANN001
         self.calls += 1
+        self.turn = turn
         try:
             for index, chunk in enumerate(self._chunks):
                 if index == self._fail_after:
@@ -219,17 +223,23 @@ def _build(
     violated: str | None = None,
     policies=(),
     area_lookup: FakeAreaLookup | None = None,
+    redact: RedactTexts = pass_through,
+    intent_llm=None,
+    moderation_llm=None,
 ) -> tuple[Orchestrator, MemoryTurnSink]:
     turns = MemoryTurnSink()
     orch = Orchestrator(
-        intent_llm=_FakeIntentLLM(intent),
-        moderation_llm=_FakeModerationLLM(violated=violated),
+        intent_llm=intent_llm or _FakeIntentLLM(intent),
+        moderation_llm=moderation_llm or _FakeModerationLLM(violated=violated),
         policies=list(policies),
         scheme_catalog=FakeSchemeCatalog(),
         scheme_fuzzy_threshold=None,
         nearest_max_km=50.0,
         components=Components(
-            discover=_FakeDiscovery(discovery), plan=plan, compose=compose
+            redact=redact,
+            discover=_FakeDiscovery(discovery),
+            plan=plan,
+            compose=compose,
         ),
         turns=turns,
         telemetry=_Telemetry(),

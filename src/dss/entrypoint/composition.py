@@ -26,6 +26,7 @@ import warnings
 from collections.abc import Awaitable, Callable
 from contextlib import AsyncExitStack
 from datetime import datetime
+from functools import partial
 
 import anyio
 import httpx
@@ -41,12 +42,14 @@ from dss.adapters.llm.pydantic_ai_provider import (
     build_gateway_model,
 )
 from dss.adapters.llm.stub import StubLLM
+from dss.adapters.pii_identifier.factory import build_identifiers
 from dss.adapters.schema_packs.filesystem import FilesystemSchemaPackSource
 from dss.adapters.scheme_catalog.csv_file import load_scheme_catalog
 from dss.adapters.sinks.file import FileTelemetrySink, FileTurnSink
 from dss.config.clarification_text_loader import load_clarification_text
 from dss.config.identity_loader import load_identity
 from dss.config.policy_loader import load_policy_pack
+from dss.config.redaction_loader import load_redaction_config
 from dss.config.schema_pack_fetch import SchemaPackFetchFailed, fetch_packs
 from dss.config.settings import Settings
 from dss.config.skill_loader import load_skills
@@ -66,6 +69,7 @@ from dss.orchestration.discovery import (
 )
 from dss.orchestration.orchestrator import Components, Orchestrator
 from dss.orchestration.plan import build_plan
+from dss.orchestration.redaction import RedactTexts, pass_through, redact_texts
 from dss.ports.area_lookup import AreaLookup
 from dss.ports.invocation import CapabilityInvocation
 from dss.ports.turn import TurnRunner
@@ -130,12 +134,16 @@ def build_runner_with_lifecycle(
     # The scheme catalog is the other way round: nothing ships, because which
     # schemes a deployment serves is the tenant's call.
     scheme_catalog = load_scheme_catalog(settings.schemes_config_path)
+    # Before the network, like the other boot checks: a bad rule or a missing
+    # name model stops the boot here, never on a farmer's turn.
+    redact = _redaction(settings)
 
     discover, invocation, schemas, schema_context_index, client = _network(
         settings, fetch=fetch
     )
 
     components = Components(
+        redact=redact,
         discover=discover,
         plan=build_plan(
             schemas=schemas,
@@ -212,6 +220,26 @@ def _aclose_all(
     return aclose
 
 
+# --- redaction ------------------------------------------------------------
+
+
+def _redaction(settings: Settings) -> RedactTexts:
+    """The first step of every turn (ADR-0015). Off, the texts pass through
+    unchanged; on, every identifier the rules file lists is built now, so one
+    that cannot load raises ``IdentifierUnavailable`` at boot."""
+
+    config = load_redaction_config(
+        enabled=settings.redaction_enabled, path=settings.redaction_config_path
+    )
+    if config is None:
+        return pass_through
+    return partial(
+        redact_texts,
+        identifiers=build_identifiers(config.identifiers),
+        policy=config.policy,
+    )
+
+
 # --- discovery + invocation (gated) --------------------------------------
 
 
@@ -223,7 +251,9 @@ class _UnwiredInvocation:
     raises rather than returns so a wiring mistake that *did* reach a provider
     call surfaces loudly instead of silently answering from nothing."""
 
-    async def select(self, capability, resource_attributes, transaction_id):  # noqa: ANN001
+    async def select(
+        self, capability, resource_attributes, transaction_id, *, reveal=None
+    ):  # noqa: ANN001
         raise RuntimeError(
             "provider invocation is not configured — set DSS_INVOCATION_BASE_URL, "
             "DSS_DISCOVERY_BASE_URL and DSS_SCHEMA_PACK_DIR to call providers"
