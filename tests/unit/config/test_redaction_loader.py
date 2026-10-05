@@ -1,4 +1,4 @@
-"""Tier 1 — loading the redaction rules, and the example file that ships."""
+"""Tier 1 — loading the redaction rules file, and the example that ships."""
 
 from __future__ import annotations
 
@@ -8,7 +8,20 @@ import pytest
 from pydantic import ValidationError
 
 from dss.config.redaction_loader import EXAMPLE_RULES, load_redaction_config
-from dss.core.redaction.service import redact
+
+RULES = """
+entities:
+  phone: keep
+identifiers:
+  - type: regex
+    rules: [{entity: phone, kind: pattern, pattern: '\\d{10}'}]
+"""
+
+
+def write(tmp_path: Path, text: str) -> Path:
+    path = tmp_path / "rules.yaml"
+    path.write_text(text, encoding="utf-8")
+    return path
 
 
 def test_off_means_no_rules_even_with_a_path(tmp_path: Path) -> None:
@@ -26,62 +39,33 @@ def test_on_with_a_missing_file_refuses_to_boot(tmp_path: Path) -> None:
         load_redaction_config(enabled=True, path=tmp_path / "missing.yaml")
 
 
-def test_a_bad_rule_refuses_to_boot_and_names_the_rule(tmp_path: Path) -> None:
-    rules = tmp_path / "rules.yaml"
-    rules.write_text(
-        "rules:\n"
-        "  - entity: phone\n"
-        "    kind: pattern\n"
-        "    pattern: '[6-9'\n"
-        "    value: keep\n",
-        encoding="utf-8",
-    )
-    with pytest.raises(ValidationError, match="rule 'phone'"):
-        load_redaction_config(enabled=True, path=rules)
+def test_a_file_loads_into_a_policy_and_identifier_entries(tmp_path: Path) -> None:
+    config = load_redaction_config(enabled=True, path=write(tmp_path, RULES))
+    assert config is not None
+    assert config.policy.keeps("phone")
+    assert [entry["type"] for entry in config.identifiers] == ["regex"]
 
 
 def test_an_empty_file_refuses_to_boot(tmp_path: Path) -> None:
-    rules = tmp_path / "rules.yaml"
-    rules.write_text("", encoding="utf-8")
     with pytest.raises(ValidationError):
-        load_redaction_config(enabled=True, path=rules)
+        load_redaction_config(enabled=True, path=write(tmp_path, ""))
 
 
-def test_the_example_file_loads() -> None:
-    config = load_redaction_config(enabled=True, path=EXAMPLE_RULES)
-    assert config is not None
-    assert [r.entity for r in config.rules] == [
-        "aadhaar",
-        "card",
-        "gstin",
-        "pan",
-        "ifsc",
-        "phone",
-        "email",
-        "person",
-    ]
+def test_an_identifier_without_a_type_refuses_to_boot(tmp_path: Path) -> None:
+    text = "entities: {phone: keep}\nidentifiers: [{rules: []}]\n"
+    with pytest.raises(ValidationError, match="no 'type'"):
+        load_redaction_config(enabled=True, path=write(tmp_path, text))
+
+
+def test_a_bad_keep_or_destroy_refuses_to_boot(tmp_path: Path) -> None:
+    text = RULES.replace("phone: keep", "phone: hide")
+    with pytest.raises(ValidationError):
+        load_redaction_config(enabled=True, path=write(tmp_path, text))
 
 
 def test_the_example_file_destroys_aadhaar_and_card_only() -> None:
     config = load_redaction_config(enabled=True, path=EXAMPLE_RULES)
     assert config is not None
-    destroyed = {r.entity for r in config.rules if r.value == "destroy"}
+    destroyed = {e for e in config.entities if not config.policy.keeps(e)}
     assert destroyed == {"aadhaar", "card"}
-
-
-def test_the_example_file_redacts_the_cards_examples() -> None:
-    config = load_redaction_config(enabled=True, path=EXAMPLE_RULES)
-    assert config is not None
-    result = redact(
-        [
-            "mera aadhaar 2345 6789 0124 hai, gehu ka rate kya hai?",
-            "mera number 98765 43210 hai, meri application ka status?",
-            "champa ka rate kya hai?",
-        ],
-        config,
-    )
-    assert result.texts == (
-        "mera aadhaar «aadhaar_1» hai, gehu ka rate kya hai?",
-        "mera number «phone_1» hai, meri application ka status?",
-        "champa ka rate kya hai?",
-    )
+    assert [entry["type"] for entry in config.identifiers] == ["regex"]

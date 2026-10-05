@@ -1,30 +1,24 @@
-"""Settle overlapping candidates into the spans that are actually replaced.
+"""Settle overlapping spans into the ones that are actually replaced.
 
-Candidates come from the pattern detector and, later, from a model detector
-(#136). The longest span wins an overlap; for spans the same length, the one
-listed first wins — the rule file's order, then any extra detectors after it.
+Spans come from every configured identifier. The longest span wins an overlap;
+for spans the same length, the one listed first wins — identifiers in the order
+the config lists them, and each identifier's own order within that.
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
 
-from dss.core.redaction.models import Candidate
+from dss.core.redaction.models import PiiSpan
 
 
-def resolve(candidates: Sequence[Candidate]) -> list[Candidate]:
-    """Non-overlapping candidates, in text order."""
+def resolve(spans: Sequence[PiiSpan]) -> list[PiiSpan]:
+    """Non-overlapping spans, in text order."""
 
-    ranked = sorted(
-        range(len(candidates)),
-        key=lambda i: (candidates[i].start - candidates[i].end, i),
-    )
-    chosen: list[Candidate] = []
+    ranked = sorted(range(len(spans)), key=lambda i: (spans[i].start - spans[i].end, i))
+    chosen: list[PiiSpan] = []
     for i in ranked:
-        candidate = candidates[i]
-        if all(
-            candidate.end <= kept.start or kept.end <= candidate.start
-            for kept in chosen
-        ):
-            chosen.append(candidate)
-    return sorted(chosen, key=lambda c: c.start)
+        span = spans[i]
+        if all(span.end <= kept.start or kept.end <= span.start for kept in chosen):
+            chosen.append(span)
+    return sorted(chosen, key=lambda s: s.start)

@@ -1,17 +1,17 @@
-"""Tier 1 — what each default rule finds, and what it leaves alone."""
+"""Tier 2 — what each regex rule finds, and what it leaves alone."""
 
 from __future__ import annotations
 
 import pytest
 
-from dss.core.redaction.detect import detect
-from tests.support.redaction_rules import CONFIG
+from dss.adapters.pii_identifier.regex.identify import identify
+from tests.support.redaction_rules import SETTINGS
 
 
 def found(text: str) -> list[tuple[str, str]]:
     """(entity, the original text it covers) for every candidate."""
 
-    return sorted({(c.entity, text[c.start : c.end]) for c in detect(text, CONFIG)})
+    return sorted({(c.entity, text[c.start : c.end]) for c in identify(text, SETTINGS)})
 
 
 @pytest.mark.parametrize(
@@ -93,11 +93,13 @@ def test_a_name_mentioned_in_passing_is_not_found() -> None:
 
 
 def test_candidates_carry_the_canonical_value() -> None:
-    [candidate] = detect("call +91 98765 43210", CONFIG)
+    [candidate] = identify("call +91 98765 43210", SETTINGS)
     assert candidate.value == "+919876543210"
     assert candidate.score == 1.0
 
 
-def test_a_destroyed_entity_carries_no_value() -> None:
-    [candidate] = detect("aadhaar 2345 6789 0124", CONFIG)
-    assert candidate.value is None
+def test_every_span_carries_its_value() -> None:
+    # Keep or destroy is the policy's call, in core; the identifier always
+    # reports the value.
+    [candidate] = identify("aadhaar 2345 6789 0124", SETTINGS)
+    assert candidate.value == "234567890124"
