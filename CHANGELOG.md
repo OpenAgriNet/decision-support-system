@@ -20,7 +20,11 @@
   phone, email and announced names; core replaces them with tags such as
   `«phone_1»` and keeps or destroys each value by an `entities:` policy. The
   rules file lists the identifiers, which run side by side. Off unless
-  `DSS_REDACTION_ENABLED=true`. Not yet wired into the turn. ADR-0015 (#133)
+  `DSS_REDACTION_ENABLED=true`. Not yet wired into the turn. ADR-0015 (#133).
+  A phone with and without its country code gets one tag; an email is kept as
+  written; a number starting with 0 is never a card; a declared name may follow
+  a title or a colon. An identifier whose spans
+  fall outside the text is dropped for the turn.
 - The OpenTelemetry Collector as the export hub: one OTLP stream from the DSS,
   fanned out to Langfuse (traces, with message content) and ClickHouse (traces,
   metrics and logs, with it removed). Grafana reads ClickHouse. ADR-0014 (#141)
