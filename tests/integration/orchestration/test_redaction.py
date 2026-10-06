@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import anyio
+import pytest
 
 from dss.core.redaction.models import PiiSpan, RedactionPolicy, ValueHandling
 from dss.orchestration.redaction import redact_texts
@@ -107,3 +108,37 @@ async def test_no_identifiers_leave_the_texts_unchanged() -> None:
     result = await redact_texts(["9876543210"], [], POLICY)
     assert result.texts == ("9876543210",)
     assert result.reveal.values == {}
+
+
+class Returns:
+    """Returns the given spans for the one text, whatever it is."""
+
+    def __init__(self, name: str, *spans: PiiSpan) -> None:
+        self.name = name
+        self._spans = list(spans)
+
+    async def identify(self, texts: Sequence[str]) -> list[list[PiiSpan]]:
+        return [self._spans]
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        PiiSpan(5, 99, "phone", 1.0, "x", "9876543210"),  # ends past the text
+        PiiSpan(6, 3, "phone", 1.0, "x", "9876543210"),  # ends before it starts
+        PiiSpan(-1, 4, "phone", 1.0, "x", "9876543210"),  # starts before the text
+        PiiSpan(0, 4, "Phone", 1.0, "x", "9876543210"),  # not a tag-safe entity
+        PiiSpan(0, 4, "phone", 1.0, "x", ""),  # no value to keep
+    ],
+)
+async def test_an_identifier_returning_a_bad_span_counts_as_failed(bad) -> None:  # noqa: ANN001
+    text = "call 9876543210"
+    good = PiiSpan(5, 15, "phone", 1.0, "ok", "9876543210")
+
+    result = await redact_texts(
+        [text], [Returns("bad", bad), Returns("ok", good)], POLICY
+    )
+
+    # The bad identifier is dropped whole; the good one still applies.
+    assert result.texts == ("call «phone_1»",)
+    assert result.failed == ("bad",)

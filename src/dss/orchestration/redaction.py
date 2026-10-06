@@ -9,15 +9,18 @@ adapters; this only composes them.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from dataclasses import replace
 
 import anyio
 
-from dss.core.redaction.models import PiiSpan, RedactionPolicy
+from dss.core.redaction.models import ENTITY_PATTERN, PiiSpan, RedactionPolicy
 from dss.core.redaction.service import Redaction, redact
 from dss.observability.trace_log import log_event
 from dss.ports.pii_identifier import PiiIdentifier
+
+_ENTITY = re.compile(ENTITY_PATTERN)
 
 
 async def redact_texts(
@@ -36,6 +39,9 @@ async def redact_texts(
             spans = await identifier.identify(texts)
             if len(spans) != len(texts):
                 raise ValueError("returned a span list per text count that differs")
+            for text, found_in_text in zip(texts, spans, strict=True):
+                for span in found_in_text:
+                    _check(span, text)
         except Exception as exc:  # noqa: BLE001 — any identifier failure is survivable
             # The type only: an exception message could quote the farmer's text.
             log_event(
@@ -61,3 +67,16 @@ async def redact_texts(
 
     result = redact(texts, merged, policy)
     return replace(result, failed=tuple(sorted(failed))) if failed else result
+
+
+def _check(span: PiiSpan, text: str) -> None:
+    """A span that would corrupt the text, or could never be revealed, makes
+    the whole identifier fail for this turn — its other spans are not trusted
+    either."""
+
+    if not 0 <= span.start < span.end <= len(text):
+        raise ValueError("span offsets fall outside the text")
+    if not _ENTITY.fullmatch(span.entity):
+        raise ValueError("entity is not tag-safe")
+    if not span.value:
+        raise ValueError("span has no value")
