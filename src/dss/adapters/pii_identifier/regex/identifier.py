@@ -33,6 +33,10 @@ class RegexIdentifier:
 
     def __init__(self, settings: RegexSettings) -> None:
         self._settings = settings
+        # Compiled once here, at boot, not on every turn.
+        self._compiled: list[re.Pattern[str]] = [
+            _compile(rule) for rule in settings.rules
+        ]
 
     async def identify(self, texts: Sequence[str]) -> list[list[PiiSpan]]:
         return [self._identify_one(text) for text in texts]
@@ -41,18 +45,33 @@ class RegexIdentifier:
         normalisation = self._settings.normalisation
         joined = _join_gaps(text, normalisation)
         found: list[PiiSpan] = []
-        for rule in self._settings.rules:
+        for rule, compiled in zip(self._settings.rules, self._compiled, strict=True):
             if isinstance(rule, PatternRule):
-                found.extend(_match_pattern(rule, text, joined, normalisation))
+                found.extend(
+                    _match_pattern(rule, compiled, text, joined, normalisation)
+                )
             else:
-                found.extend(_match_phrase(rule, text))
+                found.extend(_match_phrase(rule, compiled, text))
         return found
 
 
+def _compile(rule: PatternRule | DeclaringPhraseRule) -> re.Pattern[str]:
+    if isinstance(rule, PatternRule):
+        return re.compile(rule.pattern)
+    phrases = sorted(rule.phrases, key=len, reverse=True)
+    return re.compile(
+        r"(?<!\w)(?:" + "|".join(re.escape(p) for p in phrases) + r")(?!\w)",
+        re.IGNORECASE,
+    )
+
+
 def _match_pattern(
-    rule: PatternRule, text: str, joined: Shadow, normalisation: Normalisation
+    rule: PatternRule,
+    compiled: re.Pattern[str],
+    text: str,
+    joined: Shadow,
+    normalisation: Normalisation,
 ) -> Iterator[PiiSpan]:
-    compiled = re.compile(rule.pattern)
     seen: set[tuple[int, int]] = set()
 
     for match in compiled.finditer(text):
@@ -78,12 +97,9 @@ def _match_pattern(
             yield _to_span(rule, span, match.group())
 
 
-def _match_phrase(rule: DeclaringPhraseRule, text: str) -> Iterator[PiiSpan]:
-    phrases = sorted(rule.phrases, key=len, reverse=True)
-    announce = re.compile(
-        r"(?<!\w)(?:" + "|".join(re.escape(p) for p in phrases) + r")(?!\w)",
-        re.IGNORECASE,
-    )
+def _match_phrase(
+    rule: DeclaringPhraseRule, announce: re.Pattern[str], text: str
+) -> Iterator[PiiSpan]:
     stop = {word.lower() for word in rule.stopwords}
 
     for match in announce.finditer(text):
