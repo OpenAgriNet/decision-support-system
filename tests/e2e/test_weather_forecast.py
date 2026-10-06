@@ -28,6 +28,7 @@ from dss.config.settings import Settings
 from dss.entrypoint.app import build_app
 from dss.entrypoint.composition import build_runner
 from tests.e2e.pack_gate import pack_rejection
+from tests.support.live_model import missing_model_key
 
 pytestmark = pytest.mark.skipif(
     not (os.getenv("AZURE_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")),
@@ -148,16 +149,23 @@ def live_network(httpserver: HTTPServer) -> _Network:
 
 
 @pytest.fixture
-def live_app(httpserver: HTTPServer, live_network: _Network, tmp_path: Path):
+def model() -> str:
+    return MODEL
+
+
+@pytest.fixture
+def live_app(
+    httpserver: HTTPServer, live_network: _Network, tmp_path: Path, model: str
+):
     """The shipped application, assembled by the real `build_runner`."""
 
     base_url = httpserver.url_for("").rstrip("/")
     settings = Settings(
         stub_llm=False,  # every model call is real
-        intent_model=MODEL,
-        moderation_model=MODEL,
-        planner_model=MODEL,
-        composer_model=MODEL,
+        intent_model=model,
+        moderation_model=model,
+        planner_model=model,
+        composer_model=model,
         discovery_base_url=base_url,
         invocation_base_url=base_url,
         schema_pack_dir=SCHEMA_PACKS,
@@ -166,7 +174,7 @@ def live_app(httpserver: HTTPServer, live_network: _Network, tmp_path: Path):
     return build_app(runner=build_runner(settings), settings=settings)
 
 
-def _ask(client: TestClient, a_body, query: str):
+def _ask(client: TestClient, a_body, query: str, language: str = "en"):
     return client.post(
         "/v1/turns",
         json=a_body(
@@ -174,8 +182,8 @@ def _ask(client: TestClient, a_body, query: str):
                 {"role": "user", "content": [{"type": "text", "text": query}]}
             ],
             message__attributes={
-                "sourceLanguage": "en",
-                "targetLanguage": "en",
+                "sourceLanguage": language,
+                "targetLanguage": language,
                 "channel": "web",
                 "location": {
                     "region": "IN-MH",
@@ -244,3 +252,27 @@ def test_a_live_model_answers_the_rainfall_forecast(
     text = " ".join(block.get("text", "") for block in message["content"])
     print(f"\n  model wrote: {text!r}")
     assert str(EXPECTED_RAINFALL) in text, text
+
+
+def _gated(model: str):
+    missing = missing_model_key(model, os.environ)
+    return pytest.param(
+        model,
+        marks=pytest.mark.skipif(
+            missing is not None, reason=f"live model test — {model} needs {missing}"
+        ),
+    )
+
+
+@pytest.mark.parametrize("model", [_gated(MODEL), _gated("openai:gemma-4-31b-it")])
+def test_a_hindi_question_still_calls_the_provider(
+    live_app, live_network, a_body
+) -> None:
+    """The planner wrote "I found no tools" and never called `select`, though
+    intent classified the ask as Weather and discovery found the provider."""
+
+    response = _ask(TestClient(live_app), a_body, "आज मौसम कैसा है?", language="hi")
+
+    assert response.status_code == 200
+    assert live_network.discover_requests, "discovery never ran"
+    assert live_network.select_requests, "the provider was never called"

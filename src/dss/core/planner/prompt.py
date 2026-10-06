@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+from dss.core.intent.models import Ask
 from dss.core.planner.markers import CONVERSATION, RETRIEVED_DATA, wrap_as_data
 from dss.core.planner.models import Identity, Skill
 from dss.core.provider_discovery.models import DiscoveredAnswer
@@ -26,6 +27,7 @@ _REQUIRED_PLACEHOLDERS = (
     "{identity_persona}",
     "{identity_boundaries}",
     "{guidance_section}",
+    "{asks_section}",
     "{answers_section}",
 )
 
@@ -59,6 +61,24 @@ def _guidance_section(skills: Sequence[Skill]) -> str:
         )
     body = "\n\n".join(skill.guidance.strip() for skill in skills)
     return f"# Guidance\n\n{body}\n\n"
+
+
+def _asks_section(asks: Sequence[Ask]) -> str:
+    """Which asks exist, by the index the tools take. Without it the model
+    has to guess that ask 0 exists, and a weaker model gives up instead.
+
+    The category and interaction type are DSS enums, not the farmer's words,
+    so they are safe here. The place is left out: whether a capability needs
+    one is ``describe_capability``'s to say."""
+
+    if not asks:
+        return ""
+
+    lines = [
+        f"- ask {index}: {ask.subject_categories.value} ({ask.interaction_type.value})"
+        for index, ask in enumerate(asks)
+    ]
+    return "# Asks\n\n" + "\n".join(lines) + "\n\n"
 
 
 def _answers_section(answers: dict[int, tuple[DiscoveredAnswer, ...]]) -> str:
@@ -95,11 +115,12 @@ def build_planner_prompt(
     skills: Sequence[Skill],
     answers: dict[int, tuple[DiscoveredAnswer, ...]],
     template: str,
+    asks: Sequence[Ask] = (),
 ) -> str:
     """Render the system prompt from the shipped template.
 
     Static text lives in the template; what only the turn knows — the
-    identity, the selected skills' guidance, the Direct answers — is filled
+    identity, the selected skills' guidance, the asks, the Direct answers — is filled
     in here. Nothing farmer- or network-supplied reaches this string.
 
     ``template`` is passed in rather than read here: `core/` reaches nothing
@@ -111,6 +132,7 @@ def build_planner_prompt(
         identity_persona=identity.persona,
         identity_boundaries=identity.boundaries,
         guidance_section=_guidance_section(skills),
+        asks_section=_asks_section(asks),
         answers_section=_answers_section(answers),
     )
 

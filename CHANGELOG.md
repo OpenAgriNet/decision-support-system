@@ -18,6 +18,9 @@
   ADR-0015
 
 ### Fixed
+- A question that names no place, such as "आज मौसम कैसा है?", gets an
+  answer again. The planner is now told which asks the turn has; without
+  that, gemma 4 called no tool and replied that nothing was found (#99)
 - Traces reach Langfuse through the collector. Its default address stopped
   at `/api/public/otel`, which Langfuse answers with a 404, so every trace
   was dropped. It now ends in `/v1/traces`, in `docker-compose.yml` and

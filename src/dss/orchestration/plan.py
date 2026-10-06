@@ -87,6 +87,7 @@ def build_plan(
                 identity=identity,
                 skills=skills,
                 answers=discovery.answers,
+                asks=intent.asks,
                 template=prompt_template,
             ),
         )
