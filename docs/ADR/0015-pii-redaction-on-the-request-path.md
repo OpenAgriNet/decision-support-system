@@ -58,7 +58,7 @@ how does a provider still get a value it needs?
   either checkable or strict enough that a false match is very unlikely.
 - **B. A named-entity model.** Rejected for this step: it adds a model
   dependency and a per-language question, and does poorly on romanised
-  Hinglish. It is #136, and plugs into the seam in §4.
+  Hinglish. One can be added later through the seam in §4.
 - **C. A list of names.** Rejected: names collide with crop words, and no
   openly licensed Indian name list exists.
 
