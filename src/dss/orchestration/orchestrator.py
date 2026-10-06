@@ -190,7 +190,7 @@ class Orchestrator:
             self._note("moderation", ctx, decision.outcome.value)
 
             if decision.outcome is not Outcome.PROCEED:
-                yield self._finish(ctx, _refused(decision), recorder)
+                yield self._finish(ctx, turn, _refused(decision), recorder)
                 return
 
             self._note("intent", ctx, _classified(result.intent))
@@ -219,6 +219,7 @@ class Orchestrator:
             if clarification is not None:
                 yield self._finish(
                     ctx,
+                    turn,
                     (outcome_for(TurnStatus.REQUIRES_INPUT), clarification),
                     recorder,
                 )
@@ -243,7 +244,7 @@ class Orchestrator:
                     answer = ComposedAnswer(
                         content=(*answer.content, TextBlock(text=question))
                     )
-                yield self._finish(ctx, (outcome_for(status), answer), recorder)
+                yield self._finish(ctx, turn, (outcome_for(status), answer), recorder)
                 return
 
             # Past the barrier: the decision cleared, so the planner's `select` tool
@@ -295,11 +296,14 @@ class Orchestrator:
             self._note("channel", ctx, str(len(answer.content)))
 
             status, cause = _status_for(evidence, result.intent)
-            yield self._finish(ctx, (outcome_for(status, cause), answer), recorder)
+            yield self._finish(
+                ctx, turn, (outcome_for(status, cause), answer), recorder
+            )
 
     def _finish(
         self,
         ctx: TurnContext,
+        turn: UserTurn,
         resolved: tuple[TurnOutcome, ComposedAnswer],
         recorder: TurnRecorder,
     ) -> TurnFinished:
@@ -321,6 +325,10 @@ class Orchestrator:
         )
         self._turns.closed(ctx, finished)
         recorder.status(outcome.status.value)
+        recorder.content(
+            query=turn.original_query,
+            answer=[block.text for block in answer.content],
+        )
         return finished
 
     def _note(self, stage: str, ctx: TurnContext, outcome: str) -> None:
