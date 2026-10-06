@@ -37,6 +37,10 @@
   missing (#138)
 
 ### Added
+- Redaction runs first on every turn. Intent, moderation, the planner, the
+  composer and the audit record see tags such as `«phone_1»`; a kept value
+  reaches only the provider's `/select` call and the farmer's own answer.
+  Counted per entity in `dss.redaction.found`, never by value (#133)
 - A spaCy name identifier for redaction (`en_core_web_sm`), turned on by a
   `- type: spacy` entry in the rules file. English only, and off in the example
   file because it reads crop words as names. ADR-0016 (#136)

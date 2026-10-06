@@ -68,9 +68,11 @@ entity, whether the value is kept or destroyed. A bad entry stops the boot and
 names itself. Off unless `DSS_REDACTION_ENABLED=true`; a ready file for India
 ships at `src/dss/config/examples/redaction-rules.yaml`.
 
-**Kept values reach one place only.** The map from tag to real value lives for
-one turn and goes only to the `/select` call. It swaps the tag for the value on
-the wire, and an echoed value back to its tag.
+**Kept values reach two places only.** The map from tag to real value lives for
+one turn. The `/select` call swaps the tag for the value on the wire, and an
+echoed value back to its tag. The farmer's own answer gets the value back as it
+leaves the DSS; the audit record and traces keep the tag. Without a map, a call
+sends the tag, so forgetting one fails safe.
 
 **Aadhaar and card are destroyed by default.** They are never held, so no
 provider can be sent them (Aadhaar Act; PCI). To be confirmed with counsel.
