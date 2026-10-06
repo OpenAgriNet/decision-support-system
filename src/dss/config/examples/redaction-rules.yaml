@@ -70,7 +70,9 @@ identifiers:
         pattern: '[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}'
 
       # A name only when the farmer announces it. A name mentioned in passing is
-      # not caught here (#136). Add phrases per language as speakers supply them.
+      # not caught here: many Indian names are also crop words (Kamal, Tulsi),
+      # and a guess would break those questions. Add phrases per language as
+      # speakers supply them.
       - entity: person
         kind: declaring_phrase
         phrases: ["my name is", "my name's"]
