@@ -3,7 +3,8 @@
 Every rule runs over each text. A pattern runs over both the original text and a
 copy with number gaps joined: the copy catches ``98765 43210``; the original
 catches a phone the copy has glued to the next number (``9876543210 2 acre`` →
-``98765432102``). Overlaps are left for core's ``resolve`` to settle.
+``98765432102``). A match only the copy found is dropped when it swallows a
+number written whole. Other overlaps are left for core's ``resolve`` to settle.
 
 Pure ``re`` and well under a millisecond a text, so it runs on the event loop
 rather than a worker thread.
@@ -46,15 +47,16 @@ class RegexIdentifier:
     def _identify_one(self, text: str) -> list[PiiSpan]:
         normalisation = self._settings.normalisation
         joined = _join_gaps(text, normalisation)
-        found: list[PiiSpan] = []
+        # Each span with whether it was found only by joining gaps.
+        found: list[tuple[PiiSpan, bool]] = []
         for rule, compiled in zip(self._settings.rules, self._compiled, strict=True):
             if isinstance(rule, PatternRule):
                 found.extend(
                     _match_pattern(rule, compiled, text, joined, normalisation)
                 )
             else:
-                found.extend(_match_phrase(rule, compiled, text))
-        return found
+                found.extend((s, False) for s in _match_phrase(rule, compiled, text))
+        return _drop_glued(found)
 
 
 def _compile(rule: PatternRule | DeclaringPhraseRule) -> re.Pattern[str]:
@@ -73,7 +75,7 @@ def _match_pattern(
     text: str,
     joined: Shadow,
     normalisation: Normalisation,
-) -> Iterator[PiiSpan]:
+) -> Iterator[tuple[PiiSpan, bool]]:
     seen: set[tuple[int, int]] = set()
 
     for match in compiled.finditer(text):
@@ -87,7 +89,7 @@ def _match_pattern(
         if _NUMBER.fullmatch(canonical):
             canonical = _join_gaps(canonical, normalisation).text
         if is_valid(rule.validator, canonical):
-            yield _to_span(rule, span, canonical)
+            yield _to_span(rule, span, canonical), False
 
     if joined.text == text:
         return
@@ -99,7 +101,26 @@ def _match_pattern(
             continue
         seen.add(span)
         if is_valid(rule.validator, match.group()):
-            yield _to_span(rule, span, match.group())
+            yield _to_span(rule, span, match.group()), True
+
+
+def _drop_glued(found: list[tuple[PiiSpan, bool]]) -> list[PiiSpan]:
+    """Drop a match found only by joining gaps when it swallows a number the
+    farmer wrote whole. "9876543210 102" joins into a run that can pass the
+    card check; the phone was written apart from "102", so the phone stands."""
+
+    whole = [(s.start, s.end) for s, glued in found if not glued]
+    return [
+        span
+        for span, glued in found
+        if not glued
+        or not any(
+            span.start <= start
+            and end <= span.end
+            and (start, end) != (span.start, span.end)
+            for start, end in whole
+        )
+    ]
 
 
 def _match_phrase(

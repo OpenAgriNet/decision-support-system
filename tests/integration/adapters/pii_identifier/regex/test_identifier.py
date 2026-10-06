@@ -132,3 +132,9 @@ def test_an_email_keeps_its_dashes_between_digits() -> None:
     [candidate] = identify("mail kisan-2024-25@gmail.com")
     assert candidate.entity == "email"
     assert candidate.value == "kisan-2024-25@gmail.com"
+
+
+def test_a_phone_glued_to_the_next_number_is_not_read_as_a_card() -> None:
+    # "9876543210102" passes the card check. The two numbers were written
+    # apart, so the phone stays a phone and "102" stays in the question.
+    assert found("mera number 9876543210 102 kg") == [("phone", "9876543210")]
