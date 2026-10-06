@@ -144,3 +144,11 @@ def test_a_phone_with_its_prefix_written_apart_keeps_the_prefix() -> None:
     # The joined copy reads "0091 9876543210" as one longer phone. That is the
     # same number growing, not two numbers glued, so the longer one stands.
     assert ("phone", "0091 9876543210") in found("call 0091 9876543210")
+
+
+def test_a_phone_with_a_0091_prefix_is_not_read_as_a_card() -> None:
+    # "00916000000007" passes the card check. No card number starts with 0.
+    assert found("call 0091 6000000007") == [
+        ("phone", "0091 6000000007"),
+        ("phone", "6000000007"),
+    ]
