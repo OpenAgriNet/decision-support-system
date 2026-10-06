@@ -92,8 +92,7 @@ core/redaction/              resolve overlaps → «phone_1» tags → value map
 
 - **`core/redaction/`** knows what a PII span is, the keep-or-destroy policy,
   tag numbering, overlap resolution and the value map. It knows nothing about
-  regex, models or HTTP. No spans means the text is unchanged — which is also
-  what a turn gets when redaction is off, so no stand-in is needed.
+  regex, models or HTTP.
 - **`ports/pii_identifier.py`** is the seam. A new way of finding PII is a new
   adapter and a new `identifiers:` entry; core and the orchestrator do not
   change. An identifier only reports spans and their values; the policy, in
