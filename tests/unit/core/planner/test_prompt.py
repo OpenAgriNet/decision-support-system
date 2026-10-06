@@ -17,6 +17,7 @@ from __future__ import annotations
 import pytest
 
 from dss.config.planner_prompt_loader import load_planner_prompt_template
+from dss.core.intent.models import Ask, InteractionType, SubjectCategory
 from dss.core.planner.markers import RETRIEVED_DATA
 from dss.core.planner.models import Identity, Skill
 from dss.core.planner.prompt import build_planner_prompt, build_user_message
@@ -167,6 +168,37 @@ def test_no_skills_says_so_rather_than_leaving_a_blank() -> None:
     )
 
     assert "no tools" in prompt.lower()
+
+
+def test_lists_each_ask() -> None:
+    """The tools take an ``ask_index``, so the model has to know which asks
+    exist. Without this, gemma 4 gave up on a question that named no place."""
+
+    ask = Ask(
+        subject_categories=SubjectCategory.WEATHER,
+        interaction_type=InteractionType.OBSERVE,
+    )
+
+    prompt = build_planner_prompt(
+        identity=_identity(),
+        skills=(_skill(),),
+        answers={},
+        asks=(ask,),
+        template=_template(),
+    )
+
+    assert "ask 0: Weather (observe)" in prompt
+
+
+def test_no_asks_leaves_no_section() -> None:
+    """Same reason as the "Already known" section: an empty heading reads as
+    a gap to fill."""
+
+    prompt = build_planner_prompt(
+        identity=_identity(), skills=(_skill(),), answers={}, template=_template()
+    )
+
+    assert "# Asks" not in prompt
 
 
 def test_a_template_missing_a_placeholder_raises() -> None:
