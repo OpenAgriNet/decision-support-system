@@ -40,6 +40,11 @@ class AreaMatch(BaseModel):
     geometry: Geometry
 
 
+class AreaLookupUnavailable(Exception):
+    """A source could not answer (down, slow, bad reply). Not the same as "no
+    such area". The chain catches it; core never sees it."""
+
+
 class AreaLookup(Protocol):
     async def resolve(
         self, name: str, region: str | None = None
