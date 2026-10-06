@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from functools import lru_cache
 
 SEPARATORS = " -"
 MAX_SEPARATORS = 2
@@ -21,6 +20,21 @@ MAX_SEPARATORS = 2
 # its last ten digits ("9876543210"). Ten is the length of the national part.
 NATIONAL_DIGITS = 10
 _INTERNATIONAL = re.compile(rf"(?:\+|00)\d*(\d{{{NATIONAL_DIGITS}}})")
+
+
+def gap_pattern(
+    separators: str = SEPARATORS, max_separators: int = MAX_SEPARATORS
+) -> re.Pattern[str] | None:
+    """The gap between two digits that joining removes, or ``None`` to join
+    nothing. Built once, at startup, by whoever holds the settings."""
+
+    if max_separators == 0 or not separators:
+        return None
+    return re.compile(rf"(?<=\d)[{re.escape(separators)}]{{1,{max_separators}}}(?=\d)")
+
+
+# Core's own default, for ``conceal`` and tag matching. Built at import.
+DEFAULT_GAP = gap_pattern()
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,16 +49,12 @@ class Shadow:
         return self.offsets[start], self.offsets[end - 1] + 1
 
 
-def join_number_gaps(
-    text: str,
-    *,
-    separators: str = SEPARATORS,
-    max_separators: int = MAX_SEPARATORS,
-) -> Shadow:
-    if max_separators == 0 or not separators:
+def join_number_gaps(text: str, *, gap: re.Pattern[str] | None = DEFAULT_GAP) -> Shadow:
+    """``text`` with the gaps ``gap`` matches removed. ``None`` joins nothing."""
+
+    if gap is None:
         return Shadow(text, tuple(range(len(text))))
 
-    gap = _gap(separators, max_separators)
     pieces: list[str] = []
     offsets: list[int] = []
     last = 0
@@ -63,9 +73,3 @@ def national_part(value: str) -> str | None:
 
     match = _INTERNATIONAL.fullmatch(join_number_gaps(value).text)
     return match.group(1) if match else None
-
-
-@lru_cache(maxsize=8)
-def _gap(separators: str, max_separators: int) -> re.Pattern[str]:
-    # Built once per setting, not once per text.
-    return re.compile(rf"(?<=\d)[{re.escape(separators)}]{{1,{max_separators}}}(?=\d)")
