@@ -123,7 +123,8 @@ class CsvAreaLookup:
             found.extend(self._by_name[key])
         return tuple(found)
 
-    def resolve(self, name: str, region: str | None = None) -> list[AreaMatch]:
+    async def resolve(self, name: str, region: str | None = None) -> list[AreaMatch]:
+        # Async only to match the port. The index is in memory: nothing awaits.
         wanted = _key(name)
         # Exact first, and alone: "Mumbai" is a district *and* the start of
         # "Mumbai Suburban", so falling back here would turn a resolved name

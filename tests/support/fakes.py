@@ -104,7 +104,7 @@ class FakeAreaLookup:
         self._matches = matches or {}
         self.calls: list[tuple[str, str | None]] = []
 
-    def resolve(self, name: str, region: str | None = None) -> list[AreaMatch]:
+    async def resolve(self, name: str, region: str | None = None) -> list[AreaMatch]:
         self.calls.append((name, region))
         found = self._matches.get(" ".join(name.split()).lower(), [])
         if region is None:

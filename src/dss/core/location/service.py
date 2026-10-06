@@ -63,17 +63,19 @@ def _name_and_part(name: str) -> tuple[str, str]:
     return lookup_name.strip(), part.strip()
 
 
-def _split_joined(classified: ClassifiedAsk, lookup: AreaLookup) -> list[ClassifiedAsk]:
+async def _split_joined(
+    classified: ClassifiedAsk, lookup: AreaLookup
+) -> list[ClassifiedAsk]:
     """The model may join "Pune and Mumbai" into "Pune, Mumbai". If the part
     is a place of its own and not above the name, treat it as two places."""
 
     if not classified.place_name:
         return [classified]
     name, part = _name_and_part(classified.place_name)
-    if not part or not lookup.resolve(part):
+    if not part or not await lookup.resolve(part):
         return [classified]
     folded = part.casefold()
-    matches = _drop_nested(lookup.resolve(name))
+    matches = _drop_nested(await lookup.resolve(name))
     if any(folded in {w.casefold() for w in m.within} for m in matches):
         return [classified]
     return [
@@ -82,7 +84,7 @@ def _split_joined(classified: ClassifiedAsk, lookup: AreaLookup) -> list[Classif
     ]
 
 
-def _resolve_named(
+async def _resolve_named(
     name: str, lookup: AreaLookup, region: str | None, source: PlaceSource
 ) -> Place:
     """A place the farmer actually said, this turn or earlier — the one case
@@ -90,7 +92,7 @@ def _resolve_named(
     through."""
 
     lookup_name, part = _name_and_part(name)
-    matches = _drop_nested(lookup.resolve(lookup_name))
+    matches = _drop_nested(await lookup.resolve(lookup_name))
     part = part.casefold()
     # A match that sits directly in the part comes first. "Madhubani, Bihar"
     # is the line for the Madhubani district; a Madhubani block elsewhere in
@@ -114,7 +116,7 @@ def _resolve_named(
     return UnresolvedPlace(unresolved_name=name)
 
 
-def _resolve_from_location(
+async def _resolve_from_location(
     location: Location | None, lookup: AreaLookup
 ) -> ResolvedPlace | None:
     """Nothing was named — fall back to what the turn's envelope carries.
@@ -131,7 +133,7 @@ def _resolve_from_location(
             source=PlaceSource.ASSERTED_GEOMETRY,
         )
     if location.area:
-        matches = lookup.resolve(location.area)
+        matches = await lookup.resolve(location.area)
         if len(matches) == 1:
             return _from_match(matches[0], PlaceSource.ASSERTED_AREA)
     return None
@@ -156,7 +158,7 @@ def _build_ask(classified: ClassifiedAsk, place: Place) -> Ask:
     )
 
 
-def resolve_places(
+async def resolve_places(
     classification: IntentClassification, turn: UserTurn, *, lookup: AreaLookup
 ) -> Intent:
     location = turn.location
@@ -164,14 +166,14 @@ def resolve_places(
     classified_asks = [
         split
         for classified in classification.asks
-        for split in _split_joined(classified, lookup)
+        for split in await _split_joined(classified, lookup)
     ]
 
     # Pass 1: each ask resolves only what it names itself. A named place can
     # come back ambiguous or unresolved; those are per-ask, not fixed by a
     # sibling, so they are never overwritten below.
     places: list[Place] = [
-        _resolve_named(
+        await _resolve_named(
             classified.place_name,
             lookup,
             region,
@@ -189,7 +191,9 @@ def resolve_places(
     sibling_place = _first_resolved(places)
     for index, classified in enumerate(classified_asks):
         if places[index] is None and not classified.place_name:
-            places[index] = _resolve_from_location(location, lookup) or sibling_place
+            places[index] = (
+                await _resolve_from_location(location, lookup) or sibling_place
+            )
 
     asks = tuple(
         _build_ask(classified, place)

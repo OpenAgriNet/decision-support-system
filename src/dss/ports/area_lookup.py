@@ -41,4 +41,6 @@ class AreaMatch(BaseModel):
 
 
 class AreaLookup(Protocol):
-    def resolve(self, name: str, region: str | None = None) -> list[AreaMatch]: ...
+    async def resolve(
+        self, name: str, region: str | None = None
+    ) -> list[AreaMatch]: ...

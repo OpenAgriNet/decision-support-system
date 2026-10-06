@@ -220,7 +220,7 @@ async def run_turn(
         with trace_component(Stage.INTENT, turn.transaction_id):
             classification = await classify_intent(turn, intent_llm)
         with trace_component(Stage.LOCATION, turn.transaction_id):
-            intent = resolve_places(classification, turn, lookup=area_lookup)
+            intent = await resolve_places(classification, turn, lookup=area_lookup)
             set_current_span_attributes(**place_attributes(classification, intent))
         with trace_component(Stage.ENRICHMENT, turn.transaction_id):
             intent = _enrich(intent, turn, scheme_catalog, scheme_fuzzy_threshold)
