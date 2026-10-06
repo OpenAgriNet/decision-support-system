@@ -111,3 +111,17 @@ def test_every_span_carries_its_value() -> None:
     # reports the value.
     [candidate] = identify("aadhaar 2345 6789 0124")
     assert candidate.value == "234567890124"
+
+
+def test_patterns_are_compiled_once_when_the_identifier_is_built(
+    monkeypatch,
+) -> None:
+    identifier = RegexIdentifier(SETTINGS)
+
+    def no_compile(*args, **kwargs):  # noqa: ANN002, ANN003
+        raise AssertionError("compiled on a turn")
+
+    monkeypatch.setattr(
+        "dss.adapters.pii_identifier.regex.identifier.re.compile", no_compile
+    )
+    asyncio.run(identifier.identify(["call 98765 43210, my name is Ramesh"]))
