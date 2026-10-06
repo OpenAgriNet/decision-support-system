@@ -12,9 +12,15 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from functools import lru_cache
 
 SEPARATORS = " -"
 MAX_SEPARATORS = 2
+
+# A number written with a country code ("+919876543210") is the same number as
+# its last ten digits ("9876543210"). Ten is the length of the national part.
+NATIONAL_DIGITS = 10
+_INTERNATIONAL = re.compile(rf"(?:\+|00)\d*(\d{{{NATIONAL_DIGITS}}})")
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,7 +44,7 @@ def join_number_gaps(
     if max_separators == 0 or not separators:
         return Shadow(text, tuple(range(len(text))))
 
-    gap = re.compile(rf"(?<=\d)[{re.escape(separators)}]{{1,{max_separators}}}(?=\d)")
+    gap = _gap(separators, max_separators)
     pieces: list[str] = []
     offsets: list[int] = []
     last = 0
@@ -49,3 +55,17 @@ def join_number_gaps(
     pieces.append(text[last:])
     offsets.extend(range(last, len(text)))
     return Shadow("".join(pieces), tuple(offsets))
+
+
+def national_part(value: str) -> str | None:
+    """The last ten digits of a number written with ``+`` or ``00`` in front,
+    or ``None`` for anything else."""
+
+    match = _INTERNATIONAL.fullmatch(join_number_gaps(value).text)
+    return match.group(1) if match else None
+
+
+@lru_cache(maxsize=8)
+def _gap(separators: str, max_separators: int) -> re.Pattern[str]:
+    # Built once per setting, not once per text.
+    return re.compile(rf"(?<=\d)[{re.escape(separators)}]{{1,{max_separators}}}(?=\d)")

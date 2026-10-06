@@ -58,3 +58,17 @@ def test_an_empty_map_changes_nothing() -> None:
     empty = RevealMap(values={})
     assert empty.reveal({"a": "«phone_1»"}) == {"a": "«phone_1»"}
     assert empty.conceal("9876543210") == "9876543210"
+
+
+def test_conceal_hides_an_echo_without_the_country_code() -> None:
+    # The farmer typed "+91 98765 43210"; the provider replies with the bare number.
+    held = RevealMap(values={"«phone_1»": "+919876543210"})
+    assert held.conceal("status for 9876543210: approved") == (
+        "status for «phone_1»: approved"
+    )
+    assert held.conceal("status for +91 98765 43210") == "status for «phone_1»"
+
+
+def test_conceal_with_a_country_code_leaves_other_numbers_alone() -> None:
+    held = RevealMap(values={"«phone_1»": "+919876543210"})
+    assert held.conceal("call KVK at 9123456789") == "call KVK at 9123456789"

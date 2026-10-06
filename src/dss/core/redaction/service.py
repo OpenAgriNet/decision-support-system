@@ -21,7 +21,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from dss.core.redaction.models import PiiSpan, RedactionPolicy
-from dss.core.redaction.normalise import join_number_gaps
+from dss.core.redaction.normalise import join_number_gaps, national_part
 from dss.core.redaction.resolve import resolve
 from dss.core.redaction.reveal import RevealMap
 
@@ -53,8 +53,10 @@ def redact(
         out: list[str] = []
         last = 0
         for span in resolve(spans[i] if i < len(spans) else ()):
-            # The same value, however it was spaced, gets the same tag.
-            key = (span.entity, join_number_gaps(span.value).text.lower())
+            # The same value, however it was spaced, gets the same tag — and a
+            # number with its country code is the same as the number without.
+            same = national_part(span.value) or join_number_gaps(span.value).text
+            key = (span.entity, same.lower())
             tag = tags.get(key)
             if tag is None:
                 numbers[span.entity] = numbers.get(span.entity, 0) + 1
