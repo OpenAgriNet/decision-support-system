@@ -17,13 +17,13 @@ from collections.abc import Iterator, Sequence
 
 from dss.adapters.pii_identifier.regex.models import (
     DeclaringPhraseRule,
-    Normalisation,
     PatternRule,
     RegexSettings,
 )
 from dss.adapters.pii_identifier.regex.validators import is_valid
 from dss.core.redaction.models import PiiSpan
-from dss.core.redaction.normalise import Shadow, join_number_gaps
+from dss.core.redaction.normalise import Shadow, gap_pattern, join_number_gaps
+from dss.ports.pii_identifier import IdentifierUnavailable
 
 # One word after a declaring phrase: letters, with an inner ' . or - (O'Neil).
 _NAME_TOKEN = re.compile(r"[ \t]+([^\W\d_]+(?:['.-][^\W\d_]+)*)")
@@ -37,38 +37,47 @@ class RegexIdentifier:
     name = "regex"
 
     def __init__(self, settings: RegexSettings) -> None:
+        """Compiles every pattern once, here, at boot. One that does not
+        compile raises ``IdentifierUnavailable`` naming its rule, which stops
+        the boot."""
+
         self._settings = settings
-        # Compiled once here, at boot, not on every turn.
         self._compiled: list[re.Pattern[str]] = [
             _compile(rule) for rule in settings.rules
         ]
+        normalisation = settings.normalisation
+        self._gap = gap_pattern(
+            "".join(normalisation.join_separators), normalisation.max_separators
+        )
 
     async def identify(self, texts: Sequence[str]) -> list[list[PiiSpan]]:
         return [self._identify_one(text) for text in texts]
 
     def _identify_one(self, text: str) -> list[PiiSpan]:
-        normalisation = self._settings.normalisation
-        joined = _join_gaps(text, normalisation)
+        joined = join_number_gaps(text, gap=self._gap)
         # Each span with whether it was found only by joining gaps.
         found: list[tuple[PiiSpan, bool]] = []
         for rule, compiled in zip(self._settings.rules, self._compiled, strict=True):
             if isinstance(rule, PatternRule):
-                found.extend(
-                    _match_pattern(rule, compiled, text, joined, normalisation)
-                )
+                found.extend(_match_pattern(rule, compiled, text, joined, self._gap))
             else:
                 found.extend((s, False) for s in _match_phrase(rule, compiled, text))
         return _drop_glued(found)
 
 
 def _compile(rule: PatternRule | DeclaringPhraseRule) -> re.Pattern[str]:
-    if isinstance(rule, PatternRule):
-        return re.compile(rule.pattern)
-    phrases = sorted(rule.phrases, key=len, reverse=True)
-    return re.compile(
-        r"(?<!\w)(?:" + "|".join(re.escape(p) for p in phrases) + r")(?!\w)",
-        re.IGNORECASE,
-    )
+    try:
+        if isinstance(rule, PatternRule):
+            return re.compile(rule.pattern)
+        phrases = sorted(rule.phrases, key=len, reverse=True)
+        return re.compile(
+            r"(?<!\w)(?:" + "|".join(re.escape(p) for p in phrases) + r")(?!\w)",
+            re.IGNORECASE,
+        )
+    except re.error as exc:
+        raise IdentifierUnavailable(
+            f"rule '{rule.entity}': pattern does not compile: {exc}"
+        ) from exc
 
 
 def _match_pattern(
@@ -76,7 +85,7 @@ def _match_pattern(
     compiled: re.Pattern[str],
     text: str,
     joined: Shadow,
-    normalisation: Normalisation,
+    gap: re.Pattern[str] | None,
 ) -> Iterator[tuple[PiiSpan, bool]]:
     seen: set[tuple[int, int]] = set()
 
@@ -89,7 +98,7 @@ def _match_pattern(
         # sent. Anything else — an email — is kept exactly as written.
         canonical = match.group()
         if _NUMBER.fullmatch(canonical):
-            canonical = _join_gaps(canonical, normalisation).text
+            canonical = join_number_gaps(canonical, gap=gap).text
         if is_valid(rule.validator, canonical):
             yield _to_span(rule, span, canonical), False
 
@@ -155,14 +164,6 @@ def _after_lead(text: str, position: int) -> int:
 
     lead = _LEAD.match(text, position)
     return lead.end() if lead else position
-
-
-def _join_gaps(text: str, normalisation: Normalisation) -> Shadow:
-    return join_number_gaps(
-        text,
-        separators="".join(normalisation.join_separators),
-        max_separators=normalisation.max_separators,
-    )
 
 
 def _to_span(

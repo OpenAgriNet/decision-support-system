@@ -7,7 +7,9 @@ import asyncio
 import pytest
 
 from dss.adapters.pii_identifier.regex.identifier import RegexIdentifier
+from dss.adapters.pii_identifier.regex.models import PatternRule, RegexSettings
 from dss.core.redaction.models import PiiSpan
+from dss.ports.pii_identifier import IdentifierUnavailable
 from tests.support.redaction_rules import SETTINGS
 
 
@@ -113,18 +115,28 @@ def test_every_span_carries_its_value() -> None:
     assert candidate.value == "234567890124"
 
 
-def test_patterns_are_compiled_once_when_the_identifier_is_built(
-    monkeypatch,
-) -> None:
+def test_every_turn_reuses_the_patterns_built_at_startup() -> None:
     identifier = RegexIdentifier(SETTINGS)
+    rules, gap = list(identifier._compiled), identifier._gap
 
-    def no_compile(*args, **kwargs):  # noqa: ANN002, ANN003
-        raise AssertionError("compiled on a turn")
+    for _ in range(2):
+        asyncio.run(identifier.identify(["call 98765 43210, my name is Ramesh"]))
 
-    monkeypatch.setattr(
-        "dss.adapters.pii_identifier.regex.identifier.re.compile", no_compile
+    assert all(a is b for a, b in zip(identifier._compiled, rules, strict=True))
+    assert identifier._gap is gap
+
+
+def test_a_pattern_that_cannot_compile_stops_the_build_and_names_the_rule() -> None:
+    # The rules file check catches this first; the build is the last guard.
+    broken = PatternRule.model_construct(
+        entity="phone", kind="pattern", pattern="[6-9", validator="format"
     )
-    asyncio.run(identifier.identify(["call 98765 43210, my name is Ramesh"]))
+    settings = RegexSettings.model_construct(
+        type="regex", normalisation=SETTINGS.normalisation, rules=[broken]
+    )
+
+    with pytest.raises(IdentifierUnavailable, match="rule 'phone'"):
+        RegexIdentifier(settings)
 
 
 def test_an_email_keeps_its_dashes_between_digits() -> None:

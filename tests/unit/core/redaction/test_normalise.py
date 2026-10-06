@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dss.core.redaction.normalise import join_number_gaps
+from dss.core.redaction.normalise import gap_pattern, join_number_gaps
 
 
 def test_spaces_between_digits_are_joined() -> None:
@@ -38,4 +38,12 @@ def test_nothing_to_join_is_an_identity_map() -> None:
 
 
 def test_joining_can_be_switched_off() -> None:
-    assert join_number_gaps("98765 43210", max_separators=0).text == "98765 43210"
+    assert join_number_gaps("98765 43210", gap=gap_pattern(max_separators=0)).text == (
+        "98765 43210"
+    )
+
+
+def test_the_default_gap_pattern_is_built_once_at_import() -> None:
+    from dss.core.redaction import normalise
+
+    assert normalise.join_number_gaps.__kwdefaults__["gap"] is normalise.DEFAULT_GAP
