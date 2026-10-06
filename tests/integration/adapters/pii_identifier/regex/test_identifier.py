@@ -152,3 +152,15 @@ def test_a_phone_with_a_0091_prefix_is_not_read_as_a_card() -> None:
         ("phone", "0091 6000000007"),
         ("phone", "6000000007"),
     ]
+
+
+def test_a_title_before_a_declared_name_is_left_out() -> None:
+    assert found("my name is Dr. Ramesh Patel") == [("person", "Ramesh Patel")]
+
+
+def test_a_colon_after_the_phrase_does_not_hide_the_name() -> None:
+    assert found("my name is: Ramesh Patel") == [("person", "Ramesh Patel")]
+
+
+def test_a_name_ends_at_a_comma() -> None:
+    assert found("my name is Ramesh, onion rate?") == [("person", "Ramesh")]

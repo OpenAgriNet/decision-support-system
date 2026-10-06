@@ -61,7 +61,9 @@ class DeclaringPhraseRule(BaseModel):
     """A phrase that announces what follows — "my name is Ramesh Patel".
 
     Captures up to ``max_tokens`` words after the phrase, stopping early at a
-    stopword or at anything that is not a word."""
+    stopword or at anything that is not a word. A colon or dash after the
+    phrase is skipped, and so is a title ("Dr.", "Shri"), which stays in the
+    text."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -70,6 +72,7 @@ class DeclaringPhraseRule(BaseModel):
     phrases: list[str] = Field(min_length=1)
     max_tokens: int = Field(3, ge=1, le=5)
     stopwords: list[str] = []
+    titles: list[str] = ["mr", "mrs", "ms", "dr", "shri", "sri", "smt", "kumari"]
 
 
 Rule = Annotated[PatternRule | DeclaringPhraseRule, Field(discriminator="kind")]

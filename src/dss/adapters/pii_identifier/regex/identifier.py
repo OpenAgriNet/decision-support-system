@@ -27,6 +27,8 @@ from dss.core.redaction.normalise import Shadow, join_number_gaps
 
 # One word after a declaring phrase: letters, with an inner ' . or - (O'Neil).
 _NAME_TOKEN = re.compile(r"[ \t]+([^\W\d_]+(?:['.-][^\W\d_]+)*)")
+# A colon or dash between the phrase and the name, with no space before it.
+_LEAD = re.compile(r"[ \t]*[:\-–]")
 # Digits, gaps and a leading + only: a number, not an email or a code.
 _NUMBER = re.compile(r"\+?[\d \-]+")
 
@@ -128,10 +130,14 @@ def _match_phrase(
     rule: DeclaringPhraseRule, announce: re.Pattern[str], text: str
 ) -> Iterator[PiiSpan]:
     stop = {word.lower() for word in rule.stopwords}
+    titles = {word.lower() for word in rule.titles}
 
     for match in announce.finditer(text):
         tokens: list[re.Match[str]] = []
-        position = match.end()
+        position = _after_lead(text, match.end())
+        title = _NAME_TOKEN.match(text, position)
+        if title is not None and title.group(1).lower().rstrip(".") in titles:
+            position = title.end() + (text[title.end() : title.end() + 1] == ".")
         while len(tokens) < rule.max_tokens:
             token = _NAME_TOKEN.match(text, position)
             if token is None or token.group(1).lower() in stop:
@@ -142,6 +148,13 @@ def _match_phrase(
             span = (tokens[0].start(1), tokens[-1].end(1))
             name = " ".join(t.group(1) for t in tokens)
             yield _to_span(rule, span, name)
+
+
+def _after_lead(text: str, position: int) -> int:
+    """Past a colon or dash between the phrase and the name ("my name is:")."""
+
+    lead = _LEAD.match(text, position)
+    return lead.end() if lead else position
 
 
 def _join_gaps(text: str, normalisation: Normalisation) -> Shadow:
