@@ -604,6 +604,31 @@ run side by side).
 | `regex` | Aadhaar, PAN, GSTIN, IFSC, card, phone, email, announced names | nothing |
 | `spacy` | people's names, English only; poor on romanised Hinglish. **Not in the example file**; add `- type: spacy` to try it | nothing — `uv sync` installs it |
 
+Redaction runs first on every turn, so whatever it replaces is gone for intent
+too. Measured on 15 Hinglish and English questions through the real intent
+model: with `regex` only, 14 classified as they did unredacted; with `spacy`
+added, 7 broke — it reads crop words ("gehu", "tulsi", "neelam aam") and places
+as names. That is why the example file leaves `spacy` out.
+
+To see it work, send a number and look at three places:
+
+```bash
+curl -X POST http://127.0.0.1:8077/v1/turns \
+  -H 'Content-Type: application/json' \
+  -d '{"context":{"id":"api.dss.turn","envelopeVersion":"1.0.0",
+        "timestamp":"2026-10-06T08:00:00Z",
+        "sessionId":"0b6f3c1e-2f4a-4d7e-9a51-3c2d8e7f6a10",
+        "transactionId":"5d1e9a7c-8b3f-4c2a-b6d4-7e9f0a1b2c3d"},
+       "message":{"input":[{"role":"user","content":[
+         {"type":"text","text":"mera number 98765 43210 hai, meri application ka status?"}]}],
+        "attributes":{"sourceLanguage":"hi","targetLanguage":"hi","channel":"web"}}}'
+```
+
+- `var/evidence/turns.jsonl` holds `«phone_1»`, never the number.
+- With the `dss.trace` logger at DEBUG, the `/select` request body holds
+  `«phone_1»`; only the bytes sent to the provider carry the number.
+- The answer the farmer gets has the number back in it.
+
 ### The area index
 
 `src/dss/config/areas.csv` turns a place the farmer names into the point the
