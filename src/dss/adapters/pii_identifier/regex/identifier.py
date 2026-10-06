@@ -26,6 +26,8 @@ from dss.core.redaction.normalise import Shadow, join_number_gaps
 
 # One word after a declaring phrase: letters, with an inner ' . or - (O'Neil).
 _NAME_TOKEN = re.compile(r"[ \t]+([^\W\d_]+(?:['.-][^\W\d_]+)*)")
+# Digits, gaps and a leading + only: a number, not an email or a code.
+_NUMBER = re.compile(r"\+?[\d \-]+")
 
 
 class RegexIdentifier:
@@ -79,8 +81,11 @@ def _match_pattern(
         if span[0] == span[1]:
             continue
         seen.add(span)
-        # Kept in the one form a provider is sent: the gaps joined.
-        canonical = _join_gaps(match.group(), normalisation).text
+        # A number is kept with its gaps joined, the one form a provider is
+        # sent. Anything else — an email — is kept exactly as written.
+        canonical = match.group()
+        if _NUMBER.fullmatch(canonical):
+            canonical = _join_gaps(canonical, normalisation).text
         if is_valid(rule.validator, canonical):
             yield _to_span(rule, span, canonical)
 

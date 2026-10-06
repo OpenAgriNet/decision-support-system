@@ -125,3 +125,10 @@ def test_patterns_are_compiled_once_when_the_identifier_is_built(
         "dss.adapters.pii_identifier.regex.identifier.re.compile", no_compile
     )
     asyncio.run(identifier.identify(["call 98765 43210, my name is Ramesh"]))
+
+
+def test_an_email_keeps_its_dashes_between_digits() -> None:
+    # Gap joining is for numbers. An email is kept exactly as written.
+    [candidate] = identify("mail kisan-2024-25@gmail.com")
+    assert candidate.entity == "email"
+    assert candidate.value == "kisan-2024-25@gmail.com"
