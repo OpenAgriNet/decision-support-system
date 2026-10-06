@@ -39,9 +39,10 @@ identifiers:
         pattern: '(?<!\d)[2-9]\d{11}(?!\d)'
         validator: verhoeff
 
+      # No card number starts with 0, so "0091 98765 43210" stays a phone.
       - entity: card
         kind: pattern
-        pattern: '(?<!\d)\d{13,19}(?!\d)'
+        pattern: '(?<!\d)[1-9]\d{12,18}(?!\d)'
         validator: luhn
 
       - entity: gstin

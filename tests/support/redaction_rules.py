@@ -19,7 +19,9 @@ AADHAAR = PatternRule(
     pattern=r"(?<!\d)[2-9]\d{11}(?!\d)",
     validator="verhoeff",
 )
-CARD = PatternRule(entity="card", pattern=r"(?<!\d)\d{13,19}(?!\d)", validator="luhn")
+CARD = PatternRule(
+    entity="card", pattern=r"(?<!\d)[1-9]\d{12,18}(?!\d)", validator="luhn"
+)
 GSTIN = PatternRule(
     entity="gstin",
     pattern=r"(?i)\b\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]\b",
