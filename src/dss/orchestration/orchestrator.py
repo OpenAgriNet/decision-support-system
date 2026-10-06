@@ -188,10 +188,6 @@ class Orchestrator:
         ) as recorder:
             yield TurnStarted()
 
-            # First, before the audit write and before any model sees the turn.
-            # From here on `turn` holds tags («phone_1»); the real values live
-            # only in `reveal`, which goes to the planner's provider calls and
-            # back into the farmer's answer, and dies with this turn.
             with trace_component(Stage.REDACTION, ctx.trace_id):
                 redaction = await self._components.redact(
                     texts_of(turn), request_id=turn.transaction_id
