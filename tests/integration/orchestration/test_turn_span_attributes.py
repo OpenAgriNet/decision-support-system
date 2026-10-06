@@ -338,3 +338,68 @@ async def test_a_refused_turn_carries_no_ask_shape(spans) -> None:
     await _collect(orch)
 
     assert "dss.ask.categories" not in _turn_span(spans).attributes
+
+
+async def test_with_content_on_the_trace_shows_the_query_and_the_answer(
+    spans, monkeypatch
+) -> None:
+    """Langfuse fills a trace's Input and Output boxes from these two keys."""
+
+    monkeypatch.setenv("DSS_TRACE_INCLUDE_MESSAGE_CONTENT", "true")
+    orch, _ = _build(
+        intent=_one_ask(),
+        discovery=_served_discovery(),
+        plan=_FakePlan(_ANSWERED_EVIDENCE),
+        compose=_FakeCompose("Wheat is 2,275 Rs [1]."),
+    )
+
+    events = await _collect(orch)
+
+    attributes = _turn_span(spans).attributes
+    (finished,) = [e for e in events if isinstance(e, TurnFinished)]
+    assert attributes["langfuse.trace.input"] == _turn().original_query
+    assert attributes["langfuse.trace.output"] == "\n".join(
+        block.text for block in finished.content
+    )
+
+
+async def test_a_refused_turn_shows_the_refusal_as_its_output(
+    spans, monkeypatch
+) -> None:
+    monkeypatch.setenv("DSS_TRACE_INCLUDE_MESSAGE_CONTENT", "true")
+    orch, _ = _build(
+        intent=_one_ask(),
+        discovery=_served_discovery(),
+        plan=_FakePlan(_ANSWERED_EVIDENCE),
+        compose=_FakeCompose("unused"),
+        violated="delete-command",
+        policies=(DELETE_COMMAND,),
+    )
+
+    events = await _collect(orch)
+
+    (finished,) = [e for e in events if isinstance(e, TurnFinished)]
+    assert finished.content
+    assert _turn_span(spans).attributes["langfuse.trace.output"] == "\n".join(
+        block.text for block in finished.content
+    )
+
+
+async def test_without_content_the_trace_has_no_input_or_output(
+    spans, monkeypatch
+) -> None:
+    """The default. The words stay out of every span (ADR-0007 §5)."""
+
+    monkeypatch.delenv("DSS_TRACE_INCLUDE_MESSAGE_CONTENT", raising=False)
+    orch, _ = _build(
+        intent=_one_ask(),
+        discovery=_served_discovery(),
+        plan=_FakePlan(_ANSWERED_EVIDENCE),
+        compose=_FakeCompose("Wheat is 2,275 Rs [1]."),
+    )
+
+    await _collect(orch)
+
+    attributes = _turn_span(spans).attributes
+    assert "langfuse.trace.input" not in attributes
+    assert "langfuse.trace.output" not in attributes

@@ -677,6 +677,10 @@ token counts and latency, but not the farmer's query or the composed answer.
 `DSS_TRACE_INCLUDE_MESSAGE_CONTENT=true` turns them on and logs a warning
 saying not to do that in a deployment. Only a literal `true` counts — `1` and
 `yes` read as off, so a typo cannot enable it.
+With it on, each trace's **Input** and **Output** in Langfuse show the farmer's
+query and the answer they read (a refusal or a question back included). They
+come from `langfuse.trace.input` and `langfuse.trace.output` on the `dss.turn`
+span. A turn that crashed has no output.
 
 **Even with it on, ClickHouse never sees the words.** The ClickHouse branch
 keeps only a named allowlist of attributes (`transform/clickhouse_allowlist` in

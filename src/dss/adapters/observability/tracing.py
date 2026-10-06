@@ -57,6 +57,10 @@ def tracing_enabled() -> bool:
     return bool(os.environ.get(_ENDPOINT))
 
 
+def _include_content() -> bool:
+    return os.environ.get(_INCLUDE_CONTENT, "") == "true"
+
+
 def instrumentation_settings(*, tracer_provider=None):
     """How much of each agent run to record.
 
@@ -74,9 +78,8 @@ def instrumentation_settings(*, tracer_provider=None):
 
     from pydantic_ai.models.instrumented import InstrumentationSettings
 
-    include = os.environ.get(_INCLUDE_CONTENT, "") == "true"
     return InstrumentationSettings(
-        include_content=include, tracer_provider=tracer_provider
+        include_content=_include_content(), tracer_provider=tracer_provider
     )
 
 
@@ -425,6 +428,20 @@ class TurnRecorder:
 
         self._status = status
         self._span.set_attribute("status", status)
+
+    def content(self, *, query: str, answer: Sequence[str]) -> None:
+        """The farmer's words and what they read, for Langfuse's Input and
+        Output boxes.
+
+        Off unless `DSS_TRACE_INCLUDE_MESSAGE_CONTENT` is on, like every other
+        piece of message text (ADR-0007 §5). The collector keeps these keys
+        out of ClickHouse.
+        """
+
+        if not _include_content():
+            return
+        self._span.set_attribute("langfuse.trace.input", query)
+        self._span.set_attribute("langfuse.trace.output", "\n".join(answer))
 
     def _publish(self) -> None:
         """Count this turn and publish its duration and cost.

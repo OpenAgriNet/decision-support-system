@@ -34,6 +34,8 @@ CONTENT = (
     "gen_ai.prompt",
     "gen_ai.completion",
     "pydantic_ai.new_content",
+    "langfuse.trace.input",
+    "langfuse.trace.output",
 )
 
 # What the dashboard, a debugging session or a later story needs.
