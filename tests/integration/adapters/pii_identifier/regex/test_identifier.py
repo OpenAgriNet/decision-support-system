@@ -138,3 +138,9 @@ def test_a_phone_glued_to_the_next_number_is_not_read_as_a_card() -> None:
     # "9876543210102" passes the card check. The two numbers were written
     # apart, so the phone stays a phone and "102" stays in the question.
     assert found("mera number 9876543210 102 kg") == [("phone", "9876543210")]
+
+
+def test_a_phone_with_its_prefix_written_apart_keeps_the_prefix() -> None:
+    # The joined copy reads "0091 9876543210" as one longer phone. That is the
+    # same number growing, not two numbers glued, so the longer one stands.
+    assert ("phone", "0091 9876543210") in found("call 0091 9876543210")

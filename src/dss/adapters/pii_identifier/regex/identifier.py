@@ -105,20 +105,21 @@ def _match_pattern(
 
 
 def _drop_glued(found: list[tuple[PiiSpan, bool]]) -> list[PiiSpan]:
-    """Drop a match found only by joining gaps when it swallows a number the
-    farmer wrote whole. "9876543210 102" joins into a run that can pass the
-    card check; the phone was written apart from "102", so the phone stands."""
+    """Drop a match found only by joining gaps when it swallows another kind of
+    number the farmer wrote whole. "9876543210 102" joins into a run that can
+    pass the card check; the phone was written apart from "102", so the phone
+    stands. The same kind growing is fine: "0091 98765 43210" is one phone."""
 
-    whole = [(s.start, s.end) for s, glued in found if not glued]
+    whole = [s for s, glued in found if not glued]
     return [
         span
         for span, glued in found
         if not glued
         or not any(
-            span.start <= start
-            and end <= span.end
-            and (start, end) != (span.start, span.end)
-            for start, end in whole
+            other.entity != span.entity
+            and span.start <= other.start
+            and other.end <= span.end
+            for other in whole
         )
     ]
 
