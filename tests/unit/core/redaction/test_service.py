@@ -105,3 +105,19 @@ def test_empty_input() -> None:
     result = redact([], [], POLICY)
     assert result.texts == ()
     assert result.failed == ()
+
+
+def test_a_number_with_and_without_its_country_code_gets_one_tag() -> None:
+    # The farmer gave "+91 98765 43210" once and "9876543210" later. Same phone.
+    a, b = "call +91 98765 43210", "my number is 9876543210"
+    result = redact(
+        [a, b],
+        [
+            [span(a, "+91 98765 43210", "phone", "+919876543210")],
+            [span(b, "9876543210", "phone")],
+        ],
+        POLICY,
+    )
+    assert result.texts == ("call «phone_1»", "my number is «phone_1»")
+    # The first form written is the one held.
+    assert result.reveal.values == {"«phone_1»": "+919876543210"}

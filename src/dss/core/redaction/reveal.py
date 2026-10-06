@@ -17,7 +17,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from dss.core.redaction.normalise import join_number_gaps
+from dss.core.redaction.normalise import join_number_gaps, national_part
 
 TAG = re.compile(r"«[a-z][a-z0-9_]*_\d+»")
 
@@ -47,8 +47,7 @@ class RevealMap:
         joined = join_number_gaps(text)
         spans: list[tuple[int, int, str]] = []
         for tag, value in self.values.items():
-            echo = re.compile(rf"(?<!\w){re.escape(value)}(?!\w)", re.IGNORECASE)
-            for match in echo.finditer(joined.text):
+            for match in _echo(value).finditer(joined.text):
                 start, end = joined.map_to_original(match.start(), match.end())
                 spans.append((start, end, tag))
 
@@ -62,3 +61,13 @@ class RevealMap:
             last = end
         out.append(text[last:])
         return "".join(out)
+
+
+def _echo(value: str) -> re.Pattern[str]:
+    """How a held value can come back. A number the farmer wrote with a country
+    code can come back with it, with another code, or as the bare ten digits."""
+
+    national = national_part(value)
+    if national is not None:
+        return re.compile(rf"(?<![\w+])(?:(?:\+|00)\d{{1,3}})?{national}(?!\w)")
+    return re.compile(rf"(?<!\w){re.escape(value)}(?!\w)", re.IGNORECASE)
