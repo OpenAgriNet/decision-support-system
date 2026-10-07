@@ -53,8 +53,9 @@ Python's `re` over `google-re2`: RE2 has no lookarounds, which the rules need.
 ## 4. Decision Outcome
 
 **Redaction runs once, in the orchestrator, before the audit write and before
-intent, moderation and discovery.** It covers the question and every history
-message. Every later stage sees only tags such as `«phone_1»`.
+intent, moderation and discovery.** It covers the question, every history
+message and the user's phone, if the turn carries one. Every later stage sees
+only tags such as `«phone_1»`.
 
 **Finding PII is a port; redacting it is core.** Identifiers (`regex` today)
 sit behind `ports/pii_identifier.py` and only report spans. Core settles
