@@ -563,6 +563,7 @@ wrong:
 | `schema_pack_dir` | `var/schema-packs/` | another pack checkout, or a mounted path in a container |
 | `discovery_radius_m` | `25000` | how far around the turn's location to look |
 | `area_csv_path` | `src/dss/config/areas.csv` | another area index — a different area set, or extra aliases |
+| `photon_base_url` | unset | a Photon server, for places the area file lacks — see "Place names the file lacks" |
 
 The two base URLs are all-or-nothing (`Settings.network_enabled`): set both and
 discovery + the planner call real providers; leave either unset and the turn
@@ -604,6 +605,70 @@ filter and the farmer is asked which one they mean.
 the column across when regenerating against a newer snapshot. An adopter who
 needs a different area set or different aliases points `DSS_AREA_CSV_PATH`
 at their own file.
+
+### Place names the file lacks (Photon)
+
+The area file stops at blocks, so a village is not in it. Photon fills that gap.
+It is a place search built on OpenStreetMap. The DSS asks it only when the file
+has no match for a name. It is off until you set its address.
+
+| Setting | Default | What it does |
+|---|---|---|
+| `DSS_PHOTON_BASE_URL` | unset | The Photon server's address. Unset means Photon is off and nothing changes. |
+| `DSS_PHOTON_TIMEOUT_SECONDS` | `2.0` | The longest wait for one lookup. Must be above 0. |
+| `DSS_PHOTON_COUNTRY_CODES` | empty | Countries Photon may answer from, like `KE,UG`. Empty means the countries the area file covers (`IN` for the file that ships). |
+| `DSS_PHOTON_CACHE_ENABLED` | `false` | Keep answers in memory, so a repeat question makes no call. |
+| `DSS_PHOTON_CACHE_TTL_SECONDS` | `86400` | How long an answer is kept. Must be above 0. |
+| `DSS_PHOTON_CACHE_MAX_ENTRIES` | `10000` | The most answers kept. The one used least recently goes first. Must be above 0. |
+
+A value of zero or less stops the DSS at startup. It does not fall back to a
+default, so a typo cannot quietly change what the service does.
+
+How it behaves:
+
+- **The file answers first.** Photon is asked only when the file has no match.
+- **Exact names only.** Photon returns places with similar names too. The DSS
+  keeps only a name that matches exactly. "Eldor" finds nothing, and the
+  farmer is told the place was not found. It never guesses.
+- **Same name, different places.** If several remain, the farmer is asked
+  which one, the same as with the file.
+- **A town and its own county.** Nakuru is a town, and the county around it is
+  also called Nakuru. The town wins, because its point is exact. The county's
+  point is a rough centre, which can be far from the town.
+- **Photon down or slow.** The lookup counts as no answer. The turn still
+  finishes. Failures show in the dashboard, not to the farmer.
+- **No place names in telemetry.** A trace or a metric carries the length of
+  the name, never the name.
+
+**The cache and the licence.** The cache is off by default because some place
+services forbid storing their answers. Check your provider's terms before you
+turn it on. Photon's data is OpenStreetMap's, under the ODbL licence, which asks
+you to credit OpenStreetMap contributors. The public server `photon.komoot.io`
+is for light use. Its own page says heavy use is throttled or banned, so run
+your own for anything real.
+
+Watch it on the dashboard row "Place lookup", or in the counter
+`dss.area_lookup.count`. A rise in `photon · error` means Photon is down or
+too slow.
+
+**Try it on a village outside India** (for a product owner):
+
+1. Start Photon: `docker compose -f docker-compose.photon.yml up`. The first
+   start downloads the Africa place index, about 1.8 GB, so it takes a while.
+   It is ready when this prints a place:
+   `curl 'http://localhost:2322/api?q=Eldoret&limit=1'`
+   For another region, set `PHOTON_DB_URL` to a file from
+   `download1.graphhopper.com/public` before you start (in your shell, or in a
+   `.env` file beside the compose file). `PHOTON_VERSION` picks the Photon
+   release. A changed URL downloads the new index on the next start.
+2. Start the DSS as in "Start it", and add
+   `DSS_PHOTON_BASE_URL=http://localhost:2322` and `DSS_PHOTON_COUNTRY_CODES=KE`.
+3. Copy `docs/api-contracts/examples/answered_streaming.json`, change the
+   question to ask about Eldoret, and send it as in "Send a turn".
+4. Check that Eldoret was found. With the provider network wired, the answer is
+   about Eldoret. Either way, the Photon container log shows the request, and
+   the dashboard shows a `photon · hit`. Ask about a made-up name: the farmer
+   is told the place was not found.
 
 ## Where telemetry goes
 
@@ -714,6 +779,7 @@ What gets published:
 | `dss.stage.duration` | how long one stage took, and which model ran it |
 | `dss.stage.tokens` | tokens per stage, split into input and output |
 | `dss.ask.count` | what farmers ask, one per ask, by category and interaction |
+| `dss.area_lookup.count` | place lookups, one per source asked, by source (`csv`, `photon`) and outcome (`hit`, `miss`, `error`) |
 | `http.server.request.duration` | every request at the edge, by route and status |
 
 Durations are in **seconds**, which is what the HTTP convention uses. The DSS

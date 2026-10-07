@@ -1,0 +1,50 @@
+# Photon, a place search built on OpenStreetMap, for trying the DSS on places
+# the area file does not carry. For a local try, not for production.
+#
+# First start downloads the jar (about 100 MB) and the Africa place index
+# (about 1.8 GB), then serves on http://localhost:2322. Later starts reuse the
+# `photon-data` volume. See docs/RUNNING.md, "Place names the file lacks".
+#
+# There is no Kenya-only index on GraphHopper's download site, only planet and
+# continent ones. The DSS limits answers to the countries in
+# DSS_PHOTON_COUNTRY_CODES, so the whole of Africa in the index is harmless.
+#
+# TODO(#132): start this once on a machine with Docker and confirm the first
+# start finishes and the jar and index versions match.
+
+services:
+  photon:
+    image: eclipse-temurin:21-jre
+    working_dir: /photon
+    ports:
+      - "2322:2322"
+    volumes:
+      - photon-data:/photon
+    # Set either one in your shell, or in a `.env` file beside this one, to
+    # change the Photon version or the place index. The values here are only
+    # the defaults.
+    environment:
+      PHOTON_VERSION: "${PHOTON_VERSION:-1.3.0}"
+      PHOTON_DB_URL: "${PHOTON_DB_URL:-https://download1.graphhopper.com/public/africa/photon-db-africa-1.0-latest.tar.bz2}"
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        command -v bzip2 >/dev/null || { apt-get update -qq && apt-get install -y -qq bzip2; }
+        JAR="photon-$${PHOTON_VERSION}.jar"
+        [ -f "$$JAR" ] || curl -fL -o "$$JAR" "https://github.com/komoot/photon/releases/download/$${PHOTON_VERSION}/$$JAR"
+        # The marker holds the URL of the index that finished downloading.
+        # A download cut short leaves no marker, and a changed URL no longer
+        # matches it, so both fetch the index again.
+        [ "$$(cat .index-ready 2>/dev/null)" = "$$PHOTON_DB_URL" ] || { rm -rf photon_data .index-ready; curl -fL "$$PHOTON_DB_URL" | bzip2 -cd | tar x; printf %s "$$PHOTON_DB_URL" > .index-ready; }
+        exec java -jar "$$JAR" serve -listen-ip 0.0.0.0
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs 'http://localhost:2322/api?q=Nairobi&limit=1' >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 600s
+
+volumes:
+  photon-data:

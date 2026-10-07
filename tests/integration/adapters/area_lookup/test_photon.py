@@ -136,6 +136,20 @@ async def test_a_near_name_is_not_a_match() -> None:
     assert await photon.resolve("Eldor") == []
 
 
+async def test_a_town_in_its_own_county_is_one_place() -> None:
+    """Nakuru is a town, and the county around it is also called Nakuru. Photon
+    returns both. Asking "which Nakuru?" has no real answer, and the town's
+    point is the more exact one, so it stays."""
+
+    photon = _photon_returning("photon_nakuru.json", ("KE",))
+
+    matches = await photon.resolve("Nakuru")
+
+    assert [match.geometry.coordinates for match in matches] == [
+        [36.0712048, -0.2802724]
+    ]
+
+
 async def test_a_city_resolves_to_one_match() -> None:
     """Photon also returns a depot and two villages with similar names. Only
     the one named exactly "Eldoret" is the place the farmer meant."""

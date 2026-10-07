@@ -119,6 +119,7 @@ Observability:
 | Photon returns ten features, two named exactly "Rampur" in different counties | Two candidates → ambiguous, same flow as CSV ambiguity |
 | Photon returns features, none named exactly as asked | Empty → unresolved. No typo correction |
 | Two features with same name and same `within` | One candidate |
+| A town inside a county of the same name (Nakuru) | The town stays and the county is dropped. The town's point is exact. Done in the Photon adapter, not core: core keeps the bigger place, which is right for the area file, where a block's point is a copy of its district's |
 | Feature without a point geometry | Skipped |
 | State-layer feature where `state` equals `name` | `within` = `(country,)` |
 | Name with a comma ("Rampur, Himachal") | Core splits first; Photon gets "Rampur"; the part is matched against `within` as today |
@@ -154,6 +155,7 @@ No retries. A place lookup is a hint, not the answer.
 3. Photon adapter
    - [x] Given a recorded "Eldoret" response, when resolving, then one `AreaMatch` with `region="KE"`, `within=("Kenya","Uasin Gishu County","Moiben")` and a point
    - [x] Given a recorded "Rampur" response with ten exact-name features, when resolving, then one candidate per distinct `within` (eight)
+   - [x] Given a town inside a county of the same name, when resolving, then only the town is returned
    - [x] Given features that do not match the name exactly, when resolving, then empty
    - [x] Given a 500, a timeout, a connection error, or a malformed body, when resolving, then `AreaLookupUnavailable`
    - [x] Given configured country codes, when the request is built, then one `countrycode=` per code and the five `layer=` values
@@ -176,11 +178,11 @@ No retries. A place lookup is a hint, not the answer.
    - [x] Given a chain resolution, when recorded, then `dss.area_lookup.count` increments with `source` and `outcome`
    - [ ] `grafana/dashboards/dss.json` gets one panel: lookups per source and outcome
 7. Docs
-   - [ ] `docs/ADR/0018-ordered-place-sources.md`: context, options (MCP now, sync+thread, trust ranking, Redis), decision, consequences; the extension path (a plain service or an MCP tool behind the same port, fixed order CSV → adopter's source → Photon, each on when its URL is set) as the recorded follow-up
-   - [ ] `docs/DSS_ARCHITECTURE.md` updated for the chain and Photon
-   - [ ] `CLAUDE.md` Tech Stack: one line on place sources
-   - [ ] `docs/RUNNING.md`: Photon settings, the cache-and-licence note, and the product-owner recipe
-   - [ ] `docker-compose.photon.yml` running Photon with the GraphHopper Kenya extract
+   - [ ] (skipped by decision) `docs/ADR/0018-ordered-place-sources.md`: context, options (MCP now, sync+thread, trust ranking, Redis), decision, consequences; the extension path (a plain service or an MCP tool behind the same port, fixed order CSV → adopter's source → Photon, each on when its URL is set) as the recorded follow-up
+   - [x] `docs/DSS_ARCHITECTURE.md` updated for the chain and Photon
+   - [x] `CLAUDE.md` Tech Stack: one line on place sources
+   - [x] `docs/RUNNING.md`: Photon settings, the cache-and-licence note, and the product-owner recipe
+   - [x] `docker-compose.photon.yml` running Photon with the GraphHopper Africa index. There is no Kenya-only index on the download site. The file is written from Photon's docs and has not been started yet
 8. Fixtures
    - [x] Record Eldoret, Rampur and a miss from `photon.komoot.io` once; save under `tests/integration/adapters/area_lookup/fixtures/`. The malformed body is hand-written, because a healthy server cannot produce one. The demo server appears nowhere in CI or defaults
 

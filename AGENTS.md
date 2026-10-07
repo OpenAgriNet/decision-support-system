@@ -42,6 +42,10 @@ Do not duplicate architecture, domain model, or design-decision detail here — 
   (`adapters/observability/logs.py`). The handler's level is a PII control, not a
   volume one — provider request/response bodies are DEBUG-only and must never be
   exported (ADR-0014).
+- Place sources: an ordered chain behind `AreaLookup`. The area CSV first, then
+  Photon (an OpenStreetMap place search) over HTTP when `DSS_PHOTON_BASE_URL` is
+  set. An optional cache on `async-lru`, off by default. Counted in
+  `dss.area_lookup.count`. An adopter's own source is a later story.
 - Speed benchmark: `benchmarks/` CLI, real models with the mock network; load mode
   runs the DSS in a 1 CPU / 1 GiB container (ADR-0013).
 

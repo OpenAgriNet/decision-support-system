@@ -27,20 +27,57 @@ def _fold(text: str) -> str:
     return " ".join(text.split()).casefold()
 
 
-def _to_match(feature: dict[str, Any]) -> AreaMatch:
-    properties = feature["properties"]
-    name = properties["name"]
+def _parts(properties: dict[str, Any]) -> tuple[str, ...]:
+    """The places above a feature, coarsest first."""
+
     parts = (
         properties.get("country"),
         properties.get("state"),
         properties.get("county"),
     )
+    return tuple(part for part in parts if part)
+
+
+def _to_match(feature: dict[str, Any]) -> AreaMatch:
+    properties = feature["properties"]
+    name = properties["name"]
     return AreaMatch(
         name=name,
         region=properties["countrycode"],
-        within=tuple(part for part in parts if part and part != name),
+        within=tuple(part for part in _parts(properties) if part != name),
         geometry=Geometry(coordinates=feature["geometry"]["coordinates"]),
     )
+
+
+def _inside_prefix(feature: dict[str, Any]) -> tuple[str, ...] | None:
+    """If the feature sits inside a place with its own name (the town of
+    Nakuru in Nakuru county), the places above that bigger place."""
+
+    properties = feature["properties"]
+    parts = _parts(properties)
+    name = properties["name"]
+    return parts[: parts.index(name)] if name in parts else None
+
+
+def _without_containers(features: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Drop the bigger place when a town of the same name sits inside it.
+
+    This is done here and not in core on purpose. Core keeps the bigger place
+    when one sits inside another of the same name. That is right for the area
+    file, where a block's point is a copy of its district's, so nothing is
+    lost. Photon gives the town its own exact point, while the county's point
+    is only a rough centre, from a few km to over 100 km from the town. Our
+    provider search is a 25 km circle, so the county's point can miss the
+    farmer. Core cannot tell which of two points is the exact one. The adapter
+    can.
+    """
+
+    inside = {p for f in features if (p := _inside_prefix(f)) is not None}
+    return [
+        f
+        for f in features
+        if _inside_prefix(f) is not None or _to_match(f).within not in inside
+    ]
 
 
 class PhotonAreaLookup:
@@ -101,11 +138,12 @@ class PhotonAreaLookup:
             raise AreaLookupUnavailable(str(error)) from error
         wanted = _fold(name)
         try:
-            matches = [
-                _to_match(feature)
+            features = [
+                feature
                 for feature in response.json()["features"]
                 if _fold(feature["properties"].get("name", "")) == wanted
             ]
+            matches = [_to_match(f) for f in _without_containers(features)]
         except (ValueError, KeyError, TypeError) as error:
             raise AreaLookupUnavailable("unreadable reply") from error
         # Same name, same surroundings: the farmer cannot tell them apart.
