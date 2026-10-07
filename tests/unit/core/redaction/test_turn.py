@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dss.core.redaction.turn import texts_of, with_texts
-from dss.core.shared.models import ConversationMessage, UserTurn
+from dss.core.shared.models import ConversationMessage, UserDetails, UserTurn
 
 
 def _turn() -> UserTurn:
@@ -55,3 +55,26 @@ def test_with_texts_refuses_a_count_that_does_not_match() -> None:
     except ValueError:
         return
     raise AssertionError("a short list must not silently drop history")
+
+
+def _with_phone(phone: str) -> UserTurn:
+    return _turn().model_copy(update={"user": UserDetails(user_id="u1", phone=phone)})
+
+
+def test_the_users_phone_is_redacted_too_last_after_history() -> None:
+    assert texts_of(_with_phone("+91 98765 43210"))[-1] == "+91 98765 43210"
+
+
+def test_with_texts_puts_the_phone_back() -> None:
+    turn = _with_phone("+91 98765 43210")
+    texts = texts_of(turn)
+    texts[-1] = "«phone_1»"
+
+    after = with_texts(turn, texts)
+
+    assert after.user.phone == "«phone_1»"
+    assert after.user.user_id == "u1"
+
+
+def test_no_phone_adds_no_text() -> None:
+    assert len(texts_of(_turn())) == 4

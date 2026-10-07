@@ -18,6 +18,7 @@ from dss.core.shared.models import (
     ClaimDelta,
     ConversationMessage,
     TurnFinished,
+    UserDetails,
     UserTurn,
 )
 from dss.orchestration.redaction import pass_through, redact_texts
@@ -202,3 +203,24 @@ async def test_with_redaction_off_the_turn_passes_through_unchanged() -> None:
 
     assert PHONE in plan.turn.original_query
     assert plan.reveal.values == {}
+
+
+async def test_the_users_phone_gets_the_same_tag_as_the_question() -> None:
+    plan = _FakePlan(_ANSWERED_EVIDENCE)
+    orch, turns = _build(
+        intent=_one_ask(),
+        discovery=_served_discovery(),
+        plan=plan,
+        compose=_FakeCompose("Done [1]."),
+        redact=_redact(_FindsValues(phone=PHONE)),
+    )
+    turn = _turn(f"status for {PHONE}").model_copy(
+        update={"user": UserDetails(user_id="u1", phone=PHONE)}
+    )
+
+    _ = [event async for event in orch.run(turn, _ctx())]
+
+    assert plan.turn.user.phone == "«phone_1»"
+    assert plan.turn.original_query == "status for «phone_1»"
+    assert PHONE not in turns.records["t1"].turn.model_dump_json()
+    assert plan.reveal.values == {"«phone_1»": PHONE}
