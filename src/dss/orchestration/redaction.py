@@ -1,10 +1,10 @@
 """Run every configured identifier over a turn's texts, side by side, then redact.
 
-Identifiers are independent — regex is instant, a model or an HTTP service takes
-longer — so they run concurrently and the turn waits for the slowest. One that
-fails is dropped for this turn and named in ``Redaction.failed``; the others'
-spans still apply. Which identifiers exist, and how each works, is config and
-adapters; this only composes them.
+Each identifier gets one text per call, and every call runs concurrently, so the
+turn waits for the slowest. An identifier that fails on any text is dropped for
+the whole turn and named in ``Redaction.failed``; the others' spans still apply.
+Which identifiers exist, and how each works, is config and adapters; this only
+composes them.
 """
 
 from __future__ import annotations
@@ -35,13 +35,18 @@ async def redact_texts(
     failed: list[str] = []
 
     async def run(index: int, identifier: PiiIdentifier) -> None:
+        spans: list[list[PiiSpan]] = [[] for _ in texts]
+
+        async def one(text_index: int, text: str) -> None:
+            found_in_text = list(await identifier.identify(text))
+            for span in found_in_text:
+                _check(span, text)
+            spans[text_index] = found_in_text
+
         try:
-            spans = await identifier.identify(texts)
-            if len(spans) != len(texts):
-                raise ValueError("returned a span list per text count that differs")
-            for text, found_in_text in zip(texts, spans, strict=True):
-                for span in found_in_text:
-                    _check(span, text)
+            async with anyio.create_task_group() as group:
+                for text_index, text in enumerate(texts):
+                    group.start_soon(one, text_index, text)
         except Exception as exc:  # noqa: BLE001 — any identifier failure is survivable
             # The type only: an exception message could quote the farmer's text.
             log_event(
@@ -49,7 +54,7 @@ async def redact_texts(
                 request_id,
                 event="identifier_failed",
                 identifier=identifier.name,
-                error=type(exc).__name__,
+                error=_first_error(exc),
             )
             failed.append(identifier.name)
             return
@@ -67,6 +72,14 @@ async def redact_texts(
 
     result = redact(texts, merged, policy)
     return replace(result, failed=tuple(sorted(failed))) if failed else result
+
+
+def _first_error(exc: BaseException) -> str:
+    """The type of the first real error, past the task group's wrapper."""
+
+    while isinstance(exc, BaseExceptionGroup) and exc.exceptions:
+        exc = exc.exceptions[0]
+    return type(exc).__name__
 
 
 def _check(span: PiiSpan, text: str) -> None:

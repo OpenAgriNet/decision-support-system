@@ -14,7 +14,7 @@ from tests.support.redaction_rules import SETTINGS
 
 
 def identify(text: str) -> list[PiiSpan]:
-    [spans] = asyncio.run(RegexIdentifier(SETTINGS).identify([text]))
+    spans = asyncio.run(RegexIdentifier(SETTINGS).identify(text))
     return spans
 
 
@@ -120,7 +120,7 @@ def test_every_turn_reuses_the_patterns_built_at_startup() -> None:
     rules, gap = list(identifier._compiled), identifier._gap
 
     for _ in range(2):
-        asyncio.run(identifier.identify(["call 98765 43210, my name is Ramesh"]))
+        asyncio.run(identifier.identify("call 98765 43210, my name is Ramesh"))
 
     assert all(a is b for a, b in zip(identifier._compiled, rules, strict=True))
     assert identifier._gap is gap

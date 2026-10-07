@@ -6,8 +6,6 @@ are composed: concurrently, merged in config order, a failing one dropped.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-
 import anyio
 import pytest
 
@@ -29,41 +27,31 @@ class FindsWord:
         self._delay = delay
         self.started: float | None = None
 
-    async def identify(self, texts: Sequence[str]) -> list[list[PiiSpan]]:
+    async def identify(self, text: str) -> list[PiiSpan]:
         self.started = anyio.current_time()
         await anyio.sleep(self._delay)
-        found = []
-        for text in texts:
-            start = text.find(self._word)
-            found.append(
-                []
-                if start < 0
-                else [
-                    PiiSpan(
-                        start,
-                        start + len(self._word),
-                        self._entity,
-                        1.0,
-                        self.name,
-                        self._word,
-                    )
-                ]
+        start = text.find(self._word)
+        if start < 0:
+            return []
+        return [
+            PiiSpan(
+                start, start + len(self._word), self._entity, 1.0, self.name, self._word
             )
-        return found
+        ]
 
 
 class Broken:
     name = "broken"
 
-    async def identify(self, texts: Sequence[str]) -> list[list[PiiSpan]]:
+    async def identify(self, text: str) -> list[PiiSpan]:
         raise RuntimeError("service down")
 
 
 class WrongShape:
     name = "wrong-shape"
 
-    async def identify(self, texts: Sequence[str]) -> list[list[PiiSpan]]:
-        return []
+    async def identify(self, text: str) -> list[PiiSpan]:
+        return None  # type: ignore[return-value]
 
 
 async def test_spans_from_every_identifier_are_applied() -> None:
@@ -104,6 +92,37 @@ async def test_an_identifier_returning_the_wrong_shape_counts_as_failed() -> Non
     assert result.failed == ("wrong-shape",)
 
 
+async def test_each_text_is_identified_on_its_own() -> None:
+    seen: list[str] = []
+
+    class Records:
+        name = "records"
+
+        async def identify(self, text: str) -> list[PiiSpan]:
+            seen.append(text)
+            return []
+
+    await redact_texts(["first", "second"], [Records()], POLICY)
+    assert sorted(seen) == ["first", "second"]
+
+
+async def test_a_failure_on_one_text_drops_the_identifier_for_the_turn() -> None:
+    class FailsOnSecond:
+        name = "flaky"
+
+        async def identify(self, text: str) -> list[PiiSpan]:
+            if text == "second 9876543210":
+                raise RuntimeError("timeout")
+            return [PiiSpan(6, 16, "phone", 1.0, self.name, "9876543210")]
+
+    result = await redact_texts(
+        ["first 9876543210", "second 9876543210"], [FailsOnSecond()], POLICY
+    )
+    # Its spans on the first text are not trusted either.
+    assert result.texts == ("first 9876543210", "second 9876543210")
+    assert result.failed == ("flaky",)
+
+
 async def test_no_identifiers_leave_the_texts_unchanged() -> None:
     result = await redact_texts(["9876543210"], [], POLICY)
     assert result.texts == ("9876543210",)
@@ -117,8 +136,8 @@ class Returns:
         self.name = name
         self._spans = list(spans)
 
-    async def identify(self, texts: Sequence[str]) -> list[list[PiiSpan]]:
-        return [self._spans]
+    async def identify(self, text: str) -> list[PiiSpan]:
+        return list(self._spans)
 
 
 @pytest.mark.parametrize(
