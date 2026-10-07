@@ -182,7 +182,7 @@ No retries. A place lookup is a hint, not the answer.
    - [x] `docs/DSS_ARCHITECTURE.md` updated for the chain and Photon
    - [x] `CLAUDE.md` Tech Stack: one line on place sources
    - [x] `docs/RUNNING.md`: Photon settings, the cache-and-licence note, and the product-owner recipe
-   - [x] `docker-compose.photon.yml` running Photon with the GraphHopper Africa index. There is no Kenya-only index on the download site. The file is written from Photon's docs and has not been started yet
+   - [x] `docker-compose.photon.yml` running Photon with the GraphHopper Africa index. There is no Kenya-only index on the download site. A separate `photon-index` service downloads and the server starts after it. Tested on Podman: the real first download, a restart (healthy in 13 seconds), a live lookup, and the download paths for a missing file, a cut-off archive, a good one, the same URL again and a changed URL
 8. Fixtures
    - [x] Record Eldoret, Rampur and a miss from `photon.komoot.io` once; save under `tests/integration/adapters/area_lookup/fixtures/`. The malformed body is hand-written, because a healthy server cannot produce one. The demo server appears nowhere in CI or defaults
 

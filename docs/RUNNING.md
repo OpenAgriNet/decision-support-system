@@ -653,8 +653,12 @@ too slow.
 
 **Try it on a village outside India** (for a product owner):
 
-1. Start Photon: `docker compose -f docker-compose.photon.yml up`. The first
-   start downloads the Africa place index, about 1.8 GB, so it takes a while.
+1. Start Photon: `docker compose -f docker-compose.photon.yml up` (`podman
+   compose` works the same). The first start downloads the Africa place index,
+   about 1.8 GB, in a separate `photon-index` container. It takes 15 to 20
+   minutes. Watch it with
+   `docker compose -f docker-compose.photon.yml logs -f photon-index`. The
+   server starts after the download finishes, and later starts take seconds.
    It is ready when this prints a place:
    `curl 'http://localhost:2322/api?q=Eldoret&limit=1'`
    For another region, set `PHOTON_DB_URL` to a file from
