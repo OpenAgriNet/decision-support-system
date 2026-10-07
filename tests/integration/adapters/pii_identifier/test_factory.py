@@ -3,8 +3,6 @@ and the regex identifier called through the port."""
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-
 import pytest
 
 from dss.adapters.pii_identifier.factory import build_identifiers
@@ -14,21 +12,17 @@ from dss.ports.pii_identifier import IdentifierUnavailable, PiiIdentifier
 from tests.support.redaction_rules import SETTINGS
 
 
-async def identify_through_port(
-    identifier: PiiIdentifier, texts: Sequence[str]
-) -> list[list[PiiSpan]]:
+async def identify_through_port(identifier: PiiIdentifier, text: str) -> list[PiiSpan]:
     """Typed as the port, so a signature drift in an adapter fails here."""
 
-    return await identifier.identify(texts)
+    return await identifier.identify(text)
 
 
 async def test_the_regex_identifier_satisfies_the_port() -> None:
-    texts = ["mera number 98765 43210 hai", "gehu ka rate?"]
-    spans = await identify_through_port(RegexIdentifier(SETTINGS), texts)
-    assert [[(s.entity, s.value) for s in found] for found in spans] == [
-        [("phone", "9876543210")],
-        [],
-    ]
+    identifier = RegexIdentifier(SETTINGS)
+    found = await identify_through_port(identifier, "mera number 98765 43210 hai")
+    assert [(s.entity, s.value) for s in found] == [("phone", "9876543210")]
+    assert await identify_through_port(identifier, "gehu ka rate?") == []
 
 
 def test_a_regex_entry_builds_a_regex_identifier() -> None:

@@ -8,7 +8,6 @@ adapter and a config entry — nothing in core or the orchestrator changes.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from typing import Protocol
 
 from dss.core.redaction.models import PiiSpan
@@ -23,7 +22,7 @@ class PiiIdentifier(Protocol):
     # Names the identifier in logs and in ``Redaction.failed``.
     name: str
 
-    async def identify(self, texts: Sequence[str]) -> list[list[PiiSpan]]:
-        """Spans found in each of ``texts``, one list per text, in order.
-        Every span's ``value`` is filled; the policy decides what is kept."""
+    async def identify(self, text: str) -> list[PiiSpan]:
+        """Spans found in ``text``, with offsets into it. Every span's
+        ``value`` is filled; the policy decides what is kept."""
         ...

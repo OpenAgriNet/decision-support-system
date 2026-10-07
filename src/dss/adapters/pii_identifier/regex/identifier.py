@@ -13,7 +13,7 @@ rather than a worker thread.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator
 
 from dss.adapters.pii_identifier.regex.models import (
     DeclaringPhraseRule,
@@ -50,8 +50,8 @@ class RegexIdentifier:
             "".join(normalisation.join_separators), normalisation.max_separators
         )
 
-    async def identify(self, texts: Sequence[str]) -> list[list[PiiSpan]]:
-        return [self._identify_one(text) for text in texts]
+    async def identify(self, text: str) -> list[PiiSpan]:
+        return self._identify_one(text)
 
     def _identify_one(self, text: str) -> list[PiiSpan]:
         joined = join_number_gaps(text, gap=self._gap)
