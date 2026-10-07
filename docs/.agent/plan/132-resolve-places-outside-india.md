@@ -55,7 +55,9 @@ Alternatives rejected:
 - `region`: Photon `countrycode` (ISO 3166-1, e.g. `KE`). Coarser than
   the CSV's 3166-2 codes. Finer detail lives in `within`.
 - `within`: `(country, state, county)` from the feature properties, empty
-  parts dropped, parts equal to `name` dropped, coarsest first.
+  parts dropped, parts equal to `name` dropped, coarsest first. Photon's
+  text is kept as is, level words included ("Uasin Gishu County"): the
+  question we ask is built from `within`, so the pick matches it either way.
 - `geometry`: the feature's point, longitude first.
 Nothing Photon-specific (`osm_id`, `osm_key`) enters the model.
 
@@ -74,7 +76,9 @@ Photon request: `GET {base_url}/api?q=<name>&limit=10&lang=en`
 plus one `countrycode=` per configured code. No `lat`/`lon` bias (#131:
 do not guess from where the farmer is). The port's `region` argument is
 ignored by this adapter; the country filter comes from settings.
-<!-- inferred — verify: `lang=en` vs server default (local name) -->
+`lang=en` because the intent step already returns `place_name` in English,
+whatever language the farmer wrote in. A miss from odd romanisation is
+accepted: no typo correction, the place is reported as not found.
 
 Settings (all `DSS_` prefixed, in `config/settings.py`):
 
@@ -138,7 +142,7 @@ No retries. A place lookup is a hint, not the answer.
    - [ ] Given the first raises `AreaLookupUnavailable`, when resolving, then the second is tried and the counter records `error` for the first
    - [ ] Given all sources return empty, when resolving, then the result is empty
 3. Photon adapter
-   - [ ] Given a recorded "Eldoret" response, when resolving, then one `AreaMatch` with `region="KE"`, `within=("Kenya","Uasin Gishu")` and a point
+   - [ ] Given a recorded "Eldoret" response, when resolving, then one `AreaMatch` with `region="KE"`, `within=("Kenya","Uasin Gishu County","Moiben")` and a point
    - [ ] Given a recorded "Rampur" response with two exact-name features, when resolving, then two candidates
    - [ ] Given features that do not match the name exactly, when resolving, then empty
    - [ ] Given a 500, a timeout, a connection error, or a malformed body, when resolving, then `AreaLookupUnavailable`

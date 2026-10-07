@@ -1,0 +1,305 @@
+{
+    "type": "FeatureCollection",
+    "features": [
+        {
+            "type": "Feature",
+            "properties": {
+                "osm_type": "R",
+                "osm_id": 1958198,
+                "osm_key": "boundary",
+                "osm_value": "administrative",
+                "type": "county",
+                "name": "Rampur",
+                "state": "Uttar Pradesh",
+                "country": "India",
+                "countrycode": "IN",
+                "extra": {
+                    "admin_level": "5"
+                },
+                "extent": [
+                    78.8585029,
+                    29.1690256,
+                    79.4276762,
+                    28.4172857
+                ]
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    79.1845806,
+                    28.7934728
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "osm_type": "N",
+                "osm_id": 1207414283,
+                "osm_key": "place",
+                "osm_value": "town",
+                "type": "city",
+                "name": "Rampur",
+                "county": "Rampur",
+                "state": "Uttar Pradesh",
+                "country": "India",
+                "postcode": "244901",
+                "countrycode": "IN"
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    79.0284337,
+                    28.8014001
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "osm_type": "R",
+                "osm_id": 10007388,
+                "osm_key": "boundary",
+                "osm_value": "administrative",
+                "type": "county",
+                "name": "Rampur",
+                "state": "Uttar Pradesh",
+                "country": "India",
+                "postcode": "244901",
+                "countrycode": "IN",
+                "extra": {
+                    "admin_level": "6"
+                },
+                "extent": [
+                    78.9447722,
+                    28.9445798,
+                    79.178295,
+                    28.6664913
+                ]
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    79.0592482,
+                    28.8055202
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "osm_type": "R",
+                "osm_id": 10110121,
+                "osm_key": "boundary",
+                "osm_value": "administrative",
+                "type": "county",
+                "name": "Rampur",
+                "state": "Odisha",
+                "country": "India",
+                "postcode": "767045",
+                "countrycode": "IN",
+                "extra": {
+                    "admin_level": "6"
+                },
+                "extent": [
+                    83.6133384,
+                    21.1304714,
+                    83.718245,
+                    20.9693944
+                ]
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    83.6621734,
+                    21.0506706
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "osm_type": "R",
+                "osm_id": 9982322,
+                "osm_key": "boundary",
+                "osm_value": "administrative",
+                "type": "county",
+                "name": "Rampur",
+                "state": "Himachal Pradesh",
+                "country": "India",
+                "countrycode": "IN",
+                "extra": {
+                    "admin_level": "6"
+                },
+                "extent": [
+                    77.5215958,
+                    31.7140399,
+                    77.9625225,
+                    31.3039651
+                ]
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    77.7709741,
+                    31.5091373
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "osm_type": "R",
+                "osm_id": 16520892,
+                "osm_key": "boundary",
+                "osm_value": "administrative",
+                "type": "district",
+                "name": "Rampur",
+                "city": "Shahdol",
+                "state": "Madhya Pradesh",
+                "country": "India",
+                "countrycode": "IN",
+                "extra": {
+                    "admin_level": "9"
+                },
+                "extent": [
+                    81.6681027,
+                    23.2434843,
+                    81.7459846,
+                    23.20414
+                ]
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    81.7025149,
+                    23.2238297
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "osm_type": "R",
+                "osm_id": 16517919,
+                "osm_key": "boundary",
+                "osm_value": "administrative",
+                "type": "district",
+                "name": "Rampur",
+                "county": "Gopadbanas Tahsil",
+                "state": "Madhya Pradesh",
+                "country": "India",
+                "countrycode": "IN",
+                "extra": {
+                    "admin_level": "9"
+                },
+                "extent": [
+                    81.8665294,
+                    24.3819985,
+                    81.8983117,
+                    24.3631164
+                ]
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    81.8822502,
+                    24.3725668
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "osm_type": "R",
+                "osm_id": 14994680,
+                "osm_key": "boundary",
+                "osm_value": "administrative",
+                "type": "district",
+                "name": "Rampur",
+                "county": "Udhwa",
+                "state": "Jharkhand",
+                "country": "India",
+                "countrycode": "IN",
+                "extra": {
+                    "admin_level": "9"
+                },
+                "extent": [
+                    87.8289342,
+                    24.9659578,
+                    87.839722,
+                    24.9591808
+                ]
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    87.8343493,
+                    24.9625657
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "osm_type": "R",
+                "osm_id": 14540250,
+                "osm_key": "boundary",
+                "osm_value": "administrative",
+                "type": "district",
+                "name": "Rampur",
+                "county": "Sahibganj (block)",
+                "state": "Jharkhand",
+                "country": "India",
+                "countrycode": "IN",
+                "extra": {
+                    "admin_level": "9"
+                },
+                "extent": [
+                    87.7072214,
+                    25.254723,
+                    87.7316281,
+                    25.2402051
+                ]
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    87.7174611,
+                    25.2483102
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "osm_type": "R",
+                "osm_id": 16607738,
+                "osm_key": "boundary",
+                "osm_value": "administrative",
+                "type": "district",
+                "name": "Rampur",
+                "county": "Patharia Tahsil",
+                "state": "Madhya Pradesh",
+                "country": "India",
+                "countrycode": "IN",
+                "extra": {
+                    "admin_level": "9"
+                },
+                "extent": [
+                    79.4650089,
+                    24.0070408,
+                    79.487023,
+                    23.9824244
+                ]
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    79.4792287,
+                    23.9947266
+                ]
+            }
+        }
+    ]
+}

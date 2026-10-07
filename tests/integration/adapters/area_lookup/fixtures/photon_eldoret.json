@@ -1,0 +1,133 @@
+{
+    "type": "FeatureCollection",
+    "features": [
+        {
+            "type": "Feature",
+            "properties": {
+                "osm_type": "N",
+                "osm_id": 2689551456,
+                "osm_key": "place",
+                "osm_value": "city",
+                "type": "district",
+                "name": "Eldoret",
+                "city": "Kimumu ward",
+                "county": "Moiben",
+                "state": "Uasin Gishu County",
+                "country": "Kenya",
+                "postcode": "30100",
+                "countrycode": "KE"
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    35.2715481,
+                    0.5198329
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "osm_type": "W",
+                "osm_id": 223537249,
+                "osm_key": "landuse",
+                "osm_value": "industrial",
+                "type": "locality",
+                "name": "Kenya Pipeline Company Ltd - Eldoret Depot",
+                "district": "Road Block",
+                "city": "Kiplombe ward",
+                "county": "Turbo",
+                "state": "Uasin Gishu County",
+                "country": "Kenya",
+                "countrycode": "KE",
+                "extent": [
+                    35.2511797,
+                    0.5443669,
+                    35.2540616,
+                    0.5415247
+                ]
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    35.2526023,
+                    0.5430477
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "osm_type": "N",
+                "osm_id": 45002990,
+                "osm_key": "place",
+                "osm_value": "village",
+                "type": "city",
+                "name": "Eldere",
+                "county": "Garbatulla",
+                "state": "Isiolo",
+                "country": "Kenya",
+                "countrycode": "KE"
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    38.8398022,
+                    0.596288
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "osm_type": "N",
+                "osm_id": 4891272329,
+                "osm_key": "place",
+                "osm_value": "village",
+                "type": "city",
+                "name": "Eldoro",
+                "county": "Taveta",
+                "state": "Taita–Taveta",
+                "country": "Kenya",
+                "countrycode": "KE"
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    37.680682,
+                    -3.4780623
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "osm_type": "W",
+                "osm_id": 1384538405,
+                "osm_key": "landuse",
+                "osm_value": "industrial",
+                "type": "locality",
+                "name": "National Cereals & Produce board (Eldoret silos)",
+                "district": "Kidiwa",
+                "city": "Kimumu ward",
+                "county": "Moiben",
+                "state": "Uasin Gishu County",
+                "country": "Kenya",
+                "countrycode": "KE",
+                "extent": [
+                    35.2650511,
+                    0.5307157,
+                    35.2672076,
+                    0.5281584
+                ]
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    35.2660033,
+                    0.5295409
+                ]
+            }
+        }
+    ]
+}
