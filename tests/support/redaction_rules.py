@@ -18,9 +18,13 @@ AADHAAR = PatternRule(
     entity="aadhaar",
     pattern=r"(?<!\d)[2-9]\d{11}(?!\d)",
     validator="verhoeff",
+    groupings=[[4, 4, 4]],
 )
 CARD = PatternRule(
-    entity="card", pattern=r"(?<!\d)[1-9]\d{12,18}(?!\d)", validator="luhn"
+    entity="card",
+    pattern=r"(?<!\d)[1-9]\d{12,18}(?!\d)",
+    validator="luhn",
+    groupings=[[4, 4, 4, 4], [4, 6, 5]],
 )
 GSTIN = PatternRule(
     entity="gstin",

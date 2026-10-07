@@ -23,8 +23,10 @@
   `DSS_REDACTION_ENABLED=true`. Not yet wired into the turn. ADR-0015 (#133).
   A phone with and without its country code gets one tag; an email is kept as
   written; a number starting with 0 is never a card; a declared name may follow
-  a title or a colon. An identifier whose spans
-  fall outside the text is dropped for the turn.
+  a title or a colon. An identifier whose spans fall outside the text is
+  dropped for the turn. A card or Aadhaar found by joining gaps must be written
+  in its real groups (`groupings:`), so a phone followed by a quantity stays a
+  phone. An identifier takes one text per call.
 - The OpenTelemetry Collector as the export hub: one OTLP stream from the DSS,
   fanned out to Langfuse (traces, with message content) and ClickHouse (traces,
   metrics and logs, with it removed). Grafana reads ClickHouse. ADR-0014 (#141)

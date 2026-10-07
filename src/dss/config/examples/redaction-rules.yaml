@@ -28,6 +28,8 @@ identifiers:
   #   kind       pattern | declaring_phrase
   #   pattern    a Python regular expression, run with number gaps joined
   #   validator  format | verhoeff | luhn | gstin — confirms a match is real
+  #   groupings  optional: the digit groups a number must be written in when it
+  #              is found by joining gaps. Stops "98765 43210 102" reading as a card.
   - type: regex
     normalisation:
       join_separators: [" ", "-"]
@@ -38,12 +40,14 @@ identifiers:
         kind: pattern
         pattern: '(?<!\d)[2-9]\d{11}(?!\d)'
         validator: verhoeff
+        groupings: [[4, 4, 4]]
 
       # No card number starts with 0, so "0091 98765 43210" stays a phone.
       - entity: card
         kind: pattern
         pattern: '(?<!\d)[1-9]\d{12,18}(?!\d)'
         validator: luhn
+        groupings: [[4, 4, 4, 4], [4, 6, 5]]
 
       - entity: gstin
         kind: pattern
