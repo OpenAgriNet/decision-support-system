@@ -8,7 +8,6 @@ own values back.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from functools import partial
 
 from dss.core.intent.models import Intent
@@ -50,28 +49,23 @@ class _FindsValues:
         self.name = name
         self._values = values  # entity → value
 
-    async def identify(self, texts: Sequence[str]) -> list[list[PiiSpan]]:
-        found: list[list[PiiSpan]] = []
-        for text in texts:
-            spans = []
-            for entity, value in self._values.items():
-                start = text.find(value)
-                while start >= 0:
-                    spans.append(
-                        PiiSpan(
-                            start, start + len(value), entity, 1.0, self.name, value
-                        )
-                    )
-                    start = text.find(value, start + 1)
-            found.append(spans)
-        return found
+    async def identify(self, text: str) -> list[PiiSpan]:
+        spans = []
+        for entity, value in self._values.items():
+            start = text.find(value)
+            while start >= 0:
+                spans.append(
+                    PiiSpan(start, start + len(value), entity, 1.0, self.name, value)
+                )
+                start = text.find(value, start + 1)
+        return spans
 
 
 class _Breaks:
     name = "broken"
 
-    async def identify(self, texts: Sequence[str]) -> list[list[PiiSpan]]:
-        raise RuntimeError(f"model crashed on {texts[0]}")
+    async def identify(self, text: str) -> list[PiiSpan]:
+        raise RuntimeError(f"model crashed on {text}")
 
 
 class _RecordingIntentLLM:
