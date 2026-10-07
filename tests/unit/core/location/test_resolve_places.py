@@ -416,6 +416,95 @@ async def test_split_two_joined_places() -> None:
     assert all(ask.subject_categories is SubjectCategory.WEATHER for ask in intent.asks)
 
 
+_NAIROBI_CITY = AreaMatch(
+    name="Nairobi",
+    region="KE",
+    within=("Kenya", "Nairobi County"),
+    geometry=Geometry(coordinates=[36.82, -1.29]),
+)
+_NAIROBI_RONGAI = AreaMatch(
+    name="Nairobi",
+    region="KE",
+    within=("Kenya", "Nakuru", "Rongai"),
+    geometry=Geometry(coordinates=[36.12, -0.04]),
+)
+_NAIROBI_BAHATI = AreaMatch(
+    name="Nairobi",
+    region="KE",
+    within=("Kenya", "Nakuru", "Bahati"),
+    geometry=Geometry(coordinates=[36.10, -0.16]),
+)
+_NAIROBI_TANGA = AreaMatch(
+    name="Nairobi",
+    region="TZ",
+    within=("Tanzania", "Tanga Region", "Mkinga"),
+    geometry=Geometry(coordinates=[39.0, -4.7]),
+)
+# A place of its own, and also a part of the villages' chains above.
+_NAKURU_TOWN = AreaMatch(
+    name="Nakuru",
+    region="KE",
+    within=("Kenya",),
+    geometry=Geometry(coordinates=[36.07, -0.28]),
+)
+_NAIROBIS = {
+    "nairobi": [_NAIROBI_CITY, _NAIROBI_RONGAI, _NAIROBI_BAHATI, _NAIROBI_TANGA],
+    "nakuru": [_NAKURU_TOWN],
+}
+
+
+async def test_a_pick_with_two_parts_stays_one_place() -> None:
+    """After "Kenya" the question lists "Nairobi, Kenya, Nakuru". Nakuru is a
+    town of its own, but here it is a part above the villages. Reading the
+    line as two places would answer for the town the farmer did not ask about."""
+
+    classification = IntentClassification(
+        asks=(_weather_ask("Nairobi, Kenya, Nakuru"),)
+    )
+
+    intent = await resolve_places(
+        classification, _turn(), lookup=_FakeLookup(_NAIROBIS)
+    )
+
+    assert len(intent.asks) == 1
+
+
+async def test_a_pick_with_two_parts_keeps_only_the_matches_inside() -> None:
+    """Both parts narrow the list: the Kenyan Nairobis inside Nakuru. The city
+    and the Tanzanian hamlet drop out, and two villages are left to choose from."""
+
+    classification = IntentClassification(
+        asks=(_weather_ask("Nairobi, Kenya, Nakuru"),)
+    )
+
+    intent = await resolve_places(
+        classification, _turn(), lookup=_FakeLookup(_NAIROBIS)
+    )
+
+    place = intent.asks[0].place
+    assert isinstance(place, AmbiguousPlace)
+    assert {match.within for match in place.candidates} == {
+        _NAIROBI_RONGAI.within,
+        _NAIROBI_BAHATI.within,
+    }
+
+
+async def test_a_pick_with_three_parts_resolves_the_one_match() -> None:
+    """One level further down, the last part names the village."""
+
+    classification = IntentClassification(
+        asks=(_weather_ask("Nairobi, Kenya, Nakuru, Rongai"),)
+    )
+
+    intent = await resolve_places(
+        classification, _turn(), lookup=_FakeLookup(_NAIROBIS)
+    )
+
+    place = intent.asks[0].place
+    assert isinstance(place, ResolvedPlace)
+    assert place.geometry == _NAIROBI_RONGAI.geometry
+
+
 async def test_a_block_inside_its_same_name_district_resolves_to_the_district() -> None:
     """Nashik district holds a Nashik block. The district covers the block, so
     asking "which Nashik?" would make the farmer pick between near-equal

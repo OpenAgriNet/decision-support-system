@@ -63,6 +63,24 @@ def _name_and_part(name: str) -> tuple[str, str]:
     return lookup_name.strip(), part.strip()
 
 
+def _name_and_parts(text: str) -> tuple[str, tuple[str, ...]]:
+    """A line we listed after several picks: "Nairobi, Kenya, Nakuru" is the
+    name, then the places above it, coarsest first."""
+
+    name, comma, rest = text.partition(",")
+    if not comma:
+        return name.strip(), ()
+    return name.strip(), tuple(part.strip() for part in rest.split(",") if part.strip())
+
+
+async def _all_above(name: str, parts: tuple[str, ...], lookup: AreaLookup) -> bool:
+    """True when every part is a place above some match of the name."""
+
+    matches = _drop_nested(await lookup.resolve(name))
+    above = {w.casefold() for match in matches for w in match.within}
+    return all(part.casefold() in above for part in parts)
+
+
 async def _split_joined(
     classified: ClassifiedAsk, lookup: AreaLookup
 ) -> list[ClassifiedAsk]:
@@ -70,6 +88,11 @@ async def _split_joined(
     is a place of its own and not above the name, treat it as two places."""
 
     if not classified.place_name:
+        return [classified]
+    base, parts = _name_and_parts(classified.place_name)
+    # "Nairobi, Kenya, Nakuru": Nakuru is a town of its own, but here it is a
+    # place above the Nairobi villages. That is one place, narrowed down.
+    if len(parts) > 1 and await _all_above(base, parts, lookup):
         return [classified]
     name, part = _name_and_part(classified.place_name)
     if not part or not await lookup.resolve(part):
@@ -91,18 +114,26 @@ async def _resolve_named(
     that can fail loud (`AmbiguousPlace`/`UnresolvedPlace`) rather than fall
     through."""
 
-    lookup_name, part = _name_and_part(name)
+    lookup_name, parts = _name_and_parts(name)
     matches = _drop_nested(await lookup.resolve(lookup_name))
-    part = part.casefold()
-    # A match that sits directly in the part comes first. "Madhubani, Bihar"
-    # is the line for the Madhubani district; a Madhubani block elsewhere in
-    # Bihar is also inside Bihar, and keeping both asks the same question
-    # forever.
-    directly = [m for m in matches if m.within and m.within[-1].casefold() == part]
-    inside = [m for m in matches if part in {w.casefold() for w in m.within}]
+    wanted = [part.casefold() for part in parts]
+    # A match that sits directly in the last part comes first. "Madhubani,
+    # Bihar" is the line for the Madhubani district; a Madhubani block
+    # elsewhere in Bihar is also inside Bihar, and keeping both asks the same
+    # question forever.
+    directly = [
+        m
+        for m in matches
+        if wanted and m.within and m.within[-1].casefold() == wanted[-1]
+    ]
+    inside = [
+        m
+        for m in matches
+        if all(part in {w.casefold() for w in m.within} for part in wanted)
+    ]
     # A part that fits no match is not ignored: dropping it could answer for
     # a place the farmer did not mean.
-    if part and not inside:
+    if wanted and not inside:
         return UnresolvedPlace(unresolved_name=name)
     matches = directly or inside or matches
     # The region is where the farmer is, not what they asked about: it only
