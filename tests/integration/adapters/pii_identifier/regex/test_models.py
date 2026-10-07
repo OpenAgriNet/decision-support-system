@@ -57,3 +57,12 @@ def test_rules_parse_from_plain_data() -> None:
         }
     )
     assert [type(r) for r in config.rules] == [PatternRule, DeclaringPhraseRule]
+
+
+def test_a_grouping_with_a_zero_or_negative_size_is_refused() -> None:
+    with pytest.raises(ValidationError, match="rule 'card'"):
+        PatternRule(entity="card", pattern=r"\d{16}", groupings=[[4, 0, 4]])
+
+
+def test_groupings_default_to_any() -> None:
+    assert PatternRule(entity="phone", pattern=r"\d{10}").groupings == []

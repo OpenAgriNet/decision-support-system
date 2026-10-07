@@ -32,7 +32,11 @@ class Normalisation(BaseModel):
 
 
 class PatternRule(BaseModel):
-    """A regular expression, confirmed by a named validator."""
+    """A regular expression, confirmed by a named validator.
+
+    ``groupings`` lists the digit groups a number may be written in when it is
+    found only by joining gaps — a card as 4 4 4 4, an Aadhaar as 4 4 4. Empty
+    means any. A number written whole is never held to them."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -40,6 +44,7 @@ class PatternRule(BaseModel):
     kind: Literal["pattern"] = "pattern"
     pattern: str
     validator: str = "format"
+    groupings: list[list[int]] = []
 
     @model_validator(mode="after")
     def _check(self) -> PatternRule:
@@ -53,6 +58,10 @@ class PatternRule(BaseModel):
             raise ValueError(
                 f"rule '{self.entity}': unknown validator '{self.validator}' "
                 f"(known: {', '.join(sorted(VALIDATORS))})"
+            )
+        if any(not group or min(group) < 1 for group in self.groupings):
+            raise ValueError(
+                f"rule '{self.entity}': every grouping needs group sizes of 1 or more"
             )
         return self
 

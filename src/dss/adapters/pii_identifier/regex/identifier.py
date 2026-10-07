@@ -31,6 +31,7 @@ _NAME_TOKEN = re.compile(r"[ \t]+([^\W\d_]+(?:['.-][^\W\d_]+)*)")
 _LEAD = re.compile(r"[ \t]*[:\-–]")
 # Digits, gaps and a leading + only: a number, not an email or a code.
 _NUMBER = re.compile(r"\+?[\d \-]+")
+_DIGITS = re.compile(r"\d+")
 
 
 class RegexIdentifier:
@@ -46,8 +47,15 @@ class RegexIdentifier:
             _compile(rule) for rule in settings.rules
         ]
         normalisation = settings.normalisation
-        self._gap = gap_pattern(
-            "".join(normalisation.join_separators), normalisation.max_separators
+        separators = "".join(normalisation.join_separators)
+        self._gap = gap_pattern(separators, normalisation.max_separators)
+        # Digit groups with joinable gaps between them: "98765 43210 102".
+        self._run = (
+            re.compile(
+                rf"\d+(?:[{re.escape(separators)}]{{1,{normalisation.max_separators}}}\d+)+"
+            )
+            if self._gap is not None
+            else None
         )
 
     async def identify(self, text: str) -> list[PiiSpan]:
@@ -59,7 +67,9 @@ class RegexIdentifier:
         found: list[tuple[PiiSpan, bool]] = []
         for rule, compiled in zip(self._settings.rules, self._compiled, strict=True):
             if isinstance(rule, PatternRule):
-                found.extend(_match_pattern(rule, compiled, text, joined, self._gap))
+                found.extend(
+                    _match_pattern(rule, compiled, text, joined, self._gap, self._run)
+                )
             else:
                 found.extend((s, False) for s in _match_phrase(rule, compiled, text))
         return _drop_glued(found)
@@ -86,8 +96,10 @@ def _match_pattern(
     text: str,
     joined: Shadow,
     gap: re.Pattern[str] | None,
+    run: re.Pattern[str] | None,
 ) -> Iterator[tuple[PiiSpan, bool]]:
     seen: set[tuple[int, int]] = set()
+    kept: list[tuple[int, int]] = []
 
     for match in compiled.finditer(text):
         span = match.span()
@@ -100,6 +112,7 @@ def _match_pattern(
         if _NUMBER.fullmatch(canonical):
             canonical = join_number_gaps(canonical, gap=gap).text
         if is_valid(rule.validator, canonical):
+            kept.append(span)
             yield _to_span(rule, span, canonical), False
 
     if joined.text == text:
@@ -111,8 +124,53 @@ def _match_pattern(
         if span in seen:
             continue
         seen.add(span)
+        if rule.groupings and not _in_groups(text[span[0] : span[1]], rule):
+            continue
         if is_valid(rule.validator, match.group()):
+            kept.append(span)
             yield _to_span(rule, span, match.group()), True
+
+    yield from _match_sub_runs(rule, compiled, text, run, seen, kept)
+
+
+def _match_sub_runs(
+    rule: PatternRule,
+    compiled: re.Pattern[str],
+    text: str,
+    run: re.Pattern[str] | None,
+    seen: set[tuple[int, int]],
+    kept: list[tuple[int, int]],
+) -> Iterator[tuple[PiiSpan, bool]]:
+    """Numbers made of only some of a run's digit groups. Joining
+    "98765 43210 102" whole gives 13 digits, inside which no phone can match;
+    its first two groups are the phone."""
+
+    if run is None:
+        return
+    for found_run in run.finditer(text):
+        groups = list(_DIGITS.finditer(text, found_run.start(), found_run.end()))
+        for first in range(len(groups)):
+            for last in range(first + 1, len(groups)):
+                if first == 0 and last == len(groups) - 1:
+                    continue  # the whole run: the joined pass already tried it
+                span = (groups[first].start(), groups[last].end())
+                digits = "".join(g.group() for g in groups[first : last + 1])
+                inside = any(a <= span[0] and span[1] <= b for a, b in kept)
+                if span in seen or inside or not compiled.fullmatch(digits):
+                    continue
+                seen.add(span)
+                if rule.groupings and not _in_groups(text[span[0] : span[1]], rule):
+                    continue
+                if is_valid(rule.validator, digits):
+                    yield _to_span(rule, span, digits), True
+
+
+def _in_groups(written: str, rule: PatternRule) -> bool:
+    """Whether a number found by joining gaps was written in one of the rule's
+    groupings. "98765 43210 102" is 5-5-3, which no card is written as."""
+
+    sizes = [len(group) for group in _DIGITS.findall(written)]
+    return sizes in rule.groupings
 
 
 def _drop_glued(found: list[tuple[PiiSpan, bool]]) -> list[PiiSpan]:

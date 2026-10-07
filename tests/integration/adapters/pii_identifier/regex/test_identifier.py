@@ -176,3 +176,28 @@ def test_a_colon_after_the_phrase_does_not_hide_the_name() -> None:
 
 def test_a_name_ends_at_a_comma() -> None:
     assert found("my name is Ramesh, onion rate?") == [("person", "Ramesh")]
+
+
+# --- groupings: a joined number must be written in its real groups ----------
+
+
+def test_a_phone_written_with_a_gap_is_not_read_as_a_card() -> None:
+    # "98765 43210 102" joins into 13 digits that can pass the card check.
+    # Groups of 5-5-3 are not how a card is written, so it stays a phone.
+    assert found("mera number 98765 43210 102 kg") == [("phone", "98765 43210")]
+
+
+def test_a_card_in_its_real_groups_is_still_found() -> None:
+    assert found("card 4111 1111 1111 1111") == [("card", "4111 1111 1111 1111")]
+
+
+def test_an_aadhaar_in_its_real_groups_is_still_found() -> None:
+    assert found("aadhaar 2345 6789 0124") == [("aadhaar", "2345 6789 0124")]
+
+
+def test_an_aadhaar_in_other_groups_is_not_joined() -> None:
+    assert ("aadhaar", "23456 7890 124") not in found("ids 23456 7890 124")
+
+
+def test_a_number_written_whole_ignores_groupings() -> None:
+    assert found("card 4111111111111111") == [("card", "4111111111111111")]
