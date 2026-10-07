@@ -173,12 +173,14 @@ def build_area_lookup(
 
     csv = CsvAreaLookup.load(settings.area_csv_path)
     sources: list[tuple[str, AreaLookup]] = [("csv", csv)]
-    if settings.photon_base_url is None:
+    # Empty counts as unset: `DSS_PHOTON_BASE_URL=` is an operator turning it off.
+    if not settings.photon_base_url:
         return ChainedAreaLookup(sources), _aclose_nothing
 
     # Its own client: Photon is a different server with a different timeout,
     # and closing it must not touch the provider network's connections.
-    client = httpx.AsyncClient()
+    # httpx has its own 5 second limit, which would cut a longer setting short.
+    client = httpx.AsyncClient(timeout=settings.photon_timeout_seconds)
     photon: AreaLookup = PhotonAreaLookup(
         client=client,
         base_url=settings.photon_base_url,

@@ -7,6 +7,7 @@ from tests.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Coroutine
 from pathlib import Path
 
@@ -99,6 +100,42 @@ async def test_a_slow_server_is_unavailable() -> None:
         return httpx.Response(200, content=b"{}")
 
     photon = _photon_with(slow, timeout_seconds=0.01)
+
+    with pytest.raises(AreaLookupUnavailable):
+        await photon.resolve("Eldoret")
+
+
+async def test_a_bad_result_is_skipped_not_the_whole_reply() -> None:
+    """One broken result among ten must not make Eldoret "not found". A result
+    with no point, no name or no properties is skipped. Hand-made: a healthy
+    server does not send these."""
+
+    body = json.loads((FIXTURES / "photon_eldoret.json").read_text())
+    body["features"] += [
+        {"type": "Feature", "properties": {"name": "Eldoret", "countrycode": "KE"}},
+        {"type": "Feature", "properties": {"name": None}, "geometry": None},
+        {"type": "Feature", "properties": None, "geometry": None},
+    ]
+    photon = _photon_with(lambda request: httpx.Response(200, json=body))
+
+    matches = await photon.resolve("Eldoret")
+
+    assert [m.geometry.coordinates for m in matches] == [[35.2715481, 0.5198329]]
+
+
+async def test_a_badly_written_address_is_unavailable() -> None:
+    """A typo in the setting is not the farmer's fault. The lookup fails as
+    "unavailable", the chain moves on, and the turn still finishes."""
+
+    client = httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200))
+    )
+    photon = PhotonAreaLookup(
+        client=client,
+        base_url="http://photon:abc",
+        country_codes=("KE",),
+        timeout_seconds=_TIMEOUT,
+    )
 
     with pytest.raises(AreaLookupUnavailable):
         await photon.resolve("Eldoret")

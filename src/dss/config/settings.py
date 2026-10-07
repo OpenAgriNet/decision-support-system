@@ -117,7 +117,8 @@ class Settings(BaseSettings):
     # and the file is the only source.
     photon_base_url: str | None = None
     # A place lookup is a hint, not the answer: a slow geocoder must not hold
-    # up the turn.
+    # up the turn. 2 seconds by default; one ask can make several lookups, so
+    # raising this adds up quickly.
     photon_timeout_seconds: float = Field(2.0, gt=0.0)
     # Countries Photon may answer from, e.g. "KE,UG". Empty means the countries
     # the area file covers. `NoDecode`: an operator types a comma list, and

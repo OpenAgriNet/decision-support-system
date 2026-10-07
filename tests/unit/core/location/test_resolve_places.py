@@ -489,6 +489,23 @@ async def test_a_pick_with_two_parts_keeps_only_the_matches_inside() -> None:
     }
 
 
+async def test_a_pick_that_no_longer_fits_is_not_found() -> None:
+    """The source's answers changed since we asked: no Nairobi sits in Nakuru
+    now. "Kenya" still shows the farmer was narrowing one place, so this is
+    one place not found, never an answer for Nakuru town."""
+
+    classification = IntentClassification(
+        asks=(_weather_ask("Nairobi, Kenya, Nakuru"),)
+    )
+    lookup = _FakeLookup({"nairobi": [_NAIROBI_CITY], "nakuru": [_NAKURU_TOWN]})
+
+    intent = await resolve_places(classification, _turn(), lookup=lookup)
+
+    assert [ask.place for ask in intent.asks] == [
+        UnresolvedPlace(unresolved_name="Nairobi, Kenya, Nakuru")
+    ]
+
+
 async def test_a_pick_with_three_parts_resolves_the_one_match() -> None:
     """One level further down, the last part names the village."""
 

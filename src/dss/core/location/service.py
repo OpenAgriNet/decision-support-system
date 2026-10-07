@@ -81,12 +81,14 @@ async def _places_named(name: str, lookup: AreaLookup) -> list[AreaMatch]:
     return _drop_nested([m for m in await lookup.resolve(name) if not m.is_region])
 
 
-async def _all_above(name: str, parts: tuple[str, ...], lookup: AreaLookup) -> bool:
-    """True when every part is a place above some match of the name."""
+async def _any_above(name: str, parts: tuple[str, ...], lookup: AreaLookup) -> bool:
+    """True when some part is a place above a match of the name: the farmer
+    was narrowing one place down. A joined list ("Pune, Mumbai, Nashik") has
+    no part above the name."""
 
     matches = await _places_named(name, lookup)
     above = {w.casefold() for match in matches for w in match.within}
-    return all(part.casefold() in above for part in parts)
+    return any(part.casefold() in above for part in parts)
 
 
 async def _split_joined(
@@ -98,9 +100,10 @@ async def _split_joined(
     if not classified.place_name:
         return [classified]
     base, parts = _name_and_parts(classified.place_name)
-    # "Nairobi, Kenya, Nakuru": Nakuru is a town of its own, but here it is a
-    # place above the Nairobi villages. That is one place, narrowed down.
-    if len(parts) > 1 and await _all_above(base, parts, lookup):
+    # "Nairobi, Kenya, Nakuru": Nakuru is a town of its own, but Kenya shows the
+    # farmer was narrowing one place down. Never split it: if it no longer
+    # fits, it is not found, not an answer for some other place.
+    if len(parts) > 1 and await _any_above(base, parts, lookup):
         return [classified]
     name, part = _name_and_part(classified.place_name)
     # A region is never a place of its own, so "Aurangabad, Maharashtra" is

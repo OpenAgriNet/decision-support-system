@@ -48,6 +48,15 @@ def test_without_a_photon_url_only_the_csv_is_used():
     assert [name for name, _ in lookup.sources] == ["csv"]
 
 
+def test_an_empty_photon_url_keeps_photon_off():
+    """`DSS_PHOTON_BASE_URL=` with nothing after it means "not set". Treating
+    it as an address would make every lookup fail."""
+
+    lookup, _aclose = build_area_lookup(_photon_settings(url=""))
+
+    assert [name for name, _ in lookup.sources] == ["csv"]
+
+
 def test_a_photon_url_adds_photon_after_the_csv():
     """The file answers first. Photon is asked only for names it lacks."""
 

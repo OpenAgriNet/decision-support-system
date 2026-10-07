@@ -27,6 +27,23 @@ def _fold(text: str) -> str:
     return " ".join(text.split()).casefold()
 
 
+def _readable(feature: Any) -> bool:
+    """A result with a name, a country and a point. One broken result is
+    skipped; it must not make the whole reply unreadable."""
+
+    if not isinstance(feature, dict):
+        return False
+    properties = feature.get("properties")
+    geometry = feature.get("geometry")
+    return (
+        isinstance(properties, dict)
+        and isinstance(properties.get("name"), str)
+        and bool(properties.get("countrycode"))
+        and isinstance(geometry, dict)
+        and bool(geometry.get("coordinates"))
+    )
+
+
 def _parts(properties: dict[str, Any]) -> tuple[str, ...]:
     """The places above a feature, coarsest first."""
 
@@ -137,14 +154,16 @@ class PhotonAreaLookup:
                     f"{self._base_url}/api", params=params
                 )
             response.raise_for_status()
-        except (httpx.HTTPError, TimeoutError) as error:
+        # InvalidURL is not an HTTPError: a typo in the address would otherwise
+        # escape the chain and fail the whole turn.
+        except (httpx.HTTPError, httpx.InvalidURL, TimeoutError) as error:
             raise AreaLookupUnavailable(str(error)) from error
         wanted = _fold(name)
         try:
             features = [
                 feature
                 for feature in response.json()["features"]
-                if _fold(feature["properties"].get("name", "")) == wanted
+                if _readable(feature) and _fold(feature["properties"]["name"]) == wanted
             ]
             matches = [_to_match(f) for f in _without_containers(features)]
         except (ValueError, KeyError, TypeError) as error:
