@@ -34,6 +34,8 @@ class ClarificationText(BaseModel):
     unknown_place: str
     # For "Aurangabad, Maharashtra": a farmer may not read a comma as "in".
     unknown_place_in: str
+    # A whole state or region was named: it exists, it is just too big.
+    region_place: str
     ambiguous_place_header: str
     grouped_place_header: str
     # Closes a grouped list that was cut at `max_choices`.

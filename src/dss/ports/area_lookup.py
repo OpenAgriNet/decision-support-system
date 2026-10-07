@@ -38,6 +38,9 @@ class AreaMatch(BaseModel):
     # for a district, ("India", "Maharashtra", "Pune") for a block inside it.
     within: tuple[str, ...]
     geometry: Geometry
+    # A whole state or region, too big to search around one point. Core never
+    # uses it as the place: it narrows to the farmer's own place or asks.
+    is_region: bool = False
 
 
 class AreaLookupUnavailable(Exception):

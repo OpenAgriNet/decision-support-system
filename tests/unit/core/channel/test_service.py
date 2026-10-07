@@ -30,6 +30,7 @@ _TEXT = ClarificationText(
     needs_place="Which place are you asking about?",
     unknown_place="I could not find {name}.",
     unknown_place_in="I could not find {name} in {part}.",
+    region_place="{name} is a big area. Which district or village in {name}?",
     ambiguous_place_header="Which {name}?",
     grouped_place_header="{name} is in several places. Which one:",
     more_places_hint="Not in this list? Tell me the area it is in.",
@@ -129,6 +130,20 @@ def test_not_found_says_in_not_comma() -> None:
 
     assert answer is not None
     assert answer.content[0].text == "I could not find Aurangabad in Maharashtra."
+
+
+def test_a_whole_state_asks_for_a_smaller_place() -> None:
+    """Maharashtra exists. "I could not find Maharashtra" would be untrue; it is
+    just too big to answer for one spot in it."""
+
+    place = UnresolvedPlace(unresolved_name="Maharashtra", region="Maharashtra")
+
+    answer = answer_for_unplaced_asks((_ask(place=place),), _TEXT)
+
+    assert answer is not None
+    assert answer.content[0].text == (
+        "Maharashtra is a big area. Which district or village in Maharashtra?"
+    )
 
 
 def test_each_choice_stops_where_it_stands_apart_from_every_other() -> None:

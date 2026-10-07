@@ -46,6 +46,9 @@ def _to_match(feature: dict[str, Any]) -> AreaMatch:
         region=properties["countrycode"],
         within=tuple(part for part in _parts(properties) if part != name),
         geometry=Geometry(coordinates=feature["geometry"]["coordinates"]),
+        # Photon's `state` layer: a state in India, a region in Ghana, a county
+        # in Kenya. Too big for one search point.
+        is_region=properties.get("type") == "state",
     )
 
 

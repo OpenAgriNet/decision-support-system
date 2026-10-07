@@ -119,6 +119,8 @@ Observability:
 | Photon returns ten features, two named exactly "Rampur" in different counties | Two candidates → ambiguous, same flow as CSV ambiguity |
 | Photon returns features, none named exactly as asked | Empty → unresolved. No typo correction |
 | Two features with same name and same `within` | One candidate |
+| A whole state or region ("Maharashtra") | Never used as the place. The farmer is asked for a district or village in it (`region_place`). Both sources mark regions (`AreaMatch.is_region`): the area file from the states in its rows, Photon from `type=state`. Same for an asserted area. Still to build: use the farmer's own place when it is inside the region (nearest known place), and name that place in the answer |
+| "Aurangabad, Maharashtra" when Maharashtra comes back as a region | One place, reported as not found in Maharashtra. A region is never a second place after a comma |
 | A pick with several parts ("Nairobi, Kenya, Nakuru") | One place narrowed down, not a list of two places. Core change in `resolve_places`. Photon returns many same-name villages, so the long question lines are reached. Before the fix the pick answered for the town "Nakuru". Checked against the whole area file: no change for any name, one-part pick, listed line or joined list |
 | A town inside a county of the same name (Nakuru) | The town stays and the county is dropped. The town's point is exact. Done in the Photon adapter, not core: core keeps the bigger place, which is right for the area file, where a block's point is a copy of its district's |
 | Feature without a point geometry | Skipped |

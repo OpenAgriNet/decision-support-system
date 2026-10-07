@@ -35,6 +35,44 @@ def _key(name: str) -> str:
     return " ".join(name.split()).lower()
 
 
+def _regions(by_name: dict[str, tuple[AreaMatch, ...]]) -> dict[str, AreaMatch]:
+    """The states the rows sit in, keyed like a name.
+
+    The file has no state rows, but every row names its state in `within`. A
+    state's point is the average of its rows. It is never a search point: the
+    match is marked as a region, and core does not use a region as the place.
+    """
+
+    points: dict[str, list[list[float]]] = {}
+    first: dict[str, AreaMatch] = {}
+    seen: set[int] = set()
+    for matches in by_name.values():
+        for match in matches:
+            # Aliases share one match object, so count each row once.
+            if id(match) in seen or len(match.within) < 2:
+                continue
+            seen.add(id(match))
+            state = match.within[1]
+            points.setdefault(state, []).append(match.geometry.coordinates)
+            first.setdefault(state, match)
+    regions: dict[str, AreaMatch] = {}
+    for state, coordinates in points.items():
+        row = first[state]
+        regions[_key(state)] = AreaMatch(
+            name=state,
+            region=row.region,
+            within=row.within[:1],
+            geometry=Geometry(
+                coordinates=[
+                    sum(point[0] for point in coordinates) / len(coordinates),
+                    sum(point[1] for point in coordinates) / len(coordinates),
+                ]
+            ),
+            is_region=True,
+        )
+    return regions
+
+
 class CsvAreaLookup:
     """An `AreaLookup` over a pre-built index. Use `load` to read a file."""
 
@@ -44,6 +82,7 @@ class CsvAreaLookup:
         # contiguous block, so `_qualified_by` finds where it starts with
         # `bisect_left` in O(log n) instead of scanning every key.
         self._sorted_keys = sorted(by_name)
+        self._regions = _regions(by_name)
 
     @classmethod
     def load(cls, path: Path) -> CsvAreaLookup:
@@ -144,6 +183,9 @@ class CsvAreaLookup:
         # "Mumbai Suburban", so falling back here would turn a resolved name
         # into an ambiguous one.
         matches = self._by_name.get(wanted) or self._qualified_by(wanted)
+        state = self._regions.get(wanted)
+        if state is not None:
+            matches = (*matches, state)
         if region is None:
             return list(matches)
         # A region that matches nothing narrows to empty rather than falling

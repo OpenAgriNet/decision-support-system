@@ -505,6 +505,90 @@ async def test_a_pick_with_three_parts_resolves_the_one_match() -> None:
     assert place.geometry == _NAIROBI_RONGAI.geometry
 
 
+_MAHARASHTRA = AreaMatch(
+    name="Maharashtra",
+    region="IN-MH",
+    within=("India",),
+    geometry=Geometry(coordinates=[75.7, 19.4]),
+    is_region=True,
+)
+
+
+async def test_a_whole_state_is_not_used_as_the_place() -> None:
+    """Maharashtra is too big to search around one point. The farmer is
+    asked for a smaller place, never answered for the state's middle."""
+
+    classification = IntentClassification(asks=(_weather_ask("Maharashtra"),))
+    lookup = _FakeLookup({"maharashtra": [_MAHARASHTRA]})
+
+    intent = await resolve_places(classification, _turn(), lookup=lookup)
+
+    assert intent.asks[0].place == UnresolvedPlace(
+        unresolved_name="Maharashtra", region="Maharashtra"
+    )
+
+
+async def test_an_asserted_state_is_not_used_as_the_place() -> None:
+    """The platform may send only the farmer's state as their area. That is
+    no better a search point than a named state, so the ask has no place."""
+
+    classification = IntentClassification(asks=(_weather_ask(None),))
+    lookup = _FakeLookup({"maharashtra": [_MAHARASHTRA]})
+
+    intent = await resolve_places(
+        classification, _turn(area="Maharashtra"), lookup=lookup
+    )
+
+    assert intent.asks[0].place is None
+
+
+async def test_a_state_after_a_comma_is_never_a_second_place() -> None:
+    """There is no Aurangabad in Maharashtra in the index, only one in Bihar.
+    Maharashtra is a region, not a place of its own, so the reply is not two
+    places. Splitting it would answer for Bihar's Aurangabad, far away."""
+
+    aurangabad_bihar = AreaMatch(
+        name="Aurangabad",
+        region="IN-BR",
+        within=("India", "Bihar"),
+        geometry=Geometry(coordinates=[84.37, 24.75]),
+    )
+    classification = IntentClassification(
+        asks=(_weather_ask("Aurangabad, Maharashtra"),)
+    )
+    lookup = _FakeLookup(
+        {"aurangabad": [aurangabad_bihar], "maharashtra": [_MAHARASHTRA]}
+    )
+
+    intent = await resolve_places(classification, _turn(), lookup=lookup)
+
+    assert [ask.place for ask in intent.asks] == [
+        UnresolvedPlace(unresolved_name="Aurangabad, Maharashtra")
+    ]
+
+
+async def test_a_territory_and_its_district_of_one_name_stay_one_place() -> None:
+    """Chandigarh is a territory and the only district in it. The region
+    must not swallow the district and make "Chandigarh, Chandigarh" read as
+    two places."""
+
+    district = AreaMatch(
+        name="Chandigarh",
+        region="IN-CH",
+        within=("India", "Chandigarh"),
+        geometry=Geometry(coordinates=[76.78, 30.73]),
+    )
+    territory = district.model_copy(update={"within": ("India",), "is_region": True})
+    classification = IntentClassification(
+        asks=(_weather_ask("Chandigarh, Chandigarh"),)
+    )
+    lookup = _FakeLookup({"chandigarh": [district, territory]})
+
+    intent = await resolve_places(classification, _turn(), lookup=lookup)
+
+    assert [ask.place.geometry for ask in intent.asks] == [district.geometry]
+
+
 async def test_a_block_inside_its_same_name_district_resolves_to_the_district() -> None:
     """Nashik district holds a Nashik block. The district covers the block, so
     asking "which Nashik?" would make the farmer pick between near-equal

@@ -44,6 +44,27 @@ async def test_resolves_a_district_name_to_its_coordinates(tmp_path: Path) -> No
     ]
 
 
+async def test_a_state_name_is_marked_as_a_region(tmp_path: Path) -> None:
+    """A farmer may name a whole state. The file has no state rows, but every
+    row says which state it is in, so the state is known. It is marked as a
+    region, so core never searches around one point for a whole state."""
+
+    path = _write(
+        tmp_path,
+        "490,Pune,IN-MH,18.5,74.0,,India;Maharashtra",
+        "491,Nashik,IN-MH,20.0,73.8,,India;Maharashtra",
+    )
+
+    (match,) = await CsvAreaLookup.load(path).resolve("Maharashtra")
+
+    assert (match.name, match.region, match.within, match.is_region) == (
+        "Maharashtra",
+        "IN-MH",
+        ("India",),
+        True,
+    )
+
+
 def test_lists_the_country_codes(tmp_path: Path) -> None:
     """The file says which countries it covers: the part of each region code
     before the dash. Photon is limited to them, so it cannot answer with a

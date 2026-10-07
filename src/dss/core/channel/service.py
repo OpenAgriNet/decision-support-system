@@ -153,6 +153,8 @@ def answer_for_unplaced_asks(
             reported.append(ask.place)
         if isinstance(ask.place, AmbiguousPlace):
             lines.extend(_ambiguous_lines(ask.place, text))
+        elif isinstance(ask.place, UnresolvedPlace) and ask.place.region:
+            lines.append(text.region_place.format(name=ask.place.region))
         elif isinstance(ask.place, UnresolvedPlace):
             lines.append(_not_found_line(ask.place.unresolved_name, text))
         else:

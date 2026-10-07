@@ -136,6 +136,20 @@ async def test_a_near_name_is_not_a_match() -> None:
     assert await photon.resolve("Eldor") == []
 
 
+async def test_a_whole_region_is_marked_as_one() -> None:
+    """Photon's `state` layer is a region: a state in India, a region in
+    Uganda and Ghana. Core must never search around one point for it."""
+
+    photon = _photon_returning("photon_central_region.json", ("UG", "GH"))
+
+    matches = await photon.resolve("Central Region")
+
+    assert [(m.within, m.is_region) for m in matches] == [
+        (("Uganda",), True),
+        (("Ghana",), True),
+    ]
+
+
 async def test_a_town_in_its_own_county_is_one_place() -> None:
     """Nakuru is a town, and the county around it is also called Nakuru. Photon
     returns both. Asking "which Nakuru?" has no real answer, and the town's

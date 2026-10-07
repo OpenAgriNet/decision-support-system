@@ -632,6 +632,10 @@ How it behaves:
   farmer is told the place was not found. It never guesses.
 - **Same name, different places.** If several remain, the farmer is asked
   which one, the same as with the file.
+- **A whole state or region.** "Weather in Maharashtra" is not answered for the
+  middle of the state. The farmer is asked for a district or village in it.
+  This works the same with the area file alone. If you override the
+  clarification text, add a `region_place` line, or the DSS will not start.
 - **A town and its own county.** Nakuru is a town, and the county around it is
   also called Nakuru. The town wins, because its point is exact. The county's
   point is a rough centre, which can be far from the town.

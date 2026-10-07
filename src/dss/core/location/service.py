@@ -73,10 +73,18 @@ def _name_and_parts(text: str) -> tuple[str, tuple[str, ...]]:
     return name.strip(), tuple(part.strip() for part in rest.split(",") if part.strip())
 
 
+async def _places_named(name: str, lookup: AreaLookup) -> list[AreaMatch]:
+    """The places a name matches, regions left out. A region is set aside
+    before nesting, so it cannot swallow the district of the same name inside
+    it (Chandigarh, the territory, and Chandigarh, its district)."""
+
+    return _drop_nested([m for m in await lookup.resolve(name) if not m.is_region])
+
+
 async def _all_above(name: str, parts: tuple[str, ...], lookup: AreaLookup) -> bool:
     """True when every part is a place above some match of the name."""
 
-    matches = _drop_nested(await lookup.resolve(name))
+    matches = await _places_named(name, lookup)
     above = {w.casefold() for match in matches for w in match.within}
     return all(part.casefold() in above for part in parts)
 
@@ -95,10 +103,12 @@ async def _split_joined(
     if len(parts) > 1 and await _all_above(base, parts, lookup):
         return [classified]
     name, part = _name_and_part(classified.place_name)
-    if not part or not await lookup.resolve(part):
+    # A region is never a place of its own, so "Aurangabad, Maharashtra" is
+    # one place in a state, not two places.
+    if not part or not [m for m in await lookup.resolve(part) if not m.is_region]:
         return [classified]
     folded = part.casefold()
-    matches = _drop_nested(await lookup.resolve(name))
+    matches = await _places_named(name, lookup)
     if any(folded in {w.casefold() for w in m.within} for m in matches):
         return [classified]
     return [
@@ -115,7 +125,15 @@ async def _resolve_named(
     through."""
 
     lookup_name, parts = _name_and_parts(name)
-    matches = _drop_nested(await lookup.resolve(lookup_name))
+    found = await lookup.resolve(lookup_name)
+    # A whole region is never the place: one point cannot stand for a state.
+    # Set aside before nesting, so a region does not swallow the town of the
+    # same name inside it.
+    places = [m for m in found if not m.is_region]
+    regions = [m for m in found if m.is_region]
+    if regions and not places:
+        return UnresolvedPlace(unresolved_name=name, region=regions[0].name)
+    matches = _drop_nested(places)
     wanted = [part.casefold() for part in parts]
     # A match that sits directly in the last part comes first. "Madhubani,
     # Bihar" is the line for the Madhubani district; a Madhubani block
@@ -164,7 +182,8 @@ async def _resolve_from_location(
             source=PlaceSource.ASSERTED_GEOMETRY,
         )
     if location.area:
-        matches = await lookup.resolve(location.area)
+        # A region is no search point, whoever names it.
+        matches = [m for m in await lookup.resolve(location.area) if not m.is_region]
         if len(matches) == 1:
             return _from_match(matches[0], PlaceSource.ASSERTED_AREA)
     return None
