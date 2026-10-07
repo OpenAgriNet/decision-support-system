@@ -880,6 +880,60 @@
         "overrides": []
       },
       "options": {}
+    },
+    {
+      "id": 23,
+      "type": "row",
+      "title": "Place lookup",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 55
+      },
+      "panels": []
+    },
+    {
+      "id": 24,
+      "type": "timeseries",
+      "title": "Place lookups by source and outcome",
+      "description": "How a farmer's place name was looked up, one count per source asked. A hit means the source returned matches, a miss means it knew nothing, an error means it was down or too slow. Never the place name.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "dss-clickhouse-otel"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 56
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "dss-clickhouse-otel"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "meta": {
+            "builderOptions": {}
+          },
+          "pluginVersion": "4.0.0",
+          "queryType": "sql",
+          "rawSql": "SELECT $__timeInterval(TimeUnix) AS time, concat(Attributes['source'], ' · ', Attributes['outcome']) AS lookup, sum(Value) AS lookups FROM $database.otel_metrics_sum WHERE MetricName = 'dss.area_lookup.count' AND ServiceName = 'dss' AND ResourceAttributes['deployment.environment.name'] = '$env' AND $__timeFilter(TimeUnix) GROUP BY time, lookup ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {}
     }
   ]
 }

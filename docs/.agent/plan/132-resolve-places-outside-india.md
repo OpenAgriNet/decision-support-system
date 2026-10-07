@@ -102,9 +102,12 @@ Settings (all `DSS_` prefixed, in `config/settings.py`):
 Observability:
 - Span `dss.area_lookup.photon` with name length, country codes, result
   count, outcome. No place name as an attribute.
-- Counter `dss.place.lookup.count` with `source` (`csv`, `photon`,
-  `cache`) and `outcome` (`resolved`, `ambiguous`, `miss`, `error`),
-  recorded by the chain. No new stage. One Grafana panel.
+- Counter `dss.area_lookup.count` with `source` (`csv`, `photon`) and
+  `outcome` (`hit`, `miss`, `error`), recorded by the chain. It counts what
+  a source did, not what the farmer is asked: core narrows the matches and
+  decides resolved or ambiguous, and the `location` span already says which.
+  "photon" counts cached answers too. Cache hit and miss metrics are a
+  follow-up. No new stage. One Grafana panel.
 
 ## Edge cases
 
@@ -144,9 +147,9 @@ No retries. A place lookup is a hint, not the answer.
    - [x] Given the CSV adapter, when called, then every existing tier 2 test passes unchanged in meaning
    - [x] Given `FakeAreaLookup` and `test_port_conformance`, when run, then both follow the async shape
 2. Chain of sources
-   - [ ] Given two named fakes, when the first returns a non-empty list, then the second is never called (done) and the counter records the first's name as `source` (waits for task 6)
-   - [x] Given the first returns empty, when the second returns matches, then those are returned
-   - [ ] Given the first raises `AreaLookupUnavailable`, when resolving, then the second is tried (done) and the counter records `error` for the first (waits for task 6)
+   - [x] Given two named fakes, when the first returns a non-empty list, then the second is never called and the counter records the first's name as `source`
+   - [x] Given the first returns empty, when the second returns matches, then those are returned and the counter records `miss` for the first
+   - [x] Given the first raises `AreaLookupUnavailable`, when resolving, then the second is tried and the counter records `error` for the first
    - [x] Given all sources return empty, when resolving, then the result is empty
 3. Photon adapter
    - [x] Given a recorded "Eldoret" response, when resolving, then one `AreaMatch` with `region="KE"`, `within=("Kenya","Uasin Gishu County","Moiben")` and a point
@@ -170,7 +173,7 @@ No retries. A place lookup is a hint, not the answer.
    - [ ] Given `DSS_PHOTON_COUNTRY_CODES=KE,UG`, when the app builds, then Photon gets `KE` and `UG`
    - [ ] Given a bad timeout, TTL or size (≤ 0), when the app starts, then it fails at startup
 6. Metrics and dashboard
-   - [ ] Given a chain resolution, when recorded, then `dss.place.lookup.count` increments with `source` and `outcome`
+   - [x] Given a chain resolution, when recorded, then `dss.area_lookup.count` increments with `source` and `outcome`
    - [ ] `grafana/dashboards/dss.json` gets one panel: lookups per source and outcome
 7. Docs
    - [ ] `docs/ADR/0018-ordered-place-sources.md`: context, options (MCP now, sync+thread, trust ranking, Redis), decision, consequences; the extension path (a plain service or an MCP tool behind the same port, fixed order CSV → adopter's source → Photon, each on when its URL is set) as the recorded follow-up

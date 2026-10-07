@@ -44,6 +44,7 @@ TURN_COMPOSED = "dss.turn.composed.duration"
 TURN_COUNT = "dss.turn.count"
 TURN_COST = "dss.turn.cost"
 ASK_COUNT = "dss.ask.count"
+AREA_LOOKUP_COUNT = "dss.area_lookup.count"
 STAGE_DURATION = "dss.stage.duration"
 STAGE_TOKENS = "dss.stage.tokens"
 
@@ -62,6 +63,8 @@ LABEL_KEYS: dict[str, frozenset[str]] = {
     TURN_COST: frozenset({"model_profile"}),
     # Closed sets only. The crop or scheme is open-ended, so it goes on the span.
     ASK_COUNT: frozenset({"category", "interaction"}),
+    # `source` is the name of a configured source, a handful per deployment.
+    AREA_LOOKUP_COUNT: frozenset({"source", "outcome"}),
 }
 
 # Seconds, not milliseconds, although the spans carry `*_ms`. The same
@@ -149,6 +152,13 @@ class _Instruments:
             description=(
                 "What farmers ask, one per ask: the classifier's category and "
                 "interaction. Never the question itself."
+            ),
+        )
+        self.area_lookup_count: Counter = meter.create_counter(
+            AREA_LOOKUP_COUNT,
+            description=(
+                "Place lookups, one per source asked: which source and how it "
+                "went. Never the place name."
             ),
         )
 
@@ -287,6 +297,14 @@ def record_asks(asks: Iterable[tuple[str, str]]) -> None:
         _instruments.ask_count.add(
             1, {"category": category, "interaction": interaction}
         )
+
+
+def record_area_lookup(*, source: str, outcome: str) -> None:
+    """One count for a source that was asked, by (source, outcome)."""
+
+    if _instruments is None:
+        return
+    _instruments.area_lookup_count.add(1, {"source": source, "outcome": outcome})
 
 
 def record_turn(*, status: str, elapsed_ms: float, cost: float) -> None:
