@@ -145,3 +145,22 @@ def test_out_of_range_temperature_raises(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setenv("DSS_MODERATION_TEMPERATURE", "9")
     with pytest.raises(ValueError):
         Settings()
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "DSS_PHOTON_TIMEOUT_SECONDS",
+        "DSS_PHOTON_CACHE_TTL_SECONDS",
+        "DSS_PHOTON_CACHE_MAX_ENTRIES",
+    ],
+)
+def test_a_photon_limit_of_zero_raises(
+    monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    """A zero timeout fails every call, and a zero size keeps nothing. Fail at
+    startup, not on the first farmer."""
+
+    monkeypatch.setenv(name, "0")
+    with pytest.raises(ValueError):
+        Settings(_env_file=None)

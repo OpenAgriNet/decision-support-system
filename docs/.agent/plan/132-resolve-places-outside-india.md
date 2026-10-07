@@ -21,12 +21,17 @@ Pieces, all under `src/dss/adapters/area_lookup/`:
   pair's name as `source`.
 - `photon.py` — `PhotonAreaLookup`. One GET to `/api`. Maps features to
   `AreaMatch`. Raises `AreaLookupUnavailable` on any failure.
-- `cache.py` — `CachedAreaLookup(inner, ttl)`. Bounded in-process cache in
-  front of Photon. Caches hits and misses, never errors.
+- `cache.py` — `CachedAreaLookup(inner, ttl_seconds, max_entries)`. Bounded
+  in-process cache in front of Photon, built on `async-lru`. Caches hits
+  and misses, never errors. Simultaneous questions for one name share one
+  call to the source, and `cache_info()` gives hit and miss counts.
 
-Extension path: a future adopter-supplied source (the MCP story) is one
-more `AreaLookup` implementation and one more pair in composition. The
-chain, core and the port do not change.
+Extension path: an adopter-supplied source is one more `AreaLookup`
+implementation and one more pair in composition. It can be a plain service
+that follows the `AreaMatch` contract, or an MCP tool (a follow-up story).
+The order is fixed: CSV, then the adopter's source, then Photon. Each is on
+only when its URL is set, so an adopter who wants only their own source
+leaves `PHOTON_BASE_URL` unset. The chain, core and the port do not change.
 
 The port and `resolve_places` become `async`. The CSV adapter becomes
 `async def` with no await inside.
@@ -47,6 +52,9 @@ Alternatives rejected:
   wrong match. We filter and ask instead.
 - **Redis cache.** New port, adapter, infra. Nothing else uses Redis yet.
   The wrapper sits behind the port, so Redis can replace it later.
+- **A hand-written cache.** We wrote one first. `async-lru` (8 KB, one
+  dependency we already have) does the same and also shares calls for
+  simultaneous questions, which ours did not.
 
 ## Data model
 
@@ -87,10 +95,9 @@ Settings (all `DSS_` prefixed, in `config/settings.py`):
 | `PHOTON_BASE_URL` | unset | Unset = Photon off |
 | `PHOTON_TIMEOUT_SECONDS` | 2.0 | Per call, `anyio.fail_after` |
 | `PHOTON_COUNTRY_CODES` | empty | Empty = derive from CSV `region` prefixes |
-| `PHOTON_CACHE_ENABLED` | true | Off for providers that forbid storing results |
-| `PHOTON_CACHE_TTL_SECONDS` | 86400 | Cache entry life |
-
-Cache size is a constant (10,000 entries).
+| `PHOTON_CACHE_ENABLED` | false | Off keeps nothing, which suits providers that forbid storing results |
+| `PHOTON_CACHE_TTL_SECONDS` | 86400 | Cache entry life, above 0 |
+| `PHOTON_CACHE_MAX_ENTRIES` | 10000 | Most answers kept; the least recently used goes first, above 0 |
 
 Observability:
 - Span `dss.area_lookup.photon` with name length, country codes, result
@@ -133,44 +140,46 @@ No retries. A place lookup is a hint, not the answer.
 ## Implementation tasks
 
 1. Make the port async
-   - [ ] Given `AreaLookup.resolve` is `async`, when `resolve_places` runs, then it awaits the lookup and returns the same `Intent` as before
-   - [ ] Given the CSV adapter, when called, then every existing tier 2 test passes unchanged in meaning
-   - [ ] Given `FakeAreaLookup` and `test_port_conformance`, when run, then both follow the async shape
+   - [x] Given `AreaLookup.resolve` is `async`, when `resolve_places` runs, then it awaits the lookup and returns the same `Intent` as before
+   - [x] Given the CSV adapter, when called, then every existing tier 2 test passes unchanged in meaning
+   - [x] Given `FakeAreaLookup` and `test_port_conformance`, when run, then both follow the async shape
 2. Chain of sources
-   - [ ] Given two named fakes, when the first returns a non-empty list, then the second is never called and the counter records the first's name as `source`
-   - [ ] Given the first returns empty, when the second returns matches, then those are returned
-   - [ ] Given the first raises `AreaLookupUnavailable`, when resolving, then the second is tried and the counter records `error` for the first
-   - [ ] Given all sources return empty, when resolving, then the result is empty
+   - [ ] Given two named fakes, when the first returns a non-empty list, then the second is never called (done) and the counter records the first's name as `source` (waits for task 6)
+   - [x] Given the first returns empty, when the second returns matches, then those are returned
+   - [ ] Given the first raises `AreaLookupUnavailable`, when resolving, then the second is tried (done) and the counter records `error` for the first (waits for task 6)
+   - [x] Given all sources return empty, when resolving, then the result is empty
 3. Photon adapter
-   - [ ] Given a recorded "Eldoret" response, when resolving, then one `AreaMatch` with `region="KE"`, `within=("Kenya","Uasin Gishu County","Moiben")` and a point
-   - [ ] Given a recorded "Rampur" response with two exact-name features, when resolving, then two candidates
-   - [ ] Given features that do not match the name exactly, when resolving, then empty
-   - [ ] Given a 500, a timeout, a connection error, or a malformed body, when resolving, then `AreaLookupUnavailable`
-   - [ ] Given configured country codes, when the request is built, then one `countrycode=` per code and the five `layer=` values
-   - [ ] Given a call, when traced, then span `dss.area_lookup.photon` carries result count and outcome and no place name
+   - [x] Given a recorded "Eldoret" response, when resolving, then one `AreaMatch` with `region="KE"`, `within=("Kenya","Uasin Gishu County","Moiben")` and a point
+   - [x] Given a recorded "Rampur" response with ten exact-name features, when resolving, then one candidate per distinct `within` (eight)
+   - [x] Given features that do not match the name exactly, when resolving, then empty
+   - [x] Given a 500, a timeout, a connection error, or a malformed body, when resolving, then `AreaLookupUnavailable`
+   - [x] Given configured country codes, when the request is built, then one `countrycode=` per code and the five `layer=` values
+   - [x] Given a call, when traced, then span `dss.area_lookup.photon` carries result count and outcome (`hit`, `miss`, `error`) and no place name
 4. Cache wrapper
-   - [ ] Given a hit, when asked again within TTL, then the inner lookup is not called
-   - [ ] Given a miss (empty), when asked again, then the inner lookup is not called
-   - [ ] Given the inner raises, when asked again, then the inner is called again
-   - [ ] Given TTL passed, when asked again, then the inner is called
-   - [ ] Given 10,000 entries, when one more is added, then the oldest is dropped
+   - [x] Given a hit, when asked again within TTL, then the inner lookup is not called
+   - [x] Given a miss (empty), when asked again, then the inner lookup is not called
+   - [x] Given the inner raises, when asked again, then the inner is called again
+   - [x] Given TTL passed, when asked again, then the inner is called
+   - [x] Given `max_entries` answers kept, when one more is added, then the least recently used is dropped
+   - [x] Given simultaneous questions for one name, when the source is slow, then it is called once
 5. Settings and wiring
    - [ ] Given `DSS_PHOTON_BASE_URL` unset, when the app builds, then the chain holds only the CSV
-   - [ ] Given it set, when the app builds, then the chain is CSV → cached Photon with a dedicated `httpx.AsyncClient` closed on `aclose`
-   - [ ] Given `DSS_PHOTON_CACHE_ENABLED=false`, when the app builds, then Photon is not wrapped
+   - [ ] Given it set, when the app builds, then the chain is CSV → Photon with a dedicated `httpx.AsyncClient` closed on `aclose`
+   - [ ] Given `DSS_PHOTON_CACHE_ENABLED=true`, when the app builds, then Photon is wrapped in the cache with the configured TTL and size; by default it is not wrapped
    - [ ] Given `DSS_PHOTON_COUNTRY_CODES` empty, when the app builds, then codes are the distinct prefixes of the CSV `region` column
-   - [ ] Given a bad timeout (≤ 0), when the app starts, then it fails at startup
+   - [ ] Given `DSS_PHOTON_COUNTRY_CODES=KE,UG`, when the app builds, then Photon gets `KE` and `UG`
+   - [ ] Given a bad timeout, TTL or size (≤ 0), when the app starts, then it fails at startup
 6. Metrics and dashboard
    - [ ] Given a chain resolution, when recorded, then `dss.place.lookup.count` increments with `source` and `outcome`
    - [ ] `grafana/dashboards/dss.json` gets one panel: lookups per source and outcome
 7. Docs
-   - [ ] `docs/ADR/0018-ordered-place-sources.md`: context, options (MCP now, sync+thread, trust ranking, Redis), decision, consequences; MCP-backed source as the recorded follow-up
+   - [ ] `docs/ADR/0018-ordered-place-sources.md`: context, options (MCP now, sync+thread, trust ranking, Redis), decision, consequences; the extension path (a plain service or an MCP tool behind the same port, fixed order CSV → adopter's source → Photon, each on when its URL is set) as the recorded follow-up
    - [ ] `docs/DSS_ARCHITECTURE.md` updated for the chain and Photon
    - [ ] `CLAUDE.md` Tech Stack: one line on place sources
    - [ ] `docs/RUNNING.md`: Photon settings, the cache-and-licence note, and the product-owner recipe
    - [ ] `docker-compose.photon.yml` running Photon with the GraphHopper Kenya extract
 8. Fixtures
-   - [ ] Record Eldoret, Rampur, miss, and a malformed body from `photon.komoot.io` once; save under `tests/integration/adapters/area_lookup/fixtures/`. The demo server appears nowhere in CI or defaults
+   - [x] Record Eldoret, Rampur and a miss from `photon.komoot.io` once; save under `tests/integration/adapters/area_lookup/fixtures/`. The malformed body is hand-written, because a healthy server cannot produce one. The demo server appears nowhere in CI or defaults
 
 ## Test strategy
 

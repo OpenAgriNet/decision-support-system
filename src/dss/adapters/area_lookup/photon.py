@@ -57,6 +57,10 @@ class PhotonAreaLookup:
         self._country_codes = tuple(country_codes)
         self._timeout_seconds = timeout_seconds
 
+    @property
+    def country_codes(self) -> tuple[str, ...]:
+        return self._country_codes
+
     async def resolve(self, name: str, region: str | None = None) -> list[AreaMatch]:
         # `region` is where the farmer is. The country filter comes from
         # settings, so the hint is not used here.

@@ -102,6 +102,20 @@ class CsvAreaLookup:
             )
         return cls({name: tuple(matches) for name, matches in by_name.items()})
 
+    def country_codes(self) -> tuple[str, ...]:
+        """The countries this file covers, as ISO 3166-1 codes ("IN" from
+        "IN-MH")."""
+
+        return tuple(
+            sorted(
+                {
+                    match.region.partition("-")[0]
+                    for matches in self._by_name.values()
+                    for match in matches
+                }
+            )
+        )
+
     def _qualified_by(self, wanted: str) -> tuple[AreaMatch, ...]:
         """Areas whose name begins with `wanted` as a whole word.
 

@@ -44,6 +44,21 @@ async def test_resolves_a_district_name_to_its_coordinates(tmp_path: Path) -> No
     ]
 
 
+def test_lists_the_country_codes(tmp_path: Path) -> None:
+    """The file says which countries it covers: the part of each region code
+    before the dash. Photon is limited to them, so it cannot answer with a
+    same-name village from another country."""
+
+    path = _write(
+        tmp_path,
+        "1,Pune,IN-MH,18.5,74.0,,India;Maharashtra",
+        "2,Anand,IN-GJ,22.5,72.9,,India;Gujarat",
+        "3,Eldoret,KE-30,0.5,35.2,,Kenya",
+    )
+
+    assert CsvAreaLookup.load(path).country_codes() == ("IN", "KE")
+
+
 async def test_matches_the_name_regardless_of_case_and_padding(tmp_path: Path) -> None:
     """The farmer's words reach this port via an LLM, so casing and stray
     whitespace vary. The name comes back in the index's spelling, not the

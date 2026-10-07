@@ -17,6 +17,10 @@ class ChainedAreaLookup:
     def __init__(self, sources: Sequence[tuple[str, AreaLookup]]) -> None:
         self._sources = list(sources)
 
+    @property
+    def sources(self) -> list[tuple[str, AreaLookup]]:
+        return list(self._sources)
+
     async def resolve(self, name: str, region: str | None = None) -> list[AreaMatch]:
         for _, lookup in self._sources:
             try:
