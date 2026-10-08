@@ -75,9 +75,9 @@ def _composer_prompt() -> str:
 # --- every component loads, and Hindi ships -------------------------------
 
 
-def test_all_four_components_are_registered_with_english_and_hindi() -> None:
+def test_every_component_is_registered_with_english_and_hindi() -> None:
     service = _service()
-    for component in ("INTENT", "MODERATION", "PLANNER", "COMPOSER"):
+    for component in ("INTENT", "MODERATION", "PLANNER", "COMPOSER", "LOCALIZER"):
         assert service.languages_for(component) == ("en", "hi")
 
 
@@ -381,6 +381,53 @@ def test_planner_hindi_demo_keeps_the_marker_names_in_english() -> None:
     assert "<BEGIN CONVERSATION>" in prompt
     assert "<BEGIN RETRIEVED DATA>" in prompt
     assert "Already known" in prompt
+
+
+# --- localizer (ADR-0018) ---------------------------------------------------
+
+
+def _localizer_prompt(lang: str) -> str:
+    return _service().get_prompt("LOCALIZER", lang=lang, kwargs={"target_lang": lang})
+
+
+def test_localizer_prompt_orders_names_and_options_kept_verbatim() -> None:
+    """The load-bearing rules: ADR-0017 resolves the farmer's next reply by
+    copying a numbered option back and looking the place up in an English
+    index, so a translated or transliterated option breaks a follow-up
+    silently. Asserted on substance, not wording."""
+
+    prompt = _localizer_prompt("mr").lower()
+
+    assert "place name" in prompt
+    assert "scheme name" in prompt
+    assert "verbatim" in prompt
+    assert "numbered list" in prompt
+
+
+def test_localizer_prompt_names_the_target_language() -> None:
+    assert "Render the message in mr" in _localizer_prompt("mr")
+
+
+def test_localizer_prompt_says_to_add_nothing() -> None:
+    """The output is the same message in another language — a localizer that
+    answers the question or explains the refusal has become a second
+    composer."""
+
+    prompt = _localizer_prompt("mr")
+
+    assert "Add nothing" in prompt
+    assert "Return only the rendered message." in prompt
+
+
+def test_localizer_hindi_demo_keeps_the_verbatim_rules() -> None:
+    """Whatever the prompt's own language, the copy-exactly rules must
+    survive translation — they protect ADR-0017's follow-up mechanism."""
+
+    prompt = _localizer_prompt("hi")
+
+    assert "{{" not in prompt  # rendered, not raw
+    assert "अनुवाद या लिप्यंतरण कभी न" in prompt  # never translate/transliterate names
+    assert "क्रमांकित सूची" in prompt  # the numbered-list rule
 
 
 # --- the shipped planner skill (moved from test_skill_loader.py) ------------

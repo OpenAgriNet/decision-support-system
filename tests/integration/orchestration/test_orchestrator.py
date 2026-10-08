@@ -45,7 +45,12 @@ from dss.orchestration.orchestrator import Components, Orchestrator
 from dss.orchestration.plan import Plan
 from dss.orchestration.redaction import RedactTexts, pass_through
 from dss.ports.area_lookup import AreaMatch
-from tests.support.fakes import FakeAreaLookup, FakePromptProvider, FakeSchemeCatalog
+from tests.support.fakes import (
+    FakeAreaLookup,
+    FakeLocalizer,
+    FakePromptProvider,
+    FakeSchemeCatalog,
+)
 
 DELETE_COMMAND = LlmPolicy(
     id="delete-command",
@@ -228,6 +233,7 @@ def _build(
     redact: RedactTexts = pass_through,
     intent_llm=None,
     moderation_llm=None,
+    localize: FakeLocalizer | None = None,
 ) -> tuple[Orchestrator, MemoryTurnSink]:
     turns = MemoryTurnSink()
     orch = Orchestrator(
@@ -243,6 +249,7 @@ def _build(
             discover=_FakeDiscovery(discovery),
             plan=plan,
             compose=compose,
+            localize=localize or FakeLocalizer(),
         ),
         turns=turns,
         telemetry=_Telemetry(),

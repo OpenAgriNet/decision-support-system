@@ -128,6 +128,20 @@ class FakePromptProvider:
         return self._skills
 
 
+class FakeLocalizer:
+    """A `LocalizeText` double. Passthrough by default so existing answer-text
+    assertions hold; `mark=True` wraps the text so a test can see localization
+    happened and to which language. Records every call either way."""
+
+    def __init__(self, *, mark: bool = False) -> None:
+        self.mark = mark
+        self.calls: list[tuple[str, str]] = []  # (text, target_lang)
+
+    async def __call__(self, text: str, *, turn: UserTurn) -> str:
+        self.calls.append((text, turn.target_lang))
+        return f"[{turn.target_lang}] {text}" if self.mark else text
+
+
 class FakeAreaLookup:
     """An `AreaLookup` over a name → matches dict, for tests that need a place
     name to resolve (or deliberately not to).

@@ -2,10 +2,13 @@
 
 Spec 0004 leaves the rejection message to the channel function; this is the
 focused-build stand-in so the two policies produce something a user can read.
-Text is rendered from the closed ``reason_code`` vocabulary (localizable later),
-while ``warnings`` are already user-authored strings carried on the decision.
+Text is rendered from the closed ``reason_code`` vocabulary, while ``warnings``
+are already user-authored strings carried on the decision.
 
-English only for this slice (spec 0004, "Language").
+The strings here are English on purpose: they are the fallback every turn can
+land on. The orchestrator renders them in the turn's ``target_lang`` on the way
+out (``core/channel/localize.py``, ADR-0018), so a Hindi farmer reads a Hindi
+refusal while this file stays one vocabulary to review.
 """
 
 from __future__ import annotations
