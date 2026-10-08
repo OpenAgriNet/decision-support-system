@@ -10,7 +10,7 @@ import pytest
 
 from dss.adapters.area_lookup.cache import CachedAreaLookup
 from dss.config.settings import Settings
-from dss.entrypoint.composition import build_area_lookup, build_runner
+from dss.entrypoint.composition import _aclose_all, build_area_lookup, build_runner
 
 
 def _photon_settings(url: str | None = "http://photon.test") -> Settings:
@@ -122,6 +122,24 @@ async def test_closing_releases_the_photon_client(monkeypatch):
     await aclose()
 
     assert [client.is_closed for client in created] == [True]
+
+
+async def test_one_failed_close_still_closes_the_rest():
+    """Shutdown must release every client. One that fails to close must not
+    leave the others open; its failure is still raised, not hidden."""
+
+    closed: list[str] = []
+
+    async def fails() -> None:
+        raise RuntimeError("network client would not close")
+
+    async def photon() -> None:
+        closed.append("photon")
+
+    with pytest.raises(RuntimeError):
+        await _aclose_all(fails, photon)()
+
+    assert closed == ["photon"]
 
 
 def test_no_warning_when_no_url_is_configured(tmp_path):

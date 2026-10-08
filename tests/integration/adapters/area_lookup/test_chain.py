@@ -54,6 +54,21 @@ class _Down:
         raise AreaLookupUnavailable("down")
 
 
+def test_two_sources_with_one_name_refuse_to_start() -> None:
+    """A name is the dashboard's label for a source. Two sources sharing one
+    would mix their counts, so the chain refuses at startup."""
+
+    with pytest.raises(ValueError, match="csv"):
+        ChainedAreaLookup([("csv", FakeAreaLookup()), ("csv", FakeAreaLookup())])
+
+
+def test_a_source_without_a_name_refuses_to_start() -> None:
+    """An empty label would show on the dashboard as a line with no name."""
+
+    with pytest.raises(ValueError, match="name"):
+        ChainedAreaLookup([(" ", FakeAreaLookup())])
+
+
 async def test_first_hit_stops_the_chain() -> None:
     """A source that answers ends the search: the next one is never asked."""
 

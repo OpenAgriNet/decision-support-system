@@ -24,6 +24,7 @@ import os
 import threading
 import warnings
 from collections.abc import Awaitable, Callable
+from contextlib import AsyncExitStack
 from datetime import datetime
 
 import anyio
@@ -202,8 +203,11 @@ def _aclose_all(
     *closers: Callable[[], Awaitable[None]],
 ) -> Callable[[], Awaitable[None]]:
     async def aclose() -> None:
-        for close in closers:
-            await close()
+        # The stack runs every close even if one fails, then raises that
+        # failure: one stuck client must not leave the others open.
+        async with AsyncExitStack() as stack:
+            for close in closers:
+                stack.push_async_callback(close)
 
     return aclose
 

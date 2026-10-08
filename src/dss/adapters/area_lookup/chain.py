@@ -17,6 +17,15 @@ class ChainedAreaLookup:
     """Stops at the first source that returns a non-empty list."""
 
     def __init__(self, sources: Sequence[tuple[str, AreaLookup]]) -> None:
+        # A name is the dashboard's `source` label. Today composition sets
+        # them; once an adopter's own sources come from config, that config
+        # is the one place names are set. Either way two must never share one.
+        names = [name for name, _ in sources]
+        if any(not name.strip() for name in names):
+            raise ValueError("every place source needs a name")
+        repeated = sorted({name for name in names if names.count(name) > 1})
+        if repeated:
+            raise ValueError(f"place sources share a name: {', '.join(repeated)}")
         self._sources = list(sources)
 
     @property
