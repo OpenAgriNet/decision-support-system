@@ -4,6 +4,11 @@ metadata and the markdown body as ``guidance``.
 Hand-rolled frontmatter split rather than a new dependency: the format is
 ``---\\n<yaml>\\n---\\n<body>``, and pyyaml is already a dependency.
 
+Which skill files a deployment uses is named in ``configs/prompts.yaml`` —
+per component, per language — and loaded through ``prompt_service``. This
+module only knows how to turn one file (or one directory of them) into
+``Skill`` objects.
+
 Mirrors ``policy_loader.py``: a configured-but-missing path raises rather than
 silently falling back to a different configuration.
 """
@@ -16,14 +21,10 @@ import yaml
 
 from dss.core.planner.models import Skill
 
-# The skills that ship in the image. Adopters mount their own directory via
-# DSS_SKILLS_CONFIG_PATH; absent that, this is used.
-_DEFAULTS = Path(__file__).parent / "defaults" / "skills"
-
 _FRONTMATTER_DELIMITER = "---\n"
 
 
-def _parse_skill_file(text: str, name: str) -> Skill:
+def parse_skill_file(text: str, name: str) -> Skill:
     """Parse one ``---``-delimited skill file.
 
     ``name`` is only for the error. A bare unpack or ``KeyError`` names no
@@ -57,22 +58,32 @@ def _parse_skill_file(text: str, name: str) -> Skill:
     )
 
 
-def load_skills(path: Path | None = None) -> tuple[Skill, ...]:
-    """Load every skill in ``path`` (or the bundled defaults).
+def load_skill_file(path: Path) -> Skill:
+    """Load one skill file, raising if it is not there — a config that names
+    a file that does not exist must refuse to boot, not boot without it."""
 
-    - ``path`` unset → bundled defaults (I have no custom config).
-    - ``path`` set but missing → ``FileNotFoundError`` (I have a config + it
-      isn't there; do not boot on a different one).
+    if not path.exists():
+        raise FileNotFoundError(
+            f"a skill file is configured at {path} but no file is there — "
+            "refusing to boot on a different configuration"
+        )
+    return parse_skill_file(path.read_text(encoding="utf-8"), path.name)
+
+
+def load_skills(path: Path) -> tuple[Skill, ...]:
+    """Load every skill in the directory ``path``.
+
+    ``path`` set but missing → ``FileNotFoundError`` (I have a config + it
+    isn't there; do not boot on a different one).
     """
 
-    source = _DEFAULTS if path is None else path
-    if not source.exists():
+    if not path.exists():
         raise FileNotFoundError(
-            f"skills config path is set to {source} but no directory is there — "
+            f"skills config path is set to {path} but no directory is there — "
             "refusing to boot on a different configuration"
         )
 
     return tuple(
-        _parse_skill_file(skill_file.read_text(encoding="utf-8"), skill_file.name)
-        for skill_file in sorted(source.glob("*.md"))
+        parse_skill_file(skill_file.read_text(encoding="utf-8"), skill_file.name)
+        for skill_file in sorted(path.glob("*.md"))
     )

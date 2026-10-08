@@ -153,6 +153,14 @@ class Settings(BaseSettings):
     # set-but-missing → raise (see policy_loader), never boot on a different config.
     policy_config_path: Path | None = None
 
+    # The prompt registry: which template each LLM component's system prompt
+    # comes from, per language (see configs/prompts.yaml). Relative to the
+    # working directory like `evidence_dir` — the repo root locally, /app in
+    # the image. A deployment that mounts its own prompts sets
+    # DSS_PROMPT_CONFIG_PATH; missing → raise (see prompt_service), never boot
+    # on a different config.
+    prompt_config_path: Path = Path("configs/prompts.yaml")
+
     # Where the tenant's scheme catalog CSV is mounted (issue #34). Nothing
     # ships in the image, so unset → no catalog, enrichment is inert, and the
     # loader warns once at boot. Set-but-missing raises, as the policy pack does.

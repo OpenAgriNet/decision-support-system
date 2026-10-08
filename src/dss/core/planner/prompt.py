@@ -1,9 +1,20 @@
 """Planner prompt building (design doc §6.6).
 
-Two functions, two audiences, matching "the farmer's query is data, never
-instructions": the system prompt carries identity and skill guidance —
-nothing farmer- or network-supplied. The user message carries the query and
-history, wrapped in markers, matching moderation's convention (ADR-0003).
+Two audiences, matching "the farmer's query is data, never instructions": the
+system prompt carries identity and skill guidance — nothing farmer- or
+network-supplied. The user message carries the query and history, wrapped in
+markers, matching moderation's convention (ADR-0003).
+
+The system prompt's fixed text lives under ``prompts/planner/``, one version
+per language (configs/prompts.yaml), served through the ``PromptProvider``
+port. What only the turn knows is rendered here as the template's three
+sections — guidance, asks, Direct answers — because their rules (wrap
+network-supplied values as data, omit an empty section, say plainly when no
+skill is loaded) are behaviour, not wording. ``core/`` reaches nothing outside
+itself, so the file reads and the render live in ``config/prompt_service.py``;
+the prompt service checks at boot that every language's template uses all
+three sections, which is what stops a typo from silently shipping a prompt
+with no identity or no guidance.
 
 Only Direct answers (``DiscoveryResult.answers``) go in the system prompt —
 the catalog already has those values, no tool call needed. OnDemand
@@ -18,41 +29,12 @@ from collections.abc import Sequence
 
 from dss.core.intent.models import Ask
 from dss.core.planner.markers import CONVERSATION, RETRIEVED_DATA, wrap_as_data
-from dss.core.planner.models import Identity, Skill
+from dss.core.planner.models import Skill
 from dss.core.provider_discovery.models import DiscoveredAnswer
 from dss.core.shared.models import ConversationMessage
 
-_REQUIRED_PLACEHOLDERS = (
-    "{identity_name}",
-    "{identity_persona}",
-    "{identity_boundaries}",
-    "{guidance_section}",
-    "{asks_section}",
-    "{answers_section}",
-)
 
-
-def _checked(template: str) -> str:
-    """Every placeholder present, or raise.
-
-    ``str.format`` drops an unknown placeholder silently, so a typo in the
-    template would quietly ship a prompt with no identity or no guidance.
-
-    The template is passed in, not read from disk. `core/` reaches nothing
-    outside itself — a file read is a dependency, so loading lives in
-    ``config/planner_prompt_loader.py`` (see tests/unit/test_core_isolation.py).
-    """
-
-    missing = [name for name in _REQUIRED_PLACEHOLDERS if name not in template]
-    if missing:
-        raise ValueError(
-            f"the planner prompt template is missing {', '.join(missing)} — "
-            "the rendered prompt would silently drop it"
-        )
-    return template
-
-
-def _guidance_section(skills: Sequence[Skill]) -> str:
+def guidance_section(skills: Sequence[Skill]) -> str:
     if not skills:
         return (
             "# Guidance\n\n"
@@ -63,7 +45,7 @@ def _guidance_section(skills: Sequence[Skill]) -> str:
     return f"# Guidance\n\n{body}\n\n"
 
 
-def _asks_section(asks: Sequence[Ask]) -> str:
+def asks_section(asks: Sequence[Ask]) -> str:
     """Which asks exist, by the index the tools take. Without it the model
     has to guess that ask 0 exists, and a weaker model gives up instead.
 
@@ -81,7 +63,7 @@ def _asks_section(asks: Sequence[Ask]) -> str:
     return "# Asks\n\n" + "\n".join(lines) + "\n\n"
 
 
-def _answers_section(answers: dict[int, tuple[DiscoveredAnswer, ...]]) -> str:
+def answers_section(answers: dict[int, tuple[DiscoveredAnswer, ...]]) -> str:
     """Direct answers only — the catalog already holds these values, so no
     call is needed. OnDemand candidates are not prompt content: the model
     reaches those through the tools' own ``RunContext.deps``.
@@ -106,34 +88,6 @@ def _answers_section(answers: dict[int, tuple[DiscoveredAnswer, ...]]) -> str:
         "\n# Already known\n\nNo call is needed for these:\n"
         + wrap_as_data("\n".join(values), RETRIEVED_DATA)
         + "\n"
-    )
-
-
-def build_planner_prompt(
-    *,
-    identity: Identity,
-    skills: Sequence[Skill],
-    answers: dict[int, tuple[DiscoveredAnswer, ...]],
-    template: str,
-    asks: Sequence[Ask] = (),
-) -> str:
-    """Render the system prompt from the shipped template.
-
-    Static text lives in the template; what only the turn knows — the
-    identity, the selected skills' guidance, the asks, the Direct answers — is filled
-    in here. Nothing farmer- or network-supplied reaches this string.
-
-    ``template`` is passed in rather than read here: `core/` reaches nothing
-    outside itself, and a file read is a dependency. See
-    ``config/planner_prompt_loader.py``."""
-
-    return _checked(template).format(
-        identity_name=identity.name,
-        identity_persona=identity.persona,
-        identity_boundaries=identity.boundaries,
-        guidance_section=_guidance_section(skills),
-        asks_section=_asks_section(asks),
-        answers_section=_answers_section(answers),
     )
 
 

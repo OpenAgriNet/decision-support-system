@@ -2,7 +2,30 @@
 
 ## [Unreleased]
 
+### Added
+- A farmer now reads refusals, clarification questions and the no-provider
+  answers in their own language. The DSS keeps writing these as one reviewed
+  English vocabulary and renders each in the turn's target language on the
+  way out, using the composer's model. English turns are untouched and make
+  no extra model call; if the rendering fails, the English text is sent — a
+  language problem never costs an answer. Place names, scheme names, numbers
+  and the "which place?" option lines stay exactly as written, so replying
+  to a numbered question still works in every language. ADR-0018
+- A deployment can give a language its own version of any prompt, through
+  configuration alone. Every LLM component's system prompt (intent,
+  moderation, planner, composer) now lives as a template under
+  `prompts/<component>/<lang>/`, named by `configs/prompts.yaml`; a turn is
+  served the prompt for its target language and falls back to English when
+  that language has none, recording the gap as a trace event — a missing
+  version never breaks an answer. A Hindi version of all four prompts ships
+  as a marked demo of the mechanism, pending a Hindi speaker's review.
+  ADR-0018
+
 ### Changed
+- The planner's fixed template and the `provider-invocation` skill moved into
+  the prompt registry (`prompts/planner/<lang>/`); the bundled
+  `config/defaults/planner-prompt.md` and `config/defaults/skills/` are gone.
+  Deployments that mount prompts set `DSS_PROMPT_CONFIG_PATH`. ADR-0018
 - `DSS_DISTRICT_CSV_PATH` is now `DSS_AREA_CSV_PATH`: the index holds blocks
   as well as districts. The old name is ignored without a warning, so an
   adopter who set it gets the bundled `areas.csv` instead — rename it (#130)

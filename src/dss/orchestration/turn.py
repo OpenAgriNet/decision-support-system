@@ -61,6 +61,7 @@ from dss.observability.trace_log import log_event, trace_component
 from dss.orchestration.discovery import DiscoverProviders
 from dss.ports.area_lookup import AreaLookup
 from dss.ports.llm import LLMProvider
+from dss.ports.prompts import PromptProvider
 from dss.ports.scheme_catalog import SchemeCatalog
 
 
@@ -206,6 +207,7 @@ async def run_turn(
     *,
     intent_llm: LLMProvider,
     moderation_llm: LLMProvider,
+    prompts: PromptProvider,
     policies: Sequence[Policy],
     discover_providers: DiscoverProviders,
     area_lookup: AreaLookup,
@@ -236,7 +238,7 @@ async def run_turn(
     async def classify_then_discover() -> None:
         nonlocal intent, discovery
         with trace_component(Stage.INTENT, turn.transaction_id):
-            classification = await classify_intent(turn, intent_llm)
+            classification = await classify_intent(turn, intent_llm, prompts)
         with trace_component(Stage.LOCATION, turn.transaction_id):
             intent = resolve_places(classification, turn, lookup=area_lookup)
             set_current_span_attributes(**place_attributes(classification, intent))
@@ -251,7 +253,7 @@ async def run_turn(
         nonlocal decision
         with trace_component(Stage.MODERATION, turn.transaction_id):
             decision = await moderate(
-                ModerationContext(turn=turn), policies, moderation_llm
+                ModerationContext(turn=turn), policies, moderation_llm, prompts
             )
             set_current_span_attributes(**moderation_attributes(decision))
 

@@ -43,9 +43,10 @@ from dss.adapters.sinks.file import FileTelemetrySink, FileTurnSink
 from dss.config.clarification_text_loader import load_clarification_text
 from dss.config.identity_loader import load_identity
 from dss.config.policy_loader import load_policy_pack
+from dss.config.prompt_service import load_prompt_service
 from dss.config.schema_pack_fetch import SchemaPackFetchFailed, fetch_packs
 from dss.config.settings import Settings
-from dss.config.skill_loader import load_skills
+from dss.core.channel.localize import build_localizer
 from dss.core.intent.models import Intent
 from dss.core.planner.validation import DomainSchema, parse_domain_schema
 from dss.core.policy.models import Checkpoint
@@ -116,7 +117,10 @@ def build_runner_with_lifecycle(
     )
     identity = load_identity()  # bundled default until an adopter mounts one
     clarification_text = load_clarification_text()  # bundled default, same as identity
-    skills = load_skills()
+    # Every LLM component's system prompt, per language (configs/prompts.yaml).
+    # Loaded once; a broken registry — a missing template, a placeholder typo,
+    # no English entry — refuses to boot here rather than mid-turn.
+    prompts = load_prompt_service(settings.prompt_config_path)
     # Loaded before the network gate, and unconditionally: the file is checked
     # in, so an unreadable one is a broken build either way, and a boot that
     # skipped it would only surface the problem as missing spatial filters much
@@ -130,6 +134,10 @@ def build_runner_with_lifecycle(
         settings, fetch=fetch
     )
 
+    # One binding for everything the farmer reads: the streamed answer and the
+    # localized system text ride the same model, temperature and timeout.
+    composer_llm = _composer_llm(settings)
+
     components = Components(
         discover=discover,
         plan=build_plan(
@@ -137,18 +145,25 @@ def build_runner_with_lifecycle(
             schema_context_index=schema_context_index,
             invocation=invocation,
             identity=identity,
-            skills=skills,
+            prompts=prompts,
             model=_resolve_model(settings.planner_model, settings),
             temperature=settings.planner_temperature,
             timeout_seconds=settings.planner_timeout_seconds,
             retries=settings.planner_retries,
         ),
-        compose=build_stream_response(identity=identity, llm=_composer_llm(settings)),
+        compose=build_stream_response(
+            identity=identity, llm=composer_llm, prompts=prompts
+        ),
+        # The composer's own binding (the user-facing writer, ADR-0018):
+        # rendering a refusal or a clarification in the farmer's language is
+        # composition work, not a new component with its own model knob.
+        localize=build_localizer(llm=composer_llm, prompts=prompts),
     )
 
     runner = Orchestrator(
         intent_llm=_intent_llm(settings),
         moderation_llm=_moderation_llm(settings),
+        prompts=prompts,
         policies=policies,
         scheme_catalog=scheme_catalog,
         scheme_fuzzy_threshold=settings.scheme_fuzzy_threshold,

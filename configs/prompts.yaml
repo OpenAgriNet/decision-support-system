@@ -1,0 +1,88 @@
+# Which prompt each LLM component uses, per language.
+#
+# This file is the whole mechanism for giving a language its own version of a
+# prompt: add a `language_prompts.<tag>` entry pointing at a template under
+# prompts/, and farmers whose turn carries that target language get it — no
+# code change. Remove the entry and they get English again.
+#
+# The rules the prompt service enforces:
+# - `en` is required for every component. It is the fallback: a turn in a
+#   language with no entry here runs on the English prompt, and a trace event
+#   records the gap. A missing override never fails a turn.
+# - `placeholders` names what the code supplies at render time. Every
+#   language's template must use all of them and nothing else — checked at
+#   boot, so a typo refuses to boot rather than silently shipping a prompt
+#   with a hole in it.
+# - Language lookup: exact BCP-47 tag first (hi-IN matches hi-IN), then its
+#   primary subtag (hi-IN falls back to hi), then en.
+# - Relative paths resolve against this file's parent directory's parent —
+#   the repo root here, or wherever a deployment mounts configs/ and prompts/
+#   side by side.
+#
+# The `hi` entries below are a DEMO: they show the mechanism end to end and
+# are not backed by an eval (that is M3's call). Each Hindi file is marked as
+# a demo in its header and is pending review by a Hindi speaker. To put any
+# component back on English for Hindi farmers, delete its `hi:` entry.
+
+intent:
+  placeholders:
+    - categories
+    - interactions
+    - history
+  language_prompts:
+    en:
+      system_prompt: prompts/intent/en/prompt.j2
+    hi:
+      system_prompt: prompts/intent/hi/prompt.j2
+
+moderation:
+  placeholders:
+    - policies
+    - history
+  language_prompts:
+    en:
+      system_prompt: prompts/moderation/en/prompt.j2
+    hi:
+      system_prompt: prompts/moderation/hi/prompt.j2
+
+planner:
+  placeholders:
+    - identity_name
+    - identity_persona
+    - identity_boundaries
+    - guidance_section
+    - asks_section
+    - answers_section
+  language_prompts:
+    en:
+      system_prompt: prompts/planner/en/prompt.j2
+      skills:
+        - prompts/planner/en/skills/provider-invocation.md
+    hi:
+      system_prompt: prompts/planner/hi/prompt.j2
+      skills:
+        - prompts/planner/hi/skills/provider-invocation.md
+
+composer:
+  placeholders:
+    - name
+    - persona
+    - boundaries
+    - target_lang
+  language_prompts:
+    en:
+      system_prompt: prompts/composer/en/prompt.j2
+    hi:
+      system_prompt: prompts/composer/hi/prompt.j2
+
+# Renders system-authored text — refusals, clarification questions, the
+# no-provider answers — in the turn's target language (ADR-0018). English
+# turns never reach it, and a failure falls back to the English text.
+localizer:
+  placeholders:
+    - target_lang
+  language_prompts:
+    en:
+      system_prompt: prompts/localizer/en/prompt.j2
+    hi:
+      system_prompt: prompts/localizer/hi/prompt.j2

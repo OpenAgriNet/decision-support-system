@@ -12,18 +12,21 @@ would merge the two components the design deliberately splits.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from typing import Protocol
 
 from pydantic_ai.models import Model
 from pydantic_ai.usage import RunUsage
 
 from dss.adapters.observability.metrics import model_that_ran, record_agent_run
-from dss.config.planner_prompt_loader import load_planner_prompt_template
 from dss.core.intent.models import Intent
 from dss.core.planner.evidence import assemble_evidence, place_failures
-from dss.core.planner.models import Evidence, Identity, Skill, Verdict
-from dss.core.planner.prompt import build_planner_prompt, build_user_message
+from dss.core.planner.models import Evidence, Identity, Verdict
+from dss.core.planner.prompt import (
+    answers_section,
+    asks_section,
+    build_user_message,
+    guidance_section,
+)
 from dss.core.planner.validation import DomainSchema
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.shared.models import UserTurn
@@ -31,6 +34,7 @@ from dss.observability.stages import Stage
 from dss.observability.trace_log import log_external_response
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
 from dss.ports.invocation import CapabilityInvocation
+from dss.ports.prompts import PromptProvider
 
 
 class Plan(Protocol):
@@ -52,7 +56,7 @@ def build_plan(
     schema_context_index: dict[str, str],
     invocation: CapabilityInvocation,
     identity: Identity,
-    skills: Sequence[Skill],
+    prompts: PromptProvider,
     model: Model | str,
     temperature: float = 0.0,
     timeout_seconds: float = 30.0,
@@ -65,12 +69,14 @@ def build_plan(
     several model round-trips plus the provider calls between them; and more
     retries than the framework's default of 1, because the design raises
     ``ModelRetry`` in three places.
+
+    The prompt template and the skills come from ``prompts`` per turn, in the
+    turn's target language when the deployment configured a version for it —
+    English otherwise. Skills ride with the prompt (configs/prompts.yaml), so
+    the guidance and the agent's tools stay the pair the same reviewer shipped.
     """
 
     model_settings = {"temperature": temperature, "timeout": timeout_seconds}
-    # Read once at wiring time, not per turn: the template is a shipped
-    # constant, and `core/` may not read files at all.
-    prompt_template = load_planner_prompt_template()
 
     async def plan(
         turn: UserTurn,
@@ -79,16 +85,22 @@ def build_plan(
         discovery: DiscoveryResult,
         verdict: Verdict,
     ) -> Evidence:
+        skills = prompts.get_skills("PLANNER", turn.target_lang)
         agent = build_planner_agent(
             skills=skills,
             model=model,
             retries=retries,
-            system_prompt=build_planner_prompt(
-                identity=identity,
-                skills=skills,
-                answers=discovery.answers,
-                asks=intent.asks,
-                template=prompt_template,
+            system_prompt=prompts.get_prompt(
+                "PLANNER",
+                lang=turn.target_lang,
+                kwargs={
+                    "identity_name": identity.name,
+                    "identity_persona": identity.persona,
+                    "identity_boundaries": identity.boundaries,
+                    "guidance_section": guidance_section(skills),
+                    "asks_section": asks_section(intent.asks),
+                    "answers_section": answers_section(discovery.answers),
+                },
             ),
         )
         deps = PlannerDeps(

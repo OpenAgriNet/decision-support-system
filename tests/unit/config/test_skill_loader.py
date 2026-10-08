@@ -1,4 +1,9 @@
-"""Tier 1 — the skill loader and the shipped default skill."""
+"""Tier 1 — the skill file parser/loader.
+
+The shipped skill itself now ships under ``prompts/planner/<lang>/skills/``,
+named by ``configs/prompts.yaml``, and is pinned in
+``test_shipped_prompts.py``; this file covers only how a file becomes a
+``Skill``."""
 
 from __future__ import annotations
 
@@ -7,40 +12,6 @@ from pathlib import Path
 import pytest
 
 from dss.config.skill_loader import load_skills
-
-
-def test_default_skills_load_and_validate() -> None:
-    skills = load_skills()
-    ids = {s.id for s in skills}
-    assert ids == {"provider-invocation"}
-
-
-def test_provider_invocation_skill_shape() -> None:
-    skills = load_skills()
-    skill = next(s for s in skills if s.id == "provider-invocation")
-    assert skill.domain == "agriculture"
-    assert skill.tool_names == ("describe_capability", "select")
-    assert skill.description
-    assert skill.guidance
-
-
-def test_provider_invocation_guidance_covers_resolving_across_history() -> None:
-    """A follow-up turn carries the subject in an earlier message: "advisory
-    for potato" ... "I am from Pune". Filling fields from the last message
-    alone loses the subject, so the guidance has to say to read the whole
-    conversation.
-
-    Asserts on substance, not wording — the phrasing is the model's to read,
-    but "use the earlier messages" must be in there somewhere."""
-
-    skills = load_skills()
-    raw = next(s for s in skills if s.id == "provider-invocation").guidance
-    # collapse the file's line wrapping so a phrase split across two lines
-    # still matches
-    guidance = " ".join(raw.lower().split())
-
-    assert "conversation" in guidance or "earlier" in guidance
-    assert "not just the last message" in guidance
 
 
 def test_guidance_is_the_markdown_body(tmp_path: Path) -> None:

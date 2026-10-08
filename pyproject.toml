@@ -41,6 +41,11 @@ dependencies = [
     # The policy loader deserialises the mounted YAML pack (spec 0003), and the
     # schema-pack index parses attributes.yaml.
     "pyyaml>=6.0.3",
+    # The prompt service renders the per-language prompt templates mounted
+    # under prompts/ (configs/prompts.yaml names them). Jinja, not str.format:
+    # a prompt needs loops (history, policies) and a missing variable must
+    # raise, not pass through silently.
+    "jinja2>=3.1.0",
 ]
 
 [build-system]

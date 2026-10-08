@@ -44,7 +44,12 @@ from dss.core.shared.models import (
 from dss.orchestration.orchestrator import Components, Orchestrator
 from dss.orchestration.plan import Plan
 from dss.ports.area_lookup import AreaMatch
-from tests.support.fakes import FakeAreaLookup, FakeSchemeCatalog
+from tests.support.fakes import (
+    FakeAreaLookup,
+    FakeLocalizer,
+    FakePromptProvider,
+    FakeSchemeCatalog,
+)
 
 DELETE_COMMAND = LlmPolicy(
     id="delete-command",
@@ -219,16 +224,21 @@ def _build(
     violated: str | None = None,
     policies=(),
     area_lookup: FakeAreaLookup | None = None,
+    localize: FakeLocalizer | None = None,
 ) -> tuple[Orchestrator, MemoryTurnSink]:
     turns = MemoryTurnSink()
     orch = Orchestrator(
         intent_llm=_FakeIntentLLM(intent),
         moderation_llm=_FakeModerationLLM(violated=violated),
+        prompts=FakePromptProvider(),
         policies=list(policies),
         scheme_catalog=FakeSchemeCatalog(),
         scheme_fuzzy_threshold=None,
         components=Components(
-            discover=_FakeDiscovery(discovery), plan=plan, compose=compose
+            discover=_FakeDiscovery(discovery),
+            plan=plan,
+            compose=compose,
+            localize=localize or FakeLocalizer(),
         ),
         turns=turns,
         telemetry=_Telemetry(),

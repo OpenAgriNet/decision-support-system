@@ -22,6 +22,7 @@ from dss.core.policy.models import (
     WordCheckPolicy,
 )
 from dss.core.shared.models import ConversationMessage, UserTurn
+from tests.support.fakes import FakePromptProvider
 
 PROFANITY = WordCheckPolicy(
     id="profanity-filter",
@@ -84,7 +85,9 @@ async def test_profanity_is_stripped_and_the_rest_proceeds() -> None:
     llm = _FakeLLM(violated=None)
     ctx = _turn("I want to know potato price. You are a shit chatbot")
 
-    decision = await moderate(ctx, [PROFANITY, DELETE_COMMAND], llm)
+    decision = await moderate(
+        ctx, [PROFANITY, DELETE_COMMAND], llm, FakePromptProvider()
+    )
 
     assert decision.outcome is Outcome.PROCEED
     assert "shit" not in decision.sanitized_query.lower()
@@ -96,7 +99,9 @@ async def test_profanity_is_stripped_and_the_rest_proceeds() -> None:
 
 async def test_clean_query_has_no_frustration_flag() -> None:
     llm = _FakeLLM(violated=None)
-    decision = await moderate(_turn("When should I sow wheat?"), [PROFANITY], llm)
+    decision = await moderate(
+        _turn("When should I sow wheat?"), [PROFANITY], llm, FakePromptProvider()
+    )
     assert decision.frustration_detected is False
 
 
@@ -115,7 +120,7 @@ async def test_raw_query_is_what_is_judged() -> None:
         )
     )
 
-    await moderate(ctx, [DELETE_COMMAND], llm)
+    await moderate(ctx, [DELETE_COMMAND], llm, FakePromptProvider())
 
     assert llm.seen_query == "What is the potato price?"
 
@@ -129,7 +134,7 @@ async def test_history_is_passed_to_the_llm_for_followups() -> None:
     ]
     ctx = _turn("And potato?", history)
 
-    decision = await moderate(ctx, [DELETE_COMMAND], llm)
+    decision = await moderate(ctx, [DELETE_COMMAND], llm, FakePromptProvider())
 
     assert decision.outcome is Outcome.PROCEED
     assert llm.seen_query == "And potato?"  # the raw follow-up, not a rewrite
@@ -141,7 +146,7 @@ async def test_sanitized_query_is_what_reaches_the_llm() -> None:
     llm = _FakeLLM(violated=None)
     ctx = _turn("what is the potato price you shit bot")
 
-    await moderate(ctx, [PROFANITY, DELETE_COMMAND], llm)
+    await moderate(ctx, [PROFANITY, DELETE_COMMAND], llm, FakePromptProvider())
 
     assert "shit" not in llm.seen_query.lower()
 
@@ -150,7 +155,9 @@ async def test_clean_query_proceeds_with_no_warnings() -> None:
     llm = _FakeLLM(violated=None)
     ctx = _turn("When should I sow wheat?")
 
-    decision = await moderate(ctx, [PROFANITY, DELETE_COMMAND], llm)
+    decision = await moderate(
+        ctx, [PROFANITY, DELETE_COMMAND], llm, FakePromptProvider()
+    )
 
     assert decision.outcome is Outcome.PROCEED
     assert decision.sanitized_query is None
@@ -161,7 +168,9 @@ async def test_whole_word_only_leaves_innocent_substrings() -> None:
     llm = _FakeLLM(violated=None)
     ctx = _turn("tell me about shitake mushroom farming")
 
-    decision = await moderate(ctx, [PROFANITY, DELETE_COMMAND], llm)
+    decision = await moderate(
+        ctx, [PROFANITY, DELETE_COMMAND], llm, FakePromptProvider()
+    )
 
     assert decision.sanitized_query is None  # nothing stripped
     assert decision.warnings == []
@@ -171,7 +180,9 @@ async def test_delete_command_is_rejected() -> None:
     llm = _FakeLLM(violated="delete-command")
     ctx = _turn("Delete the code")
 
-    decision = await moderate(ctx, [PROFANITY, DELETE_COMMAND], llm)
+    decision = await moderate(
+        ctx, [PROFANITY, DELETE_COMMAND], llm, FakePromptProvider()
+    )
 
     assert decision.outcome is Outcome.REJECT
     assert decision.reason_code is ReasonCode.ROLE_OBFUSCATION
@@ -185,7 +196,9 @@ async def test_genuine_query_proceeds_when_llm_finds_nothing() -> None:
     llm = _FakeLLM(violated=None)
     ctx = _turn("What is the price of potato?")
 
-    decision = await moderate(ctx, [PROFANITY, DELETE_COMMAND], llm)
+    decision = await moderate(
+        ctx, [PROFANITY, DELETE_COMMAND], llm, FakePromptProvider()
+    )
 
     assert decision.outcome is Outcome.PROCEED
 
@@ -194,7 +207,7 @@ async def test_llm_failure_fails_closed() -> None:
     llm = _FakeLLM(boom=True)
     ctx = _turn("What is the price of potato?")
 
-    decision = await moderate(ctx, [DELETE_COMMAND], llm)
+    decision = await moderate(ctx, [DELETE_COMMAND], llm, FakePromptProvider())
 
     assert decision.outcome is Outcome.REJECT
     assert decision.reason_code is ReasonCode.MODERATION_UNAVAILABLE
@@ -206,7 +219,7 @@ async def test_llm_failure_fails_open_when_policy_opts_in() -> None:
     llm = _FakeLLM(boom=True)
     ctx = _turn("What is the price of potato?")
 
-    decision = await moderate(ctx, [open_policy], llm)
+    decision = await moderate(ctx, [open_policy], llm, FakePromptProvider())
 
     assert decision.outcome is Outcome.PROCEED
 
@@ -216,7 +229,7 @@ async def test_llm_is_not_called_when_no_llm_policies() -> None:
     llm = _FakeLLM(violated=None)
     ctx = _turn("You are a shit chatbot, what is the potato price")
 
-    decision = await moderate(ctx, [PROFANITY], llm)
+    decision = await moderate(ctx, [PROFANITY], llm, FakePromptProvider())
 
     assert llm.calls == 0
     assert decision.outcome is Outcome.PROCEED
@@ -229,6 +242,6 @@ async def test_llm_is_not_called_when_no_llm_policies() -> None:
 )
 async def test_profanity_matching_is_case_insensitive(query: str) -> None:
     llm = _FakeLLM(violated=None)
-    decision = await moderate(_turn(query), [PROFANITY], llm)
+    decision = await moderate(_turn(query), [PROFANITY], llm, FakePromptProvider())
     assert decision.sanitized_query is not None
     assert "shit" not in decision.sanitized_query.lower()
