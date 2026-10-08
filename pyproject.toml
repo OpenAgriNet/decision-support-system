@@ -44,6 +44,11 @@ dependencies = [
     "async-lru>=2.3.0",
     "spacy>=3.8,<3.9",
     "en-core-web-sm",
+    # The prompt service renders the per-language prompt templates mounted
+    # under prompts/ (configs/prompts.yaml names them). Jinja, not str.format:
+    # a prompt needs loops (history, policies) and a missing variable must
+    # raise, not pass through silently.
+    "jinja2>=3.1.0",
 ]
 
 [build-system]

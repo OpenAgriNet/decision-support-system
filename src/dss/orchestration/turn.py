@@ -65,6 +65,7 @@ from dss.orchestration.discovery import DiscoverProviders
 from dss.orchestration.stage_content import asks_text, discovery_text
 from dss.ports.area_lookup import AreaLookup
 from dss.ports.llm import LLMProvider
+from dss.ports.prompts import PromptProvider
 from dss.ports.scheme_catalog import SchemeCatalog
 
 
@@ -210,6 +211,7 @@ async def run_turn(
     *,
     intent_llm: LLMProvider,
     moderation_llm: LLMProvider,
+    prompts: PromptProvider,
     policies: Sequence[Policy],
     discover_providers: DiscoverProviders,
     area_lookup: AreaLookup,
@@ -241,7 +243,7 @@ async def run_turn(
     async def classify_then_discover() -> None:
         nonlocal intent, discovery
         with trace_component(Stage.INTENT, turn.transaction_id):
-            classification = await classify_intent(turn, intent_llm)
+            classification = await classify_intent(turn, intent_llm, prompts)
             set_current_span_content(
                 input=turn.original_query, output=asks_text(classification.asks)
             )
@@ -269,7 +271,7 @@ async def run_turn(
         nonlocal decision
         with trace_component(Stage.MODERATION, turn.transaction_id):
             decision = await moderate(
-                ModerationContext(turn=turn), policies, moderation_llm
+                ModerationContext(turn=turn), policies, moderation_llm, prompts
             )
             set_current_span_attributes(**moderation_attributes(decision))
             set_current_span_content(input=turn.original_query)

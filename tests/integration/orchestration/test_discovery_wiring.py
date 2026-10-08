@@ -31,7 +31,7 @@ from dss.orchestration.discovery import (
     build_discover_providers,
 )
 from dss.orchestration.turn import run_turn
-from tests.support.fakes import FakeAreaLookup
+from tests.support.fakes import FakeAreaLookup, FakePromptProvider
 
 SCHEMA_PACKS_FIXTURE_ROOT = (
     Path(__file__).parents[1]
@@ -319,6 +319,7 @@ async def test_run_turn_can_call_the_composed_discover_providers() -> None:
                 )
             ),
             moderation_llm=_FakeModerationLLM(),
+            prompts=FakePromptProvider(),
             policies=[],
             discover_providers=discover_providers,
             area_lookup=FakeAreaLookup(),

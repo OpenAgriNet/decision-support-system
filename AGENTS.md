@@ -24,6 +24,12 @@ Do not duplicate architecture, domain model, or design-decision detail here — 
 - Dependency injection: Pydantic
 - Package manager: uv
 - Test framework: pytest
+- Prompts: Jinja2 templates under `prompts/<component>/<lang>/`, registered in
+  `configs/prompts.yaml` (ADR-0018). Each LLM component asks the
+  `PromptProvider` port for its system prompt in the turn's target language;
+  a language with no version falls back to English and the gap is traced. `en`
+  is required per component and placeholders are validated at boot. Hindi
+  ships as a marked demo.
 - Telemetry destination: one OTLP endpoint, pointed at an OpenTelemetry Collector
   that fans out (ADR-0014) — traces to self-hosted Langfuse (ADR-0007) with message
   content, and traces + metrics + logs to an existing ClickHouse with that content

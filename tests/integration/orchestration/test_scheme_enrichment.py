@@ -20,7 +20,7 @@ from dss.core.intent.models import (
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.shared.models import UserTurn
 from dss.orchestration.turn import run_turn
-from tests.support.fakes import FakeAreaLookup, FakeSchemeCatalog
+from tests.support.fakes import FakeAreaLookup, FakePromptProvider, FakeSchemeCatalog
 
 MAKHANA = "Central Sector Scheme for Development of Makhana"
 CATALOG = FakeSchemeCatalog({"makhana scheme": MAKHANA})
@@ -80,6 +80,7 @@ async def _run(intent: IntentClassification, query: str, *, catalog=CATALOG, **k
         _turn(query),
         intent_llm=_FakeLLM(intent),
         moderation_llm=_FakeLLM(intent),
+        prompts=FakePromptProvider(),
         policies=[],
         discover_providers=discovery,
         area_lookup=FakeAreaLookup(),

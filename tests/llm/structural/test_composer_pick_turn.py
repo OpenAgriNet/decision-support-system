@@ -19,6 +19,7 @@ import pytest
 from dotenv import dotenv_values
 
 from dss.config.identity_loader import load_identity
+from dss.config.prompt_service import load_prompt_service
 from dss.config.settings import Settings
 from dss.core.intent.models import (
     Ask,
@@ -114,6 +115,9 @@ async def test_pick_reply_still_answers() -> None:
         turn=turn,
         identity=load_identity(),
         llm=_composer_llm(Settings()),
+        prompts=load_prompt_service(
+            Path(__file__).parents[3] / "configs" / "prompts.yaml"
+        ),
     )
     text = "".join([piece async for piece in pieces])
 

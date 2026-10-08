@@ -32,7 +32,7 @@ from dss.core.shared.models import ClaimDelta, Geometry, TurnFinished
 from dss.observability.trace_log import set_stage_span_opener
 from dss.orchestration.turn import run_turn
 from dss.ports.area_lookup import AreaMatch
-from tests.support.fakes import FakeAreaLookup
+from tests.support.fakes import FakeAreaLookup, FakePromptProvider
 
 from .test_orchestrator import (
     _ANSWERED_EVIDENCE,
@@ -242,6 +242,7 @@ async def test_the_location_stage_says_what_became_of_each_place(spans) -> None:
         _turn("weather", location=None),
         intent_llm=_FakeIntentLLM(classification),
         moderation_llm=_FakeModerationLLM(violated=None),
+        prompts=FakePromptProvider(),
         policies=[],
         discover_providers=_FakeDiscovery(),
         area_lookup=lookup,
