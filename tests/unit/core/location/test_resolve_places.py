@@ -30,10 +30,12 @@ class _FakeLookup:
         self._table = table
         self._nearest = nearest
         self.calls = 0
+        self.names: list[str] = []
         self.nearest_max_km: list[float] = []
 
     async def resolve(self, name: str, region: str | None = None) -> list[AreaMatch]:
         self.calls += 1
+        self.names.append(name)
         matches = self._table.get(name.lower(), [])
         if region is None:
             return matches
@@ -517,6 +519,25 @@ async def test_a_pick_with_two_parts_keeps_only_the_matches_inside() -> None:
         _NAIROBI_RONGAI.within,
         _NAIROBI_BAHATI.within,
     }
+
+
+async def test_a_part_already_above_the_name_is_not_looked_up() -> None:
+    """Eldoret's own answer says it sits in Moiben, so Moiben is the place
+    above it, not a second place. Asking a slow source about Moiben first
+    would cost a call for nothing."""
+
+    eldoret = AreaMatch(
+        name="Eldoret",
+        region="KE",
+        within=("Kenya", "Uasin Gishu County", "Moiben"),
+        geometry=Geometry(coordinates=[35.27, 0.52]),
+    )
+    classification = IntentClassification(asks=(_weather_ask("Eldoret, Moiben"),))
+    lookup = _FakeLookup({"eldoret": [eldoret]})
+
+    await resolve_places(classification, _turn(), lookup=lookup)
+
+    assert "Moiben" not in lookup.names
 
 
 async def test_a_pick_that_no_longer_fits_is_not_found() -> None:

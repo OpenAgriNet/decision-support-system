@@ -121,15 +121,17 @@ async def _split_joined(
     if len(parts) > 1 and await _any_above(base, parts, lookup):
         return [classified]
     name, part = _name_and_part(classified.place_name)
-    # A region is never a place of its own, so "Aurangabad, Maharashtra" is
-    # one place in a state, not two places.
-    if not part or not [
-        m for m in _exact_first(await lookup.resolve(part)) if not m.is_region
-    ]:
+    if not part:
         return [classified]
+    # The name first: its answer often shows the part is just the place above
+    # it ("Eldoret, Moiben"), and then the part need not be looked up at all.
     folded = part.casefold()
     matches = await _places_named(name, lookup)
     if any(folded in {w.casefold() for w in m.within} for m in matches):
+        return [classified]
+    # A region is never a place of its own, so "Aurangabad, Maharashtra" is
+    # one place in a state, not two places.
+    if not [m for m in _exact_first(await lookup.resolve(part)) if not m.is_region]:
         return [classified]
     return [
         classified.model_copy(update={"place_name": name}),
