@@ -44,6 +44,24 @@ async def test_resolves_a_district_name_to_its_coordinates(tmp_path: Path) -> No
     ]
 
 
+async def test_a_name_found_only_inside_a_longer_one_is_a_guess(
+    tmp_path: Path,
+) -> None:
+    """ "Kanha" is no place in the file; "Kanha Chatti" only starts with it, and
+    may be 700 km from the Kanha the user means. It is marked as a guess so
+    nothing uses it without checking. An exact name is not a guess."""
+
+    path = _write(
+        tmp_path,
+        "701,Kanha Chatti,IN-JH,24.2,84.9,,India;Jharkhand;Chatra",
+        "490,Pune,IN-MH,18.5,74.0,,India;Maharashtra",
+    )
+    lookup = CsvAreaLookup.load(path)
+
+    assert [m.is_guess for m in await lookup.resolve("Kanha")] == [True]
+    assert [m.is_guess for m in await lookup.resolve("Pune")] == [False]
+
+
 async def test_a_state_name_is_marked_as_a_region(tmp_path: Path) -> None:
     """A farmer may name a whole state. The file has no state rows, but every
     row says which state it is in, so the state is known. It is marked as a

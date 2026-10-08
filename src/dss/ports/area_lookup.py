@@ -41,6 +41,10 @@ class AreaMatch(BaseModel):
     # A whole state or region, too big to search around one point. Core never
     # uses it as the place: it narrows to the farmer's own place or asks.
     is_region: bool = False
+    # Not the name asked for, only one that starts with it ("Kanha Chatti" for
+    # "Kanha"). It may be far from the place meant, so core does not use it
+    # without checking.
+    is_guess: bool = False
 
 
 class AreaLookupUnavailable(Exception):

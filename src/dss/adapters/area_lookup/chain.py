@@ -24,6 +24,7 @@ class ChainedAreaLookup:
         return list(self._sources)
 
     async def resolve(self, name: str, region: str | None = None) -> list[AreaMatch]:
+        fallback: list[AreaMatch] = []
         for source, lookup in self._sources:
             try:
                 matches = await lookup.resolve(name, region)
@@ -32,9 +33,14 @@ class ChainedAreaLookup:
                 continue
             if matches:
                 record_area_lookup(source=source, outcome="hit")
+                # A guess ("Kanha Chatti" for "Kanha") does not end the search:
+                # a later source may have the exact name. Kept if none does.
+                if all(match.is_guess for match in matches):
+                    fallback = fallback or matches
+                    continue
                 return matches
             record_area_lookup(source=source, outcome="miss")
-        return []
+        return fallback
 
     async def nearest(self, point: Geometry, max_km: float) -> AreaMatch | None:
         for _, lookup in self._sources:

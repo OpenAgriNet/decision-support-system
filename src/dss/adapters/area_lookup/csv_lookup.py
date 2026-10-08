@@ -17,6 +17,7 @@ import math
 from bisect import bisect_left
 from pathlib import Path
 
+from dss.core.shared.geo import distance_km
 from dss.core.shared.models import Geometry
 from dss.ports.area_lookup import AreaMatch
 
@@ -78,21 +79,10 @@ def _regions(by_name: dict[str, tuple[AreaMatch, ...]]) -> dict[str, AreaMatch]:
 # reads a few squares, not the whole file: measured at about 0.02 ms against
 # about 1.7 ms for a scan of every place.
 _CELL_DEGREES = 1.0
-_EARTH_KM = 6371.0
 
 
 def _cell(lon: float, lat: float) -> tuple[int, int]:
     return math.floor(lat / _CELL_DEGREES), math.floor(lon / _CELL_DEGREES)
-
-
-def _distance_km(a: list[float], b: list[float]) -> float:
-    (lon1, lat1), (lon2, lat2) = a, b
-    p1, p2 = math.radians(lat1), math.radians(lat2)
-    h = (
-        math.sin((p2 - p1) / 2) ** 2
-        + math.cos(p1) * math.cos(p2) * math.sin(math.radians(lon2 - lon1) / 2) ** 2
-    )
-    return 2 * _EARTH_KM * math.asin(math.sqrt(h))
 
 
 def _grid(
@@ -186,13 +176,10 @@ class CsvAreaLookup:
 
         lon, lat = point.coordinates
         row, col = _cell(lon, lat)
-        # The narrowest a square gets near this latitude, so a ring's distance
-        # is never overestimated.
-        cell_km = (
-            _EARTH_KM
-            * math.radians(_CELL_DEGREES)
-            * math.cos(math.radians(min(abs(lat) + _CELL_DEGREES, 89.0)))
-        )
+        # The narrowest a square gets near this latitude, measured across its
+        # far edge, so a ring's distance is never overestimated.
+        edge = min(abs(lat) + _CELL_DEGREES, 89.0)
+        cell_km = distance_km([0.0, edge], [_CELL_DEGREES, edge])
         best: AreaMatch | None = None
         best_km = math.inf
         # Ties go to the shorter chain: a block's point is a copy of its
@@ -205,7 +192,7 @@ class CsvAreaLookup:
                     if max(abs(dy), abs(dx)) != ring:
                         continue
                     for match in self._grid.get((row + dy, col + dx), ()):
-                        km = _distance_km(point.coordinates, match.geometry.coordinates)
+                        km = distance_km(point.coordinates, match.geometry.coordinates)
                         key = (km, len(match.within))
                         if key < best_key:
                             best, best_km, best_key = match, km, key
@@ -255,7 +242,11 @@ class CsvAreaLookup:
         # Exact first, and alone: "Mumbai" is a district *and* the start of
         # "Mumbai Suburban", so falling back here would turn a resolved name
         # into an ambiguous one.
-        matches = self._by_name.get(wanted) or self._qualified_by(wanted)
+        matches = self._by_name.get(wanted) or tuple(
+            # Only starts with the name: marked, so it is never used unchecked.
+            match.model_copy(update={"is_guess": True})
+            for match in self._qualified_by(wanted)
+        )
         state = self._regions.get(wanted)
         if state is not None:
             matches = (*matches, state)

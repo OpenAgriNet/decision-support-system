@@ -639,6 +639,12 @@ How it behaves:
   user is asked for a district or village in it.
   This works the same with the area file alone. If you override the
   clarification text, add a `region_place` line, or the DSS will not start.
+- **A name the file has only inside a longer one.** "Kanha" is not in the file,
+  but "Kanha Chatti" starts with it and may be far away. That is only a guess.
+  Photon gets the chance to find the exact name first. Otherwise the guess is
+  used only if it is near the user, and else the user is asked "Which Kanha?".
+- **Several places, one near the user.** Of the Rampurs, the one near the user
+  is used without a question.
 - **A town and its own county.** Nakuru is a town, and the county around it is
   also called Nakuru. The town wins, because its point is exact. The county's
   point is a rough centre, which can be far from the town.

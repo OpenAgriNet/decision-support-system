@@ -270,6 +270,25 @@ _RAMPUR_HP = AreaMatch(
 )
 
 
+async def test_the_one_match_near_the_user_breaks_the_tie() -> None:
+    """Several Rampurs, and the user is next to the Uttar Pradesh one. Like
+    the region, where the user is only breaks a tie between places of the
+    name they said; it never picks a place they did not name."""
+
+    classification = IntentClassification(asks=(_weather_ask("Rampur"),))
+    lookup = _FakeLookup({"rampur": [_RAMPUR_UP, _RAMPUR_HP]})
+
+    intent = await resolve_places(
+        classification,
+        _turn(geometry=Geometry(coordinates=[79.05, 28.83])),
+        lookup=lookup,
+    )
+
+    place = intent.asks[0].place
+    assert isinstance(place, ResolvedPlace)
+    assert place.geometry == _RAMPUR_UP.geometry
+
+
 async def test_a_name_with_a_part_picks_the_match_inside_that_part() -> None:
     """The farmer answered "which Rampur?" — the model copies the line we
     listed, "Rampur, Himachal Pradesh". The part after the comma picks one."""
@@ -569,6 +588,100 @@ _JAISALMER = AreaMatch(
     within=("India", "Rajasthan"),
     geometry=Geometry(coordinates=[70.91, 26.92]),
 )
+
+
+_KANHA_CHATTI_GUESS = AreaMatch(
+    name="Kanha Chatti",
+    region="IN-JH",
+    within=("India", "Jharkhand", "Chatra"),
+    geometry=Geometry(coordinates=[84.9, 24.2]),
+    is_guess=True,
+)
+
+
+async def test_a_lone_guess_is_asked_about_not_used() -> None:
+    """ "Kanha Chatti" only starts with "Kanha" and may be 700 km from the
+    Kanha meant. With nothing known about where the user is, ask."""
+
+    classification = IntentClassification(asks=(_weather_ask("Kanha"),))
+    lookup = _FakeLookup({"kanha": [_KANHA_CHATTI_GUESS]})
+
+    intent = await resolve_places(classification, _turn(), lookup=lookup)
+
+    assert intent.asks[0].place == AmbiguousPlace(
+        unresolved_name="Kanha", candidates=(_KANHA_CHATTI_GUESS,)
+    )
+
+
+_KISUMU_COUNTY = AreaMatch(
+    name="Kisumu",
+    region="KE",
+    within=("Kenya",),
+    geometry=Geometry(coordinates=[34.77, -0.09]),
+    is_region=True,
+)
+_KISUMU_EAST_GUESS = AreaMatch(
+    name="Kisumu East",
+    region="KE",
+    within=("Kenya", "Kisumu"),
+    geometry=Geometry(coordinates=[34.83, -0.10]),
+    is_guess=True,
+)
+
+
+async def test_an_exact_name_beats_one_that_only_starts_with_it() -> None:
+    """ "Kisumu" is a whole county, by exact name. "Kisumu East" only starts
+    with it. The exact name wins: the user is asked for a place in the
+    county, not whether they meant Kisumu East."""
+
+    classification = IntentClassification(asks=(_weather_ask("Kisumu"),))
+    lookup = _FakeLookup({"kisumu": [_KISUMU_EAST_GUESS, _KISUMU_COUNTY]})
+
+    intent = await resolve_places(classification, _turn(), lookup=lookup)
+
+    assert intent.asks[0].place == UnresolvedPlace(
+        unresolved_name="Kisumu", region="Kisumu"
+    )
+
+
+async def test_a_region_after_a_comma_is_not_split_off_by_a_guess() -> None:
+    """There is no Eldoret in Kisumu. "Kisumu East" only starts with the
+    county's name, so it must not make "Kisumu" a second place to answer."""
+
+    eldoret = AreaMatch(
+        name="Eldoret",
+        region="KE",
+        within=("Kenya", "Uasin Gishu"),
+        geometry=Geometry(coordinates=[35.27, 0.52]),
+    )
+    classification = IntentClassification(asks=(_weather_ask("Eldoret, Kisumu"),))
+    lookup = _FakeLookup(
+        {"eldoret": [eldoret], "kisumu": [_KISUMU_EAST_GUESS, _KISUMU_COUNTY]}
+    )
+
+    intent = await resolve_places(classification, _turn(), lookup=lookup)
+
+    assert [ask.place for ask in intent.asks] == [
+        UnresolvedPlace(unresolved_name="Eldoret, Kisumu")
+    ]
+
+
+async def test_a_guess_near_the_user_is_used_without_asking() -> None:
+    """The user is about 6 km from Kanha Chatti. Someone there saying "Kanha"
+    almost surely means it, so no question is needed."""
+
+    classification = IntentClassification(asks=(_weather_ask("Kanha"),))
+    lookup = _FakeLookup({"kanha": [_KANHA_CHATTI_GUESS]})
+
+    intent = await resolve_places(
+        classification,
+        _turn(geometry=Geometry(coordinates=[84.92, 24.25])),
+        lookup=lookup,
+    )
+
+    place = intent.asks[0].place
+    assert isinstance(place, ResolvedPlace)
+    assert place.name == "Kanha Chatti"
 
 
 async def test_a_named_state_narrows_to_the_farmers_own_area() -> None:

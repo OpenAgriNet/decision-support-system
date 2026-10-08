@@ -132,6 +132,25 @@ def test_not_found_says_in_not_comma() -> None:
     assert answer.content[0].text == "I could not find Aurangabad in Maharashtra."
 
 
+def test_a_single_choice_shows_the_place_it_sits_in() -> None:
+    """With one choice there is nothing to tell it apart from. "Kanha Chatti,
+    India" helps nobody; the district does."""
+
+    guess = AreaMatch(
+        name="Kanha Chatti",
+        region="IN-JH",
+        within=("India", "Jharkhand", "Chatra"),
+        geometry=Geometry(coordinates=[84.9, 24.2]),
+        is_guess=True,
+    )
+    place = AmbiguousPlace(unresolved_name="Kanha", candidates=(guess,))
+
+    answer = answer_for_unplaced_asks((_ask(place=place),), _TEXT)
+
+    assert answer is not None
+    assert answer.content[0].text == "Which Kanha?\n1. Kanha Chatti, Chatra"
+
+
 def test_a_whole_state_asks_for_a_smaller_place() -> None:
     """Maharashtra exists. "I could not find Maharashtra" would be untrue; it is
     just too big to answer for one spot in it."""

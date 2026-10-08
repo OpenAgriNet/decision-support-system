@@ -27,6 +27,7 @@ from dss.core.intent.models import (
     ResolvedPlace,
     UnresolvedPlace,
 )
+from dss.core.shared.geo import distance_km
 from dss.core.shared.models import Location, UserTurn
 from dss.ports.area_lookup import AreaLookup, AreaMatch
 
@@ -78,12 +79,21 @@ def _name_and_parts(text: str) -> tuple[str, tuple[str, ...]]:
     return name.strip(), tuple(part.strip() for part in rest.split(",") if part.strip())
 
 
+def _exact_first(found: list[AreaMatch]) -> list[AreaMatch]:
+    """An exact name beats one that only starts with it: "Kisumu", the county,
+    over "Kisumu East". Guesses are kept only when nothing matches exactly."""
+
+    exact = [m for m in found if not m.is_guess]
+    return exact or found
+
+
 async def _places_named(name: str, lookup: AreaLookup) -> list[AreaMatch]:
     """The places a name matches, regions left out. A region is set aside
     before nesting, so it cannot swallow the district of the same name inside
     it (Chandigarh, the territory, and Chandigarh, its district)."""
 
-    return _drop_nested([m for m in await lookup.resolve(name) if not m.is_region])
+    found = _exact_first(await lookup.resolve(name))
+    return _drop_nested([m for m in found if not m.is_region])
 
 
 async def _any_above(name: str, parts: tuple[str, ...], lookup: AreaLookup) -> bool:
@@ -113,7 +123,9 @@ async def _split_joined(
     name, part = _name_and_part(classified.place_name)
     # A region is never a place of its own, so "Aurangabad, Maharashtra" is
     # one place in a state, not two places.
-    if not part or not [m for m in await lookup.resolve(part) if not m.is_region]:
+    if not part or not [
+        m for m in _exact_first(await lookup.resolve(part)) if not m.is_region
+    ]:
         return [classified]
     folded = part.casefold()
     matches = await _places_named(name, lookup)
@@ -123,6 +135,41 @@ async def _split_joined(
         classified.model_copy(update={"place_name": name}),
         classified.model_copy(update={"place_name": part}),
     ]
+
+
+async def _user_point(
+    user_location: Location | None, lookup: AreaLookup
+) -> list[float] | None:
+    """Where the user is, as a point: the device's, else the platform's area
+    when it names exactly one known place."""
+
+    if user_location is None:
+        return None
+    if user_location.geometry is not None:
+        return user_location.geometry.coordinates
+    if user_location.area:
+        matches = [
+            m
+            for m in await lookup.resolve(user_location.area)
+            if not m.is_region and not m.is_guess
+        ]
+        if len(matches) == 1:
+            return matches[0].geometry.coordinates
+    return None
+
+
+async def _near_user(
+    matches: list[AreaMatch],
+    user_location: Location | None,
+    lookup: AreaLookup,
+    max_km: float,
+) -> list[AreaMatch]:
+    """The matches within `max_km` of where the user is."""
+
+    point = await _user_point(user_location, lookup)
+    if point is None:
+        return []
+    return [m for m in matches if distance_km(point, m.geometry.coordinates) <= max_km]
 
 
 def _inside(match: AreaMatch, region: AreaMatch) -> bool:
@@ -173,7 +220,7 @@ async def _resolve_named(
     through."""
 
     lookup_name, parts = _name_and_parts(name)
-    found = await lookup.resolve(lookup_name)
+    found = _exact_first(await lookup.resolve(lookup_name))
     # A whole region is never the place: one point cannot stand for a state.
     # Set aside before nesting, so a region does not swallow the town of the
     # same name inside it.
@@ -209,6 +256,16 @@ async def _resolve_named(
     # breaks a tie between same-name places, never hides the one they named.
     if len(matches) > 1 and region is not None:
         matches = [m for m in matches if m.region == region] or matches
+    # Where the user is breaks the same kind of tie: the one match near them
+    # is almost surely the one meant. A lone guess ("Kanha Chatti" for
+    # "Kanha") is a tie too: it may be far from the place meant, so it is
+    # used only when near, and otherwise asked about as the one choice.
+    if len(matches) > 1 or (len(matches) == 1 and matches[0].is_guess):
+        near = await _near_user(matches, user_location, lookup, nearest_max_km)
+        if len(near) == 1:
+            return _from_match(near[0], source)
+        if len(matches) == 1:
+            return AmbiguousPlace(unresolved_name=name, candidates=tuple(matches))
     if len(matches) == 1:
         return _from_match(matches[0], source)
     if len(matches) > 1:

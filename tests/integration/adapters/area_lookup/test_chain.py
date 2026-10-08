@@ -90,6 +90,37 @@ async def test_a_source_that_knows_nothing_is_counted_as_a_miss(reader) -> None:
     assert _counted(reader) == {("csv", "miss"): 1, ("photon", "hit"): 1}
 
 
+async def test_a_guess_lets_the_next_source_try_for_the_exact_name() -> None:
+    """The file only has "Kanha Chatti", far away. Photon may know the real
+    Kanha, so a guess must not stop the chain."""
+
+    guess = _PUNE.model_copy(update={"name": "Kanha Chatti", "is_guess": True})
+    exact = _PUNE.model_copy(update={"name": "Kanha"})
+    chain = ChainedAreaLookup(
+        [
+            ("csv", FakeAreaLookup({"kanha": [guess]})),
+            ("photon", FakeAreaLookup({"kanha": [exact]})),
+        ]
+    )
+
+    assert await chain.resolve("Kanha") == [exact]
+
+
+async def test_a_guess_is_kept_when_no_source_has_the_exact_name() -> None:
+    """Nobody knows an exact Kanha. The guess comes back, still marked, so
+    core can check it against the user's place or ask."""
+
+    guess = _PUNE.model_copy(update={"name": "Kanha Chatti", "is_guess": True})
+    chain = ChainedAreaLookup(
+        [
+            ("csv", FakeAreaLookup({"kanha": [guess]})),
+            ("photon", FakeAreaLookup()),
+        ]
+    )
+
+    assert await chain.resolve("Kanha") == [guess]
+
+
 async def test_nearest_comes_from_the_first_source_that_knows() -> None:
     """A source with nothing near the point hands over to the next, the same
     order as a name lookup."""
