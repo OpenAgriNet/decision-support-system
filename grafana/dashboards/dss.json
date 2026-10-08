@@ -897,8 +897,8 @@
     {
       "id": 24,
       "type": "timeseries",
-      "title": "Place lookups by source and outcome",
-      "description": "How a farmer's place name was looked up, one count per source asked. A hit means the source returned matches, a miss means it knew nothing, an error means it was down or too slow. Never the place name.",
+      "title": "Calls to place sources, by outcome",
+      "description": "Every call to a place source, including checks made while reading a reply, so one question can count more than once. For source health: a hit means the source returned matches, a miss means it knew nothing, an error means it was down or too slow. How questions ended is on the location stage of the trace. Never the place name.",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
         "uid": "dss-clickhouse-otel"

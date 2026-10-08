@@ -796,7 +796,7 @@ What gets published:
 | `dss.stage.duration` | how long one stage took, and which model ran it |
 | `dss.stage.tokens` | tokens per stage, split into input and output |
 | `dss.ask.count` | what farmers ask, one per ask, by category and interaction |
-| `dss.area_lookup.count` | place lookups, one per source asked, by source (`csv`, `photon`) and outcome (`hit`, `miss`, `error`) |
+| `dss.area_lookup.count` | calls to each place source, by source (`csv`, `photon`) and outcome (`hit`, `miss`, `error`). Includes checks made while reading a reply, so it shows source health, not how many questions were asked |
 | `http.server.request.duration` | every request at the edge, by route and status |
 
 Durations are in **seconds**, which is what the HTTP convention uses. The DSS

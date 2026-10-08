@@ -157,8 +157,9 @@ class _Instruments:
         self.area_lookup_count: Counter = meter.create_counter(
             AREA_LOOKUP_COUNT,
             description=(
-                "Place lookups, one per source asked: which source and how it "
-                "went. Never the place name."
+                "Calls to each place source and how each went, including the "
+                "checks made while reading a reply. For source health, not a "
+                "count of questions. Never the place name."
             ),
         )
 

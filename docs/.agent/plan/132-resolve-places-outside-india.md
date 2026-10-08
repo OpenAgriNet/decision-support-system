@@ -105,8 +105,9 @@ Observability:
 - Span `dss.area_lookup.photon` with name length, country codes, result
   count, outcome. No place name as an attribute.
 - Counter `dss.area_lookup.count` with `source` (`csv`, `photon`) and
-  `outcome` (`hit`, `miss`, `error`), recorded by the chain. It counts what
-  a source did, not what the farmer is asked: core narrows the matches and
+  `outcome` (`hit`, `miss`, `error`), recorded by the chain on every call,
+  including checks made while reading a reply. It is for source health, not
+  a count of questions. It counts what a source did: core narrows the matches and
   decides resolved or ambiguous, and the `location` span already says which.
   "photon" counts cached answers too. Cache hit and miss metrics are a
   follow-up. No new stage. One Grafana panel.
