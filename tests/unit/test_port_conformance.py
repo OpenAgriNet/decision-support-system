@@ -15,6 +15,7 @@ from dss.orchestration.stub_runner import StubRunner
 from dss.ports.turn import TurnRunner
 from tests.support.fakes import (
     FakeAreaLookup,
+    FakeLocalizer,
     FakePromptProvider,
     FakeRunner,
     FakeSchemeCatalog,
@@ -79,6 +80,7 @@ def test_the_orchestrator_satisfies_the_port(a_turn, a_context):
             discover=_no_discovery,
             plan=_unreached_plan,
             compose=_unreached_compose,
+            localize=FakeLocalizer(),
         ),
         turns=MemoryTurnSink(),
         telemetry=StdoutTelemetrySink(),

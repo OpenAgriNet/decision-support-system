@@ -40,6 +40,7 @@ from contextlib import aclosing
 from dataclasses import dataclass
 
 from dss.adapters.observability.tracing import TurnRecorder, turn_span
+from dss.core.channel.localize import LocalizeText, localize_answer
 from dss.core.channel.models import ClarificationText, ComposedAnswer
 from dss.core.channel.service import (
     answer_for_unplaced_asks,
@@ -119,11 +120,17 @@ class Components:
     `compose` streams. There is no whole-answer variant: a caller who wants one
     body gets it by draining, which the transport already does. That keeps the
     runner ignorant of how its events are delivered — `ports/turn.py` keeps the
-    transport's mode on the transport's side of the seam."""
+    transport's mode on the transport's side of the seam.
+
+    `localize` renders system-authored text — refusals, clarification
+    questions, the no-provider answers — in the turn's target language
+    (ADR-0018). It is a no-op for English and falls back to the English text
+    on any failure, so every call site below may lean on it unconditionally."""
 
     discover: DiscoverProviders
     plan: Plan
     compose: ComposeStream
+    localize: LocalizeText
 
 
 class Orchestrator:
@@ -194,7 +201,11 @@ class Orchestrator:
             self._note("moderation", ctx, decision.outcome.value)
 
             if decision.outcome is not Outcome.PROCEED:
-                yield self._finish(ctx, _refused(decision), recorder)
+                outcome, refusal = _refused(decision)
+                refusal = await localize_answer(
+                    refusal, self._components.localize, turn=turn
+                )
+                yield self._finish(ctx, (outcome, refusal), recorder)
                 return
 
             self._note("intent", ctx, _classified(result.intent))
@@ -221,6 +232,9 @@ class Orchestrator:
                 result.intent.asks, self._clarification_text
             )
             if clarification is not None:
+                clarification = await localize_answer(
+                    clarification, self._components.localize, turn=turn
+                )
                 yield self._finish(
                     ctx,
                     (outcome_for(TurnStatus.REQUIRES_INPUT), clarification),
@@ -247,6 +261,9 @@ class Orchestrator:
                     answer = ComposedAnswer(
                         content=(*answer.content, TextBlock(text=question))
                     )
+                answer = await localize_answer(
+                    answer, self._components.localize, turn=turn
+                )
                 yield self._finish(ctx, (outcome_for(status), answer), recorder)
                 return
 
@@ -289,6 +306,7 @@ class Orchestrator:
                     result.intent.asks, self._clarification_text
                 )
                 if question is not None:
+                    question = await self._components.localize(question, turn=turn)
                     written.append(f"\n\n{question}")
                     yield ClaimDelta(text=written[-1])
                 text = "".join(written)

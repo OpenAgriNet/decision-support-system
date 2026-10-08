@@ -74,3 +74,15 @@ composer:
       system_prompt: prompts/composer/en/prompt.j2
     hi:
       system_prompt: prompts/composer/hi/prompt.j2
+
+# Renders system-authored text — refusals, clarification questions, the
+# no-provider answers — in the turn's target language (ADR-0018). English
+# turns never reach it, and a failure falls back to the English text.
+localizer:
+  placeholders:
+    - target_lang
+  language_prompts:
+    en:
+      system_prompt: prompts/localizer/en/prompt.j2
+    hi:
+      system_prompt: prompts/localizer/hi/prompt.j2

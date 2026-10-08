@@ -43,7 +43,12 @@ from tests.integration.orchestration.test_orchestrator import (
     _Telemetry,
     _turn,
 )
-from tests.support.fakes import FakeAreaLookup, FakePromptProvider, FakeSchemeCatalog
+from tests.support.fakes import (
+    FakeAreaLookup,
+    FakeLocalizer,
+    FakePromptProvider,
+    FakeSchemeCatalog,
+)
 
 CHUNKS = ("Wheat is ", "2,2", "75 Rs [1].")
 WHOLE = "Wheat is 2,275 Rs [1]."
@@ -66,6 +71,7 @@ def _build(
             discover=_FakeDiscovery(discovery or _served_discovery()),
             plan=_FakePlan(_ANSWERED_EVIDENCE),
             compose=compose or _FakeCompose(WHOLE, chunks=CHUNKS),
+            localize=FakeLocalizer(),
         ),
         turns=turns,
         telemetry=_Telemetry(),
@@ -188,6 +194,7 @@ async def test_the_real_component_streams_through_the_runner() -> None:
                 llm=StubLLM(text_chunks=chunks),
                 prompts=FakePromptProvider(),
             ),
+            localize=FakeLocalizer(),
         ),
         turns=MemoryTurnSink(),
         telemetry=_Telemetry(),

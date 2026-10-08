@@ -46,6 +46,7 @@ from dss.config.policy_loader import load_policy_pack
 from dss.config.prompt_service import load_prompt_service
 from dss.config.schema_pack_fetch import SchemaPackFetchFailed, fetch_packs
 from dss.config.settings import Settings
+from dss.core.channel.localize import build_localizer
 from dss.core.intent.models import Intent
 from dss.core.planner.validation import DomainSchema, parse_domain_schema
 from dss.core.policy.models import Checkpoint
@@ -133,6 +134,10 @@ def build_runner_with_lifecycle(
         settings, fetch=fetch
     )
 
+    # One binding for everything the farmer reads: the streamed answer and the
+    # localized system text ride the same model, temperature and timeout.
+    composer_llm = _composer_llm(settings)
+
     components = Components(
         discover=discover,
         plan=build_plan(
@@ -147,8 +152,12 @@ def build_runner_with_lifecycle(
             retries=settings.planner_retries,
         ),
         compose=build_stream_response(
-            identity=identity, llm=_composer_llm(settings), prompts=prompts
+            identity=identity, llm=composer_llm, prompts=prompts
         ),
+        # The composer's own binding (the user-facing writer, ADR-0018):
+        # rendering a refusal or a clarification in the farmer's language is
+        # composition work, not a new component with its own model knob.
+        localize=build_localizer(llm=composer_llm, prompts=prompts),
     )
 
     runner = Orchestrator(
