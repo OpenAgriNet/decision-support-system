@@ -43,7 +43,7 @@ from tests.integration.orchestration.test_orchestrator import (
     _Telemetry,
     _turn,
 )
-from tests.support.fakes import FakeAreaLookup, FakeSchemeCatalog
+from tests.support.fakes import FakeAreaLookup, FakePromptProvider, FakeSchemeCatalog
 
 CHUNKS = ("Wheat is ", "2,2", "75 Rs [1].")
 WHOLE = "Wheat is 2,275 Rs [1]."
@@ -58,6 +58,7 @@ def _build(
     orch = Orchestrator(
         intent_llm=_FakeIntentLLM(_one_ask()),
         moderation_llm=_FakeModerationLLM(),
+        prompts=FakePromptProvider(),
         policies=[],
         scheme_catalog=FakeSchemeCatalog(),
         scheme_fuzzy_threshold=None,
@@ -171,6 +172,7 @@ async def test_the_real_component_streams_through_the_runner() -> None:
     orch = Orchestrator(
         intent_llm=_FakeIntentLLM(_one_ask()),
         moderation_llm=_FakeModerationLLM(),
+        prompts=FakePromptProvider(),
         policies=[],
         scheme_catalog=FakeSchemeCatalog(),
         scheme_fuzzy_threshold=None,
@@ -184,6 +186,7 @@ async def test_the_real_component_streams_through_the_runner() -> None:
                     boundaries="Never gives financial advice.",
                 ),
                 llm=StubLLM(text_chunks=chunks),
+                prompts=FakePromptProvider(),
             ),
         ),
         turns=MemoryTurnSink(),

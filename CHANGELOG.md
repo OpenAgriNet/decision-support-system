@@ -2,7 +2,22 @@
 
 ## [Unreleased]
 
+### Added
+- A deployment can give a language its own version of any prompt, through
+  configuration alone. Every LLM component's system prompt (intent,
+  moderation, planner, composer) now lives as a template under
+  `prompts/<component>/<lang>/`, named by `configs/prompts.yaml`; a turn is
+  served the prompt for its target language and falls back to English when
+  that language has none, recording the gap as a trace event — a missing
+  version never breaks an answer. A Hindi version of all four prompts ships
+  as a marked demo of the mechanism, pending a Hindi speaker's review.
+  ADR-0018
+
 ### Changed
+- The planner's fixed template and the `provider-invocation` skill moved into
+  the prompt registry (`prompts/planner/<lang>/`); the bundled
+  `config/defaults/planner-prompt.md` and `config/defaults/skills/` are gone.
+  Deployments that mount prompts set `DSS_PROMPT_CONFIG_PATH`. ADR-0018
 - `DSS_DISTRICT_CSV_PATH` is now `DSS_AREA_CSV_PATH`: the index holds blocks
   as well as districts. The old name is ignored without a warning, so an
   adopter who set it gets the bundled `areas.csv` instead — rename it (#130)

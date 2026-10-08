@@ -8,132 +8,46 @@ Turning that into an ``Intent`` — resolving each ask's ``place_name`` to a
 ``ResolvedPlace`` — is ``core.location``'s job. This module never builds an
 ``Ask``.
 
-Plain Python: builds a prompt, calls the ``LLMProvider`` port. No framework
-here.
+Plain Python: fills the prompt's slots, calls the ``PromptProvider`` and
+``LLMProvider`` ports. The prompt's text lives under ``prompts/intent/``, one
+version per language (configs/prompts.yaml), so this module decides *what the
+template is told* — the taxonomy and the history window — never the wording.
 """
 
 from __future__ import annotations
-
-from collections.abc import Sequence
 
 from dss.core.intent.models import (
     IntentClassification,
     InteractionType,
     SubjectCategory,
 )
-from dss.core.shared.models import ConversationMessage, UserTurn
+from dss.core.shared.models import UserTurn
 from dss.ports.llm import LLMProvider
+from dss.ports.prompts import PromptProvider
 
 # How many prior turns to show the model. Enough to resolve a reference without
 # ballooning the prompt.
 _HISTORY_WINDOW = 6
 
 
-def _render_history(history: Sequence[ConversationMessage]) -> list[str]:
-    if not history:
-        return []
-    lines = ["", "Conversation so far (oldest first):"]
-    for message in history[-_HISTORY_WINDOW:]:
-        lines.append(f"  {message.role}: {message.text}")
-    return lines
-
-
-def build_intent_prompt(history: Sequence[ConversationMessage]) -> str:
-    """Render the intent taxonomy and any conversation context into one prompt."""
-
-    categories = ", ".join(c.value for c in SubjectCategory)
-    interactions = ", ".join(i.value for i in InteractionType)
-    lines = [
-        "You are an intent classifier for an agriculture assistant.",
-        "Break the user's latest query into one or more asks. A query may hold "
-        "several (e.g. 'wheat price and will it rain?' is two asks).",
-        "Each ask has:",
-        f"- subject_categories: exactly one of [{categories}].",
-        "    Crop — growing a plant: sowing, pests, disease, irrigation, yield.",
-        "    Livestock — animals: cattle, poultry, feed, animal health.",
-        "    Weather — rain, temperature, forecast, a season's outlook.",
-        "    Market — what something sells for: mandi prices, rates, arrivals.",
-        "    Scheme — a government programme: eligibility, benefits, applying.",
-        "    Facility — a physical place with a service: a warehouse, cold "
-        "storage, a soil lab, a mandi yard. Where to take something, or where "
-        "one is.",
-        "  Pick by what the answer is about, not by which word appears. "
-        "'Is my wheat insured under PMFBY' is Scheme, not Crop.",
-        f"- interaction_type: one of [{interactions}] — advise to explain/guide, "
-        "observe to look up a value/record/status, act to perform an action "
-        "(book, apply, submit, update, escalate).",
-        "  advise wants a recommendation the assistant reasons out; observe "
-        "wants a fact someone already holds; act changes something in the "
-        "world. Asking *how* to apply is advise; asking to *be* applied is act.",
-        "- agriculture_subjects: the free-text specific named "
-        "(e.g. 'potato', 'PM-KISAN'); null when the category needs none "
-        "(e.g. 'will it rain?').",
-        "  Copy the user's own words. Do not translate a scheme's name, expand "
-        "an acronym, or correct a spelling — a later step matches this against "
-        "what each provider advertises, and needs what was actually said.",
-        "",
-        "Examples:",
-        "  'what is the onion rate at Lasalgaon' -> one ask: Market / observe / "
-        "'onion'.",
-        "  'am I eligible for PM-KISAN' -> one ask: Scheme / observe / "
-        "'PM-KISAN'. Eligibility is a fact about the user, not advice.",
-        "  'how do I apply for PM-KISAN' -> one ask: Scheme / advise / "
-        "'PM-KISAN'. Explaining the steps is advice; only submitting is act.",
-        "  'my cotton leaves are curling' -> one ask: Crop / advise / 'cotton'. "
-        "A problem description is still a request for guidance.",
-        "  'tomato price and when should I spray' -> two asks: Market / observe "
-        "/ 'tomato', and Crop / advise / 'tomato'.",
-        "",
-        "Also return an overall confidence in [0, 1]: how sure you are that "
-        "these asks are what the user meant. Below about 0.5 the turn may be "
-        "refused, so use a low value when the query is too vague to place "
-        "rather than guessing a category to look decisive. Returning no asks "
-        "is a valid answer when nothing here is about agriculture.",
-        "If the query is a follow-up ('And potato?', 'Is it safe to use?'), "
-        "resolve it against the conversation before classifying.",
-        "",
-        "place_name: the place the user says they are in or asks about, "
-        "written in English (transliterate: 'मी पुण्याहून' -> 'Pune'). "
-        "Return the place only — no district/taluka/village word, no state, "
-        "no coordinates. If the latest query names no place, use the most "
-        "recent place named earlier in this conversation, and set "
-        "place_from_history to true. Only ever copy a "
-        "place the user actually said — never guess one from the crop, the "
-        "language, or the subject. Use null if no place was said anywhere.",
-        "  'weather in Pune and Mumbai' -> two asks, place_name 'Pune' and "
-        "'Mumbai'. Two places are two asks, even with one subject.",
-        "  'wheat price and will it rain in Pune' -> two asks, place_name "
-        "'Pune' on each. If one place covers several asks, put it on each.",
-        "  'mandi rate in Nashik and is it raining here' -> two asks: "
-        "place_name 'Nashik' on the rate, null on the rain. 'Here' is the "
-        "user's own location, not a place named elsewhere in the query.",
-        "  Conversation: user 'tomato rate?', assistant 'At Vashi market, "
-        "tomato is 20 a kg.', then 'and next week?' -> place_name null. A "
-        "place only the assistant named is not the user's.",
-        "  Conversation: user 'cotton rate?', assistant 'At Akola market, "
-        "cotton is 6,500 a quintal.', then 'and yesterday?' -> place_name "
-        "null. Akola is where the answer came from, not where the user is.",
-        "  Conversation: user 'weather in Sonagiri', assistant 'Which Sonagiri? "
-        "1. Sonagiri, Gujarat 2. Sonagiri, Odisha', then '2' -> one ask: "
-        "Weather / observe, place_name 'Sonagiri, Odisha'. The user picked one "
-        "of the listed options, "
-        "so answer the first question. Copy the option as listed. If the "
-        "reply is not one of the listed options but names a place, it is the "
-        "answer to our question: copy the name with that place, as "
-        "'Sonagiri, Kerala'. If it is not a place at all, read it as a new "
-        "question.",
-        "  'weather in Pune, Maharashtra' -> one ask, place_name 'Pune'. A "
-        "state after a place narrows it; it is not a second place.",
-    ]
-    lines += _render_history(history)
-    return "\n".join(lines)
-
-
-async def classify_intent(turn: UserTurn, llm: LLMProvider) -> IntentClassification:
+async def classify_intent(
+    turn: UserTurn, llm: LLMProvider, prompts: PromptProvider
+) -> IntentClassification:
     """Classify the raw query in the context of the turn's recent history."""
 
     return await llm.structured(
-        system_prompt=build_intent_prompt(turn.history),
+        system_prompt=prompts.get_prompt(
+            "INTENT",
+            lang=turn.target_lang,
+            kwargs={
+                # The enums are the contract with the output schema, so the
+                # template interpolates them rather than restating them — a
+                # category added in code reaches every language's prompt.
+                "categories": ", ".join(c.value for c in SubjectCategory),
+                "interactions": ", ".join(i.value for i in InteractionType),
+                "history": tuple(turn.history[-_HISTORY_WINDOW:]),
+            },
+        ),
         user_query=turn.original_query,
         schema=IntentClassification,
     )

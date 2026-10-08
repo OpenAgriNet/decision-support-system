@@ -28,8 +28,8 @@ import pytest
 from dotenv import dotenv_values
 
 from dss.config.identity_loader import load_identity
+from dss.config.prompt_service import load_prompt_service
 from dss.config.settings import Settings
-from dss.config.skill_loader import load_skills
 from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
 from dss.core.moderation.models import ModerationDecision, Outcome
 from dss.core.planner.models import Verdict
@@ -170,10 +170,12 @@ async def sent_topics() -> list[str]:
             )
         },
         invocation=invocation,
-        # The shipped identity and skills, not doubles: the guidance under test
-        # is exactly what a deployment loads.
+        # The shipped identity and prompt registry, not doubles: the guidance
+        # under test is exactly what a deployment loads.
         identity=load_identity(),
-        skills=load_skills(),
+        prompts=load_prompt_service(
+            Path(__file__).parents[3] / "configs" / "prompts.yaml"
+        ),
         model=_resolve_model(settings.planner_model, settings),
         temperature=settings.planner_temperature,
         timeout_seconds=settings.planner_timeout_seconds,

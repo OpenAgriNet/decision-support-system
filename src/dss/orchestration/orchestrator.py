@@ -77,6 +77,7 @@ from dss.orchestration.plan import Plan
 from dss.orchestration.turn import run_turn
 from dss.ports.area_lookup import AreaLookup
 from dss.ports.llm import LLMProvider
+from dss.ports.prompts import PromptProvider
 from dss.ports.scheme_catalog import SchemeCatalog
 from dss.ports.sinks import TelemetrySink, TurnSink
 
@@ -134,6 +135,7 @@ class Orchestrator:
         *,
         intent_llm: LLMProvider,
         moderation_llm: LLMProvider,
+        prompts: PromptProvider,
         policies: Sequence[Policy],
         scheme_catalog: SchemeCatalog,
         scheme_fuzzy_threshold: float | None,
@@ -145,6 +147,7 @@ class Orchestrator:
     ) -> None:
         self._intent_llm = intent_llm
         self._moderation_llm = moderation_llm
+        self._prompts = prompts
         self._policies = policies
         # Required, not optional. An unmounted catalog is already
         # representable as an empty one, so defaulting here would make a
@@ -180,6 +183,7 @@ class Orchestrator:
                 turn,
                 intent_llm=self._intent_llm,
                 moderation_llm=self._moderation_llm,
+                prompts=self._prompts,
                 policies=self._policies,
                 discover_providers=self._components.discover,
                 area_lookup=self._area_lookup,

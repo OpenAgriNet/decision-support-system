@@ -7,10 +7,12 @@ fails, which is the point of having a contract at all.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
+from typing import Any
 
 from dss.core.enrichment.models import Scheme
 from dss.core.enrichment.normalize import alias_key
+from dss.core.planner.models import Skill
 from dss.core.shared.errors import ProviderUnavailable
 from dss.core.shared.models import TurnContext, TurnEvent, UserTurn
 from dss.ports.area_lookup import AreaMatch
@@ -88,6 +90,42 @@ class FakeTurnSink:
         if self.fail_on == "closed":
             raise RuntimeError("turn store unreachable")
         self.closed_with.append(finished)
+
+
+class FakePromptProvider:
+    """A `PromptProvider` that records what was asked and answers with a
+    legible stand-in prompt.
+
+    The returned string carries the identifier, the language, and every
+    kwarg's rendered value, so a tier-1 test can assert "the history reached
+    the prompt" without reading the real template — the template's own text
+    is config, pinned by `tests/unit/config/test_shipped_prompts.py`.
+    """
+
+    def __init__(self, skills: Sequence[Skill] = ()) -> None:
+        self._skills = tuple(skills)
+        self.calls: list[tuple[str, str, dict[str, Any]]] = []
+
+    def get_prompt(
+        self,
+        prompt_identifier: str,
+        lang: str,
+        kwargs: Mapping[str, Any] | None = None,
+    ) -> str:
+        values = dict(kwargs or {})
+        self.calls.append((prompt_identifier, lang, values))
+        lines = [f"[{prompt_identifier} prompt, lang={lang}]"]
+        for key, value in values.items():
+            rendered = (
+                "\n".join(f"  {m.role}: {m.text}" for m in value)
+                if key == "history"
+                else str(value)
+            )
+            lines.append(f"{key}: {rendered}")
+        return "\n".join(lines)
+
+    def get_skills(self, prompt_identifier: str, lang: str) -> tuple[Skill, ...]:
+        return self._skills
 
 
 class FakeAreaLookup:

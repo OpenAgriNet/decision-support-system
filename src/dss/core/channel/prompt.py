@@ -6,6 +6,13 @@ are separate concerns: this one is pure string assembly, testable without an
 `LLMProvider` at all, and it is where a change to what the farmer's answer is
 grounded in belongs.
 
+The system prompt's *text* lives under ``prompts/composer/``, one version per
+language (configs/prompts.yaml), served through the ``PromptProvider`` port;
+this module decides what the template is told — the identity and the turn's
+target language. The evidence layout below stays code: it is structure the
+model reads, built from network-supplied values, not prose a language reviewer
+rewrites.
+
 Framework-free: plain strings in, plain strings out. Nothing here knows the
 answer arrives in pieces.
 """
@@ -23,53 +30,25 @@ from dss.core.planner.markers import (
 )
 from dss.core.planner.models import Evidence, Failure, Identity
 from dss.core.shared.models import UserTurn
+from dss.ports.prompts import PromptProvider
 
 # A reply like "2" means nothing without the question it answers. Three
 # messages hold that question; the whole chat would make every answer slower.
 _HISTORY_WINDOW = 3
 
-SYSTEM_PROMPT = """You are {name}, {persona}
 
-{boundaries}
-
-Write the answer a farmer will read. Use only the retrieved data below —
-never your own knowledge, and never a number the data does not contain.
-
-- Answer the question that was asked, leading with what it asked for.
-- Plain words, short sentences. A farmer is reading this, not an analyst.
-- Answer in sentences. Do not lay values out as a list or a table.
-- Never use the data's own field names as labels. They are schema terms, not
-  what a farmer calls things — say what the value means instead.
-- When one thing carries several prices, the usual price is the answer. Give
-  that, then say how low and how high it went in the same sentence.
-- Cite a source with its number in square brackets, like [1].
-- Say which place the answer is about, in your own words. If the retrieved
-  data itself names a place, use that — it is more precise. Otherwise, each
-  block also carries the place its ask was about; use that instead.
-- Answer each question from one source only. Where several sources answer
-  the same question, read them, pick the single one that answers it best,
-  and write from that one alone — do not stitch two sources' text together
-  and do not average their numbers. Cite only the source you used.
-- Different questions may be answered by different sources. The one-source
-  rule is per question, not per reply.
-- Reply in {target_lang}.
-
-If the data does not answer the question, say plainly that you could not
-find it. Do not fill the gap with a guess — a wrong price costs a farmer
-money.
-
-If a line says a provider could not be reached, say the information was not
-available right now and could be worth asking again. That is different from
-nobody having the answer — do not turn one into the other.
-"""
-
-
-def system_prompt(identity: Identity, *, turn: UserTurn) -> str:
-    return SYSTEM_PROMPT.format(
-        name=identity.name,
-        persona=identity.persona,
-        boundaries=identity.boundaries,
-        target_lang=turn.target_lang,
+def system_prompt(
+    identity: Identity, *, turn: UserTurn, prompts: PromptProvider
+) -> str:
+    return prompts.get_prompt(
+        "COMPOSER",
+        lang=turn.target_lang,
+        kwargs={
+            "name": identity.name,
+            "persona": identity.persona,
+            "boundaries": identity.boundaries,
+            "target_lang": turn.target_lang,
+        },
     )
 
 

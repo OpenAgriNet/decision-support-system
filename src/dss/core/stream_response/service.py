@@ -37,6 +37,7 @@ from dss.core.planner.models import Evidence, Identity
 from dss.core.shared.models import UserTurn
 from dss.core.stream_response.citations import cite_at_end
 from dss.ports.llm import LLMProvider
+from dss.ports.prompts import PromptProvider
 
 
 class ComposeStream(Protocol):
@@ -51,14 +52,19 @@ class ComposeStream(Protocol):
     ) -> AsyncIterator[str]: ...
 
 
-def build_stream_response(*, identity: Identity, llm: LLMProvider) -> ComposeStream:
-    """Bind the identity and the model binding once; return the per-turn
-    callable, so the composition root is the only place that names either."""
+def build_stream_response(
+    *, identity: Identity, llm: LLMProvider, prompts: PromptProvider
+) -> ComposeStream:
+    """Bind the identity, the model binding and the prompt source once; return
+    the per-turn callable, so the composition root is the only place that
+    names any of them."""
 
     def compose_stream(
         evidence: Evidence, intent: Intent, *, turn: UserTurn
     ) -> AsyncIterator[str]:
-        return stream_response(evidence, intent, turn=turn, identity=identity, llm=llm)
+        return stream_response(
+            evidence, intent, turn=turn, identity=identity, llm=llm, prompts=prompts
+        )
 
     return compose_stream
 
@@ -70,6 +76,7 @@ async def stream_response(
     turn: UserTurn,
     identity: Identity,
     llm: LLMProvider,
+    prompts: PromptProvider,
 ) -> AsyncIterator[str]:
     """Yield the farmer's answer in the pieces the model writes it in."""
 
@@ -81,7 +88,7 @@ async def stream_response(
     async with (
         aclosing(
             llm.stream_text(
-                system_prompt=system_prompt(identity, turn=turn),
+                system_prompt=system_prompt(identity, turn=turn, prompts=prompts),
                 user_query=user_prompt(evidence, intent, turn=turn),
             )
         ) as written,

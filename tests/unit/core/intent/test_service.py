@@ -1,6 +1,9 @@
 """Tier 1 — the intent classifier over a mocked LLM.
 
-Plain Python in/out; the ``LLMProvider`` port is faked. No framework, no network.
+Plain Python in/out; the ``LLMProvider`` and ``PromptProvider`` ports are
+faked. No framework, no network, no files — the shipped template's own text is
+pinned in ``tests/unit/config/test_shipped_prompts.py``; here we pin what the
+service *tells* the template.
 """
 
 from __future__ import annotations
@@ -11,18 +14,23 @@ from dss.core.intent.models import (
     InteractionType,
     SubjectCategory,
 )
-from dss.core.intent.service import build_intent_prompt, classify_intent
+from dss.core.intent.service import classify_intent
 from dss.core.shared.models import ConversationMessage, UserTurn
+from tests.support.fakes import FakePromptProvider
 
 
-def _turn(query: str, history: list[ConversationMessage] | None = None) -> UserTurn:
+def _turn(
+    query: str,
+    history: list[ConversationMessage] | None = None,
+    target_lang: str = "en",
+) -> UserTurn:
     return UserTurn(
         original_query=query,
         enriched_query=query,
         session_id="s1",
         transaction_id="t1",
         source_lang="en",
-        target_lang="en",
+        target_lang=target_lang,
         channel="web",
         history=history or [],
     )
@@ -57,7 +65,9 @@ async def test_classify_returns_asks_and_confidence() -> None:
         )
     )
 
-    classification = await classify_intent(_turn("What is the potato price?"), llm)
+    classification = await classify_intent(
+        _turn("What is the potato price?"), llm, FakePromptProvider()
+    )
 
     assert classification == IntentClassification(
         asks=(
@@ -79,178 +89,54 @@ async def test_history_reaches_the_prompt_for_followups() -> None:
         ConversationMessage(role="assistant", text="Wheat is ₹2,275 per quintal."),
     ]
 
-    await classify_intent(_turn("And potato?", history), llm)
+    await classify_intent(_turn("And potato?", history), llm, FakePromptProvider())
 
     assert "wheat price" in llm.seen_prompt.lower()
     # The raw follow-up is judged, not a rewrite.
     assert llm.seen_query == "And potato?"
 
 
-def test_prompt_lists_categories_and_interaction_types() -> None:
-    prompt = build_intent_prompt([])
+async def test_only_the_recent_history_window_reaches_the_prompt() -> None:
+    """Enough to resolve a reference, without ballooning the prompt."""
+
+    llm = _FakeLLM(IntentClassification())
+    history = [
+        ConversationMessage(role="user", text=f"question {n}") for n in range(10)
+    ]
+
+    await classify_intent(_turn("And potato?", history), llm, FakePromptProvider())
+
+    assert "question 9" in llm.seen_prompt
+    assert "question 3" not in llm.seen_prompt
+
+
+async def test_the_prompt_is_asked_for_in_the_turns_target_language() -> None:
+    """The deployment decides per language which prompt serves (the port falls
+    back to English on its own); this service's job is only to ask for the
+    right one."""
+
+    prompts = FakePromptProvider()
+
+    await classify_intent(
+        _turn("गेहूं का भाव?", target_lang="hi"), _FakeLLM(IntentClassification()), prompts
+    )
+
+    [(identifier, lang, kwargs)] = prompts.calls
+    assert identifier == "INTENT"
+    assert lang == "hi"
+
+
+async def test_the_taxonomy_is_supplied_to_the_template() -> None:
+    """The enums are the contract with the output schema, so the code — not
+    each language's template — enumerates them. A category added to the enum
+    reaches every language's prompt through these kwargs."""
+
+    prompts = FakePromptProvider()
+
+    await classify_intent(_turn("wheat?"), _FakeLLM(IntentClassification()), prompts)
+
+    [(_, _, kwargs)] = prompts.calls
     for category in SubjectCategory:
-        assert category.value in prompt
+        assert category.value in kwargs["categories"]
     for interaction in InteractionType:
-        assert interaction.value in prompt
-
-
-def test_prompt_without_history_has_no_conversation_section() -> None:
-    assert "Conversation so far" not in build_intent_prompt([])
-
-
-def test_prompt_asks_for_the_place_name_in_english() -> None:
-    """The district index is English-only, so a Marathi or Hindi turn resolves
-    only if the model transliterates. Asserting the field is named and English
-    is demanded — not the wording, which is free to change.
-    """
-
-    prompt = build_intent_prompt([])
-
-    assert "place_name" in prompt
-    assert "English" in prompt
-
-
-def test_prompt_carries_a_place_named_earlier_in_the_conversation() -> None:
-    """ "And tomorrow?" after "weather in Pune" names no place. Without this
-    line the model returns null and the turn falls back to the device point.
-    """
-
-    prompt = build_intent_prompt([])
-
-    assert "earlier in this conversation" in prompt
-
-
-def test_prompt_asks_the_model_to_flag_a_carried_place() -> None:
-    """Only the model read both the query and the history, in whatever
-    language. Unasked, it always sends the default and a carried place is
-    labelled as named this turn.
-    """
-
-    prompt = build_intent_prompt([])
-
-    assert "place_from_history" in prompt
-
-
-def test_prompt_carries_only_a_place_the_user_said() -> None:
-    """The assistant's "At Lasalgaon APMC, ..." names a market in an answer,
-    not where the farmer is. Carrying it would answer for the wrong place."""
-
-    prompt = build_intent_prompt([])
-
-    assert "a place the user actually said" in prompt
-
-
-def test_prompt_repeats_a_shared_place_on_each_ask() -> None:
-    """Code no longer lends one ask's place to another ahead of the device
-    location, so "wheat price and will it rain in Pune" needs Pune on both."""
-
-    prompt = build_intent_prompt([])
-
-    assert "put it on each" in prompt
-
-
-def test_prompt_shows_here_is_not_the_named_place() -> None:
-    """The rule alone did not hold: a live model still put Pune on "will it
-    rain here". A worked example is what models copy — a different sentence
-    from the live test's, so that test still checks understanding."""
-
-    prompt = build_intent_prompt([])
-
-    assert "is it raining here" in prompt
-
-
-def test_prompt_shows_an_assistant_named_place_is_not_carried() -> None:
-    """The rule alone did not hold on every model: luna carried the market
-    an answer named. A worked example is what models copy."""
-
-    prompt = build_intent_prompt([])
-
-    assert "only the assistant named" in prompt
-
-
-def test_prompt_shows_a_reply_by_number_finishes_the_first_question() -> None:
-    """A reply of "2" means nothing alone. The example shows the model reading
-    our numbered list in the history and copying the picked line. Its name is
-    made up: a real one, listed in another order, could teach a wrong pick."""
-
-    prompt = build_intent_prompt([])
-
-    assert "Which Sonagiri? 1. Sonagiri, Gujarat 2. Sonagiri, Odisha" in prompt
-    assert "'Sonagiri, Odisha'" in prompt
-
-
-def test_prompt_shows_the_place_a_data_answer_came_from_is_not_the_users() -> None:
-    """One example was no longer enough: a live model carried the market an
-    answer named. A second, with different places, held on both models."""
-
-    prompt = build_intent_prompt([])
-
-    assert "where the answer came from" in prompt
-
-
-def test_prompt_says_a_reply_matching_no_listed_option_is_not_a_pick() -> None:
-    """Without this a live model mapped a reply of "5" onto the last line of a
-    three-line list, which would give the farmer the wrong place silently. A
-    reply naming an unlisted place still answers our question: that is what
-    the "Not in this list?" hint asks for."""
-
-    prompt = build_intent_prompt([])
-
-    assert "not one of the listed options but names a place" in prompt
-    assert "If it is not a place at all, read it as a new question." in prompt
-
-
-def test_prompt_forbids_guessing_a_place_nobody_said() -> None:
-    """Carry-forward lets the model look past the latest query. This line keeps
-    it from inventing a place from the crop or language instead.
-    """
-
-    prompt = build_intent_prompt([])
-
-    assert "never guess" in prompt
-
-
-def test_prompt_shows_two_places_apart_from_one_qualified_place() -> None:
-    """Both read as "a place, a comma or 'and', another name". Two places are
-    two asks; a state after a place is one ask with one place.
-    """
-
-    prompt = build_intent_prompt([])
-
-    assert "Pune and Mumbai" in prompt
-    assert "Pune, Maharashtra" in prompt
-
-
-def test_prompt_glosses_every_category() -> None:
-    """A bare category list left the model guessing which bucket an ask falls
-    in. Each name carries a line saying what belongs in it — asserted per
-    category so adding one to the enum without a gloss fails here.
-    """
-
-    prompt = build_intent_prompt([])
-
-    for category in SubjectCategory:
-        assert f"{category.value} —" in prompt, category.value
-
-
-def test_prompt_separates_looking_a_fact_up_from_asking_for_advice() -> None:
-    """The two cases a live model got wrong: eligibility read as advice, and
-    "how do I apply" read as an action. Both now have a worked example, so the
-    distinction is pinned rather than left to the model's reading of one word.
-    """
-
-    prompt = build_intent_prompt([])
-
-    assert "am I eligible for PM-KISAN" in prompt
-    assert "how do I apply for PM-KISAN" in prompt
-
-
-def test_prompt_keeps_the_subject_in_the_user_s_own_words() -> None:
-    """`agriculture_subjects` is matched downstream against what a provider
-    advertises (`describe_capability`), so an expanded acronym or a corrected
-    spelling is worse than the original.
-    """
-
-    prompt = build_intent_prompt([])
-
-    assert "Copy the user's own words" in prompt
+        assert interaction.value in kwargs["interactions"]

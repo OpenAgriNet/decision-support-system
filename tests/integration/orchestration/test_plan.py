@@ -35,6 +35,7 @@ from dss.core.provider_discovery.models import (
 )
 from dss.core.shared.models import ConversationMessage, UserTurn
 from dss.orchestration.plan import build_plan
+from tests.support.fakes import FakePromptProvider
 
 CAPABILITY = ProviderCapability(
     provider_id="agmarknet",
@@ -142,7 +143,7 @@ async def test_plan_returns_evidence_from_what_the_tools_returned() -> None:
         },
         invocation=invocation,
         identity=IDENTITY,
-        skills=(SKILL,),
+        prompts=FakePromptProvider(skills=(SKILL,)),
         model=FunctionModel(_calls_select_then_answers),
     )
 
@@ -185,7 +186,7 @@ async def test_the_prompt_carries_the_identity_and_the_marked_history() -> None:
         },
         invocation=_FakeInvocation(),
         identity=IDENTITY,
-        skills=(SKILL,),
+        prompts=FakePromptProvider(skills=(SKILL,)),
         model=FunctionModel(record),
     )
     turn = _turn().model_copy(
@@ -251,7 +252,7 @@ async def test_a_direct_answer_reaches_the_evidence_through_plan() -> None:
         },
         invocation=invocation,
         identity=IDENTITY,
-        skills=(SKILL,),
+        prompts=FakePromptProvider(skills=(SKILL,)),
         model=FunctionModel(_answers_without_calling),
     )
 
@@ -283,7 +284,7 @@ async def test_an_ask_whose_place_failed_is_a_failure_even_if_never_called() -> 
         schema_context_index={},
         invocation=_FakeInvocation(),
         identity=IDENTITY,
-        skills=(SKILL,),
+        prompts=FakePromptProvider(skills=(SKILL,)),
         model=FunctionModel(_answers_without_calling),
     )
 
@@ -323,7 +324,7 @@ async def test_the_planner_binds_its_own_model_settings() -> None:
         },
         invocation=_FakeInvocation(),
         identity=IDENTITY,
-        skills=(SKILL,),
+        prompts=FakePromptProvider(skills=(SKILL,)),
         model=FunctionModel(record_settings),
         temperature=0.0,
         timeout_seconds=30.0,
@@ -354,7 +355,7 @@ async def test_a_rejected_turn_yields_empty_insufficient_evidence() -> None:
         },
         invocation=invocation,
         identity=IDENTITY,
-        skills=(SKILL,),
+        prompts=FakePromptProvider(skills=(SKILL,)),
         model=FunctionModel(_calls_select_then_answers),
     )
     verdict = Verdict()
@@ -414,7 +415,7 @@ async def test_a_planner_run_that_fails_still_records_what_it_spent() -> None:
         },
         invocation=_FakeInvocation(),
         identity=IDENTITY,
-        skills=(SKILL,),
+        prompts=FakePromptProvider(skills=(SKILL,)),
         model=FunctionModel(select_then_fail),
     )
 
