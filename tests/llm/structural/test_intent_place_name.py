@@ -182,6 +182,27 @@ async def test_two_places_in_one_sentence_become_two_asks() -> None:
     assert {place.name for place in places} == {"Pune", "Mumbai"}
 
 
+async def test_five_places_in_one_sentence_become_five_asks() -> None:
+    """A long list of places once came back with no asks at all, so the farmer
+    got no answer.
+    """
+
+    classification = await classify_intent(
+        _turn("What's the weather in Bhilwara, Jaipur, Udaipur, Pune, Bengaluru ?"),
+        _live_llm(),
+    )
+
+    # The model's own asks, not the resolved places: some of these cities share
+    # a name with others, and that is the resolver's business, not this test's.
+    assert {ask.place_name for ask in classification.asks} == {
+        "Bhilwara",
+        "Jaipur",
+        "Udaipur",
+        "Pune",
+        "Bengaluru",
+    }, f"expected one ask per city, got {classification!r}"
+
+
 async def test_a_place_with_its_state_stays_one_ask() -> None:
     """The state narrows Pune; it is not a second place. Two asks here would
     fetch Maharashtra's weather as well as Pune's.

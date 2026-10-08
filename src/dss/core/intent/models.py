@@ -152,9 +152,7 @@ class ClassifiedAsk(BaseModel):
 
 
 class IntentClassification(BaseModel):
-    """The LLM's structured-output schema for a turn — the raw finding before
-    place resolution builds the domain ``Intent`` from it.
-    """
+    """Every ask in the user's query, one per place, and how sure you are."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
