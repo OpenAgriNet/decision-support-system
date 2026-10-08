@@ -73,6 +73,21 @@ async def test_the_request_filters_by_country_and_layer() -> None:
     ]
 
 
+async def test_the_request_asks_for_enough_results() -> None:
+    """A common name ("Majengo") can have 30 places. Cut at 10, the rest can
+    never be reached: a reply naming the area searches the same 10 again."""
+
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={"features": []})
+
+    await _photon_with(handler).resolve("Majengo")
+
+    assert seen[0].url.params["limit"] == "50"
+
+
 async def test_a_server_error_is_unavailable() -> None:
     """A 500 is not "no such place". The chain must tell the two apart."""
 

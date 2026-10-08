@@ -17,7 +17,11 @@ from dss.adapters.observability.tracing import open_span
 from dss.core.shared.models import Geometry
 from dss.ports.area_lookup import AreaLookupUnavailable, AreaMatch
 
-_LIMIT = "10"
+# A common name ("Majengo") can have 30 places, and the exact-name filter runs
+# after the limit. Cut short, the rest could never be reached: a reply naming
+# the area searches the same results again. The farmer still sees at most a
+# few grouped lines.
+_LIMIT = "50"
 # Village-sized places live in `locality` and `district`. Streets, houses and
 # shops are never a place a farmer names.
 _LAYERS = ("city", "district", "locality", "county", "state")

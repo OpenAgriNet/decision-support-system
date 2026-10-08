@@ -79,7 +79,9 @@ never sees it; the chain catches it.
 becomes `async`; `run_turn` awaits it. No HTTP contract change on
 `/v1/turns`.
 
-Photon request: `GET {base_url}/api?q=<name>&limit=10&lang=en`
+Photon request: `GET {base_url}/api?q=<name>&limit=50&lang=en`
+(50, not 10: a common name like "Majengo" has 30+ places, and the exact-name
+filter runs after the limit, so places past it could never be reached)
 `&layer=city&layer=district&layer=locality&layer=county&layer=state`
 plus one `countrycode=` per configured code. No `lat`/`lon` bias (#131:
 do not guess from where the farmer is). The port's `region` argument is
