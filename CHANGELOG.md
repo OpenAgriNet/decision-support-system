@@ -3,6 +3,14 @@
 ## [Unreleased]
 
 ### Added
+- A farmer now reads refusals, clarification questions and the no-provider
+  answers in their own language. The DSS keeps writing these as one reviewed
+  English vocabulary and renders each in the turn's target language on the
+  way out, using the composer's model. English turns are untouched and make
+  no extra model call; if the rendering fails, the English text is sent — a
+  language problem never costs an answer. Place names, scheme names, numbers
+  and the "which place?" option lines stay exactly as written, so replying
+  to a numbered question still works in every language. ADR-0018
 - A deployment can give a language its own version of any prompt, through
   configuration alone. Every LLM component's system prompt (intent,
   moderation, planner, composer) now lives as a template under

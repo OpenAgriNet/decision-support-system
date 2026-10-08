@@ -31,8 +31,9 @@ def no_match_answer() -> ComposedAnswer:
     Not for an ask nobody on the network serves: that is
     `answer_for_unserved_asks`, which names the place.
 
-    Deterministic, so it needs no model. The real version writes in
-    `target_lang` and for the channel.
+    Deterministic, so it needs no model — like every string this module
+    builds, it is English here and rendered in the turn's `target_lang` at the
+    orchestrator seam (`core/channel/localize.py`, ADR-0018).
     """
 
     return ComposedAnswer(content=(TextBlock(text=NO_MATCH_TEXT),))
