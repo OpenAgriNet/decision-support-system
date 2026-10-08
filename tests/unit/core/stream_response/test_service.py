@@ -30,6 +30,7 @@ from dss.core.planner.models import (
 )
 from dss.core.shared.models import Geometry, UserTurn
 from dss.core.stream_response.service import stream_response
+from tests.support.fakes import FakePromptProvider
 
 IDENTITY = Identity(
     name="Kisan Mitra",
@@ -161,7 +162,12 @@ async def _collect(
     return [
         delta
         async for delta in stream_response(
-            evidence, intent, turn=_turn(), identity=IDENTITY, llm=llm
+            evidence,
+            intent,
+            turn=_turn(),
+            identity=IDENTITY,
+            llm=llm,
+            prompts=FakePromptProvider(),
         )
     ]
 
@@ -271,7 +277,12 @@ async def test_a_failure_part_way_through_is_not_swallowed() -> None:
 
     with pytest.raises(RuntimeError, match="stream dropped"):
         async for delta in stream_response(
-            EVIDENCE, INTENT, turn=_turn(), identity=IDENTITY, llm=llm
+            EVIDENCE,
+            INTENT,
+            turn=_turn(),
+            identity=IDENTITY,
+            llm=llm,
+            prompts=FakePromptProvider(),
         ):
             seen.append(delta)
 
@@ -290,7 +301,14 @@ async def test_abandoning_the_stream_closes_the_model_call() -> None:
     """
 
     llm = _FakeLLM()
-    pieces = stream_response(EVIDENCE, INTENT, turn=_turn(), identity=IDENTITY, llm=llm)
+    pieces = stream_response(
+        EVIDENCE,
+        INTENT,
+        turn=_turn(),
+        identity=IDENTITY,
+        llm=llm,
+        prompts=FakePromptProvider(),
+    )
 
     async for _ in pieces:
         break  # the farmer hangs up after the first piece

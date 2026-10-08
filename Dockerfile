@@ -14,6 +14,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 COPY README.md ./
 COPY src/ ./src/
+# The prompt registry and the per-language templates it names. WORKDIR is
+# /app, so the settings default (configs/prompts.yaml) resolves to these.
+COPY configs/ ./configs/
+COPY prompts/ ./prompts/
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen

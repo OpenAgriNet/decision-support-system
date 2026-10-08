@@ -34,8 +34,8 @@ from dss.core.policy.models import (
     Policy,
     WordCheckPolicy,
 )
-from dss.core.shared.models import ConversationMessage
 from dss.ports.llm import LLMProvider
+from dss.ports.prompts import PromptProvider
 
 # How many prior turns to show the model so a follow-up ("And potato?") is judged
 # in context. Enough to resolve a reference without ballooning the prompt.
@@ -73,57 +73,11 @@ def _strip_words(query: str, words: Sequence[str]) -> tuple[str, bool]:
     return stripped, True
 
 
-def _render_history(history: Sequence[ConversationMessage]) -> list[str]:
-    """The recent thread, so a follow-up ("And potato?", "Is it safe to use?") is
-    judged against what it refers back to rather than in isolation."""
-
-    if not history:
-        return []
-    lines = ["", "Conversation so far (oldest first, for reference only):"]
-    for message in history[-_HISTORY_WINDOW:]:
-        lines.append(f"  {message.role}: {message.text}")
-    return lines
-
-
-def build_llm_prompt(
-    policies: Sequence[LlmPolicy],
-    history: Sequence[ConversationMessage] = (),
-) -> str:
-    """Render the LLM policies' signals and examples into one judgment prompt,
-    optionally with the recent conversation for reference.
-
-    A plain string — building it names no framework, so it stays in core. The
-    adapter turns the returned ``LlmModerationVerdict`` schema into structured
-    output."""
-
-    lines = [
-        "You are a moderation classifier for an agriculture assistant.",
-        "Decide whether the user's query violates any of the policies below.",
-        "A query may be a genuine question even if blunt; only flag a real violation.",
-        "A brief follow-up that refers to an earlier, legitimate question is itself "
-        "legitimate — resolve it against the conversation before judging.",
-        "",
-        "Policies:",
-    ]
-    for policy in policies:
-        lines.append(f"- id: {policy.id}")
-        lines.append(f"  what it catches: {policy.description.strip()}")
-        for signal in policy.signals:
-            lines.append(f"    * {signal}")
-        for example in policy.examples:
-            lines.append(f"    e.g. {example.query!r} -> {example.expect.value}")
-    lines += _render_history(history)
-    lines += [
-        "",
-        "Return the id of the single violated policy, or null if none apply.",
-    ]
-    return "\n".join(lines)
-
-
 async def moderate(
     context: ModerationContext,
     policies: Sequence[Policy],
     llm: LLMProvider,
+    prompts: PromptProvider,
 ) -> ModerationDecision:
     """Evaluate the moderation policies against the turn and return a verdict.
 
@@ -154,7 +108,14 @@ async def moderate(
     if llm_policies:
         try:
             verdict = await llm.structured(
-                system_prompt=build_llm_prompt(llm_policies, context.turn.history),
+                system_prompt=prompts.get_prompt(
+                    "MODERATION",
+                    lang=context.turn.target_lang,
+                    kwargs={
+                        "policies": tuple(llm_policies),
+                        "history": tuple(context.turn.history[-_HISTORY_WINDOW:]),
+                    },
+                ),
                 user_query=query,
                 schema=LlmModerationVerdict,
             )

@@ -42,6 +42,15 @@ from dss.entrypoint.composition import _resolve_model
 from dss.observability.stages import Stage
 from tests.support.live_model import missing_model_key
 
+
+def _prompts():
+    """The shipped registry — these tests exist to exercise the real prompts."""
+
+    from dss.config.prompt_service import load_prompt_service
+
+    return load_prompt_service(Path(__file__).parents[3] / "configs" / "prompts.yaml")
+
+
 _DOTENV = Path(__file__).parents[3] / ".env"
 
 
@@ -123,7 +132,7 @@ async def _resolve(turn: UserTurn) -> tuple[Intent, IntentClassification]:
     """Classify `turn` with the live model, then resolve its places the way
     production does. Tests check this, not the model's exact words."""
 
-    classification = await classify_intent(turn, _live_llm())
+    classification = await classify_intent(turn, _live_llm(), _prompts())
     return await resolve_places(classification, turn, lookup=LOOKUP), classification
 
 
@@ -190,6 +199,7 @@ async def test_five_places_in_one_sentence_become_five_asks() -> None:
     classification = await classify_intent(
         _turn("What's the weather in Bhilwara, Jaipur, Udaipur, Pune, Bengaluru ?"),
         _live_llm(),
+        _prompts(),
     )
 
     # The model's own asks, not the resolved places: some of these cities share
@@ -225,7 +235,7 @@ async def test_no_place_named_leaves_it_none() -> None:
     """
 
     classification = await classify_intent(
-        _turn("How do I treat potato blight?"), _live_llm()
+        _turn("How do I treat potato blight?"), _live_llm(), _prompts()
     )
 
     assert classification.asks, "the model returned no asks"
@@ -246,7 +256,7 @@ async def test_a_conversation_with_no_place_carries_none_forward() -> None:
     ]
 
     classification = await classify_intent(
-        _turn("When should I spray?", history=history), _live_llm()
+        _turn("When should I spray?", history=history), _live_llm(), _prompts()
     )
 
     assert classification.asks, "the model returned no asks"
@@ -276,7 +286,7 @@ async def test_here_is_left_for_the_device() -> None:
     would answer the rain for the wrong place."""
 
     classification = await classify_intent(
-        _turn("Onion price in Pune, and will it rain here?"), _live_llm()
+        _turn("Onion price in Pune, and will it rain here?"), _live_llm(), _prompts()
     )
 
     rain = [
@@ -300,7 +310,7 @@ async def test_a_place_only_the_assistant_said_is_not_carried() -> None:
     ]
 
     classification = await classify_intent(
-        _turn("And tomorrow?", history=history), _live_llm()
+        _turn("And tomorrow?", history=history), _live_llm(), _prompts()
     )
 
     assert classification.asks, "the model returned no asks"
@@ -457,7 +467,7 @@ async def _place_for_reply(name: str, reply: str) -> ResolvedPlace:
         ConversationMessage(role="assistant", text=await _question_we_send(name)),
     ]
     turn = _turn(reply, history=history)
-    classification = await classify_intent(turn, _live_llm())
+    classification = await classify_intent(turn, _live_llm(), _prompts())
     intent = await resolve_places(classification, turn, lookup=LOOKUP)
 
     assert len(intent.asks) == 1, f"expected one ask, got {classification!r}"

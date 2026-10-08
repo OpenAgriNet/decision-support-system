@@ -8,7 +8,7 @@ what makes "one source per question" a rule it can follow.
 
 from __future__ import annotations
 
-from dss.core.channel.prompt import SYSTEM_PROMPT, render_evidence, user_prompt
+from dss.core.channel.prompt import render_evidence, system_prompt, user_prompt
 from dss.core.intent.models import (
     Ask,
     Intent,
@@ -17,8 +17,16 @@ from dss.core.intent.models import (
     ResolvedPlace,
     SubjectCategory,
 )
-from dss.core.planner.models import Evidence, Failure, Result, Source, SourceKind
+from dss.core.planner.models import (
+    Evidence,
+    Failure,
+    Identity,
+    Result,
+    Source,
+    SourceKind,
+)
 from dss.core.shared.models import ConversationMessage, Geometry, UserTurn
+from tests.support.fakes import FakePromptProvider
 
 PULSES = Source(id="1", name="PulsesGuidelines2025", kind=SourceKind.PROVIDER, url=None)
 ICAR = Source(id="2", name="ICAR Agro-Advisories", kind=SourceKind.PROVIDER, url=None)
@@ -256,17 +264,40 @@ def test_no_place_resolved_labels_nothing() -> None:
     assert "about" not in rendered.lower()
 
 
-def test_system_prompt_says_which_place_the_answer_is_about() -> None:
-    assert "which place the answer is about" in SYSTEM_PROMPT.lower()
+def test_system_prompt_hands_the_identity_and_language_to_the_template() -> None:
+    """The prompt's text is config (prompts/composer/, pinned in
+    tests/unit/config/test_shipped_prompts.py); what core owns is asking for
+    the COMPOSER prompt in the turn's target language with the identity's
+    fields. `target_lang` is both the lookup language and a template value —
+    the answer's language is the turn's, whatever language the prompt is in."""
 
+    prompts = FakePromptProvider()
+    identity = Identity(
+        name="Kisan Mitra",
+        persona="a calm advisor.",
+        boundaries="Never gives legal advice.",
+    )
+    turn = UserTurn(
+        original_query="q",
+        enriched_query="q",
+        session_id="s1",
+        transaction_id="t1",
+        source_lang="mr",
+        target_lang="mr",
+        channel="web",
+    )
 
-def test_system_prompt_prefers_the_datas_own_place() -> None:
-    """The provider's own data is more precise than the district centroid the
-    turn resolved around — a mandi price already names the actual market."""
+    system_prompt(identity, turn=turn, prompts=prompts)
 
-    prompt = SYSTEM_PROMPT.lower()
-    assert "data itself names a place" in prompt
-    assert "more precise" in prompt
+    [(identifier, lang, kwargs)] = prompts.calls
+    assert identifier == "COMPOSER"
+    assert lang == "mr"
+    assert kwargs == {
+        "name": "Kisan Mitra",
+        "persona": "a calm advisor.",
+        "boundaries": "Never gives legal advice.",
+        "target_lang": "mr",
+    }
 
 
 def test_composer_sees_last_three_messages() -> None:

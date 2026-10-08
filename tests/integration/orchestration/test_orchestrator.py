@@ -45,7 +45,7 @@ from dss.orchestration.orchestrator import Components, Orchestrator
 from dss.orchestration.plan import Plan
 from dss.orchestration.redaction import RedactTexts, pass_through
 from dss.ports.area_lookup import AreaMatch
-from tests.support.fakes import FakeAreaLookup, FakeSchemeCatalog
+from tests.support.fakes import FakeAreaLookup, FakePromptProvider, FakeSchemeCatalog
 
 DELETE_COMMAND = LlmPolicy(
     id="delete-command",
@@ -233,6 +233,7 @@ def _build(
     orch = Orchestrator(
         intent_llm=intent_llm or _FakeIntentLLM(intent),
         moderation_llm=moderation_llm or _FakeModerationLLM(violated=violated),
+        prompts=FakePromptProvider(),
         policies=list(policies),
         scheme_catalog=FakeSchemeCatalog(),
         scheme_fuzzy_threshold=None,
