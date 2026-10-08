@@ -52,3 +52,7 @@ class AreaLookup(Protocol):
     async def resolve(
         self, name: str, region: str | None = None
     ) -> list[AreaMatch]: ...
+
+    # The known place closest to a point, if one is within `max_km`. It names
+    # a device point, so the answer can say where it is about.
+    async def nearest(self, point: Geometry, max_km: float) -> AreaMatch | None: ...

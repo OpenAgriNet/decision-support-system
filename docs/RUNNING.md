@@ -564,6 +564,7 @@ wrong:
 | `discovery_radius_m` | `25000` | how far around the turn's location to look |
 | `area_csv_path` | `src/dss/config/areas.csv` | another area index — a different area set, or extra aliases |
 | `photon_base_url` | unset | a Photon server, for places the area file lacks — see "Place names the file lacks" |
+| `nearest_max_km` | `50` | how far a device point may be from the known place that names it; past it, the user is asked |
 
 The two base URLs are all-or-nothing (`Settings.network_enabled`): set both and
 discovery + the planner call real providers; leave either unset and the turn
@@ -633,7 +634,9 @@ How it behaves:
 - **Same name, different places.** If several remain, the farmer is asked
   which one, the same as with the file.
 - **A whole state or region.** "Weather in Maharashtra" is not answered for the
-  middle of the state. The farmer is asked for a district or village in it.
+  middle of the state. If the platform says where the user is, and that is in
+  Maharashtra, the answer is for there, and it names the place. Otherwise the
+  user is asked for a district or village in it.
   This works the same with the area file alone. If you override the
   clarification text, add a `region_place` line, or the DSS will not start.
 - **A town and its own county.** Nakuru is a town, and the county around it is

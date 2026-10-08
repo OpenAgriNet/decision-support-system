@@ -138,6 +138,11 @@ class PhotonAreaLookup:
             span.set_attribute("outcome", "hit" if matches else "miss")
             return matches
 
+    async def nearest(self, point: Geometry, max_km: float) -> AreaMatch | None:
+        # TODO(#132): Photon's `/reverse` can name a point. Until then the area
+        # file names device points.
+        return None
+
     async def _lookup(self, name: str) -> list[AreaMatch]:
         params = httpx.QueryParams(
             [

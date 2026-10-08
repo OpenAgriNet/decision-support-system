@@ -21,9 +21,16 @@ from dss.ports.area_lookup import AreaMatch
 class _FakeLookup:
     """Resolves from a fixed table keyed by lowercase name."""
 
-    def __init__(self, table: dict[str, list[AreaMatch]]) -> None:
+    def __init__(
+        self,
+        table: dict[str, list[AreaMatch]],
+        *,
+        nearest: AreaMatch | None = None,
+    ) -> None:
         self._table = table
+        self._nearest = nearest
         self.calls = 0
+        self.nearest_max_km: list[float] = []
 
     async def resolve(self, name: str, region: str | None = None) -> list[AreaMatch]:
         self.calls += 1
@@ -31,6 +38,10 @@ class _FakeLookup:
         if region is None:
             return matches
         return [m for m in matches if m.region == region]
+
+    async def nearest(self, point: Geometry, max_km: float) -> AreaMatch | None:
+        self.nearest_max_km.append(max_km)
+        return self._nearest
 
 
 _PUNE = AreaMatch(
@@ -543,6 +554,100 @@ async def test_a_whole_state_is_not_used_as_the_place() -> None:
     assert intent.asks[0].place == UnresolvedPlace(
         unresolved_name="Maharashtra", region="Maharashtra"
     )
+
+
+_RAJASTHAN = AreaMatch(
+    name="Rajasthan",
+    region="IN-RJ",
+    within=("India",),
+    geometry=Geometry(coordinates=[74.2, 26.6]),
+    is_region=True,
+)
+_JAISALMER = AreaMatch(
+    name="Jaisalmer",
+    region="IN-RJ",
+    within=("India", "Rajasthan"),
+    geometry=Geometry(coordinates=[70.91, 26.92]),
+)
+
+
+async def test_a_named_state_narrows_to_the_farmers_own_area() -> None:
+    """A farmer in Jaisalmer asks about "Rajasthan". They almost surely mean
+    where they are, and the platform says that is Jaisalmer."""
+
+    classification = IntentClassification(asks=(_weather_ask("Rajasthan"),))
+    lookup = _FakeLookup({"rajasthan": [_RAJASTHAN], "jaisalmer": [_JAISALMER]})
+
+    intent = await resolve_places(
+        classification, _turn(area="Jaisalmer"), lookup=lookup
+    )
+
+    assert intent.asks[0].place == ResolvedPlace(
+        name="Jaisalmer",
+        within=("India", "Rajasthan"),
+        geometry=_JAISALMER.geometry,
+        source=PlaceSource.NEAR_USER,
+    )
+
+
+async def test_a_named_state_narrows_to_the_users_device_point() -> None:
+    """Only a device point is sent. The nearest known place, Jaisalmer, is in
+    Rajasthan, so the point is used and named after it. The name lets the
+    answer say where it is about."""
+
+    point = Geometry(coordinates=[70.95, 26.90])
+    classification = IntentClassification(asks=(_weather_ask("Rajasthan"),))
+    lookup = _FakeLookup({"rajasthan": [_RAJASTHAN]}, nearest=_JAISALMER)
+
+    intent = await resolve_places(classification, _turn(geometry=point), lookup=lookup)
+
+    assert intent.asks[0].place == ResolvedPlace(
+        name="Jaisalmer",
+        within=("India", "Rajasthan"),
+        geometry=point,
+        source=PlaceSource.NEAR_USER,
+    )
+
+
+async def test_a_device_point_in_another_state_still_asks() -> None:
+    """The nearest known place is in Gujarat, so the user may not be in the
+    Rajasthan they named. Answering for their point would be a guess."""
+
+    gujarat_place = AreaMatch(
+        name="Banaskantha",
+        region="IN-GJ",
+        within=("India", "Gujarat"),
+        geometry=Geometry(coordinates=[72.4, 24.2]),
+    )
+    classification = IntentClassification(asks=(_weather_ask("Rajasthan"),))
+    lookup = _FakeLookup({"rajasthan": [_RAJASTHAN]}, nearest=gujarat_place)
+
+    intent = await resolve_places(
+        classification,
+        _turn(geometry=Geometry(coordinates=[72.5, 24.4])),
+        lookup=lookup,
+    )
+
+    assert intent.asks[0].place == UnresolvedPlace(
+        unresolved_name="Rajasthan", region="Rajasthan"
+    )
+
+
+async def test_the_nearest_place_guard_is_configurable() -> None:
+    """How far a device point may be from a known place is a deployment's
+    choice: a country with few known places needs a wider guard."""
+
+    classification = IntentClassification(asks=(_weather_ask("Rajasthan"),))
+    lookup = _FakeLookup({"rajasthan": [_RAJASTHAN]}, nearest=_JAISALMER)
+
+    await resolve_places(
+        classification,
+        _turn(geometry=Geometry(coordinates=[70.95, 26.90])),
+        lookup=lookup,
+        nearest_max_km=12.5,
+    )
+
+    assert lookup.nearest_max_km == [12.5]
 
 
 async def test_an_asserted_state_is_not_used_as_the_place() -> None:

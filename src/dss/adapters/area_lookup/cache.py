@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from async_lru import alru_cache
 
+from dss.core.shared.models import Geometry
 from dss.ports.area_lookup import AreaLookup, AreaMatch
 
 
@@ -23,6 +24,10 @@ class CachedAreaLookup:
 
     async def _ask(self, name: str, region: str | None) -> list[AreaMatch]:
         return await self._inner.resolve(name, region)
+
+    async def nearest(self, point: Geometry, max_km: float) -> AreaMatch | None:
+        # Not cached: device points rarely repeat to the last digit.
+        return await self._inner.nearest(point, max_km)
 
     async def resolve(self, name: str, region: str | None = None) -> list[AreaMatch]:
         # The cache hands back the list it stored, so callers get a copy.

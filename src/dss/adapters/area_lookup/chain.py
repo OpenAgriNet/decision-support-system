@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from dss.adapters.observability.metrics import record_area_lookup
+from dss.core.shared.models import Geometry
 from dss.ports.area_lookup import AreaLookup, AreaLookupUnavailable, AreaMatch
 
 
@@ -34,3 +35,13 @@ class ChainedAreaLookup:
                 return matches
             record_area_lookup(source=source, outcome="miss")
         return []
+
+    async def nearest(self, point: Geometry, max_km: float) -> AreaMatch | None:
+        for _, lookup in self._sources:
+            try:
+                match = await lookup.nearest(point, max_km)
+            except AreaLookupUnavailable:
+                continue
+            if match is not None:
+                return match
+        return None

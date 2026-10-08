@@ -18,6 +18,7 @@ from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from dss.config.schema_pack_fetch import DEFAULT_PACK_DIR, DEFAULT_REF
+from dss.core.location.service import DEFAULT_NEAREST_MAX_KM
 
 # Ships beside this module, so it resolves the same however the app is started.
 DEFAULT_AREA_CSV = Path(__file__).resolve().parent / "areas.csv"
@@ -113,6 +114,10 @@ class Settings(BaseSettings):
     # spatial filter. Anchored to the module, not the working directory,
     # because `uvicorn --factory` starts from wherever the operator is.
     area_csv_path: Path = DEFAULT_AREA_CSV
+    # How far a device point may be from the known place that names it. Past
+    # this the user is asked instead. A country with few known places needs a
+    # wider guard.
+    nearest_max_km: float = Field(DEFAULT_NEAREST_MAX_KM, gt=0.0)
     # A geocoder for names the file above does not carry. Unset, Photon is off
     # and the file is the only source.
     photon_base_url: str | None = None

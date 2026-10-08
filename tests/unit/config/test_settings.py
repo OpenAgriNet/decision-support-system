@@ -147,6 +147,14 @@ def test_out_of_range_temperature_raises(monkeypatch: pytest.MonkeyPatch) -> Non
         Settings()
 
 
+def test_the_nearest_place_guard_is_read_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DSS_NEAREST_MAX_KM", "12.5")
+
+    assert Settings(_env_file=None).nearest_max_km == 12.5
+
+
 @pytest.mark.parametrize(
     "name",
     [

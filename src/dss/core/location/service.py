@@ -30,6 +30,11 @@ from dss.core.intent.models import (
 from dss.core.shared.models import Location, UserTurn
 from dss.ports.area_lookup import AreaLookup, AreaMatch
 
+# How far a device point may be from the known place that names it. Past this,
+# the point could be in the next state, so the user is asked instead. The
+# setting `nearest_max_km` defaults to this.
+DEFAULT_NEAREST_MAX_KM = 50.0
+
 Place = ResolvedPlace | AmbiguousPlace | UnresolvedPlace | None
 
 
@@ -120,8 +125,48 @@ async def _split_joined(
     ]
 
 
+def _inside(match: AreaMatch, region: AreaMatch) -> bool:
+    return region.name.casefold() in {w.casefold() for w in match.within}
+
+
+async def _user_own_place(
+    region: AreaMatch,
+    user_location: Location | None,
+    lookup: AreaLookup,
+    max_km: float,
+) -> ResolvedPlace | None:
+    """The user named a whole state. If the turn says where they are, and
+    that is inside it, they almost surely mean there."""
+
+    if user_location is None:
+        return None
+    if user_location.area:
+        matches = [
+            m for m in await lookup.resolve(user_location.area) if not m.is_region
+        ]
+        if len(matches) == 1 and _inside(matches[0], region):
+            return _from_match(matches[0], PlaceSource.NEAR_USER)
+    if user_location.geometry is not None:
+        # The device point is the exact spot. The nearest known place only
+        # names it, so the answer can say where it is about.
+        near = await lookup.nearest(user_location.geometry, max_km)
+        if near is not None and _inside(near, region):
+            return ResolvedPlace(
+                name=near.name,
+                within=near.within,
+                geometry=user_location.geometry,
+                source=PlaceSource.NEAR_USER,
+            )
+    return None
+
+
 async def _resolve_named(
-    name: str, lookup: AreaLookup, region: str | None, source: PlaceSource
+    name: str,
+    lookup: AreaLookup,
+    region: str | None,
+    source: PlaceSource,
+    user_location: Location | None = None,
+    nearest_max_km: float = DEFAULT_NEAREST_MAX_KM,
 ) -> Place:
     """A place the farmer actually said, this turn or earlier — the one case
     that can fail loud (`AmbiguousPlace`/`UnresolvedPlace`) rather than fall
@@ -135,6 +180,9 @@ async def _resolve_named(
     places = [m for m in found if not m.is_region]
     regions = [m for m in found if m.is_region]
     if regions and not places:
+        own = await _user_own_place(regions[0], user_location, lookup, nearest_max_km)
+        if own is not None:
+            return own
         return UnresolvedPlace(unresolved_name=name, region=regions[0].name)
     matches = _drop_nested(places)
     wanted = [part.casefold() for part in parts]
@@ -212,7 +260,11 @@ def _build_ask(classified: ClassifiedAsk, place: Place) -> Ask:
 
 
 async def resolve_places(
-    classification: IntentClassification, turn: UserTurn, *, lookup: AreaLookup
+    classification: IntentClassification,
+    turn: UserTurn,
+    *,
+    lookup: AreaLookup,
+    nearest_max_km: float = DEFAULT_NEAREST_MAX_KM,
 ) -> Intent:
     location = turn.location
     region = location.region if location is not None else None
@@ -231,6 +283,8 @@ async def resolve_places(
             lookup,
             region,
             PlaceSource.CARRIED if classified.place_from_history else PlaceSource.NAMED,
+            location,
+            nearest_max_km,
         )
         if classified.place_name
         else None

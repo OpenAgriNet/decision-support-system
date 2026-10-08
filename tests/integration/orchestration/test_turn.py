@@ -36,6 +36,7 @@ from dss.core.provider_discovery.models import (
 )
 from dss.core.shared.models import Geometry, Location, UserTurn
 from dss.orchestration.turn import run_turn
+from dss.ports.area_lookup import AreaMatch
 from tests.support.fakes import FakeAreaLookup
 
 PROFANITY = WordCheckPolicy(
@@ -125,6 +126,41 @@ CAPABILITY = ProviderCapability(
     resource_id="res:agmarknet:daily-price",
     observed_categories=("Market",),
 )
+
+
+async def test_the_nearest_place_guard_reaches_the_lookup() -> None:
+    """The deployment's guard distance must reach the place lookup. Lost on
+    the way, every turn would quietly use the built-in 50 km."""
+
+    rajasthan = AreaMatch(
+        name="Rajasthan",
+        region="IN-RJ",
+        within=("India",),
+        geometry=Geometry(coordinates=[74.2, 26.6]),
+        is_region=True,
+    )
+    lookup = FakeAreaLookup({"rajasthan": [rajasthan]})
+    classification = IntentClassification(
+        asks=(
+            ClassifiedAsk(
+                subject_categories=SubjectCategory.WEATHER,
+                interaction_type=InteractionType.OBSERVE,
+                place_name="Rajasthan",
+            ),
+        )
+    )
+
+    await run_turn(
+        _turn("weather in Rajasthan"),
+        intent_llm=_FakeIntentLLM(classification),
+        moderation_llm=_FakeModerationLLM(),
+        policies=[],
+        discover_providers=_FakeDiscovery(),
+        area_lookup=lookup,
+        nearest_max_km=12.5,
+    )
+
+    assert lookup.nearest_max_km == [12.5]
 
 
 async def test_discovery_runs_on_the_classified_intent() -> None:

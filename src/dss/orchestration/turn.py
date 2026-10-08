@@ -46,7 +46,7 @@ from dss.core.intent.models import (
     UnresolvedPlace,
 )
 from dss.core.intent.service import classify_intent
-from dss.core.location.service import resolve_places
+from dss.core.location.service import DEFAULT_NEAREST_MAX_KM, resolve_places
 from dss.core.moderation.models import (
     ModerationContext,
     ModerationDecision,
@@ -193,6 +193,7 @@ async def run_turn(
     area_lookup: AreaLookup,
     scheme_catalog: SchemeCatalog | None = None,
     scheme_fuzzy_threshold: float | None = None,
+    nearest_max_km: float = DEFAULT_NEAREST_MAX_KM,
     now: datetime | None = None,
 ) -> TurnResult:
     """Classify intent, moderate the turn, and find who can answer it.
@@ -220,7 +221,12 @@ async def run_turn(
         with trace_component(Stage.INTENT, turn.transaction_id):
             classification = await classify_intent(turn, intent_llm)
         with trace_component(Stage.LOCATION, turn.transaction_id):
-            intent = await resolve_places(classification, turn, lookup=area_lookup)
+            intent = await resolve_places(
+                classification,
+                turn,
+                lookup=area_lookup,
+                nearest_max_km=nearest_max_km,
+            )
             set_current_span_attributes(**place_attributes(classification, intent))
         with trace_component(Stage.ENRICHMENT, turn.transaction_id):
             intent = _enrich(intent, turn, scheme_catalog, scheme_fuzzy_threshold)

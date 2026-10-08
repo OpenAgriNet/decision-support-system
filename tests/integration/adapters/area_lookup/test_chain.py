@@ -90,6 +90,17 @@ async def test_a_source_that_knows_nothing_is_counted_as_a_miss(reader) -> None:
     assert _counted(reader) == {("csv", "miss"): 1, ("photon", "hit"): 1}
 
 
+async def test_nearest_comes_from_the_first_source_that_knows() -> None:
+    """A source with nothing near the point hands over to the next, the same
+    order as a name lookup."""
+
+    chain = ChainedAreaLookup(
+        [("csv", FakeAreaLookup()), ("photon", FakeAreaLookup(nearest=_PUNE))]
+    )
+
+    assert await chain.nearest(Geometry(coordinates=[73.86, 18.53]), 50) == _PUNE
+
+
 async def test_a_miss_falls_to_the_next_source() -> None:
     """A source that does not know the name hands over to the next one."""
 

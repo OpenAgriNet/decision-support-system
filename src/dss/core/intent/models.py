@@ -67,6 +67,9 @@ class PlaceSource(StrEnum):
     CARRIED = "carried"
     ASSERTED_AREA = "asserted_area"
     ASSERTED_GEOMETRY = "asserted_geometry"
+    # The user named a whole state, and this is their own place inside it.
+    # The answer must say so, so a wrong guess can be corrected next turn.
+    NEAR_USER = "near_user"
 
 
 class ResolvedPlace(BaseModel):

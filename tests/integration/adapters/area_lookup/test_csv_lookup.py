@@ -65,6 +65,56 @@ async def test_a_state_name_is_marked_as_a_region(tmp_path: Path) -> None:
     )
 
 
+async def test_finds_the_place_nearest_a_point(tmp_path: Path) -> None:
+    """A device sends only a point. The nearest known place gives it a name,
+    so the answer can say where it is about."""
+
+    path = _write(
+        tmp_path,
+        "490,Pune,IN-MH,18.5,74.0,,India;Maharashtra",
+        "491,Nashik,IN-MH,20.0,73.8,,India;Maharashtra",
+    )
+
+    match = await CsvAreaLookup.load(path).nearest(
+        Geometry(coordinates=[73.79, 19.95]), max_km=50
+    )
+
+    assert match is not None
+    assert match.name == "Nashik"
+
+
+async def test_a_shared_point_is_named_after_the_district(tmp_path: Path) -> None:
+    """A block's point is a copy of its district's. Naming a device point
+    after the block would claim more than the data knows."""
+
+    path = _write(
+        tmp_path,
+        "601,Haveli,IN-MH,18.5,74.0,,India;Maharashtra;Pune",
+        "490,Pune,IN-MH,18.5,74.0,,India;Maharashtra",
+    )
+
+    match = await CsvAreaLookup.load(path).nearest(
+        Geometry(coordinates=[74.05, 18.55]), max_km=50
+    )
+
+    assert match is not None
+    assert match.name == "Pune"
+
+
+async def test_no_place_near_enough_gives_nothing(tmp_path: Path) -> None:
+    """A point far from every known place could be in another state. Naming
+    it after a place 60 km away would be a guess, so there is no answer. The
+    place sits in the next square, which the search reads anyway."""
+
+    path = _write(tmp_path, "490,Solapur,IN-MH,18.5,75.4,,India;Maharashtra")
+
+    match = await CsvAreaLookup.load(path).nearest(
+        Geometry(coordinates=[76.0, 18.5]), max_km=50
+    )
+
+    assert match is None
+
+
 def test_lists_the_country_codes(tmp_path: Path) -> None:
     """The file says which countries it covers: the part of each region code
     before the dash. Photon is limited to them, so it cannot answer with a

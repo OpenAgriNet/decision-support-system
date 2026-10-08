@@ -227,6 +227,7 @@ def _build(
         policies=list(policies),
         scheme_catalog=FakeSchemeCatalog(),
         scheme_fuzzy_threshold=None,
+        nearest_max_km=50.0,
         components=Components(
             discover=_FakeDiscovery(discovery), plan=plan, compose=compose
         ),
