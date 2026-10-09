@@ -436,12 +436,15 @@ class TurnRecorder:
         Off unless `DSS_TRACE_INCLUDE_MESSAGE_CONTENT` is on, like every other
         piece of message text (ADR-0007 §5). The collector keeps these keys
         out of ClickHouse.
+
+        Observation keys, not `langfuse.trace.*`: Langfuse v4 drops the trace
+        ones and shows a trace's Input and Output from its root span.
         """
 
         if not _include_content():
             return
-        self._span.set_attribute("langfuse.trace.input", query)
-        self._span.set_attribute("langfuse.trace.output", "\n".join(answer))
+        self._span.set_attribute("langfuse.observation.input", query)
+        self._span.set_attribute("langfuse.observation.output", "\n".join(answer))
 
     def _publish(self) -> None:
         """Count this turn and publish its duration and cost.
