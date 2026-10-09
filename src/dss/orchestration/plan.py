@@ -21,6 +21,7 @@ from dss.adapters.observability.metrics import model_that_ran, record_agent_run
 from dss.core.intent.models import Intent
 from dss.core.planner.evidence import assemble_evidence, place_failures
 from dss.core.planner.models import Evidence, Identity, Verdict
+from dss.core.planner.place import place_optional_asks
 from dss.core.planner.prompt import (
     answers_section,
     asks_section,
@@ -115,8 +116,13 @@ def build_plan(
             invocation=invocation,
             verdict=verdict,
             # An ask with nowhere to search fails up front, so it is reported
-            # whether or not the model tries to call anything for it.
-            failures=place_failures(intent),
+            # whether or not the model tries to call anything for it. An ask
+            # with no place at all is only such a failure when every option
+            # found for it needs one — the pack decides.
+            failures=place_failures(
+                intent,
+                place_optional=place_optional_asks(intent, discovery, schemas),
+            ),
             visibility=visibility,
         )
         # Our own counter, so a run that fails after several paid round-trips
