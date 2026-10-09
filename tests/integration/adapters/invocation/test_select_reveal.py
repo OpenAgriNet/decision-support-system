@@ -113,11 +113,12 @@ async def test_without_a_map_nothing_is_revealed() -> None:
 async def test_an_echoed_value_is_a_tag_again_in_the_answer() -> None:
     provider = _Provider(_answer(f"application for {PHONE} is approved"))
 
-    answer = await _invocation(provider).select(
+    [answer] = await _invocation(provider).select(
         CAPABILITY, {"applicant": {"phone": "«phone_1»"}}, "txn-1", reveal=REVEAL
     )
 
-    assert answer.attributes["status"] == "application for «phone_1» is approved"
+    [resource] = answer.attributes["resources"]
+    assert resource["status"] == "application for «phone_1» is approved"
 
 
 async def test_the_logs_show_tags_never_the_value(caplog) -> None:
