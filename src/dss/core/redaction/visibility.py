@@ -29,7 +29,7 @@ _OPEN_TAG = re.compile(r"«[a-z0-9_]*\Z")
 
 
 @dataclass(frozen=True, slots=True)
-class RevealMap:
+class Visibility:
     values: Mapping[str, str]  # tag → real value
 
     def reveal(self, body: Any) -> Any:
@@ -105,19 +105,19 @@ class StreamReveal:
     a piece is held back until the next one shows whether it is a tag, so the
     farmer never sees half a tag. ``flush`` returns whatever is still held."""
 
-    def __init__(self, reveal: RevealMap) -> None:
-        self._reveal = reveal
+    def __init__(self, visibility: Visibility) -> None:
+        self._visibility = visibility
         self._held = ""
 
     def feed(self, piece: str) -> str:
         text = self._held + piece
         self._held = ""
-        if self._reveal.values:
+        if self._visibility.values:
             opening = _OPEN_TAG.search(text)
             if opening is not None:
                 self._held = text[opening.start() :]
                 text = text[: opening.start()]
-        return self._reveal.reveal(text)
+        return self._visibility.reveal(text)
 
     def flush(self) -> str:
         held, self._held = self._held, ""
@@ -126,4 +126,4 @@ class StreamReveal:
 
 # Holds nothing: every tag goes out as the tag. What a provider call gets when
 # no map is handed to it, so forgetting one fails closed.
-NOTHING_HELD = RevealMap(values={})
+NOTHING_HELD = Visibility(values={})

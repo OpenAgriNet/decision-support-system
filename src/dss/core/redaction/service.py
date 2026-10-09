@@ -7,7 +7,7 @@ that stays the same whichever identifiers run:
 - overlapping spans are settled (``resolve``);
 - each span becomes a numbered tag, «phone_1»; the same value, in any of the
   texts, gets the same tag;
-- the policy decides which real values are held in the ``RevealMap`` for the
+- the policy decides which real values are held in the ``Visibility`` for the
   provider call, and which are destroyed.
 
 The result carries counts per entity — never values — so they are safe to send
@@ -23,13 +23,13 @@ from dataclasses import dataclass
 from dss.core.redaction.models import PiiSpan, RedactionPolicy
 from dss.core.redaction.normalise import join_number_gaps, national_part
 from dss.core.redaction.resolve import resolve
-from dss.core.redaction.reveal import RevealMap
+from dss.core.redaction.visibility import Visibility
 
 
 @dataclass(frozen=True, slots=True)
 class Redaction:
     texts: tuple[str, ...]
-    reveal: RevealMap
+    visibility: Visibility
     found: dict[str, int]  # entity → how many spans were replaced
     # Identifiers that failed on this turn; the others' spans were still applied.
     failed: tuple[str, ...] = ()
@@ -72,5 +72,5 @@ def redact(
         redacted.append("".join(out))
 
     return Redaction(
-        texts=tuple(redacted), reveal=RevealMap(values=values), found=found
+        texts=tuple(redacted), visibility=Visibility(values=values), found=found
     )

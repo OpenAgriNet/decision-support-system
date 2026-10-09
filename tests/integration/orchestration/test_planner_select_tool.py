@@ -34,7 +34,7 @@ from dss.core.provider_discovery.models import (
     DiscoveryResult,
     ProviderCapability,
 )
-from dss.core.redaction.reveal import NOTHING_HELD, RevealMap
+from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import Geometry, UserTurn
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
 
@@ -64,7 +64,7 @@ class _FakeInvocation:
         resource_attributes: dict,
         _transaction_id: str,
         *,
-        reveal: RevealMap = NOTHING_HELD,
+        visibility: Visibility = NOTHING_HELD,
     ) -> list[DiscoveredAnswer]:
         self.calls.append(resource_attributes)
         return [

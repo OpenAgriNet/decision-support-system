@@ -169,11 +169,13 @@ class _FakePlan:
         self.calls = 0
         self.verdict_was_set: bool | None = None
 
-    async def __call__(self, turn, *, intent, discovery, verdict, reveal) -> Evidence:  # noqa: ANN001
+    async def __call__(
+        self, turn, *, intent, discovery, verdict, visibility
+    ) -> Evidence:  # noqa: ANN001
         self.calls += 1
         self.verdict_was_set = verdict.is_set()
         self.turn = turn
-        self.reveal = reveal
+        self.visibility = visibility
         return self._evidence
 
 

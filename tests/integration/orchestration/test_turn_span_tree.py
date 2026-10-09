@@ -75,7 +75,7 @@ class _PlanThatCallsSelect:
     def __init__(self, evidence) -> None:  # noqa: ANN001
         self._evidence = evidence
 
-    async def __call__(self, turn, *, intent, discovery, verdict, reveal):  # noqa: ANN001
+    async def __call__(self, turn, *, intent, discovery, verdict, visibility):  # noqa: ANN001
         def answers(request: httpx.Request) -> httpx.Response:
             return httpx.Response(200, json=_ON_SELECT)
 

@@ -15,7 +15,7 @@ import pytest
 
 from dss.adapters.invocation.client import HttpCapabilityInvocation, SelectFailed
 from dss.core.provider_discovery.models import ProviderCapability
-from dss.core.redaction.reveal import RevealMap
+from dss.core.redaction.visibility import Visibility
 
 CAPABILITY = ProviderCapability(
     provider_id="scheme-desk",
@@ -25,7 +25,7 @@ CAPABILITY = ProviderCapability(
     observed_categories=("Scheme",),
 )
 PHONE = "9876543210"
-REVEAL = RevealMap(values={"«phone_1»": PHONE})
+REVEAL = Visibility(values={"«phone_1»": PHONE})
 
 
 def _answer(text: str) -> httpx.Response:
@@ -83,7 +83,7 @@ async def test_the_wire_carries_the_real_value() -> None:
     provider = _Provider(_answer("approved"))
 
     await _invocation(provider).select(
-        CAPABILITY, {"applicant": {"phone": "«phone_1»"}}, "txn-1", reveal=REVEAL
+        CAPABILITY, {"applicant": {"phone": "«phone_1»"}}, "txn-1", visibility=REVEAL
     )
 
     assert _attributes(provider.bodies[0])["applicant"] == {"phone": PHONE}
@@ -94,7 +94,7 @@ async def test_a_tag_the_map_does_not_hold_goes_out_as_the_tag() -> None:
     provider = _Provider(_answer("approved"))
 
     await _invocation(provider).select(
-        CAPABILITY, {"id": "«aadhaar_1»"}, "txn-1", reveal=REVEAL
+        CAPABILITY, {"id": "«aadhaar_1»"}, "txn-1", visibility=REVEAL
     )
 
     assert _attributes(provider.bodies[0])["id"] == "«aadhaar_1»"
@@ -114,7 +114,7 @@ async def test_an_echoed_value_is_a_tag_again_in_the_answer() -> None:
     provider = _Provider(_answer(f"application for {PHONE} is approved"))
 
     [answer] = await _invocation(provider).select(
-        CAPABILITY, {"applicant": {"phone": "«phone_1»"}}, "txn-1", reveal=REVEAL
+        CAPABILITY, {"applicant": {"phone": "«phone_1»"}}, "txn-1", visibility=REVEAL
     )
 
     [resource] = answer.attributes["resources"]
@@ -126,7 +126,10 @@ async def test_the_logs_show_tags_never_the_value(caplog) -> None:
 
     with caplog.at_level(logging.DEBUG, logger="dss.trace"):
         await _invocation(provider).select(
-            CAPABILITY, {"applicant": {"phone": "«phone_1»"}}, "txn-1", reveal=REVEAL
+            CAPABILITY,
+            {"applicant": {"phone": "«phone_1»"}},
+            "txn-1",
+            visibility=REVEAL,
         )
 
     assert "«phone_1»" in caplog.text
@@ -138,7 +141,10 @@ async def test_a_failed_call_does_not_carry_the_value_in_its_detail() -> None:
 
     with pytest.raises(SelectFailed) as failed:
         await _invocation(provider).select(
-            CAPABILITY, {"applicant": {"phone": "«phone_1»"}}, "txn-1", reveal=REVEAL
+            CAPABILITY,
+            {"applicant": {"phone": "«phone_1»"}},
+            "txn-1",
+            visibility=REVEAL,
         )
 
     # The detail reaches the planner's prompt; the value must not.

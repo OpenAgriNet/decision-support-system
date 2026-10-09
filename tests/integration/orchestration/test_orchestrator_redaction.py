@@ -162,7 +162,7 @@ async def test_the_planner_is_handed_the_map_with_kept_values_only() -> None:
         redact=_redact(_FindsValues(phone=PHONE, aadhaar=AADHAAR))
     )
 
-    assert plan.reveal.values == {"«phone_1»": PHONE}
+    assert plan.visibility.values == {"«phone_1»": PHONE}
 
 
 async def test_the_farmer_reads_their_own_number_back() -> None:
@@ -196,7 +196,7 @@ async def test_with_redaction_off_the_turn_passes_through_unchanged() -> None:
     _, plan, _, _ = await _run(redact=pass_through)
 
     assert PHONE in plan.turn.original_query
-    assert plan.reveal.values == {}
+    assert plan.visibility.values == {}
 
 
 async def test_the_users_phone_gets_the_same_tag_as_the_question() -> None:
@@ -217,4 +217,4 @@ async def test_the_users_phone_gets_the_same_tag_as_the_question() -> None:
     assert plan.turn.user.phone == "«phone_1»"
     assert plan.turn.original_query == "status for «phone_1»"
     assert PHONE not in turns.records["t1"].turn.model_dump_json()
-    assert plan.reveal.values == {"«phone_1»": PHONE}
+    assert plan.visibility.values == {"«phone_1»": PHONE}
