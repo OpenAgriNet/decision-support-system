@@ -50,8 +50,9 @@ another adapter.
 
 ## 4. Decision Outcome
 
-**One more PII identifier on the ADR-0015 port: spaCy `en_core_web_sm`**, listed
-in the rules file's `identifiers:` beside the regex one:
+**One more PII identifier on the ADR-0015 port: spaCy `en_core_web_sm`**, which
+an adopter turns on by listing it in the rules file's `identifiers:` beside the
+regex one. The example file leaves it off, because it reads crop words as names:
 
 ```yaml
 identifiers:

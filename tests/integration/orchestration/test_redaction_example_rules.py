@@ -1,10 +1,10 @@
 """Tier 3 — the shipped example rules, end to end: load the file, build its
 identifiers, run them side by side, redact.
 
-The first test builds only the regex entry, on the card's romanised Hinglish
-examples: the spaCy entry tags "gehu" there, which is the known gap ADR-0016
-records, not behaviour to pin. The second builds every entry, regex and spaCy,
-on English text, where spaCy works.
+The example file ships patterns only. The first test runs it on the card's
+romanised Hinglish examples. The second adds a spaCy entry to it, as an adopter
+would, and runs both on English text, where spaCy works. spaCy is off by default
+because it tags "gehu" as a person — the gap ADR-0016 records.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ async def test_the_example_rules_redact_the_cards_examples() -> None:
             "mera number 98765 43210 hai, meri application ka status?",
             "champa ka rate kya hai?",
         ],
-        build_identifiers([e for e in config.identifiers if e["type"] == "regex"]),
+        build_identifiers(config.identifiers),
         config.policy,
     )
     assert result.texts == (
@@ -64,7 +64,9 @@ async def test_the_example_rules_redact_agri_identifiers() -> None:
 async def test_the_example_rules_with_spacy_redact_names_and_numbers() -> None:
     config = load_redaction_config(enabled=True, path=EXAMPLE_RULES)
     assert config is not None
-    identifiers = build_identifiers(config.identifiers)
+    identifiers = build_identifiers(
+        [*config.identifiers, {"type": "spacy", "entity": "person"}]
+    )
     assert [i.name for i in identifiers] == ["regex", "spacy"]
 
     result = await redact_texts(

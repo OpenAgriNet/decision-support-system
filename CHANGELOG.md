@@ -37,8 +37,9 @@
   missing (#138)
 
 ### Added
-- A spaCy name identifier for redaction (`en_core_web_sm`), listed in the
-  rules file's `identifiers:` beside `regex`. English only. ADR-0016 (#136)
+- A spaCy name identifier for redaction (`en_core_web_sm`), turned on by a
+  `- type: spacy` entry in the rules file. English only, and off in the example
+  file because it reads crop words as names. ADR-0016 (#136)
 - Redaction rules for three farm identifiers: PM Kisan registration number
   (2 letters, 9 digits), AgriStack farmer ID (11 digits) and AgriStack farm ID
   (2-letter state code, 12 digits). All three are kept for the provider that

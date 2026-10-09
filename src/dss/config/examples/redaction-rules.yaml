@@ -112,11 +112,7 @@ identifiers:
         max_tokens: 3
         stopwords: [and, from, in, i, my, here, please, sir, madam]
 
-  # ---------------------------------------------------------------------------
-  # 2. spacy — people's names the farmer did not announce, by the
-  #    en_core_web_sm model (ADR-0016). English only. On romanised Hinglish it
-  #    misses names and tags ordinary words ("gehu") as people. Delete this
-  #    entry to run patterns only.
-  # ---------------------------------------------------------------------------
-  - type: spacy
-    entity: person      # the tag its names leave behind — «person_1»
+  # A spaCy name identifier also exists (ADR-0016), but it is off: on romanised
+  # Hinglish it reads crop words ("gehu") and places as names. To try it, add:
+  #   - type: spacy
+  #     entity: person

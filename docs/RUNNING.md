@@ -602,7 +602,7 @@ run side by side).
 | `type` | Finds | Needs |
 |---|---|---|
 | `regex` | Aadhaar, PAN, GSTIN, IFSC, card, phone, email, announced names | nothing |
-| `spacy` | people's names, English only; poor on romanised Hinglish | nothing — `uv sync` installs it |
+| `spacy` | people's names, English only; poor on romanised Hinglish. **Not in the example file**; add `- type: spacy` to try it | nothing — `uv sync` installs it |
 
 ### The area index
 
