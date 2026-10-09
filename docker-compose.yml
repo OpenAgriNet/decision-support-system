@@ -60,6 +60,11 @@ services:
       # has to be named here to reach the container at all. DEBUG is what puts
       # the /discover and /select request bodies in the log.
       DSS_LOG_LEVEL: ${DSS_LOG_LEVEL:-INFO}
+      # Redaction of the farmer's identity details (ADR-0015). Off unless set to
+      # true in .env. The rules file ships in the image; point the path at a
+      # mounted file to use your own rules.
+      DSS_REDACTION_ENABLED: ${DSS_REDACTION_ENABLED:-false}
+      DSS_REDACTION_CONFIG_PATH: ${DSS_REDACTION_CONFIG_PATH:-/app/src/dss/config/examples/redaction-rules.yaml}
     ports:
       - "127.0.0.1:${DSS_HOST_PORT:-8077}:8077"
     healthcheck:

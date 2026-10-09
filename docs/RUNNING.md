@@ -599,6 +599,10 @@ name a rules file, or the DSS refuses to boot. A ready file for India is
 `entities:` (keep or destroy each value) and `identifiers:` (what finds PII,
 run side by side).
 
+In Docker, set `DSS_REDACTION_ENABLED=true` in `.env`. `docker-compose.yml`
+passes both settings to the container, and the path defaults to the example
+file inside the image.
+
 | `type` | Finds | Needs |
 |---|---|---|
 | `regex` | Aadhaar, PAN, GSTIN, IFSC, card, phone, email, announced names | nothing |

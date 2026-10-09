@@ -37,6 +37,10 @@
   missing (#138)
 
 ### Added
+- `docker-compose.yml` passes `DSS_REDACTION_ENABLED` and
+  `DSS_REDACTION_CONFIG_PATH` to the DSS container, so setting the flag in
+  `.env` turns redaction on. Off by default; the path defaults to the example
+  rules in the image (#133)
 - Redaction runs first on every turn. Intent, moderation, the planner, the
   composer and the audit record see tags such as `«phone_1»`; a kept value
   reaches only the provider's `/select` call and the farmer's own answer.
