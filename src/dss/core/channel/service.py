@@ -9,7 +9,7 @@ transport streams, and the fixed no-match reply.
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 
 from dss.core.channel.models import ClarificationText, ComposedAnswer
 from dss.core.intent.models import AmbiguousPlace, Ask, ResolvedPlace, UnresolvedPlace
@@ -138,36 +138,57 @@ def _not_found_line(name: str, text: ClarificationText) -> str:
     return text.unknown_place_in.format(name=place.strip(), part=part.strip())
 
 
-def question_for_ambiguous_asks(
-    asks: Sequence[Ask], text: ClarificationText
+def question_for_unplaced_asks(
+    asks: Sequence[Ask],
+    text: ClarificationText,
+    *,
+    place_optional: Collection[int] = (),
 ) -> str | None:
-    """The "which one?" block for the asks whose place is still ambiguous, for
-    a turn where other asks were answered. `None` if none is ambiguous."""
+    """The closing block for the asks whose place is still missing, on a turn
+    where other asks were answered: "which one?" for a name that matched
+    several, the plain question for an ask that named nowhere and needed a
+    place. `None` if nothing is missing.
+
+    `place_optional` means the same as in `answer_for_unplaced_asks`.
+    """
 
     lines: list[str] = []
     reported: list[AmbiguousPlace] = []
-    for ask in asks:
+    needs_place = False
+    for index, ask in enumerate(asks):
         if isinstance(ask.place, AmbiguousPlace) and ask.place not in reported:
             reported.append(ask.place)
             lines.extend(_ambiguous_lines(ask.place, text))
+        elif ask.place is None and index not in place_optional:
+            needs_place = True
+    if needs_place:
+        lines.append(text.needs_place)
     return "\n".join(lines) or None
 
 
 def answer_for_unplaced_asks(
-    asks: Sequence[Ask], text: ClarificationText
+    asks: Sequence[Ask],
+    text: ClarificationText,
+    *,
+    place_optional: Collection[int] = (),
 ) -> ComposedAnswer | None:
-    """What the farmer reads when no ask has a place. `None` if any ask
-    resolved; the rest travel on as failures, so the resolved ones still get
-    answered.
+    """What the farmer reads when no ask has a place it needs. `None` if any
+    ask can be answered; the rest travel on as failures, so the answerable
+    ones still get answered.
+
+    `place_optional` names the asks (by position) that have no place and need
+    none — the pack serves them from nowhere (`core/planner/place.py`). They
+    count as answerable, not as missing a place.
 
     Reports every failing ask, not just one, so fixing all of them takes one
     reply. Plain `None` asks share one question, asked once.
-
-    Known gap: a plain `None` always reads as "needs a place," even for an
-    ask that never needed one (e.g. "how do I grow potatoes").
     """
 
-    if any(isinstance(ask.place, ResolvedPlace) for ask in asks):
+    if any(
+        isinstance(ask.place, ResolvedPlace)
+        or (ask.place is None and index in place_optional)
+        for index, ask in enumerate(asks)
+    ):
         return None
 
     lines: list[str] = []

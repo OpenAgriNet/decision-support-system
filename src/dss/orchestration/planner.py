@@ -97,14 +97,6 @@ async def _select(
     # Safe by here: `find_capability` has already matched `ask_index` against
     # discovery, which is keyed off these same asks.
     ask = deps.intent.asks[ask_index]
-    # No call without a place: it would go out with no location and could
-    # come back for somewhere else. `plan()` already recorded the failure.
-    # Not a ModelRetry: retrying cannot fix the place.
-    if isinstance(ask.place, AmbiguousPlace | UnresolvedPlace):
-        return (
-            f"Ask {ask_index} has no place to search. Do not call select for "
-            f"it; report that this ask has no answer."
-        )
 
     # A ModelRetry, not a KeyError. Discovery reports what the network
     # offers; the schema index is built from the packs on disk, and the two
@@ -118,6 +110,19 @@ async def _select(
             f"no schema is loaded for {capability.capability}, so it cannot be "
             f"called. Pick another candidate for ask {ask_index}, or report "
             f"that this ask has no answer."
+        )
+
+    # No call without a place the pack needs: it would go out with no
+    # location and could come back for somewhere else. An ask naming nowhere
+    # is fine for a pack that indexes no location (an advisory), and the
+    # schema is what says which. `plan()` already recorded the failure.
+    # Not a ModelRetry: retrying cannot fix the place.
+    if isinstance(ask.place, AmbiguousPlace | UnresolvedPlace) or (
+        ask.place is None and schema.needs_place
+    ):
+        return (
+            f"Ask {ask_index} has no place to search. Do not call select for "
+            f"it; report that this ask has no answer."
         )
 
     try:

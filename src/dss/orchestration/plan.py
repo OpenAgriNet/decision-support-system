@@ -23,6 +23,7 @@ from dss.config.planner_prompt_loader import load_planner_prompt_template
 from dss.core.intent.models import Intent
 from dss.core.planner.evidence import assemble_evidence, place_failures
 from dss.core.planner.models import Evidence, Identity, Skill, Verdict
+from dss.core.planner.place import place_optional_asks
 from dss.core.planner.prompt import build_planner_prompt, build_user_message
 from dss.core.planner.validation import DomainSchema
 from dss.core.provider_discovery.models import DiscoveryResult
@@ -103,8 +104,13 @@ def build_plan(
             invocation=invocation,
             verdict=verdict,
             # An ask with nowhere to search fails up front, so it is reported
-            # whether or not the model tries to call anything for it.
-            failures=place_failures(intent),
+            # whether or not the model tries to call anything for it. An ask
+            # with no place at all is only such a failure when every option
+            # found for it needs one — the pack decides.
+            failures=place_failures(
+                intent,
+                place_optional=place_optional_asks(intent, discovery, schemas),
+            ),
             visibility=visibility,
         )
         # Our own counter, so a run that fails after several paid round-trips

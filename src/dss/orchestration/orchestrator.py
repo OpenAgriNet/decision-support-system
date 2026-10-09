@@ -38,7 +38,7 @@ before it touches a provider.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import aclosing
 from dataclasses import dataclass
 
@@ -53,13 +53,15 @@ from dss.core.channel.service import (
     answer_for_unserved_asks,
     answer_from_evidence,
     no_match_answer,
-    question_for_ambiguous_asks,
+    question_for_unplaced_asks,
 )
 from dss.core.intent.models import Intent
 from dss.core.moderation.messages import messages_for
 from dss.core.moderation.models import ModerationDecision, Outcome
 from dss.core.planner.models import Evidence, Verdict
+from dss.core.planner.place import place_optional_asks
 from dss.core.planner.sufficiency import provider_failed, unserved_asks
+from dss.core.planner.validation import DomainSchema
 from dss.core.policy.models import Policy
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.redaction.turn import texts_of, with_texts
@@ -157,6 +159,7 @@ class Orchestrator:
         telemetry: TelemetrySink,
         area_lookup: AreaLookup,
         clarification_text: ClarificationText,
+        schemas: Mapping[str, DomainSchema],
     ) -> None:
         self._intent_llm = intent_llm
         self._moderation_llm = moderation_llm
@@ -172,6 +175,9 @@ class Orchestrator:
         self._telemetry = telemetry
         self._area_lookup = area_lookup
         self._clarification_text = clarification_text
+        # The same schemas the planner validates against. Read here for one
+        # thing only: whether a pack serves an ask that names no place.
+        self._schemas = schemas
 
     async def run(self, turn: UserTurn, ctx: TurnContext) -> AsyncIterator[TurnEvent]:
         bind_turn_ids(
@@ -233,13 +239,19 @@ class Orchestrator:
             # than answer from nowhere or guess. If any ask has a place, the
             # turn goes on; the others reach the composer as failures.
             #
-            # Checked here rather than inside `run_turn`, which would have to
-            # skip the discover call to act on it. Discovery is read-only and
-            # already allowed to be wasted (it starts before moderation has
-            # cleared the turn), so letting it run and discarding it costs one
-            # cheap call and keeps the decision in one place.
+            # An ask naming nowhere is not always missing a place: the pack
+            # decides (`core/planner/place.py`), which is why this needs
+            # discovery and runs after it rather than inside `run_turn`.
+            # Discovery is read-only and already allowed to be wasted (it
+            # starts before moderation has cleared the turn), so letting it
+            # run and discarding it costs one cheap call.
+            place_optional = place_optional_asks(
+                result.intent, result.discovery, self._schemas
+            )
             clarification = answer_for_unplaced_asks(
-                result.intent.asks, self._clarification_text
+                result.intent.asks,
+                self._clarification_text,
+                place_optional=place_optional,
             )
             if clarification is not None:
                 yield self._finish(
@@ -262,8 +274,10 @@ class Orchestrator:
                 )
                 # An ask whose place matched several was never searched. Still
                 # ask which one, so the farmer's reply can finish it.
-                question = question_for_ambiguous_asks(
-                    result.intent.asks, self._clarification_text
+                question = question_for_unplaced_asks(
+                    result.intent.asks,
+                    self._clarification_text,
+                    place_optional=place_optional,
                 )
                 if question is not None:
                     status = TurnStatus.REQUIRES_INPUT
@@ -317,11 +331,14 @@ class Orchestrator:
                 # A failure before this line propagates: the pieces already
                 # yielded cannot be recalled, so there is no retry to make and
                 # nothing to roll back. The transport reports a failed turn.
-                # An ask whose place matched several was not answered. Ask
-                # which one as the last piece of the same answer, so it is one
+                # An ask still missing its place was not answered: a name that
+                # matched several, or nowhere named where the pack needs one.
+                # Ask as the last piece of the same answer, so it is one
                 # bubble and the farmer's next reply can finish it.
-                question = question_for_ambiguous_asks(
-                    result.intent.asks, self._clarification_text
+                question = question_for_unplaced_asks(
+                    result.intent.asks,
+                    self._clarification_text,
+                    place_optional=place_optional,
                 )
                 if question is not None:
                     written.append(f"\n\n{question}")
