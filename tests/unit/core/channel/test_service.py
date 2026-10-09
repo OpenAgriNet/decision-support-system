@@ -364,7 +364,7 @@ def test_the_closing_question_skips_everything_that_resolved() -> None:
     )
 
 
-def test_the_closing_question_asks_for_a_place_an_ask_still_needs() -> None:
+def test_closing_question_asks_place() -> None:
     """ "How do I grow potato, and will it rain?" with nothing named: potato
     was answered without a place, rain still needs one."""
 

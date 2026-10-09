@@ -23,6 +23,9 @@ from pydantic import BaseModel, ConfigDict
 from dss.core.provider_discovery.models import SchemaPackFiles
 
 _BECKN_RESOURCE_ATTRIBUTES_PREFIX = "beckn:resourceAttributes."
+# The path segment that says a pack indexes a point. A pack with one in its
+# `indexable_paths` serves a place, so an ask must name one to be served.
+_LOCATION_SEGMENT = "location"
 
 
 class InvalidArgument(Exception):
@@ -130,7 +133,8 @@ def parse_domain_schema(pack: SchemaPackFiles) -> DomainSchema:
             if spec.format
         },
         needs_place=any(
-            "location" in path.split(".") for path in profile.get("indexable_paths", ())
+            _LOCATION_SEGMENT in path.split(".")
+            for path in profile.get("indexable_paths", ())
         ),
     )
 

@@ -21,8 +21,11 @@ def place_optional_asks(
     discovery: DiscoveryResult,
     schemas: Mapping[str, DomainSchema],
 ) -> frozenset[int]:
-    """The indexes of the asks that name no place and can still be served:
-    some option discovered for them comes from a pack that needs none."""
+    """The indexes of the asks that name no place and are not failed for it:
+    some option discovered for them comes from a pack that needs none, or no
+    option was found at all. The second is not a place failure — nobody
+    serves the ask, and a place would not change that — so it ends as
+    unserved rather than as a question the farmer's reply cannot finish."""
 
     optional: set[int] = set()
     for index, ask in enumerate(intent.asks):
@@ -32,7 +35,9 @@ def place_optional_asks(
             *discovery.answers.get(index, ()),
             *discovery.capabilities.get(index, ()),
         )
-        if any(_serves_from_nowhere(option.capability, schemas) for option in options):
+        if not options or any(
+            _serves_from_nowhere(option.capability, schemas) for option in options
+        ):
             optional.add(index)
     return frozenset(optional)
 

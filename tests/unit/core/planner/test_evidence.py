@@ -442,7 +442,7 @@ def test_an_ambiguous_place_is_a_failure_without_a_provider() -> None:
     assert "several" in failure.reason
 
 
-def test_an_ask_with_no_place_it_needs_is_a_failure() -> None:
+def test_missing_needed_place_fails() -> None:
     """ "How do I grow potato, and will it rain?" with nothing named: the
     potato ask goes on without a place, the weather ask cannot."""
 

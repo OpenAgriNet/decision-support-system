@@ -428,7 +428,7 @@ async def test_select_makes_no_call_for_an_ask_whose_place_failed() -> None:
     assert deps.failures == []
 
 
-async def test_select_makes_no_call_without_a_place_the_pack_needs() -> None:
+async def test_no_call_without_needed_place() -> None:
     """Nothing named, and the pack indexes a location: a call would go out
     for nowhere. The same guard as a failed place, so `plan()`'s up-front
     failure stays the only record."""
