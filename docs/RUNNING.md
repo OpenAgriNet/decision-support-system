@@ -763,7 +763,10 @@ With it on, each trace's **Input** and **Output** in Langfuse show the farmer's
 query and the answer they read (a refusal or a question back included). They
 come from `langfuse.observation.input` and `langfuse.observation.output` on the
 `dss.turn` span. Langfuse v4 ignores `langfuse.trace.input`/`output`. A turn
-that crashed has neither.
+that crashed has neither. Each `dss.stage.*` span gets the same boxes for its own
+step: the query and the asks for intent, asks before and after for enrichment,
+who was found for discovery, what was served for the planner, and the written
+text for the composer.
 
 **Even with it on, ClickHouse never sees the words.** The ClickHouse branch
 keeps only a named allowlist of attributes (`transform/clickhouse_allowlist` in

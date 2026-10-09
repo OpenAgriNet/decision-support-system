@@ -36,7 +36,10 @@ from datetime import UTC, datetime
 import anyio
 from pydantic import BaseModel, ConfigDict
 
-from dss.adapters.observability.tracing import set_current_span_attributes
+from dss.adapters.observability.tracing import (
+    set_current_span_attributes,
+    set_current_span_content,
+)
 from dss.core.enrichment.service import resolve_scheme_subjects
 from dss.core.intent.models import (
     AmbiguousPlace,
@@ -59,6 +62,7 @@ from dss.core.shared.models import UserTurn
 from dss.observability.stages import Stage
 from dss.observability.trace_log import log_event, trace_component
 from dss.orchestration.discovery import DiscoverProviders
+from dss.orchestration.stage_content import asks_text, discovery_text
 from dss.ports.area_lookup import AreaLookup
 from dss.ports.llm import LLMProvider
 from dss.ports.scheme_catalog import SchemeCatalog
@@ -238,6 +242,9 @@ async def run_turn(
         nonlocal intent, discovery
         with trace_component(Stage.INTENT, turn.transaction_id):
             classification = await classify_intent(turn, intent_llm)
+            set_current_span_content(
+                input=turn.original_query, output=asks_text(classification.asks)
+            )
         with trace_component(Stage.LOCATION, turn.transaction_id):
             intent = await resolve_places(
                 classification,
@@ -247,10 +254,15 @@ async def run_turn(
             )
             set_current_span_attributes(**place_attributes(classification, intent))
         with trace_component(Stage.ENRICHMENT, turn.transaction_id):
+            before = asks_text(intent.asks)
             intent = _enrich(intent, turn, scheme_catalog, scheme_fuzzy_threshold)
+            set_current_span_content(input=before, output=asks_text(intent.asks))
         with trace_component(Stage.DISCOVERY, turn.transaction_id):
             discovery = await discover_providers(
                 intent, turn, now=now or datetime.now(UTC)
+            )
+            set_current_span_content(
+                input=asks_text(intent.asks), output=discovery_text(discovery)
             )
 
     async def run_moderation() -> None:
@@ -260,6 +272,7 @@ async def run_turn(
                 ModerationContext(turn=turn), policies, moderation_llm
             )
             set_current_span_attributes(**moderation_attributes(decision))
+            set_current_span_content(input=turn.original_query)
 
     async with anyio.create_task_group() as task_group:
         task_group.start_soon(run_moderation)

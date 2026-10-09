@@ -39,7 +39,11 @@ from collections.abc import AsyncIterator, Sequence
 from contextlib import aclosing
 from dataclasses import dataclass
 
-from dss.adapters.observability.tracing import TurnRecorder, turn_span
+from dss.adapters.observability.tracing import (
+    TurnRecorder,
+    set_current_span_content,
+    turn_span,
+)
 from dss.core.channel.models import ClarificationText, ComposedAnswer
 from dss.core.channel.service import (
     answer_for_unplaced_asks,
@@ -74,6 +78,7 @@ from dss.observability.stages import Stage
 from dss.observability.trace_log import bind_turn_ids, trace_component
 from dss.orchestration.discovery import DiscoverProviders
 from dss.orchestration.plan import Plan
+from dss.orchestration.stage_content import asks_text, evidence_text, sources_text
 from dss.orchestration.turn import run_turn
 from dss.ports.area_lookup import AreaLookup
 from dss.ports.llm import LLMProvider
@@ -262,6 +267,10 @@ class Orchestrator:
                     discovery=result.discovery,
                     verdict=verdict,
                 )
+                set_current_span_content(
+                    input=asks_text(result.intent.asks),
+                    output=evidence_text(evidence),
+                )
 
             # The span stays open across the yields below, so it measures the
             # whole composition rather than closing on the first piece.
@@ -292,6 +301,7 @@ class Orchestrator:
                     written.append(f"\n\n{question}")
                     yield ClaimDelta(text=written[-1])
                 text = "".join(written)
+                set_current_span_content(input=sources_text(evidence), output=text)
             answer = answer_from_evidence(text, evidence)
             recorder.composed()
             for block in answer.content:

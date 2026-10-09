@@ -403,3 +403,60 @@ async def test_without_content_the_trace_has_no_input_or_output(
     attributes = _turn_span(spans).attributes
     assert "langfuse.observation.input" not in attributes
     assert "langfuse.observation.output" not in attributes
+
+
+# Each stage's own Input and Output in Langfuse, behind the content switch.
+_STAGES_WITH_CONTENT = ("intent", "enrichment", "discovery", "planner", "composer")
+
+
+def _stage(spans: InMemorySpanExporter, name: str):
+    (span,) = [s for s in spans.get_finished_spans() if s.name == f"dss.stage.{name}"]
+    return span.attributes
+
+
+async def test_with_content_on_every_stage_shows_its_input_and_output(
+    spans, monkeypatch
+) -> None:
+    monkeypatch.setenv("DSS_TRACE_INCLUDE_MESSAGE_CONTENT", "true")
+    orch, _ = _build(
+        intent=_one_ask(),
+        discovery=_served_discovery(),
+        plan=_FakePlan(_ANSWERED_EVIDENCE),
+        compose=_FakeCompose("Wheat is 2,275 Rs [1]."),
+    )
+
+    await _collect(orch)
+
+    for name in _STAGES_WITH_CONTENT:
+        attributes = _stage(spans, name)
+        assert attributes["langfuse.observation.input"], name
+        assert attributes["langfuse.observation.output"], name
+    assert _stage(spans, "moderation")["langfuse.observation.input"]
+    assert _stage(spans, "intent")["langfuse.observation.input"] == (
+        _turn().original_query
+    )
+    assert "wheat" in _stage(spans, "intent")["langfuse.observation.output"]
+    assert "Agmarknet" in _stage(spans, "planner")["langfuse.observation.output"]
+    assert _stage(spans, "composer")["langfuse.observation.output"] == (
+        "Wheat is 2,275 Rs [1]."
+    )
+
+
+async def test_without_content_no_stage_carries_the_farmers_words(
+    spans, monkeypatch
+) -> None:
+    monkeypatch.delenv("DSS_TRACE_INCLUDE_MESSAGE_CONTENT", raising=False)
+    orch, _ = _build(
+        intent=_one_ask(),
+        discovery=_served_discovery(),
+        plan=_FakePlan(_ANSWERED_EVIDENCE),
+        compose=_FakeCompose("Wheat is 2,275 Rs [1]."),
+    )
+
+    await _collect(orch)
+
+    for name in _STAGES_WITH_CONTENT:
+        attributes = _stage(spans, name)
+        assert "langfuse.observation.input" not in attributes, name
+        assert "langfuse.observation.output" not in attributes, name
+    assert "langfuse.observation.input" not in _stage(spans, "moderation")
