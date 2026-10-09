@@ -36,6 +36,8 @@ CONTENT = (
     "pydantic_ai.new_content",
     "langfuse.trace.input",
     "langfuse.trace.output",
+    "langfuse.observation.input",
+    "langfuse.observation.output",
 )
 
 # What the dashboard, a debugging session or a later story needs.

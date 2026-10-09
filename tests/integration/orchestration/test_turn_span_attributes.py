@@ -357,8 +357,8 @@ async def test_with_content_on_the_trace_shows_the_query_and_the_answer(
 
     attributes = _turn_span(spans).attributes
     (finished,) = [e for e in events if isinstance(e, TurnFinished)]
-    assert attributes["langfuse.trace.input"] == _turn().original_query
-    assert attributes["langfuse.trace.output"] == "\n".join(
+    assert attributes["langfuse.observation.input"] == _turn().original_query
+    assert attributes["langfuse.observation.output"] == "\n".join(
         block.text for block in finished.content
     )
 
@@ -380,7 +380,7 @@ async def test_a_refused_turn_shows_the_refusal_as_its_output(
 
     (finished,) = [e for e in events if isinstance(e, TurnFinished)]
     assert finished.content
-    assert _turn_span(spans).attributes["langfuse.trace.output"] == "\n".join(
+    assert _turn_span(spans).attributes["langfuse.observation.output"] == "\n".join(
         block.text for block in finished.content
     )
 
@@ -401,5 +401,5 @@ async def test_without_content_the_trace_has_no_input_or_output(
     await _collect(orch)
 
     attributes = _turn_span(spans).attributes
-    assert "langfuse.trace.input" not in attributes
-    assert "langfuse.trace.output" not in attributes
+    assert "langfuse.observation.input" not in attributes
+    assert "langfuse.observation.output" not in attributes
