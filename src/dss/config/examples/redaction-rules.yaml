@@ -19,6 +19,9 @@ entities:
   pan: keep
   ifsc: keep
   phone: keep
+  pm_kisan_id: keep
+  farmer_id: keep
+  farm_id: keep
   email: keep
   person: keep
 
@@ -68,6 +71,27 @@ identifiers:
       - entity: phone
         kind: pattern
         pattern: '(?<![\d+])(?:(?:\+|00)?91|0)?[6-9]\d{9}(?!\d)'
+
+      # PM Kisan registration number: 2 letters, then 9 digits.
+      - entity: pm_kisan_id
+        kind: pattern
+        pattern: '(?i)\b[A-Z]{2}\d{9}\b'
+
+      # AgriStack farmer ID: 11 digits. Listed after phone, so "09876543210"
+      # (a phone with its leading 0) stays a phone. Only an unbroken number
+      # counts, so "9876543210 2 acre" is not read as one. No letter may touch
+      # it, so a malformed farm ID does not hide one.
+      - entity: farmer_id
+        kind: pattern
+        pattern: '(?<![\dA-Za-z])\d{11}(?![\dA-Za-z])'
+        groupings: [[11]]
+
+      # AgriStack farm ID: a 2-letter state code, then 12 digits (11 random,
+      # 1 check digit). The check digit's algorithm is not published, so only
+      # the shape is checked.
+      - entity: farm_id
+        kind: pattern
+        pattern: '(?i)\b[A-Z]{2}\d{12}\b'
 
       - entity: email
         kind: pattern

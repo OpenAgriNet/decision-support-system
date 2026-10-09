@@ -37,6 +37,13 @@ PHONE = PatternRule(
     entity="phone",
     pattern=r"(?<![\d+])(?:(?:\+|00)?91|0)?[6-9]\d{9}(?!\d)",
 )
+PM_KISAN_ID = PatternRule(entity="pm_kisan_id", pattern=r"(?i)\b[A-Z]{2}\d{9}\b")
+FARMER_ID = PatternRule(
+    entity="farmer_id",
+    pattern=r"(?<![\dA-Za-z])\d{11}(?![\dA-Za-z])",
+    groupings=[[11]],
+)
+FARM_ID = PatternRule(entity="farm_id", pattern=r"(?i)\b[A-Z]{2}\d{12}\b")
 EMAIL = PatternRule(
     entity="email",
     pattern=r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}",
@@ -48,7 +55,19 @@ PERSON = DeclaringPhraseRule(
 )
 
 SETTINGS = RegexSettings(
-    rules=[AADHAAR, CARD, GSTIN, PAN, IFSC, PHONE, EMAIL, PERSON],
+    rules=[
+        AADHAAR,
+        CARD,
+        GSTIN,
+        PAN,
+        IFSC,
+        PHONE,
+        PM_KISAN_ID,
+        FARMER_ID,
+        FARM_ID,
+        EMAIL,
+        PERSON,
+    ],
 )
 
 POLICY = RedactionPolicy(
@@ -59,6 +78,9 @@ POLICY = RedactionPolicy(
         "pan": KEEP,
         "ifsc": KEEP,
         "phone": KEEP,
+        "pm_kisan_id": KEEP,
+        "farmer_id": KEEP,
+        "farm_id": KEEP,
         "email": KEEP,
         "person": KEEP,
     }
