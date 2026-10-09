@@ -23,6 +23,9 @@ from pydantic import BaseModel, ConfigDict
 from dss.core.provider_discovery.models import SchemaPackFiles
 
 _BECKN_RESOURCE_ATTRIBUTES_PREFIX = "beckn:resourceAttributes."
+# The path segment that says a pack indexes a point. A pack with one in its
+# `indexable_paths` serves a place, so an ask must name one to be served.
+_LOCATION_SEGMENT = "location"
 
 
 class InvalidArgument(Exception):
@@ -48,6 +51,11 @@ class DomainSchema(BaseModel):
     # The allowed values of each field that has a fixed set. Most fields have
     # none, so a missing entry means "anything goes", not "nothing allowed".
     field_enums: Mapping[str, tuple[str, ...]] = {}
+    # Whether an ask must carry a place to be served from this pack. True when
+    # the pack indexes a location — its own (`location.geo`) or a nested one
+    # (`market.location.geo`). An advisory pack indexes none: "how do I grow
+    # potatoes" has an answer from nowhere in particular.
+    needs_place: bool = False
 
 
 def _items_requiring_siblings(attributes_yaml: str) -> frozenset[str]:
@@ -124,6 +132,10 @@ def parse_domain_schema(pack: SchemaPackFiles) -> DomainSchema:
             for path, spec in pack.flattened_fields.items()
             if spec.format
         },
+        needs_place=any(
+            _LOCATION_SEGMENT in path.split(".")
+            for path in profile.get("indexable_paths", ())
+        ),
     )
 
 

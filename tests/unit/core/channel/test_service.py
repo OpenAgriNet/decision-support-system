@@ -13,7 +13,7 @@ from dss.core.channel.service import (
     answer_for_unplaced_asks,
     answer_for_unserved_asks,
     no_match_answer,
-    question_for_ambiguous_asks,
+    question_for_unplaced_asks,
 )
 from dss.core.intent.models import (
     AmbiguousPlace,
@@ -326,7 +326,16 @@ def test_answer_for_unplaced_asks_shows_the_generic_question_once() -> None:
     assert text.count(_TEXT.needs_place) == 1
 
 
-def test_the_question_for_ambiguous_asks_skips_everything_that_resolved() -> None:
+def test_an_ask_that_needs_no_place_is_not_asked_for_one() -> None:
+    """ "How do I grow potatoes": the pack serves it from nowhere, so the turn
+    goes on instead of stopping to ask."""
+
+    asks = (_ask(place=None),)
+
+    assert answer_for_unplaced_asks(asks, _TEXT, place_optional={0}) is None
+
+
+def test_the_closing_question_skips_everything_that_resolved() -> None:
     """Pune was answered; only Bilaspur still needs the farmer's pick."""
 
     bilaspur = AmbiguousPlace(
@@ -348,11 +357,22 @@ def test_the_question_for_ambiguous_asks_skips_everything_that_resolved() -> Non
     )
     asks = (_ask(place=_PUNE), _ask(place=bilaspur))
 
-    question = question_for_ambiguous_asks(asks, _TEXT)
+    question = question_for_unplaced_asks(asks, _TEXT)
 
     assert question == (
         "Which Bilaspur?\n1. Bilaspur, Himachal Pradesh\n2. Bilaspur, Chhattisgarh"
     )
+
+
+def test_closing_question_asks_place() -> None:
+    """ "How do I grow potato, and will it rain?" with nothing named: potato
+    was answered without a place, rain still needs one."""
+
+    asks = (_ask(place=None), _ask(place=None))
+
+    question = question_for_unplaced_asks(asks, _TEXT, place_optional={0})
+
+    assert question == _TEXT.needs_place
 
 
 def test_no_provider_names_the_place() -> None:

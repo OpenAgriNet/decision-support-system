@@ -171,6 +171,7 @@ def build_runner_with_lifecycle(
         telemetry=FileTelemetrySink(settings.telemetry_path),
         area_lookup=area_lookup,
         clarification_text=clarification_text,
+        schemas=schemas,
     )
     return runner, _aclose_all(_aclose_for(client), area_aclose)
 

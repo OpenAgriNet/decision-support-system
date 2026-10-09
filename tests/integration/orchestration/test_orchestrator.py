@@ -20,6 +20,7 @@ from dss.core.intent.models import (
 )
 from dss.core.moderation.models import Outcome
 from dss.core.planner.models import Evidence, Failure, Result, Source, SourceKind
+from dss.core.planner.validation import DomainSchema
 from dss.core.policy.models import (
     Checkpoint,
     EvaluationKind,
@@ -228,9 +229,11 @@ def _build(
     redact: RedactTexts = pass_through,
     intent_llm=None,
     moderation_llm=None,
+    schemas: dict[str, DomainSchema] | None = None,
 ) -> tuple[Orchestrator, MemoryTurnSink]:
     turns = MemoryTurnSink()
     orch = Orchestrator(
+        schemas=schemas or {},
         intent_llm=intent_llm or _FakeIntentLLM(intent),
         moderation_llm=moderation_llm or _FakeModerationLLM(violated=violated),
         policies=list(policies),
@@ -356,6 +359,117 @@ async def test_an_unlocated_turn_asks_for_a_place() -> None:
     # starts before moderation clears the turn. What matters is that the planner
     # and composer, which cost real model calls, never ran.
     assert plan.calls == 0 and compose.calls == 0
+
+
+async def test_an_unlocated_advisory_ask_is_answered() -> None:
+    """ "How do I grow potatoes" names nowhere, and the advisory pack indexes
+    no location: the turn goes on to the planner and composer instead of
+    stopping to ask for a place it does not need."""
+
+    advisory = ProviderCapability(
+        provider_id="kvk",
+        provider_name="KVK",
+        capability="openagrinet:KnowledgeAdvisory",
+        resource_id="res:kvk:potato",
+        observed_categories=("Crop",),
+    )
+    plan = _FakePlan(_ANSWERED_EVIDENCE)
+    compose = _FakeCompose("Sow in October [1].")
+    orch, _ = _build(
+        intent=IntentClassification(
+            asks=(
+                ClassifiedAsk(
+                    agriculture_subjects="potato",
+                    subject_categories=SubjectCategory.CROP,
+                    interaction_type=InteractionType.ADVISE,
+                ),
+            ),
+            confidence=0.9,
+        ),
+        discovery=DiscoveryResult(
+            answers={}, capabilities={0: (advisory,)}, failures={}, events=()
+        ),
+        plan=plan,
+        compose=compose,
+        schemas={
+            "openagrinet:KnowledgeAdvisory": DomainSchema(
+                type="KnowledgeAdvisory", filterable=()
+            )
+        },
+    )
+
+    events = await _collect(orch, _turn("how do I grow potatoes", location=None))
+
+    assert events[-1].outcome.status is TurnStatus.ANSWERED
+    assert plan.calls == 1 and compose.calls == 1
+
+
+async def test_mixed_turn_answers_then_asks_place() -> None:
+    """ "How do I grow potato, and will it rain?" with nothing named: the
+    potato advice is written, and the answer ends by asking for the place the
+    weather ask still needs."""
+
+    advisory = ProviderCapability(
+        provider_id="kvk",
+        provider_name="KVK",
+        capability="openagrinet:KnowledgeAdvisory",
+        resource_id="res:kvk:potato",
+        observed_categories=("Crop",),
+    )
+    weather = ProviderCapability(
+        provider_id="imd",
+        provider_name="IMD",
+        capability="openagrinet:WeatherObservation",
+        resource_id="res:imd:forecast",
+        observed_categories=("Weather",),
+    )
+    plan = _FakePlan(
+        _evidence(
+            results=(Result(ask_index=0, source_id="1", data={"sow": "October"}),),
+            served=(0,),
+        )
+    )
+    orch, _ = _build(
+        intent=IntentClassification(
+            asks=(
+                ClassifiedAsk(
+                    agriculture_subjects="potato",
+                    subject_categories=SubjectCategory.CROP,
+                    interaction_type=InteractionType.ADVISE,
+                ),
+                ClassifiedAsk(
+                    subject_categories=SubjectCategory.WEATHER,
+                    interaction_type=InteractionType.OBSERVE,
+                ),
+            ),
+            confidence=0.9,
+        ),
+        discovery=DiscoveryResult(
+            answers={},
+            capabilities={0: (advisory,), 1: (weather,)},
+            failures={},
+            events=(),
+        ),
+        plan=plan,
+        compose=_FakeCompose("Sow in October [1]."),
+        schemas={
+            "openagrinet:KnowledgeAdvisory": DomainSchema(
+                type="KnowledgeAdvisory", filterable=()
+            ),
+            "openagrinet:WeatherObservation": DomainSchema(
+                type="WeatherObservation", filterable=(), needs_place=True
+            ),
+        },
+    )
+
+    events = await _collect(
+        orch, _turn("how do I grow potato, and will it rain?", location=None)
+    )
+
+    question = load_clarification_text().needs_place
+    deltas = [e.text for e in events if isinstance(e, ClaimDelta)]
+    assert deltas[-1] == f"\n\n{question}"
+    assert events[-1].outcome.status is TurnStatus.PARTIALLY_ANSWERED
 
 
 async def test_some_asks_unserved_is_partial() -> None:

@@ -333,6 +333,37 @@ components:
     assert schema.field_formats == {"arrivalDate": "date"}
 
 
+def test_a_pack_indexing_a_location_needs_a_place() -> None:
+    """Weather indexes `location.geo`: a forecast is for somewhere, so an ask
+    with no place cannot be served from it."""
+
+    schema = parse_domain_schema(_weather_pack())
+
+    assert schema.needs_place is True
+
+
+def test_a_pack_indexing_no_location_needs_no_place() -> None:
+    """Advisory indexes topics and crops, never a point: an ask with no place
+    is still served from it."""
+
+    pack = SchemaPackFiles(
+        pack_name="KnowledgeAdvisory",
+        version="v0.1",
+        profile_json=json.dumps(
+            {
+                "filterable_paths": ["beckn:resourceAttributes.topics[].code"],
+                "indexable_paths": ["beckn:resourceAttributes.topics[].code"],
+            }
+        ),
+        attributes_yaml="",
+        examples_json=(),
+    )
+
+    schema = parse_domain_schema(pack)
+
+    assert schema.needs_place is False
+
+
 def test_a_scalar_where_the_pack_asks_for_an_object_is_rejected() -> None:
     """The model wrote `{"location": {"geo": "Nashik"}}` — a place name where
     the pack types the field an object — and only the provider noticed.
