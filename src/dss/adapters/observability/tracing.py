@@ -351,6 +351,26 @@ def set_current_span_attributes(**attributes: str | int | float | bool) -> None:
     trace.get_current_span().set_attributes(dict(attributes))
 
 
+def set_current_span_content(
+    *, input: str | None = None, output: str | None = None
+) -> None:
+    """Fill Langfuse's Input and Output boxes on whichever span is open.
+
+    Off unless `DSS_TRACE_INCLUDE_MESSAGE_CONTENT` is on: what a stage reads
+    and writes is the farmer's words, or built from them (ADR-0007 §5). The
+    collector keeps these keys out of ClickHouse.
+    """
+
+    if not _include_content():
+        return
+    attributes = {}
+    if input is not None:
+        attributes["langfuse.observation.input"] = input
+    if output is not None:
+        attributes["langfuse.observation.output"] = output
+    set_current_span_attributes(**attributes)
+
+
 class TurnRecorder:
     """What a turn can add to its own root span while it is still running.
 
