@@ -404,7 +404,7 @@ async def test_an_unlocated_advisory_ask_is_answered() -> None:
     assert plan.calls == 1 and compose.calls == 1
 
 
-async def test_a_mixed_unlocated_turn_answers_one_ask_and_asks_for_the_place() -> None:
+async def test_mixed_turn_answers_then_asks_place() -> None:
     """ "How do I grow potato, and will it rain?" with nothing named: the
     potato advice is written, and the answer ends by asking for the place the
     weather ask still needs."""

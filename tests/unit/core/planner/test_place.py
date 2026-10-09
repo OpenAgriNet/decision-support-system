@@ -51,7 +51,10 @@ def _discovery(**capabilities: tuple[ProviderCapability, ...]) -> DiscoveryResul
     )
 
 
-def test_an_unplaced_ask_is_optional_when_an_option_needs_no_place() -> None:
+def test_one_placeless_option_is_enough() -> None:
+    """ "How do I grow potato?" with nothing named: an advisory serves it
+    from nowhere, so the ask goes on."""
+
     intent = Intent(asks=(_ask(),))
     discovery = _discovery(**{"0": (_capability(_ADVISORY),)})
 
@@ -89,13 +92,23 @@ def test_an_option_with_no_loaded_schema_needs_a_place() -> None:
     assert place_optional_asks(intent, discovery, _SCHEMAS) == frozenset()
 
 
-def test_an_ask_whose_every_option_needs_a_place_is_not_optional() -> None:
+def test_every_option_needs_place() -> None:
     """ "Will it rain?" with nothing named: weather is for somewhere."""
 
     intent = Intent(asks=(_ask(),))
     discovery = _discovery(**{"0": (_capability(_WEATHER),)})
 
     assert place_optional_asks(intent, discovery, _SCHEMAS) == frozenset()
+
+
+def test_no_option_found_is_not_a_place_failure() -> None:
+    """Nobody serves the ask. A place would not change that, so asking for
+    one is wrong: the ask ends as unserved, as it did before this rule."""
+
+    intent = Intent(asks=(_ask(),))
+    discovery = _discovery(**{"0": ()})
+
+    assert place_optional_asks(intent, discovery, _SCHEMAS) == frozenset({0})
 
 
 def test_one_option_needing_no_place_is_enough() -> None:

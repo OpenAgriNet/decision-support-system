@@ -74,12 +74,11 @@ def test_the_real_composition_writes_evidence_where_configured(tmp_path, monkeyp
         "/v1/turns", json=body, headers={"Accept": "application/json"}
     )
 
-    # `requires_input`, not `answered`: the real orchestrator runs intent and
-    # moderation, but this body carries no location and "Wheat price?" names no
-    # place, so there is nowhere to search and the turn asks for a district
-    # before discovery. It is not the failed-closed `moderation_unavailable`, so
-    # it still proves moderation PROCEEDED and the real pipeline ran and wrote
-    # its evidence.
-    assert response.json()["message"]["outcome"]["status"] == "requires_input"
+    # `no_match`, not `answered`: the real orchestrator runs intent and
+    # moderation, but no network is configured, so discovery finds nobody for
+    # "Wheat price?" and the turn ends empty-handed. It is not the failed-closed
+    # `moderation_unavailable`, so it still proves moderation PROCEEDED and the
+    # real pipeline ran and wrote its evidence.
+    assert response.json()["message"]["outcome"]["status"] == "no_match"
     assert (tmp_path / "telemetry.jsonl").exists()
     assert (tmp_path / "turns.jsonl").exists()
