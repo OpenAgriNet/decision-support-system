@@ -19,6 +19,7 @@ from dss.adapters.observability.metrics import (
     configure_metrics,
     model_that_ran,
     record_agent_run,
+    record_area_lookup,
     record_composed,
     record_first_delta,
     record_stage_duration,
@@ -303,3 +304,13 @@ def test_the_span_and_the_metric_carry_the_same_moment(
 
     (point,) = points(reader, instrument)
     assert point.sum * 1000 == pytest.approx(span.attributes[attribute])
+
+
+def test_an_area_lookup_is_counted_by_source_and_outcome(reader) -> None:
+    """Where a farmer's place came from, and how it went. Never the place."""
+
+    record_area_lookup(source="photon", outcome="hit")
+
+    (point,) = points(reader, "dss.area_lookup.count")
+    assert point.value == 1
+    assert dict(point.attributes) == {"source": "photon", "outcome": "hit"}

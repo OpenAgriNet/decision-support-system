@@ -38,7 +38,25 @@ class AreaMatch(BaseModel):
     # for a district, ("India", "Maharashtra", "Pune") for a block inside it.
     within: tuple[str, ...]
     geometry: Geometry
+    # A whole state or region, too big to search around one point. Core never
+    # uses it as the place: it narrows to the farmer's own place or asks.
+    is_region: bool = False
+    # Not the name asked for, only one that starts with it ("Kanha Chatti" for
+    # "Kanha"). It may be far from the place meant, so core does not use it
+    # without checking.
+    is_guess: bool = False
+
+
+class AreaLookupUnavailable(Exception):
+    """A source could not answer (down, slow, bad reply). Not the same as "no
+    such area". The chain catches it; core never sees it."""
 
 
 class AreaLookup(Protocol):
-    def resolve(self, name: str, region: str | None = None) -> list[AreaMatch]: ...
+    async def resolve(
+        self, name: str, region: str | None = None
+    ) -> list[AreaMatch]: ...
+
+    # The known place closest to a point, if one is within `max_km`. It names
+    # a device point, so the answer can say where it is about.
+    async def nearest(self, point: Geometry, max_km: float) -> AreaMatch | None: ...

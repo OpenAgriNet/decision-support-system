@@ -1,0 +1,83 @@
+# Photon, a place search built on OpenStreetMap, for trying the DSS on places
+# the area file does not carry. For a local try, not for production.
+#
+# Two services. `photon-index` runs once: it downloads the Photon jar (about
+# 100 MB) and the Africa place index (about 1.8 GB) into the `photon-data`
+# volume, then exits. `photon` starts only after that succeeds and serves on
+# http://localhost:2322. The first start takes 15 to 20 minutes, and the
+# download shows in the `photon-index` logs. Later starts skip it and take
+# about a minute. See docs/RUNNING.md, "Place names the file lacks".
+#
+# There is no Kenya-only index on GraphHopper's download site, only planet and
+# continent ones. The DSS limits answers to the countries in
+# DSS_PHOTON_COUNTRY_CODES, so the whole of Africa in the index is harmless.
+
+# Set either one in your shell, or in a `.env` file beside this one, to change
+# the Photon version or the place index. The values here are only the defaults.
+x-photon-settings: &photon-settings
+  PHOTON_VERSION: "${PHOTON_VERSION:-1.3.0}"
+  PHOTON_DB_URL: "${PHOTON_DB_URL:-https://download1.graphhopper.com/public/africa/photon-db-africa-1.0-latest.tar.bz2}"
+
+services:
+  photon-index:
+    image: eclipse-temurin:21-jre
+    working_dir: /photon
+    restart: "no"
+    volumes:
+      - photon-data:/photon
+    environment: *photon-settings
+    command:
+      - bash
+      - -c
+      - |
+        set -eo pipefail
+        JAR="photon-$${PHOTON_VERSION}.jar"
+        if [ -f "$$JAR" ]; then
+          echo "photon: $$JAR is already here"
+        else
+          echo "photon: downloading $$JAR"
+          curl -fL -o "$$JAR" "https://github.com/komoot/photon/releases/download/$${PHOTON_VERSION}/$$JAR"
+        fi
+        # The marker holds the URL of the index that finished downloading. A
+        # download cut short leaves no marker, and a changed URL no longer
+        # matches it, so both fetch the index again.
+        if [ "$$(cat .index-ready 2>/dev/null || true)" = "$$PHOTON_DB_URL" ]; then
+          echo "photon: the place index is already here"
+        else
+          # The Java image has no bzip2. Only a download needs it, so a restart
+          # with no network still works.
+          command -v bzip2 >/dev/null || { apt-get update -qq && apt-get install -y -qq bzip2; }
+          echo "photon: downloading the place index, this takes a while the first time"
+          rm -rf photon_data .index-ready
+          curl -fL "$$PHOTON_DB_URL" | bzip2 -cd | tar x
+          printf %s "$$PHOTON_DB_URL" > .index-ready
+          echo "photon: the place index is ready"
+        fi
+
+  photon:
+    image: eclipse-temurin:21-jre
+    working_dir: /photon
+    depends_on:
+      photon-index:
+        condition: service_completed_successfully
+    ports:
+      - "2322:2322"
+    volumes:
+      - photon-data:/photon
+    environment:
+      PHOTON_VERSION: "${PHOTON_VERSION:-1.3.0}"
+    command:
+      - sh
+      - -c
+      - exec java -jar "photon-$${PHOTON_VERSION}.jar" serve -listen-ip 0.0.0.0
+    # The index is already on disk by now, so the server is up in seconds. A
+    # restart measured 20 seconds, and 60 leaves room on a slower machine.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs 'http://localhost:2322/api?q=Nairobi&limit=1' >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
+
+volumes:
+  photon-data:

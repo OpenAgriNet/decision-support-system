@@ -67,6 +67,9 @@ class PlaceSource(StrEnum):
     CARRIED = "carried"
     ASSERTED_AREA = "asserted_area"
     ASSERTED_GEOMETRY = "asserted_geometry"
+    # The user named a whole state, and this is their own place inside it.
+    # The answer must say so, so a wrong guess can be corrected next turn.
+    NEAR_USER = "near_user"
 
 
 class ResolvedPlace(BaseModel):
@@ -95,11 +98,14 @@ class AmbiguousPlace(BaseModel):
 
 
 class UnresolvedPlace(BaseModel):
-    """A named place the index does not carry."""
+    """A named place the index does not carry, or one too big to search."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     unresolved_name: str
+    # Set when the name is a whole state or region ("Maharashtra"). The farmer
+    # is asked for a smaller place in it, not told it was not found.
+    region: str | None = None
 
 
 class Ask(BaseModel):

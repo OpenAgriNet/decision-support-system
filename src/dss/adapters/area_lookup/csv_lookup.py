@@ -13,9 +13,11 @@ Named `csv_lookup` rather than `csv` so the module does not shadow the stdlib
 from __future__ import annotations
 
 import csv
+import math
 from bisect import bisect_left
 from pathlib import Path
 
+from dss.core.shared.geo import distance_km
 from dss.core.shared.models import Geometry
 from dss.ports.area_lookup import AreaMatch
 
@@ -35,6 +37,70 @@ def _key(name: str) -> str:
     return " ".join(name.split()).lower()
 
 
+def _regions(by_name: dict[str, tuple[AreaMatch, ...]]) -> dict[str, AreaMatch]:
+    """The states the rows sit in, keyed like a name.
+
+    The file has no state rows, but every row names its state in `within`. A
+    state's point is the average of its rows. It is never a search point: the
+    match is marked as a region, and core does not use a region as the place.
+    """
+
+    points: dict[str, list[list[float]]] = {}
+    first: dict[str, AreaMatch] = {}
+    seen: set[int] = set()
+    for matches in by_name.values():
+        for match in matches:
+            # Aliases share one match object, so count each row once.
+            if id(match) in seen or len(match.within) < 2:
+                continue
+            seen.add(id(match))
+            state = match.within[1]
+            points.setdefault(state, []).append(match.geometry.coordinates)
+            first.setdefault(state, match)
+    regions: dict[str, AreaMatch] = {}
+    for state, coordinates in points.items():
+        row = first[state]
+        regions[_key(state)] = AreaMatch(
+            name=state,
+            region=row.region,
+            within=row.within[:1],
+            geometry=Geometry(
+                coordinates=[
+                    sum(point[0] for point in coordinates) / len(coordinates),
+                    sum(point[1] for point in coordinates) / len(coordinates),
+                ]
+            ),
+            is_region=True,
+        )
+    return regions
+
+
+# Places are bucketed by 1-degree squares, about 110 km on a side. A lookup
+# reads a few squares, not the whole file: measured at about 0.02 ms against
+# about 1.7 ms for a scan of every place.
+_CELL_DEGREES = 1.0
+
+
+def _cell(lon: float, lat: float) -> tuple[int, int]:
+    return math.floor(lat / _CELL_DEGREES), math.floor(lon / _CELL_DEGREES)
+
+
+def _grid(
+    by_name: dict[str, tuple[AreaMatch, ...]],
+) -> dict[tuple[int, int], list[AreaMatch]]:
+    grid: dict[tuple[int, int], list[AreaMatch]] = {}
+    seen: set[int] = set()
+    for matches in by_name.values():
+        for match in matches:
+            # Aliases share one match object, so count each row once.
+            if id(match) in seen:
+                continue
+            seen.add(id(match))
+            lon, lat = match.geometry.coordinates
+            grid.setdefault(_cell(lon, lat), []).append(match)
+    return grid
+
+
 class CsvAreaLookup:
     """An `AreaLookup` over a pre-built index. Use `load` to read a file."""
 
@@ -44,6 +110,8 @@ class CsvAreaLookup:
         # contiguous block, so `_qualified_by` finds where it starts with
         # `bisect_left` in O(log n) instead of scanning every key.
         self._sorted_keys = sorted(by_name)
+        self._regions = _regions(by_name)
+        self._grid = _grid(by_name)
 
     @classmethod
     def load(cls, path: Path) -> CsvAreaLookup:
@@ -102,6 +170,51 @@ class CsvAreaLookup:
             )
         return cls({name: tuple(matches) for name, matches in by_name.items()})
 
+    async def nearest(self, point: Geometry, max_km: float) -> AreaMatch | None:
+        """The known place closest to a point. Reads squares in rings around
+        the point, and stops once the next ring cannot hold anything closer."""
+
+        lon, lat = point.coordinates
+        row, col = _cell(lon, lat)
+        # The narrowest a square gets near this latitude, measured across its
+        # far edge, so a ring's distance is never overestimated.
+        edge = min(abs(lat) + _CELL_DEGREES, 89.0)
+        cell_km = distance_km([0.0, edge], [_CELL_DEGREES, edge])
+        best: AreaMatch | None = None
+        best_km = math.inf
+        # Ties go to the shorter chain: a block's point is a copy of its
+        # district's, so the district is the honest name for that point.
+        best_key = (math.inf, math.inf)
+        ring = 0
+        while (ring - 1) * cell_km <= min(best_km, max_km):
+            for dy in range(-ring, ring + 1):
+                for dx in range(-ring, ring + 1):
+                    if max(abs(dy), abs(dx)) != ring:
+                        continue
+                    for match in self._grid.get((row + dy, col + dx), ()):
+                        km = distance_km(point.coordinates, match.geometry.coordinates)
+                        key = (km, len(match.within))
+                        if key < best_key:
+                            best, best_km, best_key = match, km, key
+            ring += 1
+        # A neighbouring square is read whole, so its places can be past the
+        # guard even though the search stopped in time.
+        return best if best_km <= max_km else None
+
+    def country_codes(self) -> tuple[str, ...]:
+        """The countries this file covers, as ISO 3166-1 codes ("IN" from
+        "IN-MH")."""
+
+        return tuple(
+            sorted(
+                {
+                    match.region.partition("-")[0]
+                    for matches in self._by_name.values()
+                    for match in matches
+                }
+            )
+        )
+
     def _qualified_by(self, wanted: str) -> tuple[AreaMatch, ...]:
         """Areas whose name begins with `wanted` as a whole word.
 
@@ -123,12 +236,20 @@ class CsvAreaLookup:
             found.extend(self._by_name[key])
         return tuple(found)
 
-    def resolve(self, name: str, region: str | None = None) -> list[AreaMatch]:
+    async def resolve(self, name: str, region: str | None = None) -> list[AreaMatch]:
+        # Async only to match the port. The index is in memory: nothing awaits.
         wanted = _key(name)
         # Exact first, and alone: "Mumbai" is a district *and* the start of
         # "Mumbai Suburban", so falling back here would turn a resolved name
         # into an ambiguous one.
-        matches = self._by_name.get(wanted) or self._qualified_by(wanted)
+        matches = self._by_name.get(wanted) or tuple(
+            # Only starts with the name: marked, so it is never used unchecked.
+            match.model_copy(update={"is_guess": True})
+            for match in self._qualified_by(wanted)
+        )
+        state = self._regions.get(wanted)
+        if state is not None:
+            matches = (*matches, state)
         if region is None:
             return list(matches)
         # A region that matches nothing narrows to empty rather than falling

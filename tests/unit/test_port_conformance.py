@@ -69,6 +69,7 @@ def test_the_orchestrator_satisfies_the_port(a_turn, a_context):
         policies=[],
         scheme_catalog=FakeSchemeCatalog(),
         scheme_fuzzy_threshold=None,
+        nearest_max_km=50.0,
         components=Components(
             discover=_no_discovery,
             plan=_unreached_plan,

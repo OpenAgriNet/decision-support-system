@@ -21,16 +21,29 @@ from dss.ports.area_lookup import AreaMatch
 class _FakeLookup:
     """Resolves from a fixed table keyed by lowercase name."""
 
-    def __init__(self, table: dict[str, list[AreaMatch]]) -> None:
+    def __init__(
+        self,
+        table: dict[str, list[AreaMatch]],
+        *,
+        nearest: AreaMatch | None = None,
+    ) -> None:
         self._table = table
+        self._nearest = nearest
         self.calls = 0
+        self.names: list[str] = []
+        self.nearest_max_km: list[float] = []
 
-    def resolve(self, name: str, region: str | None = None) -> list[AreaMatch]:
+    async def resolve(self, name: str, region: str | None = None) -> list[AreaMatch]:
         self.calls += 1
+        self.names.append(name)
         matches = self._table.get(name.lower(), [])
         if region is None:
             return matches
         return [m for m in matches if m.region == region]
+
+    async def nearest(self, point: Geometry, max_km: float) -> AreaMatch | None:
+        self.nearest_max_km.append(max_km)
+        return self._nearest
 
 
 _PUNE = AreaMatch(
@@ -77,7 +90,7 @@ def _weather_ask(place_name: str | None = None) -> ClassifiedAsk:
     )
 
 
-def test_named_place_beats_device_geometry() -> None:
+async def test_named_place_beats_device_geometry() -> None:
     """The headline test: today's bug. A farmer in Anand asking about Pune
     must get Pune, not the device's own location."""
 
@@ -85,7 +98,7 @@ def test_named_place_beats_device_geometry() -> None:
     turn = _turn(geometry=_DEVICE_GEOMETRY)
     lookup = _FakeLookup({"pune": [_PUNE]})
 
-    intent = resolve_places(classification, turn, lookup=lookup)
+    intent = await resolve_places(classification, turn, lookup=lookup)
 
     place = intent.asks[0].place
     assert place is not None
@@ -93,7 +106,7 @@ def test_named_place_beats_device_geometry() -> None:
     assert place.geometry == _PUNE.geometry
 
 
-def test_a_place_from_history_resolves_as_carried() -> None:
+async def test_a_place_from_history_resolves_as_carried() -> None:
     """Same lookup as a named place; only the label differs, so a reader can
     tell "you said Pune" from "you said Pune earlier"."""
 
@@ -105,14 +118,16 @@ def test_a_place_from_history_resolves_as_carried() -> None:
     )
     lookup = _FakeLookup({"pune": [_PUNE]})
 
-    intent = resolve_places(IntentClassification(asks=(ask,)), _turn(), lookup=lookup)
+    intent = await resolve_places(
+        IntentClassification(asks=(ask,)), _turn(), lookup=lookup
+    )
 
     place = intent.asks[0].place
     assert isinstance(place, ResolvedPlace)
     assert place.source == PlaceSource.CARRIED
 
 
-def test_named_place_beats_asserted_area() -> None:
+async def test_named_place_beats_asserted_area() -> None:
     """The platform's repeated `location.area` is what it asserts about the
     farmer, not what the farmer said this turn — it must not outrank that."""
 
@@ -120,14 +135,14 @@ def test_named_place_beats_asserted_area() -> None:
     turn = _turn(area="Anand")
     lookup = _FakeLookup({"pune": [_PUNE], "anand": [_ANAND]})
 
-    intent = resolve_places(classification, turn, lookup=lookup)
+    intent = await resolve_places(classification, turn, lookup=lookup)
 
     place = intent.asks[0].place
     assert place is not None
     assert place.name == "Pune"
 
 
-def test_device_geometry_beats_asserted_area() -> None:
+async def test_device_geometry_beats_asserted_area() -> None:
     """Live device geometry, sent this turn with location consent, is fresher
     than an area the platform is only repeating from an earlier turn."""
 
@@ -135,7 +150,7 @@ def test_device_geometry_beats_asserted_area() -> None:
     turn = _turn(area="Anand", geometry=_DEVICE_GEOMETRY)
     lookup = _FakeLookup({"anand": [_ANAND]})
 
-    intent = resolve_places(classification, turn, lookup=lookup)
+    intent = await resolve_places(classification, turn, lookup=lookup)
 
     place = intent.asks[0].place
     assert place is not None
@@ -143,7 +158,7 @@ def test_device_geometry_beats_asserted_area() -> None:
     assert place.source.value == "asserted_geometry"
 
 
-def test_named_place_matching_several_is_ambiguous() -> None:
+async def test_named_place_matching_several_is_ambiguous() -> None:
     """Two districts named Bilaspur collide — picking one silently would be a
     ~1000km error, so the ask carries every candidate instead."""
 
@@ -163,7 +178,7 @@ def test_named_place_matching_several_is_ambiguous() -> None:
     turn = _turn()
     lookup = _FakeLookup({"bilaspur": [bilaspur_hp, bilaspur_ct]})
 
-    intent = resolve_places(classification, turn, lookup=lookup)
+    intent = await resolve_places(classification, turn, lookup=lookup)
 
     place = intent.asks[0].place
     assert isinstance(place, AmbiguousPlace)
@@ -171,19 +186,19 @@ def test_named_place_matching_several_is_ambiguous() -> None:
     assert place.candidates == (bilaspur_hp, bilaspur_ct)
 
 
-def test_named_place_not_in_the_index_is_unresolved() -> None:
+async def test_named_place_not_in_the_index_is_unresolved() -> None:
     classification = IntentClassification(asks=(_weather_ask("Xyzzy"),))
     turn = _turn()
     lookup = _FakeLookup({})
 
-    intent = resolve_places(classification, turn, lookup=lookup)
+    intent = await resolve_places(classification, turn, lookup=lookup)
 
     place = intent.asks[0].place
     assert isinstance(place, UnresolvedPlace)
     assert place.unresolved_name == "Xyzzy"
 
 
-def test_the_farmers_region_never_hides_the_place_they_named() -> None:
+async def test_the_farmers_region_never_hides_the_place_they_named() -> None:
     """A farmer in Gujarat asks about Pune. The region says where they are, not
     what they asked about, so it must not filter Pune out."""
 
@@ -191,7 +206,7 @@ def test_the_farmers_region_never_hides_the_place_they_named() -> None:
     turn = _turn(region="IN-GJ")
     lookup = _FakeLookup({"pune": [_PUNE]})
 
-    intent = resolve_places(classification, turn, lookup=lookup)
+    intent = await resolve_places(classification, turn, lookup=lookup)
 
     place = intent.asks[0].place
     assert isinstance(place, ResolvedPlace)
@@ -212,7 +227,7 @@ _BILASPUR_CT = AreaMatch(
 )
 
 
-def test_region_hint_narrows_an_otherwise_ambiguous_name() -> None:
+async def test_region_hint_narrows_an_otherwise_ambiguous_name() -> None:
     """`turn.location.region` disambiguates a name that would otherwise match
     several — "Bilaspur in IN-HP" is not a contradiction, it is a hint."""
 
@@ -220,7 +235,7 @@ def test_region_hint_narrows_an_otherwise_ambiguous_name() -> None:
     turn = _turn(region="IN-HP")
     lookup = _FakeLookup({"bilaspur": [_BILASPUR_HP, _BILASPUR_CT]})
 
-    intent = resolve_places(classification, turn, lookup=lookup)
+    intent = await resolve_places(classification, turn, lookup=lookup)
 
     place = intent.asks[0].place
     assert place is not None
@@ -228,7 +243,7 @@ def test_region_hint_narrows_an_otherwise_ambiguous_name() -> None:
     assert place.geometry == _BILASPUR_HP.geometry
 
 
-def test_a_region_that_fits_no_match_still_asks_which_one() -> None:
+async def test_a_region_that_fits_no_match_still_asks_which_one() -> None:
     """A farmer in Gujarat asks about Bilaspur, which is in six states but not
     Gujarat. "I could not find Bilaspur" would be false; ask which one."""
 
@@ -236,7 +251,7 @@ def test_a_region_that_fits_no_match_still_asks_which_one() -> None:
     turn = _turn(region="IN-GJ")
     lookup = _FakeLookup({"bilaspur": [_BILASPUR_HP, _BILASPUR_CT]})
 
-    intent = resolve_places(classification, turn, lookup=lookup)
+    intent = await resolve_places(classification, turn, lookup=lookup)
 
     place = intent.asks[0].place
     assert isinstance(place, AmbiguousPlace)
@@ -257,7 +272,26 @@ _RAMPUR_HP = AreaMatch(
 )
 
 
-def test_a_name_with_a_part_picks_the_match_inside_that_part() -> None:
+async def test_the_one_match_near_the_user_breaks_the_tie() -> None:
+    """Several Rampurs, and the user is next to the Uttar Pradesh one. Like
+    the region, where the user is only breaks a tie between places of the
+    name they said; it never picks a place they did not name."""
+
+    classification = IntentClassification(asks=(_weather_ask("Rampur"),))
+    lookup = _FakeLookup({"rampur": [_RAMPUR_UP, _RAMPUR_HP]})
+
+    intent = await resolve_places(
+        classification,
+        _turn(geometry=Geometry(coordinates=[79.05, 28.83])),
+        lookup=lookup,
+    )
+
+    place = intent.asks[0].place
+    assert isinstance(place, ResolvedPlace)
+    assert place.geometry == _RAMPUR_UP.geometry
+
+
+async def test_a_name_with_a_part_picks_the_match_inside_that_part() -> None:
     """The farmer answered "which Rampur?" — the model copies the line we
     listed, "Rampur, Himachal Pradesh". The part after the comma picks one."""
 
@@ -266,7 +300,7 @@ def test_a_name_with_a_part_picks_the_match_inside_that_part() -> None:
     )
     lookup = _FakeLookup({"rampur": [_RAMPUR_UP, _RAMPUR_HP]})
 
-    intent = resolve_places(classification, _turn(), lookup=lookup)
+    intent = await resolve_places(classification, _turn(), lookup=lookup)
 
     place = intent.asks[0].place
     assert isinstance(place, ResolvedPlace)
@@ -274,7 +308,7 @@ def test_a_name_with_a_part_picks_the_match_inside_that_part() -> None:
     assert place.geometry == _RAMPUR_HP.geometry
 
 
-def test_the_region_narrows_a_long_list_before_anything_is_listed() -> None:
+async def test_the_region_narrows_a_long_list_before_anything_is_listed() -> None:
     """Six Rampurs are too many to list. A farmer in Himachal is asked
     nothing: the region already leaves one."""
 
@@ -297,14 +331,14 @@ def test_the_region_narrows_a_long_list_before_anything_is_listed() -> None:
     classification = IntentClassification(asks=(_weather_ask("Rampur"),))
     lookup = _FakeLookup({"rampur": [_RAMPUR_UP, *others, _RAMPUR_HP]})
 
-    intent = resolve_places(classification, _turn(region="IN-HP"), lookup=lookup)
+    intent = await resolve_places(classification, _turn(region="IN-HP"), lookup=lookup)
 
     place = intent.asks[0].place
     assert isinstance(place, ResolvedPlace)
     assert place.geometry == _RAMPUR_HP.geometry
 
 
-def test_a_part_that_leaves_several_asks_again_with_only_those() -> None:
+async def test_a_part_that_leaves_several_asks_again_with_only_those() -> None:
     """Two Rampurs in Uttar Pradesh: "Rampur, Uttar Pradesh" drops the
     Himachal one but cannot choose between the rest. The next question lists
     just those two, one level down."""
@@ -324,14 +358,14 @@ def test_a_part_that_leaves_several_asks_again_with_only_those() -> None:
     classification = IntentClassification(asks=(_weather_ask("Rampur, Uttar Pradesh"),))
     lookup = _FakeLookup({"rampur": [rampur_up_a, _RAMPUR_HP, rampur_up_b]})
 
-    intent = resolve_places(classification, _turn(), lookup=lookup)
+    intent = await resolve_places(classification, _turn(), lookup=lookup)
 
     place = intent.asks[0].place
     assert isinstance(place, AmbiguousPlace)
     assert place.candidates == (rampur_up_a, rampur_up_b)
 
 
-def test_a_part_picks_the_match_that_sits_directly_in_it() -> None:
+async def test_a_part_picks_the_match_that_sits_directly_in_it() -> None:
     """Madhubani is a district in Bihar and a block in another Bihar district.
     The question lists "Madhubani, Bihar" for the district. Every match is in
     Bihar, so reading the part as "anywhere inside" asks the same question
@@ -352,26 +386,26 @@ def test_a_part_picks_the_match_that_sits_directly_in_it() -> None:
     classification = IntentClassification(asks=(_weather_ask("Madhubani, Bihar"),))
     lookup = _FakeLookup({"madhubani": [district, block]})
 
-    intent = resolve_places(classification, _turn(), lookup=lookup)
+    intent = await resolve_places(classification, _turn(), lookup=lookup)
 
     place = intent.asks[0].place
     assert isinstance(place, ResolvedPlace)
     assert place.within == ("India", "Bihar")
 
 
-def test_reply_not_in_list_is_not_found() -> None:
+async def test_reply_not_in_list_is_not_found() -> None:
     """A reply naming a state that is not on our list is not found. The list
     is still in the history to pick from."""
 
     classification = IntentClassification(asks=(_weather_ask("Rampur, Kerala"),))
     lookup = _FakeLookup({"rampur": [_RAMPUR_UP, _RAMPUR_HP]})
 
-    intent = resolve_places(classification, _turn(), lookup=lookup)
+    intent = await resolve_places(classification, _turn(), lookup=lookup)
 
     assert intent.asks[0].place == UnresolvedPlace(unresolved_name="Rampur, Kerala")
 
 
-def test_part_we_do_not_have_is_not_found() -> None:
+async def test_part_we_do_not_have_is_not_found() -> None:
     """Only the Bihar Aurangabad is in the list. Ignoring "Maharashtra" would
     answer for a place about 1,000 km away."""
 
@@ -386,14 +420,14 @@ def test_part_we_do_not_have_is_not_found() -> None:
     )
     lookup = _FakeLookup({"aurangabad": [bihar]})
 
-    intent = resolve_places(classification, _turn(), lookup=lookup)
+    intent = await resolve_places(classification, _turn(), lookup=lookup)
 
     assert intent.asks[0].place == UnresolvedPlace(
         unresolved_name="Aurangabad, Maharashtra"
     )
 
 
-def test_split_two_joined_places() -> None:
+async def test_split_two_joined_places() -> None:
     """The model joined "Pune and Mumbai" into "Pune, Mumbai". Mumbai is a
     place, not above Pune, so both are answered."""
 
@@ -406,7 +440,7 @@ def test_split_two_joined_places() -> None:
     classification = IntentClassification(asks=(_weather_ask("Pune, Mumbai"),))
     lookup = _FakeLookup({"pune": [_PUNE], "mumbai": [mumbai]})
 
-    intent = resolve_places(classification, _turn(), lookup=lookup)
+    intent = await resolve_places(classification, _turn(), lookup=lookup)
 
     places = [ask.place for ask in intent.asks]
     assert all(isinstance(place, ResolvedPlace) for place in places)
@@ -414,7 +448,404 @@ def test_split_two_joined_places() -> None:
     assert all(ask.subject_categories is SubjectCategory.WEATHER for ask in intent.asks)
 
 
-def test_a_block_inside_its_same_name_district_resolves_to_the_district() -> None:
+_NAIROBI_CITY = AreaMatch(
+    name="Nairobi",
+    region="KE",
+    within=("Kenya", "Nairobi County"),
+    geometry=Geometry(coordinates=[36.82, -1.29]),
+)
+_NAIROBI_RONGAI = AreaMatch(
+    name="Nairobi",
+    region="KE",
+    within=("Kenya", "Nakuru", "Rongai"),
+    geometry=Geometry(coordinates=[36.12, -0.04]),
+)
+_NAIROBI_BAHATI = AreaMatch(
+    name="Nairobi",
+    region="KE",
+    within=("Kenya", "Nakuru", "Bahati"),
+    geometry=Geometry(coordinates=[36.10, -0.16]),
+)
+_NAIROBI_TANGA = AreaMatch(
+    name="Nairobi",
+    region="TZ",
+    within=("Tanzania", "Tanga Region", "Mkinga"),
+    geometry=Geometry(coordinates=[39.0, -4.7]),
+)
+# A place of its own, and also a part of the villages' chains above.
+_NAKURU_TOWN = AreaMatch(
+    name="Nakuru",
+    region="KE",
+    within=("Kenya",),
+    geometry=Geometry(coordinates=[36.07, -0.28]),
+)
+_NAIROBIS = {
+    "nairobi": [_NAIROBI_CITY, _NAIROBI_RONGAI, _NAIROBI_BAHATI, _NAIROBI_TANGA],
+    "nakuru": [_NAKURU_TOWN],
+}
+
+
+async def test_a_pick_with_two_parts_stays_one_place() -> None:
+    """After "Kenya" the question lists "Nairobi, Kenya, Nakuru". Nakuru is a
+    town of its own, but here it is a part above the villages. Reading the
+    line as two places would answer for the town the farmer did not ask about."""
+
+    classification = IntentClassification(
+        asks=(_weather_ask("Nairobi, Kenya, Nakuru"),)
+    )
+
+    intent = await resolve_places(
+        classification, _turn(), lookup=_FakeLookup(_NAIROBIS)
+    )
+
+    assert len(intent.asks) == 1
+
+
+async def test_a_pick_with_two_parts_keeps_only_the_matches_inside() -> None:
+    """Both parts narrow the list: the Kenyan Nairobis inside Nakuru. The city
+    and the Tanzanian hamlet drop out, and two villages are left to choose from."""
+
+    classification = IntentClassification(
+        asks=(_weather_ask("Nairobi, Kenya, Nakuru"),)
+    )
+
+    intent = await resolve_places(
+        classification, _turn(), lookup=_FakeLookup(_NAIROBIS)
+    )
+
+    place = intent.asks[0].place
+    assert isinstance(place, AmbiguousPlace)
+    assert {match.within for match in place.candidates} == {
+        _NAIROBI_RONGAI.within,
+        _NAIROBI_BAHATI.within,
+    }
+
+
+async def test_a_part_already_above_the_name_is_not_looked_up() -> None:
+    """Eldoret's own answer says it sits in Moiben, so Moiben is the place
+    above it, not a second place. Asking a slow source about Moiben first
+    would cost a call for nothing."""
+
+    eldoret = AreaMatch(
+        name="Eldoret",
+        region="KE",
+        within=("Kenya", "Uasin Gishu County", "Moiben"),
+        geometry=Geometry(coordinates=[35.27, 0.52]),
+    )
+    classification = IntentClassification(asks=(_weather_ask("Eldoret, Moiben"),))
+    lookup = _FakeLookup({"eldoret": [eldoret]})
+
+    await resolve_places(classification, _turn(), lookup=lookup)
+
+    assert "Moiben" not in lookup.names
+
+
+async def test_a_pick_that_no_longer_fits_is_not_found() -> None:
+    """The source's answers changed since we asked: no Nairobi sits in Nakuru
+    now. "Kenya" still shows the farmer was narrowing one place, so this is
+    one place not found, never an answer for Nakuru town."""
+
+    classification = IntentClassification(
+        asks=(_weather_ask("Nairobi, Kenya, Nakuru"),)
+    )
+    lookup = _FakeLookup({"nairobi": [_NAIROBI_CITY], "nakuru": [_NAKURU_TOWN]})
+
+    intent = await resolve_places(classification, _turn(), lookup=lookup)
+
+    assert [ask.place for ask in intent.asks] == [
+        UnresolvedPlace(unresolved_name="Nairobi, Kenya, Nakuru")
+    ]
+
+
+async def test_a_pick_with_three_parts_resolves_the_one_match() -> None:
+    """One level further down, the last part names the village."""
+
+    classification = IntentClassification(
+        asks=(_weather_ask("Nairobi, Kenya, Nakuru, Rongai"),)
+    )
+
+    intent = await resolve_places(
+        classification, _turn(), lookup=_FakeLookup(_NAIROBIS)
+    )
+
+    place = intent.asks[0].place
+    assert isinstance(place, ResolvedPlace)
+    assert place.geometry == _NAIROBI_RONGAI.geometry
+
+
+_MAHARASHTRA = AreaMatch(
+    name="Maharashtra",
+    region="IN-MH",
+    within=("India",),
+    geometry=Geometry(coordinates=[75.7, 19.4]),
+    is_region=True,
+)
+
+
+async def test_a_whole_state_is_not_used_as_the_place() -> None:
+    """Maharashtra is too big to search around one point. The farmer is
+    asked for a smaller place, never answered for the state's middle."""
+
+    classification = IntentClassification(asks=(_weather_ask("Maharashtra"),))
+    lookup = _FakeLookup({"maharashtra": [_MAHARASHTRA]})
+
+    intent = await resolve_places(classification, _turn(), lookup=lookup)
+
+    assert intent.asks[0].place == UnresolvedPlace(
+        unresolved_name="Maharashtra", region="Maharashtra"
+    )
+
+
+_RAJASTHAN = AreaMatch(
+    name="Rajasthan",
+    region="IN-RJ",
+    within=("India",),
+    geometry=Geometry(coordinates=[74.2, 26.6]),
+    is_region=True,
+)
+_JAISALMER = AreaMatch(
+    name="Jaisalmer",
+    region="IN-RJ",
+    within=("India", "Rajasthan"),
+    geometry=Geometry(coordinates=[70.91, 26.92]),
+)
+
+
+_KANHA_CHATTI_GUESS = AreaMatch(
+    name="Kanha Chatti",
+    region="IN-JH",
+    within=("India", "Jharkhand", "Chatra"),
+    geometry=Geometry(coordinates=[84.9, 24.2]),
+    is_guess=True,
+)
+
+
+async def test_a_lone_guess_is_asked_about_not_used() -> None:
+    """ "Kanha Chatti" only starts with "Kanha" and may be 700 km from the
+    Kanha meant. With nothing known about where the user is, ask."""
+
+    classification = IntentClassification(asks=(_weather_ask("Kanha"),))
+    lookup = _FakeLookup({"kanha": [_KANHA_CHATTI_GUESS]})
+
+    intent = await resolve_places(classification, _turn(), lookup=lookup)
+
+    assert intent.asks[0].place == AmbiguousPlace(
+        unresolved_name="Kanha", candidates=(_KANHA_CHATTI_GUESS,)
+    )
+
+
+_KISUMU_COUNTY = AreaMatch(
+    name="Kisumu",
+    region="KE",
+    within=("Kenya",),
+    geometry=Geometry(coordinates=[34.77, -0.09]),
+    is_region=True,
+)
+_KISUMU_EAST_GUESS = AreaMatch(
+    name="Kisumu East",
+    region="KE",
+    within=("Kenya", "Kisumu"),
+    geometry=Geometry(coordinates=[34.83, -0.10]),
+    is_guess=True,
+)
+
+
+async def test_an_exact_name_beats_one_that_only_starts_with_it() -> None:
+    """ "Kisumu" is a whole county, by exact name. "Kisumu East" only starts
+    with it. The exact name wins: the user is asked for a place in the
+    county, not whether they meant Kisumu East."""
+
+    classification = IntentClassification(asks=(_weather_ask("Kisumu"),))
+    lookup = _FakeLookup({"kisumu": [_KISUMU_EAST_GUESS, _KISUMU_COUNTY]})
+
+    intent = await resolve_places(classification, _turn(), lookup=lookup)
+
+    assert intent.asks[0].place == UnresolvedPlace(
+        unresolved_name="Kisumu", region="Kisumu"
+    )
+
+
+async def test_a_region_after_a_comma_is_not_split_off_by_a_guess() -> None:
+    """There is no Eldoret in Kisumu. "Kisumu East" only starts with the
+    county's name, so it must not make "Kisumu" a second place to answer."""
+
+    eldoret = AreaMatch(
+        name="Eldoret",
+        region="KE",
+        within=("Kenya", "Uasin Gishu"),
+        geometry=Geometry(coordinates=[35.27, 0.52]),
+    )
+    classification = IntentClassification(asks=(_weather_ask("Eldoret, Kisumu"),))
+    lookup = _FakeLookup(
+        {"eldoret": [eldoret], "kisumu": [_KISUMU_EAST_GUESS, _KISUMU_COUNTY]}
+    )
+
+    intent = await resolve_places(classification, _turn(), lookup=lookup)
+
+    assert [ask.place for ask in intent.asks] == [
+        UnresolvedPlace(unresolved_name="Eldoret, Kisumu")
+    ]
+
+
+async def test_a_guess_near_the_user_is_used_without_asking() -> None:
+    """The user is about 6 km from Kanha Chatti. Someone there saying "Kanha"
+    almost surely means it, so no question is needed."""
+
+    classification = IntentClassification(asks=(_weather_ask("Kanha"),))
+    lookup = _FakeLookup({"kanha": [_KANHA_CHATTI_GUESS]})
+
+    intent = await resolve_places(
+        classification,
+        _turn(geometry=Geometry(coordinates=[84.92, 24.25])),
+        lookup=lookup,
+    )
+
+    place = intent.asks[0].place
+    assert isinstance(place, ResolvedPlace)
+    assert place.name == "Kanha Chatti"
+
+
+async def test_a_named_state_narrows_to_the_farmers_own_area() -> None:
+    """A farmer in Jaisalmer asks about "Rajasthan". They almost surely mean
+    where they are, and the platform says that is Jaisalmer."""
+
+    classification = IntentClassification(asks=(_weather_ask("Rajasthan"),))
+    lookup = _FakeLookup({"rajasthan": [_RAJASTHAN], "jaisalmer": [_JAISALMER]})
+
+    intent = await resolve_places(
+        classification, _turn(area="Jaisalmer"), lookup=lookup
+    )
+
+    assert intent.asks[0].place == ResolvedPlace(
+        name="Jaisalmer",
+        within=("India", "Rajasthan"),
+        geometry=_JAISALMER.geometry,
+        source=PlaceSource.NEAR_USER,
+    )
+
+
+async def test_a_named_state_narrows_to_the_users_device_point() -> None:
+    """Only a device point is sent. The nearest known place, Jaisalmer, is in
+    Rajasthan, so the point is used and named after it. The name lets the
+    answer say where it is about."""
+
+    point = Geometry(coordinates=[70.95, 26.90])
+    classification = IntentClassification(asks=(_weather_ask("Rajasthan"),))
+    lookup = _FakeLookup({"rajasthan": [_RAJASTHAN]}, nearest=_JAISALMER)
+
+    intent = await resolve_places(classification, _turn(geometry=point), lookup=lookup)
+
+    assert intent.asks[0].place == ResolvedPlace(
+        name="Jaisalmer",
+        within=("India", "Rajasthan"),
+        geometry=point,
+        source=PlaceSource.NEAR_USER,
+    )
+
+
+async def test_a_device_point_in_another_state_still_asks() -> None:
+    """The nearest known place is in Gujarat, so the user may not be in the
+    Rajasthan they named. Answering for their point would be a guess."""
+
+    gujarat_place = AreaMatch(
+        name="Banaskantha",
+        region="IN-GJ",
+        within=("India", "Gujarat"),
+        geometry=Geometry(coordinates=[72.4, 24.2]),
+    )
+    classification = IntentClassification(asks=(_weather_ask("Rajasthan"),))
+    lookup = _FakeLookup({"rajasthan": [_RAJASTHAN]}, nearest=gujarat_place)
+
+    intent = await resolve_places(
+        classification,
+        _turn(geometry=Geometry(coordinates=[72.5, 24.4])),
+        lookup=lookup,
+    )
+
+    assert intent.asks[0].place == UnresolvedPlace(
+        unresolved_name="Rajasthan", region="Rajasthan"
+    )
+
+
+async def test_the_nearest_place_guard_is_configurable() -> None:
+    """How far a device point may be from a known place is a deployment's
+    choice: a country with few known places needs a wider guard."""
+
+    classification = IntentClassification(asks=(_weather_ask("Rajasthan"),))
+    lookup = _FakeLookup({"rajasthan": [_RAJASTHAN]}, nearest=_JAISALMER)
+
+    await resolve_places(
+        classification,
+        _turn(geometry=Geometry(coordinates=[70.95, 26.90])),
+        lookup=lookup,
+        nearest_max_km=12.5,
+    )
+
+    assert lookup.nearest_max_km == [12.5]
+
+
+async def test_an_asserted_state_is_not_used_as_the_place() -> None:
+    """The platform may send only the farmer's state as their area. That is
+    no better a search point than a named state, so the ask has no place."""
+
+    classification = IntentClassification(asks=(_weather_ask(None),))
+    lookup = _FakeLookup({"maharashtra": [_MAHARASHTRA]})
+
+    intent = await resolve_places(
+        classification, _turn(area="Maharashtra"), lookup=lookup
+    )
+
+    assert intent.asks[0].place is None
+
+
+async def test_a_state_after_a_comma_is_never_a_second_place() -> None:
+    """There is no Aurangabad in Maharashtra in the index, only one in Bihar.
+    Maharashtra is a region, not a place of its own, so the reply is not two
+    places. Splitting it would answer for Bihar's Aurangabad, far away."""
+
+    aurangabad_bihar = AreaMatch(
+        name="Aurangabad",
+        region="IN-BR",
+        within=("India", "Bihar"),
+        geometry=Geometry(coordinates=[84.37, 24.75]),
+    )
+    classification = IntentClassification(
+        asks=(_weather_ask("Aurangabad, Maharashtra"),)
+    )
+    lookup = _FakeLookup(
+        {"aurangabad": [aurangabad_bihar], "maharashtra": [_MAHARASHTRA]}
+    )
+
+    intent = await resolve_places(classification, _turn(), lookup=lookup)
+
+    assert [ask.place for ask in intent.asks] == [
+        UnresolvedPlace(unresolved_name="Aurangabad, Maharashtra")
+    ]
+
+
+async def test_a_territory_and_its_district_of_one_name_stay_one_place() -> None:
+    """Chandigarh is a territory and the only district in it. The region
+    must not swallow the district and make "Chandigarh, Chandigarh" read as
+    two places."""
+
+    district = AreaMatch(
+        name="Chandigarh",
+        region="IN-CH",
+        within=("India", "Chandigarh"),
+        geometry=Geometry(coordinates=[76.78, 30.73]),
+    )
+    territory = district.model_copy(update={"within": ("India",), "is_region": True})
+    classification = IntentClassification(
+        asks=(_weather_ask("Chandigarh, Chandigarh"),)
+    )
+    lookup = _FakeLookup({"chandigarh": [district, territory]})
+
+    intent = await resolve_places(classification, _turn(), lookup=lookup)
+
+    assert [ask.place.geometry for ask in intent.asks] == [district.geometry]
+
+
+async def test_a_block_inside_its_same_name_district_resolves_to_the_district() -> None:
     """Nashik district holds a Nashik block. The district covers the block, so
     asking "which Nashik?" would make the farmer pick between near-equal
     answers."""
@@ -434,14 +865,14 @@ def test_a_block_inside_its_same_name_district_resolves_to_the_district() -> Non
     classification = IntentClassification(asks=(_weather_ask("Nashik"),))
     lookup = _FakeLookup({"nashik": [block, district]})
 
-    intent = resolve_places(classification, _turn(), lookup=lookup)
+    intent = await resolve_places(classification, _turn(), lookup=lookup)
 
     place = intent.asks[0].place
     assert isinstance(place, ResolvedPlace)
     assert place.within == district.within
 
 
-def test_two_asks_two_places() -> None:
+async def test_two_asks_two_places() -> None:
     """ "Wheat price in Pune and will it rain in Anand?" — two asks, two
     independently resolved places."""
 
@@ -455,14 +886,14 @@ def test_two_asks_two_places() -> None:
     turn = _turn()
     lookup = _FakeLookup({"pune": [_PUNE], "anand": [_ANAND]})
 
-    intent = resolve_places(classification, turn, lookup=lookup)
+    intent = await resolve_places(classification, turn, lookup=lookup)
 
     places = [ask.place for ask in intent.asks]
     assert places[0] is not None and places[0].name == "Pune"
     assert places[1] is not None and places[1].name == "Anand"
 
 
-def test_an_ask_naming_no_place_uses_the_device_before_a_sibling() -> None:
+async def test_an_ask_naming_no_place_uses_the_device_before_a_sibling() -> None:
     """ "Onion price in Pune, and will it rain here?" from Anand. "Here" is
     the device, not Pune."""
 
@@ -471,14 +902,14 @@ def test_an_ask_naming_no_place_uses_the_device_before_a_sibling() -> None:
     turn = _turn(geometry=_DEVICE_GEOMETRY)
     lookup = _FakeLookup({"pune": [_PUNE]})
 
-    intent = resolve_places(classification, turn, lookup=lookup)
+    intent = await resolve_places(classification, turn, lookup=lookup)
 
     place = intent.asks[1].place
     assert place is not None
     assert place.geometry == _DEVICE_GEOMETRY
 
 
-def test_two_asks_one_place() -> None:
+async def test_two_asks_one_place() -> None:
     """ "Wheat price and will it rain in Pune?" with no device location — one
     ask names the place, the other names none, and with nothing else to go
     on it reuses what its sibling resolved rather than having no place."""
@@ -493,7 +924,7 @@ def test_two_asks_one_place() -> None:
     turn = _turn()
     lookup = _FakeLookup({"pune": [_PUNE]})
 
-    intent = resolve_places(classification, turn, lookup=lookup)
+    intent = await resolve_places(classification, turn, lookup=lookup)
 
     assert intent.asks[0].place is not None
     assert intent.asks[0].place.name == "Pune"
@@ -501,20 +932,20 @@ def test_two_asks_one_place() -> None:
     assert intent.asks[1].place.name == "Pune"
 
 
-def test_empty_classification_never_touches_the_lookup() -> None:
+async def test_empty_classification_never_touches_the_lookup() -> None:
     lookup = _FakeLookup({})
 
-    intent = resolve_places(IntentClassification(), _turn(), lookup=lookup)
+    intent = await resolve_places(IntentClassification(), _turn(), lookup=lookup)
 
     assert intent.asks == ()
     assert lookup.calls == 0
 
 
-def test_nothing_named_and_no_location_leaves_place_none() -> None:
+async def test_nothing_named_and_no_location_leaves_place_none() -> None:
     classification = IntentClassification(asks=(_weather_ask(),))
     turn = _turn()
     lookup = _FakeLookup({})
 
-    intent = resolve_places(classification, turn, lookup=lookup)
+    intent = await resolve_places(classification, turn, lookup=lookup)
 
     assert intent.asks[0].place is None

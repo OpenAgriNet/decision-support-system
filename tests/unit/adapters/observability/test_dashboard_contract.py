@@ -34,6 +34,12 @@ def test_the_dashboard_queries_only_published_metrics() -> None:
     assert queried <= set(LABEL_KEYS) | HTTP_METRICS
 
 
+def test_the_dashboard_shows_place_lookups() -> None:
+    """Without a panel, an outage of the place geocoder shows nowhere."""
+
+    assert "dss.area_lookup.count" in _queried_metrics()
+
+
 def test_trace_and_span_ids_are_not_hex_encoded_twice() -> None:
     """Ids are already hex; encoding again makes them match no trace."""
 

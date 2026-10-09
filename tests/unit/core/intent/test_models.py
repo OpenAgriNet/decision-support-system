@@ -45,16 +45,19 @@ def test_ask_carries_its_own_resolved_place() -> None:
     assert ask.place == place
 
 
-def test_place_source_has_four_values() -> None:
+def test_place_source_values() -> None:
     """Device geometry and a client-asserted area are different provenances
     — one is a raw coordinate, the other is a name resolved through the same
-    lookup as a farmer-named place — so they need distinct source values."""
+    lookup as a farmer-named place — so they need distinct source values.
+    `near_user` is a whole state narrowed to the user's own place, which the
+    answer must call out."""
 
     assert {s.value for s in PlaceSource} == {
         "asserted_geometry",
         "named",
         "carried",
         "asserted_area",
+        "near_user",
     }
 
 

@@ -61,6 +61,7 @@ def _build(
         policies=[],
         scheme_catalog=FakeSchemeCatalog(),
         scheme_fuzzy_threshold=None,
+        nearest_max_km=50.0,
         components=Components(
             discover=_FakeDiscovery(discovery or _served_discovery()),
             plan=_FakePlan(_ANSWERED_EVIDENCE),
@@ -174,6 +175,7 @@ async def test_the_real_component_streams_through_the_runner() -> None:
         policies=[],
         scheme_catalog=FakeSchemeCatalog(),
         scheme_fuzzy_threshold=None,
+        nearest_max_km=50.0,
         components=Components(
             discover=_FakeDiscovery(_served_discovery()),
             plan=_FakePlan(_ANSWERED_EVIDENCE),

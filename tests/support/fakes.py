@@ -12,7 +12,7 @@ from collections.abc import AsyncIterator, Sequence
 from dss.core.enrichment.models import Scheme
 from dss.core.enrichment.normalize import alias_key
 from dss.core.shared.errors import ProviderUnavailable
-from dss.core.shared.models import TurnContext, TurnEvent, UserTurn
+from dss.core.shared.models import Geometry, TurnContext, TurnEvent, UserTurn
 from dss.ports.area_lookup import AreaMatch
 
 
@@ -100,13 +100,24 @@ class FakeAreaLookup:
     to a coincidentally-correct point.
     """
 
-    def __init__(self, matches: dict[str, list[AreaMatch]] | None = None) -> None:
+    def __init__(
+        self,
+        matches: dict[str, list[AreaMatch]] | None = None,
+        *,
+        nearest: AreaMatch | None = None,
+    ) -> None:
         self._matches = matches or {}
+        self._nearest = nearest
         self.calls: list[tuple[str, str | None]] = []
+        self.nearest_max_km: list[float] = []
 
-    def resolve(self, name: str, region: str | None = None) -> list[AreaMatch]:
+    async def resolve(self, name: str, region: str | None = None) -> list[AreaMatch]:
         self.calls.append((name, region))
         found = self._matches.get(" ".join(name.split()).lower(), [])
         if region is None:
             return list(found)
         return [match for match in found if match.region == region]
+
+    async def nearest(self, point: Geometry, max_km: float) -> AreaMatch | None:
+        self.nearest_max_km.append(max_km)
+        return self._nearest

@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.13"
 
 [[package]]
@@ -39,6 +39,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/e6/26/3b59f2bdae5f640389becb1f673cded775287f5fc4f816309d9ca9a3f93d/asgiref-3.12.1.tar.gz", hash = "sha256:59dcb51c272ad209d59bed5708a64a333083e86017d7fcdd67498eeab7784340", size = 42378, upload-time = "2026-07-14T09:56:18.087Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c0/1b/54f4ad77cd8a584fa70746c47df988e002cf1ee1eba43364d46f87803647/asgiref-3.12.1-py3-none-any.whl", hash = "sha256:fe386d1c2bff7259ea95929266d12a8cf9a8b5a1c2598402967d8792e7a7c094", size = 25478, upload-time = "2026-07-14T09:56:16.926Z" },
+]
+
+[[package]]
+name = "async-lru"
+version = "2.3.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/e8/1f/989ecfef8e64109a489fff357450cb73fa73a865a92bd8c272170a6922c2/async_lru-2.3.0.tar.gz", hash = "sha256:89bdb258a0140d7313cf8f4031d816a042202faa61d0ab310a0a538baa1c24b6", size = 16332, upload-time = "2026-03-19T01:04:32.413Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e5/e2/c2e3abf398f80732e58b03be77bde9022550d221dd8781bf586bd4d97cc1/async_lru-2.3.0-py3-none-any.whl", hash = "sha256:eea27b01841909316f2cc739807acea1c623df2be8c5cfad7583286397bb8315", size = 8403, upload-time = "2026-03-19T01:04:30.883Z" },
 ]
 
 [[package]]
@@ -282,6 +291,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "anyio" },
+    { name = "async-lru" },
     { name = "fastapi" },
     { name = "httpx" },
     { name = "logfire" },
@@ -308,6 +318,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "anyio", specifier = ">=4.14.2" },
+    { name = "async-lru", specifier = ">=2.3.0" },
     { name = "fastapi", specifier = ">=0.141.1" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "logfire", specifier = ">=3.0.0" },

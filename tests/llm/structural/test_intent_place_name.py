@@ -124,7 +124,7 @@ async def _resolve(turn: UserTurn) -> tuple[Intent, IntentClassification]:
     production does. Tests check this, not the model's exact words."""
 
     classification = await classify_intent(turn, _live_llm())
-    return resolve_places(classification, turn, lookup=LOOKUP), classification
+    return await resolve_places(classification, turn, lookup=LOOKUP), classification
 
 
 @pytest.mark.parametrize(
@@ -308,13 +308,13 @@ async def test_a_place_only_the_assistant_said_is_not_carried() -> None:
     assert place_name is None, f"carried the assistant's {place_name!r}"
 
 
-def _asked_which_rampur() -> list[ConversationMessage]:
+async def _asked_which_rampur() -> list[ConversationMessage]:
     """The farmer asked about Rampur and we sent our real question. Line 2 is
     Rampur, Himachal Pradesh."""
 
     return [
         ConversationMessage(role="user", text="What is the weather in Rampur?"),
-        ConversationMessage(role="assistant", text=_question_we_send("Rampur")),
+        ConversationMessage(role="assistant", text=await _question_we_send("Rampur")),
     ]
 
 
@@ -344,7 +344,9 @@ async def test_a_reply_to_which_place_finishes_the_first_question(
     """The farmer's reply means nothing alone. It must finish the question
     asked before, and the code must land on the Himachal Rampur."""
 
-    intent, classification = await _resolve(_turn(reply, history=_asked_which_rampur()))
+    intent, classification = await _resolve(
+        _turn(reply, history=await _asked_which_rampur())
+    )
 
     assert len(intent.asks) == 1, f"expected one ask, got {classification!r}"
     ask = intent.asks[0]
@@ -359,7 +361,7 @@ async def test_a_new_question_after_the_list_is_not_a_reply() -> None:
     Rampur must not leak into it."""
 
     intent, classification = await _resolve(
-        _turn("What is the wheat price in Pune?", history=_asked_which_rampur())
+        _turn("What is the wheat price in Pune?", history=await _asked_which_rampur())
     )
 
     assert len(intent.asks) == 1, f"expected one ask, got {classification!r}"
@@ -375,7 +377,7 @@ async def test_a_follow_up_after_the_pick_keeps_the_picked_place() -> None:
     the farmer means, not the bare name asked again."""
 
     history = [
-        *_asked_which_rampur(),
+        *await _asked_which_rampur(),
         ConversationMessage(role="user", text="Himachal"),
         ConversationMessage(
             role="assistant",
@@ -398,13 +400,14 @@ async def test_a_pick_on_a_partial_turn_asks_only_what_was_left() -> None:
     """Pune was answered in the same message that asked which Rampur. The
     pick finishes Rampur; asking Pune again would repeat the answer."""
 
+    question = await _question_we_send("Rampur")
     history = [
         ConversationMessage(
             role="user", text="What is the weather in Pune and Rampur?"
         ),
         ConversationMessage(
             role="assistant",
-            text=f"Pune: clear skies, 31°C today.\n\n{_question_we_send('Rampur')}",
+            text=f"Pune: clear skies, 31°C today.\n\n{question}",
         ),
     ]
 
@@ -421,14 +424,16 @@ async def test_a_reply_that_picks_nothing_listed_is_not_turned_into_a_pick(
     """A guess would give the farmer a Rampur without a word. Whatever the
     model returns, no ask may land on any Rampur."""
 
-    intent, classification = await _resolve(_turn(reply, history=_asked_which_rampur()))
+    intent, classification = await _resolve(
+        _turn(reply, history=await _asked_which_rampur())
+    )
 
     for ask in intent.asks:
         guessed = isinstance(ask.place, ResolvedPlace) and ask.place.name == "Rampur"
         assert not guessed, f"guessed {ask.place!r} from {reply!r}: {classification!r}"
 
 
-def _question_we_send(name: str) -> str:
+async def _question_we_send(name: str) -> str:
     """The question our code sends for `name`, built from the real place list."""
 
     ask = ClassifiedAsk(
@@ -436,7 +441,7 @@ def _question_we_send(name: str) -> str:
         interaction_type=InteractionType.OBSERVE,
         place_name=name,
     )
-    intent = resolve_places(
+    intent = await resolve_places(
         IntentClassification(asks=(ask,)), _turn("q"), lookup=LOOKUP
     )
     answer = answer_for_unplaced_asks(intent.asks, load_clarification_text())
@@ -449,11 +454,11 @@ async def _place_for_reply(name: str, reply: str) -> ResolvedPlace:
 
     history = [
         ConversationMessage(role="user", text=f"What is the weather in {name}?"),
-        ConversationMessage(role="assistant", text=_question_we_send(name)),
+        ConversationMessage(role="assistant", text=await _question_we_send(name)),
     ]
     turn = _turn(reply, history=history)
     classification = await classify_intent(turn, _live_llm())
-    intent = resolve_places(classification, turn, lookup=LOOKUP)
+    intent = await resolve_places(classification, turn, lookup=LOOKUP)
 
     assert len(intent.asks) == 1, f"expected one ask, got {classification!r}"
     place = intent.asks[0].place

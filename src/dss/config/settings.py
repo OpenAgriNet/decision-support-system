@@ -12,11 +12,13 @@ different models. The model name always comes from the environment
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Annotated
 
-from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from dss.config.schema_pack_fetch import DEFAULT_PACK_DIR, DEFAULT_REF
+from dss.core.location.service import DEFAULT_NEAREST_MAX_KM
 
 # Ships beside this module, so it resolves the same however the app is started.
 DEFAULT_AREA_CSV = Path(__file__).resolve().parent / "areas.csv"
@@ -112,6 +114,36 @@ class Settings(BaseSettings):
     # spatial filter. Anchored to the module, not the working directory,
     # because `uvicorn --factory` starts from wherever the operator is.
     area_csv_path: Path = DEFAULT_AREA_CSV
+    # How far a device point may be from the known place that names it. Past
+    # this the user is asked instead. A country with few known places needs a
+    # wider guard.
+    nearest_max_km: float = Field(DEFAULT_NEAREST_MAX_KM, gt=0.0)
+    # A geocoder for names the file above does not carry. Unset, Photon is off
+    # and the file is the only source.
+    photon_base_url: str | None = None
+    # A place lookup is a hint, not the answer: a slow geocoder must not hold
+    # up the turn. 2 seconds by default; one ask can make several lookups, so
+    # raising this adds up quickly.
+    photon_timeout_seconds: float = Field(2.0, gt=0.0)
+    # Countries Photon may answer from, e.g. "KE,UG". Empty means the countries
+    # the area file covers. `NoDecode`: an operator types a comma list, and
+    # pydantic-settings would otherwise insist on JSON.
+    photon_country_codes: Annotated[tuple[str, ...], NoDecode] = ()
+    # Off by default: some geocoders' terms forbid storing their answers. On,
+    # a repeat question for a place is answered without a call.
+    photon_cache_enabled: bool = False
+    photon_cache_ttl_seconds: float = Field(86_400.0, gt=0.0)
+    photon_cache_max_entries: int = Field(10_000, gt=0)
+
+    @field_validator("photon_country_codes", mode="before")
+    @classmethod
+    def _split_country_codes(cls, value: object) -> object:
+        if isinstance(value, str):
+            return tuple(
+                code.strip().upper() for code in value.split(",") if code.strip()
+            )
+        return value
+
     # --- the model gateway (ADR-0013) -------------------------------------
     # Every model call goes through the gateway, and each component's
     # `*_model` is a NAME the gateway resolves - `dss-composer`, not a vendor's

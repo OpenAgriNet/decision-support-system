@@ -41,6 +41,7 @@ dependencies = [
     # The policy loader deserialises the mounted YAML pack (spec 0003), and the
     # schema-pack index parses attributes.yaml.
     "pyyaml>=6.0.3",
+    "async-lru>=2.3.0",
 ]
 
 [build-system]

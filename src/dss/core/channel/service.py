@@ -61,8 +61,11 @@ def answer_for_unserved_asks(
 
 
 def _standout_part(within: tuple[str, ...], others: list[tuple[str, ...]]) -> str:
-    """The first part of the chain where no other choice matches it any more."""
+    """The first part of the chain where no other choice matches it any more.
+    With no other choice, the place directly above it: "Chatra", not "India"."""
 
+    if not others:
+        return within[-1] if within else ""
     for depth in range(len(within)):
         if not any(other[: depth + 1] == within[: depth + 1] for other in others):
             return within[depth]
@@ -179,6 +182,8 @@ def answer_for_unplaced_asks(
             reported.append(ask.place)
         if isinstance(ask.place, AmbiguousPlace):
             lines.extend(_ambiguous_lines(ask.place, text))
+        elif isinstance(ask.place, UnresolvedPlace) and ask.place.region:
+            lines.append(text.region_place.format(name=ask.place.region))
         elif isinstance(ask.place, UnresolvedPlace):
             lines.append(_not_found_line(ask.place.unresolved_name, text))
         else:

@@ -24,12 +24,16 @@ import os
 import threading
 import warnings
 from collections.abc import Awaitable, Callable
+from contextlib import AsyncExitStack
 from datetime import datetime
 
 import anyio
 import httpx
 
+from dss.adapters.area_lookup.cache import CachedAreaLookup
+from dss.adapters.area_lookup.chain import ChainedAreaLookup
 from dss.adapters.area_lookup.csv_lookup import CsvAreaLookup
+from dss.adapters.area_lookup.photon import PhotonAreaLookup
 from dss.adapters.invocation.client import HttpCapabilityInvocation
 from dss.adapters.llm.pydantic_ai_provider import (
     PydanticAILLMProvider,
@@ -62,6 +66,7 @@ from dss.orchestration.discovery import (
 )
 from dss.orchestration.orchestrator import Components, Orchestrator
 from dss.orchestration.plan import build_plan
+from dss.ports.area_lookup import AreaLookup
 from dss.ports.invocation import CapabilityInvocation
 from dss.ports.turn import TurnRunner
 
@@ -121,7 +126,7 @@ def build_runner_with_lifecycle(
     # in, so an unreadable one is a broken build either way, and a boot that
     # skipped it would only surface the problem as missing spatial filters much
     # later. Read once here — every turn shares this index.
-    area_lookup = CsvAreaLookup.load(settings.area_csv_path)
+    area_lookup, area_aclose = build_area_lookup(settings)
     # The scheme catalog is the other way round: nothing ships, because which
     # schemes a deployment serves is the tenant's call.
     scheme_catalog = load_scheme_catalog(settings.schemes_config_path)
@@ -152,13 +157,59 @@ def build_runner_with_lifecycle(
         policies=policies,
         scheme_catalog=scheme_catalog,
         scheme_fuzzy_threshold=settings.scheme_fuzzy_threshold,
+        nearest_max_km=settings.nearest_max_km,
         components=components,
         turns=FileTurnSink(settings.turns_path),
         telemetry=FileTelemetrySink(settings.telemetry_path),
         area_lookup=area_lookup,
         clarification_text=clarification_text,
     )
-    return runner, _aclose_for(client)
+    return runner, _aclose_all(_aclose_for(client), area_aclose)
+
+
+def build_area_lookup(
+    settings: Settings,
+) -> tuple[ChainedAreaLookup, Callable[[], Awaitable[None]]]:
+    """The sources a place name is looked up in, in order, and a coroutine that
+    releases what they hold. Core sees one lookup."""
+
+    csv = CsvAreaLookup.load(settings.area_csv_path)
+    sources: list[tuple[str, AreaLookup]] = [("csv", csv)]
+    # Empty counts as unset: `DSS_PHOTON_BASE_URL=` is an operator turning it off.
+    if not settings.photon_base_url:
+        return ChainedAreaLookup(sources), _aclose_nothing
+
+    # Its own client: Photon is a different server with a different timeout,
+    # and closing it must not touch the provider network's connections.
+    # httpx has its own 5 second limit, which would cut a longer setting short.
+    client = httpx.AsyncClient(timeout=settings.photon_timeout_seconds)
+    photon: AreaLookup = PhotonAreaLookup(
+        client=client,
+        base_url=settings.photon_base_url,
+        country_codes=settings.photon_country_codes or csv.country_codes(),
+        timeout_seconds=settings.photon_timeout_seconds,
+    )
+    if settings.photon_cache_enabled:
+        photon = CachedAreaLookup(
+            photon,
+            ttl_seconds=settings.photon_cache_ttl_seconds,
+            max_entries=settings.photon_cache_max_entries,
+        )
+    sources.append(("photon", photon))
+    return ChainedAreaLookup(sources), client.aclose
+
+
+def _aclose_all(
+    *closers: Callable[[], Awaitable[None]],
+) -> Callable[[], Awaitable[None]]:
+    async def aclose() -> None:
+        # The stack runs every close even if one fails, then raises that
+        # failure: one stuck client must not leave the others open.
+        async with AsyncExitStack() as stack:
+            for close in closers:
+                stack.push_async_callback(close)
+
+    return aclose
 
 
 # --- discovery + invocation (gated) --------------------------------------
