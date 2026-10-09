@@ -17,7 +17,7 @@ dependencies = [
     # adapters. FastAPI's TestClient is built on it too, so it is a single
     # runtime dependency rather than one client for prod and another for tests.
     "httpx>=0.28.1",
-    "pydantic-ai-slim[openai]>=2.33.0",
+    "pydantic-ai-slim[openai]>=2.53.0",
     # Pydantic AI's OpenTelemetry instrumentation, imported by
     # adapters/observability/tracing.py. Runtime rather than dev: `create_app`
     # calls it. Not a destination — `send_to_logfire=False`; traces go to
