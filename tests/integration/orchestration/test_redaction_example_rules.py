@@ -31,7 +31,7 @@ async def test_the_example_rules_redact_the_cards_examples() -> None:
         "mera number «phone_1» hai, meri application ka status?",
         "champa ka rate kya hai?",
     )
-    assert result.reveal.values == {"«phone_1»": "9876543210"}
+    assert result.visibility.values == {"«phone_1»": "9876543210"}
 
 
 async def test_the_example_rules_redact_agri_identifiers() -> None:
@@ -53,7 +53,7 @@ async def test_the_example_rules_redact_agri_identifiers() -> None:
         "call «phone_1»",
     )
     # All three are kept for the provider that needs them.
-    assert result.reveal.values == {
+    assert result.visibility.values == {
         "«pm_kisan_id_1»": "UP123456789",
         "«farmer_id_1»": "12345678901",
         "«farm_id_1»": "MH123456789012",
@@ -91,7 +91,7 @@ async def test_the_example_rules_with_spacy_redact_names_and_numbers() -> None:
         "«person_2» wants to know the onion price in Nashik.",
     )
     # Names and the phone are kept for a provider; Aadhaar and card never are.
-    assert result.reveal.values == {
+    assert result.visibility.values == {
         "«person_1»": "Ramesh Patil",
         "«person_2»": "Sunita Devi",
         "«person_3»": "Priya Sharma",

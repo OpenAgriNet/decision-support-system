@@ -14,7 +14,7 @@ from dss.core.provider_discovery.models import (
     FailureClass,
     ProviderCapability,
 )
-from dss.core.redaction.reveal import NOTHING_HELD, RevealMap
+from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.network import NetworkTransactionID
 
 
@@ -51,7 +51,7 @@ class CapabilityInvocation(Protocol):
         resource_attributes: dict,
         transaction_id: NetworkTransactionID,
         *,
-        reveal: RevealMap = NOTHING_HELD,
+        visibility: Visibility = NOTHING_HELD,
     ) -> Sequence[DiscoveredAnswer]:
         """Return every answer the provider gave, or raise ``SelectFailed``.
 

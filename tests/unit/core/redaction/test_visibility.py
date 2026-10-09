@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from dss.core.redaction.reveal import RevealMap, StreamReveal
+from dss.core.redaction.visibility import StreamReveal, Visibility
 
-MAP = RevealMap(
+MAP = Visibility(
     values={"«phone_1»": "9876543210", "«person_1»": "Ramesh"},
 )
 
@@ -55,14 +55,14 @@ def test_conceal_matches_whole_words_only() -> None:
 
 
 def test_an_empty_map_changes_nothing() -> None:
-    empty = RevealMap(values={})
+    empty = Visibility(values={})
     assert empty.reveal({"a": "«phone_1»"}) == {"a": "«phone_1»"}
     assert empty.conceal("9876543210") == "9876543210"
 
 
 def test_conceal_hides_an_echo_without_the_country_code() -> None:
     # The farmer typed "+91 98765 43210"; the provider replies with the bare number.
-    held = RevealMap(values={"«phone_1»": "+919876543210"})
+    held = Visibility(values={"«phone_1»": "+919876543210"})
     assert held.conceal("status for 9876543210: approved") == (
         "status for «phone_1»: approved"
     )
@@ -70,7 +70,7 @@ def test_conceal_hides_an_echo_without_the_country_code() -> None:
 
 
 def test_conceal_with_a_country_code_leaves_other_numbers_alone() -> None:
-    held = RevealMap(values={"«phone_1»": "+919876543210"})
+    held = Visibility(values={"«phone_1»": "+919876543210"})
     assert held.conceal("call KVK at 9123456789") == "call KVK at 9123456789"
 
 
@@ -110,7 +110,7 @@ def test_stream_flushes_an_open_bracket_that_never_closed() -> None:
 
 
 def test_stream_with_an_empty_map_passes_pieces_straight_through() -> None:
-    stream = StreamReveal(RevealMap(values={}))
+    stream = StreamReveal(Visibility(values={}))
     assert stream.feed("call «phone_1»") == "call «phone_1»"
     assert stream.flush() == ""
 

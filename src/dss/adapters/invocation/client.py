@@ -27,7 +27,7 @@ from dss.core.provider_discovery.models import (
     FailureClass,
     ProviderCapability,
 )
-from dss.core.redaction.reveal import NOTHING_HELD, RevealMap
+from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.network import NetworkTransactionID
 from dss.observability.trace_log import (
     log_external_request,
@@ -197,13 +197,13 @@ class HttpCapabilityInvocation:
         resource_attributes: dict,
         transaction_id: str,
         *,
-        reveal: RevealMap = NOTHING_HELD,
+        visibility: Visibility = NOTHING_HELD,
     ) -> list[DiscoveredAnswer]:
         """Call /select, retrying a transient failure.
 
-        ``resource_attributes`` holds tags. ``reveal`` swaps the real values in
-        on the wire only; the logs, a failure's detail and the answer hold the
-        tags. Without a map nothing is revealed, so a provider gets the tag.
+        ``resource_attributes`` holds tags. ``visibility.reveal`` swaps the real
+        values in on the wire only; the logs, a failure's detail and the answer
+        hold the tags. Without a map nothing is revealed, so a provider gets the tag.
 
         Only ``TRANSIENT`` failures are retried: a ``DEFECT`` (400/401/403) is
         a malformed request or bad credentials, so sending it again changes
@@ -232,7 +232,10 @@ class HttpCapabilityInvocation:
                     with open_span("dss.select.attempt") as span:
                         try:
                             answers = await self._select_once(
-                                capability, resource_attributes, transaction_id, reveal
+                                capability,
+                                resource_attributes,
+                                transaction_id,
+                                visibility,
                             )
                             # A 200 with nothing in it looks healthy otherwise.
                             call.set_attribute("answered", _has_data(answers))
@@ -265,7 +268,7 @@ class HttpCapabilityInvocation:
         capability: ProviderCapability,
         resource_attributes: dict,
         transaction_id: str,
-        reveal: RevealMap,
+        visibility: Visibility,
     ) -> list[DiscoveredAnswer]:
         request_body = build_select_request(
             capability,
@@ -287,14 +290,14 @@ class HttpCapabilityInvocation:
         try:
             # The one place a real value leaves the DSS (ADR-0015).
             response = await self._client.post(
-                f"{self._base_url}/select", json=reveal.reveal(request_body)
+                f"{self._base_url}/select", json=visibility.reveal(request_body)
             )
             log_external_response(
                 "invocation",
                 transaction_id,
                 status=response.status_code,
                 capability=capability.capability,
-                body=reveal.conceal(response.text),
+                body=visibility.conceal(response.text),
             )
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
@@ -304,7 +307,7 @@ class HttpCapabilityInvocation:
                 status_code,
                 classify_status_code(status_code),
                 # The detail reaches the planner's prompt.
-                reveal.conceal(exc.response.text),
+                visibility.conceal(exc.response.text),
             ) from exc
         except httpx.HTTPError as exc:
             log_external_response(
@@ -312,13 +315,13 @@ class HttpCapabilityInvocation:
                 transaction_id,
                 status="transport_error",
                 capability=capability.capability,
-                error=reveal.conceal(str(exc)),
+                error=visibility.conceal(str(exc)),
             )
             raise SelectFailed(
                 capability.capability,
                 NO_STATUS_CODE,
                 classify_status_code(NO_STATUS_CODE),
-                reveal.conceal(str(exc)),
+                visibility.conceal(str(exc)),
             ) from exc
 
         # Inside a guard, not after it: the port promises "an answer or
@@ -328,7 +331,7 @@ class HttpCapabilityInvocation:
         # treatment the discovery adapter gives its own mapper.
         try:
             return map_select_response(
-                reveal.conceal_body(response.json()),
+                visibility.conceal_body(response.json()),
                 provider_id=capability.provider_id,
                 provider_name=capability.provider_name,
             )

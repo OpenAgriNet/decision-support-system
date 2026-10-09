@@ -4,7 +4,7 @@ People write ``1234 5678 9012`` and ``98765-43210``. Joining digit runs across a
 short gap lets one comparison match every way of writing a number, and an offset
 map takes a match back to the span in the original text.
 
-Used by ``RevealMap.conceal`` and by the regex identifier. Script folding
+Used by ``Visibility.conceal`` and by the regex identifier. Script folding
 (``१२३४`` → ``1234``) belongs here too, when the translation story adds it.
 """
 

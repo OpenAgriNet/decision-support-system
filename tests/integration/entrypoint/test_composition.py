@@ -350,7 +350,7 @@ async def test_redaction_on_redacts_with_the_rules_file(tmp_path: Path) -> None:
     result = await redact(["call 9876543210"])
 
     assert result.texts == ("call «phone_1»",)
-    assert result.reveal.values == {"«phone_1»": "9876543210"}
+    assert result.visibility.values == {"«phone_1»": "9876543210"}
 
 
 def test_an_identifier_that_cannot_be_built_stops_the_boot(tmp_path: Path) -> None:

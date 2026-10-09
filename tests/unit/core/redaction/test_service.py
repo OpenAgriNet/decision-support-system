@@ -35,7 +35,7 @@ def test_a_kept_entity_is_tagged_and_held() -> None:
     spans = [[span(text, "98765 43210", "phone", "9876543210")]]
     result = redact([text], spans, POLICY)
     assert result.texts == ("mera number «phone_1» hai",)
-    assert result.reveal.values == {"«phone_1»": "9876543210"}
+    assert result.visibility.values == {"«phone_1»": "9876543210"}
     assert result.found == {"phone": 1}
 
 
@@ -43,21 +43,21 @@ def test_a_destroyed_entity_is_tagged_and_not_held() -> None:
     text = "aadhaar 2345 6789 0124"
     result = redact([text], [[span(text, "2345 6789 0124", "aadhaar")]], POLICY)
     assert result.texts == ("aadhaar «aadhaar_1»",)
-    assert result.reveal.values == {}
+    assert result.visibility.values == {}
 
 
 def test_an_entity_missing_from_the_policy_is_destroyed() -> None:
     text = "voter id ABC1234567"
     result = redact([text], [[span(text, "ABC1234567", "voter_id")]], POLICY)
     assert result.texts == ("voter id «voter_id_1»",)
-    assert result.reveal.values == {}
+    assert result.visibility.values == {}
 
 
 def test_no_spans_leave_the_texts_unchanged() -> None:
     result = redact(["gehu ka rate?", "aur chana?"], [], POLICY)
     assert result.texts == ("gehu ka rate?", "aur chana?")
     assert result.found == {}
-    assert result.reveal.values == {}
+    assert result.visibility.values == {}
 
 
 def test_the_same_value_gets_the_same_tag_across_texts() -> None:
@@ -120,4 +120,4 @@ def test_a_number_with_and_without_its_country_code_gets_one_tag() -> None:
     )
     assert result.texts == ("call «phone_1»", "my number is «phone_1»")
     # The first form written is the one held.
-    assert result.reveal.values == {"«phone_1»": "+919876543210"}
+    assert result.visibility.values == {"«phone_1»": "+919876543210"}

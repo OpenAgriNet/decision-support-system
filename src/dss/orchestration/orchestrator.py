@@ -62,8 +62,8 @@ from dss.core.planner.models import Evidence, Verdict
 from dss.core.planner.sufficiency import provider_failed, unserved_asks
 from dss.core.policy.models import Policy
 from dss.core.provider_discovery.models import DiscoveryResult
-from dss.core.redaction.reveal import RevealMap, StreamReveal
 from dss.core.redaction.turn import texts_of, with_texts
+from dss.core.redaction.visibility import StreamReveal, Visibility
 from dss.core.shared.models import (
     Cause,
     Claim,
@@ -193,7 +193,7 @@ class Orchestrator:
                     texts_of(turn), request_id=turn.transaction_id
                 )
             turn = with_texts(turn, redaction.texts)
-            reveal = redaction.reveal
+            visibility = redaction.visibility
             recorder.redacted(found=redaction.found, failed=redaction.failed)
             self._turns.opened(ctx, turn)
 
@@ -215,7 +215,7 @@ class Orchestrator:
             self._note("moderation", ctx, decision.outcome.value)
 
             if decision.outcome is not Outcome.PROCEED:
-                yield self._finish(ctx, turn, _refused(decision), recorder, reveal)
+                yield self._finish(ctx, turn, _refused(decision), recorder, visibility)
                 return
 
             self._note("intent", ctx, _classified(result.intent))
@@ -247,7 +247,7 @@ class Orchestrator:
                     turn,
                     (outcome_for(TurnStatus.REQUIRES_INPUT), clarification),
                     recorder,
-                    reveal,
+                    visibility,
                 )
                 return
 
@@ -271,7 +271,7 @@ class Orchestrator:
                         content=(*answer.content, TextBlock(text=question))
                     )
                 yield self._finish(
-                    ctx, turn, (outcome_for(status), answer), recorder, reveal
+                    ctx, turn, (outcome_for(status), answer), recorder, visibility
                 )
                 return
 
@@ -286,7 +286,7 @@ class Orchestrator:
                     intent=result.intent,
                     discovery=result.discovery,
                     verdict=verdict,
-                    reveal=reveal,
+                    visibility=visibility,
                 )
                 set_current_span_content(
                     input=asks_text(result.intent.asks),
@@ -298,7 +298,7 @@ class Orchestrator:
             with trace_component(Stage.COMPOSER, ctx.trace_id):
                 written: list[str] = []
                 # The farmer reads their own values; `written` keeps the tags.
-                shown = StreamReveal(reveal)
+                shown = StreamReveal(visibility)
                 # `aclosing`, not a bare `async for`: a farmer who closes the
                 # screen mid-answer must close the model's stream too, and
                 # closing an async generator does not reach the one it relays
@@ -331,12 +331,14 @@ class Orchestrator:
             answer = answer_from_evidence(text, evidence)
             recorder.composed()
             for block in answer.content:
-                yield Claim(content=_revealed(block, reveal), sources=answer.sources)
+                yield Claim(
+                    content=_revealed(block, visibility), sources=answer.sources
+                )
             self._note("channel", ctx, str(len(answer.content)))
 
             status, cause = _status_for(evidence, result.intent)
             yield self._finish(
-                ctx, turn, (outcome_for(status, cause), answer), recorder, reveal
+                ctx, turn, (outcome_for(status, cause), answer), recorder, visibility
             )
 
     def _finish(
@@ -345,7 +347,7 @@ class Orchestrator:
         turn: UserTurn,
         resolved: tuple[TurnOutcome, ComposedAnswer],
         recorder: TurnRecorder,
-        reveal: RevealMap,
+        visibility: Visibility,
     ) -> TurnFinished:
         """Build the terminal event and record it.
 
@@ -373,11 +375,13 @@ class Orchestrator:
             query=turn.original_query,
             answer=[block.text for block in answer.content],
         )
-        if not reveal.values:
+        if not visibility.values:
             return finished
         return finished.model_copy(
             update={
-                "content": tuple(_revealed(block, reveal) for block in finished.content)
+                "content": tuple(
+                    _revealed(block, visibility) for block in finished.content
+                )
             }
         )
 
@@ -391,8 +395,8 @@ class Orchestrator:
             pass
 
 
-def _revealed(block: OutputContent, reveal: RevealMap) -> OutputContent:
-    return block.model_copy(update={"text": reveal.reveal(block.text)})
+def _revealed(block: OutputContent, visibility: Visibility) -> OutputContent:
+    return block.model_copy(update={"text": visibility.reveal(block.text)})
 
 
 def _nobody_serves(discovery: DiscoveryResult) -> bool:

@@ -249,7 +249,7 @@ class _UnwiredInvocation:
     call surfaces loudly instead of silently answering from nothing."""
 
     async def select(
-        self, capability, resource_attributes, transaction_id, *, reveal=None
+        self, capability, resource_attributes, transaction_id, *, visibility=None
     ):  # noqa: ANN001
         raise RuntimeError(
             "provider invocation is not configured — set DSS_INVOCATION_BASE_URL, "

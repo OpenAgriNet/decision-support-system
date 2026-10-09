@@ -126,7 +126,7 @@ async def test_a_failure_on_one_text_drops_the_identifier_for_the_turn() -> None
 async def test_no_identifiers_leave_the_texts_unchanged() -> None:
     result = await redact_texts(["9876543210"], [], POLICY)
     assert result.texts == ("9876543210",)
-    assert result.reveal.values == {}
+    assert result.visibility.values == {}
 
 
 class Returns:
