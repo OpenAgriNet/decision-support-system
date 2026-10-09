@@ -201,3 +201,42 @@ def test_an_aadhaar_in_other_groups_is_not_joined() -> None:
 
 def test_a_number_written_whole_ignores_groupings() -> None:
     assert found("card 4111111111111111") == [("card", "4111111111111111")]
+
+
+@pytest.mark.parametrize(
+    ("text", "entity", "span"),
+    [
+        ("pm kisan no UP123456789 hai", "pm_kisan_id", "UP123456789"),
+        ("pm kisan no up123456789 hai", "pm_kisan_id", "up123456789"),
+        ("farmer id 12345678901 hai", "farmer_id", "12345678901"),
+        ("farm id MH123456789012 hai", "farm_id", "MH123456789012"),
+        ("farm id mh123456789012 hai", "farm_id", "mh123456789012"),
+    ],
+)
+def test_each_agri_identifier_is_found(text: str, entity: str, span: str) -> None:
+    assert found(text) == [(entity, span)]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "UP12345678",  # PM Kisan one digit short
+        "UP1234567890",  # PM Kisan one digit long
+        "U1234567890",  # one letter, ten digits
+        "1234567890",  # ten digits
+        "MH12345678901",  # farm ID one digit short: no farmer ID hiding inside
+        "MH1234567890123",  # farm ID one digit long
+        "MHX12345678901",  # three letters
+    ],
+)
+def test_agri_identifiers_of_the_wrong_shape_are_not_found(text: str) -> None:
+    assert found(f"id {text} hai") == []
+
+
+def test_a_phone_glued_to_one_more_digit_is_not_a_farmer_id() -> None:
+    # Joined, "9876543210 2" is eleven digits; a farmer ID is written whole.
+    assert found("number 9876543210 2 acre") == [("phone", "9876543210")]
+
+
+def test_a_farmer_id_written_with_gaps_is_not_joined() -> None:
+    assert found("id 12345 678901 hai") == []
