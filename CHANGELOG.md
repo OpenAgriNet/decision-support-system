@@ -37,6 +37,10 @@
   missing (#138)
 
 ### Added
+- Redaction rules for three farm identifiers: PM Kisan registration number
+  (2 letters, 9 digits), AgriStack farmer ID (11 digits) and AgriStack farm ID
+  (2-letter state code, 12 digits). All three are kept for the provider that
+  needs them. Shape only — the farm ID's check digit is not verified (#133)
 - Redaction of identity details in a farmer's text. PII identifiers — regex
   today, behind a `PiiIdentifier` port — find Aadhaar, PAN, GSTIN, IFSC, card,
   phone, email and announced names; core replaces them with tags such as
