@@ -101,7 +101,8 @@ def build_intent_prompt(history: Sequence[ConversationMessage]) -> str:
         "place the user actually said — never guess one from the crop, the "
         "language, or the subject. Use null if no place was said anywhere.",
         "  'weather in Pune and Mumbai' -> two asks, place_name 'Pune' and "
-        "'Mumbai'. Two places are two asks, even with one subject.",
+        "'Mumbai'. Each place named is its own ask, however many there are, "
+        "even with one subject.",
         "  'wheat price and will it rain in Pune' -> two asks, place_name "
         "'Pune' on each. If one place covers several asks, put it on each.",
         "  'mandi rate in Nashik and is it raining here' -> two asks: "

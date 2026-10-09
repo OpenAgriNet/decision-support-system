@@ -123,13 +123,15 @@ class Ask(BaseModel):
     place: ResolvedPlace | AmbiguousPlace | UnresolvedPlace | None = None
 
 
+# The docstrings of ClassifiedAsk and IntentClassification go to the model as
+# the tool description. Write them for the model; notes for us go in comments.
+# No geometry field here on purpose: the model cannot invent one, and the
+# resolver turns place_name into a ResolvedPlace.
 class ClassifiedAsk(BaseModel):
-    """One ask as the LLM returns it — words only, no geometry.
+    """One ask from the user's query, in words only.
 
-    ``place_name`` is the free-text place the farmer named or asked about, in
-    English. The resolver turns this into a ``ResolvedPlace``; the schema
-    handed to the model never carries a geometry field, so it cannot invent
-    one.
+    ``place_name`` is the place the user named or asked about, in English,
+    or null when the ask names no place.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -151,8 +153,11 @@ class ClassifiedAsk(BaseModel):
         return trimmed.strip(_PLACE_NAME_EDGE_JUNK) or None
 
 
+# The raw model output. resolve_places turns it into an Intent, below.
 class IntentClassification(BaseModel):
-    """Every ask in the user's query, one per place, and how sure you are."""
+    """Every ask in the user's query, each with the place the user named for
+    it, and how sure you are.
+    """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 

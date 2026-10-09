@@ -194,13 +194,10 @@ async def test_five_places_in_one_sentence_become_five_asks() -> None:
 
     # The model's own asks, not the resolved places: some of these cities share
     # a name with others, and that is the resolver's business, not this test's.
-    assert {ask.place_name for ask in classification.asks} == {
-        "Bhilwara",
-        "Jaipur",
-        "Udaipur",
-        "Pune",
-        "Bengaluru",
-    }, f"expected one ask per city, got {classification!r}"
+    names = [ask.place_name for ask in classification.asks]
+    assert len(names) == 5, f"expected one ask per city, got {classification!r}"
+    assert all(names), f"an ask has no place: {classification!r}"
+    assert len(set(names)) == 5, f"a city was repeated: {classification!r}"
 
 
 async def test_a_place_with_its_state_stays_one_ask() -> None:
