@@ -220,9 +220,6 @@ def _aclose_all(
     return aclose
 
 
-# --- redaction ------------------------------------------------------------
-
-
 def _redaction(settings: Settings) -> RedactTexts:
     """The first step of every turn (ADR-0015). Off, the texts pass through
     unchanged; on, every identifier the rules file lists is built now, so one
