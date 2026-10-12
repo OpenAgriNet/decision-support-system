@@ -78,9 +78,9 @@ dev = [
 line-length = 88
 src = ["src", "tests", "scripts"]
 target-version = "py313"
-# Docs contain illustrative Python in fenced blocks whose alignment is
-# deliberate. Formatting them rewrites the prose's meaning, so they are excluded.
-extend-exclude = ["docs"]
+# Docs and agent skills contain illustrative Python in fenced blocks, some of it
+# bad on purpose. Formatting them rewrites the meaning, so they are excluded.
+extend-exclude = [".claude", "docs"]
 
 [tool.ruff.lint]
 select = [
