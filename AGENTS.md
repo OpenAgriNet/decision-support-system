@@ -67,6 +67,9 @@ Run locally: `uv run uvicorn --factory dss.entrypoint.app:create_app --port 8077
 ## Conventions
 Naming, versioning, changelog, git workflow, logging, and linting conventions are documented separately in [`CONVENTIONS.md`](./CONVENTIONS.md) — read that file before naming anything, writing a commit, or opening a PR.
 
+## Code Quality
+Before writing or changing code under `src/` or `tests/`, load the `writing-code` skill (`.claude/skills/writing-code/SKILL.md`). To review a diff, branch or PR, use the `review` skill (design and correctness passes in parallel).
+
 ## Writing Style
 Applies to ADRs, PR descriptions, code comments, and any other document.
 - Simple words, short sentences.
