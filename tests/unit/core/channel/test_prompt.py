@@ -26,6 +26,7 @@ from dss.core.planner.models import (
     SourceKind,
 )
 from dss.core.shared.models import ConversationMessage, Geometry, UserTurn
+from dss.ports.prompts import PromptIdentifier
 from tests.support.fakes import FakePromptProvider
 
 PULSES = Source(id="1", name="PulsesGuidelines2025", kind=SourceKind.PROVIDER, url=None)
@@ -290,7 +291,7 @@ def test_system_prompt_hands_the_identity_and_language_to_the_template() -> None
     system_prompt(identity, turn=turn, prompts=prompts)
 
     [(identifier, lang, kwargs)] = prompts.calls
-    assert identifier == "COMPOSER"
+    assert identifier is PromptIdentifier.COMPOSER
     assert lang == "mr"
     assert kwargs == {
         "name": "Kisan Mitra",

@@ -17,24 +17,25 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from dss.config.prompt_service import PromptService, load_prompt_service
+from dss.config.prompt_service import PromptService, build_prompt_service
 from dss.core.intent.models import InteractionType, SubjectCategory
 from dss.core.planner.models import Identity
 from dss.core.planner.prompt import answers_section, asks_section, guidance_section
 from dss.core.shared.models import ConversationMessage
+from dss.ports.prompts import PromptIdentifier
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 def _service() -> PromptService:
-    return load_prompt_service(_REPO_ROOT / "configs" / "prompts.yaml")
+    return build_prompt_service(_REPO_ROOT / "configs" / "prompts.yaml")
 
 
 def _intent_prompt(history: tuple[ConversationMessage, ...] = ()) -> str:
     return _service().get_prompt(
-        "INTENT",
+        PromptIdentifier.INTENT,
         lang="en",
-        kwargs={
+        placeholder_values={
             "categories": ", ".join(c.value for c in SubjectCategory),
             "interactions": ", ".join(i.value for i in InteractionType),
             "history": history,
@@ -56,14 +57,16 @@ def _planner_prompt(**overrides) -> str:
         "asks_section": asks_section(()),
         "answers_section": answers_section({}),
     } | overrides
-    return _service().get_prompt("PLANNER", lang="en", kwargs=kwargs)
+    return _service().get_prompt(
+        PromptIdentifier.PLANNER, lang="en", placeholder_values=kwargs
+    )
 
 
 def _composer_prompt() -> str:
     return _service().get_prompt(
-        "COMPOSER",
+        PromptIdentifier.COMPOSER,
         lang="en",
-        kwargs={
+        placeholder_values={
             "name": "Kisan Mitra",
             "persona": "A calm, practical farm advisor.",
             "boundaries": "Never gives financial or legal advice.",
@@ -77,7 +80,7 @@ def _composer_prompt() -> str:
 
 def test_every_component_is_registered_with_english_and_hindi() -> None:
     service = _service()
-    for component in ("INTENT", "MODERATION", "PLANNER", "COMPOSER", "LOCALIZER"):
+    for component in PromptIdentifier:
         assert service.languages_for(component) == ("en", "hi")
 
 
@@ -257,9 +260,9 @@ def test_intent_hindi_demo_keeps_the_output_contract_in_english() -> None:
     Scheme names stay as the farmer would type them (acceptance criterion)."""
 
     prompt = _service().get_prompt(
-        "INTENT",
+        PromptIdentifier.INTENT,
         lang="hi",
-        kwargs={
+        placeholder_values={
             "categories": ", ".join(c.value for c in SubjectCategory),
             "interactions": ", ".join(i.value for i in InteractionType),
             "history": (),
@@ -291,9 +294,9 @@ def test_composer_prompt_prefers_the_datas_own_place() -> None:
 
 def test_composer_prompt_carries_identity_and_target_language() -> None:
     prompt = _service().get_prompt(
-        "COMPOSER",
+        PromptIdentifier.COMPOSER,
         lang="en",
-        kwargs={
+        placeholder_values={
             "name": "Kisan Mitra",
             "persona": "A calm advisor.",
             "boundaries": "Never gives legal advice.",
@@ -311,9 +314,14 @@ def test_composer_hindi_demo_keeps_the_citation_form() -> None:
     transport's source mapping both parse them."""
 
     prompt = _service().get_prompt(
-        "COMPOSER",
+        PromptIdentifier.COMPOSER,
         lang="hi",
-        kwargs={"name": "n", "persona": "p", "boundaries": "b", "target_lang": "hi"},
+        placeholder_values={
+            "name": "n",
+            "persona": "p",
+            "boundaries": "b",
+            "target_lang": "hi",
+        },
     )
 
     assert "[1]" in prompt
@@ -366,9 +374,9 @@ def test_planner_hindi_demo_keeps_the_marker_names_in_english() -> None:
     never appear. Same for the code-emitted "Already known" heading."""
 
     prompt = _service().get_prompt(
-        "PLANNER",
+        PromptIdentifier.PLANNER,
         lang="hi",
-        kwargs={
+        placeholder_values={
             "identity_name": "n",
             "identity_persona": "p",
             "identity_boundaries": "b",
@@ -387,7 +395,9 @@ def test_planner_hindi_demo_keeps_the_marker_names_in_english() -> None:
 
 
 def _localizer_prompt(lang: str) -> str:
-    return _service().get_prompt("LOCALIZER", lang=lang, kwargs={"target_lang": lang})
+    return _service().get_prompt(
+        PromptIdentifier.LOCALIZER, lang=lang, placeholder_values={"target_lang": lang}
+    )
 
 
 def test_localizer_prompt_orders_names_and_options_kept_verbatim() -> None:
@@ -434,14 +444,14 @@ def test_localizer_hindi_demo_keeps_the_verbatim_rules() -> None:
 
 
 def test_shipped_skills_load_and_validate() -> None:
-    skills = _service().get_skills("PLANNER", "en")
+    skills = _service().get_skills(PromptIdentifier.PLANNER, "en")
     assert {s.id for s in skills} == {"provider-invocation"}
 
 
 def test_provider_invocation_skill_shape() -> None:
     skill = next(
         s
-        for s in _service().get_skills("PLANNER", "en")
+        for s in _service().get_skills(PromptIdentifier.PLANNER, "en")
         if s.id == "provider-invocation"
     )
     assert skill.domain == "agriculture"
@@ -461,7 +471,7 @@ def test_provider_invocation_guidance_covers_resolving_across_history() -> None:
 
     raw = next(
         s
-        for s in _service().get_skills("PLANNER", "en")
+        for s in _service().get_skills(PromptIdentifier.PLANNER, "en")
         if s.id == "provider-invocation"
     ).guidance
     # collapse the file's line wrapping so a phrase split across two lines
@@ -476,8 +486,8 @@ def test_hindi_demo_skill_keeps_the_tool_wiring() -> None:
     """`tool_names` wires the agent's tools; a translated name wires nothing.
     The Hindi demo must keep the frontmatter identical to the English file."""
 
-    en = {s.id: s for s in _service().get_skills("PLANNER", "en")}
-    hi = {s.id: s for s in _service().get_skills("PLANNER", "hi")}
+    en = {s.id: s for s in _service().get_skills(PromptIdentifier.PLANNER, "en")}
+    hi = {s.id: s for s in _service().get_skills(PromptIdentifier.PLANNER, "hi")}
 
     assert set(hi) == set(en)
     for skill_id, skill in hi.items():

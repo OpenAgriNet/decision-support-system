@@ -23,7 +23,7 @@ from dss.core.intent.models import (
 )
 from dss.core.shared.models import UserTurn
 from dss.ports.llm import LLMProvider
-from dss.ports.prompts import PromptProvider
+from dss.ports.prompts import PromptIdentifier, PromptProvider
 
 # How many prior turns to show the model. Enough to resolve a reference without
 # ballooning the prompt.
@@ -37,9 +37,9 @@ async def classify_intent(
 
     return await llm.structured(
         system_prompt=prompts.get_prompt(
-            "INTENT",
+            PromptIdentifier.INTENT,
             lang=turn.target_lang,
-            kwargs={
+            placeholder_values={
                 # The enums are the contract with the output schema, so the
                 # template interpolates them rather than restating them — a
                 # category added in code reaches every language's prompt.

@@ -49,7 +49,7 @@ from dss.adapters.sinks.file import FileTelemetrySink, FileTurnSink
 from dss.config.clarification_text_loader import load_clarification_text
 from dss.config.identity_loader import load_identity
 from dss.config.policy_loader import load_policy_pack
-from dss.config.prompt_service import load_prompt_service
+from dss.config.prompt_service import build_prompt_service
 from dss.config.redaction_loader import load_redaction_config
 from dss.config.schema_pack_fetch import SchemaPackFetchFailed, fetch_packs
 from dss.config.settings import Settings
@@ -129,7 +129,7 @@ def build_runner_with_lifecycle(
     # Every LLM component's system prompt, per language (configs/prompts.yaml).
     # Loaded once; a broken registry — a missing template, a placeholder typo,
     # no English entry — refuses to boot here rather than mid-turn.
-    prompts = load_prompt_service(settings.prompt_config_path)
+    prompts = build_prompt_service(settings.prompt_config_path)
     # Loaded before the network gate, and unconditionally: the file is checked
     # in, so an unreadable one is a broken build either way, and a boot that
     # skipped it would only surface the problem as missing spatial filters much

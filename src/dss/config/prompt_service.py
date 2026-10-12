@@ -3,7 +3,8 @@
 ``configs/prompts.yaml`` names, per LLM component and per language, which
 template under ``prompts/`` is the system prompt (and, for the planner, which
 skill files ride with it). This module loads that registry once at boot and
-answers ``get_prompt("INTENT", lang="hi", kwargs={...})`` per turn.
+answers ``get_prompt(PromptIdentifier.INTENT, lang="hi",
+placeholder_values={...})`` per turn.
 
 The two properties the design leans on:
 
@@ -14,13 +15,14 @@ The two properties the design leans on:
   in. Even a broken *override* falls back: a non-English template that fails
   to render logs the failure and renders English instead.
 - **A broken config refuses to boot.** Everything checkable without a turn is
-  checked at load: the YAML's shape, that ``en`` exists, that every template
-  parses, that every template uses all of its component's declared
+  checked at load: the YAML's shape (pydantic, unknown keys forbidden), that
+  every ``PromptIdentifier`` has an entry and each has ``en``, that every
+  template parses, that every template uses all of its component's declared
   ``placeholders`` and nothing else (``str.format``'s silently-dropped
   placeholder is the bug this guards against — see the old
   ``core/planner/prompt._checked``), and that every skill file parses.
 
-Rendering is Jinja2 with ``StrictUndefined``: a kwarg the template needs but
+Rendering is Jinja2 with ``StrictUndefined``: a value the template needs but
 the caller did not send raises instead of printing nothing.
 
 Path resolution: relative paths inside the YAML resolve against the YAML's
@@ -38,10 +40,12 @@ from typing import Any
 
 import yaml
 from jinja2 import Environment, StrictUndefined, Template, meta
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from dss.config.skill_loader import load_skill_file
 from dss.core.planner.models import Skill
 from dss.observability.trace_log import log_event
+from dss.ports.prompts import PromptIdentifier
 
 logger = logging.getLogger(__name__)
 
@@ -54,10 +58,31 @@ DEFAULT_CONFIG = Path("configs/prompts.yaml")
 FALLBACK_LANGUAGE = "en"
 
 
+class _LanguageSpec(BaseModel):
+    """One language's row in the YAML, as written — paths, not content.
+
+    ``extra="forbid"``: a misspelt key (``skils:``) refuses to boot instead of
+    silently shipping a prompt without its skills."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    system_prompt: str
+    skills: tuple[str, ...] = ()
+
+
+class _ComponentSpec(BaseModel):
+    """One component's row in the YAML, same stance as ``_LanguageSpec``."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    placeholders: frozenset[str] = frozenset()
+    language_prompts: dict[str, _LanguageSpec]
+
+
 @dataclass(frozen=True)
 class _LanguageEntry:
-    """One language's row for one component: the compiled template and the
-    skills configured beside it."""
+    """One language's row for one component, loaded: the compiled template and
+    the skills configured beside it."""
 
     template: Template
     skills: tuple[Skill, ...]
@@ -65,7 +90,8 @@ class _LanguageEntry:
 
 @dataclass(frozen=True)
 class _ComponentPrompts:
-    """One component's row: its declared placeholders and its languages."""
+    """One component's row, loaded: its declared placeholders and its
+    languages."""
 
     placeholders: frozenset[str]
     languages: dict[str, _LanguageEntry]
@@ -81,14 +107,13 @@ class PromptService:
 
     def get_prompt(
         self,
-        prompt_identifier: str,
+        prompt_identifier: PromptIdentifier,
         lang: str,
-        kwargs: Mapping[str, Any] | None = None,
+        placeholder_values: Mapping[str, Any] | None = None,
     ) -> str:
-        name = self._name(prompt_identifier)
-        component = self._components[name]
-        served = self._resolve(name, component, lang)
-        values = dict(kwargs or {})
+        component = self._components[prompt_identifier.value]
+        served = self._resolve(prompt_identifier, component, lang)
+        values = placeholder_values or {}
         try:
             return component.languages[served].template.render(**values)
         except Exception:
@@ -99,15 +124,16 @@ class PromptService:
                 raise
             logger.exception(
                 "the %s prompt for %r failed to render; serving English instead",
-                name,
+                prompt_identifier.value,
                 served,
             )
             return component.languages[FALLBACK_LANGUAGE].template.render(**values)
 
-    def get_skills(self, prompt_identifier: str, lang: str) -> tuple[Skill, ...]:
-        name = self._name(prompt_identifier)
-        component = self._components[name]
-        served = self._resolve(name, component, lang)
+    def get_skills(
+        self, prompt_identifier: PromptIdentifier, lang: str
+    ) -> tuple[Skill, ...]:
+        component = self._components[prompt_identifier.value]
+        served = self._resolve(prompt_identifier, component, lang)
         skills = component.languages[served].skills
         if skills or served == FALLBACK_LANGUAGE:
             return skills
@@ -115,45 +141,42 @@ class PromptService:
         # from English — "each prompt falls back on its own" holds per file.
         return component.languages[FALLBACK_LANGUAGE].skills
 
-    def languages_for(self, prompt_identifier: str) -> tuple[str, ...]:
+    def languages_for(self, prompt_identifier: PromptIdentifier) -> tuple[str, ...]:
         """Which languages have their own version of this prompt. For
         visibility (logged at boot), not for routing."""
 
-        name = self._name(prompt_identifier)
-        return tuple(sorted(self._components[name].languages))
+        return tuple(sorted(self._components[prompt_identifier.value].languages))
 
-    def _name(self, prompt_identifier: str) -> str:
-        name = prompt_identifier.lower()
-        if name not in self._components:
-            raise KeyError(
-                f"no prompt is configured for {prompt_identifier!r} — "
-                f"configs/prompts.yaml knows {sorted(self._components)}"
-            )
-        return name
-
-    def _resolve(self, name: str, component: _ComponentPrompts, lang: str) -> str:
+    def _resolve(
+        self,
+        prompt_identifier: PromptIdentifier,
+        component: _ComponentPrompts,
+        lang: str,
+    ) -> str:
         """Exact tag, then primary subtag, then English — recording the fall
         to English as a trace event, because a deployment reads that event to
         see which languages still run on the English prompt."""
 
-        tag = lang.lower()
-        if tag in component.languages:
-            return tag
-        primary = tag.split("-", 1)[0]
-        if primary in component.languages:
-            return primary
-        if primary != FALLBACK_LANGUAGE:
-            log_event(
-                "prompts",
-                event="language_fallback",
-                prompt=name,
-                requested=lang,
-                served=FALLBACK_LANGUAGE,
-            )
+        # BCP-47 terms: "hi-IN" is a language tag, "hi" its primary subtag.
+        language_tag = lang.lower()
+        if language_tag in component.languages:
+            return language_tag
+        primary_subtag = language_tag.split("-", 1)[0]
+        if primary_subtag in component.languages:
+            return primary_subtag
+        # Neither matched. `en` always has an entry (checked at boot), so the
+        # request was non-English — record the gap, unconditionally.
+        log_event(
+            "prompts",
+            event="language_fallback",
+            prompt=prompt_identifier.value,
+            requested=lang,
+            served=FALLBACK_LANGUAGE,
+        )
         return FALLBACK_LANGUAGE
 
 
-def load_prompt_service(path: Path | None = None) -> PromptService:
+def build_prompt_service(path: Path | None = None) -> PromptService:
     """Load and validate the prompt registry; raise on anything broken.
 
     - ``path`` unset → ``configs/prompts.yaml`` under the working directory.
@@ -174,10 +197,22 @@ def load_prompt_service(path: Path | None = None) -> PromptService:
         raise ValueError(f"{source} holds no components — expected a mapping")
 
     environment = Environment(undefined=StrictUndefined, autoescape=False)
-    components: dict[str, _ComponentPrompts] = {}
-    for name, spec in data.items():
-        components[str(name).lower()] = _load_component(
-            environment, base, str(name), spec
+    components = {
+        str(name).lower(): _load_component(environment, base, str(name), raw)
+        for name, raw in data.items()
+    }
+
+    # Every identifier the code can ask for must be served, or the miss would
+    # surface as a KeyError mid-turn instead of a refusal at boot.
+    unserved = [
+        identifier.value
+        for identifier in PromptIdentifier
+        if identifier.value not in components
+    ]
+    if unserved:
+        raise ValueError(
+            f"{source} has no entry for {', '.join(unserved)} — every LLM "
+            "component needs its prompt, refusing to boot"
         )
 
     for name, component in components.items():
@@ -190,20 +225,18 @@ def load_prompt_service(path: Path | None = None) -> PromptService:
 
 
 def _load_component(
-    environment: Environment, base: Path, name: str, spec: Any
+    environment: Environment, base: Path, name: str, raw: object
 ) -> _ComponentPrompts:
-    if not isinstance(spec, dict):
-        raise ValueError(f"prompt {name!r}: expected a mapping, got {type(spec)}")
-    placeholders = frozenset(spec.get("placeholders") or ())
-    language_prompts = spec.get("language_prompts")
-    if not isinstance(language_prompts, dict) or not language_prompts:
-        raise ValueError(f"prompt {name!r} declares no language_prompts")
+    try:
+        spec = _ComponentSpec.model_validate(raw)
+    except ValidationError as error:
+        raise ValueError(f"prompt {name!r}: {error}") from error
 
     languages = {
-        str(tag).lower(): _load_language(
-            environment, base, f"{name}/{tag}", placeholders, entry
+        str(language_tag).lower(): _load_language(
+            environment, base, f"{name}/{language_tag}", spec.placeholders, entry
         )
-        for tag, entry in language_prompts.items()
+        for language_tag, entry in spec.language_prompts.items()
     }
     if FALLBACK_LANGUAGE not in languages:
         raise ValueError(
@@ -211,7 +244,7 @@ def _load_component(
             "component needs the English prompt, because it is what every "
             "other language falls back to"
         )
-    return _ComponentPrompts(placeholders=placeholders, languages=languages)
+    return _ComponentPrompts(placeholders=spec.placeholders, languages=languages)
 
 
 def _load_language(
@@ -219,12 +252,9 @@ def _load_language(
     base: Path,
     label: str,
     placeholders: frozenset[str],
-    entry: Any,
+    entry: _LanguageSpec,
 ) -> _LanguageEntry:
-    if not isinstance(entry, dict) or "system_prompt" not in entry:
-        raise ValueError(f"prompt {label}: each language needs a system_prompt path")
-
-    template_path = _resolved(base, entry["system_prompt"])
+    template_path = _resolved(base, entry.system_prompt)
     if not template_path.exists():
         raise FileNotFoundError(
             f"prompt {label} points at {template_path} but no file is there"
@@ -250,8 +280,7 @@ def _load_language(
         )
 
     skills = tuple(
-        load_skill_file(_resolved(base, skill_path))
-        for skill_path in entry.get("skills") or ()
+        load_skill_file(_resolved(base, skill_path)) for skill_path in entry.skills
     )
     return _LanguageEntry(template=environment.from_string(text), skills=skills)
 

@@ -35,7 +35,7 @@ from dss.core.policy.models import (
     WordCheckPolicy,
 )
 from dss.ports.llm import LLMProvider
-from dss.ports.prompts import PromptProvider
+from dss.ports.prompts import PromptIdentifier, PromptProvider
 
 # How many prior turns to show the model so a follow-up ("And potato?") is judged
 # in context. Enough to resolve a reference without ballooning the prompt.
@@ -109,9 +109,9 @@ async def moderate(
         try:
             verdict = await llm.structured(
                 system_prompt=prompts.get_prompt(
-                    "MODERATION",
+                    PromptIdentifier.MODERATION,
                     lang=context.turn.target_lang,
-                    kwargs={
+                    placeholder_values={
                         "policies": tuple(llm_policies),
                         "history": tuple(context.turn.history[-_HISTORY_WINDOW:]),
                     },

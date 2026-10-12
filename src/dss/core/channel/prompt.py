@@ -30,7 +30,7 @@ from dss.core.planner.markers import (
 )
 from dss.core.planner.models import Evidence, Failure, Identity
 from dss.core.shared.models import UserTurn
-from dss.ports.prompts import PromptProvider
+from dss.ports.prompts import PromptIdentifier, PromptProvider
 
 # A reply like "2" means nothing without the question it answers. Three
 # messages hold that question; the whole chat would make every answer slower.
@@ -41,9 +41,9 @@ def system_prompt(
     identity: Identity, *, turn: UserTurn, prompts: PromptProvider
 ) -> str:
     return prompts.get_prompt(
-        "COMPOSER",
+        PromptIdentifier.COMPOSER,
         lang=turn.target_lang,
-        kwargs={
+        placeholder_values={
             "name": identity.name,
             "persona": identity.persona,
             "boundaries": identity.boundaries,

@@ -35,7 +35,7 @@ from dss.observability.stages import Stage
 from dss.observability.trace_log import log_external_response
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
 from dss.ports.invocation import CapabilityInvocation
-from dss.ports.prompts import PromptProvider
+from dss.ports.prompts import PromptIdentifier, PromptProvider
 
 
 class Plan(Protocol):
@@ -88,15 +88,15 @@ def build_plan(
         verdict: Verdict,
         visibility: Visibility = NOTHING_HELD,
     ) -> Evidence:
-        skills = prompts.get_skills("PLANNER", turn.target_lang)
+        skills = prompts.get_skills(PromptIdentifier.PLANNER, turn.target_lang)
         agent = build_planner_agent(
             skills=skills,
             model=model,
             retries=retries,
             system_prompt=prompts.get_prompt(
-                "PLANNER",
+                PromptIdentifier.PLANNER,
                 lang=turn.target_lang,
-                kwargs={
+                placeholder_values={
                     "identity_name": identity.name,
                     "identity_persona": identity.persona,
                     "identity_boundaries": identity.boundaries,

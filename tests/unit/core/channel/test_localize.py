@@ -16,6 +16,7 @@ from dss.core.channel.localize import (
 )
 from dss.core.channel.models import ComposedAnswer
 from dss.core.shared.models import RefusalBlock, Source, SourceKind, TextBlock, UserTurn
+from dss.ports.prompts import PromptIdentifier
 from tests.support.fakes import FakePromptProvider
 
 
@@ -59,7 +60,7 @@ async def test_a_non_english_turn_is_rendered_by_the_model() -> None:
     # the message travels in the user slot; the system prompt is the localizer's
     [(system_prompt, user_query)] = llm.calls
     assert user_query == "Which place are you asking about?"
-    assert "LOCALIZER" in system_prompt
+    assert "localizer" in system_prompt
 
 
 async def test_the_localizer_prompt_is_asked_for_in_the_target_language() -> None:
@@ -69,7 +70,7 @@ async def test_the_localizer_prompt_is_asked_for_in_the_target_language() -> Non
     await localize("some text", turn=_turn("mr"))
 
     [(identifier, lang, kwargs)] = prompts.calls
-    assert identifier == "LOCALIZER"
+    assert identifier is PromptIdentifier.LOCALIZER
     assert lang == "mr"
     assert kwargs == {"target_lang": "mr"}
 

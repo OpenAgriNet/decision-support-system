@@ -16,6 +16,7 @@ from dss.core.planner.models import Skill
 from dss.core.shared.errors import ProviderUnavailable
 from dss.core.shared.models import Geometry, TurnContext, TurnEvent, UserTurn
 from dss.ports.area_lookup import AreaMatch
+from dss.ports.prompts import PromptIdentifier
 
 
 class FakeSchemeCatalog:
@@ -97,24 +98,24 @@ class FakePromptProvider:
     legible stand-in prompt.
 
     The returned string carries the identifier, the language, and every
-    kwarg's rendered value, so a tier-1 test can assert "the history reached
-    the prompt" without reading the real template — the template's own text
-    is config, pinned by `tests/unit/config/test_shipped_prompts.py`.
+    placeholder's rendered value, so a tier-1 test can assert "the history
+    reached the prompt" without reading the real template — the template's own
+    text is config, pinned by `tests/unit/config/test_shipped_prompts.py`.
     """
 
     def __init__(self, skills: Sequence[Skill] = ()) -> None:
         self._skills = tuple(skills)
-        self.calls: list[tuple[str, str, dict[str, Any]]] = []
+        self.calls: list[tuple[PromptIdentifier, str, dict[str, Any]]] = []
 
     def get_prompt(
         self,
-        prompt_identifier: str,
+        prompt_identifier: PromptIdentifier,
         lang: str,
-        kwargs: Mapping[str, Any] | None = None,
+        placeholder_values: Mapping[str, Any] | None = None,
     ) -> str:
-        values = dict(kwargs or {})
+        values = dict(placeholder_values or {})
         self.calls.append((prompt_identifier, lang, values))
-        lines = [f"[{prompt_identifier} prompt, lang={lang}]"]
+        lines = [f"[{prompt_identifier.value} prompt, lang={lang}]"]
         for key, value in values.items():
             rendered = (
                 "\n".join(f"  {m.role}: {m.text}" for m in value)
@@ -124,7 +125,9 @@ class FakePromptProvider:
             lines.append(f"{key}: {rendered}")
         return "\n".join(lines)
 
-    def get_skills(self, prompt_identifier: str, lang: str) -> tuple[Skill, ...]:
+    def get_skills(
+        self, prompt_identifier: PromptIdentifier, lang: str
+    ) -> tuple[Skill, ...]:
         return self._skills
 
 
