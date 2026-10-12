@@ -174,22 +174,16 @@
 
 ## Place resolution (#130) — deferred to separate PRs
 
-- **No per-category "needs a place" fact.** `Ask.place` is `None` both when an
-  ask genuinely has nowhere to search and when the ask never needed a place at
-  all ("how do I grow potatoes"). `answer_for_unplaced_asks`
-  (`core/channel/service.py`) cannot tell the two apart, so it treats every
-  plain `None` as "needs a place" — a category-only ask can wrongly be asked
-  where the farmer is. Fixing this needs a policy decision (which categories
-  require a place) that does not exist yet; today's all-or-nothing gate has
-  the same blind spot and predates this note.
-  What the specs offer (checked 2026-09-29): every pack inherits
-  `coverageAreas`, which says where a provider serves, not what the farmer
-  must give. Weather requires `location` and MandiPrice requires `market`
-  only on a `Direct` resource, i.e. the answer's shape, not the request's.
-  Weather's `OnDemand` entry requires `geographicGranularities`, the nearest
-  request-side hint; MandiPrice has none. So the schema cannot drive this
-  cleanly. Fix: ask the network-specs owners for a request-side flag, e.g.
-  `requiresLocation` on `OnDemand` entries.
+- **An ask has no type of its own after discovery.** Its options, place
+  status and failures sit in separate collections keyed by its index: three
+  dicts on `DiscoveryResult`, the place failures, and the place-optional set.
+  Every rule joins them by index, and the branching (no place and every
+  option needs one; no option at all) is spread across
+  `core/planner/place.py`, `core/planner/evidence.py` and
+  `core/channel/service.py`. Fix: one per-ask object built right after
+  discovery, holding its options and its state (answerable, needs a place,
+  nobody serves it). Keep `DiscoveryResult` as is: results come back per
+  query and are split per ask.
 - **A reply can bring back a place we already answered (#131).**
   - Example: "Weather in Pune and Aurangabad". We answer Pune and ask which
     Aurangabad. The farmer replies "2".
