@@ -28,7 +28,7 @@ import pytest
 from dotenv import dotenv_values
 
 from dss.config.identity_loader import load_identity
-from dss.config.prompt_service import load_prompt_service
+from dss.config.prompt_service import build_prompt_service
 from dss.config.settings import Settings
 from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
 from dss.core.moderation.models import ModerationDecision, Outcome
@@ -176,7 +176,7 @@ async def sent_topics() -> list[str]:
         # The shipped identity and prompt registry, not doubles: the guidance
         # under test is exactly what a deployment loads.
         identity=load_identity(),
-        prompts=load_prompt_service(
+        prompts=build_prompt_service(
             Path(__file__).parents[3] / "configs" / "prompts.yaml"
         ),
         model=_resolve_model(settings.planner_model, settings),

@@ -90,7 +90,9 @@ the orchestrator seam) for the system-authored text.
   are copied into the image; a deployment mounts its own pair and points
   `DSS_PROMPT_CONFIG_PATH` at the YAML.
 - **The seam.** A new port, `ports/prompts.py::PromptProvider`, with
-  `get_prompt(identifier, lang, kwargs)` and `get_skills(identifier, lang)`.
+  `get_prompt(identifier, lang, placeholder_values)` and
+  `get_skills(identifier, lang)`; identifiers are a closed enum
+  (`PromptIdentifier`), checked complete against the registry at boot.
   Core services call the port like they call `LLMProvider`; the
   implementation (`config/prompt_service.py`, Jinja2) is the only thing that
   reads the files. Driver 5 holds.

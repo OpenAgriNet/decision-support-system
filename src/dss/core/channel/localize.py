@@ -36,7 +36,7 @@ from pydantic import BaseModel, ConfigDict
 from dss.core.channel.models import ComposedAnswer
 from dss.core.shared.models import UserTurn
 from dss.ports.llm import LLMProvider
-from dss.ports.prompts import PromptProvider
+from dss.ports.prompts import PromptIdentifier, PromptProvider
 
 
 class LocalizedText(BaseModel):
@@ -69,9 +69,9 @@ def build_localizer(*, llm: LLMProvider, prompts: PromptProvider) -> LocalizeTex
         try:
             rendered = await llm.structured(
                 system_prompt=prompts.get_prompt(
-                    "LOCALIZER",
+                    PromptIdentifier.LOCALIZER,
                     lang=turn.target_lang,
-                    kwargs={"target_lang": turn.target_lang},
+                    placeholder_values={"target_lang": turn.target_lang},
                 ),
                 user_query=text,
                 schema=LocalizedText,

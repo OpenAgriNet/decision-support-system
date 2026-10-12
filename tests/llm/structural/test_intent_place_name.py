@@ -46,9 +46,9 @@ from tests.support.live_model import missing_model_key
 def _prompts():
     """The shipped registry — these tests exist to exercise the real prompts."""
 
-    from dss.config.prompt_service import load_prompt_service
+    from dss.config.prompt_service import build_prompt_service
 
-    return load_prompt_service(Path(__file__).parents[3] / "configs" / "prompts.yaml")
+    return build_prompt_service(Path(__file__).parents[3] / "configs" / "prompts.yaml")
 
 
 _DOTENV = Path(__file__).parents[3] / ".env"
