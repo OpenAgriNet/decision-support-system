@@ -36,13 +36,13 @@ def place_optional_asks(
             *discovery.capabilities.get(index, ()),
         )
         if not options or any(
-            _serves_from_nowhere(option.capability, schemas) for option in options
+            _needs_no_place(option.capability, schemas) for option in options
         ):
             optional.add(index)
     return frozenset(optional)
 
 
-def _serves_from_nowhere(schema_type: str, schemas: Mapping[str, DomainSchema]) -> bool:
+def _needs_no_place(schema_type: str, schemas: Mapping[str, DomainSchema]) -> bool:
     """A pack the planner has no schema for cannot be called anyway; saying
     it needs a place keeps the question the farmer saw before this rule."""
 
