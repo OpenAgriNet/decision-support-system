@@ -2,6 +2,11 @@ name: Build and Push
 
 on:
   pull_request:
+    # Docs and agent skills don't change what runs, so they don't need a run.
+    paths-ignore:
+      - ".claude/**"
+      - "docs/**"
+      - "**/*.md"
   push:
     branches:
       - main
