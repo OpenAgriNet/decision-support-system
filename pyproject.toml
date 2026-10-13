@@ -102,6 +102,7 @@ select = [
     "ISC",  # implicit string concatenation
     "C4",   # comprehensions
     "RET",  # return style
+    "T20",  # no stray print()
 ]
 ignore = [
     "C401", # set(generator) reads fine
@@ -124,6 +125,8 @@ ignore = [
 known-first-party = ["benchmarks", "dss", "scripts", "tests", "tools"]
 
 [tool.ruff.lint.per-file-ignores]
+# This sink exists to print.
+"src/dss/adapters/sinks/stdout.py" = ["T20"]
 "src/dss/orchestration/**/*.py" = ["TID251"]
 "tests/integration/orchestration/**/*.py" = ["TID251"]
 # adapters/ is the one place outside orchestration/ where vendor/framework SDK
