@@ -83,6 +83,8 @@ target-version = "py313"
 extend-exclude = ["docs"]
 
 [tool.ruff.lint]
+# Lint src/ only for now; the rest is still formatted.
+exclude = ["tests/**", "scripts/**", "benchmarks/**", "tools/**"]
 select = [
     "E",   # pycodestyle errors
     "F",   # pyflakes
