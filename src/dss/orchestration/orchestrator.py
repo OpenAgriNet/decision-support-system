@@ -249,6 +249,21 @@ class Orchestrator:
                 subjects=[ask.agriculture_subjects or "" for ask in asks],
             )
 
+            # Nothing to ask about. Every reply below is built per ask, so
+            # from zero asks it would be an empty bubble. Say so instead.
+            if not asks:
+                answer = await localize_answer(
+                    no_match_answer(), self._components.localize, turn=turn
+                )
+                yield self._finish(
+                    ctx,
+                    turn,
+                    (outcome_for(TurnStatus.NO_MATCH), answer),
+                    recorder,
+                    visibility,
+                )
+                return
+
             # No ask has a place to search around: named nowhere, a name the
             # index does not carry, or a name matching several. Ask rather
             # than answer from nowhere or guess. If any ask has a place, the

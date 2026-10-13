@@ -27,6 +27,7 @@ from dss.config.clarification_text_loader import load_clarification_text
 from dss.config.settings import DEFAULT_AREA_CSV, Settings
 from dss.core.channel.service import answer_for_unplaced_asks
 from dss.core.intent.models import (
+    AmbiguousPlace,
     ClassifiedAsk,
     Intent,
     IntentClassification,
@@ -376,6 +377,22 @@ async def test_a_new_question_after_the_list_is_not_a_reply() -> None:
     assert ask.subject_categories is SubjectCategory.MARKET
     assert isinstance(ask.place, ResolvedPlace), f"not one place: {classification!r}"
     assert ask.place.name == "Pune"
+
+
+async def test_a_placeless_follow_up_after_the_list_keeps_the_place() -> None:
+    """ "How's weather now?" with our "Which Rampur?" still unanswered. The
+    farmer means the same place, so the question is asked again, not dropped
+    into no asks."""
+
+    intent, classification = await _resolve(
+        _turn("how's weather now?", history=await _asked_which_rampur())
+    )
+
+    assert len(intent.asks) == 1, f"expected one ask, got {classification!r}"
+    ask = intent.asks[0]
+    assert ask.subject_categories is SubjectCategory.WEATHER
+    assert isinstance(ask.place, AmbiguousPlace), f"not asked again: {classification!r}"
+    assert ask.place.unresolved_name == "Rampur"
 
 
 async def test_a_follow_up_after_the_pick_keeps_the_picked_place() -> None:
