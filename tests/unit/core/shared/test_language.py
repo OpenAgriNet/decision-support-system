@@ -82,6 +82,5 @@ def test_a_model_field_accepts_a_string_and_dumps_one() -> None:
     assert _Tagged.model_validate_json(tagged.model_dump_json()) == tagged
 
 
-@pytest.mark.xfail(strict=True, reason="UserTurn switches in Task 3")
 def test_a_turn_accepts_plain_strings(a_turn) -> None:
     assert a_turn(target_lang="HI-in").target_lang == LanguageTag("hi-IN")

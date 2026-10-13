@@ -18,6 +18,7 @@ import pytest
 from jinja2 import UndefinedError
 
 from dss.config.prompt_service import build_prompt_service
+from dss.core.shared.language import LanguageTag
 from dss.ports.prompts import PromptIdentifier
 
 _SKILL = """---
@@ -90,7 +91,7 @@ def test_the_configured_language_is_served() -> None:
     )
     prompt = service.get_prompt(
         PromptIdentifier.COMPOSER,
-        lang="hi",
+        lang=LanguageTag("hi"),
         placeholder_values={
             "name": "n",
             "persona": "p",
@@ -103,7 +104,7 @@ def test_the_configured_language_is_served() -> None:
 
 def test_a_language_with_no_entry_falls_back_to_english(tmp_path: Path) -> None:
     service = build_prompt_service(_registry(tmp_path))
-    assert service.get_prompt(_PROBE, "mr", {"name": "x"}) == "Hello x"
+    assert service.get_prompt(_PROBE, LanguageTag("mr"), {"name": "x"}) == "Hello x"
 
 
 def test_the_fallback_is_recorded_as_a_trace_event(
@@ -115,7 +116,7 @@ def test_the_fallback_is_recorded_as_a_trace_event(
     service = build_prompt_service(_registry(tmp_path))
 
     with caplog.at_level(logging.INFO, logger="dss.trace"):
-        service.get_prompt(_PROBE, "mr", {"name": "x"})
+        service.get_prompt(_PROBE, LanguageTag("mr"), {"name": "x"})
 
     line = next(r.message for r in caplog.records if "language_fallback" in r.message)
     assert "prompt=intent" in line
@@ -125,22 +126,26 @@ def test_the_fallback_is_recorded_as_a_trace_event(
 
 def test_a_regional_tag_resolves_to_its_primary_subtag(tmp_path: Path) -> None:
     service = build_prompt_service(_registry(tmp_path))
-    assert service.get_prompt(_PROBE, "hi-IN", {"name": "x"}) == "नमस्ते x"
+    assert service.get_prompt(_PROBE, LanguageTag("hi-IN"), {"name": "x"}) == "नमस्ते x"
 
 
 def test_a_registry_key_is_read_as_a_tag(tmp_path: Path) -> None:
     service = build_prompt_service(_registry(tmp_path, hi_key="HI"))
-    assert service.get_prompt(_PROBE, "hi-IN", {"name": "x"}) == "नमस्ते x"
+    assert service.get_prompt(_PROBE, LanguageTag("hi-IN"), {"name": "x"}) == "नमस्ते x"
 
 
 def test_a_script_tag_is_served_before_its_language(tmp_path: Path) -> None:
     service = build_prompt_service(_registry(tmp_path, hi_key="gu-Gujr"))
-    assert service.get_prompt(_PROBE, "gu-Gujr-IN", {"name": "x"}) == "नमस्ते x"
+    assert (
+        service.get_prompt(_PROBE, LanguageTag("gu-Gujr-IN"), {"name": "x"}) == "नमस्ते x"
+    )
 
 
 def test_a_three_part_tag_walks_down_to_its_language(tmp_path: Path) -> None:
     service = build_prompt_service(_registry(tmp_path, hi_key="gu"))
-    assert service.get_prompt(_PROBE, "gu-Gujr-IN", {"name": "x"}) == "नमस्ते x"
+    assert (
+        service.get_prompt(_PROBE, LanguageTag("gu-Gujr-IN"), {"name": "x"}) == "नमस्ते x"
+    )
 
 
 def test_an_english_regional_tag_logs_no_fallback(
@@ -152,7 +157,9 @@ def test_an_english_regional_tag_logs_no_fallback(
     service = build_prompt_service(_registry(tmp_path))
 
     with caplog.at_level(logging.INFO, logger="dss.trace"):
-        assert service.get_prompt(_PROBE, "en-GB", {"name": "x"}) == "Hello x"
+        assert (
+            service.get_prompt(_PROBE, LanguageTag("en-GB"), {"name": "x"}) == "Hello x"
+        )
 
     assert not any("language_fallback" in r.message for r in caplog.records)
 
@@ -168,7 +175,7 @@ def test_a_broken_override_serves_english_rather_than_failing_the_turn(
     service = build_prompt_service(config)
 
     with caplog.at_level(logging.ERROR):
-        prompt = service.get_prompt(_PROBE, "hi", {"name": "x"})
+        prompt = service.get_prompt(_PROBE, LanguageTag("hi"), {"name": "x"})
 
     assert prompt == "Hello x"
     assert any("serving English instead" in r.message for r in caplog.records)
@@ -182,7 +189,7 @@ def test_a_broken_english_template_propagates(tmp_path: Path) -> None:
     service = build_prompt_service(config)
 
     with pytest.raises(UndefinedError):
-        service.get_prompt(_PROBE, "en", {"name": "x"})
+        service.get_prompt(_PROBE, LanguageTag("en"), {"name": "x"})
 
 
 # --- boot-time validation ---------------------------------------------------
@@ -258,7 +265,7 @@ def test_a_registry_key_that_is_not_a_tag_refuses_to_boot(tmp_path: Path) -> Non
 
 def test_skills_load_with_the_prompt(tmp_path: Path) -> None:
     service = build_prompt_service(_registry(tmp_path, en_skills=True))
-    skills = service.get_skills(_PROBE, "en")
+    skills = service.get_skills(_PROBE, LanguageTag("en"))
     assert [s.id for s in skills] == ["test-skill"]
 
 
@@ -269,9 +276,11 @@ def test_a_language_entry_without_skills_falls_back_to_english_skills(
     "Each prompt falls back on its own" holds per file."""
 
     service = build_prompt_service(_registry(tmp_path, en_skills=True))
-    assert service.get_skills(_PROBE, "hi") == service.get_skills(_PROBE, "en")
+    assert service.get_skills(_PROBE, LanguageTag("hi")) == service.get_skills(
+        _PROBE, LanguageTag("en")
+    )
 
 
 def test_a_component_without_skills_has_none(tmp_path: Path) -> None:
     service = build_prompt_service(_registry(tmp_path))
-    assert service.get_skills(_PROBE, "en") == ()
+    assert service.get_skills(_PROBE, LanguageTag("en")) == ()

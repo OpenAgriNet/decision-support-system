@@ -25,6 +25,7 @@ from dss.core.planner.models import (
     Source,
     SourceKind,
 )
+from dss.core.shared.language import LanguageTag
 from dss.core.shared.models import ConversationMessage, Geometry, UserTurn
 from dss.ports.prompts import PromptIdentifier
 from tests.support.fakes import FakePromptProvider
@@ -292,7 +293,7 @@ def test_system_prompt_hands_the_identity_and_language_to_the_template() -> None
 
     [(identifier, lang, kwargs)] = prompts.calls
     assert identifier is PromptIdentifier.COMPOSER
-    assert lang == "mr"
+    assert lang == LanguageTag("mr")
     assert kwargs == {
         "name": "Kisan Mitra",
         "persona": "a calm advisor.",

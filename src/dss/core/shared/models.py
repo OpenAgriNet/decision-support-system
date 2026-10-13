@@ -14,18 +14,14 @@ request into this shape.
 
 from __future__ import annotations
 
-import re
 from datetime import datetime
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
+from dss.core.shared.language import LanguageTag
 from dss.core.shared.network import NetworkTransactionID
-
-# BCP-47 primary subtag plus optional subtags — enough to reject full names like
-# "gujarati" while accepting "gu", "hi", "en", "en-IN" (CONVENTIONS.md).
-_BCP47 = re.compile(r"^[A-Za-z]{2,3}(-[A-Za-z0-9]{1,8})*$")
 
 
 class ReferenceToken(BaseModel):
@@ -104,23 +100,13 @@ class UserTurn(BaseModel):
     enriched_query: str
     session_id: str
     transaction_id: NetworkTransactionID
-    source_lang: str  # language the user spoke/typed (BCP-47)
-    target_lang: str  # language the response should come back in (BCP-47)
+    source_lang: LanguageTag  # language the user spoke/typed
+    target_lang: LanguageTag  # language the response should come back in
     channel: str  # web / whatsapp / voice / ... (lowercase)
     user: UserDetails = Field(default_factory=UserDetails)
     history: list[ConversationMessage] = Field(default_factory=list)
     location: Location | None = None
     response_max_chars: int | None = None
-
-    @field_validator("source_lang", "target_lang")
-    @classmethod
-    def _bcp47(cls, value: str) -> str:
-        if not _BCP47.fullmatch(value):
-            raise ValueError(
-                f"language code {value!r} is not BCP-47 — use 'gu'/'hi'/'en', "
-                "never a full name like 'gujarati'"
-            )
-        return value
 
 
 # ---------------------------------------------------------------------------

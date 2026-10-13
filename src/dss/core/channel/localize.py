@@ -34,6 +34,7 @@ from typing import Protocol
 from pydantic import BaseModel, ConfigDict
 
 from dss.core.channel.models import ComposedAnswer
+from dss.core.shared.language import ENGLISH
 from dss.core.shared.models import UserTurn
 from dss.ports.llm import LLMProvider
 from dss.ports.prompts import PromptIdentifier, PromptProvider
@@ -55,23 +56,19 @@ class LocalizeText(Protocol):
     async def __call__(self, text: str, *, turn: UserTurn) -> str: ...
 
 
-def _is_english(target_lang: str) -> bool:
-    return target_lang.lower().split("-", 1)[0] == "en"
-
-
 def build_localizer(*, llm: LLMProvider, prompts: PromptProvider) -> LocalizeText:
     """Bind the model and the prompt source once; return the per-turn callable,
     so the composition root is the only place that names either."""
 
     async def localize(text: str, *, turn: UserTurn) -> str:
-        if _is_english(turn.target_lang) or not text.strip():
+        if turn.target_lang.is_within(ENGLISH) or not text.strip():
             return text
         try:
             rendered = await llm.structured(
                 system_prompt=prompts.get_prompt(
                     PromptIdentifier.LOCALIZER,
                     lang=turn.target_lang,
-                    placeholder_values={"target_lang": turn.target_lang},
+                    placeholder_values={"target_lang": str(turn.target_lang)},
                 ),
                 user_query=text,
                 schema=LocalizedText,

@@ -109,7 +109,7 @@ class PromptService:
     def get_prompt(
         self,
         prompt_identifier: PromptIdentifier,
-        lang: str,
+        lang: LanguageTag,
         placeholder_values: Mapping[str, Any] | None = None,
     ) -> str:
         component = self._components[prompt_identifier.value]
@@ -131,7 +131,7 @@ class PromptService:
             return component.languages[FALLBACK_LANGUAGE].template.render(**values)
 
     def get_skills(
-        self, prompt_identifier: PromptIdentifier, lang: str
+        self, prompt_identifier: PromptIdentifier, lang: LanguageTag
     ) -> tuple[Skill, ...]:
         component = self._components[prompt_identifier.value]
         served = self._resolve(prompt_identifier, component, lang)
@@ -156,15 +156,13 @@ class PromptService:
         self,
         prompt_identifier: PromptIdentifier,
         component: _ComponentPrompts,
-        lang: LanguageTag | str,
+        lang: LanguageTag,
     ) -> LanguageTag:
         """The most specific form of the tag the registry has, then English —
         recording the fall to English as a trace event, because a deployment
         reads that event to see which languages still run on the English
         prompt."""
 
-        # Temporary: turns still carry a str.
-        lang = LanguageTag.model_validate(lang)
         served = next(
             (tag for tag in lang.lookup_order if tag in component.languages), None
         )
