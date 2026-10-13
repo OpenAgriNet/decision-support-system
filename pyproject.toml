@@ -36,6 +36,9 @@ dependencies = [
     # Named, not left transitive via logfire: we build log exporters directly.
     "opentelemetry-sdk>=1.44.0",
     "opentelemetry-exporter-otlp-proto-http>=1.44.0",
+    # Domain models across core/, ports/ and adapters/ import it directly; listed
+    # so it doesn't depend on fastapi or pydantic-ai-slim pulling it in.
+    "pydantic>=2.13.4",
     # Settings binding for the moderation LLM knobs and config paths (spec 0002).
     "pydantic-settings>=2.5.0",
     # The policy loader deserialises the mounted YAML pack (spec 0003), and the
