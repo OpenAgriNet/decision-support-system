@@ -227,11 +227,15 @@ async def _run_queries(
     dict[int, tuple[DiscoveryFailure, ...]],
     list[DiscoveryEvent],
 ]:
-    answers: dict[int, tuple[DiscoveredAnswer, ...]] = {i: () for i in unresolved_asks}
-    capabilities: dict[int, tuple[ProviderCapability, ...]] = {
-        i: () for i in unresolved_asks
-    }
-    failures: dict[int, tuple[DiscoveryFailure, ...]] = {i: () for i in unresolved_asks}
+    answers: dict[int, tuple[DiscoveredAnswer, ...]] = dict.fromkeys(
+        unresolved_asks, ()
+    )
+    capabilities: dict[int, tuple[ProviderCapability, ...]] = dict.fromkeys(
+        unresolved_asks, ()
+    )
+    failures: dict[int, tuple[DiscoveryFailure, ...]] = dict.fromkeys(
+        unresolved_asks, ()
+    )
     events: list[DiscoveryEvent] = []
 
     # discover() never raises (failures are data), so every

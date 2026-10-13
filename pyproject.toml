@@ -86,20 +86,25 @@ extend-exclude = ["docs"]
 # Lint src/ only for now; the rest is still formatted.
 exclude = ["tests/**", "scripts/**", "benchmarks/**", "tools/**"]
 select = [
-    "E",   # pycodestyle errors
-    "F",   # pyflakes
-    "I",   # isort
-    "TID", # flake8-tidy-imports — carries the framework-boundary ban below
-    "UP",  # pyupgrade
-    "B",   # flake8-bugbear
-    "W",   # pycodestyle warnings
-    "DTZ", # naive datetimes
-    "INT", # gettext misuse
-    "PGH", # blanket noqa / type: ignore
-    "PIE", # misc. lint
-    "Q",   # quote style
-    "RSE", # raise style
-    "ISC", # implicit string concatenation
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "I",    # isort
+    "TID",  # flake8-tidy-imports — carries the framework-boundary ban below
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "W",    # pycodestyle warnings
+    "DTZ",  # naive datetimes
+    "INT",  # gettext misuse
+    "PGH",  # blanket noqa / type: ignore
+    "PIE",  # misc. lint
+    "Q",    # quote style
+    "RSE",  # raise style
+    "ISC",  # implicit string concatenation
+    "C4",   # comprehensions
+]
+ignore = [
+    "C401", # set(generator) reads fine
+    "C408", # dict(a=1) reads fine
 ]
 
 # Hard boundary: only orchestration/ may import the agentic framework.
