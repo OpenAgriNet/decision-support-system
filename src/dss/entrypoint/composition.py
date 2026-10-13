@@ -53,7 +53,7 @@ from dss.config.identity_loader import load_identity
 from dss.config.policy_loader import load_policy_pack
 from dss.config.prompt_service import build_prompt_service
 from dss.config.redaction_loader import load_redaction_config
-from dss.config.schema_pack_fetch import SchemaPackFetchFailed, fetch_packs
+from dss.config.schema_pack_fetch import SchemaPackFetchFailedError, fetch_packs
 from dss.config.settings import Settings
 from dss.core.channel.localize import build_localizer
 from dss.core.intent.models import Intent
@@ -248,7 +248,7 @@ def _aclose_all(
 def _redaction(settings: Settings) -> RedactTexts:
     """The first step of every turn (ADR-0015). Off, the texts pass through
     unchanged; on, every identifier the rules file lists is built now, so one
-    that cannot load raises ``IdentifierUnavailable`` at boot."""
+    that cannot load raises ``IdentifierUnavailableError`` at boot."""
 
     config = load_redaction_config(
         enabled=settings.redaction_enabled, path=settings.redaction_config_path
@@ -414,7 +414,7 @@ def _ensure_schema_packs(settings: Settings, *, fetch: FetchPacks) -> None:
 
     try:
         fetch(ref=settings.schema_pack_ref, dest=directory)
-    except SchemaPackFetchFailed as failure:
+    except SchemaPackFetchFailedError as failure:
         logger.warning("schema pack fetch found nothing: %s", failure)
 
 

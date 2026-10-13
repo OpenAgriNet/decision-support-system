@@ -11,7 +11,7 @@ from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from dss.adapters.area_lookup.chain import ChainedAreaLookup
 from dss.adapters.observability.metrics import configure_metrics, reset_metrics
 from dss.core.shared.models import Geometry
-from dss.ports.area_lookup import AreaLookupUnavailable, AreaMatch
+from dss.ports.area_lookup import AreaLookupUnavailableError, AreaMatch
 from tests.support.fakes import FakeAreaLookup
 
 _PUNE = AreaMatch(
@@ -51,7 +51,7 @@ def _counted(reader: InMemoryMetricReader) -> dict[tuple[str, str], int]:
 
 class _Down:
     async def resolve(self, name: str, region: str | None = None) -> list[AreaMatch]:
-        raise AreaLookupUnavailable("down")
+        raise AreaLookupUnavailableError("down")
 
 
 def test_two_sources_with_one_name_refuse_to_start() -> None:

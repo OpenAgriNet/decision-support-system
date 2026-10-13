@@ -17,7 +17,7 @@ import pytest
 from dss.adapters.schema_packs.filesystem import FilesystemSchemaPackSource
 from dss.core.planner.validation import (
     DomainSchema,
-    InvalidArgument,
+    InvalidArgumentError,
     parse_domain_schema,
     validate_arguments,
 )
@@ -89,7 +89,7 @@ def test_validate_arguments_accepts_a_filterable_path() -> None:
 
 def test_validate_arguments_rejects_an_invented_field() -> None:
     schema = parse_domain_schema(_mandi_pack_files())
-    with pytest.raises(InvalidArgument):
+    with pytest.raises(InvalidArgumentError):
         validate_arguments({"cropVariety": "Basmati"}, schema)
 
 
@@ -104,7 +104,7 @@ def test_an_invented_field_inside_a_list_is_rejected() -> None:
     # `topics[].evil`, not `topics.evil`: the `[]` is how a pack spells a path
     # inside a list of objects, and the flattened path has to use the same
     # notation or it matches nothing.
-    with pytest.raises(InvalidArgument, match=r"topics\[\].evil"):
+    with pytest.raises(InvalidArgumentError, match=r"topics\[\].evil"):
         validate_arguments({"topics": [{"evil": "x"}]}, schema)
 
 
@@ -153,7 +153,7 @@ def test_a_scalar_where_the_pack_declares_an_array_is_rejected() -> None:
         field_types={"supportedFacilityTypes": "array<string>"},
     )
 
-    with pytest.raises(InvalidArgument, match="supportedFacilityTypes"):
+    with pytest.raises(InvalidArgumentError, match="supportedFacilityTypes"):
         validate_arguments({"supportedFacilityTypes": "KrishiVigyanKendra"}, schema)
 
 
@@ -182,7 +182,7 @@ def test_a_value_outside_the_packs_enum_is_rejected() -> None:
         field_enums={"facilityType": ("KrishiVigyanKendra", "Warehouse")},
     )
 
-    with pytest.raises(InvalidArgument, match="KrishiVigyanKendra"):
+    with pytest.raises(InvalidArgumentError, match="KrishiVigyanKendra"):
         validate_arguments({"facilityType": "krishi kendra"}, schema)
 
 
@@ -215,7 +215,7 @@ def test_a_bad_value_inside_a_list_is_rejected() -> None:
         field_enums={"supportedFacilityTypes": ("KrishiVigyanKendra", "Warehouse")},
     )
 
-    with pytest.raises(InvalidArgument, match="krishi kendra"):
+    with pytest.raises(InvalidArgumentError, match="krishi kendra"):
         validate_arguments(
             {"supportedFacilityTypes": ["Warehouse", "krishi kendra"]}, schema
         )
@@ -240,7 +240,7 @@ def test_a_bad_value_is_rejected_when_it_is_not_the_last_field() -> None:
         },
     )
 
-    with pytest.raises(InvalidArgument, match="krishi kendra"):
+    with pytest.raises(InvalidArgumentError, match="krishi kendra"):
         validate_arguments(
             {"facilityType": "krishi kendra", "informationMode": "OnDemand"}, schema
         )
@@ -293,7 +293,7 @@ def test_a_filterable_path_used_as_a_key_is_rejected(
         filterable=("supportedCommodities[].code", "market.marketName"),
     )
 
-    with pytest.raises(InvalidArgument) as raised:
+    with pytest.raises(InvalidArgumentError) as raised:
         validate_arguments({key: value}, schema)
 
     assert nested in str(raised.value)
@@ -379,7 +379,7 @@ def test_a_scalar_where_the_pack_asks_for_an_object_is_rejected() -> None:
         field_types={"location": "object"},
     )
 
-    with pytest.raises(InvalidArgument, match="object"):
+    with pytest.raises(InvalidArgumentError, match="object"):
         validate_arguments({"location": "Nashik"}, schema)
 
 
@@ -503,7 +503,7 @@ def test_an_item_missing_the_field_says_so_rather_than_naming_none() -> None:
         field_enums={"supportedCommodities[].code": ("23", "24")},
     )
 
-    with pytest.raises(InvalidArgument, match="every item"):
+    with pytest.raises(InvalidArgumentError, match="every item"):
         validate_arguments(
             {"supportedCommodities": [{"code": "23"}, {"name": "Onion"}]}, schema
         )
@@ -530,7 +530,9 @@ def test_one_key_sent_as_both_a_scalar_and_a_list_is_rejected() -> None:
         field_enums={"supportedCommodities[].descriptor[].code": ("23", "24")},
     )
 
-    with pytest.raises(InvalidArgument, match=r"supportedCommodities\[\].descriptor"):
+    with pytest.raises(
+        InvalidArgumentError, match=r"supportedCommodities\[\].descriptor"
+    ):
         validate_arguments(
             {
                 "supportedCommodities": [

@@ -13,7 +13,7 @@ from typing import Any
 from dss.core.enrichment.models import Scheme
 from dss.core.enrichment.normalize import alias_key
 from dss.core.planner.models import Skill
-from dss.core.shared.errors import ProviderUnavailable
+from dss.core.shared.errors import ProviderUnavailableError
 from dss.core.shared.models import Geometry, TurnContext, TurnEvent, UserTurn
 from dss.ports.area_lookup import AreaMatch
 from dss.ports.prompts import PromptIdentifier
@@ -55,7 +55,7 @@ class FakeRunner:
         self.calls.append((turn, ctx))
         for index, event in enumerate(self.events):
             if index == self.fail_after:
-                raise ProviderUnavailable("fake runner asked to fail")
+                raise ProviderUnavailableError("fake runner asked to fail")
             yield event
 
 

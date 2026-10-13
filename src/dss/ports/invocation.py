@@ -18,7 +18,7 @@ from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.network import NetworkTransactionID
 
 
-class SelectFailed(Exception):
+class SelectFailedError(Exception):
     """A ``select`` call did not produce an answer.
 
     Part of the port, not an adapter detail: the contract is "an answer or
@@ -53,7 +53,7 @@ class CapabilityInvocation(Protocol):
         *,
         visibility: Visibility = NOTHING_HELD,
     ) -> Sequence[DiscoveredAnswer]:
-        """Return every answer the provider gave, or raise ``SelectFailed``.
+        """Return every answer the provider gave, or raise ``SelectFailedError``.
 
         A sequence, not one answer: one call's resources are grouped by the
         document they came from, and a search provider can draw on several.

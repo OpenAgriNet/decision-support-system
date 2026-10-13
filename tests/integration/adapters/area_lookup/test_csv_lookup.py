@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from dss.adapters.area_lookup.csv_lookup import AreaCsvUnusable, CsvAreaLookup
+from dss.adapters.area_lookup.csv_lookup import AreaCsvUnusableError, CsvAreaLookup
 from dss.core.shared.models import Geometry
 from dss.ports.area_lookup import AreaMatch
 
@@ -220,7 +220,7 @@ def test_a_missing_file_refuses_to_load_and_names_the_path(tmp_path: Path) -> No
 
     missing = tmp_path / "areas.csv"
 
-    with pytest.raises(AreaCsvUnusable) as raised:
+    with pytest.raises(AreaCsvUnusableError) as raised:
         CsvAreaLookup.load(missing)
 
     assert str(missing) in str(raised.value)
@@ -233,7 +233,7 @@ def test_a_file_with_no_areas_refuses_to_load(tmp_path: Path) -> None:
     path = tmp_path / "areas.csv"
     path.write_text(HEADER, encoding="utf-8")
 
-    with pytest.raises(AreaCsvUnusable):
+    with pytest.raises(AreaCsvUnusableError):
         CsvAreaLookup.load(path)
 
 

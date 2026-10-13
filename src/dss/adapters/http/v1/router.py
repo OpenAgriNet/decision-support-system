@@ -124,13 +124,13 @@ async def _admit(request: Request, settings: Settings) -> Response | _Admitted: 
             cap=settings.max_body_bytes,
             declared=_declared_length(request),
         )
-    except _TooLarge:
+    except _TooLargeError:
         return problem.problem(
             413,
             problem.PAYLOAD_TOO_LARGE,
             f"The decompressed body exceeds {settings.max_body_bytes} bytes.",
         )
-    except _Undecodable as exc:
+    except _UndecodableError as exc:
         return problem.problem(400, problem.MALFORMED, f"Body is not valid gzip: {exc}")
 
     try:
@@ -337,11 +337,11 @@ def _declared_length(request: Request) -> int | None:
         return None
 
 
-class _TooLarge(Exception):
+class _TooLargeError(Exception):
     pass
 
 
-class _Undecodable(Exception):
+class _UndecodableError(Exception):
     """The body could not be decompressed. A caller's broken client, not ours."""
 
 
@@ -376,7 +376,7 @@ async def _decoded_body(  # noqa: C901
     """
 
     if declared is not None and declared > cap:
-        raise _TooLarge
+        raise _TooLargeError
 
     gzipped = (encoding or "").strip().lower() == "gzip"
     inflater = zlib.decompressobj(_GZIP_WBITS) if gzipped else None
@@ -386,29 +386,29 @@ async def _decoded_body(  # noqa: C901
     async for chunk in stream:
         read += len(chunk)
         if read > cap:
-            raise _TooLarge
+            raise _TooLargeError
         if inflater is None:
             body += chunk
         else:
             try:
                 body += inflater.decompress(chunk, cap + 1 - len(body))
             except zlib.error as exc:
-                raise _Undecodable(str(exc)) from exc
+                raise _UndecodableError(str(exc)) from exc
             if inflater.unconsumed_tail:
-                raise _TooLarge
+                raise _TooLargeError
         if len(body) > cap:
-            raise _TooLarge
+            raise _TooLargeError
 
     if inflater is not None:
         try:
             body += inflater.flush()
         except zlib.error as exc:
-            raise _Undecodable(str(exc)) from exc
+            raise _UndecodableError(str(exc)) from exc
         if not inflater.eof:
             # The stream ended mid-member: a truncated body.
-            raise _Undecodable("gzip stream is incomplete")
+            raise _UndecodableError("gzip stream is incomplete")
         if len(body) > cap:
-            raise _TooLarge
+            raise _TooLargeError
 
     return bytes(body)
 

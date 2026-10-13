@@ -12,5 +12,5 @@ class DssError(Exception):
     """Base for anything the DSS itself raises."""
 
 
-class ProviderUnavailable(DssError):
+class ProviderUnavailableError(DssError):
     """A dependency the turn needed could not be reached."""

@@ -17,7 +17,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from opentelemetry.trace import StatusCode
 
 from dss.adapters.area_lookup.photon import PhotonAreaLookup
-from dss.ports.area_lookup import AreaLookupUnavailable
+from dss.ports.area_lookup import AreaLookupUnavailableError
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -58,7 +58,7 @@ async def test_a_failed_call_is_an_error(spans) -> None:
         timeout_seconds=5.0,
     )
 
-    with pytest.raises(AreaLookupUnavailable):
+    with pytest.raises(AreaLookupUnavailableError):
         await photon.resolve("Eldoret")
 
     (span,) = spans.get_finished_spans()

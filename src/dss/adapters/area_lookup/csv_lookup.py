@@ -22,7 +22,7 @@ from dss.core.shared.models import Geometry
 from dss.ports.area_lookup import AreaMatch
 
 
-class AreaCsvUnusable(RuntimeError):
+class AreaCsvUnusableError(RuntimeError):
     """The area index could not be built, so no turn can resolve a place.
 
     Raised rather than logged: the file is checked in, so a missing or empty one
@@ -115,7 +115,7 @@ class CsvAreaLookup:
 
     @classmethod
     def load(cls, path: Path) -> CsvAreaLookup:
-        """Read the file once and hold the index. Raises `AreaCsvUnusable`
+        """Read the file once and hold the index. Raises `AreaCsvUnusableError`
         if it cannot be read or carries no areas."""
 
         by_name: dict[str, list[AreaMatch]] = {}
@@ -154,7 +154,7 @@ class CsvAreaLookup:
         # coordinate — both leave a partial index that would resolve some names
         # and silently miss others.
         except (OSError, KeyError, ValueError) as cause:
-            raise AreaCsvUnusable(
+            raise AreaCsvUnusableError(
                 f"could not read the area index at {path}: {cause}. "
                 f"Regenerate it with: uv run python scripts/generate_area_csv.py "
                 f"--source <network-adapter>/tools/area-lookups/data/areas/"
@@ -162,7 +162,7 @@ class CsvAreaLookup:
             ) from cause
 
         if not by_name:
-            raise AreaCsvUnusable(
+            raise AreaCsvUnusableError(
                 f"the area index at {path} carries no areas, so no turn "
                 f"could resolve a place name. Regenerate it with: uv run python "
                 f"scripts/generate_area_csv.py --source <network-adapter>"

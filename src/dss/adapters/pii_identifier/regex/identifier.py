@@ -23,7 +23,7 @@ from dss.adapters.pii_identifier.regex.models import (
 from dss.adapters.pii_identifier.regex.validators import is_valid
 from dss.core.redaction.models import PiiSpan
 from dss.core.redaction.normalise import Shadow, gap_pattern, join_number_gaps
-from dss.ports.pii_identifier import IdentifierUnavailable
+from dss.ports.pii_identifier import IdentifierUnavailableError
 
 # One word after a declaring phrase: letters, with an inner ' . or - (O'Neil).
 _NAME_TOKEN = re.compile(r"[ \t]+([^\W\d_]+(?:['.-][^\W\d_]+)*)")
@@ -39,7 +39,7 @@ class RegexIdentifier:
 
     def __init__(self, settings: RegexSettings) -> None:
         """Compiles every pattern once, here, at boot. One that does not
-        compile raises ``IdentifierUnavailable`` naming its rule, which stops
+        compile raises ``IdentifierUnavailableError`` naming its rule, which stops
         the boot."""
 
         self._settings = settings
@@ -85,7 +85,7 @@ def _compile(rule: PatternRule | DeclaringPhraseRule) -> re.Pattern[str]:
             re.IGNORECASE,
         )
     except re.error as exc:
-        raise IdentifierUnavailable(
+        raise IdentifierUnavailableError(
             f"rule '{rule.entity}': pattern does not compile: {exc}"
         ) from exc
 

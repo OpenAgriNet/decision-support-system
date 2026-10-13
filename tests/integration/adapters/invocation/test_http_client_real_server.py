@@ -15,7 +15,7 @@ import httpx
 import pytest
 from pytest_httpserver import HTTPServer
 
-from dss.adapters.invocation.client import HttpCapabilityInvocation, SelectFailed
+from dss.adapters.invocation.client import HttpCapabilityInvocation, SelectFailedError
 from dss.core.provider_discovery.models import ProviderCapability
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -71,7 +71,7 @@ async def test_a_real_429_response_raises_selectfailed(httpserver: HTTPServer) -
             attempts=1,  # classification, not retry — see test_retry.py
         )
 
-        with pytest.raises(SelectFailed) as exc_info:
+        with pytest.raises(SelectFailedError) as exc_info:
             await invocation.select(CAPABILITY, {}, transaction_id="txn-test")
 
     assert exc_info.value.status_code == 429

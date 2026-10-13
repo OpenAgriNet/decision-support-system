@@ -13,7 +13,7 @@ from typing import Protocol
 from dss.core.redaction.models import PiiSpan
 
 
-class IdentifierUnavailable(RuntimeError):
+class IdentifierUnavailableError(RuntimeError):
     """A configured identifier cannot be built — a bad rule, a missing model,
     a missing library. Raised at boot, never on a turn, and says what is wrong."""
 

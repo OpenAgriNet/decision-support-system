@@ -106,6 +106,7 @@ select = [
     "SIM",  # simplifications
     "BLE",  # catch-all except needs a stated reason
     "ANN",  # type hints on function signatures
+    "N",    # PEP 8 naming
     "S",    # security (bandit)
     "RUF",  # ruff's own rules
     "C901", # cyclomatic complexity, default limit 10

@@ -17,7 +17,7 @@ import pytest
 
 from dss.adapters.area_lookup.photon import PhotonAreaLookup
 from dss.core.shared.models import Geometry
-from dss.ports.area_lookup import AreaLookupUnavailable, AreaMatch
+from dss.ports.area_lookup import AreaLookupUnavailableError, AreaMatch
 
 FIXTURES = Path(__file__).parent / "fixtures"
 BASE_URL = "http://photon.test"
@@ -93,7 +93,7 @@ async def test_a_server_error_is_unavailable() -> None:
 
     photon = _photon_with(lambda request: httpx.Response(500))
 
-    with pytest.raises(AreaLookupUnavailable):
+    with pytest.raises(AreaLookupUnavailableError):
         await photon.resolve("Eldoret")
 
 
@@ -103,7 +103,7 @@ async def test_a_body_that_is_not_json_is_unavailable() -> None:
 
     photon = _photon_returning("photon_malformed.json", ("KE",))
 
-    with pytest.raises(AreaLookupUnavailable):
+    with pytest.raises(AreaLookupUnavailableError):
         await photon.resolve("Eldoret")
 
 
@@ -116,7 +116,7 @@ async def test_a_slow_server_is_unavailable() -> None:
 
     photon = _photon_with(slow, timeout_seconds=0.01)
 
-    with pytest.raises(AreaLookupUnavailable):
+    with pytest.raises(AreaLookupUnavailableError):
         await photon.resolve("Eldoret")
 
 
@@ -152,7 +152,7 @@ async def test_a_badly_written_address_is_unavailable() -> None:
         timeout_seconds=_TIMEOUT,
     )
 
-    with pytest.raises(AreaLookupUnavailable):
+    with pytest.raises(AreaLookupUnavailableError):
         await photon.resolve("Eldoret")
 
 
@@ -162,7 +162,7 @@ async def test_a_refused_connection_is_unavailable() -> None:
 
     photon = _photon_with(refuse)
 
-    with pytest.raises(AreaLookupUnavailable):
+    with pytest.raises(AreaLookupUnavailableError):
         await photon.resolve("Eldoret")
 
 

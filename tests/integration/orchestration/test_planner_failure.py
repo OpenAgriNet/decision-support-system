@@ -1,7 +1,7 @@
 """Tier 3 — a provider failure must not fail the turn.
 
 The adapter has already retried and given up by the time the tool sees a
-``SelectFailed``. The loop still has to continue: other asks may have other
+``SelectFailedError``. The loop still has to continue: other asks may have other
 providers, and one unreachable mandi is not a reason to answer nothing.
 """
 
@@ -15,7 +15,7 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
-from dss.adapters.invocation.client import SelectFailed
+from dss.adapters.invocation.client import SelectFailedError
 from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
 from dss.core.moderation.models import ModerationDecision, Outcome
 from dss.core.planner.models import Skill, Verdict
@@ -60,7 +60,7 @@ class _FailingInvocation:
         visibility: Visibility = NOTHING_HELD,
     ) -> DiscoveredAnswer:
         self.calls += 1
-        raise SelectFailed(
+        raise SelectFailedError(
             capability.capability,
             429,
             FailureClass.TRANSIENT,

@@ -9,7 +9,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from dss.adapters.invocation.client import HttpCapabilityInvocation, SelectFailed
+from dss.adapters.invocation.client import HttpCapabilityInvocation, SelectFailedError
 from dss.core.provider_discovery.models import FailureClass, ProviderCapability
 
 CAPABILITY = ProviderCapability(
@@ -55,7 +55,7 @@ async def test_transient_status_codes_raise_selectfailed_transient(
 ) -> None:
     invocation = _invocation_returning_status(status_code)
 
-    with pytest.raises(SelectFailed) as exc_info:
+    with pytest.raises(SelectFailedError) as exc_info:
         await invocation.select(CAPABILITY, {}, transaction_id="txn-test")
 
     assert exc_info.value.status_code == status_code
@@ -68,7 +68,7 @@ async def test_transient_status_codes_raise_selectfailed_transient(
 async def test_defect_status_codes_raise_selectfailed_defect(status_code: int) -> None:
     invocation = _invocation_returning_status(status_code)
 
-    with pytest.raises(SelectFailed) as exc_info:
+    with pytest.raises(SelectFailedError) as exc_info:
         await invocation.select(CAPABILITY, {}, transaction_id="txn-test")
 
     assert exc_info.value.status_code == status_code
@@ -78,7 +78,7 @@ async def test_defect_status_codes_raise_selectfailed_defect(status_code: int) -
 async def test_a_connection_error_raises_selectfailed_transient() -> None:
     invocation = _invocation_raising_connection_error()
 
-    with pytest.raises(SelectFailed) as exc_info:
+    with pytest.raises(SelectFailedError) as exc_info:
         await invocation.select(CAPABILITY, {}, transaction_id="txn-test")
 
     assert exc_info.value.failure_class == FailureClass.TRANSIENT
@@ -114,7 +114,7 @@ def _invocation_returning_body(body: dict) -> HttpCapabilityInvocation:
 async def test_a_malformed_200_raises_selectfailed_not_a_bare_keyerror(
     label: str, body: dict
 ) -> None:
-    """The port's contract is "an answer or ``SelectFailed``". The response
+    """The port's contract is "an answer or ``SelectFailedError``". The response
     mapper sat outside the try, so a 200 with an unreadable body raised
     ``KeyError``/``IndexError`` straight past the planner tool's handler and
     aborted the whole agent run — losing every other ask's answers.
@@ -125,7 +125,7 @@ async def test_a_malformed_200_raises_selectfailed_not_a_bare_keyerror(
 
     invocation = _invocation_returning_body(body)
 
-    with pytest.raises(SelectFailed) as exc_info:
+    with pytest.raises(SelectFailedError) as exc_info:
         await invocation.select(CAPABILITY, {}, transaction_id="txn-test")
 
     # a defect, not transient: the same body will fail the same way
@@ -164,7 +164,7 @@ async def test_a_malformed_200_is_not_retried() -> None:
         backoff_seconds=0.0,
     )
 
-    with pytest.raises(SelectFailed):
+    with pytest.raises(SelectFailedError):
         await invocation.select(CAPABILITY, {}, transaction_id="txn-test")
 
     assert calls == 1

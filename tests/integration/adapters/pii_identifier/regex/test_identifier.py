@@ -9,7 +9,7 @@ import pytest
 from dss.adapters.pii_identifier.regex.identifier import RegexIdentifier
 from dss.adapters.pii_identifier.regex.models import PatternRule, RegexSettings
 from dss.core.redaction.models import PiiSpan
-from dss.ports.pii_identifier import IdentifierUnavailable
+from dss.ports.pii_identifier import IdentifierUnavailableError
 from tests.support.redaction_rules import SETTINGS
 
 
@@ -135,7 +135,7 @@ def test_a_pattern_that_cannot_compile_stops_the_build_and_names_the_rule() -> N
         type="regex", normalisation=SETTINGS.normalisation, rules=[broken]
     )
 
-    with pytest.raises(IdentifierUnavailable, match="rule 'phone'"):
+    with pytest.raises(IdentifierUnavailableError, match="rule 'phone'"):
         RegexIdentifier(settings)
 
 

@@ -27,7 +27,7 @@ from dss.core.planner.resource_attributes import build_resource_attributes
 from dss.core.planner.skills import tool_names_for
 from dss.core.planner.validation import (
     DomainSchema,
-    InvalidArgument,
+    InvalidArgumentError,
     validate_arguments,
 )
 from dss.core.provider_discovery.models import (
@@ -37,7 +37,7 @@ from dss.core.provider_discovery.models import (
 )
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import UserTurn
-from dss.ports.invocation import CapabilityInvocation, SelectFailed
+from dss.ports.invocation import CapabilityInvocation, SelectFailedError
 
 
 @dataclass
@@ -127,7 +127,7 @@ async def _select(
 
     try:
         validate_arguments(resource_attributes, schema)
-    except InvalidArgument as exc:
+    except InvalidArgumentError as exc:
         raise ModelRetry(str(exc)) from exc
 
     full_attributes = build_resource_attributes(
@@ -156,7 +156,7 @@ async def _select(
             deps.turn.transaction_id,
             visibility=deps.visibility,
         )
-    except SelectFailed as exc:
+    except SelectFailedError as exc:
         # The adapter has already retried and given up. Not a ModelRetry: the
         # arguments were fine, so re-sending them changes nothing and burns
         # the model's retry budget. Not a raise either — one unreachable

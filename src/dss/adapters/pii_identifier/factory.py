@@ -2,7 +2,7 @@
 
 Each ``identifiers:`` entry names its ``type``; the matching adapter checks the
 rest of the entry against its own settings. An unknown type or a bad entry
-raises ``IdentifierUnavailable`` naming it, so the boot stops with a reason.
+raises ``IdentifierUnavailableError`` naming it, so the boot stops with a reason.
 A new identifier — an HTTP PII service, say — is one more entry in ``_BUILDERS``.
 """
 
@@ -13,7 +13,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from dss.ports.pii_identifier import IdentifierUnavailable, PiiIdentifier
+from dss.ports.pii_identifier import IdentifierUnavailableError, PiiIdentifier
 
 
 def _regex(entry: Mapping[str, Any]) -> PiiIdentifier:
@@ -42,12 +42,14 @@ def build_identifiers(entries: Sequence[Mapping[str, Any]]) -> list[PiiIdentifie
         kind = entry.get("type")
         builder = _BUILDERS.get(str(kind))
         if builder is None:
-            raise IdentifierUnavailable(
+            raise IdentifierUnavailableError(
                 f"identifiers[{i}]: unknown type '{kind}' "
                 f"(known: {', '.join(sorted(_BUILDERS))})"
             )
         try:
             identifiers.append(builder(entry))
         except ValidationError as exc:
-            raise IdentifierUnavailable(f"identifiers[{i}] ({kind}): {exc}") from exc
+            raise IdentifierUnavailableError(
+                f"identifiers[{i}] ({kind}): {exc}"
+            ) from exc
     return identifiers

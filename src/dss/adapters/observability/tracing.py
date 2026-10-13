@@ -300,7 +300,7 @@ def open_span(
 
     **A failure is recorded by type, never by message.** OpenTelemetry's own
     handling would put `exception.message` and a full `exception.stacktrace` on
-    the span, and an exception message here is not safe to export: `SelectFailed`
+    the span, and an exception message here is not safe to export: `SelectFailedError`
     embeds the provider's entire response body, which echoes the farmer's query
     back. `DSS_ARCHITECTURE.md` §6.1 names traces as a place personal data may
     not reach, and unlike the log path there is no length clip — an HTML error
