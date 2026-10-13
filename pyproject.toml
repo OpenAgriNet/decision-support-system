@@ -108,6 +108,8 @@ select = [
     "ANN",  # type hints on function signatures
     "S",    # security (bandit)
     "RUF",  # ruff's own rules
+    "C901", # cyclomatic complexity, default limit 10
+    "PLR",  # pylint refactor checks, default limits
 ]
 ignore = [
     "C401", # set(generator) reads fine
@@ -123,6 +125,8 @@ ignore = [
     "S311", # random is not used for secrets
     "S404", # importing subprocess is fine; calls are still checked
     "RUF005",# [*a, b] vs a + [b] is taste
+    "PLR0917",# PLR0913 already flags these
+    "PLR2004",# magic values: constants for "gzip" or 200 read worse
 ]
 
 # Hard boundary: only orchestration/ may import the agentic framework.

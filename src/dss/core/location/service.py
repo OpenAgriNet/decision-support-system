@@ -209,7 +209,7 @@ async def _user_own_place(
     return None
 
 
-async def _resolve_named(
+async def _resolve_named(  # noqa: PLR0911, PLR0913
     name: str,
     lookup: AreaLookup,
     region: str | None,

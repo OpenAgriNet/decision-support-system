@@ -53,7 +53,7 @@ class Plan(Protocol):
     ) -> Evidence: ...
 
 
-def build_plan(
+def build_plan(  # noqa: PLR0913
     *,
     schemas: dict[str, DomainSchema],
     schema_context_index: dict[str, str],

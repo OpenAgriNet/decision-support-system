@@ -90,7 +90,7 @@ def _compile(rule: PatternRule | DeclaringPhraseRule) -> re.Pattern[str]:
         ) from exc
 
 
-def _match_pattern(
+def _match_pattern(  # noqa: C901, PLR0913
     rule: PatternRule,
     compiled: re.Pattern[str],
     text: str,
@@ -133,7 +133,7 @@ def _match_pattern(
     yield from _match_sub_runs(rule, compiled, text, run, seen, kept)
 
 
-def _match_sub_runs(
+def _match_sub_runs(  # noqa: PLR0913
     rule: PatternRule,
     compiled: re.Pattern[str],
     text: str,

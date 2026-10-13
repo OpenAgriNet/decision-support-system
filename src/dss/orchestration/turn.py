@@ -206,7 +206,7 @@ class TurnResult(BaseModel):
     discovery: DiscoveryResult
 
 
-async def run_turn(
+async def run_turn(  # noqa: PLR0913
     turn: UserTurn,
     *,
     intent_llm: LLMProvider,

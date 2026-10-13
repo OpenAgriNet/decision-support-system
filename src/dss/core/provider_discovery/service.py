@@ -347,7 +347,7 @@ def _build_ask_events(
     ]
 
 
-async def discover_providers(
+async def discover_providers(  # noqa: PLR0913
     intent: Intent,
     turn: UserTurn,
     *,

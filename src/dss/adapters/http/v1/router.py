@@ -88,7 +88,7 @@ def turn_router(
     return router
 
 
-async def _admit(request: Request, settings: Settings) -> Response | _Admitted:
+async def _admit(request: Request, settings: Settings) -> Response | _Admitted:  # noqa: PLR0911
     """Every gate a request must pass, in order — or the rejection it earned.
 
     **The order is the design**, which is why it stays in one function rather
@@ -350,7 +350,7 @@ class _Undecodable(Exception):
 _GZIP_WBITS = zlib.MAX_WBITS | 16
 
 
-async def _decoded_body(
+async def _decoded_body(  # noqa: C901
     stream: AsyncIterable[bytes],
     *,
     encoding: str | None,

@@ -133,7 +133,7 @@ def _narrowed(model_value: object, advertised_value: object) -> object:
     return narrowed
 
 
-def build_resource_attributes(
+def build_resource_attributes(  # noqa: PLR0913
     *,
     capability: ProviderCapability,
     subject_category: str,

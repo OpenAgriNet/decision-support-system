@@ -50,7 +50,7 @@ _DEFAULT_STATUS_DESCRIPTOR = {"code": "DRAFT", "name": "Draft"}
 _DEFAULT_OFFER_ID = "offer:open-data"
 
 
-def build_select_request(
+def build_select_request(  # noqa: PLR0913
     capability: ProviderCapability,
     resource_attributes: dict,
     *,
@@ -175,7 +175,7 @@ class HttpCapabilityInvocation:
     the pure functions above so they're testable without a client at all.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         client: httpx.AsyncClient,
         base_url: str,

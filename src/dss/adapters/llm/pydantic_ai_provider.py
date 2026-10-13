@@ -45,7 +45,7 @@ class PydanticAILLMProvider:
     provider/endpoint wiring. Set ``output_mode="prompted"`` for a model that does
     not support tools."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         model: ModelBinding,
         *,
