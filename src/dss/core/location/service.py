@@ -276,7 +276,7 @@ async def _resolve_named(
 
 
 async def _resolve_from_location(
-    location: Location | None, lookup: AreaLookup
+    location: Location | None, lookup: AreaLookup, max_km: float
 ) -> ResolvedPlace | None:
     """Nothing was named — fall back to what the turn's envelope carries.
     Device geometry first: it was sent this turn, so it is fresher than an
@@ -285,9 +285,12 @@ async def _resolve_from_location(
     if location is None:
         return None
     if location.geometry is not None:
+        # The point is the device's. The nearest known place only names it,
+        # so the answer says where it is about instead of echoing numbers.
+        near = await lookup.nearest(location.geometry, max_km)
         return ResolvedPlace(
-            name=location.area or "",
-            within=(),
+            name=near.name if near is not None else location.area or "",
+            within=near.within if near is not None else (),
             geometry=location.geometry,
             source=PlaceSource.ASSERTED_GEOMETRY,
         )
@@ -358,7 +361,8 @@ async def resolve_places(
     for index, classified in enumerate(classified_asks):
         if places[index] is None and not classified.place_name:
             places[index] = (
-                await _resolve_from_location(location, lookup) or sibling_place
+                await _resolve_from_location(location, lookup, nearest_max_km)
+                or sibling_place
             )
 
     asks = tuple(
