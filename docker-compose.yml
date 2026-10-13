@@ -65,6 +65,9 @@ services:
       # mounted file to use your own rules.
       DSS_REDACTION_ENABLED: ${DSS_REDACTION_ENABLED:-false}
       DSS_REDACTION_CONFIG_PATH: ${DSS_REDACTION_CONFIG_PATH:-/app/src/dss/config/examples/redaction-rules.yaml}
+      # Photon, by service name. Set it empty in .env to turn Photon off; the
+      # DSS then never asks it. Countries default to those in the area file.
+      DSS_PHOTON_BASE_URL: ${DSS_PHOTON_BASE_URL:-http://photon:2322}
     ports:
       - "127.0.0.1:${DSS_HOST_PORT:-8077}:8077"
     healthcheck:
@@ -104,6 +107,63 @@ services:
       # already holds 4318 on the host.
       - "127.0.0.1:${OTEL_HOST_PORT:-4318}:4318"
     restart: unless-stopped
+
+  # Place search for names the area file lacks. `photon-index` runs once: it
+  # downloads the Photon jar and the India place index (about 600 MB) into the
+  # volume, then exits. `photon` starts after that. The first start takes a
+  # few minutes, later ones seconds. No `depends_on` from `dss`: a Photon that
+  # is down counts as no answer, and the turn still finishes.
+  photon-index:
+    image: eclipse-temurin:21-jre
+    working_dir: /photon
+    restart: "no"
+    volumes:
+      - photon-data:/photon
+    environment:
+      PHOTON_VERSION: ${PHOTON_VERSION:-1.3.0}
+      # Photon 1.x reads only the `1.0` index format.
+      PHOTON_DB_URL: ${PHOTON_DB_URL:-https://download1.graphhopper.com/public/asia/india/photon-db-india-1.0-latest.tar.bz2}
+    command:
+      - bash
+      - -c
+      - |
+        set -eo pipefail
+        JAR="photon-$${PHOTON_VERSION}.jar"
+        [ -f "$$JAR" ] || curl -fL -o "$$JAR" "https://github.com/komoot/photon/releases/download/$${PHOTON_VERSION}/$$JAR"
+        # The marker holds the URL of the index that finished downloading. A
+        # cut-short download leaves none, and a changed URL no longer matches.
+        if [ "$$(cat .index-ready 2>/dev/null || true)" != "$$PHOTON_DB_URL" ]; then
+          command -v bzip2 >/dev/null || { apt-get update -qq && apt-get install -y -qq bzip2; }
+          rm -rf photon_data .index-ready
+          curl -fL "$$PHOTON_DB_URL" | bzip2 -cd | tar x
+          printf %s "$$PHOTON_DB_URL" > .index-ready
+        fi
+
+  photon:
+    image: eclipse-temurin:21-jre
+    working_dir: /photon
+    depends_on:
+      photon-index:
+        condition: service_completed_successfully
+    volumes:
+      - photon-data:/photon
+    environment:
+      PHOTON_VERSION: ${PHOTON_VERSION:-1.3.0}
+    command:
+      - sh
+      - -c
+      - exec java -jar "photon-$${PHOTON_VERSION}.jar" serve -listen-ip 0.0.0.0
+    # No published port: the DSS reaches it as http://photon:2322.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs 'http://localhost:2322/api?q=Pune&limit=1' >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
+    restart: unless-stopped
+
+volumes:
+  photon-data:
 
 # `oan-edge` is the network Langfuse and the model gateway are already on, so
 # naming it here is what lets the DSS reach `litellm` and `langfuse-web` by

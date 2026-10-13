@@ -722,6 +722,15 @@ Watch it on the dashboard row "Place lookup", or in the counter
 `dss.area_lookup.count`. A rise in `photon · error` means Photon is down or
 too slow.
 
+**In Docker it is on by default.** `docker-compose.yml` runs Photon with the
+India index (about 600 MB, from GraphHopper) and points the DSS at it as
+`http://photon:2322`. The first `up` downloads the index in the `photon-index`
+container and takes a few minutes; watch it with
+`docker compose logs -f photon-index`. The DSS does not wait for it. A turn
+sent before Photon is up counts the lookup as no answer. To turn Photon off,
+set `DSS_PHOTON_BASE_URL=` (empty) in `.env`. To use another index, set
+`PHOTON_DB_URL` to a `1.0` file from `download1.graphhopper.com/public`.
+
 **Try it on a village outside India** (for a product owner):
 
 1. Start Photon: `docker compose -f docker-compose.photon.yml up` (`podman
