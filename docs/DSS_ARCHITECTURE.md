@@ -196,8 +196,8 @@ class UserTurn:
     enriched_query: str       # mirrors original_query until enrichment lands
     session_id: str           # from request context.sessionId
     transaction_id: str       # from request context.transactionId; passed through to Provider calls
-    source_lang: str          # language the user spoke/typed
-    target_lang: str          # language the response should come back in
+    source_lang: LanguageTag  # language the user spoke/typed
+    target_lang: LanguageTag  # language the response should come back in
     channel: str              # web / voice / sms / whatsapp / ...
     user: UserDetails
     history: list[ConversationMessage]
@@ -207,7 +207,7 @@ class UserTurn:
 
 **Per-component model binding (ADR-0004).** Each logical function binds its own model from the environment — `DSS_INTENT_MODEL`, `DSS_MODERATION_MODEL`, etc. — so a deployment can run intent on a small fast model and moderation on a stronger one without code change.
 
-**Per-language prompt binding (ADR-0018).** Every LLM component's system prompt is a Jinja2 template under `prompts/<component>/<lang>/`, named by `configs/prompts.yaml` (mount your own pair and set `DSS_PROMPT_CONFIG_PATH`). Core services ask the `ports/prompts.py::PromptProvider` port for their prompt in the turn's `target_lang`; the lookup falls back exact tag → primary subtag → `en`, so a language with no version of a prompt runs on the English one and the gap is recorded as a trace event (`event=language_fallback`). `en` is required per component and every template's placeholders are validated at boot — a missing override never fails a turn, a broken registry never boots. The planner's skill files ride with its prompt in the same YAML, per language. A Hindi version of every prompt ships as a marked demo of the mechanism; which languages get a real override is the M3 eval's decision.
+**Per-language prompt binding (ADR-0018).** Every LLM component's system prompt is a Jinja2 template under `prompts/<component>/<lang>/`, named by `configs/prompts.yaml` (mount your own pair and set `DSS_PROMPT_CONFIG_PATH`). Core services ask the `ports/prompts.py::PromptProvider` port for their prompt in the turn's `target_lang`; a language is a `LanguageTag` (`core/shared/language.py`) on the turn and in the registry — a BCP-47 tag in standard casing, a plain string on the wire — and the lookup drops subtags from the end (`gu-Gujr-IN` → `gu-Gujr` → `gu`) before falling back to `en`, so a language with no version of a prompt runs on the English one and the gap is recorded as a trace event (`event=language_fallback`). `en` is required per component and every template's placeholders are validated at boot — a missing override never fails a turn, a broken registry never boots. The planner's skill files ride with its prompt in the same YAML, per language. A Hindi version of every prompt ships as a marked demo of the mechanism; which languages get a real override is the M3 eval's decision.
 
 **System text is localized on the way out (ADR-0018).** Replies the DSS writes itself — moderation refusals, clarification questions, the no-provider answers — stay one reviewed English vocabulary (`core/moderation/messages.py`, `clarification-text.yaml`); the orchestrator renders each in the turn's `target_lang` just before it leaves, via `core/channel/localize.py` on the composer's model binding. English targets skip the call entirely; a failed rendering serves the English text — a language problem never costs the farmer an answer. The localizer's own prompt is the `localizer` entry in the prompt registry, and it orders place names, scheme names, numbers and the ambiguous-place question's numbered option lines kept verbatim, so ADR-0017's copy-the-option follow-up keeps working in every language.
 
