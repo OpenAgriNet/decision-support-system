@@ -358,7 +358,7 @@ def _network(
 async def _aclose_nothing() -> None:
     """The unwired path opened no client, so there is nothing to release."""
 
-    return None
+    return
 
 
 def _aclose_for(

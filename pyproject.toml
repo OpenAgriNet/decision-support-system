@@ -101,10 +101,12 @@ select = [
     "RSE",  # raise style
     "ISC",  # implicit string concatenation
     "C4",   # comprehensions
+    "RET",  # return style
 ]
 ignore = [
     "C401", # set(generator) reads fine
     "C408", # dict(a=1) reads fine
+    "RET504",# naming a value before returning it can aid reading
 ]
 
 # Hard boundary: only orchestration/ may import the agentic framework.
