@@ -27,6 +27,7 @@ from collections.abc import Awaitable, Callable
 from contextlib import AsyncExitStack
 from datetime import datetime
 from functools import partial
+from typing import Never
 
 import anyio
 import httpx
@@ -37,6 +38,7 @@ from dss.adapters.area_lookup.csv_lookup import CsvAreaLookup
 from dss.adapters.area_lookup.photon import PhotonAreaLookup
 from dss.adapters.invocation.client import HttpCapabilityInvocation
 from dss.adapters.llm.pydantic_ai_provider import (
+    ModelBinding,
     PydanticAILLMProvider,
     build_azure_model,
     build_gateway_model,
@@ -58,9 +60,15 @@ from dss.core.intent.models import Intent
 from dss.core.planner.validation import DomainSchema, parse_domain_schema
 from dss.core.policy.models import Checkpoint
 from dss.core.provider_discovery.index import PACK_DEFECTS, extract_type_const
-from dss.core.provider_discovery.models import DiscoveryResult, SchemaPackFiles
+from dss.core.provider_discovery.models import (
+    DiscoveryResult,
+    ProviderCapability,
+    SchemaPackFiles,
+)
 from dss.core.provider_discovery.schema_pack_cache import SchemaPackCache
+from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import UserTurn
+from dss.core.shared.network import NetworkTransactionID
 from dss.core.stream_response.service import build_stream_response
 from dss.observability.stages import Stage
 from dss.orchestration.discovery import (
@@ -73,6 +81,7 @@ from dss.orchestration.plan import build_plan
 from dss.orchestration.redaction import RedactTexts, pass_through, redact_texts
 from dss.ports.area_lookup import AreaLookup
 from dss.ports.invocation import CapabilityInvocation
+from dss.ports.llm import LLMProvider
 from dss.ports.turn import TurnRunner
 
 logger = logging.getLogger(__name__)
@@ -265,8 +274,13 @@ class _UnwiredInvocation:
     call surfaces loudly instead of silently answering from nothing."""
 
     async def select(
-        self, capability, resource_attributes, transaction_id, *, visibility=None
-    ):  # noqa: ANN001
+        self,
+        capability: ProviderCapability,
+        resource_attributes: dict,
+        transaction_id: NetworkTransactionID,
+        *,
+        visibility: Visibility = NOTHING_HELD,
+    ) -> Never:
         raise RuntimeError(
             "provider invocation is not configured — set DSS_INVOCATION_BASE_URL, "
             "DSS_DISCOVERY_BASE_URL and DSS_SCHEMA_PACK_DIR to call providers"
@@ -470,7 +484,7 @@ def _load_schema_packs_blocking(
     return box["result"]
 
 
-def _resolve_model(model: str, settings: Settings):
+def _resolve_model(model: str, settings: Settings) -> ModelBinding:
     """Turn a component's model string into what Pydantic AI should bind.
 
     With ``gateway_url`` set, the string is a NAME the gateway resolves -
@@ -511,7 +525,7 @@ def _resolve_model(model: str, settings: Settings):
     return build_azure_model(deployment, endpoint=endpoint, api_key=api_key)
 
 
-def _intent_llm(settings: Settings):
+def _intent_llm(settings: Settings) -> LLMProvider:
     if settings.stub_llm:
         return StubLLM()  # STUB(#83): canned answers, no network
     return PydanticAILLMProvider(
@@ -524,7 +538,7 @@ def _intent_llm(settings: Settings):
     )
 
 
-def _composer_llm(settings: Settings):
+def _composer_llm(settings: Settings) -> LLMProvider:
     """The composer's model binding.
 
     Warmer than the planner's by default: this one writes the farmer's answer,
@@ -546,7 +560,7 @@ def _composer_llm(settings: Settings):
     )
 
 
-def _moderation_llm(settings: Settings):
+def _moderation_llm(settings: Settings) -> LLMProvider:
     if settings.stub_llm:
         return StubLLM()
     return PydanticAILLMProvider(

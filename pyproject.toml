@@ -105,6 +105,7 @@ select = [
     "T20",  # no stray print()
     "SIM",  # simplifications
     "BLE",  # catch-all except needs a stated reason
+    "ANN",  # type hints on function signatures
 ]
 ignore = [
     "C401", # set(generator) reads fine
@@ -112,6 +113,11 @@ ignore = [
     "RET504",# naming a value before returning it can aid reading
     "SIM102",# nested ifs can read clearer than one long and
     "SIM108",# ternaries can hurt reading
+    "ANN002",# *args
+    "ANN003",# **kwargs
+    "ANN204",# __init__ etc. return types
+    "ANN206",# classmethod return types
+    "ANN401",# Any is sometimes the honest type
 ]
 
 # Hard boundary: only orchestration/ may import the agentic framework.

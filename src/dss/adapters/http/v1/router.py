@@ -46,6 +46,7 @@ from dss.core.shared.models import (
     TurnOutcome,
     TurnStarted,
     TurnStatus,
+    UserTurn,
 )
 from dss.ports.turn import TurnRunner
 
@@ -222,7 +223,7 @@ _OPENAPI = {
 
 
 async def _frames(
-    runner: TurnRunner, turn, ctx: TurnContext, stream: sse.Stream
+    runner: TurnRunner, turn: UserTurn, ctx: TurnContext, stream: sse.Stream
 ) -> AsyncIterator[bytes]:
     """Forward each event as it arrives.
 
@@ -256,7 +257,7 @@ async def _frames(
 
 async def _single(
     runner: TurnRunner,
-    turn,
+    turn: UserTurn,
     ctx: TurnContext,
     response_id: str,
     clock: Callable[[], datetime],

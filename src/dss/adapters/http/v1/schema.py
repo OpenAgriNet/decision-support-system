@@ -20,7 +20,13 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_serializer
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    model_serializer,
+)
 from pydantic.alias_generators import to_camel
 
 
@@ -140,7 +146,9 @@ class Outcome(_WireOut):
     cause: str | None = None
 
     @model_serializer(mode="wrap")
-    def _keep_null_cause(self, handler):  # type: ignore[no-untyped-def]
+    def _keep_null_cause(
+        self, handler: SerializerFunctionWrapHandler
+    ) -> dict[str, object]:
         data = handler(self)
         data.setdefault("cause", None)
         return data

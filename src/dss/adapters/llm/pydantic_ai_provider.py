@@ -35,6 +35,9 @@ from dss.ports.llm import SchemaT
 # only mode that works against a model/endpoint that does not support tools.
 OutputMode = Literal["tool", "native", "prompted"]
 
+# A built model, or a model name Pydantic AI resolves itself.
+type ModelBinding = Model | str
+
 
 class PydanticAILLMProvider:
     """A per-function model binding. ``model`` is a configured Pydantic AI ``Model``
@@ -44,7 +47,7 @@ class PydanticAILLMProvider:
 
     def __init__(
         self,
-        model: Model,
+        model: ModelBinding,
         *,
         name: str,
         stage: Stage,
@@ -66,7 +69,9 @@ class PydanticAILLMProvider:
         self._model_settings = {"temperature": temperature, "timeout": timeout}
         self._stream_debounce_seconds = stream_debounce_seconds
 
-    def _output_type(self, schema: type[SchemaT]):
+    def _output_type(
+        self, schema: type[SchemaT]
+    ) -> type[SchemaT] | PromptedOutput[SchemaT] | NativeOutput[SchemaT]:
         if self._output_mode == "prompted":
             return PromptedOutput(schema)
         if self._output_mode == "native":
