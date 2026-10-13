@@ -440,3 +440,25 @@ def test_an_ambiguous_place_is_a_failure_without_a_provider() -> None:
     assert failure.capability is None
     assert "Aurangabad" in failure.reason
     assert "several" in failure.reason
+
+
+def test_missing_needed_place_fails() -> None:
+    """ "How do I grow potato, and will it rain?" with nothing named: the
+    potato ask goes on without a place, the weather ask cannot."""
+
+    potato = Ask(
+        subject_categories=SubjectCategory.CROP,
+        interaction_type=InteractionType.ADVISE,
+        agriculture_subjects="potato",
+    )
+    rain = Ask(
+        subject_categories=SubjectCategory.WEATHER,
+        interaction_type=InteractionType.OBSERVE,
+    )
+    intent = _intent(potato, rain)
+
+    failures = place_failures(intent, place_optional={0})
+
+    assert [index for index, _ in failures] == [1]
+    assert failures[0][1].capability is None
+    assert "place" in failures[0][1].reason

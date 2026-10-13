@@ -428,6 +428,27 @@ async def test_select_makes_no_call_for_an_ask_whose_place_failed() -> None:
     assert deps.failures == []
 
 
+async def test_no_call_without_needed_place() -> None:
+    """Nothing named, and the pack indexes a location: a call would go out
+    for nowhere. The same guard as a failed place, so `plan()`'s up-front
+    failure stays the only record."""
+
+    invocation = _FakeInvocation()
+    deps = _deps(invocation)
+    deps.schemas = {
+        "openagrinet:MandiPrice": SCHEMAS["openagrinet:MandiPrice"].model_copy(
+            update={"needs_place": True}
+        )
+    }
+
+    agent = build_planner_agent(skills=(_skill_with("select"),))
+    with agent.override(model=FunctionModel(_calls_select_then_answers)):
+        await agent.run("price of paddy", deps=deps)
+
+    assert invocation.calls == []
+    assert deps.failures == []
+
+
 async def test_select_states_the_ask_category_not_the_advertised_one() -> None:
     """The seam again: `_select` has to find the ask behind `ask_index`.
 
