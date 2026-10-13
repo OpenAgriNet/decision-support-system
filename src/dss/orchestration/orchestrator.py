@@ -39,7 +39,7 @@ before it touches a provider.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Mapping, Sequence
-from contextlib import aclosing
+from contextlib import aclosing, suppress
 from dataclasses import dataclass
 
 from dss.adapters.observability.tracing import (
@@ -428,10 +428,9 @@ class Orchestrator:
         """Telemetry is optional (`ports/sinks.py`), so losing a span must never
         cost the farmer an answer."""
 
-        try:
+        # An optional sink may fail any way it likes.
+        with suppress(Exception):
             self._telemetry.stage(stage, ctx, outcome)
-        except Exception:  # noqa: BLE001 - an optional sink may fail any way it likes
-            pass
 
 
 def _revealed(block: OutputContent, visibility: Visibility) -> OutputContent:
