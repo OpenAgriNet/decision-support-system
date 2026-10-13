@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from dss.adapters.sinks.memory import MemoryTurnSink
 from dss.config.clarification_text_loader import load_clarification_text
+from dss.core.channel.service import NO_MATCH_TEXT
 from dss.core.intent.models import (
     ClassifiedAsk,
     IntentClassification,
@@ -343,6 +344,28 @@ async def test_nobody_serving_names_the_place() -> None:
     assert [block.text for block in events[-1].content] == [
         "I could not find a source that answers this for Pune yet."
     ]
+
+
+async def test_no_asks_is_no_match_with_a_message() -> None:
+    """The classifier found nothing to ask about. Say so, rather than build
+    the no-provider reply from zero asks, which is an empty bubble."""
+
+    plan = _FakePlan(_ANSWERED_EVIDENCE)
+    compose = _FakeCompose("unused")
+    empty = DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
+    orch, _ = _build(
+        intent=IntentClassification(asks=(), confidence=0.1),
+        discovery=empty,
+        plan=plan,
+        compose=compose,
+    )
+
+    events = await _collect(orch)
+
+    finished = events[-1]
+    assert finished.outcome.status is TurnStatus.NO_MATCH
+    assert [block.text for block in finished.content] == [NO_MATCH_TEXT]
+    assert plan.calls == 0 and compose.calls == 0
 
 
 async def test_an_unlocated_turn_asks_for_a_place() -> None:

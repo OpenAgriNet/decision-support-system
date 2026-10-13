@@ -158,6 +158,23 @@ async def test_device_geometry_beats_asserted_area() -> None:
     assert place.source.value == "asserted_geometry"
 
 
+async def test_device_geometry_is_named_by_the_nearest_place() -> None:
+    """A device point alone gives the answer nothing to call the place. The
+    nearest known place names it; the point itself stays the device's."""
+
+    classification = IntentClassification(asks=(_weather_ask(),))
+    turn = _turn(geometry=_DEVICE_GEOMETRY)
+    lookup = _FakeLookup({}, nearest=_ANAND)
+
+    intent = await resolve_places(classification, turn, lookup=lookup)
+
+    place = intent.asks[0].place
+    assert isinstance(place, ResolvedPlace)
+    assert place.name == "Anand"
+    assert place.within == ("India", "Gujarat")
+    assert place.geometry == _DEVICE_GEOMETRY
+
+
 async def test_named_place_matching_several_is_ambiguous() -> None:
     """Two districts named Bilaspur collide — picking one silently would be a
     ~1000km error, so the ask carries every candidate instead."""
