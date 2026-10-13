@@ -107,6 +107,7 @@ select = [
     "BLE",  # catch-all except needs a stated reason
     "ANN",  # type hints on function signatures
     "S",    # security (bandit)
+    "RUF",  # ruff's own rules
 ]
 ignore = [
     "C401", # set(generator) reads fine
@@ -121,6 +122,7 @@ ignore = [
     "ANN401",# Any is sometimes the honest type
     "S311", # random is not used for secrets
     "S404", # importing subprocess is fine; calls are still checked
+    "RUF005",# [*a, b] vs a + [b] is taste
 ]
 
 # Hard boundary: only orchestration/ may import the agentic framework.

@@ -28,7 +28,7 @@ from dss.ports.pii_identifier import IdentifierUnavailable
 # One word after a declaring phrase: letters, with an inner ' . or - (O'Neil).
 _NAME_TOKEN = re.compile(r"[ \t]+([^\W\d_]+(?:['.-][^\W\d_]+)*)")
 # A colon or dash between the phrase and the name, with no space before it.
-_LEAD = re.compile(r"[ \t]*[:\-–]")
+_LEAD = re.compile(r"[ \t]*[:\-–]")  # noqa: RUF001 - the en dash is a real separator
 # Digits, gaps and a leading + only: a number, not an email or a code.
 _NUMBER = re.compile(r"\+?[\d \-]+")
 _DIGITS = re.compile(r"\d+")

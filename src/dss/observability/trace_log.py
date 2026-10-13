@@ -228,7 +228,7 @@ def trace_component(
     try:
         with span_context:
             yield
-    except BaseException as exc:  # noqa: BLE001 - re-raised; we only tag the span
+    except BaseException as exc:  # re-raised; we only tag the span
         status = f"error:{type(exc).__name__}"
         raise
     finally:
