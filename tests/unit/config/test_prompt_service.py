@@ -38,6 +38,7 @@ def _registry(
     *,
     en_template: str = "Hello {{ name }}",
     hi_template: str | None = "नमस्ते {{ name }}",
+    hi_key: str = "hi",
     placeholders: tuple[str, ...] = ("name",),
     en_skills: bool = False,
     include_en: bool = True,
@@ -55,7 +56,7 @@ def _registry(
     prompt_dir = tmp_path / "prompts"
     prompt_dir.mkdir()
     languages: list[str] = []
-    for language_tag, template in (("en", en_template), ("hi", hi_template)):
+    for language_tag, template in (("en", en_template), (hi_key, hi_template)):
         if template is None or (language_tag == "en" and not include_en):
             continue
         (prompt_dir / f"{language_tag}.j2").write_text(template, encoding="utf-8")
@@ -125,6 +126,21 @@ def test_the_fallback_is_recorded_as_a_trace_event(
 def test_a_regional_tag_resolves_to_its_primary_subtag(tmp_path: Path) -> None:
     service = build_prompt_service(_registry(tmp_path))
     assert service.get_prompt(_PROBE, "hi-IN", {"name": "x"}) == "नमस्ते x"
+
+
+def test_a_registry_key_is_read_as_a_tag(tmp_path: Path) -> None:
+    service = build_prompt_service(_registry(tmp_path, hi_key="HI"))
+    assert service.get_prompt(_PROBE, "hi-IN", {"name": "x"}) == "नमस्ते x"
+
+
+def test_a_script_tag_is_served_before_its_language(tmp_path: Path) -> None:
+    service = build_prompt_service(_registry(tmp_path, hi_key="gu-Gujr"))
+    assert service.get_prompt(_PROBE, "gu-Gujr-IN", {"name": "x"}) == "नमस्ते x"
+
+
+def test_a_three_part_tag_walks_down_to_its_language(tmp_path: Path) -> None:
+    service = build_prompt_service(_registry(tmp_path, hi_key="gu"))
+    assert service.get_prompt(_PROBE, "gu-Gujr-IN", {"name": "x"}) == "नमस्ते x"
 
 
 def test_an_english_regional_tag_logs_no_fallback(
@@ -230,6 +246,11 @@ def test_a_named_template_file_that_is_absent_refuses_to_boot(tmp_path: Path) ->
     (tmp_path / "prompts" / "hi.j2").unlink()
     with pytest.raises(FileNotFoundError):
         build_prompt_service(config)
+
+
+def test_a_registry_key_that_is_not_a_tag_refuses_to_boot(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="not BCP-47"):
+        build_prompt_service(_registry(tmp_path, hi_key="gujarati"))
 
 
 # --- skills -----------------------------------------------------------------

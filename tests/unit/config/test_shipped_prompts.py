@@ -21,6 +21,7 @@ from dss.config.prompt_service import PromptService, build_prompt_service
 from dss.core.intent.models import InteractionType, SubjectCategory
 from dss.core.planner.models import Identity
 from dss.core.planner.prompt import answers_section, asks_section, guidance_section
+from dss.core.shared.language import ENGLISH, LanguageTag
 from dss.core.shared.models import ConversationMessage
 from dss.ports.prompts import PromptIdentifier
 
@@ -81,7 +82,7 @@ def _composer_prompt() -> str:
 def test_every_component_is_registered_with_english_and_hindi() -> None:
     service = _service()
     for component in PromptIdentifier:
-        assert service.languages_for(component) == ("en", "hi")
+        assert service.languages_for(component) == (ENGLISH, LanguageTag("hi"))
 
 
 # --- intent (moved from tests/unit/core/intent/test_service.py) ------------
