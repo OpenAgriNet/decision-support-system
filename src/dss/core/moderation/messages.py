@@ -48,5 +48,5 @@ def messages_for(decision: ModerationDecision) -> list[str]:
         lead = [_EMPATHY] if decision.frustration_detected else []
         return lead + list(decision.warnings)
 
-    assert decision.reason_code is not None  # guaranteed by the decision validator
+    assert decision.reason_code is not None  # noqa: S101 - guaranteed by the decision validator
     return [_REJECT_MESSAGES.get(decision.reason_code, _GENERIC_REJECT)]

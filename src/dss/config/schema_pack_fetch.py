@@ -206,12 +206,12 @@ def _get(url: str) -> bytes | None:
     Contents API calls are capped at 60 an hour.
     """
 
-    request = urllib.request.Request(url)
+    request = urllib.request.Request(url)  # noqa: S310 - URL is built from fixed https hosts
     token = os.environ.get("GITHUB_TOKEN")
     if token and "/repos/" in url:
         request.add_header("Authorization", f"Bearer {token}")
     try:
-        with urllib.request.urlopen(request, timeout=_TIMEOUT_SECONDS) as response:
+        with urllib.request.urlopen(request, timeout=_TIMEOUT_SECONDS) as response:  # noqa: S310 - URL is built from fixed https hosts
             return response.read()
     except urllib.error.HTTPError:
         return None

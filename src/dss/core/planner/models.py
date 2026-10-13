@@ -39,7 +39,7 @@ class Verdict:
         """Block until moderation has decided, then return its decision."""
 
         await self._event.wait()
-        assert self._decision is not None
+        assert self._decision is not None  # noqa: S101 - type narrowing only
         return self._decision
 
 

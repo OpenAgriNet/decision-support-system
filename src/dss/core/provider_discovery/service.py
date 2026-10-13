@@ -207,7 +207,7 @@ def _build_queries(
         coverage = coverage_for_ask(ask, radius_m=radius_m)
         query, event = _query_for_ask(ask, languages, coverage, index)
         if query is None:
-            assert event is not None
+            assert event is not None  # noqa: S101 - type narrowing only
             events.append(event)
             unresolved_asks.add(ask_index)
             continue
@@ -255,7 +255,7 @@ async def _run_queries(
             task_group.start_soon(_run, slot, query, tuple(ask_indices))
 
     for result in query_results:
-        assert result is not None
+        assert result is not None  # noqa: S101 - type narrowing only
         answers.update(result.answers)
         capabilities.update(result.capabilities)
         failures.update(result.failures)
