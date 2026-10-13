@@ -104,6 +104,7 @@ select = [
     "RET",  # return style
     "T20",  # no stray print()
     "SIM",  # simplifications
+    "BLE",  # catch-all except needs a stated reason
 ]
 ignore = [
     "C401", # set(generator) reads fine

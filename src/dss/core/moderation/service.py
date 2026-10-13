@@ -119,7 +119,7 @@ async def moderate(
                 user_query=query,
                 schema=LlmModerationVerdict,
             )
-        except Exception:
+        except Exception:  # noqa: BLE001 - any LLM failure gets the fail-mode answer
             return _on_llm_failure(llm_policies)
 
         if verdict.violated_policy_id:
