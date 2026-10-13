@@ -92,6 +92,14 @@ select = [
     "TID", # flake8-tidy-imports — carries the framework-boundary ban below
     "UP",  # pyupgrade
     "B",   # flake8-bugbear
+    "W",   # pycodestyle warnings
+    "DTZ", # naive datetimes
+    "INT", # gettext misuse
+    "PGH", # blanket noqa / type: ignore
+    "PIE", # misc. lint
+    "Q",   # quote style
+    "RSE", # raise style
+    "ISC", # implicit string concatenation
 ]
 
 # Hard boundary: only orchestration/ may import the agentic framework.
