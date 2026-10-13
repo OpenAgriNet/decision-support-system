@@ -38,8 +38,9 @@ def _registry(
     tmp_path: Path,
     *,
     en_template: str = "Hello {{ name }}",
-    hi_template: str | None = "नमस्ते {{ name }}",
-    hi_key: str = "hi",
+    override_template: str | None = "नमस्ते {{ name }}",
+    override_key: str = "hi",
+    more_overrides: tuple[tuple[str, str], ...] = (),
     placeholders: tuple[str, ...] = ("name",),
     en_skills: bool = False,
     include_en: bool = True,
@@ -57,7 +58,8 @@ def _registry(
     prompt_dir = tmp_path / "prompts"
     prompt_dir.mkdir()
     languages: list[str] = []
-    for language_tag, template in (("en", en_template), (hi_key, hi_template)):
+    entries = (("en", en_template), (override_key, override_template), *more_overrides)
+    for language_tag, template in entries:
         if template is None or (language_tag == "en" and not include_en):
             continue
         (prompt_dir / f"{language_tag}.j2").write_text(template, encoding="utf-8")
@@ -130,19 +132,25 @@ def test_a_regional_tag_resolves_to_its_primary_subtag(tmp_path: Path) -> None:
 
 
 def test_a_registry_key_is_read_as_a_tag(tmp_path: Path) -> None:
-    service = build_prompt_service(_registry(tmp_path, hi_key="HI"))
+    service = build_prompt_service(_registry(tmp_path, override_key="HI"))
     assert service.get_prompt(_PROBE, LanguageTag("hi-IN"), {"name": "x"}) == "नमस्ते x"
 
 
 def test_a_script_tag_is_served_before_its_language(tmp_path: Path) -> None:
-    service = build_prompt_service(_registry(tmp_path, hi_key="gu-Gujr"))
-    assert (
-        service.get_prompt(_PROBE, LanguageTag("gu-Gujr-IN"), {"name": "x"}) == "नमस्ते x"
+    config = _registry(
+        tmp_path,
+        override_key="gu",
+        override_template="GU {{ name }}",
+        more_overrides=(("gu-Gujr", "GUJR {{ name }}"),),
+    )
+    service = build_prompt_service(config)
+    assert service.get_prompt(_PROBE, LanguageTag("gu-Gujr-IN"), {"name": "x"}) == (
+        "GUJR x"
     )
 
 
 def test_a_three_part_tag_walks_down_to_its_language(tmp_path: Path) -> None:
-    service = build_prompt_service(_registry(tmp_path, hi_key="gu"))
+    service = build_prompt_service(_registry(tmp_path, override_key="gu"))
     assert (
         service.get_prompt(_PROBE, LanguageTag("gu-Gujr-IN"), {"name": "x"}) == "नमस्ते x"
     )
@@ -171,7 +179,7 @@ def test_a_broken_override_serves_english_rather_than_failing_the_turn(
     attribute miss inside a declared one only surfaces at render. Even then an
     override must not cost the farmer an answer."""
 
-    config = _registry(tmp_path, hi_template="नमस्ते {{ name.missing_attr }}")
+    config = _registry(tmp_path, override_template="नमस्ते {{ name.missing_attr }}")
     service = build_prompt_service(config)
 
     with caplog.at_level(logging.ERROR):
@@ -235,7 +243,7 @@ def test_a_template_dropping_a_declared_placeholder_refuses_to_boot(
     """The silent-drop bug ``str.format`` had: a typo'd placeholder would ship
     a prompt with no identity in it, and nothing would notice."""
 
-    config = _registry(tmp_path, hi_template="नमस्ते {{ nmae }}, {{ name }}")
+    config = _registry(tmp_path, override_template="नमस्ते {{ nmae }}, {{ name }}")
     with pytest.raises(ValueError, match="nmae"):
         build_prompt_service(config)
 
@@ -243,7 +251,7 @@ def test_a_template_dropping_a_declared_placeholder_refuses_to_boot(
 def test_a_template_missing_a_declared_placeholder_refuses_to_boot(
     tmp_path: Path,
 ) -> None:
-    config = _registry(tmp_path, hi_template="नमस्ते without the name")
+    config = _registry(tmp_path, override_template="नमस्ते without the name")
     with pytest.raises(ValueError, match="never uses name"):
         build_prompt_service(config)
 
@@ -256,8 +264,8 @@ def test_a_named_template_file_that_is_absent_refuses_to_boot(tmp_path: Path) ->
 
 
 def test_a_registry_key_that_is_not_a_tag_refuses_to_boot(tmp_path: Path) -> None:
-    with pytest.raises(ValueError, match="not BCP-47"):
-        build_prompt_service(_registry(tmp_path, hi_key="gujarati"))
+    with pytest.raises(ValueError, match="is not a supported BCP-47 tag"):
+        build_prompt_service(_registry(tmp_path, override_key="gujarati"))
 
 
 # --- skills -----------------------------------------------------------------

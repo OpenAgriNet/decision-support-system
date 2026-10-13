@@ -15,7 +15,7 @@ import re
 from pydantic import ConfigDict, RootModel, field_validator
 
 # RFC 5646's main form: language, script, region, variants. Extlang,
-# extensions and private use are left out — no channel sends them.
+# extensions and private use are refused on purpose (open question on #174).
 _TAG = re.compile(
     r"(?P<language>[A-Za-z]{2,3})"
     r"(?:-(?P<script>[A-Za-z]{4}))?"
@@ -29,16 +29,23 @@ class LanguageTag(RootModel[str]):
 
     model_config = ConfigDict(frozen=True)
 
+    # A tag passed where a str is expected would fail the root's str check.
+    @field_validator("root", mode="before")
+    @classmethod
+    def _unwrap_tag(cls, value: object) -> object:
+        return value.root if isinstance(value, LanguageTag) else value
+
     @field_validator("root")
     @classmethod
-    def _standard_form(cls, value: str) -> str:
+    def _normalize_to_standard_form(cls, value: str) -> str:
         match = _TAG.fullmatch(value)
         if match is None:
             raise ValueError(
-                f"language code {value!r} is not BCP-47 — use 'gu'/'hi'/'en', "
+                f"language tag {value!r} is not a supported BCP-47 tag "
+                "(language[-Script][-REGION][-variant]) — use 'gu'/'hi'/'en', "
                 "never a full name like 'gujarati'"
             )
-        return _in_standard_casing(match)
+        return _format_in_standard_casing(match)
 
     def __str__(self) -> str:
         return self.root
@@ -69,7 +76,7 @@ class LanguageTag(RootModel[str]):
         return broader in self.lookup_order
 
 
-def _in_standard_casing(match: re.Match[str]) -> str:
+def _format_in_standard_casing(match: re.Match[str]) -> str:
     subtags = [
         match["language"].lower(),
         (match["script"] or "").title(),

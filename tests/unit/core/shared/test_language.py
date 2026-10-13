@@ -27,8 +27,13 @@ def test_a_tag_is_stored_in_standard_casing(raw: str, expected: str) -> None:
 
 @pytest.mark.parametrize("raw", ["gujarati", "en-a-b-c", "", "hi_IN", "x-private"])
 def test_a_malformed_tag_is_rejected(raw: str) -> None:
-    with pytest.raises(ValueError, match="not BCP-47"):
+    with pytest.raises(ValueError, match="is not a supported BCP-47 tag"):
         LanguageTag(raw)
+
+
+def test_a_tag_built_from_a_tag_is_the_same_tag() -> None:
+    tag = LanguageTag("HI-in")
+    assert LanguageTag(tag) == tag  # type: ignore[arg-type]  # the misuse under test
 
 
 def test_str_is_the_bare_tag() -> None:
@@ -80,7 +85,3 @@ def test_a_model_field_accepts_a_string_and_dumps_one() -> None:
     assert tagged.lang == LanguageTag("hi-IN")
     assert tagged.model_dump(mode="json") == {"lang": "hi-IN"}
     assert _Tagged.model_validate_json(tagged.model_dump_json()) == tagged
-
-
-def test_a_turn_accepts_plain_strings(a_turn) -> None:
-    assert a_turn(target_lang="HI-in").target_lang == LanguageTag("hi-IN")

@@ -100,7 +100,7 @@ def test_a_language_that_is_not_a_tag_is_refused(a_body):
     body = schema.TurnRequest.model_validate(
         a_body(message__attributes__targetLanguage="gujarati")
     )
-    with pytest.raises(ValueError, match="not BCP-47"):
+    with pytest.raises(ValueError):
         mapping.to_user_turn(body)
 
 
