@@ -27,9 +27,8 @@
   the same language always finds the same prompt. A tag with a script tries
   the prompt for that script before the general one (`gu-Gujr-IN`, then
   `gu-Gujr`, then `gu`). A registry key that is not a language tag now stops
-  the service at boot, and a tag the old check let through but the standard
-  forbids (such as `en-a-b-c`) is refused. On the wire, a language is still a
-  plain string. (#174)
+  the service at boot. The same tags are accepted as before, and on the
+  wire a language is still a plain string. (#174)
 - The planner's fixed template and the `provider-invocation` skill moved into
   the prompt registry (`prompts/planner/<lang>/`); the bundled
   `config/defaults/planner-prompt.md` and `config/defaults/skills/` are gone.

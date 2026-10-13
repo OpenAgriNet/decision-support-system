@@ -264,7 +264,7 @@ def test_a_named_template_file_that_is_absent_refuses_to_boot(tmp_path: Path) ->
 
 
 def test_a_registry_key_that_is_not_a_tag_refuses_to_boot(tmp_path: Path) -> None:
-    with pytest.raises(ValueError, match="is not a supported BCP-47 tag"):
+    with pytest.raises(ValueError, match="is not BCP-47"):
         build_prompt_service(_registry(tmp_path, override_key="gujarati"))
 
 

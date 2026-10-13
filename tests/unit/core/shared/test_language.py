@@ -19,16 +19,25 @@ class _Tagged(BaseModel):
         ("zh-hant-tw", "zh-Hant-TW"),
         ("es-419", "es-419"),
         ("SL-Rozaj-BISKE", "sl-rozaj-biske"),
+        ("EN-us-U-MU-Celsius", "en-US-u-mu-celsius"),
     ],
 )
 def test_a_tag_is_stored_in_standard_casing(raw: str, expected: str) -> None:
     assert LanguageTag(raw).root == expected
 
 
-@pytest.mark.parametrize("raw", ["gujarati", "en-a-b-c", "", "hi_IN", "x-private"])
+@pytest.mark.parametrize(
+    "raw", ["gujarati", "", "hi_IN", "x-private", "hi-toolongpart"]
+)
 def test_a_malformed_tag_is_rejected(raw: str) -> None:
-    with pytest.raises(ValueError, match="is not a supported BCP-47 tag"):
+    with pytest.raises(ValueError, match="is not BCP-47"):
         LanguageTag(raw)
+
+
+@pytest.mark.parametrize("raw", ["en-a-b-c", "zh-yue", "en-US-u-mu-celsius"])
+def test_a_tag_the_old_check_accepted_is_still_accepted(raw: str) -> None:
+    """Strict RFC 5646 checking waits on the channels (#174 standup)."""
+    assert LanguageTag(raw).root == raw
 
 
 def test_a_tag_built_from_a_tag_is_the_same_tag() -> None:
@@ -52,6 +61,7 @@ def test_primary_is_the_language_subtag() -> None:
         ("gu", ("gu",)),
         ("hi-IN", ("hi-IN", "hi")),
         ("gu-Gujr-IN", ("gu-Gujr-IN", "gu-Gujr", "gu")),
+        ("en-US-u-mu-celsius", ("en-US-u-mu-celsius", "en-US-u-mu", "en-US", "en")),
     ],
 )
 def test_lookup_order_drops_subtags_from_the_end(

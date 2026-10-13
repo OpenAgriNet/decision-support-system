@@ -14,14 +14,11 @@ import re
 
 from pydantic import ConfigDict, RootModel, field_validator
 
-# RFC 5646's main form: language, script, region, variants. Extlang,
-# extensions and private use are refused on purpose (open question on #174).
-_TAG = re.compile(
-    r"(?P<language>[A-Za-z]{2,3})"
-    r"(?:-(?P<script>[A-Za-z]{4}))?"
-    r"(?:-(?P<region>[A-Za-z]{2}|[0-9]{3}))?"
-    r"(?P<variants>(?:-(?:[A-Za-z0-9]{5,8}|[0-9][A-Za-z0-9]{3}))*)"
-)
+# The shapes the DSS has always accepted: a 2-3 letter language, then any
+# subtags of 1-8 letters or digits. Narrowing this to RFC 5646's main form
+# would refuse extension tags (en-US-u-mu-celsius) that channels may send;
+# that waits on the channels' answer (#174).
+_TAG = re.compile(r"[A-Za-z]{2,3}(?:-[A-Za-z0-9]{1,8})*")
 
 
 class LanguageTag(RootModel[str]):
@@ -38,14 +35,12 @@ class LanguageTag(RootModel[str]):
     @field_validator("root")
     @classmethod
     def _normalize_to_standard_form(cls, value: str) -> str:
-        match = _TAG.fullmatch(value)
-        if match is None:
+        if _TAG.fullmatch(value) is None:
             raise ValueError(
-                f"language tag {value!r} is not a supported BCP-47 tag "
-                "(language[-Script][-REGION][-variant]) — use 'gu'/'hi'/'en', "
+                f"language tag {value!r} is not BCP-47 — use 'gu'/'hi'/'en', "
                 "never a full name like 'gujarati'"
             )
-        return _format_in_standard_casing(match)
+        return _format_in_standard_casing(value)
 
     def __str__(self) -> str:
         return self.root
@@ -65,10 +60,13 @@ class LanguageTag(RootModel[str]):
         """This tag, then each shorter form (RFC 4647 §3.4 Lookup):
         `gu-Gujr-IN`, `gu-Gujr`, `gu`."""
         subtags = self.root.split("-")
-        return tuple(
-            LanguageTag("-".join(subtags[:length]))
-            for length in range(len(subtags), 0, -1)
+        shorter_forms = (
+            "-".join(subtags[:length])
+            for length in range(len(subtags) - 1, 0, -1)
+            # RFC 4647: a shorter form never ends on a singleton such as `-u`.
+            if len(subtags[length - 1]) > 1
         )
+        return (self, *(LanguageTag(form) for form in shorter_forms))
 
     def is_within(self, broader: LanguageTag) -> bool:
         """Whether this tag is `broader` or a narrower form of it: `en-IN` is
@@ -76,14 +74,31 @@ class LanguageTag(RootModel[str]):
         return broader in self.lookup_order
 
 
-def _format_in_standard_casing(match: re.Match[str]) -> str:
-    subtags = [
-        match["language"].lower(),
-        (match["script"] or "").title(),
-        (match["region"] or "").upper(),
-        match["variants"].lower().lstrip("-"),
+def _format_in_standard_casing(tag: str) -> str:
+    """RFC 5646 §2.1.1 casing. Everything from the first singleton (an
+    extension such as `-u-`, or private use `-x-`) on is lowercase."""
+    subtags = tag.split("-")
+    first_singleton = next(
+        (index for index, subtag in enumerate(subtags) if index and len(subtag) == 1),
+        len(subtags),
+    )
+    head, tail = subtags[:first_singleton], subtags[first_singleton:]
+    cased = [
+        head[0].lower(),
+        *(_case_by_shape(subtag) for subtag in head[1:]),
+        *(subtag.lower() for subtag in tail),
     ]
-    return "-".join(subtag for subtag in subtags if subtag)
+    return "-".join(cased)
+
+
+def _case_by_shape(subtag: str) -> str:
+    """A 4-letter subtag is a script (title case), a 2-letter one a region
+    (upper case); the rest are lower case."""
+    if subtag.isalpha() and len(subtag) == 4:
+        return subtag.title()
+    if subtag.isalpha() and len(subtag) == 2:
+        return subtag.upper()
+    return subtag.lower()
 
 
 ENGLISH = LanguageTag("en")
