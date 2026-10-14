@@ -8,7 +8,7 @@ import pytest
 from dss.adapters.pii_identifier.factory import build_identifiers
 from dss.adapters.pii_identifier.regex.identifier import RegexIdentifier
 from dss.core.redaction.models import PiiSpan
-from dss.ports.pii_identifier import IdentifierUnavailable, PiiIdentifier
+from dss.ports.pii_identifier import IdentifierUnavailableError, PiiIdentifier
 from tests.support.redaction_rules import SETTINGS
 
 
@@ -39,12 +39,12 @@ def test_a_regex_entry_builds_a_regex_identifier() -> None:
 
 
 def test_an_unknown_type_stops_the_boot() -> None:
-    with pytest.raises(IdentifierUnavailable, match="unknown type 'presidio'"):
+    with pytest.raises(IdentifierUnavailableError, match="unknown type 'presidio'"):
         build_identifiers([{"type": "presidio"}])
 
 
 def test_a_bad_rule_stops_the_boot_and_names_it() -> None:
-    with pytest.raises(IdentifierUnavailable, match="rule 'phone'"):
+    with pytest.raises(IdentifierUnavailableError, match="rule 'phone'"):
         build_identifiers(
             [
                 {

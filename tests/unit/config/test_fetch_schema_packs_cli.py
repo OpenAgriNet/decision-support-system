@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from dss.config.schema_pack_fetch import SchemaPackFetchFailed
+from dss.config.schema_pack_fetch import SchemaPackFetchFailedError
 from scripts.fetch_schema_packs import main
 
 
@@ -24,7 +24,9 @@ def test_a_failed_fetch_exits_non_zero(monkeypatch, tmp_path: Path) -> None:
     """
 
     def refuses(**_kwargs):
-        raise SchemaPackFetchFailed("no schema packs found on ref 'main' (0 of 4).")
+        raise SchemaPackFetchFailedError(
+            "no schema packs found on ref 'main' (0 of 4)."
+        )
 
     monkeypatch.setattr("scripts.fetch_schema_packs.fetch_packs", refuses)
 

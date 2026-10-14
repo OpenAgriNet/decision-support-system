@@ -47,7 +47,7 @@ class AreaMatch(BaseModel):
     is_guess: bool = False
 
 
-class AreaLookupUnavailable(Exception):
+class AreaLookupUnavailableError(Exception):
     """A source could not answer (down, slow, bad reply). Not the same as "no
     such area". The chain catches it; core never sees it."""
 

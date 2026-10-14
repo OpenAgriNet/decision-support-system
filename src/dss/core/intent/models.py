@@ -18,7 +18,7 @@ from dss.ports.area_lookup import AreaMatch
 
 # What a model leaves around a name it copied out of a sentence or a quoted
 # example. Brackets and hyphens are not here: they can end a real name.
-_PLACE_NAME_EDGE_JUNK = " \t\n'\"‘’“”,.;:"
+_PLACE_NAME_EDGE_JUNK = " \t\n'\"‘’“”,.;:"  # noqa: RUF001 - curly quotes on purpose
 
 # "2. " or "2) " in front of a name the model copied from our numbered list.
 # A real name like "24 Parganas" has no dot or bracket after the number.

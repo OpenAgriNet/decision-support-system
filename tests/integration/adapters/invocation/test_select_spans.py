@@ -16,7 +16,7 @@ from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import StatusCode
 
-from dss.adapters.invocation.client import HttpCapabilityInvocation, SelectFailed
+from dss.adapters.invocation.client import HttpCapabilityInvocation, SelectFailedError
 from dss.core.provider_discovery.models import ProviderCapability
 
 CAPABILITY = ProviderCapability(
@@ -56,7 +56,7 @@ async def test_every_attempt_gets_its_own_span_under_the_call(spans) -> None:
     def always_429(request: httpx.Request) -> httpx.Response:
         return httpx.Response(429, json={"error": "simulated"})
 
-    with pytest.raises(SelectFailed):
+    with pytest.raises(SelectFailedError):
         await _invocation(always_429).select(CAPABILITY, {}, "txn-1")
 
     finished = spans.get_finished_spans()
@@ -109,7 +109,7 @@ async def test_each_attempt_says_why_it_failed(spans) -> None:
     there are. What the timeline cannot show is *why* each one failed — a 503
     and a 429 make identically shaped boxes.
 
-    The status code only, never `SelectFailed.detail`: that carries the
+    The status code only, never `SelectFailedError.detail`: that carries the
     provider's response body, which echoes the farmer's query back."""
 
     codes = iter((503, 429, 500))
@@ -117,7 +117,7 @@ async def test_each_attempt_says_why_it_failed(spans) -> None:
     def failing(request: httpx.Request) -> httpx.Response:
         return httpx.Response(next(codes), json={"error": "secret-query-echo"})
 
-    with pytest.raises(SelectFailed):
+    with pytest.raises(SelectFailedError):
         await _invocation(failing).select(CAPABILITY, {}, "txn-1")
 
     attempts = [s for s in spans.get_finished_spans() if s.name == "dss.select.attempt"]
@@ -131,7 +131,7 @@ async def test_the_call_span_counts_its_attempts(spans) -> None:
     def always_429(request: httpx.Request) -> httpx.Response:
         return httpx.Response(429, json={"error": "simulated"})
 
-    with pytest.raises(SelectFailed):
+    with pytest.raises(SelectFailedError):
         await _invocation(always_429).select(CAPABILITY, {}, "txn-1")
 
     call = next(s for s in spans.get_finished_spans() if s.name == "dss.select")
@@ -192,7 +192,7 @@ async def test_a_failed_call_says_how_it_failed_by_class(spans) -> None:
     def forbidden(request: httpx.Request) -> httpx.Response:
         return httpx.Response(403, json={"error": "secret-query-echo"})
 
-    with pytest.raises(SelectFailed):
+    with pytest.raises(SelectFailedError):
         await _invocation(forbidden).select(CAPABILITY, {}, "txn-1")
 
     call = next(s for s in spans.get_finished_spans() if s.name == "dss.select")

@@ -14,7 +14,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from dss.adapters.invocation.client import HttpCapabilityInvocation, SelectFailed
+from dss.adapters.invocation.client import HttpCapabilityInvocation, SelectFailedError
 from dss.core.provider_discovery.models import ProviderCapability
 
 CAPABILITY = ProviderCapability(
@@ -89,7 +89,7 @@ async def test_a_transient_failure_is_retried_until_it_succeeds() -> None:
 async def test_a_transient_failure_gives_up_after_the_configured_attempts() -> None:
     handler = _CountingHandler(429, fail_times=99)
 
-    with pytest.raises(SelectFailed):
+    with pytest.raises(SelectFailedError):
         await _invocation(handler).select(CAPABILITY, {}, "txn-1")
 
     assert handler.calls == 3  # the default
@@ -98,7 +98,7 @@ async def test_a_transient_failure_gives_up_after_the_configured_attempts() -> N
 async def test_the_attempt_count_is_configurable() -> None:
     handler = _CountingHandler(429, fail_times=99)
 
-    with pytest.raises(SelectFailed):
+    with pytest.raises(SelectFailedError):
         await _invocation(handler, attempts=2).select(CAPABILITY, {}, "txn-1")
 
     assert handler.calls == 2
@@ -110,7 +110,7 @@ async def test_a_defect_is_not_retried() -> None:
 
     handler = _CountingHandler(400, fail_times=99)
 
-    with pytest.raises(SelectFailed):
+    with pytest.raises(SelectFailedError):
         await _invocation(handler).select(CAPABILITY, {}, "txn-1")
 
     assert handler.calls == 1

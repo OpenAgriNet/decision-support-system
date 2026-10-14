@@ -37,9 +37,9 @@ from dss.observability.trace_log import (
 # Defined on the port, not here: a failed select is part of the contract, so
 # a caller can catch it without importing this adapter. Re-exported because
 # this module raises it.
-from dss.ports.invocation import SelectFailed
+from dss.ports.invocation import SelectFailedError
 
-__all__ = ["HttpCapabilityInvocation", "SelectFailed", "build_select_request"]
+__all__ = ["HttpCapabilityInvocation", "SelectFailedError", "build_select_request"]
 
 # A 200 whose body we cannot read. KeyError/IndexError for a missing key or
 # an empty commitments list, TypeError for a wrong shape, ValueError because
@@ -50,7 +50,7 @@ _DEFAULT_STATUS_DESCRIPTOR = {"code": "DRAFT", "name": "Draft"}
 _DEFAULT_OFFER_ID = "offer:open-data"
 
 
-def build_select_request(
+def build_select_request(  # noqa: PLR0913
     capability: ProviderCapability,
     resource_attributes: dict,
     *,
@@ -175,7 +175,7 @@ class HttpCapabilityInvocation:
     the pure functions above so they're testable without a client at all.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         client: httpx.AsyncClient,
         base_url: str,
@@ -243,15 +243,15 @@ class HttpCapabilityInvocation:
                             # provider's passages may come from several.
                             call.set_attribute("answer_count", len(answers))
                             return answers
-                        except SelectFailed as failure:
+                        except SelectFailedError as failure:
                             # The code, not `detail` — that carries the
                             # provider's response body, which echoes the
                             # farmer's query back (§6.1). Without it every
-                            # failed attempt reads `SelectFailed`, and a 503
+                            # failed attempt reads `SelectFailedError`, and a 503
                             # and a 429 make identically shaped boxes.
                             span.set_attribute("http.status_code", failure.status_code)
                             raise
-                except SelectFailed as failure:
+                except SelectFailedError as failure:
                     last_chance = attempt == self._attempts
                     if (
                         failure.failure_class is not FailureClass.TRANSIENT
@@ -302,7 +302,7 @@ class HttpCapabilityInvocation:
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             status_code = exc.response.status_code
-            raise SelectFailed(
+            raise SelectFailedError(
                 capability.capability,
                 status_code,
                 classify_status_code(status_code),
@@ -317,7 +317,7 @@ class HttpCapabilityInvocation:
                 capability=capability.capability,
                 error=visibility.conceal(str(exc)),
             )
-            raise SelectFailed(
+            raise SelectFailedError(
                 capability.capability,
                 NO_STATUS_CODE,
                 classify_status_code(NO_STATUS_CODE),
@@ -325,7 +325,7 @@ class HttpCapabilityInvocation:
             ) from exc
 
         # Inside a guard, not after it: the port promises "an answer or
-        # SelectFailed", and a 200 with an unreadable body would otherwise
+        # SelectFailedError", and a 200 with an unreadable body would otherwise
         # raise KeyError/IndexError straight past the planner tool's handler
         # and abort the whole run, losing every other ask's answers. Same
         # treatment the discovery adapter gives its own mapper.
@@ -336,7 +336,7 @@ class HttpCapabilityInvocation:
                 provider_name=capability.provider_name,
             )
         except _MALFORMED_RESPONSE as exc:
-            raise SelectFailed(
+            raise SelectFailedError(
                 capability.capability,
                 NO_STATUS_CODE,
                 # A defect, never transient: the same body reads the same way,

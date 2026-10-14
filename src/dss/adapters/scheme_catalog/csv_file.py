@@ -30,7 +30,7 @@ UNSET_CATALOG = (
 )
 
 
-class MalformedSchemeCatalog(Exception):
+class MalformedSchemeCatalogError(Exception):
     """The catalog file will not load. Raised at boot, never at turn time: a
     tenant's typo should stop a deployment, not degrade one farmer's answer.
     """
@@ -52,7 +52,7 @@ def load_scheme_catalog(path: Path | None) -> CsvSchemeCatalog:
 
     - ``path`` unset → an empty catalog and one warning (no bundled default).
     - ``path`` set but missing → ``FileNotFoundError``.
-    - ``path`` set but broken → ``MalformedSchemeCatalog``, naming the row.
+    - ``path`` set but broken → ``MalformedSchemeCatalogError``, naming the row.
     """
 
     if path is None:
@@ -67,7 +67,7 @@ def _index(rows: csv.DictReader, *, source: str) -> dict[str, Scheme]:
     aliases: dict[str, Scheme] = {}
     missing = [column for column in _REQUIRED if column not in (rows.fieldnames or ())]
     if missing:
-        raise MalformedSchemeCatalog(
+        raise MalformedSchemeCatalogError(
             f"{source} is missing the column(s) {', '.join(missing)} — a scheme "
             f"catalog is {','.join(_REQUIRED)}"
         )
@@ -83,7 +83,7 @@ def _scheme_from(row: dict[str, str], *, source: str, number: int) -> Scheme:
     code = (row.get(_CODE) or "").strip()
     name = (row.get(_NAME) or "").strip()
     if not code or not name:
-        raise MalformedSchemeCatalog(
+        raise MalformedSchemeCatalogError(
             f"{source} row {number} needs both {_CODE} and {_NAME}; "
             f"got {_CODE}={code!r}, {_NAME}={name!r}"
         )
@@ -119,7 +119,7 @@ def _claim(
         return
     claimed = aliases.get(key)
     if claimed is not None and claimed != scheme:
-        raise MalformedSchemeCatalog(
+        raise MalformedSchemeCatalogError(
             f"{source} row {number}: the alias {key!r} is already claimed by "
             f"{claimed.code!r}, so a query using it cannot be resolved to "
             f"either scheme"

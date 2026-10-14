@@ -39,7 +39,7 @@ before it touches a provider.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Mapping, Sequence
-from contextlib import aclosing
+from contextlib import aclosing, suppress
 from dataclasses import dataclass
 
 from dss.adapters.observability.tracing import (
@@ -153,7 +153,7 @@ class Orchestrator:
     """Satisfies `ports.turn.TurnRunner`. The live runner: real intent,
     moderation, discovery, planner and composer, streamed to the transport."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         *,
         intent_llm: LLMProvider,
@@ -189,7 +189,7 @@ class Orchestrator:
         # thing only: whether a pack serves an ask that names no place.
         self._schemas = schemas
 
-    async def run(self, turn: UserTurn, ctx: TurnContext) -> AsyncIterator[TurnEvent]:
+    async def run(self, turn: UserTurn, ctx: TurnContext) -> AsyncIterator[TurnEvent]:  # noqa: C901, PLR0915
         bind_turn_ids(
             ctx.trace_id, message_id=ctx.message_id, session_id=ctx.session_id
         )
@@ -443,10 +443,9 @@ class Orchestrator:
         """Telemetry is optional (`ports/sinks.py`), so losing a span must never
         cost the farmer an answer."""
 
-        try:
+        # An optional sink may fail any way it likes.
+        with suppress(Exception):
             self._telemetry.stage(stage, ctx, outcome)
-        except Exception:  # noqa: BLE001 - an optional sink may fail any way it likes
-            pass
 
 
 def _revealed(block: OutputContent, visibility: Visibility) -> OutputContent:

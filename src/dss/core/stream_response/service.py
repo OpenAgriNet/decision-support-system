@@ -69,7 +69,7 @@ def build_stream_response(
     return compose_stream
 
 
-async def stream_response(
+async def stream_response(  # noqa: PLR0913
     evidence: Evidence,
     intent: Intent,
     *,

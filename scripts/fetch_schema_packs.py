@@ -24,7 +24,7 @@ from pathlib import Path
 from dss.config.schema_pack_fetch import (
     DEFAULT_PACK_DIR,
     DEFAULT_REF,
-    SchemaPackFetchFailed,
+    SchemaPackFetchFailedError,
     fetch_packs,
 )
 
@@ -51,7 +51,7 @@ def main(argv: list[str] | None = None) -> None:
 
     try:
         fetched = fetch_packs(ref=args.ref, dest=args.dest)
-    except SchemaPackFetchFailed as failure:
+    except SchemaPackFetchFailedError as failure:
         # The message names the ref and where the packs are, so print it
         # rather than a traceback — the cause is a wrong ref, not a crash.
         print(f"error: {failure}", file=sys.stderr)

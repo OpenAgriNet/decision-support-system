@@ -13,7 +13,7 @@ import logging
 import httpx
 import pytest
 
-from dss.adapters.invocation.client import HttpCapabilityInvocation, SelectFailed
+from dss.adapters.invocation.client import HttpCapabilityInvocation, SelectFailedError
 from dss.core.provider_discovery.models import ProviderCapability
 from dss.core.redaction.visibility import Visibility
 
@@ -139,7 +139,7 @@ async def test_the_logs_show_tags_never_the_value(caplog) -> None:
 async def test_a_failed_call_does_not_carry_the_value_in_its_detail() -> None:
     provider = _Provider(httpx.Response(400, text=f"bad phone {PHONE}"))
 
-    with pytest.raises(SelectFailed) as failed:
+    with pytest.raises(SelectFailedError) as failed:
         await _invocation(provider).select(
             CAPABILITY,
             {"applicant": {"phone": "«phone_1»"}},

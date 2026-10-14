@@ -86,7 +86,7 @@ def test_a_core_service_hidden_behind_importlib_is_caught() -> None:
 def test_the_domain_language_and_the_ports_are_allowed() -> None:
     source = (
         "from dss.core.shared.models import UserTurn\n"
-        "from dss.core.shared.errors import ProviderUnavailable\n"
+        "from dss.core.shared.errors import ProviderUnavailableError\n"
         "from dss.ports.turn import TurnRunner\n"
         "import pydantic\n"
     )

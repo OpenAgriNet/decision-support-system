@@ -29,7 +29,7 @@ from dss.core.planner.resource_attributes import build_resource_attributes
 from dss.core.provider_discovery.models import ProviderCapability, ProviderQuery
 from dss.core.provider_discovery.schema_pack_cache import SchemaPackCache
 from dss.core.shared.models import Geometry
-from dss.ports.invocation import SelectFailed
+from dss.ports.invocation import SelectFailedError
 from tools.mock_network.app import DEFAULT_QUESTIONS, build_mock_app
 from tools.mock_network.generators import (
     advisory_answer,
@@ -456,7 +456,7 @@ async def test_a_select_the_mock_cannot_answer_is_refused_and_counted(
     attrs = _planner_attributes(capability, {})
     no_location = {k: v for k, v in attrs.items() if k != "location"}
 
-    with pytest.raises(SelectFailed) as failed:
+    with pytest.raises(SelectFailedError) as failed:
         await invocation.select(capability, no_location, "txn-miss")
 
     assert failed.value.status_code == 400

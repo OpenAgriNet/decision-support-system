@@ -11,7 +11,7 @@ import pytest
 
 from dss.config.schema_pack_fetch import (
     PACKS,
-    SchemaPackFetchFailed,
+    SchemaPackFetchFailedError,
     examples_api_url,
     raise_for_empty,
     raw_url,
@@ -59,7 +59,7 @@ def test_a_ref_with_no_packs_fails_and_names_the_ref() -> None:
     in the fetch rather than a ref that has nothing on it.
     """
 
-    with pytest.raises(SchemaPackFetchFailed) as caught:
+    with pytest.raises(SchemaPackFetchFailedError) as caught:
         raise_for_empty(fetched=(), ref="main")
 
     message = str(caught.value)

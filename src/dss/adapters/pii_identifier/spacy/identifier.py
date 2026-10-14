@@ -13,7 +13,7 @@ import spacy
 
 from dss.adapters.pii_identifier.spacy.models import SpacySettings
 from dss.core.redaction.models import PiiSpan
-from dss.ports.pii_identifier import IdentifierUnavailable
+from dss.ports.pii_identifier import IdentifierUnavailableError
 
 # Name finding needs only the token vectors and the entity recogniser.
 _UNUSED = ["tagger", "parser", "attribute_ruler", "lemmatizer"]
@@ -27,7 +27,7 @@ class SpacyIdentifier:
         try:
             self._nlp = spacy.load(settings.model, exclude=_UNUSED)
         except OSError as exc:
-            raise IdentifierUnavailable(
+            raise IdentifierUnavailableError(
                 f"spaCy model '{settings.model}' is not installed — run `uv sync`"
             ) from exc
         self._entity = settings.entity

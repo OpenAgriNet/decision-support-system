@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from dss.adapters.scheme_catalog.csv_file import (
-    MalformedSchemeCatalog,
+    MalformedSchemeCatalogError,
     load_scheme_catalog,
 )
 
@@ -86,7 +86,7 @@ def test_configured_but_missing_path_raises(tmp_path: Path) -> None:
 def test_missing_column_names_the_file(tmp_path: Path) -> None:
     path = _write(tmp_path, "scheme_code,scheme_name\nmif,Micro Irrigation Fund\n")
 
-    with pytest.raises(MalformedSchemeCatalog) as exc:
+    with pytest.raises(MalformedSchemeCatalogError) as exc:
         load_scheme_catalog(path)
 
     assert "scheme_aliases" in str(exc.value)
@@ -99,7 +99,7 @@ def test_blank_scheme_name_names_the_row(tmp_path: Path) -> None:
         "scheme_code,scheme_name,scheme_aliases\nmif,Micro Irrigation Fund,MIF\nx,,y\n",
     )
 
-    with pytest.raises(MalformedSchemeCatalog) as exc:
+    with pytest.raises(MalformedSchemeCatalogError) as exc:
         load_scheme_catalog(path)
 
     # Row 3, counting the header — what the editor's cursor shows.
@@ -118,7 +118,7 @@ def test_an_alias_shared_by_two_schemes_raises(tmp_path: Path) -> None:
         "b,Scheme B,shared alias\n",
     )
 
-    with pytest.raises(MalformedSchemeCatalog) as exc:
+    with pytest.raises(MalformedSchemeCatalogError) as exc:
         load_scheme_catalog(path)
 
     assert "shared alias" in str(exc.value)

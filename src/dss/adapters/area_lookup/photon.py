@@ -15,7 +15,7 @@ import httpx
 
 from dss.adapters.observability.tracing import open_span
 from dss.core.shared.models import Geometry
-from dss.ports.area_lookup import AreaLookupUnavailable, AreaMatch
+from dss.ports.area_lookup import AreaLookupUnavailableError, AreaMatch
 
 # A common name ("Majengo") can have 30 places, and the exact-name filter runs
 # after the limit. Cut short, the rest could never be reached: a reply naming
@@ -135,7 +135,7 @@ class PhotonAreaLookup:
         ) as span:
             try:
                 matches = await self._lookup(name)
-            except AreaLookupUnavailable:
+            except AreaLookupUnavailableError:
                 span.set_attribute("outcome", "error")
                 raise
             span.set_attribute("result_count", len(matches))
@@ -166,7 +166,7 @@ class PhotonAreaLookup:
         # InvalidURL is not an HTTPError: a typo in the address would otherwise
         # escape the chain and fail the whole turn.
         except (httpx.HTTPError, httpx.InvalidURL, TimeoutError) as error:
-            raise AreaLookupUnavailable(str(error)) from error
+            raise AreaLookupUnavailableError(str(error)) from error
         wanted = _fold(name)
         try:
             features = [
@@ -176,7 +176,7 @@ class PhotonAreaLookup:
             ]
             matches = [_to_match(f) for f in _without_containers(features)]
         except (ValueError, KeyError, TypeError) as error:
-            raise AreaLookupUnavailable("unreadable reply") from error
+            raise AreaLookupUnavailableError("unreadable reply") from error
         # Same name, same surroundings: the farmer cannot tell them apart.
         # Keep the first.
         unique: dict[tuple[str, ...], AreaMatch] = {}

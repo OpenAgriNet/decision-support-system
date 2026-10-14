@@ -10,7 +10,7 @@ from collections.abc import Sequence
 
 from dss.adapters.observability.metrics import record_area_lookup
 from dss.core.shared.models import Geometry
-from dss.ports.area_lookup import AreaLookup, AreaLookupUnavailable, AreaMatch
+from dss.ports.area_lookup import AreaLookup, AreaLookupUnavailableError, AreaMatch
 
 
 class ChainedAreaLookup:
@@ -37,7 +37,7 @@ class ChainedAreaLookup:
         for source, lookup in self._sources:
             try:
                 matches = await lookup.resolve(name, region)
-            except AreaLookupUnavailable:
+            except AreaLookupUnavailableError:
                 record_area_lookup(source=source, outcome="error")
                 continue
             if matches:
@@ -55,7 +55,7 @@ class ChainedAreaLookup:
         for _, lookup in self._sources:
             try:
                 match = await lookup.nearest(point, max_km)
-            except AreaLookupUnavailable:
+            except AreaLookupUnavailableError:
                 continue
             if match is not None:
                 return match

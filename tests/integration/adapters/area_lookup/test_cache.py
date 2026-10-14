@@ -7,7 +7,7 @@ import pytest
 
 from dss.adapters.area_lookup.cache import CachedAreaLookup
 from dss.core.shared.models import Geometry
-from dss.ports.area_lookup import AreaLookupUnavailable, AreaMatch
+from dss.ports.area_lookup import AreaLookupUnavailableError, AreaMatch
 from tests.support.fakes import FakeAreaLookup
 
 _ELDORET = AreaMatch(
@@ -38,7 +38,7 @@ class _DownOnce:
     async def resolve(self, name: str, region: str | None = None) -> list[AreaMatch]:
         self.calls += 1
         if self.calls == 1:
-            raise AreaLookupUnavailable("down")
+            raise AreaLookupUnavailableError("down")
         return [_ELDORET]
 
 
@@ -49,7 +49,7 @@ async def test_an_error_is_not_remembered() -> None:
     inner = _DownOnce()
     cache = CachedAreaLookup(inner, ttl_seconds=60, max_entries=100)
 
-    with pytest.raises(AreaLookupUnavailable):
+    with pytest.raises(AreaLookupUnavailableError):
         await cache.resolve("Eldoret")
 
     assert await cache.resolve("Eldoret") == [_ELDORET]

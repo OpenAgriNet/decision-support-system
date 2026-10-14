@@ -47,7 +47,7 @@ def _exporting(monkeypatch) -> InMemorySpanExporter:
 
 def test_an_exception_message_never_reaches_a_span(monkeypatch) -> None:
     """A span says *that* something failed and what type it was, never what it
-    said. Exception text is not safe by default here: `SelectFailed` embeds the
+    said. Exception text is not safe by default here: `SelectFailedError` embeds the
     provider's whole response body, which echoes the farmer's query — and
     `DSS_ARCHITECTURE.md` §6.1 puts traces on the list of places that may not
     carry personal data.

@@ -206,7 +206,7 @@ class TurnResult(BaseModel):
     discovery: DiscoveryResult
 
 
-async def run_turn(
+async def run_turn(  # noqa: PLR0913
     turn: UserTurn,
     *,
     intent_llm: LLMProvider,
@@ -283,7 +283,7 @@ async def run_turn(
     # Type narrowing only, safe to strip under `python -O`: the task group
     # either ran both branches to completion or raised out of the `async
     # with`, so reaching here means moderation set this.
-    assert decision is not None
+    assert decision is not None  # noqa: S101 - type narrowing only
     if decision.outcome is not Outcome.PROCEED:
         return TurnResult(
             intent=Intent(), decision=decision, discovery=_nothing_discovered()

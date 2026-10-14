@@ -196,7 +196,7 @@ def build_prompt_service(path: Path | None = None) -> PromptService:
     if not isinstance(data, dict) or not data:
         raise ValueError(f"{source} holds no components — expected a mapping")
 
-    environment = Environment(undefined=StrictUndefined, autoescape=False)
+    environment = Environment(undefined=StrictUndefined, autoescape=False)  # noqa: S701 - prompts are plain text, not HTML
     components = {
         str(name).lower(): _load_component(environment, base, str(name), raw)
         for name, raw in data.items()

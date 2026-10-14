@@ -13,7 +13,7 @@ from collections.abc import AsyncIterator
 
 import pytest
 
-from dss.adapters.http.v1.router import _decoded_body, _TooLarge, _Undecodable
+from dss.adapters.http.v1.router import _decoded_body, _TooLargeError, _UndecodableError
 
 CAP = 1_000
 
@@ -59,7 +59,7 @@ async def test_a_declared_length_over_the_cap_is_refused_before_reading():
 
     stream = CountingStream(b"x" * 10_000)
 
-    with pytest.raises(_TooLarge):
+    with pytest.raises(_TooLargeError):
         await _decoded_body(stream, encoding=None, cap=CAP, declared=10_000)
 
     assert stream.consumed == 0
@@ -68,7 +68,7 @@ async def test_a_declared_length_over_the_cap_is_refused_before_reading():
 async def test_a_plain_body_over_the_cap_stops_early():
     stream = CountingStream(b"x" * 100_000)
 
-    with pytest.raises(_TooLarge):
+    with pytest.raises(_TooLargeError):
         await _decoded_body(stream, encoding=None, cap=CAP, declared=None)
 
     assert stream.consumed < stream.total, "read the whole oversized body"
@@ -82,7 +82,7 @@ async def test_a_decompression_bomb_stops_early():
     bomb = gzip.compress(b"\0" * 20_000_000)
     stream = CountingStream(bomb)
 
-    with pytest.raises(_TooLarge):
+    with pytest.raises(_TooLargeError):
         await _decoded_body(stream, encoding="gzip", cap=CAP, declared=None)
 
     assert stream.consumed < stream.total, "consumed the whole bomb"
@@ -91,7 +91,7 @@ async def test_a_decompression_bomb_stops_early():
 async def test_a_body_that_is_not_gzip_is_undecodable():
     stream = CountingStream(b"plainly not gzip")
 
-    with pytest.raises(_Undecodable):
+    with pytest.raises(_UndecodableError):
         await _decoded_body(stream, encoding="gzip", cap=CAP, declared=None)
 
 
@@ -99,7 +99,7 @@ async def test_a_truncated_gzip_body_is_undecodable():
     packed = gzip.compress(b'{"a": 1}')
     stream = CountingStream(packed[: len(packed) // 2])
 
-    with pytest.raises(_Undecodable):
+    with pytest.raises(_UndecodableError):
         await _decoded_body(stream, encoding="gzip", cap=CAP, declared=None)
 
 
@@ -123,7 +123,7 @@ async def test_an_oversized_compressed_stream_stops_early():
     noise = gzip.compress(bytes(range(256)) * 200_000, compresslevel=0)
     stream = CountingStream(noise)
 
-    with pytest.raises(_TooLarge):
+    with pytest.raises(_TooLargeError):
         await _decoded_body(stream, encoding="gzip", cap=CAP, declared=None)
 
     assert stream.consumed < stream.total

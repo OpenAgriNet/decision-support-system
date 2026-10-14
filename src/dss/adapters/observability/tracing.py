@@ -44,7 +44,9 @@ from dss.observability.trace_log import current_session_id, set_stage_span_opene
 from dss.observability.turn_usage import begin_turn_usage, current_turn_usage
 
 if TYPE_CHECKING:
-    from opentelemetry.trace import Span
+    from opentelemetry.sdk.metrics.view import View
+    from opentelemetry.trace import Span, TracerProvider
+    from pydantic_ai.models.instrumented import InstrumentationSettings
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +64,9 @@ def _include_content() -> bool:
     return os.environ.get(_INCLUDE_CONTENT, "") == "true"
 
 
-def instrumentation_settings(*, tracer_provider=None):
+def instrumentation_settings(
+    *, tracer_provider: TracerProvider | None = None
+) -> InstrumentationSettings:
     """How much of each agent run to record.
 
     `include_content=False` strips every message body while keeping roles,
@@ -111,7 +115,7 @@ class TurnIdSpanProcessor(SpanProcessor):
             span.set_attribute("session.id", session_id)
 
 
-def _metric_views():
+def _metric_views() -> list[View]:
     """Logfire's default metric views, minus the one that makes every
     histogram exponential.
 
@@ -296,7 +300,7 @@ def open_span(
 
     **A failure is recorded by type, never by message.** OpenTelemetry's own
     handling would put `exception.message` and a full `exception.stacktrace` on
-    the span, and an exception message here is not safe to export: `SelectFailed`
+    the span, and an exception message here is not safe to export: `SelectFailedError`
     embeds the provider's entire response body, which echoes the farmer's query
     back. `DSS_ARCHITECTURE.md` §6.1 names traces as a place personal data may
     not reach, and unlike the log path there is no length clip — an HTML error

@@ -355,12 +355,12 @@ async def test_redaction_on_redacts_with_the_rules_file(tmp_path: Path) -> None:
 
 def test_an_identifier_that_cannot_be_built_stops_the_boot(tmp_path: Path) -> None:
     from dss.entrypoint.composition import _redaction
-    from dss.ports.pii_identifier import IdentifierUnavailable
+    from dss.ports.pii_identifier import IdentifierUnavailableError
 
     rules = tmp_path / "redaction-rules.yaml"
     rules.write_text("entities:\n  phone: keep\nidentifiers:\n  - type: nope\n")
 
-    with pytest.raises(IdentifierUnavailable, match="nope"):
+    with pytest.raises(IdentifierUnavailableError, match="nope"):
         _redaction(
             _settings(tmp_path, redaction_enabled=True, redaction_config_path=rules)
         )

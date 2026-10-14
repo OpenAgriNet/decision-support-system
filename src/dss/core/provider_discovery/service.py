@@ -207,7 +207,7 @@ def _build_queries(
         coverage = coverage_for_ask(ask, radius_m=radius_m)
         query, event = _query_for_ask(ask, languages, coverage, index)
         if query is None:
-            assert event is not None
+            assert event is not None  # noqa: S101 - type narrowing only
             events.append(event)
             unresolved_asks.add(ask_index)
             continue
@@ -227,11 +227,15 @@ async def _run_queries(
     dict[int, tuple[DiscoveryFailure, ...]],
     list[DiscoveryEvent],
 ]:
-    answers: dict[int, tuple[DiscoveredAnswer, ...]] = {i: () for i in unresolved_asks}
-    capabilities: dict[int, tuple[ProviderCapability, ...]] = {
-        i: () for i in unresolved_asks
-    }
-    failures: dict[int, tuple[DiscoveryFailure, ...]] = {i: () for i in unresolved_asks}
+    answers: dict[int, tuple[DiscoveredAnswer, ...]] = dict.fromkeys(
+        unresolved_asks, ()
+    )
+    capabilities: dict[int, tuple[ProviderCapability, ...]] = dict.fromkeys(
+        unresolved_asks, ()
+    )
+    failures: dict[int, tuple[DiscoveryFailure, ...]] = dict.fromkeys(
+        unresolved_asks, ()
+    )
     events: list[DiscoveryEvent] = []
 
     # discover() never raises (failures are data), so every
@@ -251,7 +255,7 @@ async def _run_queries(
             task_group.start_soon(_run, slot, query, tuple(ask_indices))
 
     for result in query_results:
-        assert result is not None
+        assert result is not None  # noqa: S101 - type narrowing only
         answers.update(result.answers)
         capabilities.update(result.capabilities)
         failures.update(result.failures)
@@ -343,7 +347,7 @@ def _build_ask_events(
     ]
 
 
-async def discover_providers(
+async def discover_providers(  # noqa: PLR0913
     intent: Intent,
     turn: UserTurn,
     *,

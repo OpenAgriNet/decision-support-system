@@ -77,7 +77,7 @@ _OPTIONAL_FILES = ("context.jsonld", "vocab.jsonld", "renderer.json", "README.md
 _TIMEOUT_SECONDS = 30
 
 
-class SchemaPackFetchFailed(RuntimeError):
+class SchemaPackFetchFailedError(RuntimeError):
     """The fetch produced nothing usable. Never raised for a partial result."""
 
 
@@ -125,7 +125,7 @@ def fetch_packs(
     than "download interrupted". Writing to a temp directory and renaming also
     makes two workers racing on the same directory idempotent.
 
-    Raises `SchemaPackFetchFailed` if nothing at all was written — see
+    Raises `SchemaPackFetchFailedError` if nothing at all was written — see
     `raise_for_empty`.
     """
 
@@ -206,12 +206,12 @@ def _get(url: str) -> bytes | None:
     Contents API calls are capped at 60 an hour.
     """
 
-    request = urllib.request.Request(url)
+    request = urllib.request.Request(url)  # noqa: S310 - URL is built from fixed https hosts
     token = os.environ.get("GITHUB_TOKEN")
     if token and "/repos/" in url:
         request.add_header("Authorization", f"Bearer {token}")
     try:
-        with urllib.request.urlopen(request, timeout=_TIMEOUT_SECONDS) as response:
+        with urllib.request.urlopen(request, timeout=_TIMEOUT_SECONDS) as response:  # noqa: S310 - URL is built from fixed https hosts
             return response.read()
     except urllib.error.HTTPError:
         return None
@@ -262,6 +262,6 @@ def raise_for_empty(*, fetched: tuple[str, ...], ref: str) -> None:
             f"re-run with --ref {_PUBLISHED_REF}."
         )
     )
-    raise SchemaPackFetchFailed(
+    raise SchemaPackFetchFailedError(
         f"no schema packs found on ref {ref!r} (0 of {len(PACKS)}).{hint}"
     )

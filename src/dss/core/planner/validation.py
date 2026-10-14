@@ -28,7 +28,7 @@ _BECKN_RESOURCE_ATTRIBUTES_PREFIX = "beckn:resourceAttributes."
 _LOCATION_SEGMENT = "location"
 
 
-class InvalidArgument(Exception):
+class InvalidArgumentError(Exception):
     """``resource_attributes`` used a field the pack does not declare as
     filterable. The tool raises Pydantic AI's ``ModelRetry`` on this."""
 
@@ -223,7 +223,7 @@ def _check_is_array(path: str, value: object, schema: DomainSchema) -> None:
         return
     if isinstance(value, list):
         return
-    raise InvalidArgument(
+    raise InvalidArgumentError(
         f"{path!r} of {schema.type} is {schema.field_types[path]}, "
         f"so it takes a list — got {value!r}. Wrap it: [{value!r}]"
     )
@@ -241,7 +241,7 @@ def _check_is_object(path: str, value: object, schema: DomainSchema) -> None:
         return
     if isinstance(value, dict):
         return
-    raise InvalidArgument(
+    raise InvalidArgumentError(
         f"{path!r} of {schema.type} is an object, not a value — got "
         f"{value!r}. Send the fields the pack names under it."
     )
@@ -269,11 +269,11 @@ def _check_is_allowed(path: str, value: object, schema: DomainSchema) -> None:
             # simply lacks the field arrives as `None`. Naming `None` as the
             # bad value describes something the model never wrote; what it has
             # to do is put the field on every item.
-            raise InvalidArgument(
+            raise InvalidArgumentError(
                 f"every item of {path.split('[]')[0]!r} of {schema.type} needs "
                 f"{path.rsplit('.', 1)[-1]!r}. Use one of: {', '.join(allowed)}"
             )
-        raise InvalidArgument(
+        raise InvalidArgumentError(
             f"{item!r} is not a value {path!r} of {schema.type} takes. "
             f"Use one of: {', '.join(allowed)}"
         )
@@ -322,7 +322,7 @@ def _value_at(data: object, path: str) -> object:
 
 
 def validate_arguments(resource_attributes: dict, schema: DomainSchema) -> None:
-    """Raise ``InvalidArgument`` if a key path in ``resource_attributes`` is
+    """Raise ``InvalidArgumentError`` if a key path in ``resource_attributes`` is
     not one of the schema's ``filterable`` paths, holds a scalar where the
     pack asks for a list, or holds a value the pack does not list."""
 
@@ -331,7 +331,7 @@ def validate_arguments(resource_attributes: dict, schema: DomainSchema) -> None:
     # arrives beside the real `market` object rather than narrowing it.
     for key in resource_attributes:
         if "." in key or "[]" in key:
-            raise InvalidArgument(
+            raise InvalidArgumentError(
                 f"{key!r} is a path, not a field name. Send the nested "
                 f"structure instead: "
                 f"{json.dumps(_nest_example(key))}"
@@ -347,7 +347,7 @@ def validate_arguments(resource_attributes: dict, schema: DomainSchema) -> None:
 
     for path in _flatten(resource_attributes, stop_at=schema.filterable):
         if path not in schema.filterable:
-            raise InvalidArgument(
+            raise InvalidArgumentError(
                 f"{path!r} is not a filterable field of {schema.type} "
                 f"(filterable: {schema.filterable})"
             )

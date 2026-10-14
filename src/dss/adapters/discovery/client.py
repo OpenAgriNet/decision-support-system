@@ -65,9 +65,9 @@ def _failure_result(
         for capability in _failed_labels(query)
     )
     return DiscoveryResult(
-        answers={index: () for index in ask_indices},
-        capabilities={index: () for index in ask_indices},
-        failures={index: failures for index in ask_indices},
+        answers=dict.fromkeys(ask_indices, ()),
+        capabilities=dict.fromkeys(ask_indices, ()),
+        failures=dict.fromkeys(ask_indices, failures),
         events=(),
     )
 
@@ -89,9 +89,9 @@ def _malformed_result(
         for capability in _failed_labels(query)
     )
     return DiscoveryResult(
-        answers={index: () for index in ask_indices},
-        capabilities={index: () for index in ask_indices},
-        failures={index: failures for index in ask_indices},
+        answers=dict.fromkeys(ask_indices, ()),
+        capabilities=dict.fromkeys(ask_indices, ()),
+        failures=dict.fromkeys(ask_indices, failures),
         events=(),
     )
 
@@ -195,7 +195,7 @@ def map_discover_response(
     return DiscoveryResult(
         answers={index: tuple(answers) for index in ask_indices},
         capabilities={index: tuple(capabilities) for index in ask_indices},
-        failures={index: () for index in ask_indices},
+        failures=dict.fromkeys(ask_indices, ()),
         events=(),
     )
 

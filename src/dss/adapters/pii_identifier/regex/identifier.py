@@ -23,12 +23,12 @@ from dss.adapters.pii_identifier.regex.models import (
 from dss.adapters.pii_identifier.regex.validators import is_valid
 from dss.core.redaction.models import PiiSpan
 from dss.core.redaction.normalise import Shadow, gap_pattern, join_number_gaps
-from dss.ports.pii_identifier import IdentifierUnavailable
+from dss.ports.pii_identifier import IdentifierUnavailableError
 
 # One word after a declaring phrase: letters, with an inner ' . or - (O'Neil).
 _NAME_TOKEN = re.compile(r"[ \t]+([^\W\d_]+(?:['.-][^\W\d_]+)*)")
 # A colon or dash between the phrase and the name, with no space before it.
-_LEAD = re.compile(r"[ \t]*[:\-–]")
+_LEAD = re.compile(r"[ \t]*[:\-–]")  # noqa: RUF001 - the en dash is a real separator
 # Digits, gaps and a leading + only: a number, not an email or a code.
 _NUMBER = re.compile(r"\+?[\d \-]+")
 _DIGITS = re.compile(r"\d+")
@@ -39,7 +39,7 @@ class RegexIdentifier:
 
     def __init__(self, settings: RegexSettings) -> None:
         """Compiles every pattern once, here, at boot. One that does not
-        compile raises ``IdentifierUnavailable`` naming its rule, which stops
+        compile raises ``IdentifierUnavailableError`` naming its rule, which stops
         the boot."""
 
         self._settings = settings
@@ -85,12 +85,12 @@ def _compile(rule: PatternRule | DeclaringPhraseRule) -> re.Pattern[str]:
             re.IGNORECASE,
         )
     except re.error as exc:
-        raise IdentifierUnavailable(
+        raise IdentifierUnavailableError(
             f"rule '{rule.entity}': pattern does not compile: {exc}"
         ) from exc
 
 
-def _match_pattern(
+def _match_pattern(  # noqa: C901, PLR0913
     rule: PatternRule,
     compiled: re.Pattern[str],
     text: str,
@@ -133,7 +133,7 @@ def _match_pattern(
     yield from _match_sub_runs(rule, compiled, text, run, seen, kept)
 
 
-def _match_sub_runs(
+def _match_sub_runs(  # noqa: PLR0913
     rule: PatternRule,
     compiled: re.Pattern[str],
     text: str,

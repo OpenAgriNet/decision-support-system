@@ -83,13 +83,52 @@ target-version = "py313"
 extend-exclude = ["docs"]
 
 [tool.ruff.lint]
+# CI blocks on src/ only and reports the rest (see CONVENTIONS.md).
+# scripts/ are one-off tools, left out for now.
+exclude = ["scripts/**"]
 select = [
-    "E",   # pycodestyle errors
-    "F",   # pyflakes
-    "I",   # isort
-    "TID", # flake8-tidy-imports — carries the framework-boundary ban below
-    "UP",  # pyupgrade
-    "B",   # flake8-bugbear
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "I",    # isort
+    "TID",  # flake8-tidy-imports — carries the framework-boundary ban below
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "W",    # pycodestyle warnings
+    "DTZ",  # naive datetimes
+    "INT",  # gettext misuse
+    "PGH",  # blanket noqa / type: ignore
+    "PIE",  # misc. lint
+    "Q",    # quote style
+    "RSE",  # raise style
+    "ISC",  # implicit string concatenation
+    "C4",   # comprehensions
+    "RET",  # return style
+    "T20",  # no stray print()
+    "SIM",  # simplifications
+    "BLE",  # catch-all except needs a stated reason
+    "ANN",  # type hints on function signatures
+    "N",    # PEP 8 naming
+    "S",    # security (bandit)
+    "RUF",  # ruff's own rules
+    "C901", # cyclomatic complexity, default limit 10
+    "PLR",  # pylint refactor checks, default limits
+]
+ignore = [
+    "C401", # set(generator) reads fine
+    "C408", # dict(a=1) reads fine
+    "RET504",# naming a value before returning it can aid reading
+    "SIM102",# nested ifs can read clearer than one long and
+    "SIM108",# ternaries can hurt reading
+    "ANN002",# *args
+    "ANN003",# **kwargs
+    "ANN204",# __init__ etc. return types
+    "ANN206",# classmethod return types
+    "ANN401",# Any is sometimes the honest type
+    "S311", # random is not used for secrets
+    "S404", # importing subprocess is fine; calls are still checked
+    "RUF005",# [*a, b] vs a + [b] is taste
+    "PLR0917",# PLR0913 already flags these
+    "PLR2004",# magic values: constants for "gzip" or 200 read worse
 ]
 
 # Hard boundary: only orchestration/ may import the agentic framework.
@@ -107,6 +146,12 @@ select = [
 known-first-party = ["benchmarks", "dss", "scripts", "tests", "tools"]
 
 [tool.ruff.lint.per-file-ignores]
+# pytest asserts, fake secrets as fixtures, and no type hints on test functions.
+"tests/**" = ["S101", "S105", "S106", "ANN"]
+# Command-line tools: printing and running commands is their job.
+"{benchmarks,tools}/**" = ["T20", "S603", "S607"]
+# This sink exists to print.
+"src/dss/adapters/sinks/stdout.py" = ["T20"]
 "src/dss/orchestration/**/*.py" = ["TID251"]
 "tests/integration/orchestration/**/*.py" = ["TID251"]
 # adapters/ is the one place outside orchestration/ where vendor/framework SDK
