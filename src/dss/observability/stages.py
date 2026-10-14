@@ -1,4 +1,4 @@
-"""The seven stages a turn passes through.
+"""The stages a turn passes through.
 
 The names were already a contract before they were a type: `trace_component`
 builds `dss.stage.<name>` from them, and the metrics story labels
@@ -18,6 +18,7 @@ class Stage(StrEnum):
     """One step of a turn. The value is the span suffix and the metric label."""
 
     REDACTION = "redaction"
+    TRANSLATION = "translation"
     INTENT = "intent"
     LOCATION = "location"
     ENRICHMENT = "enrichment"
@@ -27,10 +28,11 @@ class Stage(StrEnum):
     COMPOSER = "composer"
 
 
-# The four stages that run a model (ADR-0004 — each binds its own). The other
-# three run none, so `dss.stage.duration` carries no `model` label for them: an
-# absent label reads as "not applicable", where a "none" value would read as a
-# model name in a dashboard's dropdown.
+# The four stages that bind a model in Settings (ADR-0004 — each binds its own).
+# The rest carry no `model` label on `dss.stage.duration`: an absent label reads
+# as "not applicable", where a "none" value would read as a model name in a
+# dashboard's dropdown. Most run no model. Translation may, but its model is set
+# per language in the edge translation config, not in Settings.
 MODEL_BACKED_STAGES = frozenset(
     {Stage.INTENT, Stage.MODERATION, Stage.PLANNER, Stage.COMPOSER}
 )

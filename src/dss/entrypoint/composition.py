@@ -70,6 +70,7 @@ from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import UserTurn
 from dss.core.shared.network import NetworkTransactionID
 from dss.core.stream_response.service import build_stream_response
+from dss.core.translation.service import EdgeTranslation
 from dss.observability.stages import Stage
 from dss.orchestration.discovery import (
     DiscoverProviders,
@@ -196,6 +197,7 @@ def build_runner_with_lifecycle(
         area_lookup=area_lookup,
         clarification_text=clarification_text,
         schemas=schemas,
+        edge_translation=EdgeTranslation(routes={}),
     )
     return runner, _aclose_all(_aclose_for(client), area_aclose)
 

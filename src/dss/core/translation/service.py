@@ -10,7 +10,6 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Mapping, Sequence
 from dataclasses import dataclass
 
-from dss.core.channel.models import ComposedAnswer
 from dss.core.shared.errors import TranslationError
 from dss.core.shared.language import LanguageTag
 from dss.core.shared.models import UserTurn
@@ -63,39 +62,12 @@ class TurnTranslation:
         )
         return _with_translated_texts(turn, translated, lang=self.core_lang)
 
-    async def translate_out(self, answer: ComposedAnswer) -> ComposedAnswer:
-        """`answer` in the farmer's language, in one translate call."""
-
-        translated = await _translate_each(
-            self.translator,
-            [block.text for block in answer.content],
-            from_lang=self.core_lang,
-            to_lang=self.edge_lang,
-        )
-        return with_translated_blocks(answer, translated)
-
     def stream_out(self, text: str) -> AsyncIterator[str]:
         """`text` in the farmer's language, as the translator writes it."""
 
         return self.translator.stream(
             text, from_lang=self.core_lang, to_lang=self.edge_lang
         )
-
-
-def with_translated_blocks(
-    answer: ComposedAnswer, translated: Sequence[str]
-) -> ComposedAnswer:
-    """`answer` with each block's text replaced, in order. Block types,
-    citations and sources stay as they were."""
-
-    return answer.model_copy(
-        update={
-            "content": tuple(
-                block.model_copy(update={"text": text})
-                for block, text in zip(answer.content, translated, strict=True)
-            )
-        }
-    )
 
 
 def _has_own_enriched_query(turn: UserTurn) -> bool:
