@@ -146,6 +146,47 @@ class FakeLocalizer:
         return f"[{turn.target_lang}] {text}" if self.mark else text
 
 
+class FakeTranslator:
+    """A `Translator` that marks each text with the language it was sent to.
+
+    `drop_one=True` returns one text fewer than it was given, so a caller's
+    count check can be exercised. `stream` yields the marked text in `pieces`
+    chunks and sets `stream_closed` when the stream is closed, early or not.
+    """
+
+    def __init__(self, *, pieces: int = 3, drop_one: bool = False) -> None:
+        self.pieces = pieces
+        self.drop_one = drop_one
+        self.calls: list[tuple[str, tuple[str, ...], LanguageTag, LanguageTag]] = []
+        self.stream_closed = False
+
+    async def translate(
+        self, texts: Sequence[str], *, from_lang: LanguageTag, to_lang: LanguageTag
+    ) -> tuple[str, ...]:
+        self.calls.append(("translate", tuple(texts), from_lang, to_lang))
+        translated = tuple(f"[{to_lang}] {text}" for text in texts)
+        return translated[:-1] if self.drop_one else translated
+
+    async def stream(
+        self, text: str, *, from_lang: LanguageTag, to_lang: LanguageTag
+    ) -> AsyncIterator[str]:
+        self.calls.append(("stream", (text,), from_lang, to_lang))
+        try:
+            for piece in _split_into_pieces(f"[{to_lang}] {text}", self.pieces):
+                yield piece
+        finally:
+            self.stream_closed = True
+
+
+def _split_into_pieces(text: str, count: int) -> list[str]:
+    """`count` consecutive slices of `text` that join back to it."""
+
+    return [
+        text[len(text) * index // count : len(text) * (index + 1) // count]
+        for index in range(count)
+    ]
+
+
 class FakeAreaLookup:
     """An `AreaLookup` over a name → matches dict, for tests that need a place
     name to resolve (or deliberately not to).
