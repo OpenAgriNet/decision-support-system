@@ -83,8 +83,9 @@ target-version = "py313"
 extend-exclude = ["docs"]
 
 [tool.ruff.lint]
-# Lint src/ only for now; the rest is still formatted.
-exclude = ["tests/**", "scripts/**", "benchmarks/**", "tools/**"]
+# CI blocks on src/ only and reports the rest (see CONVENTIONS.md).
+# scripts/ are one-off tools, left out for now.
+exclude = ["scripts/**"]
 select = [
     "E",    # pycodestyle errors
     "F",    # pyflakes
@@ -145,6 +146,10 @@ ignore = [
 known-first-party = ["benchmarks", "dss", "scripts", "tests", "tools"]
 
 [tool.ruff.lint.per-file-ignores]
+# pytest asserts, fake secrets as fixtures, and no type hints on test functions.
+"tests/**" = ["S101", "S105", "S106", "ANN"]
+# Command-line tools: printing and running commands is their job.
+"{benchmarks,tools}/**" = ["T20", "S603", "S607"]
 # This sink exists to print.
 "src/dss/adapters/sinks/stdout.py" = ["T20"]
 "src/dss/orchestration/**/*.py" = ["TID251"]

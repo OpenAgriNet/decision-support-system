@@ -166,4 +166,5 @@ One tool across all repos: **ruff**. Replaces black, flake8, and isort — one t
 - pre-commit: `ruff` lint + format runs automatically on every commit (fast, < 1s).
 - pre-push: full test suite runs before code leaves local.
 - CI: linting must also pass in CI — local hooks can be bypassed with `--no-verify` so CI is the safety net.
+- Scope: lint fails on `src/` only. `tests/`, `benchmarks/` and `tools/` are linted and reported on the PR, but never fail the build. `scripts/` is not linted yet.
 - Same ruff config copied into every repo's `pyproject.toml` — enforced in CI so it cannot drift silently between repos.
