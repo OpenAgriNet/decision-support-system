@@ -51,6 +51,7 @@ from tests.support.fakes import (
     FakePromptProvider,
     FakeSchemeCatalog,
 )
+from tests.support.turn_events import assert_well_formed
 
 CHUNKS = ("Wheat is ", "2,2", "75 Rs [1].")
 WHOLE = "Wheat is 2,275 Rs [1]."
@@ -88,7 +89,9 @@ def _build(
 
 
 async def _collect(orch: Orchestrator, turn: UserTurn | None = None):
-    return [event async for event in orch.run(turn or _turn(), _ctx())]
+    events = [event async for event in orch.run(turn or _turn(), _ctx())]
+    assert_well_formed(events)
+    return events
 
 
 async def test_the_answer_leaves_in_pieces_before_the_turn_finishes() -> None:
