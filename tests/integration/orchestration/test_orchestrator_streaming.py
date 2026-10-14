@@ -28,6 +28,7 @@ from dss.core.shared.models import (
     UserTurn,
 )
 from dss.core.stream_response.service import build_stream_response
+from dss.core.translation.service import EdgeTranslation
 from dss.orchestration.orchestrator import Components, Orchestrator
 from dss.orchestration.redaction import pass_through
 from tests.integration.orchestration.test_orchestrator import (
@@ -81,6 +82,7 @@ def _build(
         area_lookup=FakeAreaLookup({"pune": [_PUNE_MATCH]}),
         clarification_text=load_clarification_text(),
         schemas={},
+        edge_translation=EdgeTranslation(routes={}),
     )
     return orch, turns
 
@@ -207,6 +209,7 @@ async def test_the_real_component_streams_through_the_runner() -> None:
         area_lookup=FakeAreaLookup({"pune": [_PUNE_MATCH]}),
         clarification_text=load_clarification_text(),
         schemas={},
+        edge_translation=EdgeTranslation(routes={}),
     )
 
     events = await _collect(orch)

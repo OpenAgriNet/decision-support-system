@@ -8,6 +8,9 @@ that knows the sequence. Order is code, not config.
     redaction                first — every stage below sees tags (ADR-0015)
           │
           ▼
+    translate in             only for a language with a route (#174); every
+          │                  stage below reads the route's language
+          ▼
     intent ∥ moderation      run together — both need only the turn (ADR-0003)
           │
           ▼
@@ -31,9 +34,12 @@ tested there. This runner adds what the transport needs on top: the planner
 and composer, the event stream, the evidence writes, and the mapping from a
 turn's findings to a contract outcome.
 
-Two layers. `run` is the edge: it redacts the turn, records it, and reveals
-kept values in every event the farmer gets. `_run_core` runs the pipeline on
-the redacted turn, as if it were the whole turn, and yields tags only.
+Three layers. `run` is the edge: it redacts the turn, records it, and reveals
+kept values in every event the farmer gets. Translation
+(`orchestration/translation.py`) turns the farmer's turn into the route's
+language and the core's events back, or passes both through. `_run_core` runs
+the pipeline on the turn it is given, as if it were the whole turn, and yields
+tags only.
 
 Nothing side-effecting runs until moderation has cleared — the planner is
 reached only on `PROCEED`, and its own `select` tool waits on the `Verdict`
@@ -87,12 +93,14 @@ from dss.core.shared.models import (
     UserTurn,
 )
 from dss.core.stream_response.service import ComposeStream
+from dss.core.translation.service import EdgeTranslation
 from dss.observability.stages import Stage
 from dss.observability.trace_log import bind_turn_ids, trace_component
 from dss.orchestration.discovery import DiscoverProviders
 from dss.orchestration.plan import Plan
 from dss.orchestration.redaction import RedactTexts
 from dss.orchestration.stage_content import asks_text, evidence_text, sources_text
+from dss.orchestration.translation import translate_in, translate_out
 from dss.orchestration.turn import run_turn
 from dss.ports.area_lookup import AreaLookup
 from dss.ports.llm import LLMProvider
@@ -178,6 +186,7 @@ class Orchestrator:
         area_lookup: AreaLookup,
         clarification_text: ClarificationText,
         schemas: Mapping[str, DomainSchema],
+        edge_translation: EdgeTranslation,
     ) -> None:
         self._intent_llm = intent_llm
         self._moderation_llm = moderation_llm
@@ -197,6 +206,7 @@ class Orchestrator:
         # The same schemas the planner validates against. Read here for one
         # thing only: whether a pack serves an ask that names no place.
         self._schemas = schemas
+        self._edge_translation = edge_translation
 
     async def run(self, turn: UserTurn, ctx: TurnContext) -> AsyncIterator[TurnEvent]:
         bind_turn_ids(
@@ -221,21 +231,29 @@ class Orchestrator:
             recorder.redacted(found=redaction.found, failed=redaction.failed)
             self._turns.opened(ctx, farmer_turn)
 
-            # `aclosing` both: a farmer who closes the screen must close the
-            # core too, down to the model's stream, and closing an async
-            # generator does not reach the one it reads from.
+            translation = self._edge_translation.for_turn(farmer_turn)
+            core_turn = await translate_in(
+                farmer_turn, translation, trace_id=ctx.trace_id
+            )
+
+            # `aclosing` each layer: a farmer who closes the screen must close
+            # the core and the translator too, down to each model's stream, and
+            # closing an async generator does not reach the one it reads from.
             async with (
                 aclosing(
                     self._run_core(
-                        farmer_turn,
+                        core_turn,
                         ctx=ctx,
                         recorder=recorder,
                         visibility=redaction.visibility,
                     )
                 ) as core_events,
                 aclosing(
+                    translate_out(core_events, translation, trace_id=ctx.trace_id)
+                ) as translated_events,
+                aclosing(
                     self._reveal_to_farmer(
-                        core_events,
+                        translated_events,
                         ctx=ctx,
                         farmer_turn=farmer_turn,
                         recorder=recorder,
@@ -415,19 +433,19 @@ class Orchestrator:
 
     async def _reveal_to_farmer(
         self,
-        core_events: AsyncIterator[CoreEvent],
+        events: AsyncIterator[CoreEvent],
         *,
         ctx: TurnContext,
         farmer_turn: UserTurn,
         recorder: TurnRecorder,
         visibility: Visibility,
     ) -> AsyncGenerator[TurnEvent]:
-        """The core's events as the farmer reads them, with their own values
+        """The turn's events as the farmer reads them, with their own values
         in place of the tags. The record and the trace keep the tags."""
 
         shown = StreamReveal(visibility)
         has_first_delta = False
-        async for event in core_events:
+        async for event in events:
             match event:
                 case ClaimDelta(text=text):
                     if not has_first_delta:
