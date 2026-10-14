@@ -1,6 +1,7 @@
 ---
 name: review
-description: Full review of a diff, branch, PR, or path in this repo — a design pass (SOLID, YAGNI, DRY, naming, primitive obsession, smells, comments, layer boundaries, test tiers) and a correctness pass (bugs, paths and packaging, PII and prompt injection, speed, observability, templates, conventions), run in parallel and merged into one report. Use when asked to review code or a PR, before opening a PR, or when refactoring.
+description: Full review of a diff, branch, PR, or path in this repo — a design pass (SOLID, YAGNI, DRY, naming, primitive obsession, smells, comments, layer boundaries, test tiers) and a correctness pass (bugs, paths and packaging, PII and prompt injection, speed, observability, templates, conventions), run in parallel and merged into one report. Run it by hand with /review <pr | branch | path>.
+disable-model-invocation: true
 ---
 
 # Review
