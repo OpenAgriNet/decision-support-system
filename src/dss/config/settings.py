@@ -205,6 +205,12 @@ class Settings(BaseSettings):
     redaction_enabled: bool = False
     redaction_config_path: Path | None = None
 
+    # Languages translated at the DSS's edges (#174,
+    # configs/edge-translation.yaml). Unset → off, every language is served
+    # directly. Set-but-missing or malformed raises (see
+    # edge_translation_loader), never boot on a different config.
+    edge_translation_config_path: Path | None = None
+
     # How close a farmer's spelling has to be to count as an alias ("makna"
     # for "makhana"). Tried only after every exact lookup misses. `None` turns
     # similarity matching off; the floor is above 0, which matches anything.
