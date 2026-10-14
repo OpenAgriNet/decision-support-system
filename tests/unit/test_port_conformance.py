@@ -146,3 +146,19 @@ def test_the_fake_translator_satisfies_the_port():
     assert isinstance(translator, Translator)
     assert translated == ("[en] a", "[en] b")
     assert "".join(pieces) == "[gu] c"
+
+
+def test_the_stub_translator_satisfies_the_port():
+    from dss.adapters.translator.stub import CANNED_QUESTION, StubTranslator
+
+    translator = StubTranslator(language="gu")
+    gujarati = LanguageTag("gu")
+
+    translated = translate_through(
+        translator, ["a", "b"], from_lang=gujarati, to_lang=ENGLISH
+    )
+    pieces = stream_through(translator, "c", from_lang=ENGLISH, to_lang=gujarati)
+
+    assert isinstance(translator, Translator)
+    assert translated == (CANNED_QUESTION, CANNED_QUESTION)
+    assert "".join(pieces) == "[gu] c"

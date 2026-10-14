@@ -1,0 +1,16 @@
+# Languages the DSS translates at its edges. The pipeline runs in `to`.
+# A language not listed here is not translated.
+# Nothing is read unless DSS_EDGE_TRANSLATION_CONFIG_PATH points at this file.
+#
+# The rules the loader enforces:
+# - Keys are lowercase language subtags (gu, brx, bhb): no region, no script.
+#   A gu entry also serves gu-IN.
+# - `to` is any language tag, except the key's own language or another
+#   language listed here. No loops, no chains.
+languages:
+  gu:
+    to: en          # the language the pipeline runs in for gu
+    adapter: stub   # canned, no model: every Gujarati turn asks "Will it rain today?"
+  # bhb:            # Bhili, through Marathi
+  #   to: mr
+  #   adapter: stub
