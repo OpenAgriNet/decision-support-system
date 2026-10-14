@@ -77,6 +77,7 @@ from dss.core.policy.models import Policy
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.redaction.turn import texts_of, with_texts
 from dss.core.redaction.visibility import StreamReveal, Visibility
+from dss.core.shared.answer_stream import AnswerStream
 from dss.core.shared.models import (
     Cause,
     Claim,
@@ -264,7 +265,7 @@ class Orchestrator:
                 async for event in farmer_events:
                     yield event
 
-    async def _run_core(  # noqa: PLR0915
+    async def _run_core(
         self,
         turn: UserTurn,
         *,
@@ -393,7 +394,7 @@ class Orchestrator:
         # The span stays open across the yields below, so it measures the
         # whole composition rather than closing on the first piece.
         with trace_component(Stage.COMPOSER, ctx.trace_id):
-            written: list[str] = []
+            answer_stream = AnswerStream()
             # `aclosing`, not a bare `async for`: a farmer who closes the
             # screen mid-answer must close the model's stream too, and
             # closing an async generator does not reach the one it relays
@@ -402,8 +403,7 @@ class Orchestrator:
                 self._components.compose(evidence, result.intent, turn=turn)
             ) as pieces:
                 async for delta in pieces:
-                    written.append(delta)
-                    yield ClaimDelta(text=delta)
+                    yield answer_stream.piece(delta)
             # A failure before this line propagates: the pieces already
             # yielded cannot be recalled, so there is no retry to make and
             # nothing to roll back. The transport reports a failed turn.
@@ -418,18 +418,19 @@ class Orchestrator:
             )
             if question is not None:
                 question = await self._components.localize(question, turn=turn)
-                written.append(f"\n\n{question}")
-                yield ClaimDelta(text=written[-1])
-            text = "".join(written)
-            set_current_span_content(input=sources_text(evidence), output=text)
-        answer = answer_from_evidence(text, evidence)
+                yield answer_stream.piece(f"\n\n{question}")
+            set_current_span_content(
+                input=sources_text(evidence), output=answer_stream.written
+            )
+        answer = answer_from_evidence(answer_stream.written, evidence)
         recorder.composed()
-        for block in answer.content:
-            yield Claim(content=block, sources=answer.sources)
+        # One block: the composer's prose is never split (`answer_from_evidence`).
+        (block,) = answer.content
+        yield answer_stream.claim(block, answer.sources)
         self._note("channel", ctx, str(len(answer.content)))
 
         status, cause = _status_for(evidence, result.intent)
-        yield _turn_finished(outcome_for(status, cause), answer)
+        yield answer_stream.finish(outcome_for(status, cause))
 
     async def _reveal_to_farmer(
         self,
@@ -444,6 +445,7 @@ class Orchestrator:
         in place of the tags. The record and the trace keep the tags."""
 
         shown = StreamReveal(visibility)
+        answer_stream = AnswerStream()
         has_first_delta = False
         async for event in events:
             match event:
@@ -452,13 +454,11 @@ class Orchestrator:
                         recorder.first_delta()
                         has_first_delta = True
                     if piece := shown.feed(text):
-                        yield ClaimDelta(text=piece)
-                case Claim(content=block):
+                        yield answer_stream.piece(piece)
+                case Claim(content=block, sources=sources):
                     if rest := shown.flush():
-                        yield ClaimDelta(text=rest)
-                    yield event.model_copy(
-                        update={"content": _revealed(block, visibility)}
-                    )
+                        yield answer_stream.piece(rest)
+                    yield answer_stream.claim(block, sources)
                 case TurnFinished():
                     yield self._record_and_reveal(
                         ctx, farmer_turn, event, recorder, visibility

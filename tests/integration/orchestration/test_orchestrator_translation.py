@@ -48,6 +48,7 @@ from dss.orchestration.redaction import RedactTexts, pass_through
 from dss.orchestration.translation import translate_out
 from dss.ports.area_lookup import AreaMatch
 from tests.support.fakes import FakeAreaLookup, FakeLocalizer, FakeTranslator
+from tests.support.turn_events import assert_well_formed
 
 from .test_orchestrator import (
     _ANSWERED_EVIDENCE,
@@ -131,7 +132,9 @@ def _translating(  # noqa: PLR0913
 
 
 async def _drain(orch: Orchestrator, turn: UserTurn) -> list[TurnEvent]:
-    return [event async for event in orch.run(turn, _ctx())]
+    events = [event async for event in orch.run(turn, _ctx())]
+    assert_well_formed(events)
+    return events
 
 
 async def _drain_until_it_raises(orch: Orchestrator, turn: UserTurn) -> list[TurnEvent]:
@@ -158,20 +161,10 @@ def _claims(events: Sequence[TurnEvent]) -> list[Claim]:
 
 
 def _assert_streamed_block_by_block(events: Sequence[TurnEvent]) -> None:
-    """Each `Claim`'s text is the deltas since the one before, and the
-    `TurnFinished` holds every claimed block, in order."""
+    """Well formed, and the answer was streamed: every block was claimed."""
 
-    since_last_claim: list[str] = []
-    for event in events:
-        if isinstance(event, ClaimDelta):
-            since_last_claim.append(event.text)
-        elif isinstance(event, Claim):
-            assert "".join(since_last_claim) == event.content.text
-            since_last_claim = []
-    assert since_last_claim == []
-    claimed = tuple(claim.content for claim in _claims(events))
-    assert claimed
-    assert claimed == _finished(events).content
+    assert_well_formed(events)
+    assert _claims(events)
 
 
 # --- in ----------------------------------------------------------------------
@@ -285,7 +278,11 @@ async def test_a_blank_block_is_not_sent_to_the_translator() -> None:
     ).for_turn(_turn_in(GUJARATI))
     finished = TurnFinished(
         outcome=outcome_for(TurnStatus.REJECTED),
-        content=(RefusalBlock(text=""), RefusalBlock(text="No.")),
+        content=(
+            RefusalBlock(text=""),
+            RefusalBlock(text=" "),
+            RefusalBlock(text="No."),
+        ),
     )
 
     async def core_events():
@@ -297,7 +294,7 @@ async def test_a_blank_block_is_not_sent_to_the_translator() -> None:
     ]
 
     assert [texts for _, texts, _, _ in translator.calls] == [("No.",)]
-    assert [claim.content.text for claim in _claims(events)] == ["", "[gu] No."]
+    assert [claim.content.text for claim in _claims(events)] == ["", " ", "[gu] No."]
     _assert_streamed_block_by_block(events)
 
 

@@ -11,19 +11,13 @@ through, so an untranslated answer still streams piece by piece.
 
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator, AsyncIterator, Sequence
+from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import aclosing
 from typing import TYPE_CHECKING
 
 from dss.adapters.observability.tracing import set_current_span_content
-from dss.core.shared.models import (
-    Claim,
-    ClaimDelta,
-    OutputContent,
-    Source,
-    TurnFinished,
-    UserTurn,
-)
+from dss.core.shared.answer_stream import AnswerStream
+from dss.core.shared.models import TurnFinished, UserTurn
 from dss.core.translation.service import TurnTranslation
 from dss.observability.stages import Stage
 from dss.observability.trace_log import trace_component
@@ -71,43 +65,36 @@ async def translate_out(
     async for event in core_events:
         if not isinstance(event, TurnFinished):
             continue
-        claimed: list[OutputContent] = []
+        answer_stream = AnswerStream()
+        translated: list[str] = []
         with trace_component(Stage.TRANSLATION, trace_id):
             for block in event.content:
                 # `aclosing`: a farmer who closes the screen mid-answer must
                 # close the translator's stream too.
                 async with aclosing(
-                    _stream_block_out(block, event.sources, translation)
-                ) as block_events:
-                    async for block_event in block_events:
-                        if isinstance(block_event, Claim):
-                            claimed.append(block_event.content)
-                        yield block_event
+                    _translated_pieces(block.text, translation)
+                ) as pieces:
+                    async for piece in pieces:
+                        yield answer_stream.piece(piece)
+                claim = answer_stream.claim(block, event.sources)
+                translated.append(claim.content.text)
+                yield claim
             set_current_span_content(
-                input=_text_of(event.content), output=_text_of(claimed)
+                input="\n".join(block.text for block in event.content),
+                output="\n".join(translated),
             )
-        yield event.model_copy(update={"content": tuple(claimed)})
+        yield answer_stream.finish(event.outcome)
 
 
-async def _stream_block_out(
-    block: OutputContent,
-    sources: tuple[Source, ...],
-    translation: TurnTranslation,
-) -> AsyncGenerator[ClaimDelta | Claim]:
-    """One block in the farmer's language: its pieces as the translator writes
-    them, then its `Claim`. A blank block is not sent."""
+def _translated_pieces(text: str, translation: TurnTranslation) -> AsyncIterator[str]:
+    """The translator's stream for `text`. A blank text is not sent: it goes
+    out as it is."""
 
-    if not block.text.strip():
-        yield Claim(content=block, sources=sources)
-        return
-    pieces: list[str] = []
-    async with aclosing(translation.stream_out(block.text)) as stream:
-        async for piece in stream:
-            pieces.append(piece)
-            yield ClaimDelta(text=piece)
-    translated = block.model_copy(update={"text": "".join(pieces)})
-    yield Claim(content=translated, sources=sources)
+    if text.strip():
+        return translation.stream_out(text)
+    return _as_it_is(text)
 
 
-def _text_of(content: Sequence[OutputContent]) -> str:
-    return "\n".join(block.text for block in content)
+async def _as_it_is(text: str) -> AsyncGenerator[str]:
+    if text:
+        yield text

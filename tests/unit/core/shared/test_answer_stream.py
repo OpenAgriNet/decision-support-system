@@ -1,0 +1,83 @@
+"""Tier 1 — the events of a streamed answer agree with each other."""
+
+from __future__ import annotations
+
+from dss.core.shared.answer_stream import AnswerStream
+from dss.core.shared.models import (
+    ClaimDelta,
+    RefusalBlock,
+    Source,
+    SourceKind,
+    TextBlock,
+    TurnOutcome,
+    TurnStatus,
+)
+
+IMD = Source(id="1", name="IMD", kind=SourceKind.PROVIDER)
+AGMARKNET = Source(id="2", name="Agmarknet", kind=SourceKind.PROVIDER)
+ANSWERED = TurnOutcome(status=TurnStatus.ANSWERED, confidence=92)
+
+
+def test_a_piece_is_handed_on_as_a_delta():
+    answer = AnswerStream()
+
+    assert answer.piece("Rain is ") == ClaimDelta(text="Rain is ")
+
+
+def test_a_claim_is_the_pieces_written_since_the_last_one():
+    answer = AnswerStream()
+    answer.piece("Rain is ")
+    answer.piece("likely [1].")
+
+    claim = answer.claim(TextBlock(text="ignored", source_ids=("1",)), (IMD,))
+
+    assert claim.content == TextBlock(text="Rain is likely [1].", source_ids=("1",))
+    assert claim.sources == (IMD,)
+
+
+def test_a_claim_keeps_the_type_of_its_block():
+    answer = AnswerStream()
+    answer.piece("I can't help with that.")
+
+    claim = answer.claim(RefusalBlock(text="ignored"), ())
+
+    assert claim.content == RefusalBlock(text="I can't help with that.")
+
+
+def test_each_claim_takes_only_its_own_pieces():
+    answer = AnswerStream()
+    answer.piece("Rain [1].")
+    answer.claim(TextBlock(text=""), (IMD,))
+    answer.piece("Wheat [2].")
+
+    second = answer.claim(TextBlock(text=""), (AGMARKNET,))
+
+    assert second.content.text == "Wheat [2]."
+
+
+def test_a_claim_with_no_pieces_is_empty():
+    answer = AnswerStream()
+
+    assert answer.claim(RefusalBlock(text="ignored"), ()).content.text == ""
+
+
+def test_the_finish_holds_every_claimed_block_in_order():
+    answer = AnswerStream()
+    answer.piece("Rain [1].")
+    first = answer.claim(TextBlock(text=""), (IMD,))
+    answer.piece("Wheat [2].")
+    second = answer.claim(TextBlock(text=""), (IMD, AGMARKNET))
+
+    finished = answer.finish(ANSWERED)
+
+    assert finished.outcome == ANSWERED
+    assert finished.content == (first.content, second.content)
+    assert finished.sources == (IMD, AGMARKNET)
+
+
+def test_written_is_what_the_next_claim_would_hold():
+    answer = AnswerStream()
+    answer.piece("Rain ")
+    answer.piece("[1].")
+
+    assert answer.written == "Rain [1]."
