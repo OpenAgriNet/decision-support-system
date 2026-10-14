@@ -54,6 +54,7 @@ from tests.support.fakes import (
     FakePromptProvider,
     FakeSchemeCatalog,
 )
+from tests.support.turn_events import assert_well_formed
 
 DELETE_COMMAND = LlmPolicy(
     id="delete-command",
@@ -267,7 +268,9 @@ def _build(
 
 
 async def _collect(orch: Orchestrator, turn: UserTurn | None = None):
-    return [event async for event in orch.run(turn or _turn(), _ctx())]
+    events = [event async for event in orch.run(turn or _turn(), _ctx())]
+    assert_well_formed(events)
+    return events
 
 
 async def test_a_served_ask_is_answered_end_to_end() -> None:

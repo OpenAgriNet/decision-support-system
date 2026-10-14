@@ -21,6 +21,7 @@ from dss.core.shared.models import (
     UserTurn,
 )
 from dss.orchestration.redaction import pass_through, redact_texts
+from tests.support.turn_events import assert_well_formed
 
 from .test_orchestrator import (
     _ANSWERED_EVIDENCE,
@@ -122,6 +123,7 @@ async def _run(*, redact, compose=None, intent_llm=None, moderation_llm=None):  
     )
     query = f"status of my application, number {PHONE}, aadhaar {AADHAAR}"
     events = [event async for event in orch.run(_turn(query), _ctx())]
+    assert_well_formed(events)
     return events, plan, compose, turns
 
 
