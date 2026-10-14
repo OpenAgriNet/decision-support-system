@@ -14,3 +14,8 @@ class DssError(Exception):
 
 class ProviderUnavailableError(DssError):
     """A dependency the turn needed could not be reached."""
+
+
+class TranslationError(DssError):
+    """A translator failed, or sent back a different number of texts than it
+    was given."""
