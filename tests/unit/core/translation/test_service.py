@@ -1,22 +1,14 @@
-"""Tier 1 — translating a turn in and an answer back out, against a fake."""
+"""Tier 1 — translating a turn in and streaming an answer back out, against a fake."""
 
 from __future__ import annotations
 
 import pytest
 
-from dss.core.channel.models import ComposedAnswer
 from dss.core.shared.errors import TranslationError
 from dss.core.shared.language import ENGLISH, LanguageTag
-from dss.core.shared.models import (
-    ConversationMessage,
-    RefusalBlock,
-    Source,
-    SourceKind,
-    TextBlock,
-    UserDetails,
-)
+from dss.core.shared.models import ConversationMessage, UserDetails
 from dss.core.translation.models import TranslationRoute
-from dss.core.translation.service import EdgeTranslation, with_translated_blocks
+from dss.core.translation.service import EdgeTranslation
 from tests.support.fakes import FakeTranslator
 
 GUJARATI = LanguageTag("gu")
@@ -53,16 +45,6 @@ def _translation(turn, translator: FakeTranslator, to: LanguageTag = ENGLISH):
     translation = _edge_translation(translator, to).for_turn(turn)
     assert translation is not None
     return translation
-
-
-def _an_answer() -> ComposedAnswer:
-    return ComposedAnswer(
-        content=(
-            TextBlock(text="Rain is likely today [1]", source_ids=("1",)),
-            RefusalBlock(text="I can't help with gold prices"),
-        ),
-        sources=(Source(id="1", name="IMD", kind=SourceKind.PROVIDER),),
-    )
 
 
 def test_region_tag_matches_its_language(a_gujarati_turn):
@@ -192,23 +174,6 @@ async def test_translate_in_rejects_a_wrong_count(a_gujarati_turn):
         await translation.translate_in(turn)
 
 
-async def test_translate_out_goes_from_the_core_to_the_edge(a_gujarati_turn):
-    translator = FakeTranslator()
-
-    result = await _translation(a_gujarati_turn(), translator).translate_out(
-        _an_answer()
-    )
-
-    [(method, texts, from_lang, to_lang)] = translator.calls
-    assert method == "translate"
-    assert texts == ("Rain is likely today [1]", "I can't help with gold prices")
-    assert (from_lang, to_lang) == (ENGLISH, GUJARATI)
-    assert [block.text for block in result.content] == [
-        "[gu] Rain is likely today [1]",
-        "[gu] I can't help with gold prices",
-    ]
-
-
 async def test_stream_out_goes_from_the_core_to_the_edge(a_gujarati_turn):
     translator = FakeTranslator()
     translation = _translation(a_gujarati_turn(), translator)
@@ -219,22 +184,3 @@ async def test_stream_out_goes_from_the_core_to_the_edge(a_gujarati_turn):
     assert (method, texts) == ("stream", ("Rain is likely",))
     assert (from_lang, to_lang) == (ENGLISH, GUJARATI)
     assert "".join(pieces) == "[gu] Rain is likely"
-
-
-def test_translated_blocks_keep_type_and_sources():
-    answer = _an_answer()
-
-    result = with_translated_blocks(answer, ["વરસાદ [1]", "સોનું નહીં"])
-
-    text_block, refusal_block = result.content
-    assert isinstance(text_block, TextBlock)
-    assert text_block.source_ids == ("1",)
-    assert isinstance(refusal_block, RefusalBlock)
-    assert result.sources == answer.sources
-
-
-async def test_translate_out_rejects_a_wrong_count(a_gujarati_turn):
-    translation = _translation(a_gujarati_turn(), FakeTranslator(drop_one=True))
-
-    with pytest.raises(TranslationError):
-        await translation.translate_out(_an_answer())

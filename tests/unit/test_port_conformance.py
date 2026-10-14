@@ -72,6 +72,7 @@ def test_the_orchestrator_satisfies_the_port(a_turn, a_context):
     from dss.adapters.sinks.memory import MemoryTurnSink
     from dss.adapters.sinks.stdout import StdoutTelemetrySink
     from dss.config.clarification_text_loader import load_clarification_text
+    from dss.core.translation.service import EdgeTranslation
     from dss.orchestration.orchestrator import Components, Orchestrator
     from dss.orchestration.redaction import pass_through
 
@@ -97,6 +98,7 @@ def test_the_orchestrator_satisfies_the_port(a_turn, a_context):
         area_lookup=FakeAreaLookup(),
         schemas={},
         clarification_text=load_clarification_text(),
+        edge_translation=EdgeTranslation(routes={}),
     )
 
     events = drive(runner, a_turn(), a_context)

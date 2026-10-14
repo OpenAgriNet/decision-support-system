@@ -43,6 +43,7 @@ from dss.core.shared.models import (
     TurnStatus,
     UserTurn,
 )
+from dss.core.translation.service import EdgeTranslation
 from dss.orchestration.orchestrator import Components, Orchestrator
 from dss.orchestration.plan import Plan
 from dss.orchestration.redaction import RedactTexts, pass_through
@@ -237,6 +238,7 @@ def _build(
     moderation_llm=None,
     localize: FakeLocalizer | None = None,
     schemas: dict[str, DomainSchema] | None = None,
+    edge_translation: EdgeTranslation | None = None,
 ) -> tuple[Orchestrator, MemoryTurnSink]:
     turns = MemoryTurnSink()
     orch = Orchestrator(
@@ -259,6 +261,7 @@ def _build(
         telemetry=_Telemetry(),
         area_lookup=area_lookup or FakeAreaLookup({"pune": [_PUNE_MATCH]}),
         clarification_text=load_clarification_text(),
+        edge_translation=edge_translation or EdgeTranslation(routes={}),
     )
     return orch, turns
 
