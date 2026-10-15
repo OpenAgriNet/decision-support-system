@@ -8,7 +8,7 @@ be taken back, so the rule is kept here, in code, for any model.
 from __future__ import annotations
 
 import re
-from collections.abc import AsyncGenerator, AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator, Iterable
 
 # The space before a marker goes with it, so "dry [1]." becomes "dry.".
 _MARKER = re.compile(r" ?\[(\d+)\]")
@@ -39,3 +39,46 @@ async def cite_at_end(pieces: AsyncIterator[str]) -> AsyncGenerator[str]:
         yield held
     if cited:
         yield " " + "".join(f"[{source_id}]" for source_id in cited)
+
+
+class CitationNumbers:
+    """Renumbers `[n]` markers so the sources the answer used read [1], [2], …
+
+    The composer sees every source read for the turn, numbered as they were
+    gathered. It uses some of them, so its numbers can start at [2] or skip
+    one. The farmer is shown only the sources used, so they are numbered
+    again, in the order first cited. A number naming no source is removed.
+
+    Fed piece by piece like `StreamReveal`: a marker split across two pieces
+    is held back until it is whole. `cited` maps the composer's number to the
+    farmer's.
+    """
+
+    def __init__(self, known: Iterable[str]) -> None:
+        self._known = set(known)
+        self.cited: dict[str, str] = {}
+        self._held = ""
+
+    def feed(self, piece: str) -> str:
+        text = self._held + piece
+        maybe = _PART_MARKER.search(text)
+        cut = maybe.start() if maybe else len(text)
+        text, self._held = text[:cut], text[cut:]
+        return _BARE_MARKER.sub(self._renumber, text)
+
+    def flush(self) -> str:
+        held, self._held = self._held, ""
+        return _BARE_MARKER.sub(self._renumber, held)
+
+    def _renumber(self, marker: re.Match[str]) -> str:
+        source_id = marker.group(1)
+        if source_id not in self._known:
+            return ""
+        number = self.cited.setdefault(source_id, str(len(self.cited) + 1))
+        return f"[{number}]"
+
+
+# Spaces are left alone: holding one back would re-split pieces the model
+# sent, and `cite_at_end` has already tidied them.
+_BARE_MARKER = re.compile(r"\[(\d+)\]")
+_PART_MARKER = re.compile(r"\[\d*$")

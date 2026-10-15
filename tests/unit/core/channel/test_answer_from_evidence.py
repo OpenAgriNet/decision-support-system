@@ -24,7 +24,9 @@ def _evidence(*sources: Source) -> Evidence:
 
 
 def test_prose_becomes_the_single_block() -> None:
-    answer = answer_from_evidence("Wheat is 2,275 Rs [1].", _evidence())
+    source = Source(id="1", name="Agmarknet", kind=SourceKind.PROVIDER, url=None)
+
+    answer = answer_from_evidence("Wheat is 2,275 Rs [1].", _evidence(source))
 
     assert len(answer.content) == 1
     assert answer.content[0].text == "Wheat is 2,275 Rs [1]."
@@ -71,9 +73,10 @@ def test_only_the_cited_source_is_listed() -> None:
         "Sow masoor in late October [2].", _evidence(*sources)
     )
 
-    assert [s.id for s in answer.sources] == ["2"]
+    assert [s.id for s in answer.sources] == ["1"]
     assert answer.sources[0].name == "ICAR Advisories"
-    assert answer.content[0].source_ids == ("2",)
+    assert answer.content[0].source_ids == ("1",)
+    assert answer.content[0].text == "Sow masoor in late October [1]."
 
 
 def test_several_questions_may_cite_several_sources() -> None:
@@ -102,9 +105,13 @@ def test_a_citation_naming_no_listed_source_is_dropped() -> None:
 
     assert answer.sources == ()
     assert answer.content[0].source_ids == ()
+    assert "[7]" not in answer.content[0].text
 
 
-def test_sources_are_listed_once_and_in_evidence_order() -> None:
+def test_sources_are_listed_once_and_numbered_in_the_order_first_cited() -> None:
+    """The numbers count up the page from [1], so the farmer never reads a
+    [2] with no [1] before it."""
+
     sources = (
         Source(id="1", name="Agmarknet", kind=SourceKind.PROVIDER, url=None),
         Source(id="2", name="IMD", kind=SourceKind.PROVIDER, url=None),
@@ -112,4 +119,8 @@ def test_sources_are_listed_once_and_in_evidence_order() -> None:
 
     answer = answer_from_evidence("... [2] ... [1] ... [2].", _evidence(*sources))
 
-    assert [s.id for s in answer.sources] == ["1", "2"]
+    assert [(s.id, s.name) for s in answer.sources] == [
+        ("1", "IMD"),
+        ("2", "Agmarknet"),
+    ]
+    assert answer.content[0].text == "... [1] ... [2] ... [1]."

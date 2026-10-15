@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Iterable
 
-from dss.core.stream_response.citations import cite_at_end
+from dss.core.stream_response.citations import CitationNumbers, cite_at_end
 
 
 async def _pieces(*pieces: str) -> AsyncIterator[str]:
@@ -47,3 +47,36 @@ async def test_text_without_markers_comes_through_unchanged() -> None:
     text = await _joined(["Prices [", "per quintal] vary. ", "Ask again ["])
 
     assert text == "Prices [per quintal] vary. Ask again ["
+
+
+def _renumbered(known: tuple[str, ...], *pieces: str) -> str:
+    numbers = CitationNumbers(known)
+    return "".join([numbers.feed(piece) for piece in pieces]) + numbers.flush()
+
+
+def test_the_only_cited_source_is_numbered_one() -> None:
+    """The farmer reads the sources the answer used, so the first one is [1]
+    whatever number the composer saw it under."""
+
+    assert _renumbered(("1", "2"), "Plant in June. [2]") == "Plant in June. [1]"
+
+
+def test_sources_are_numbered_in_the_order_first_cited() -> None:
+    text = _renumbered(("1", "2", "3"), "Rain [3]. Mango [1]. Rain [3].")
+
+    assert text == "Rain [1]. Mango [2]. Rain [1]."
+
+
+def test_a_marker_split_across_pieces_is_renumbered() -> None:
+    assert _renumbered(("1", "2"), "Dry [", "2", "]. Wet [2", "]") == "Dry [1]. Wet [1]"
+
+
+def test_a_marker_naming_no_source_is_removed() -> None:
+    assert _renumbered(("1",), "Onion 2200. Rain. [7][1]") == "Onion 2200. Rain. [1]"
+
+
+def test_the_numbers_map_back_to_the_composer_sources() -> None:
+    numbers = CitationNumbers(("1", "2", "3"))
+    numbers.feed("Rain [3]. Mango [1].")
+
+    assert numbers.cited == {"3": "1", "1": "2"}
