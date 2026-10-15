@@ -162,7 +162,7 @@ def build_runner_with_lifecycle(
     # name model stops the boot here, never on a farmer's turn.
     redact = _redaction(settings)
     # Same: a bad edge translation config stops the boot here (#174).
-    translation_routes = _translation_routes(settings, prompts)
+    translation_routes = _build_translation_routes(settings, prompts=prompts)
 
     discover, invocation, schemas, schema_context_index, client = _network(
         settings, fetch=fetch
@@ -276,15 +276,17 @@ def _redaction(settings: Settings) -> RedactTexts:
     )
 
 
-def _translation_routes(
-    settings: Settings, prompts: PromptProvider
+def _build_translation_routes(
+    settings: Settings, *, prompts: PromptProvider
 ) -> dict[str, TranslationRoute]:
     """One route per language in the edge translation config (#174); none
     when `DSS_EDGE_TRANSLATION_CONFIG_PATH` is unset."""
 
     return {
         language: TranslationRoute(
-            translator=_translator(language, binding, settings, prompts),
+            translator=_build_translator(
+                language, binding, settings=settings, prompts=prompts
+            ),
             to=binding.to,
         )
         for language, binding in load_edge_translation_config(
@@ -293,9 +295,10 @@ def _translation_routes(
     }
 
 
-def _translator(
+def _build_translator(
     language: str,
     binding: TranslationBinding,
+    *,
     settings: Settings,
     prompts: PromptProvider,
 ) -> Translator:

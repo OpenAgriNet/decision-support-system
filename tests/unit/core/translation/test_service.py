@@ -33,7 +33,7 @@ def a_gujarati_turn(a_turn):
     return _turn
 
 
-def _edge_translation(
+def _build_edge_translation(
     translator: FakeTranslator, to: LanguageTag = ENGLISH
 ) -> EdgeTranslation:
     return EdgeTranslation(
@@ -41,8 +41,10 @@ def _edge_translation(
     )
 
 
-def _translation(turn, translator: FakeTranslator, to: LanguageTag = ENGLISH):
-    translation = _edge_translation(translator, to).for_turn(turn)
+def _build_turn_translation(
+    turn, translator: FakeTranslator, to: LanguageTag = ENGLISH
+):
+    translation = _build_edge_translation(translator, to).for_turn(turn)
     assert translation is not None
     return translation
 
@@ -50,7 +52,7 @@ def _translation(turn, translator: FakeTranslator, to: LanguageTag = ENGLISH):
 def test_region_tag_matches_its_language(a_gujarati_turn):
     translator = FakeTranslator()
 
-    translation = _edge_translation(translator).for_turn(
+    translation = _build_edge_translation(translator).for_turn(
         a_gujarati_turn(target_lang=LanguageTag("gu-IN"))
     )
 
@@ -58,13 +60,13 @@ def test_region_tag_matches_its_language(a_gujarati_turn):
     assert translation.translator is translator
 
 
-def test_unlisted_language_has_no_translation(a_gujarati_turn):
+def test_unlisted_language_has_no_build_turn_translation(a_gujarati_turn):
     turn = a_gujarati_turn(target_lang=LanguageTag("mr"))
 
-    assert _edge_translation(FakeTranslator()).for_turn(turn) is None
+    assert _build_edge_translation(FakeTranslator()).for_turn(turn) is None
 
 
-def test_no_routes_means_no_translation(a_gujarati_turn):
+def test_no_routes_means_no_build_turn_translation(a_gujarati_turn):
     assert EdgeTranslation(routes={}).for_turn(a_gujarati_turn()) is None
 
 
@@ -74,7 +76,7 @@ def test_translation_keeps_the_farmers_full_tag_and_the_routes_language(
     marathi = LanguageTag("mr")
     turn = a_gujarati_turn(target_lang=LanguageTag("gu-IN"))
 
-    translation = _translation(turn, FakeTranslator(), to=marathi)
+    translation = _build_turn_translation(turn, FakeTranslator(), to=marathi)
 
     assert translation.edge_lang == LanguageTag("gu-IN")
     assert translation.core_lang == marathi
@@ -84,7 +86,7 @@ async def test_translate_in_is_one_call_from_the_edge_to_the_core(a_gujarati_tur
     translator = FakeTranslator()
     turn = a_gujarati_turn()
 
-    await _translation(turn, translator).translate_in(turn)
+    await _build_turn_translation(turn, translator).translate_in(turn)
 
     [(method, _, from_lang, to_lang)] = translator.calls
     assert method == "translate"
@@ -95,7 +97,7 @@ async def test_translate_in_skips_an_unchanged_enriched_query(a_gujarati_turn):
     translator = FakeTranslator()
     turn = a_gujarati_turn()
 
-    result = await _translation(turn, translator).translate_in(turn)
+    result = await _build_turn_translation(turn, translator).translate_in(turn)
 
     [(_, texts, _, _)] = translator.calls
     assert texts == ("આજે વરસાદ પડશે?", "નમસ્તે", "Hello")
@@ -106,7 +108,7 @@ async def test_translate_in_sends_an_enriched_query_that_differs(a_gujarati_turn
     translator = FakeTranslator()
     turn = a_gujarati_turn(enriched_query="આજે આણંદમાં વરસાદ પડશે?")
 
-    result = await _translation(turn, translator).translate_in(turn)
+    result = await _build_turn_translation(turn, translator).translate_in(turn)
 
     [(_, texts, _, _)] = translator.calls
     assert texts[:2] == ("આજે વરસાદ પડશે?", "આજે આણંદમાં વરસાદ પડશે?")
@@ -118,7 +120,7 @@ async def test_translate_in_never_sends_the_phone(a_gujarati_turn):
     translator = FakeTranslator()
     turn = a_gujarati_turn(user=UserDetails(phone="«phone_1»"))
 
-    result = await _translation(turn, translator).translate_in(turn)
+    result = await _build_turn_translation(turn, translator).translate_in(turn)
 
     [(_, texts, _, _)] = translator.calls
     assert "«phone_1»" not in texts
@@ -131,7 +133,9 @@ async def test_translate_in_sets_both_languages_to_the_core_language(
     marathi = LanguageTag("mr")
     turn = a_gujarati_turn()
 
-    result = await _translation(turn, FakeTranslator(), to=marathi).translate_in(turn)
+    result = await _build_turn_translation(
+        turn, FakeTranslator(), to=marathi
+    ).translate_in(turn)
 
     assert isinstance(result.target_lang, LanguageTag)
     assert result.source_lang == result.target_lang == marathi
@@ -140,7 +144,7 @@ async def test_translate_in_sets_both_languages_to_the_core_language(
 async def test_translate_in_leaves_the_farmers_turn_as_it_was(a_gujarati_turn):
     turn = a_gujarati_turn()
 
-    await _translation(turn, FakeTranslator()).translate_in(turn)
+    await _build_turn_translation(turn, FakeTranslator()).translate_in(turn)
 
     assert turn == a_gujarati_turn()
 
@@ -155,7 +159,7 @@ async def test_empty_history_text_keeps_its_slot(a_gujarati_turn):
         ]
     )
 
-    result = await _translation(turn, translator).translate_in(turn)
+    result = await _build_turn_translation(turn, translator).translate_in(turn)
 
     [(_, texts, _, _)] = translator.calls
     assert "" not in texts
@@ -168,7 +172,7 @@ async def test_empty_history_text_keeps_its_slot(a_gujarati_turn):
 
 async def test_translate_in_rejects_a_wrong_count(a_gujarati_turn):
     turn = a_gujarati_turn()
-    translation = _translation(turn, FakeTranslator(drop_one=True))
+    translation = _build_turn_translation(turn, FakeTranslator(drop_one=True))
 
     with pytest.raises(TranslationError):
         await translation.translate_in(turn)
@@ -176,7 +180,7 @@ async def test_translate_in_rejects_a_wrong_count(a_gujarati_turn):
 
 async def test_stream_out_goes_from_the_core_to_the_edge(a_gujarati_turn):
     translator = FakeTranslator()
-    translation = _translation(a_gujarati_turn(), translator)
+    translation = _build_turn_translation(a_gujarati_turn(), translator)
 
     pieces = [piece async for piece in translation.stream_out("Rain is likely")]
 

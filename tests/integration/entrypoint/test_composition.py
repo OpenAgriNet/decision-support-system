@@ -378,21 +378,21 @@ def _prompts():
 
 
 def test_no_translation_path_builds_no_routes(tmp_path: Path) -> None:
-    from dss.entrypoint.composition import _translation_routes
+    from dss.entrypoint.composition import _build_translation_routes
 
-    assert _translation_routes(_settings(tmp_path), _prompts()) == {}
+    assert _build_translation_routes(_settings(tmp_path), prompts=_prompts()) == {}
 
 
 def test_shipped_config_builds_a_gujarati_llm_route(tmp_path: Path) -> None:
     from dss.adapters.translator.llm import LLMTranslator
     from dss.core.shared.language import ENGLISH
-    from dss.entrypoint.composition import _translation_routes
+    from dss.entrypoint.composition import _build_translation_routes
 
-    routes = _translation_routes(
+    routes = _build_translation_routes(
         Settings(
             evidence_dir=tmp_path, edge_translation_config_path=_SHIPPED_TRANSLATION
         ),
-        _prompts(),
+        prompts=_prompts(),
     )
 
     assert list(routes) == ["gu"]
@@ -401,15 +401,15 @@ def test_shipped_config_builds_a_gujarati_llm_route(tmp_path: Path) -> None:
 
 
 def test_an_llm_route_with_a_model_uses_its_own(tmp_path: Path) -> None:
-    from dss.entrypoint.composition import _translation_routes
+    from dss.entrypoint.composition import _build_translation_routes
 
     config = tmp_path / "edge-translation.yaml"
     config.write_text(
         "languages:\n  gu: {to: en, adapter: llm, model: openai:a-translator}\n"
     )
-    routes = _translation_routes(
+    routes = _build_translation_routes(
         Settings(evidence_dir=tmp_path, edge_translation_config_path=config),
-        _prompts(),
+        prompts=_prompts(),
     )
 
     assert routes["gu"].translator._llm._model == "openai:a-translator"
@@ -419,11 +419,11 @@ def test_stubbed_models_put_every_route_on_the_stub(tmp_path: Path) -> None:
     """`DSS_STUB_LLM` means no model is called, translation included."""
 
     from dss.adapters.translator.stub import StubTranslator
-    from dss.entrypoint.composition import _translation_routes
+    from dss.entrypoint.composition import _build_translation_routes
 
-    routes = _translation_routes(
+    routes = _build_translation_routes(
         _settings(tmp_path, edge_translation_config_path=_SHIPPED_TRANSLATION),
-        _prompts(),
+        prompts=_prompts(),
     )
 
     assert isinstance(routes["gu"].translator, StubTranslator)

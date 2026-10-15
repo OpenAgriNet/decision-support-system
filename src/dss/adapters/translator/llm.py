@@ -35,7 +35,7 @@ class LLMTranslator:
         self, texts: Sequence[str], *, from_lang: LanguageTag, to_lang: LanguageTag
     ) -> tuple[str, ...]:
         result = await self._llm.structured(
-            system_prompt=self._system_prompt(from_lang, to_lang),
+            system_prompt=self._render_system_prompt(from_lang, to_lang),
             user_query=json.dumps(list(texts), ensure_ascii=False),
             schema=TranslatedTexts,
         )
@@ -48,10 +48,13 @@ class LLMTranslator:
         it closes the model's call."""
 
         return self._llm.stream_text(
-            system_prompt=self._system_prompt(from_lang, to_lang), user_query=text
+            system_prompt=self._render_system_prompt(from_lang, to_lang),
+            user_query=text,
         )
 
-    def _system_prompt(self, from_lang: LanguageTag, to_lang: LanguageTag) -> str:
+    def _render_system_prompt(
+        self, from_lang: LanguageTag, to_lang: LanguageTag
+    ) -> str:
         return self._prompts.get_prompt(
             PromptIdentifier.TRANSLATOR,
             lang=ENGLISH,
