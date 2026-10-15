@@ -245,15 +245,7 @@ def answer_from_evidence(text: str, evidence: Evidence) -> ComposedAnswer:
     """Shape the composer's prose and the sources it used into the answer the
     transport streams.
 
-    The composer cites sources inline as `[1]`, `[2]` — the `Source.id`s
-    `assemble_evidence` assigned.
-
-    - Only the sources it cited are listed. The others were read and rejected;
-      listing them claims a provenance the answer does not have.
-    - Those are numbered again from [1], in the order first cited, with the
-      text to match (`CitationNumbers`). An answer resting on source 2 alone
-      reads [1], never a lone [2].
-    - A number naming no source is dropped from text and list alike.
+    Only cited sources are listed, renumbered from [1] in first-cited order.
     """
 
     numbers = CitationNumbers(source.id for source in evidence.sources)

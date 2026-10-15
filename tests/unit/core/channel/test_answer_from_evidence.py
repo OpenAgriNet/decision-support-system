@@ -109,9 +109,6 @@ def test_a_citation_naming_no_listed_source_is_dropped() -> None:
 
 
 def test_sources_are_listed_once_and_numbered_in_the_order_first_cited() -> None:
-    """The numbers count up the page from [1], so the farmer never reads a
-    [2] with no [1] before it."""
-
     sources = (
         Source(id="1", name="Agmarknet", kind=SourceKind.PROVIDER, url=None),
         Source(id="2", name="IMD", kind=SourceKind.PROVIDER, url=None),
