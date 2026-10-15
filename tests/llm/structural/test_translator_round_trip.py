@@ -8,9 +8,10 @@ reading the real prompt shows whether it does.
 Structural only, per the tier's rule: each kept piece is present after each
 leg. The wording is never asserted.
 
-Built from the shipped `gu` route, so it runs against the model and prompt a
-deployment uses. Skipped unless that model's key is in the shell or `.env`,
-like `test_intent_place_name.py`.
+Runs on the model `DSS_COMPOSER_MODEL` names, through the shipped translator
+prompt, from a config written here rather than the one a deployment ships.
+Skipped unless that model's key is in the shell or `.env`, like
+`test_composer_pick_turn.py`.
 """
 
 from __future__ import annotations
@@ -21,7 +22,6 @@ from pathlib import Path
 import pytest
 from dotenv import dotenv_values
 
-from dss.config.edge_translation_loader import load_edge_translation_config
 from dss.config.prompt_service import build_prompt_service
 from dss.config.settings import Settings
 from dss.core.shared.language import ENGLISH, LanguageTag
@@ -30,7 +30,6 @@ from dss.ports.translator import Translator
 from tests.support.live_model import missing_model_key
 
 _ROOT = Path(__file__).parents[3]
-_SHIPPED = _ROOT / "configs" / "edge-translation.yaml"
 _DOTENV = _ROOT / ".env"
 
 GUJARATI = LanguageTag("gu")
@@ -45,12 +44,11 @@ def _dotenv_values() -> dict[str, str]:
 
 
 _MISSING = missing_model_key(
-    load_edge_translation_config(_SHIPPED)["gu"].model,
-    {**os.environ, **_dotenv_values()},
+    Settings().composer_model, {**os.environ, **_dotenv_values()}
 )
 pytestmark = pytest.mark.skipif(
     _MISSING is not None,
-    reason=f"live model test — the shipped gu translator needs {_MISSING}, in .env",
+    reason=f"live model test — DSS_COMPOSER_MODEL needs {_MISSING}, in .env",
 )
 
 
@@ -61,9 +59,15 @@ def _live_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture
-def translator() -> Translator:
+def translator(tmp_path: Path) -> Translator:
+    config = tmp_path / "edge-translation.yaml"
+    config.write_text(
+        "languages:\n"
+        f"  gu: {{to: en, adapter: llm, model: '{Settings().composer_model}'}}\n",
+        encoding="utf-8",
+    )
     routes = _build_translation_routes(
-        Settings(stub_llm=False, edge_translation_config_path=_SHIPPED),
+        Settings(stub_llm=False, edge_translation_config_path=config),
         prompts=build_prompt_service(_ROOT / "configs" / "prompts.yaml"),
     )
     return routes["gu"].translator
