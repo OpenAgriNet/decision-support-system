@@ -65,6 +65,9 @@ services:
       # mounted file to use your own rules.
       DSS_REDACTION_ENABLED: ${DSS_REDACTION_ENABLED:-false}
       DSS_REDACTION_CONFIG_PATH: ${DSS_REDACTION_CONFIG_PATH:-/app/src/dss/config/examples/redaction-rules.yaml}
+      # Translation (#174). Off unless set. The gateway is always on here, so
+      # the file's `model` must be a gateway name: mount a copy, see RUNNING.md.
+      DSS_EDGE_TRANSLATION_CONFIG_PATH: ${DSS_EDGE_TRANSLATION_CONFIG_PATH:-}
       # Photon, by service name. Set it empty in .env to turn Photon off; the
       # DSS then never asks it. Countries default to those in the area file.
       DSS_PHOTON_BASE_URL: ${DSS_PHOTON_BASE_URL:-http://photon:2322}
