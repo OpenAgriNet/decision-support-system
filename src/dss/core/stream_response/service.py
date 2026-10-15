@@ -12,8 +12,8 @@ decides what to do with it — frame it, buffer it, or drop it.
 text wherever it likes: mid-word, mid-number, mid-citation. Nothing here
 re-splits them onto tidier boundaries, because the one guarantee everything
 downstream rests on is that joining the pieces gives the answer. The one
-exception is `[n]` markers, which `cite_at_end` moves to the end: a small model
-cites every sentence, and no prompt stopped it.
+exception is `[n]` markers, which `cite_per_paragraph` moves to the end of
+each paragraph: a small model cites every sentence, and no prompt stopped it.
 
 **No retry, and none available.** `LLMProvider.stream_text` does not offer one
 (`ports/llm.py`): re-issuing after pieces are out would write a *different*
@@ -35,7 +35,7 @@ from dss.core.channel.prompt import system_prompt, user_prompt
 from dss.core.intent.models import Intent
 from dss.core.planner.models import Evidence, Identity
 from dss.core.shared.models import UserTurn
-from dss.core.stream_response.citations import cite_at_end
+from dss.core.stream_response.citations import cite_per_paragraph
 from dss.ports.llm import LLMProvider
 from dss.ports.prompts import PromptProvider
 
@@ -92,7 +92,7 @@ async def stream_response(  # noqa: PLR0913
                 user_query=user_prompt(evidence, intent, turn=turn),
             )
         ) as written,
-        aclosing(cite_at_end(written)) as pieces,
+        aclosing(cite_per_paragraph(written)) as pieces,
     ):
         async for delta in pieces:
             yield delta
