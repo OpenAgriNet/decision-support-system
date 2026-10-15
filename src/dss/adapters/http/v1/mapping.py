@@ -31,12 +31,17 @@ from dss.core.shared.models import (
 DSS_RELEASE = "v1.0.0"
 
 
-def to_user_turn(body: schema.TurnRequest) -> UserTurn:
+def to_user_turn(body: schema.TurnRequest, *, client_id: str | None = None) -> UserTurn:
     """Normalize a validated request body into the turn the core works with.
 
     `enriched_query` mirrors `original_query`: enrichment has not landed, and
     `core/shared/models.py` defines both so later slices need not re-thread the
     second field through every signature.
+
+    `client_id` comes from a header rather than the body (ADR-0019), so it is
+    passed in rather than read off `body`. Defaulted, because a caller that
+    sends none is served by the default provider ranking and every existing
+    caller sends none.
     """
 
     thread = body.message.input
@@ -63,6 +68,7 @@ def to_user_turn(body: schema.TurnRequest) -> UserTurn:
         ],
         location=_location(attributes.location),
         response_max_chars=response.max_characters if response else None,
+        client_id=client_id,
     )
 
 

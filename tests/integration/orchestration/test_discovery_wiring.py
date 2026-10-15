@@ -31,7 +31,7 @@ from dss.orchestration.discovery import (
     build_discover_providers,
 )
 from dss.orchestration.turn import run_turn
-from tests.support.fakes import FakeAreaLookup, FakePromptProvider
+from tests.support.fakes import NO_PREFERENCES, FakeAreaLookup, FakePromptProvider
 
 SCHEMA_PACKS_FIXTURE_ROOT = (
     Path(__file__).parents[1]
@@ -98,6 +98,7 @@ async def test_the_wired_discover_providers_bakes_in_radius() -> None:
             discovery=discovery,
             schema_pack_cache=schema_pack_cache,
             radius_m=25000,
+            preferences=NO_PREFERENCES,
         )
         ask = Ask(
             subject_categories=SubjectCategory.MARKET,
@@ -150,6 +151,7 @@ async def test_the_fan_out_runs_inside_a_span(monkeypatch) -> None:
             ),
             cache,
             50_000,
+            NO_PREFERENCES,
         )
         ask = Ask(
             subject_categories=SubjectCategory.MARKET,
@@ -218,6 +220,7 @@ async def test_the_fan_out_span_counts_how_many_asks_went_unanswered(
             ),
             cache,
             50_000,
+            NO_PREFERENCES,
         )
         ask = Ask(
             subject_categories=SubjectCategory.MARKET,
@@ -290,6 +293,7 @@ async def test_run_turn_can_call_the_composed_discover_providers() -> None:
             ),
             cache,
             50_000,
+            NO_PREFERENCES,
         )
 
         result = await run_turn(
