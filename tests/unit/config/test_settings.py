@@ -172,3 +172,12 @@ def test_a_photon_limit_of_zero_raises(
     monkeypatch.setenv(name, "0")
     with pytest.raises(ValueError):
         Settings(_env_file=None)
+
+
+def test_an_empty_translation_path_turns_translation_off(monkeypatch) -> None:
+    """Compose passes an unset variable as an empty string, and an empty path
+    would be the working directory."""
+
+    monkeypatch.setenv("DSS_EDGE_TRANSLATION_CONFIG_PATH", "")
+
+    assert Settings(_env_file=None).edge_translation_config_path is None
