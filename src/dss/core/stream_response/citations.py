@@ -1,8 +1,5 @@
-"""Citations moved to the end of each paragraph of a streamed answer.
-
-- A small model cites every sentence, and no prompt stopped it.
-- One marker per source per paragraph keeps the citation near its text.
-"""
+"""Citations moved to the end of each paragraph: a small model cites every
+sentence, and no prompt stopped it."""
 
 from __future__ import annotations
 
@@ -11,8 +8,7 @@ from collections.abc import AsyncGenerator, AsyncIterator, Iterable
 
 # The space before a marker goes with it, so "dry [1]." becomes "dry.".
 _MARKER = re.compile(r" ?\[(\d+)\]")
-# Held back until the next piece says what it is: part of a marker, or the
-# first half of a paragraph break.
+# A partial marker or half a paragraph break, held for the next piece.
 _MAYBE_MORE = re.compile(r"(?: ?\[\d*| |\n)$")
 _PARAGRAPH = "\n\n"
 
@@ -24,9 +20,6 @@ def _cite(text: str, cited: list[str]) -> str:
 
 
 async def cite_per_paragraph(pieces: AsyncIterator[str]) -> AsyncGenerator[str]:
-    """Pass the text on without its `[n]` markers, and end each paragraph with
-    each number it cited, once, in the order first cited."""
-
     cited: list[str] = []
     held = ""
     async for piece in pieces:
@@ -49,8 +42,7 @@ async def cite_per_paragraph(pieces: AsyncIterator[str]) -> AsyncGenerator[str]:
 
 
 class CitationNumbers:
-    """Renumbers cited sources 1..k in first-cited order; unknown ones are
-    dropped. `cited` maps the composer's number to the farmer's."""
+    """Renumbers cited sources from 1 in first-cited order; drops unknown ones."""
 
     def __init__(self, known: Iterable[str]) -> None:
         self._known = set(known)
