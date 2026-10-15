@@ -13,7 +13,8 @@ def test_values_are_the_names_the_spans_already_use():
     # is a breaking change for anything graphing them.
     assert {stage.value for stage in Stage} == {
         "redaction",
-        "translation",
+        "translation_in",
+        "translation_out",
         "intent",
         "location",
         "enrichment",
