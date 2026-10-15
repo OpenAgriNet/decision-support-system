@@ -52,6 +52,7 @@ paths:
         after the first piece has been sent — a second attempt would write a
         different answer over words the caller has already rendered.
       parameters:
+        - $ref: '#/components/parameters/ClientId'
         - $ref: '#/components/parameters/Traceparent'
         - $ref: '#/components/parameters/Tracestate'
       requestBody:
@@ -126,6 +127,19 @@ components:
         per Experience deployment is an open item.
 
   parameters:
+    ClientId:
+      name: X-Client-Id
+      in: header
+      required: false
+      description: |
+        Which experience-layer application is calling. Selects whose provider
+        ranking applies to the turn — DSS holds, per client and per topic, an
+        ordered list of the providers that client wants asked. Absent, blank,
+        or naming a client DSS has no configuration for is served by the
+        default ranking and answered normally, never refused.
+      schema:
+        type: string
+      example: kisan-mitra-web
     Traceparent:
       name: traceparent
       in: header
