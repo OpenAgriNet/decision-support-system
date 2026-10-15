@@ -16,8 +16,11 @@ from dss.core.provider_discovery.service import (
     CapabilityIndexSource,
     discover_providers,
 )
+from dss.core.provider_preferences.service import prioritise
 from dss.core.shared.models import UserTurn
+from dss.observability.trace_log import log_event
 from dss.ports.discovery import CapabilityDiscovery
+from dss.ports.provider_preferences import ProviderPreferences
 
 
 def build_capability_discovery(
@@ -42,12 +45,22 @@ def build_discover_providers(
     discovery: CapabilityDiscovery,
     schema_pack_cache: CapabilityIndexSource,
     radius_m: int,
+    preferences: ProviderPreferences,
 ) -> DiscoverProviders:
-    """Bakes in the built adapter, cache, and configured radius, so callers
-    only ever supply what changes per turn: intent, turn, and now.
+    """Bakes in the built adapter, cache, configured radius, and the client
+    ranking source, so callers only ever supply what changes per turn: intent,
+    turn, and now.
 
     Discovery only reads ``ask.place``; ``core.location.resolve_places`` fills
     it before discovery runs.
+
+    **The client's ranking is applied here**, on the way out, rather than at
+    each place that consumes a candidate (ADR-0019). The turn already carries
+    the client id and the intent already carries each ask's topic, so this is
+    the first point where both are in hand — and filtering once at the source
+    means every later reader (the no-match check, the planner's candidate
+    list, ``describe_capability``, the Direct answers the catalog held) sees
+    the ranked set without knowing a client expressed a preference at all.
 
     The fan-out reports two counts, onto the span already open around it —
     `trace_component("discovery")` in `turn.py` brackets exactly this call, so
@@ -73,6 +86,9 @@ def build_discover_providers(
         intent: Intent, turn: UserTurn, *, now: datetime
     ) -> DiscoveryResult:
         result = await bound(intent, turn, now=now)
+        preference = await preferences.for_client(turn.client_id)
+        result = prioritise(result, intent=intent, preference=preference)
+        _report(result, turn=turn)
         # `asks_total`, not "asks queried": the core service seeds `failures`
         # with every unresolved ask before any query goes out, so an ask whose
         # capability never resolved is a key here too. Calling it "queried"
@@ -81,7 +97,48 @@ def build_discover_providers(
         set_current_span_attributes(
             asks_total=len(result.failures),
             asks_failed=sum(1 for failures in result.failures.values() if failures),
+            client_id=turn.client_id or "",
+            asks_ranked=sum(1 for p in result.priorities.values() if p.applied),
+            providers_dropped=sum(len(p.dropped) for p in result.priorities.values()),
         )
         return result
 
     return discover
+
+
+def _report(result: DiscoveryResult, *, turn: UserTurn) -> None:
+    """Say what the ranking did to each ask, on the turn's own key.
+
+    One line per ask that a ranking governed. Ids and counts only — a
+    provider id and a subject category are configuration, never the farmer's
+    words (CONVENTIONS.md), so this is safe at INFO where a response body
+    would not be.
+
+    `dropped` is the line's reason for existing: a provider discovery found
+    and the ranking excluded is invisible everywhere else, and it is the
+    first thing to look at when a client's answers come back thinner than
+    another client's for the same question.
+    """
+
+    for priority in result.priorities.values():
+        if not priority.applied:
+            continue
+        log_event(
+            "provider_preferences",
+            turn.transaction_id,
+            event="ranking_applied",
+            ask_index=priority.ask_index,
+            topic=priority.topic,
+            client_id=priority.client_id or "-",
+            source=priority.source,
+            ranked=_ids(priority.ranking),
+            found=_ids(priority.kept),
+            dropped=_ids(priority.dropped),
+        )
+
+
+def _ids(providers: tuple[str, ...]) -> str:
+    """Provider ids as one greppable field. `-` rather than an empty value, so
+    a reader can tell the field was logged and was empty."""
+
+    return ",".join(providers) or "-"

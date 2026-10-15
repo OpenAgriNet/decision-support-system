@@ -9,6 +9,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 
+import anyio
 from pydantic_ai import Agent, ModelRetry, RunContext
 from pydantic_ai.models import Model
 
@@ -34,9 +35,12 @@ from dss.core.provider_discovery.models import (
     DiscoveredAnswer,
     DiscoveryResult,
     FailureClass,
+    ProviderCapability,
 )
+from dss.core.provider_preferences.service import ranking_for_ask
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import UserTurn
+from dss.observability.trace_log import log_event
 from dss.ports.invocation import CapabilityInvocation, SelectFailedError
 
 
@@ -78,7 +82,15 @@ async def _select(
     """Read a chosen capability's data. ``ask_index`` and ``resource_id``
     together pick one candidate from discovery; ``resource_attributes``
     carries only what the model resolves or authors (a governed code, free
-    text) — structural fields are assembled here, not by the model."""
+    text) — structural fields are assembled here, not by the model.
+
+    With a client ranking in force (ADR-0019) this is one call per *ask*
+    rather than per candidate: the chosen candidate names the @type whose
+    fields the model authored, and every ranked provider serving that @type
+    is consulted with them. The answer is built from the first ranked
+    provider that returned anything; the rest are logged and dropped. Which
+    provider answers is therefore the configuration's decision, not the
+    model's — the model is picking a capability, not a vendor."""
 
     deps = ctx.deps
     decision = await deps.verdict.get()
@@ -130,67 +142,217 @@ async def _select(
     except InvalidArgumentError as exc:
         raise ModelRetry(str(exc)) from exc
 
-    full_attributes = build_resource_attributes(
-        capability=capability,
-        subject_category=ask.subject_categories.value,
-        place=ask.place if isinstance(ask.place, ResolvedPlace) else None,
-        model_filled=resource_attributes,
-        schema_context_index=deps.schema_context_index,
-        filterable=schema.filterable,
-        # The fields the pack declares, which is not the same as the fields it
-        # lets a caller filter on: `AgricultureFacility` declares `location`
-        # and leaves it out of `filterable_paths`.
-        declared=tuple(schema.field_types),
-        # TODO(#55): remove with the pack fix.
-        #
-        # Always today. Nothing reads a date out of the question yet, so a
-        # farmer asking about yesterday still gets today's window —
-        # `arrivalDate` is filterable and is where that will come from.
-        priced_on=deps.today(),
+    # Who this one call consults. With a client ranking in force that is
+    # every ranked provider for the ask, best first; without one it is the
+    # single candidate the model named, exactly as before (ADR-0019).
+    consulting = _consulting(deps, ask_index=ask_index, capability=capability)
+
+    # Built per provider, not once and reused: `build_resource_attributes`
+    # echoes each capability's own advertised values back into the request,
+    # so two providers serving the same @type need two different bodies out
+    # of the same model-authored fields.
+    def attributes_for(candidate: ProviderCapability) -> dict:
+        return build_resource_attributes(
+            capability=candidate,
+            subject_category=ask.subject_categories.value,
+            place=ask.place if isinstance(ask.place, ResolvedPlace) else None,
+            model_filled=resource_attributes,
+            schema_context_index=deps.schema_context_index,
+            filterable=schema.filterable,
+            # The fields the pack declares, which is not the same as the fields it
+            # lets a caller filter on: `AgricultureFacility` declares `location`
+            # and leaves it out of `filterable_paths`.
+            declared=tuple(schema.field_types),
+            # TODO(#55): remove with the pack fix.
+            #
+            # Always today. Nothing reads a date out of the question yet, so a
+            # farmer asking about yesterday still gets today's window —
+            # `arrivalDate` is filterable and is where that will come from.
+            priced_on=deps.today(),
+        )
+
+    consulted = await _consult_all(deps, consulting, attributes_for=attributes_for)
+    _log_consultation(deps, ask_index=ask_index, consulted=consulted)
+
+    chosen = next((one for one in consulted if one.answers), None)
+    if chosen is None:
+        return _nothing_came_back(deps, ask_index=ask_index, consulted=consulted)
+
+    deps.raw_answers.extend((ask_index, answer) for answer in chosen.answers)
+    return render_answers_as_markdown(chosen.answers)
+
+
+@dataclass
+class _Consulted:
+    """One provider's outcome for one ask, kept whether or not it was used.
+
+    The unused ones are the point: the team compares them later to judge
+    whether the ranking is ordered the way it should be (ADR-0019). They never
+    reach the model or the farmer — one ask is answered by one provider.
+    """
+
+    capability: ProviderCapability
+    answers: tuple[DiscoveredAnswer, ...] = ()
+    failure: SelectFailedError | None = None
+
+
+def _consulting(
+    deps: PlannerDeps, *, ask_index: int, capability: ProviderCapability
+) -> tuple[ProviderCapability, ...]:
+    """The candidates this call will consult, in the order it will use them.
+
+    Restricted to the chosen capability's own @type. The model authored
+    `resource_attributes` against one schema and `validate_arguments` checked
+    them against it; a candidate of another @type would be sent fields its
+    pack never declared. Discovery already ordered what is left by the
+    client's ranking, so taking them as they come is taking them in
+    preference order.
+
+    One provider can offer several resources for an ask. All of them are
+    consulted — the ranking orders providers, and says nothing about which of
+    a provider's own resources answers better.
+    """
+
+    if ranking_for_ask(deps.discovery, ask_index=ask_index) is None:
+        return (capability,)
+    return tuple(
+        candidate
+        for candidate in deps.discovery.capabilities.get(ask_index, ())
+        if candidate.capability == capability.capability
     )
 
-    try:
-        answers = await deps.invocation.select(
-            capability,
-            full_attributes,
+
+async def _consult_all(
+    deps: PlannerDeps,
+    consulting: tuple[ProviderCapability, ...],
+    *,
+    attributes_for: Callable[[ProviderCapability], dict],
+) -> tuple[_Consulted, ...]:
+    """Call every candidate, concurrently, and bring back what each said.
+
+    Concurrent rather than one-at-a-time-until-one-answers: the farmer waits
+    for the slowest provider either way once more than one has to be asked,
+    and asking them together keeps that cost to one provider's latency rather
+    than the sum. Each call is already bounded by `DSS_SELECT_TIMEOUT_SECONDS`.
+
+    A provider that fails its call comes back as a `_Consulted` carrying the
+    failure, because one unreachable provider must not cost the farmer the
+    answer another one had. Only `SelectFailedError` is caught — the adapter's
+    "reached the end of retrying" signal. Anything else is a defect or a
+    wiring mistake (`_UnwiredInvocation` raises one on purpose), and those
+    stay loud: the group cancels and the turn fails rather than reporting a
+    broken deployment as a provider with no data.
+    """
+
+    outcomes = [_Consulted(capability=candidate) for candidate in consulting]
+
+    async def consult(slot: int) -> None:
+        outcome = outcomes[slot]
+        try:
+            answers = await deps.invocation.select(
+                outcome.capability,
+                attributes_for(outcome.capability),
+                deps.turn.transaction_id,
+                visibility=deps.visibility,
+            )
+        except SelectFailedError as exc:
+            # The adapter has already retried and given up.
+            outcome.failure = exc
+            return
+        outcome.answers = tuple(answers)
+
+    if len(outcomes) == 1:
+        await consult(0)
+        return tuple(outcomes)
+
+    async with anyio.create_task_group() as group:
+        for slot in range(len(outcomes)):
+            group.start_soon(consult, slot)
+    return tuple(outcomes)
+
+
+def _log_consultation(
+    deps: PlannerDeps, *, ask_index: int, consulted: tuple[_Consulted, ...]
+) -> None:
+    """Record what every consulted provider gave back, used or not.
+
+    Counts, ids and error details only — each response body is already logged
+    at DEBUG by the invocation adapter, against the same `request_id`, so a
+    reader who needs the values joins on that rather than getting them twice
+    at INFO (ADR-0014).
+
+    `used` names the one provider the answer was built from. Without it the
+    line says what was available and not what was chosen, which is the half
+    the comparison actually needs.
+    """
+
+    used = next((one.capability.provider_id for one in consulted if one.answers), "-")
+    for position, one in enumerate(consulted):
+        log_event(
+            "provider_preferences",
             deps.turn.transaction_id,
-            visibility=deps.visibility,
+            event="provider_consulted",
+            ask_index=ask_index,
+            rank=position,
+            provider_id=one.capability.provider_id,
+            resource_id=one.capability.resource_id,
+            results=len(one.answers),
+            failed=one.failure is not None,
+            detail=_detail(one.failure),
+            used=one.capability.provider_id == used,
         )
-    except SelectFailedError as exc:
-        # The adapter has already retried and given up. Not a ModelRetry: the
-        # arguments were fine, so re-sending them changes nothing and burns
-        # the model's retry budget. Not a raise either — one unreachable
-        # provider must not fail a turn whose other asks can still be served.
+
+
+def _detail(failure: SelectFailedError | None) -> str:
+    if failure is None:
+        return "-"
+    return str(failure.detail or failure.status_code)
+
+
+def _nothing_came_back(
+    deps: PlannerDeps, *, ask_index: int, consulted: tuple[_Consulted, ...]
+) -> str:
+    """What the model is told when no consulted provider had an answer.
+
+    A failure is recorded per provider that errored — but only here, on the
+    path where the ask ends with nothing. `Evidence.failed` is what makes the
+    composer say "we could not reach Agmarknet", and saying that about a
+    lower-ranked provider whose outage cost the farmer nothing would be a
+    worse answer than the one they are getting.
+
+    The message states that the ask is finished rather than inviting another
+    candidate: with a ranking in force this call already consulted every
+    provider the client ranked, and a model that tried again would re-run the
+    same set.
+    """
+
+    for one in consulted:
+        if one.failure is None:
+            continue
         deps.failures.append(
             (
                 ask_index,
                 Failure(
                     ask_index=ask_index,
-                    capability=exc.capability,
-                    reason=exc.detail or str(exc.status_code),
-                    retryable=exc.failure_class is FailureClass.TRANSIENT,
+                    capability=one.failure.capability,
+                    reason=one.failure.detail or str(one.failure.status_code),
+                    retryable=one.failure.failure_class is FailureClass.TRANSIENT,
                 ),
             )
         )
-        return (
-            f"Could not get an answer from {capability.provider_name} "
-            f"({exc.detail or exc.status_code}). Try another candidate for "
-            f"ask {ask_index} if there is one, or report that this ask has "
-            f"no answer."
-        )
 
-    if not answers:
-        # A 200 that committed to nothing. Not a failure — the provider was
-        # reached and had nothing — so it is not recorded as one, but the
-        # model still has to hear that this candidate is spent.
+    names = ", ".join(one.capability.provider_name for one in consulted)
+    reached = sum(1 for one in consulted if one.failure is None)
+    if reached:
         return (
-            f"{capability.provider_name} returned no results for ask "
-            f"{ask_index}. Try another candidate if there is one, or report "
-            f"that this ask has no answer."
+            f"No data for ask {ask_index}: {names} were consulted and none had "
+            f"an answer. Do not call select for this ask again; report that it "
+            f"has no answer."
         )
-
-    deps.raw_answers.extend((ask_index, answer) for answer in answers)
-    return render_answers_as_markdown(answers)
+    return (
+        f"Could not reach any provider for ask {ask_index} ({names}). Do not "
+        f"call select for this ask again; report that it has no answer."
+    )
 
 
 async def _describe_capability(ctx: RunContext[PlannerDeps], ask_index: int) -> str:

@@ -142,3 +142,22 @@ def test_the_trace_id_comes_from_the_caller_span_not_the_body(a_body):
 
     with pytest.raises(ValidationError):
         schema.TurnRequest.model_validate(body)
+
+
+def test_the_calling_client_is_carried_onto_the_turn(a_body):
+    """It arrives as a header, so it is handed in rather than read off the
+    body (ADR-0019)."""
+
+    body = schema.TurnRequest.model_validate(a_body())
+
+    turn = mapping.to_user_turn(body, client_id="kisan-mitra-web")
+
+    assert turn.client_id == "kisan-mitra-web"
+
+
+def test_a_turn_from_a_caller_that_named_nobody_carries_no_client(a_body):
+    """Every caller that predates the header. The default ranking serves it."""
+
+    body = schema.TurnRequest.model_validate(a_body())
+
+    assert mapping.to_user_turn(body).client_id is None

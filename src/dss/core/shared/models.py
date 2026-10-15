@@ -103,6 +103,11 @@ class UserTurn(BaseModel):
     source_lang: LanguageTag  # language the user spoke/typed
     target_lang: LanguageTag  # language the response should come back in
     channel: str  # web / whatsapp / voice / ... (lowercase)
+    # Which experience-layer application sent the turn, from the `X-Client-Id`
+    # header (ADR-0019). Names the caller, never the farmer: it selects whose
+    # provider ranking applies. Optional — a caller that sends none is served
+    # by the default ranking, so an older experience layer keeps working.
+    client_id: str | None = None
     user: UserDetails = Field(default_factory=UserDetails)
     history: list[ConversationMessage] = Field(default_factory=list)
     location: Location | None = None

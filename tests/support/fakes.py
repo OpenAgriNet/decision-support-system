@@ -13,6 +13,7 @@ from typing import Any, Literal
 from dss.core.enrichment.models import Scheme
 from dss.core.enrichment.normalize import alias_key
 from dss.core.planner.models import Skill
+from dss.core.provider_preferences.models import PreferenceBook, topic_key
 from dss.core.shared.errors import ProviderUnavailableError, TranslationError
 from dss.core.shared.language import LanguageTag
 from dss.core.shared.models import Geometry, TurnContext, TurnEvent, UserTurn
@@ -36,6 +37,44 @@ class FakeSchemeCatalog:
 
     def aliases(self):
         return self._aliases
+
+
+class FakeProviderPreferences:
+    """A `ProviderPreferences` over rankings written as `{client: {topic: [ids]}}`.
+
+    Default-empty is the unmounted case: no client has a ranking, so every ask
+    keeps whatever discovery found. Pass `default=` for the layer an unknown
+    client falls back to.
+    """
+
+    def __init__(
+        self,
+        clients: dict[str, dict[str, list[str]]] | None = None,
+        *,
+        default: dict[str, list[str]] | None = None,
+    ) -> None:
+        self._book = PreferenceBook(
+            default=_ranked(default or {}),
+            clients={
+                client: _ranked(rankings)
+                for client, rankings in (clients or {}).items()
+            },
+        )
+        self.asked: list[str | None] = []
+
+    async def for_client(self, client_id: str | None):
+        self.asked.append(client_id)
+        return self._book.for_client(client_id)
+
+
+def _ranked(rankings: dict[str, list[str]]) -> dict[str, tuple[str, ...]]:
+    """Topic names keyed the way the real loader keys them, so a fake cannot
+    answer a lookup the YAML adapter could not."""
+
+    return {topic_key(topic): tuple(providers) for topic, providers in rankings.items()}
+
+
+NO_PREFERENCES = FakeProviderPreferences()
 
 
 class FakeRunner:

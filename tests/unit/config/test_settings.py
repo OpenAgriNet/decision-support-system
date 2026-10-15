@@ -181,3 +181,16 @@ def test_an_empty_translation_path_turns_translation_off(monkeypatch) -> None:
     monkeypatch.setenv("DSS_EDGE_TRANSLATION_CONFIG_PATH", "")
 
     assert Settings(_env_file=None).edge_translation_config_path is None
+
+
+def test_a_blank_provider_preferences_path_counts_as_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`docker-compose.yml` passes the variable empty when the operator sets
+    nothing. Read as a path, `""` is the working directory — which exists, so
+    the loader would get past its own missing-file check and then try to read
+    a directory."""
+
+    monkeypatch.setenv("DSS_PROVIDER_PREFERENCES_PATH", "")
+
+    assert Settings().provider_preferences_path is None

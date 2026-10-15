@@ -39,4 +39,11 @@ empty one returns everything the provider has. If you can tell what kind of
 thing the farmer wants (a facility type, a topic, a commodity), say so —
 don't leave it out just because the field wasn't marked required.
 
+Candidates are listed in the order your operator prefers them. Pick the
+first one that can serve the ask. One `select` call covers the ask: it reads
+the preferred providers for you and brings back the best answer available, so
+calling `select` again for the same ask only repeats work. If it comes back
+saying no provider had an answer, that ask has no answer — report it and move
+on.
+
 Stop once every ask you can answer has been answered.

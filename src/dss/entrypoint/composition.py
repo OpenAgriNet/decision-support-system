@@ -45,6 +45,7 @@ from dss.adapters.llm.pydantic_ai_provider import (
 )
 from dss.adapters.llm.stub import StubLLM
 from dss.adapters.pii_identifier.factory import build_identifiers
+from dss.adapters.provider_preferences.yaml_file import load_provider_preferences
 from dss.adapters.schema_packs.filesystem import FilesystemSchemaPackSource
 from dss.adapters.scheme_catalog.csv_file import load_scheme_catalog
 from dss.adapters.sinks.file import FileTelemetrySink, FileTurnSink
@@ -93,6 +94,7 @@ from dss.ports.area_lookup import AreaLookup
 from dss.ports.invocation import CapabilityInvocation
 from dss.ports.llm import LLMProvider
 from dss.ports.prompts import PromptProvider
+from dss.ports.provider_preferences import ProviderPreferences
 from dss.ports.translator import Translator
 from dss.ports.turn import TurnRunner
 
@@ -165,8 +167,14 @@ def build_runner_with_lifecycle(
     # Same: a bad edge translation config stops the boot here (#174).
     translation_routes = _build_translation_routes(settings, prompts=prompts)
 
+    # Which providers each client wants (ADR-0019). Loaded with the other boot
+    # config, before the network gate: a malformed ranking must stop the boot
+    # whether or not this deployment talks to providers, so an unwired local
+    # run still catches the typo.
+    preferences = load_provider_preferences(settings.provider_preferences_path)
+
     discover, invocation, schemas, schema_context_index, client = _network(
-        settings, fetch=fetch
+        settings, fetch=fetch, preferences=preferences
     )
 
     # One binding for everything the farmer reads: the streamed answer and the
@@ -375,6 +383,7 @@ async def _discovers_nothing(
 def _network(
     settings: Settings,
     *,
+    preferences: ProviderPreferences,
     fetch: FetchPacks = fetch_packs,
 ) -> tuple[
     DiscoverProviders,
@@ -421,6 +430,7 @@ def _network(
         discovery=discovery,
         schema_pack_cache=cache,
         radius_m=settings.discovery_radius_m,
+        preferences=preferences,
     )
     invocation = HttpCapabilityInvocation(
         client=client,

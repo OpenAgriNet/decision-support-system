@@ -193,6 +193,30 @@ class Settings(BaseSettings):
     # on a different config.
     prompt_config_path: Path = Path("configs/prompts.yaml")
 
+    # Which providers each client wants, per topic (ADR-0019). Nothing ships
+    # mounted: a ranking is exclusive, so a file naming providers a deployment
+    # does not talk to would drop every candidate and read as "nobody serves
+    # this". Unset → no ranking applies anywhere and the loader warns once at
+    # boot; set-but-missing raises, as the policy pack does.
+    # `config/examples/provider-preferences.yaml` is a ready file to copy.
+    provider_preferences_path: Path | None = None
+
+    @field_validator("provider_preferences_path", mode="before")
+    @classmethod
+    def _unset_when_blank(cls, value: object) -> object:
+        """An empty variable is an operator leaving it off, not a path.
+
+        `DSS_PROVIDER_PREFERENCES_PATH=` is what `docker-compose.yml` passes
+        when the operator sets nothing, and pydantic reads `""` as
+        `Path(".")` — a directory that exists, so the loader would get past
+        its own missing-file check and die reading the working directory.
+        Same stance as `DSS_PHOTON_BASE_URL`, where empty also means off.
+        """
+
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
     # Where the tenant's scheme catalog CSV is mounted (issue #34). Nothing
     # ships in the image, so unset → no catalog, enrichment is inert, and the
     # loader warns once at boot. Set-but-missing raises, as the policy pack does.
