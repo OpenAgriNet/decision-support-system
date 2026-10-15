@@ -98,6 +98,7 @@ from dss.core.translation.service import EdgeTranslation
 from dss.observability.stages import Stage
 from dss.observability.trace_log import bind_turn_ids, trace_component
 from dss.orchestration.discovery import DiscoverProviders
+from dss.orchestration.events import CoreEvent
 from dss.orchestration.plan import Plan
 from dss.orchestration.redaction import RedactTexts
 from dss.orchestration.stage_content import asks_text, evidence_text, sources_text
@@ -129,11 +130,6 @@ _STUB_CONFIDENCE = {
     TurnStatus.REQUIRES_INPUT: 80,
     TurnStatus.UNAVAILABLE: 0,
 }
-
-
-# What the core yields. `TurnStarted` is the edge's: the turn has started
-# before redaction, let alone the core.
-type CoreEvent = ClaimDelta | Claim | TurnFinished
 
 
 def outcome_for(status: TurnStatus, cause: Cause | None = None) -> TurnOutcome:
