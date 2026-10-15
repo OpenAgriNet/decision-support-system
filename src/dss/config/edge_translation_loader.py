@@ -10,10 +10,10 @@ entry.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from dss.core.shared.language import LanguageTag
 
@@ -25,7 +25,21 @@ class StubBinding(BaseModel):
     adapter: Literal["stub"]
 
 
-type TranslationBinding = StubBinding
+class LLMBinding(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    to: LanguageTag
+    adapter: Literal["llm"]
+    # A name the model gateway resolves, or a Pydantic AI model string without
+    # one, like every component's `*_model` setting.
+    model: str = Field(min_length=1)
+    temperature: float = Field(0.0, ge=0.0, le=2.0)
+    timeout_seconds: float = Field(20.0, gt=0.0)
+
+
+type TranslationBinding = Annotated[
+    StubBinding | LLMBinding, Field(discriminator="adapter")
+]
 
 
 class EdgeTranslationConfig(BaseModel):

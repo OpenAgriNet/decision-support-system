@@ -81,8 +81,15 @@ def _composer_prompt() -> str:
 
 def test_every_component_is_registered_with_english_and_hindi() -> None:
     service = _service()
-    for component in PromptIdentifier:
+    for component in set(PromptIdentifier) - {PromptIdentifier.TRANSLATOR}:
         assert service.languages_for(component) == (ENGLISH, LanguageTag("hi"))
+
+
+def test_the_translator_is_registered_in_english_only() -> None:
+    """Its instructions are for the model, not the farmer, so they stay in
+    English whatever language the text is in (#174)."""
+
+    assert _service().languages_for(PromptIdentifier.TRANSLATOR) == (ENGLISH,)
 
 
 # --- intent (moved from tests/unit/core/intent/test_service.py) ------------
@@ -502,3 +509,52 @@ def test_hindi_demo_skill_keeps_the_tool_wiring() -> None:
     for skill_id, skill in hi.items():
         assert skill.tool_names == en[skill_id].tool_names
         assert skill.domain == en[skill_id].domain
+
+
+# --- translator (#174) -------------------------------------------------------
+
+
+def _translator_prompt(translate_from: str, translate_to: str) -> str:
+    return _service().get_prompt(
+        PromptIdentifier.TRANSLATOR,
+        lang=ENGLISH,
+        placeholder_values={
+            "translate_from": translate_from,
+            "translate_to": translate_to,
+        },
+    )
+
+
+def test_translator_prompt_names_both_languages() -> None:
+    prompt = _translator_prompt("gu", "en")
+
+    assert "from gu to en" in prompt
+
+
+def test_translator_prompt_keeps_tags_markers_numbers_and_scheme_names() -> None:
+    """A tag swapped back after translation, a citation whose source was
+    already worked out, and the numbers a farmer acts on must all survive.
+    Asserted on substance, not wording."""
+
+    prompt = _translator_prompt("en", "gu").lower()
+
+    assert "«" in prompt
+    assert "[1]" in prompt
+    assert "number" in prompt
+    assert "unit" in prompt
+    assert "scheme" in prompt
+    assert "numbered list" in prompt
+
+
+def test_translator_prompt_says_to_add_nothing() -> None:
+    assert "Add nothing" in _translator_prompt("gu", "en")
+
+
+def test_translator_prompt_explains_both_shapes_of_message() -> None:
+    """A batch on the way in, one answer on the way out. The batch must come
+    back the same length, in order, or the service rejects it."""
+
+    prompt = _translator_prompt("gu", "en").lower()
+
+    assert "json list" in prompt
+    assert "same number" in prompt
