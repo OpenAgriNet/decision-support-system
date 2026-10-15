@@ -55,6 +55,17 @@ Do not duplicate architecture, domain model, or design-decision detail here — 
   Photon (an OpenStreetMap place search) over HTTP when `DSS_PHOTON_BASE_URL` is
   set. An optional cache on `async-lru`, off by default. Counted in
   `dss.area_lookup.count`. An adopter's own source is a later story.
+- Provider preference: which providers a client wants, per topic, best first
+  (ADR-0019). The caller names itself in `X-Client-Id`; the ranking is applied
+  once on the way out of discovery, so everything downstream reads an
+  already-ranked set. A ranking is exclusive — a provider it does not name is
+  never called — and falls back to a default per topic, so an unknown or
+  absent client is answered rather than refused. One `select` consults every
+  ranked provider for the ask and answers from the first that returned
+  anything; the rest are logged. A mounted YAML file today
+  (`DSS_PROVIDER_PREFERENCES_PATH`, nothing mounted by default) behind an
+  async `ProviderPreferences` port, so the preference service that replaces it
+  is a change in the composition root only.
 - Speed benchmark: `benchmarks/` CLI, real models with the mock network; load mode
   runs the DSS in a 1 CPU / 1 GiB container (ADR-0013).
 
