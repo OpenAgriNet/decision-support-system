@@ -14,6 +14,25 @@
   answer starts later than an untranslated one, because the whole answer is
   written before translation begins. New trace stages: `translation_in` and
   `translation_out`. (#174)
+- An adopter can now say which providers should answer their farmers, per
+  topic, in order of preference. The experience layer names itself in an
+  `X-Client-Id` header; a mounted file (`DSS_PROVIDER_PREFERENCES_PATH`) maps
+  each client to its ranked provider ids per topic, and the first-choice
+  provider answers whenever it returns anything, falling to the next one when
+  it does not. Two clients asking the same question in the same place are each
+  served their own first choice, and changing the order is an edit to the
+  file. A ranking is exclusive: a provider it does not name is never called.
+  A caller that sends no header, or one nobody configured, is served a default
+  ranking and answered normally — rolling the header out is a configuration
+  step for an experience layer, never a breaking change for its farmers.
+  Nothing ships mounted: unset, every ask keeps whichever providers discovery
+  found, exactly as before. ADR-0019
+- Every provider consulted for an ask is now recorded — including the ones
+  whose answers were not used — so the team can judge later whether a ranking
+  is ordered the right way round. The summary goes to the turn's log at INFO
+  (provider ids, result counts, which one answered, and which providers the
+  ranking dropped); the response bodies stay at DEBUG where the invocation
+  adapter already puts them. ADR-0019
 - A farmer now reads refusals, clarification questions and the no-provider
   answers in their own language. The DSS keeps writing these as one reviewed
   English vocabulary and renders each in the turn's target language on the
