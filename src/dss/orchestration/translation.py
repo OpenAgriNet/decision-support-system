@@ -13,7 +13,6 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import aclosing
-from typing import TYPE_CHECKING
 
 from dss.adapters.observability.tracing import set_current_span_content
 from dss.core.shared.answer_stream import AnswerStream
@@ -21,9 +20,7 @@ from dss.core.shared.models import TurnFinished, UserTurn
 from dss.core.translation.service import TurnTranslation
 from dss.observability.stages import Stage
 from dss.observability.trace_log import trace_component
-
-if TYPE_CHECKING:
-    from dss.orchestration.orchestrator import CoreEvent
+from dss.orchestration.events import CoreEvent
 
 
 async def translate_in(
