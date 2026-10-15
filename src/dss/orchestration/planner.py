@@ -37,7 +37,7 @@ from dss.core.provider_discovery.models import (
     FailureClass,
     ProviderCapability,
 )
-from dss.core.provider_preferences.service import ranking_for_ask
+from dss.core.provider_preferences.service import priority_for_ask
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import UserTurn
 from dss.observability.trace_log import log_event
@@ -172,9 +172,9 @@ async def _select(
         )
 
     consulted = await _consult_all(deps, consulting, attributes_for=attributes_for)
-    _log_consultation(deps, ask_index=ask_index, consulted=consulted)
-
     chosen = next((one for one in consulted if one.answers), None)
+    _log_consultation(deps, ask_index=ask_index, consulted=consulted, chosen=chosen)
+
     if chosen is None:
         return _nothing_came_back(deps, ask_index=ask_index, consulted=consulted)
 
@@ -213,7 +213,7 @@ def _consulting(
     a provider's own resources answers better.
     """
 
-    if ranking_for_ask(deps.discovery, ask_index=ask_index) is None:
+    if priority_for_ask(deps.discovery, ask_index=ask_index) is None:
         return (capability,)
     return tuple(
         candidate
@@ -272,7 +272,11 @@ async def _consult_all(
 
 
 def _log_consultation(
-    deps: PlannerDeps, *, ask_index: int, consulted: tuple[_Consulted, ...]
+    deps: PlannerDeps,
+    *,
+    ask_index: int,
+    consulted: tuple[_Consulted, ...],
+    chosen: _Consulted | None,
 ) -> None:
     """Record what every consulted provider gave back, used or not.
 
@@ -281,12 +285,11 @@ def _log_consultation(
     reader who needs the values joins on that rather than getting them twice
     at INFO (ADR-0014).
 
-    `used` names the one provider the answer was built from. Without it the
-    line says what was available and not what was chosen, which is the half
-    the comparison actually needs.
+    `used` names the one resource the answer was built from — the resource,
+    not the provider, because one provider can offer two resources for an ask
+    and only one of them answered.
     """
 
-    used = next((one.capability.provider_id for one in consulted if one.answers), "-")
     for position, one in enumerate(consulted):
         log_event(
             "provider_preferences",
@@ -299,7 +302,7 @@ def _log_consultation(
             results=len(one.answers),
             failed=one.failure is not None,
             detail=_detail(one.failure),
-            used=one.capability.provider_id == used,
+            used=one is chosen,
         )
 
 
@@ -315,15 +318,17 @@ def _nothing_came_back(
     """What the model is told when no consulted provider had an answer.
 
     A failure is recorded per provider that errored — but only here, on the
-    path where the ask ends with nothing. `Evidence.failed` is what makes the
-    composer say "we could not reach Agmarknet", and saying that about a
-    lower-ranked provider whose outage cost the farmer nothing would be a
-    worse answer than the one they are getting.
+    path where the consultation ends with nothing. `Evidence.failed` is what
+    makes the composer say "we could not reach Agmarknet", and saying that
+    about a lower-ranked provider whose outage cost the farmer nothing would
+    be a worse answer than the one they are getting.
 
-    The message states that the ask is finished rather than inviting another
-    candidate: with a ranking in force this call already consulted every
-    provider the client ranked, and a model that tried again would re-run the
-    same set.
+    The ask is finished only when no candidate is left unconsulted. Without a
+    ranking this call consulted the one candidate the model named, and the
+    others it did not name may still answer — the behaviour before any
+    preference existed. With one, a ranked provider can serve the same topic
+    through another `@type`, whose fields this call could not author; picking
+    such a candidate is a fresh `select`, not a re-run of this set.
     """
 
     for one in consulted:
@@ -333,7 +338,7 @@ def _nothing_came_back(
             Failure(
                 ask_index=ask_index,
                 capability=one.failure.capability,
-                reason=one.failure.detail or str(one.failure.status_code),
+                reason=_detail(one.failure),
                 retryable=one.failure.failure_class is FailureClass.TRANSIENT,
             )
         )
@@ -341,14 +346,32 @@ def _nothing_came_back(
     names = ", ".join(one.capability.provider_name for one in consulted)
     reached = sum(1 for one in consulted if one.failure is None)
     if reached:
+        outcome = (
+            f"No data for ask {ask_index}: {names} were consulted and none "
+            f"had an answer."
+        )
+    else:
+        outcome = f"Could not reach any provider for ask {ask_index} ({names})."
+    if _unconsulted(deps, ask_index=ask_index, consulted=consulted):
         return (
-            f"No data for ask {ask_index}: {names} were consulted and none had "
-            f"an answer. Do not call select for this ask again; report that it "
-            f"has no answer."
+            f"{outcome} Try another candidate for ask {ask_index}, or report "
+            f"that this ask has no answer."
         )
     return (
-        f"Could not reach any provider for ask {ask_index} ({names}). Do not "
-        f"call select for this ask again; report that it has no answer."
+        f"{outcome} Do not call select for this ask again; report that it "
+        f"has no answer."
+    )
+
+
+def _unconsulted(
+    deps: PlannerDeps, *, ask_index: int, consulted: tuple[_Consulted, ...]
+) -> bool:
+    """Whether the ask still has candidates this call did not reach."""
+
+    tried = {one.capability.resource_id for one in consulted}
+    return any(
+        candidate.resource_id not in tried
+        for candidate in deps.discovery.capabilities.get(ask_index, ())
     )
 
 

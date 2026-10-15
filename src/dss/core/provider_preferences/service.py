@@ -92,7 +92,9 @@ def prioritise(
         if index in discovery.capabilities:
             capabilities[index] = _ordered(discovery.capabilities[index], ranking)
         if index in discovery.answers:
-            answers[index] = _ordered(discovery.answers[index], ranking)
+            answers[index] = _best_provider_only(
+                _ordered(discovery.answers[index], ranking)
+            )
 
     return replace(
         discovery, answers=answers, capabilities=capabilities, priorities=priorities
@@ -112,6 +114,26 @@ def _ordered[T: _HasProvider](
     rank = {provider: position for position, provider in enumerate(ranking)}
     kept = [item for item in items if item.provider_id in rank]
     return tuple(sorted(kept, key=lambda item: rank[item.provider_id]))
+
+
+def _best_provider_only[T: _HasProvider](items: tuple[T, ...]) -> tuple[T, ...]:
+    """Only the best-ranked provider's own answers, out of an already-ordered
+    tuple.
+
+    Direct answers need no `select` call, so the planner's first-that-answered
+    funnel never narrows them: everything left here goes into the evidence
+    as-is. Without this cut, an ask the catalog had answered twice over would
+    blend the first and second choice's data into one answer — and one ask is
+    answered by one provider (ADR-0019). The cut happens after ordering, so
+    "best" is the highest-ranked provider that returned anything, exactly as
+    on the `select` path. The runners-up stay recorded in `AskPriority.kept`
+    and in the discovery adapter's own response log.
+    """
+
+    if not items:
+        return items
+    best = items[0].provider_id
+    return tuple(item for item in items if item.provider_id == best)
 
 
 def _kept(
@@ -143,10 +165,11 @@ def _dropped(
     )
 
 
-def ranking_for_ask(
+def priority_for_ask(
     discovery: DiscoveryResult, *, ask_index: int
 ) -> AskPriority | None:
-    """The ranking that governed this ask, or ``None`` if none did.
+    """The priority record of the ranking that governed this ask, or ``None``
+    if none did.
 
     ``None`` covers three states that have to behave identically: no
     preferences are mounted, the ask's topic carries no ranking, and the

@@ -8,6 +8,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
+from typing import Literal
 
 # What a preference list is keyed on: the ask's own subject category —
 # "Weather", "Market". That is the word an adopter uses for a topic, and it
@@ -22,6 +23,10 @@ Topic = str
 # A provider's id as the network publishes it, and as `ProviderCapability`
 # and `DiscoveredAnswer` both carry it. The one value the two sides join on.
 ProviderId = str
+
+# Which layer a ranking came from. Closed on purpose, unlike the id aliases
+# above: there are exactly two layers, and the type checker can hold that.
+RankingSource = Literal["client", "default"]
 
 
 def topic_key(topic: str) -> str:
@@ -53,9 +58,9 @@ class ClientPreference:
     client_id: str | None
     known: bool
     by_topic: Mapping[str, tuple[ProviderId, ...]]  # keyed by `topic_key`
-    # topic key -> "client" | "default". A dict default needs a factory: the
-    # dataclass is frozen, which stops reassignment, not sharing one instance.
-    source: Mapping[str, str] = dataclass_field(default_factory=dict)
+    # Keyed by `topic_key` too. A dict default needs a factory: the dataclass
+    # is frozen, which stops reassignment, not sharing one instance.
+    source: Mapping[str, RankingSource] = dataclass_field(default_factory=dict)
 
     def ranking_for(self, topic: Topic) -> tuple[ProviderId, ...]:
         """The providers this client wants for this topic, best first.
@@ -68,7 +73,7 @@ class ClientPreference:
 
         return self.by_topic.get(topic_key(topic), ())
 
-    def source_for(self, topic: Topic) -> str | None:
+    def source_for(self, topic: Topic) -> RankingSource | None:
         """Which layer answered `ranking_for` — for the log line, not routing."""
 
         return self.source.get(topic_key(topic))
@@ -104,7 +109,9 @@ class PreferenceBook:
 
         own = self.clients.get(client_id or "", {})
         by_topic = {**self.default, **own}
-        source = {topic: "client" if topic in own else "default" for topic in by_topic}
+        source: dict[str, RankingSource] = {
+            topic: "client" if topic in own else "default" for topic in by_topic
+        }
         return ClientPreference(
             client_id=client_id,
             known=client_id is not None and client_id in self.clients,
@@ -126,7 +133,7 @@ class AskPriority:
     ask_index: int
     topic: Topic
     client_id: str | None
-    source: str | None  # "client" | "default" | None when no ranking applied
+    source: RankingSource | None  # None when no ranking applied
     ranking: tuple[ProviderId, ...]  # what the client asked for, in order
     kept: tuple[ProviderId, ...]  # ranked providers discovery actually found
     dropped: tuple[ProviderId, ...]  # found, but not on the ranking

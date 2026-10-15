@@ -12,7 +12,13 @@ already ranked, exactly as the discovery wrapper hands it over.
 
 from __future__ import annotations
 
-from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart, ToolCallPart
+from pydantic_ai.messages import (
+    ModelMessage,
+    ModelResponse,
+    TextPart,
+    ToolCallPart,
+    ToolReturnPart,
+)
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from dss.core.intent.models import (
@@ -174,8 +180,12 @@ def _deps(
     )
 
 
-def _asks_for(resource_id: str):
-    """A model that calls select once for the named candidate, then stops."""
+def _asks_for(resource_id: str, replies: list[str] | None = None):
+    """A model that calls select once for the named candidate, then stops.
+
+    `replies` collects what the tool said back, for the tests about whether
+    the model is invited to try another candidate or told the ask is done.
+    """
 
     def model(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
         if len(messages) == 1:
@@ -190,6 +200,12 @@ def _asks_for(resource_id: str):
                         },
                     )
                 ]
+            )
+        if replies is not None:
+            replies.extend(
+                str(part.content)
+                for part in messages[-1].parts
+                if isinstance(part, ToolReturnPart)
             )
         return ModelResponse(parts=[TextPart(content="done")])
 
@@ -207,10 +223,13 @@ def _skill() -> Skill:
 
 
 async def _run(
-    deps: PlannerDeps, *, asks_for: str = "res:maharashtra-vistaar:forecast"
+    deps: PlannerDeps,
+    *,
+    asks_for: str = "res:maharashtra-vistaar:forecast",
+    replies: list[str] | None = None,
 ):
     agent = build_planner_agent(skills=(_skill(),))
-    with agent.override(model=FunctionModel(_asks_for(asks_for))):
+    with agent.override(model=FunctionModel(_asks_for(asks_for, replies))):
         await agent.run("will it rain", deps=deps)
     return deps
 
@@ -379,3 +398,58 @@ async def test_only_candidates_of_the_chosen_type_are_consulted() -> None:
     )
 
     assert invocation.called == ["maharashtra-vistaar"]
+
+
+async def test_an_unranked_miss_still_invites_the_other_candidates() -> None:
+    """Without a ranking, one candidate returning nothing never spent the
+    ask: the others were never called, and the model must hear it may still
+    try them — the behaviour before any preference existed."""
+
+    replies: list[str] = []
+    invocation = _FakeInvocation()  # everyone reached, nobody has anything
+    await _run(
+        _deps(invocation, candidates=(VISTAAR, MAUSAMGRAM), priorities={}),
+        replies=replies,
+    )
+
+    assert invocation.called == ["maharashtra-vistaar"]
+    assert "Try another candidate" in replies[0]
+
+
+async def test_a_ranked_provider_of_another_type_keeps_the_ask_open() -> None:
+    """A ranked provider serving the topic through another @type was not in
+    this call's fan-out — its fields were never authored. The ask is not
+    finished until the model has had the chance to pick it."""
+
+    replies: list[str] = []
+    other = _capability("mausamgram", capability="openagrinet:MandiPrice")
+    invocation = _FakeInvocation()
+    await _run(
+        _deps(
+            invocation,
+            candidates=(VISTAAR, other),
+            priorities=_ranked("maharashtra-vistaar", "mausamgram"),
+        ),
+        replies=replies,
+    )
+
+    assert "Try another candidate" in replies[0]
+
+
+async def test_a_spent_ranking_tells_the_model_to_stop() -> None:
+    """Every ranked provider was consulted in the one call; another select
+    would re-run the same set."""
+
+    replies: list[str] = []
+    invocation = _FakeInvocation()
+    await _run(
+        _deps(
+            invocation,
+            candidates=(VISTAAR, MAUSAMGRAM),
+            priorities=_ranked("maharashtra-vistaar", "mausamgram"),
+        ),
+        replies=replies,
+    )
+
+    assert sorted(invocation.called) == ["maharashtra-vistaar", "mausamgram"]
+    assert "Do not call select for this ask again" in replies[0]
