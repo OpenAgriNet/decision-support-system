@@ -20,7 +20,9 @@ GUJARATI = LanguageTag("gu")
 
 async def test_translate_is_one_structured_call_in_order():
     llm = StubLLM({TranslatedTexts: TranslatedTexts(texts=["Rain today?", "Hello"])})
-    translator = LLMTranslator(llm=llm, prompts=FakePromptProvider())
+    translator = LLMTranslator(
+        batch_llm=llm, stream_llm=llm, prompts=FakePromptProvider()
+    )
 
     translated = await translator.translate(
         ["આજે વરસાદ?", "નમસ્તે"], from_lang=GUJARATI, to_lang=ENGLISH
@@ -34,7 +36,9 @@ async def test_translate_is_one_structured_call_in_order():
 
 async def test_stream_relays_pieces_that_join_to_the_whole():
     llm = StubLLM(text_chunks=("આજે ", "વરસાદ ", "[1]"))
-    translator = LLMTranslator(llm=llm, prompts=FakePromptProvider())
+    translator = LLMTranslator(
+        batch_llm=llm, stream_llm=llm, prompts=FakePromptProvider()
+    )
 
     pieces = [
         piece
@@ -54,7 +58,7 @@ async def test_prompt_is_asked_in_english_with_the_pair_as_placeholders():
     llm = StubLLM(
         {TranslatedTexts: TranslatedTexts(texts=["Rain today?"])}, text_chunks=("x",)
     )
-    translator = LLMTranslator(llm=llm, prompts=prompts)
+    translator = LLMTranslator(batch_llm=llm, stream_llm=llm, prompts=prompts)
 
     await translator.translate(["આજે વરસાદ?"], from_lang=GUJARATI, to_lang=ENGLISH)
     _ = [p async for p in translator.stream("x", from_lang=ENGLISH, to_lang=GUJARATI)]
@@ -74,3 +78,21 @@ async def test_prompt_is_asked_in_english_with_the_pair_as_placeholders():
     assert all(
         "[translator prompt, lang=en]" in call.system_prompt for call in llm.calls
     )
+
+
+async def test_batches_and_streams_go_to_their_own_binding():
+    """One binding per direction, so each is timed and costed on its own."""
+
+    batch_llm = StubLLM({TranslatedTexts: TranslatedTexts(texts=["Rain?"])})
+    stream_llm = StubLLM(text_chunks=("વરસાદ",))
+    translator = LLMTranslator(
+        batch_llm=batch_llm, stream_llm=stream_llm, prompts=FakePromptProvider()
+    )
+
+    await translator.translate(["વરસાદ?"], from_lang=GUJARATI, to_lang=ENGLISH)
+    _ = [
+        p async for p in translator.stream("Rain", from_lang=ENGLISH, to_lang=GUJARATI)
+    ]
+
+    assert [call.schema for call in batch_llm.calls] == [TranslatedTexts]
+    assert [call.schema for call in stream_llm.calls] == [None]
