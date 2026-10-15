@@ -735,3 +735,38 @@ async def test_a_streamed_claim_carries_the_sources_it_cites() -> None:
 
     claims = [event for event in events if isinstance(event, Claim)]
     assert [source.name for source in claims[0].sources] == ["Agmarknet"]
+
+
+async def test_the_one_source_cited_reaches_the_farmer_as_one() -> None:
+    """Two sources were read, the answer used the second. The farmer reads
+    [1], and source 1 is the second source — streamed and final alike."""
+
+    evidence = Evidence(
+        sources=(
+            Source(
+                id="1", name="Package of Practices", kind=SourceKind.PROVIDER, url=None
+            ),
+            Source(id="2", name="KAU Mango Guide", kind=SourceKind.PROVIDER, url=None),
+        ),
+        results=(
+            Result(ask_index=0, source_id="1", data={"v": 1}),
+            Result(ask_index=0, source_id="2", data={"v": 2}),
+        ),
+        served=(0,),
+        failed=(),
+        sufficient=True,
+    )
+    orch, _ = _build(
+        intent=_one_ask(),
+        discovery=_served_discovery(),
+        plan=_FakePlan(evidence),
+        compose=_FakeCompose("", chunks=("Plant grafts in June. [", "2]")),
+    )
+
+    events = await _collect(orch)
+
+    streamed = "".join(e.text for e in events if isinstance(e, ClaimDelta))
+    claim = next(e for e in events if isinstance(e, Claim))
+    assert streamed == claim.content.text == "Plant grafts in June. [1]"
+    assert [(s.id, s.name) for s in claim.sources] == [("1", "KAU Mango Guide")]
+    assert claim.content.source_ids == ("1",)

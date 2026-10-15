@@ -8,7 +8,6 @@ transport streams, and the fixed no-match reply.
 
 from __future__ import annotations
 
-import re
 from collections.abc import Collection, Sequence
 
 from dss.core.channel.models import ClarificationText, ComposedAnswer
@@ -16,6 +15,7 @@ from dss.core.intent.models import AmbiguousPlace, Ask, ResolvedPlace, Unresolve
 from dss.core.planner.models import Evidence
 from dss.core.planner.models import Source as EvidenceSource
 from dss.core.shared.models import Source, SourceKind, TextBlock
+from dss.core.stream_response.citations import CitationNumbers
 from dss.ports.area_lookup import AreaMatch
 
 NO_MATCH_TEXT = (
@@ -241,36 +241,27 @@ def _to_wire_source(source: EvidenceSource) -> Source:
     )
 
 
-_CITATION = re.compile(r"\[(\d+)\]")
-
-
 def answer_from_evidence(text: str, evidence: Evidence) -> ComposedAnswer:
     """Shape the composer's prose and the sources it used into the answer the
     transport streams.
 
-    The composer writes one block of text and cites sources inline as `[1]`,
-    `[2]` — the numbers are the `Source.id`s `assemble_evidence` assigned.
+    The composer cites sources inline as `[1]`, `[2]` — the `Source.id`s
+    `assemble_evidence` assigned.
 
-    Only the sources it actually cited are listed. A question is answered from
-    one source, so the others were read and rejected; listing them claims a
-    provenance the answer does not have, and a farmer who opens one finds a
-    document the advice never came from. A reply answering two questions cites
-    two sources and keeps both — the rule is per question.
-
-    A number naming no listed source is dropped: a citation marker pointing at
-    nothing is worse than no marker. If the prose cites nothing at all, nothing
-    is listed, because there is no way to tell which source it rested on.
-
-    The prose stays a single block (sub-sentence citation spans are a
-    follow-up), so the block carries every id cited anywhere in it.
+    - Only the sources it cited are listed. The others were read and rejected;
+      listing them claims a provenance the answer does not have.
+    - Those are numbered again from [1], in the order first cited, with the
+      text to match (`CitationNumbers`). An answer resting on source 2 alone
+      reads [1], never a lone [2].
+    - A number naming no source is dropped from text and list alike.
     """
 
-    cited = set(_CITATION.findall(text))
-    # Walked in evidence order rather than the order they were cited, so the
-    # numbers a farmer reads count up the page. A cited number that names no
-    # source never matches, which is how an invented one is dropped.
+    numbers = CitationNumbers(source.id for source in evidence.sources)
+    text = numbers.feed(text) + numbers.flush()
+    by_id = {source.id: source for source in evidence.sources}
     sources = tuple(
-        _to_wire_source(source) for source in evidence.sources if source.id in cited
+        _to_wire_source(by_id[source_id]).model_copy(update={"id": number})
+        for source_id, number in numbers.cited.items()
     )
     block = TextBlock(text=text, source_ids=tuple(source.id for source in sources))
     return ComposedAnswer(content=(block,), sources=sources)

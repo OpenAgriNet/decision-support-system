@@ -89,6 +89,7 @@ from dss.core.shared.models import (
     TurnStatus,
     UserTurn,
 )
+from dss.core.stream_response.citations import CitationNumbers
 from dss.core.stream_response.service import ComposeStream
 from dss.core.translation.service import EdgeTranslation
 from dss.observability.stages import Stage
@@ -389,13 +390,17 @@ class Orchestrator:
         # whole composition rather than closing on the first piece.
         with trace_component(Stage.COMPOSER, ctx.trace_id):
             answer_stream = AnswerStream()
+            numbers = CitationNumbers(source.id for source in evidence.sources)
             # `aclosing`, not a bare `async for`: a farmer who closes the
             # screen mid-answer must close the model's stream too, and
             # closing an async generator does not reach the one it relays
             # from.
-            async with aclosing(
-                self._components.compose(evidence, result.intent, turn=turn)
-            ) as pieces:
+            async with (
+                aclosing(
+                    self._components.compose(evidence, result.intent, turn=turn)
+                ) as written,
+                aclosing(numbers.renumber(written)) as pieces,
+            ):
                 async for piece in pieces:
                     yield answer_stream.add_piece(piece)
             # A failure before this line propagates: the pieces already
@@ -412,13 +417,13 @@ class Orchestrator:
             )
             if question is not None:
                 question = await self._components.localize(question, turn=turn)
-                yield answer_stream.add_piece(f"\n\n{question}")
+                yield answer_stream.add_piece(numbers.feed(f"\n\n{question}"))
 
             set_current_span_content(
-                input=sources_text(evidence), output=answer_stream.written
+                input=sources_text(evidence), output=numbers.composed
             )
 
-        answer = answer_from_evidence(answer_stream.written, evidence)
+        answer = answer_from_evidence(numbers.composed, evidence)
         recorder.composed()
         # One block: the composer's prose is never split (`answer_from_evidence`).
         (block,) = answer.content
