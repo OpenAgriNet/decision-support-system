@@ -173,3 +173,22 @@ def test_a_blank_sender_id_falls_back(a_body, blank):
     body["context"]["senderId"] = blank
 
     assert _context_from(body).sender_id == NETWORK_SENDER_ID
+
+
+def test_the_calling_client_is_carried_onto_the_turn(a_body):
+    """It arrives as a header, so it is handed in rather than read off the
+    body (ADR-0019)."""
+
+    body = schema.TurnRequest.model_validate(a_body())
+
+    turn = mapping.to_user_turn(body, client_id="kisan-mitra-web")
+
+    assert turn.client_id == "kisan-mitra-web"
+
+
+def test_a_turn_from_a_caller_that_named_nobody_carries_no_client(a_body):
+    """Every caller that predates the header. The default ranking serves it."""
+
+    body = schema.TurnRequest.model_validate(a_body())
+
+    assert mapping.to_user_turn(body).client_id is None

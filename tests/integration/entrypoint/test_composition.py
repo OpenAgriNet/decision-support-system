@@ -14,6 +14,7 @@ from pathlib import Path
 import httpx
 import pytest
 
+from dss.adapters.provider_preferences.yaml_file import load_provider_preferences
 from dss.config.settings import Settings
 from dss.core.provider_discovery.models import SchemaPackFiles
 from dss.entrypoint.composition import (
@@ -40,6 +41,13 @@ def _settings(tmp_path: Path, **overrides) -> Settings:
     return Settings(stub_llm=True, evidence_dir=tmp_path, **overrides)
 
 
+def _no_preferences():
+    """No ranking mounted — what `_network` is handed on an unconfigured
+    deployment, which is every one of these tests."""
+
+    return load_provider_preferences(None)
+
+
 def test_build_runner_returns_a_turn_runner(tmp_path: Path) -> None:
     runner = build_runner(_settings(tmp_path))
 
@@ -49,7 +57,7 @@ def test_build_runner_returns_a_turn_runner(tmp_path: Path) -> None:
 
 def test_unwired_network_discovers_nothing(tmp_path: Path) -> None:
     discover, _invocation, schemas, schema_context_index, client = _network(
-        _settings(tmp_path)
+        _settings(tmp_path), preferences=_no_preferences()
     )
 
     # the seam is the single unwired function, and the planner's dicts are empty
@@ -68,7 +76,9 @@ def test_wired_network_builds_the_planner_schemas(tmp_path: Path) -> None:
     )
     assert settings.network_enabled
 
-    discover, _invocation, schemas, schema_context_index, client = _network(settings)
+    discover, _invocation, schemas, schema_context_index, client = _network(
+        settings, preferences=_no_preferences()
+    )
 
     # the real client replaced the unwired stand-in...
     assert discover is not _discovers_nothing
@@ -107,7 +117,7 @@ def test_the_network_refuses_to_boot_with_no_packs(tmp_path: Path) -> None:
         return ()
 
     with pytest.raises(ValueError, match="fetch_schema_packs"):
-        _network(settings, fetch=fetches_nothing)
+        _network(settings, fetch=fetches_nothing, preferences=_no_preferences())
 
 
 async def test_the_runner_builds_inside_a_running_event_loop(tmp_path: Path) -> None:
@@ -155,7 +165,7 @@ def test_packs_already_on_disk_are_not_re_fetched(tmp_path: Path) -> None:
         raise AssertionError("fetched with packs already on disk")
 
     discover, _invocation, _schemas, index, _client = _network(
-        settings, fetch=must_not_be_called
+        settings, fetch=must_not_be_called, preferences=_no_preferences()
     )
 
     assert discover is not _discovers_nothing
@@ -291,7 +301,7 @@ def test_a_skipped_pack_is_logged_for_an_operator_to_see(
     )
 
     with caplog.at_level("WARNING"):
-        _network(settings)
+        _network(settings, preferences=_no_preferences())
 
     # `SchemaPackSkipped.pack_name` and `.reason` both reach the log — an
     # operator reading it can tell which pack and why, not just "something

@@ -56,12 +56,20 @@ JSON_MEDIA_TYPE = "application/json"
 SSE_MEDIA_TYPE = "text/event-stream"
 
 
+# Which experience-layer application is calling (ADR-0019). A header, not a
+# body field: it identifies the caller rather than describing the turn, and
+# every deployment's experience layer can set one without the envelope
+# contract changing.
+CLIENT_ID_HEADER = "X-Client-Id"
+
+
 @dataclass(frozen=True)
 class _Admitted:
     """A request that passed every gate, and the mode it asked for."""
 
     body: schema.TurnRequest
     wants_stream: bool
+    client_id: str | None = None
 
 
 def turn_router(
@@ -148,7 +156,25 @@ async def _admit(request: Request, settings: Settings) -> Response | _Admitted: 
     except ValidationError as exc:
         return problem.problem(422, problem.INVALID, exc.json())
 
-    return _Admitted(body=body, wants_stream=wants_stream)
+    return _Admitted(
+        body=body,
+        wants_stream=wants_stream,
+        client_id=_client_id(request.headers.get(CLIENT_ID_HEADER)),
+    )
+
+
+def _client_id(raw: str | None) -> str | None:
+    """The calling client, or `None` when there is no usable one.
+
+    Never a gate. An unknown or absent client is answered on the default
+    provider ranking, because rejecting one would make every experience
+    layer's rollout of this header a breaking change for farmers rather than
+    a configuration step. Blank counts as absent — a proxy that sets the
+    header to an empty string has not named anybody.
+    """
+
+    cleaned = (raw or "").strip()
+    return cleaned or None
 
 
 async def _run(
@@ -170,7 +196,7 @@ async def _run(
         admitted.body, message_id=_minted_id(), network_sender_id=network_sender_id
     )
     try:
-        turn = mapping.to_user_turn(admitted.body)
+        turn = mapping.to_user_turn(admitted.body, client_id=admitted.client_id)
     except ValueError as exc:
         return problem.problem(422, problem.INVALID, str(exc))
 
@@ -195,6 +221,20 @@ def _ref(model: type) -> dict[str, str]:
 
 
 _OPENAPI = {
+    "parameters": [
+        {
+            "name": CLIENT_ID_HEADER,
+            "in": "header",
+            "required": False,
+            "description": (
+                "Which experience-layer application is calling. Selects whose "
+                "provider ranking applies to the turn. Absent or unrecognised "
+                "is served by the default ranking, never refused."
+            ),
+            "schema": {"type": "string"},
+            "example": "kisan-mitra-web",
+        }
+    ],
     "requestBody": {
         "required": True,
         "content": {JSON_MEDIA_TYPE: {"schema": _ref(schema.TurnRequest)}},
