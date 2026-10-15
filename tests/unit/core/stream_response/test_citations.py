@@ -55,9 +55,6 @@ def _renumbered(known: tuple[str, ...], *pieces: str) -> str:
 
 
 def test_the_only_cited_source_is_numbered_one() -> None:
-    """The farmer reads the sources the answer used, so the first one is [1]
-    whatever number the composer saw it under."""
-
     assert _renumbered(("1", "2"), "Plant in June. [2]") == "Plant in June. [1]"
 
 

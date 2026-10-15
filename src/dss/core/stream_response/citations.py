@@ -42,17 +42,8 @@ async def cite_at_end(pieces: AsyncIterator[str]) -> AsyncGenerator[str]:
 
 
 class CitationNumbers:
-    """Renumbers `[n]` markers so the sources the answer used read [1], [2], …
-
-    The composer sees every source read for the turn, numbered as they were
-    gathered. It uses some of them, so its numbers can start at [2] or skip
-    one. The farmer is shown only the sources used, so they are numbered
-    again, in the order first cited. A number naming no source is removed.
-
-    Fed piece by piece like `StreamReveal`: a marker split across two pieces
-    is held back until it is whole. `cited` maps the composer's number to the
-    farmer's.
-    """
+    """Renumbers cited sources 1..k in first-cited order; unknown ones are
+    dropped. `cited` maps the composer's number to the farmer's."""
 
     def __init__(self, known: Iterable[str]) -> None:
         self._known = set(known)
@@ -78,7 +69,5 @@ class CitationNumbers:
         return f"[{number}]"
 
 
-# Spaces are left alone: holding one back would re-split pieces the model
-# sent, and `cite_at_end` has already tidied them.
 _BARE_MARKER = re.compile(r"\[(\d+)\]")
 _PART_MARKER = re.compile(r"\[\d*$")

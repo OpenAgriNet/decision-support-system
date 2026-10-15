@@ -709,8 +709,7 @@ async def test_a_streamed_claim_carries_the_sources_it_cites() -> None:
 
 
 async def test_the_one_source_cited_reaches_the_farmer_as_one() -> None:
-    """Two sources were read, the answer used the second. The farmer reads
-    [1], and source 1 is the second source — streamed and final alike."""
+    """Only the second source is cited; streamed and final both read [1]."""
 
     evidence = Evidence(
         sources=(

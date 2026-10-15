@@ -335,8 +335,7 @@ class Orchestrator:
                 written: list[str] = []
                 # The farmer reads their own values; `written` keeps the tags.
                 shown = StreamReveal(visibility)
-                # The farmer reads sources numbered from [1]; `written` keeps
-                # the composer's numbers, which `answer_from_evidence` maps.
+                # `written` keeps the composer's numbers for `answer_from_evidence`.
                 numbers = CitationNumbers(source.id for source in evidence.sources)
                 # `aclosing`, not a bare `async for`: a farmer who closes the
                 # screen mid-answer must close the model's stream too, and
