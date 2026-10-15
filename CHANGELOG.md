@@ -13,7 +13,7 @@
   untouched. Gujarati into English ships as the first entry. A translated
   answer starts later than an untranslated one, because the whole answer is
   written before translation begins. New trace stages: `translation_in` and
-  `translation_out`. ADR-0019 (#174)
+  `translation_out`. (#174)
 - A farmer now reads refusals, clarification questions and the no-provider
   answers in their own language. The DSS keeps writing these as one reviewed
   English vocabulary and renders each in the turn's target language on the
