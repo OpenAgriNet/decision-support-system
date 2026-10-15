@@ -1,16 +1,7 @@
-"""Tier 5 — does a real model keep what translation must not touch?
+"""Tier 5 — does a real model keep tags, markers, numbers and scheme names
+through translation? Presence only, never wording.
 
-A `«tag»` is swapped back for the farmer's own detail after translation, a
-`[n]` marker's source was worked out before it, and a farmer acts on the
-numbers. The translator prompt orders all of them kept; only a real model
-reading the real prompt shows whether it does.
-
-Structural only, per the tier's rule: each kept piece is present after each
-leg. The wording is never asserted.
-
-Runs on the model `DSS_COMPOSER_MODEL` names, through the shipped translator
-prompt, from a config written here rather than the one a deployment ships.
-Skipped unless that model's key is in the shell or `.env`, like
+Runs on `DSS_COMPOSER_MODEL`; skips without its key, like
 `test_composer_pick_turn.py`.
 """
 

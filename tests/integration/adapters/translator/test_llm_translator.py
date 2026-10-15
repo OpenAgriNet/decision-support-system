@@ -1,9 +1,4 @@
-"""Tier 2 — the LLM translator, against a recording `LLMProvider`.
-
-`StubLLM` stands in for the model: it records what it was asked and answers
-from a table, so these tests pin what the adapter sends, not what a model
-writes.
-"""
+"""Tier 2 — the LLM translator, with `StubLLM` recording what it is asked."""
 
 from __future__ import annotations
 

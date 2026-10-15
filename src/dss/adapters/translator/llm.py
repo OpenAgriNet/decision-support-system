@@ -1,9 +1,6 @@
-"""A translator backed by a language model (#174).
-
-A turn's texts go in one structured call, a JSON list in and a list out, so the
-history and the question are translated together. An answer goes out streamed,
-as the model writes it. The system prompt comes from the prompt registry,
-always in English: it instructs the model, whatever language the text is in.
+"""A translator backed by a language model: a turn's texts in one structured
+call, an answer as the model's own stream. The prompt is always asked in
+English: it instructs the model, whatever the text's language.
 """
 
 from __future__ import annotations

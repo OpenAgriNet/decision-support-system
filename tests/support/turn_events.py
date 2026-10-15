@@ -1,8 +1,4 @@
-"""The rules a turn's events keep, checked over a whole drained turn.
-
-A client renders an answer as it arrives because of these, so every test that
-drains a turn checks them, whichever path the turn took.
-"""
+"""The rules a turn's events keep, checked over a whole drained turn."""
 
 from __future__ import annotations
 

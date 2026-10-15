@@ -1,8 +1,4 @@
-"""Tier 2 — the stub translator, which lets the frame run with no model.
-
-Any text in the stub's own language becomes one canned question; anything else
-comes back marked with the language it was sent to.
-"""
+"""Tier 2 — the stub translator."""
 
 from __future__ import annotations
 

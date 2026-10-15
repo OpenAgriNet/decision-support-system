@@ -205,10 +205,8 @@ class Settings(BaseSettings):
     redaction_enabled: bool = False
     redaction_config_path: Path | None = None
 
-    # Languages translated at the DSS's edges (#174,
-    # configs/edge-translation.yaml). Unset → off, every language is served
-    # directly. Set-but-missing or malformed raises (see
-    # edge_translation_loader), never boot on a different config.
+    # Languages translated at the DSS's edges (#174). Unset → off; set but
+    # missing or malformed, the boot stops (see edge_translation_loader).
     edge_translation_config_path: Path | None = None
 
     # How close a farmer's spelling has to be to count as an alias ("makna"
