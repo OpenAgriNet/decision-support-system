@@ -1,8 +1,3 @@
-"""Edge translation: a turn into the core's language, and its answer back.
-
-The phone is never sent: after redaction it is only a tag.
-"""
-
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Mapping, Sequence
@@ -70,7 +65,8 @@ def _has_own_enriched_query(turn: UserTurn) -> bool:
 
 
 def _collect_texts_to_translate(turn: UserTurn) -> list[str]:
-    """The question, the enriched question when it differs, then the history."""
+    """The question, the enriched question when it differs, then the history.
+    Never the phone: after redaction it is only a tag."""
 
     enriched = [turn.enriched_query] if _has_own_enriched_query(turn) else []
     return [

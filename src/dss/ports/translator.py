@@ -1,10 +1,3 @@
-"""The translator port: text from one language into another.
-
-The language pair comes with each call, so one translator serves both ways.
-``stream`` is ``def``, not ``async def``: an implementation is an async
-generator.
-"""
-
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Sequence
@@ -22,6 +15,7 @@ class Translator(Protocol):
         self, texts: Sequence[str], *, from_lang: LanguageTag, to_lang: LanguageTag
     ) -> tuple[str, ...]: ...
 
+    # `def`, not `async def`: an implementation is an async generator.
     def stream(
         self, text: str, *, from_lang: LanguageTag, to_lang: LanguageTag
     ) -> AsyncIterator[str]: ...

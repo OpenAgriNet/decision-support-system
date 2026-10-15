@@ -1,5 +1,3 @@
-"""What translation needs to know about a configured language."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass

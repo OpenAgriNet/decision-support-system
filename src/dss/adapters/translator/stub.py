@@ -1,9 +1,3 @@
-"""STUB: a translator with no model, for local runs.
-
-Any text in its own language becomes `CANNED_QUESTION`; anything else comes
-back marked with the language it was sent to. It records what it was asked.
-"""
-
 from __future__ import annotations
 
 import re
@@ -29,6 +23,9 @@ class TranslationCall:
 
 
 class StubTranslator:
+    """STUB: no model, for local runs. Text in its own language becomes
+    `CANNED_QUESTION`; anything else comes back marked with its target language."""
+
     def __init__(self, *, language: str) -> None:
         self._language = language
         self.calls: list[TranslationCall] = []
