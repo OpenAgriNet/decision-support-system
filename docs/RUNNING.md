@@ -636,7 +636,7 @@ curl -X POST http://127.0.0.1:8077/v1/turns \
 ### Translation
 
 Off unless `DSS_EDGE_TRANSLATION_CONFIG_PATH` names a translation file
-(ADR-0019). The shipped one, `configs/edge-translation.yaml`, translates
+(`DSS_ARCHITECTURE.md` §5.1). The shipped one, `configs/edge-translation.yaml`, translates
 Gujarati into English with a model:
 
 ```yaml
@@ -1149,7 +1149,7 @@ Every stub is marked `STUB(#nn)` in the source. Grep for it.
 | the deny word list | `core/moderation/service.py` | #82 policy evaluator |
 | the fixed prompt | `core/intent/service.py` | #83 real prompt |
 | the in-memory turn record | `adapters/sinks/memory.py` | #85 durable store |
-| the canned translator | `adapters/translator/stub.py` | `adapters/translator/llm.py`; set `adapter: llm` in the translation file (ADR-0019) |
+| the canned translator | `adapters/translator/stub.py` | `adapters/translator/llm.py`; set `adapter: llm` in the translation file |
 
 The composer is no longer fixed sentences: `orchestration/compose.py` writes
 the answer from the planner's `Evidence`. It is only reached once the network
