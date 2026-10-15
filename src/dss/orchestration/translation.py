@@ -72,10 +72,10 @@ async def translate_out(
                 # `aclosing`: a farmer who closes the screen mid-answer must
                 # close the translator's stream too.
                 async with aclosing(
-                    _translated_pieces(block.text, translation)
+                    _stream_translation(block.text, translation)
                 ) as pieces:
                     async for piece in pieces:
-                        yield answer_stream.piece(piece)
+                        yield answer_stream.add_piece(piece)
                 claim = answer_stream.claim(block, event.sources)
                 translated.append(claim.content.text)
                 yield claim
@@ -86,15 +86,15 @@ async def translate_out(
         yield answer_stream.finish(event.outcome)
 
 
-def _translated_pieces(text: str, translation: TurnTranslation) -> AsyncIterator[str]:
+def _stream_translation(text: str, translation: TurnTranslation) -> AsyncIterator[str]:
     """The translator's stream for `text`. A blank text is not sent: it goes
     out as it is."""
 
     if text.strip():
         return translation.stream_out(text)
-    return _as_it_is(text)
+    return _yield_unchanged(text)
 
 
-async def _as_it_is(text: str) -> AsyncGenerator[str]:
+async def _yield_unchanged(text: str) -> AsyncGenerator[str]:
     if text:
         yield text

@@ -300,7 +300,7 @@ class Orchestrator:
             refusal = await localize_answer(
                 refusal, self._components.localize, turn=turn
             )
-            yield _turn_finished(outcome, refusal)
+            yield _build_turn_finished(outcome, refusal)
             return
 
         self._note("intent", ctx, _classified(result.intent))
@@ -319,7 +319,7 @@ class Orchestrator:
             answer = await localize_answer(
                 no_match_answer(), self._components.localize, turn=turn
             )
-            yield _turn_finished(outcome_for(TurnStatus.NO_MATCH), answer)
+            yield _build_turn_finished(outcome_for(TurnStatus.NO_MATCH), answer)
             return
 
         # No ask has a place to search around: named nowhere, a name the
@@ -345,7 +345,9 @@ class Orchestrator:
             clarification = await localize_answer(
                 clarification, self._components.localize, turn=turn
             )
-            yield _turn_finished(outcome_for(TurnStatus.REQUIRES_INPUT), clarification)
+            yield _build_turn_finished(
+                outcome_for(TurnStatus.REQUIRES_INPUT), clarification
+            )
             return
 
         # Nobody can serve the ask: no provider is reachable for it, so there is
@@ -370,7 +372,7 @@ class Orchestrator:
                     content=(*answer.content, TextBlock(text=question))
                 )
             answer = await localize_answer(answer, self._components.localize, turn=turn)
-            yield _turn_finished(outcome_for(status), answer)
+            yield _build_turn_finished(outcome_for(status), answer)
             return
 
         # Past the barrier: the decision cleared, so the planner's `select` tool
@@ -402,8 +404,8 @@ class Orchestrator:
             async with aclosing(
                 self._components.compose(evidence, result.intent, turn=turn)
             ) as pieces:
-                async for delta in pieces:
-                    yield answer_stream.piece(delta)
+                async for piece in pieces:
+                    yield answer_stream.add_piece(piece)
             # A failure before this line propagates: the pieces already
             # yielded cannot be recalled, so there is no retry to make and
             # nothing to roll back. The transport reports a failed turn.
@@ -418,10 +420,12 @@ class Orchestrator:
             )
             if question is not None:
                 question = await self._components.localize(question, turn=turn)
-                yield answer_stream.piece(f"\n\n{question}")
+                yield answer_stream.add_piece(f"\n\n{question}")
+
             set_current_span_content(
                 input=sources_text(evidence), output=answer_stream.written
             )
+
         answer = answer_from_evidence(answer_stream.written, evidence)
         recorder.composed()
         # One block: the composer's prose is never split (`answer_from_evidence`).
@@ -454,21 +458,26 @@ class Orchestrator:
                         recorder.first_delta()
                         has_first_delta = True
                     if piece := shown.feed(text):
-                        yield answer_stream.piece(piece)
+                        yield answer_stream.add_piece(piece)
                 case Claim(content=block, sources=sources):
                     if rest := shown.flush():
-                        yield answer_stream.piece(rest)
+                        yield answer_stream.add_piece(rest)
                     yield answer_stream.claim(block, sources)
                 case TurnFinished():
                     yield self._record_and_reveal(
-                        ctx, farmer_turn, event, recorder, visibility
+                        event,
+                        ctx=ctx,
+                        farmer_turn=farmer_turn,
+                        recorder=recorder,
+                        visibility=visibility,
                     )
 
     def _record_and_reveal(
         self,
+        finished: TurnFinished,
+        *,
         ctx: TurnContext,
         farmer_turn: UserTurn,
-        finished: TurnFinished,
         recorder: TurnRecorder,
         visibility: Visibility,
     ) -> TurnFinished:
@@ -513,7 +522,7 @@ class Orchestrator:
             self._telemetry.stage(stage, ctx, outcome)
 
 
-def _turn_finished(outcome: TurnOutcome, answer: ComposedAnswer) -> TurnFinished:
+def _build_turn_finished(outcome: TurnOutcome, answer: ComposedAnswer) -> TurnFinished:
     return TurnFinished(outcome=outcome, content=answer.content, sources=answer.sources)
 
 

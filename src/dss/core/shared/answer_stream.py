@@ -38,7 +38,7 @@ class AnswerStream:
 
         return "".join(self._pieces)
 
-    def piece(self, text: str) -> ClaimDelta:
+    def add_piece(self, text: str) -> ClaimDelta:
         self._pieces.append(text)
         return ClaimDelta(text=text)
 
@@ -58,13 +58,13 @@ class AnswerStream:
         return TurnFinished(
             outcome=outcome,
             content=tuple(claim.content for claim in self._claims),
-            sources=_each_once(
+            sources=_dedupe_by_id(
                 source for claim in self._claims for source in claim.sources
             ),
         )
 
 
-def _each_once(sources: Iterable[Source]) -> tuple[Source, ...]:
+def _dedupe_by_id(sources: Iterable[Source]) -> tuple[Source, ...]:
     """In first-seen order, one per id."""
 
     first_by_id: dict[str, Source] = {}

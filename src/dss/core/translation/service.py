@@ -56,11 +56,11 @@ class TurnTranslation:
 
         translated = await _translate_each(
             self.translator,
-            _texts_to_translate(turn),
+            _collect_texts_to_translate(turn),
             from_lang=self.edge_lang,
             to_lang=self.core_lang,
         )
-        return _with_translated_texts(turn, translated, lang=self.core_lang)
+        return _replace_turn_texts(turn, translated, lang=self.core_lang)
 
     def stream_out(self, text: str) -> AsyncIterator[str]:
         """`text` in the farmer's language, as the translator writes it."""
@@ -74,7 +74,7 @@ def _has_own_enriched_query(turn: UserTurn) -> bool:
     return turn.enriched_query != turn.original_query
 
 
-def _texts_to_translate(turn: UserTurn) -> list[str]:
+def _collect_texts_to_translate(turn: UserTurn) -> list[str]:
     """The question, the enriched question when it differs, then the history."""
 
     enriched = [turn.enriched_query] if _has_own_enriched_query(turn) else []
@@ -85,10 +85,10 @@ def _texts_to_translate(turn: UserTurn) -> list[str]:
     ]
 
 
-def _with_translated_texts(
+def _replace_turn_texts(
     turn: UserTurn, translated: Sequence[str], *, lang: LanguageTag
 ) -> UserTurn:
-    """`turn` with `translated` in place, in `_texts_to_translate` order."""
+    """`turn` with `translated` in place, in `_collect_texts_to_translate` order."""
 
     query, *rest = translated
     if _has_own_enriched_query(turn):
