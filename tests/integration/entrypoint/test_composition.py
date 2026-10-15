@@ -364,3 +364,74 @@ def test_an_identifier_that_cannot_be_built_stops_the_boot(tmp_path: Path) -> No
         _redaction(
             _settings(tmp_path, redaction_enabled=True, redaction_config_path=rules)
         )
+
+
+# --- edge translation --------------------------------------------------------
+
+_SHIPPED_TRANSLATION = Path(__file__).parents[3] / "configs" / "edge-translation.yaml"
+
+
+def test_no_translation_path_builds_no_routes(tmp_path: Path) -> None:
+    from dss.entrypoint.composition import _translation_routes
+
+    assert _translation_routes(_settings(tmp_path)) == {}
+
+
+def test_shipped_config_builds_a_gujarati_stub_route(tmp_path: Path) -> None:
+    from dss.adapters.translator.stub import StubTranslator
+    from dss.core.shared.language import ENGLISH
+    from dss.entrypoint.composition import _translation_routes
+
+    routes = _translation_routes(
+        _settings(tmp_path, edge_translation_config_path=_SHIPPED_TRANSLATION)
+    )
+
+    assert list(routes) == ["gu"]
+    assert isinstance(routes["gu"].translator, StubTranslator)
+    assert routes["gu"].to == ENGLISH
+
+
+async def test_a_gujarati_turn_goes_in_and_out_through_the_stub(
+    tmp_path: Path,
+) -> None:
+    from dss.core.shared.language import ENGLISH, LanguageTag
+    from dss.core.shared.models import (
+        ClaimDelta,
+        Geometry,
+        Location,
+        TurnContext,
+        TurnFinished,
+        UserTurn,
+    )
+
+    gujarati = LanguageTag("gu")
+    runner = build_runner(
+        _settings(tmp_path, edge_translation_config_path=_SHIPPED_TRANSLATION)
+    )
+    turn = UserTurn(
+        original_query="આજે વરસાદ પડશે?",
+        enriched_query="આજે વરસાદ પડશે?",
+        session_id="s1",
+        transaction_id="t1",
+        source_lang=gujarati,
+        target_lang=gujarati,
+        channel="web",
+        location=Location(geometry=Geometry(coordinates=[73.7898, 19.9975])),
+    )
+
+    events = [
+        event
+        async for event in runner.run(
+            turn, TurnContext(trace_id="t1", message_id="m1", session_id="s1")
+        )
+    ]
+
+    stub = runner._edge_translation.routes["gu"].translator
+    first = stub.calls[0]
+    assert (first.from_lang, first.to_lang) == (gujarati, ENGLISH)
+    finished = events[-1]
+    assert isinstance(finished, TurnFinished)
+    assert finished.outcome.status.value == "no_match"
+    assert finished.content
+    assert all(block.text.startswith("[gu] ") for block in finished.content)
+    assert any(isinstance(event, ClaimDelta) for event in events)
