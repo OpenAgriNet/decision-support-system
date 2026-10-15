@@ -82,6 +82,7 @@ from dss.core.shared.models import (
     TurnStatus,
     UserTurn,
 )
+from dss.core.stream_response.citations import CitationNumbers
 from dss.core.stream_response.service import ComposeStream
 from dss.observability.stages import Stage
 from dss.observability.trace_log import bind_turn_ids, trace_component
@@ -349,6 +350,8 @@ class Orchestrator:
                 written: list[str] = []
                 # The farmer reads their own values; `written` keeps the tags.
                 shown = StreamReveal(visibility)
+                # `written` keeps the composer's numbers for `answer_from_evidence`.
+                numbers = CitationNumbers(source.id for source in evidence.sources)
                 # `aclosing`, not a bare `async for`: a farmer who closes the
                 # screen mid-answer must close the model's stream too, and
                 # closing an async generator does not reach the one it relays
@@ -360,9 +363,9 @@ class Orchestrator:
                         if not written:
                             recorder.first_delta()
                         written.append(delta)
-                        if piece := shown.feed(delta):
+                        if piece := shown.feed(numbers.feed(delta)):
                             yield ClaimDelta(text=piece)
-                if rest := shown.flush():
+                if rest := shown.feed(numbers.flush()) + shown.flush():
                     yield ClaimDelta(text=rest)
                 # A failure before this line propagates: the pieces already
                 # yielded cannot be recalled, so there is no retry to make and
