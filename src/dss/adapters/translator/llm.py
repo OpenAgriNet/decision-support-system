@@ -1,8 +1,3 @@
-"""A translator backed by a language model: a turn's texts in one structured
-call, an answer as the model's own stream. The prompt is always asked in
-English: it instructs the model, whatever the text's language.
-"""
-
 from __future__ import annotations
 
 import json
@@ -62,6 +57,7 @@ class LLMTranslator:
     def _render_system_prompt(
         self, from_lang: LanguageTag, to_lang: LanguageTag
     ) -> str:
+        # In English whatever the text's language: it instructs the model.
         return self._prompts.get_prompt(
             PromptIdentifier.TRANSLATOR,
             lang=ENGLISH,

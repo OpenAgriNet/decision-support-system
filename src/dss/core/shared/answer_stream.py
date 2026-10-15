@@ -1,7 +1,3 @@
-"""Builds a streamed answer's events so they agree: each `Claim` holds the
-deltas since the one before, and the `TurnFinished` holds every claimed block.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
@@ -17,8 +13,8 @@ from dss.core.shared.models import (
 
 
 class AnswerStream:
-    """One streamed answer: pieces, then a `Claim` per block, then the
-    `TurnFinished`."""
+    """Builds a streamed answer's events so they agree: each `Claim` holds the
+    deltas since the one before, and the `TurnFinished` holds every claim."""
 
     def __init__(self) -> None:
         self._pieces: list[str] = []
