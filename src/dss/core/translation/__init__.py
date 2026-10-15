@@ -1,5 +1,3 @@
-"""Translation — carry a farmer's turn into the language the pipeline runs in,
-and the answer back.
-
-See #174.
+"""Translating a farmer's turn into the pipeline's language, and the answer
+back (#174).
 """

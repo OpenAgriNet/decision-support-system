@@ -1,12 +1,8 @@
-"""The translator port — turns text from one language into another.
+"""The translator port: text from one language into another.
 
-The edge translation service in ``core/`` depends on this Protocol; adapters
-under ``adapters/translator/`` implement it. It is not tied to a direction:
-the language pair comes with each call, so one translator serves both the way
-in and the way out.
-
-``stream`` is declared ``def``, not ``async def``: an implementation is an
-async generator, and calling one returns the iterator without awaiting.
+The language pair comes with each call, so one translator serves both ways.
+``stream`` is ``def``, not ``async def``: an implementation is an async
+generator.
 """
 
 from __future__ import annotations

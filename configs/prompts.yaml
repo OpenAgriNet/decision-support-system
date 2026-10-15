@@ -88,11 +88,8 @@ localizer:
     hi:
       system_prompt: prompts/localizer/hi/prompt.j2
 
-# Translates a farmer's text into the route's `to` language, and the answer
-# back, for languages listed in configs/edge-translation.yaml (#174). English
-# only, on purpose: these are instructions to the model, so they stay in
-# English whatever language the text is in. Keeps «tags», [n] markers,
-# numbers, units and scheme names exactly as written.
+# Translates turns and answers for languages in configs/edge-translation.yaml
+# (#174). English only: it instructs the model, whatever the text's language.
 translator:
   placeholders:
     - translate_from

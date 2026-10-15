@@ -1,11 +1,5 @@
-"""Tier 7 — a Gujarati weather question, through the stub translator.
-
-The stub turns any Gujarati turn into "Will it rain today?" and marks what it
-sends back `[gu]`, so this runs the whole frame — translate in, the real
-pipeline with live models and the mocked network, translate out — before a
-translation model exists.
-
-Same gate as the other live tests: no key in the environment, no run.
+"""Tier 7 — a Gujarati weather question through the stub translator, with live
+models and the mock network. Skips without a model key.
 """
 
 from __future__ import annotations

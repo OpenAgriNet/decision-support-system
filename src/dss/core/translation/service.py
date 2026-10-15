@@ -1,8 +1,6 @@
-"""Edge translation: a farmer's turn goes in to the language the core DSS runs
-in, and the answer comes back out to the farmer's.
+"""Edge translation: a turn into the core's language, and its answer back.
 
-The phone is never sent: it is not text a farmer wrote, and after redaction it
-is only a tag.
+The phone is never sent: after redaction it is only a tag.
 """
 
 from __future__ import annotations
@@ -40,11 +38,8 @@ class EdgeTranslation:
 
 @dataclass(frozen=True, slots=True)
 class TurnTranslation:
-    """One turn's translator, with both languages fixed: the farmer's at the
-    edge, and the one the core DSS runs in.
-
-    A class, not functions like other core services, so no caller passes the
-    language pair and none can swap it.
+    """One turn's translator, with the farmer's language and the core's fixed.
+    A class, so no caller passes the pair or swaps it.
     """
 
     translator: Translator
