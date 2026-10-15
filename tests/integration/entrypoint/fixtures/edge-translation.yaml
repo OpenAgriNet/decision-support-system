@@ -1,6 +1,5 @@
-# The composition tests' own translation config, so they do not depend on the
-# model a deployment ships in configs/edge-translation.yaml. An `openai:` model
-# string is only read when a call is made, so building the route needs no key.
+# The composition tests' own copy of configs/edge-translation.yaml. An
+# `openai:` model is only read when called, so building the route needs no key.
 languages:
   gu:
     to: en

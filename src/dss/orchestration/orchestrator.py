@@ -34,12 +34,9 @@ tested there. This runner adds what the transport needs on top: the planner
 and composer, the event stream, the evidence writes, and the mapping from a
 turn's findings to a contract outcome.
 
-Three layers. `run` is the edge: it redacts the turn, records it, and reveals
-kept values in every event the farmer gets. Translation
-(`orchestration/translation.py`) turns the farmer's turn into the route's
-language and the core's events back, or passes both through. `_run_core` runs
-the pipeline on the turn it is given, as if it were the whole turn, and yields
-tags only.
+Three layers: `run` is the edge (redact, record, reveal kept values),
+`orchestration/translation.py` translates in and out or passes through, and
+`_run_core` runs the pipeline on tags only.
 
 Nothing side-effecting runs until moderation has cleared — the planner is
 reached only on `PROCEED`, and its own `select` tool waits on the `Verdict`
@@ -233,9 +230,8 @@ class Orchestrator:
                 farmer_turn, translation, trace_id=ctx.trace_id
             )
 
-            # `aclosing` each layer: a farmer who closes the screen must close
-            # the core and the translator too, down to each model's stream, and
-            # closing an async generator does not reach the one it reads from.
+            # `aclosing` each layer: closing an async generator does not reach the
+            # one it reads from, and a closed screen must close every model stream.
             async with (
                 aclosing(
                     self._run_core(
@@ -269,9 +265,9 @@ class Orchestrator:
         recorder: TurnRecorder,
         visibility: Visibility,
     ) -> AsyncGenerator[CoreEvent]:
-        """The pipeline on a redacted turn, start to finish. Every event it
-        yields carries tags, never kept values: revealing them is the edge's
-        job. `visibility` is here only for the planner's provider calls."""
+        """The pipeline on a redacted turn. It yields tags only; `visibility` is
+        for the planner's provider calls.
+        """
 
         # Intent ∥ moderation, discovery chained off intent, and the barrier —
         # all owned by `run_turn`. It blanks intent and discovery on any

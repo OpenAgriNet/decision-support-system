@@ -1,12 +1,7 @@
 """The translation layer, between the edge and the core (#174).
 
-The edge hands it the farmer's redacted turn and gets back the core's events in
-the farmer's language, still tagged: the edge reveals kept values after this
-layer, so a translator only ever sees tags. The core runs on the translated
-turn and never knows it was translated.
-
-With no route for the turn's language, the turn and every event pass straight
-through, so an untranslated answer still streams piece by piece.
+It sees tags only: the edge reveals kept values after it. With no route, the
+turn and every event pass straight through.
 """
 
 from __future__ import annotations
@@ -45,13 +40,8 @@ async def translate_out(
     *,
     trace_id: str,
 ) -> AsyncGenerator[CoreEvent]:
-    """The core's events in the farmer's language.
-
-    Translation always streams, for every way out of the core: the composed
-    answer and a fixed reply alike. The `TurnFinished` holds the whole answer,
-    so the layer waits for it, drops the core's own pieces and `Claim`s, and
-    streams each block's translation, then that block's `Claim`, then the
-    `TurnFinished`. A translator that cannot stream yields each block once.
+    """The core's events in the farmer's language. Waits for the
+    `TurnFinished`, then streams each block's translation and its `Claim`.
     """
 
     if translation is None:

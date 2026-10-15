@@ -32,9 +32,8 @@ class Stage(StrEnum):
 # The four stages that bind a model in Settings (ADR-0004 — each binds its own).
 # The rest carry no `model` label on `dss.stage.duration`: an absent label reads
 # as "not applicable", where a "none" value would read as a model name in a
-# dashboard's dropdown. Most run no model. Translation may, but its model is set
-# per language in the edge translation config, not in Settings. In and out are
-# two stages: a short batch call and a long stream would blur into one mean.
+# dashboard's dropdown. Translation's model is set per language, not in Settings;
+# in and out are separate stages, or a short batch and a long stream share a mean.
 MODEL_BACKED_STAGES = frozenset(
     {Stage.INTENT, Stage.MODERATION, Stage.PLANNER, Stage.COMPOSER}
 )

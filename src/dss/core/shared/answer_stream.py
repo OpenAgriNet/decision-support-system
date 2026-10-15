@@ -1,13 +1,5 @@
-"""Builds a streamed answer's events so they agree with each other.
-
-The rules a client relies on to render an answer as it arrives:
-
-- the deltas since the last `Claim`, joined, are that `Claim`'s text;
-- the `TurnFinished` holds every claimed block, in order, and the sources
-  they cite.
-
-Every layer that streams an answer builds its events here, so no layer can
-send a `Claim` that disagrees with the pieces before it.
+"""Builds a streamed answer's events so they agree: each `Claim` holds the
+deltas since the one before, and the `TurnFinished` holds every claimed block.
 """
 
 from __future__ import annotations

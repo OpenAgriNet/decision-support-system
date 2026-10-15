@@ -1,10 +1,5 @@
-"""Tier 3 — a turn in a translated language runs the pipeline in its route's
-language, and its answer comes back in the farmer's.
-
-The real orchestrator with a `FakeTranslator`, which marks each text with the
-language it was sent to. What is pinned: translation sits between the edge and
-the core, the core reads the route's language, the record and the farmer get
-their own language, and a turn with no route is left as it was.
+"""Tier 3 — translation between the edge and the core, with a `FakeTranslator`
+that marks each text with the language it was sent to.
 """
 
 from __future__ import annotations

@@ -1,13 +1,7 @@
-"""STUB — a translator that answers from two rules, not a model.
+"""STUB: a translator with no model, for local runs.
 
-What `adapters/llm/stub.py` is to the pipeline: it lets the whole frame run
-before a translation model exists, and stays for local runs. Selected only by
-`adapter: stub` in the translation config. Never in a deployment.
-
-No network, no model. Any text in its own language becomes one canned
-question, which the mock network can answer. Anything else comes back marked
-with the language it was sent to, so the way out is visible too. It records
-what it was asked so a test can assert the direction of each call.
+Any text in its own language becomes `CANNED_QUESTION`; anything else comes
+back marked with the language it was sent to. It records what it was asked.
 """
 
 from __future__ import annotations

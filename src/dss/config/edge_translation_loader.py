@@ -1,10 +1,5 @@
-"""Loads the edge translation config (#174): which languages the DSS
-translates at its edges, and the language the pipeline runs in for each.
-
-Off unless ``DSS_EDGE_TRANSLATION_CONFIG_PATH`` is set. Set, the file must
-load. A missing file, an unknown adapter, a key that is not a lowercase
-language subtag, or a ``to`` that loops or chains stops the boot and names the
-entry.
+"""Loads the edge translation config (#174). Off unless
+``DSS_EDGE_TRANSLATION_CONFIG_PATH`` is set; a bad file stops the boot.
 """
 
 from __future__ import annotations
@@ -30,8 +25,7 @@ class LLMBinding(BaseModel):
 
     to: LanguageTag
     adapter: Literal["llm"]
-    # A name the model gateway resolves, or a Pydantic AI model string without
-    # one, like every component's `*_model` setting.
+    # A gateway name, or a Pydantic AI model string, like `DSS_*_MODEL`.
     model: str = Field(min_length=1)
     temperature: float = Field(0.0, ge=0.0, le=2.0)
     timeout_seconds: float = Field(20.0, gt=0.0)
