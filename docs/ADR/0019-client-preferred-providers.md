@@ -99,7 +99,10 @@ carries each ask's topic, so it is the first point where both are in hand.
 Both halves of a finding are governed — the capabilities the planner calls and
 the Direct answers the catalog already holds — because being served by a
 provider the adopter ruled out is the same wrong answer whether or not we had
-to ask for it.
+to ask for it. Direct answers need no call, so nothing downstream narrows
+them; the ranked set therefore keeps only the best-placed provider that
+returned anything, or two ranked providers' catalog data would blend into one
+answer.
 
 The planner's `select` tool then makes one call per *ask* rather than per
 candidate: every ranked provider serving the chosen capability's `@type` is
