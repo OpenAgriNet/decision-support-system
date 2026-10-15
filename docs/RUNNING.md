@@ -698,8 +698,18 @@ and `dss.stage.translation_out` at the end, each with a `translator-gu-in` or
 `DSS_TRACE_INCLUDE_MESSAGE_CONTENT=true` they show the text going in and out.
 The turn's own trace keeps the farmer's Gujarati.
 
-**Not in Docker yet.** `docker-compose.yml` lists each setting it passes to
-the container, and `DSS_EDGE_TRANSLATION_CONFIG_PATH` is not one of them.
+**In Docker** the gateway is always on, so the file's `model` must be a
+gateway name such as `dss-intent`. Copy the file to `var/edge-translation.yaml`,
+set the model there, and mount it with a `docker-compose.override.yml`:
+
+```yaml
+services:
+  dss:
+    volumes:
+      - ./var/edge-translation.yaml:/app/var/edge-translation.yaml:ro
+    environment:
+      DSS_EDGE_TRANSLATION_CONFIG_PATH: /app/var/edge-translation.yaml
+```
 
 ### The area index
 
