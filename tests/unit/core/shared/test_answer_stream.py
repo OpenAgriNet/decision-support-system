@@ -21,13 +21,13 @@ ANSWERED = TurnOutcome(status=TurnStatus.ANSWERED, confidence=92)
 def test_a_piece_is_handed_on_as_a_delta():
     answer = AnswerStream()
 
-    assert answer.piece("Rain is ") == ClaimDelta(text="Rain is ")
+    assert answer.add_piece("Rain is ") == ClaimDelta(text="Rain is ")
 
 
 def test_a_claim_is_the_pieces_written_since_the_last_one():
     answer = AnswerStream()
-    answer.piece("Rain is ")
-    answer.piece("likely [1].")
+    answer.add_piece("Rain is ")
+    answer.add_piece("likely [1].")
 
     claim = answer.claim(TextBlock(text="ignored", source_ids=("1",)), (IMD,))
 
@@ -37,7 +37,7 @@ def test_a_claim_is_the_pieces_written_since_the_last_one():
 
 def test_a_claim_keeps_the_type_of_its_block():
     answer = AnswerStream()
-    answer.piece("I can't help with that.")
+    answer.add_piece("I can't help with that.")
 
     claim = answer.claim(RefusalBlock(text="ignored"), ())
 
@@ -46,9 +46,9 @@ def test_a_claim_keeps_the_type_of_its_block():
 
 def test_each_claim_takes_only_its_own_pieces():
     answer = AnswerStream()
-    answer.piece("Rain [1].")
+    answer.add_piece("Rain [1].")
     answer.claim(TextBlock(text=""), (IMD,))
-    answer.piece("Wheat [2].")
+    answer.add_piece("Wheat [2].")
 
     second = answer.claim(TextBlock(text=""), (AGMARKNET,))
 
@@ -63,9 +63,9 @@ def test_a_claim_with_no_pieces_is_empty():
 
 def test_the_finish_holds_every_claimed_block_in_order():
     answer = AnswerStream()
-    answer.piece("Rain [1].")
+    answer.add_piece("Rain [1].")
     first = answer.claim(TextBlock(text=""), (IMD,))
-    answer.piece("Wheat [2].")
+    answer.add_piece("Wheat [2].")
     second = answer.claim(TextBlock(text=""), (IMD, AGMARKNET))
 
     finished = answer.finish(ANSWERED)
@@ -77,7 +77,7 @@ def test_the_finish_holds_every_claimed_block_in_order():
 
 def test_written_is_what_the_next_claim_would_hold():
     answer = AnswerStream()
-    answer.piece("Rain ")
-    answer.piece("[1].")
+    answer.add_piece("Rain ")
+    answer.add_piece("[1].")
 
     assert answer.written == "Rain [1]."

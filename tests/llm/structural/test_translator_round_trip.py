@@ -25,7 +25,7 @@ from dss.config.edge_translation_loader import load_edge_translation_config
 from dss.config.prompt_service import build_prompt_service
 from dss.config.settings import Settings
 from dss.core.shared.language import ENGLISH, LanguageTag
-from dss.entrypoint.composition import _translation_routes
+from dss.entrypoint.composition import _build_translation_routes
 from dss.ports.translator import Translator
 from tests.support.live_model import missing_model_key
 
@@ -62,14 +62,14 @@ def _live_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture
 def translator() -> Translator:
-    routes = _translation_routes(
+    routes = _build_translation_routes(
         Settings(stub_llm=False, edge_translation_config_path=_SHIPPED),
-        build_prompt_service(_ROOT / "configs" / "prompts.yaml"),
+        prompts=build_prompt_service(_ROOT / "configs" / "prompts.yaml"),
     )
     return routes["gu"].translator
 
 
-def _lost(text: str) -> list[str]:
+def _find_lost_pieces(text: str) -> list[str]:
     return [kept for kept in KEPT if kept not in text]
 
 
@@ -88,8 +88,12 @@ async def test_gu_round_trip_keeps_numbers_tags_markers_and_scheme_names(
     )
     print(f"\n  gu → en: {english!r}\n  en → gu: {back!r}")
 
-    assert not _lost(english), f"gu → en lost {_lost(english)}: {english!r}"
-    assert not _lost(back), f"en → gu lost {_lost(back)}: {back!r}"
+    assert not _find_lost_pieces(english), (
+        f"gu → en lost {_find_lost_pieces(english)}: {english!r}"
+    )
+    assert not _find_lost_pieces(back), (
+        f"en → gu lost {_find_lost_pieces(back)}: {back!r}"
+    )
 
 
 async def test_a_batch_comes_back_one_text_per_text(translator: Translator) -> None:
