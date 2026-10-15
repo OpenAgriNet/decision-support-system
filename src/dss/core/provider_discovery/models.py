@@ -12,6 +12,7 @@ from datetime import datetime
 from enum import Enum
 
 from dss.core.provider_discovery.schema_fields import FieldSpec
+from dss.core.provider_preferences.models import AskPriority
 
 # A resource's `@type`, as a prefixed CURIE: `openagrinet:MandiPrice`. An open
 # set, fed by whichever schema packs a deployment mounts — so never an enum.
@@ -193,6 +194,16 @@ class DiscoveryResult:
     capabilities: dict[int, tuple[ProviderCapability, ...]]
     failures: dict[int, tuple[DiscoveryFailure, ...]]
     events: tuple[DiscoveryEvent, ...]
+    # What the calling client's provider ranking did to each ask, keyed by ask
+    # index (ADR-0019). Filled by `core.provider_preferences.prioritise`, which
+    # runs over this result before anything downstream reads it.
+    #
+    # Here rather than alongside, because the ordering above *is* the thing it
+    # explains: `capabilities[2]` being one provider long is either "only one
+    # provider serves this" or "the client ranked the other two out", and
+    # nothing else can tell those apart. Defaulted, so every existing
+    # construction — and an unwired deployment — stays valid.
+    priorities: dict[int, AskPriority] = dataclass_field(default_factory=dict)
 
 
 @dataclass(frozen=True)

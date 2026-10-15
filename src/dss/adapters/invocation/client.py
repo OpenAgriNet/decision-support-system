@@ -285,6 +285,10 @@ class HttpCapabilityInvocation:
             transaction_id,
             endpoint=f"{self._base_url}/select",
             capability=capability.capability,
+            # Named on every line because one ask can now call several
+            # providers (ADR-0019), and a capability alone no longer says
+            # which of them a body belongs to.
+            provider_id=capability.provider_id,
             body=request_body,
         )
         try:
@@ -297,6 +301,7 @@ class HttpCapabilityInvocation:
                 transaction_id,
                 status=response.status_code,
                 capability=capability.capability,
+                provider_id=capability.provider_id,
                 body=visibility.conceal(response.text),
             )
             response.raise_for_status()
@@ -315,6 +320,7 @@ class HttpCapabilityInvocation:
                 transaction_id,
                 status="transport_error",
                 capability=capability.capability,
+                provider_id=capability.provider_id,
                 error=visibility.conceal(str(exc)),
             )
             raise SelectFailedError(
