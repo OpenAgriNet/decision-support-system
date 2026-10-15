@@ -1,9 +1,3 @@
-"""The translation layer, between the edge and the core (#174).
-
-It sees tags only: the edge reveals kept values after it. With no route, the
-turn and every event pass straight through.
-"""
-
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator, AsyncIterator
@@ -40,9 +34,9 @@ async def translate_out(
     *,
     trace_id: str,
 ) -> AsyncGenerator[CoreEvent]:
-    """The core's events in the farmer's language. Waits for the
-    `TurnFinished`, then streams each block's translation and its `Claim`.
-    """
+    """The core's events in the farmer's language, still tagged: the edge
+    reveals kept values after this. Waits for the `TurnFinished`, then streams
+    each block's translation and its `Claim`."""
 
     if translation is None:
         async for event in core_events:

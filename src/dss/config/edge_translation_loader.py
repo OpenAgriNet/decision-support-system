@@ -1,7 +1,3 @@
-"""Loads the edge translation config (#174). Off unless
-``DSS_EDGE_TRANSLATION_CONFIG_PATH`` is set; a bad file stops the boot.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
