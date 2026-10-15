@@ -48,9 +48,14 @@ from dss.adapters.pii_identifier.factory import build_identifiers
 from dss.adapters.schema_packs.filesystem import FilesystemSchemaPackSource
 from dss.adapters.scheme_catalog.csv_file import load_scheme_catalog
 from dss.adapters.sinks.file import FileTelemetrySink, FileTurnSink
+from dss.adapters.translator.llm import LLMTranslator
 from dss.adapters.translator.stub import StubTranslator
 from dss.config.clarification_text_loader import load_clarification_text
-from dss.config.edge_translation_loader import load_edge_translation_config
+from dss.config.edge_translation_loader import (
+    StubBinding,
+    TranslationBinding,
+    load_edge_translation_config,
+)
 from dss.config.identity_loader import load_identity
 from dss.config.policy_loader import load_policy_pack
 from dss.config.prompt_service import build_prompt_service
@@ -86,6 +91,8 @@ from dss.orchestration.redaction import RedactTexts, pass_through, redact_texts
 from dss.ports.area_lookup import AreaLookup
 from dss.ports.invocation import CapabilityInvocation
 from dss.ports.llm import LLMProvider
+from dss.ports.prompts import PromptProvider
+from dss.ports.translator import Translator
 from dss.ports.turn import TurnRunner
 
 logger = logging.getLogger(__name__)
@@ -155,7 +162,7 @@ def build_runner_with_lifecycle(
     # name model stops the boot here, never on a farmer's turn.
     redact = _redaction(settings)
     # Same: a bad edge translation config stops the boot here (#174).
-    translation_routes = _translation_routes(settings)
+    translation_routes = _translation_routes(settings, prompts)
 
     discover, invocation, schemas, schema_context_index, client = _network(
         settings, fetch=fetch
@@ -269,18 +276,44 @@ def _redaction(settings: Settings) -> RedactTexts:
     )
 
 
-def _translation_routes(settings: Settings) -> dict[str, TranslationRoute]:
+def _translation_routes(
+    settings: Settings, prompts: PromptProvider
+) -> dict[str, TranslationRoute]:
     """One route per language in the edge translation config (#174); none
     when `DSS_EDGE_TRANSLATION_CONFIG_PATH` is unset."""
 
     return {
         language: TranslationRoute(
-            translator=StubTranslator(language=language), to=binding.to
+            translator=_translator(language, binding, settings, prompts),
+            to=binding.to,
         )
         for language, binding in load_edge_translation_config(
             settings.edge_translation_config_path
         ).items()
     }
+
+
+def _translator(
+    language: str,
+    binding: TranslationBinding,
+    settings: Settings,
+    prompts: PromptProvider,
+) -> Translator:
+    """The adapter a language's entry names. With models stubbed, every
+    language gets the stub: no model is called, translation included."""
+
+    if isinstance(binding, StubBinding) or settings.stub_llm:
+        return StubTranslator(language=language)
+    return LLMTranslator(
+        llm=PydanticAILLMProvider(
+            _resolve_model(binding.model, settings),
+            name=f"translator-{language}",
+            stage=Stage.TRANSLATION,
+            temperature=binding.temperature,
+            timeout=binding.timeout_seconds,
+        ),
+        prompts=prompts,
+    )
 
 
 # --- discovery + invocation (gated) --------------------------------------

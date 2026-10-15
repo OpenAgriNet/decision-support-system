@@ -26,7 +26,8 @@ def test_shipped_file_binds_gujarati_to_english() -> None:
     languages = load_edge_translation_config(_SHIPPED)
 
     assert languages["gu"].to == ENGLISH
-    assert languages["gu"].adapter == "stub"
+    assert languages["gu"].adapter == "llm"
+    assert languages["gu"].model
 
 
 def test_to_can_be_a_language_other_than_english(tmp_path: Path) -> None:
@@ -55,7 +56,7 @@ def test_chained_route_stops_the_boot(tmp_path: Path) -> None:
 def test_unknown_adapter_stops_the_boot(tmp_path: Path) -> None:
     path = write(tmp_path, "languages:\n  gu: {to: en, adapter: http}\n")
 
-    with pytest.raises(ValueError, match=r"languages\.gu\.adapter"):
+    with pytest.raises(ValueError, match=r"languages\.gu\n.*'http'.*'stub', 'llm'"):
         load_edge_translation_config(path)
 
 
@@ -88,5 +89,45 @@ def test_missing_file_stops_the_boot(tmp_path: Path) -> None:
 def test_misspelt_key_stops_the_boot(tmp_path: Path) -> None:
     path = write(tmp_path, "languages:\n  gu: {to: en, adaptor: stub}\n")
 
-    with pytest.raises(ValueError, match=r"languages\.gu\.adaptor"):
+    with pytest.raises(ValueError, match=r"languages\.gu\n.*discriminator 'adapter'"):
+        load_edge_translation_config(path)
+
+
+def test_llm_entry_without_a_model_stops_the_boot(tmp_path: Path) -> None:
+    path = write(tmp_path, "languages:\n  gu: {to: en, adapter: llm}\n")
+
+    with pytest.raises(ValueError, match=r"languages\.gu\.llm\.model"):
+        load_edge_translation_config(path)
+
+
+def test_an_llm_entry_takes_its_own_model_and_settings(tmp_path: Path) -> None:
+    path = write(
+        tmp_path,
+        "languages:\n  gu: {to: en, adapter: llm, model: dss-translator-gu,"
+        " temperature: 0.2, timeout_seconds: 10}\n",
+    )
+
+    binding = load_edge_translation_config(path)["gu"]
+
+    assert binding.model == "dss-translator-gu"
+    assert (binding.temperature, binding.timeout_seconds) == (0.2, 10)
+
+
+def test_stub_entry_still_loads(tmp_path: Path) -> None:
+    path = write(tmp_path, "languages:\n  gu: {to: en, adapter: stub}\n")
+
+    assert load_edge_translation_config(path)["gu"].adapter == "stub"
+
+
+def test_a_stub_entry_with_a_model_stops_the_boot(tmp_path: Path) -> None:
+    path = write(tmp_path, "languages:\n  gu: {to: en, adapter: stub, model: x}\n")
+
+    with pytest.raises(ValueError, match=r"languages\.gu\.stub\.model"):
+        load_edge_translation_config(path)
+
+
+def test_a_temperature_out_of_range_stops_the_boot(tmp_path: Path) -> None:
+    path = write(tmp_path, "languages:\n  gu: {to: en, adapter: llm, temperature: 3}\n")
+
+    with pytest.raises(ValueError, match="temperature"):
         load_edge_translation_config(path)
