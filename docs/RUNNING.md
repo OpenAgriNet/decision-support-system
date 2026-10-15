@@ -644,7 +644,7 @@ languages:
   gu:
     to: en
     adapter: llm
-    model: openai:gpt-4o-mini
+    model: azure:gpt-5.6-luna
 ```
 
 A Gujarati turn is translated into English right after redaction, runs
@@ -652,10 +652,11 @@ through the normal pipeline in English, and its answer streams back in
 Gujarati. Any language not listed is untouched.
 
 - **`adapter: llm`** names its `model`, the same kind of string as the
-  `DSS_*_MODEL` settings. With the gateway on (`DSS_GATEWAY_URL`), that is a
-  gateway name such as `dss-composer`; the shipped `openai:gpt-4o-mini` would
-  be sent to the gateway as a name it may not know. Copy the file, put your
-  composer's model in it, and point the setting at the copy.
+  `DSS_*_MODEL` settings. The shipped `azure:gpt-5.6-luna` needs
+  `AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_API_KEY` (from `.env.local`); the
+  boot stops without them. With the gateway on (`DSS_GATEWAY_URL`), every model
+  is a gateway name instead, such as `dss-intent`: copy the file, put the name
+  in, and point the setting at the copy.
 - **`adapter: stub`** needs no model. Any turn in its language asks "Will it
   rain today?", and answers come back marked `[gu]`.
 - **`DSS_STUB_LLM=true`** puts every language on the stub.

@@ -17,7 +17,7 @@ languages:
   gu:
     to: en                       # the language the pipeline runs in for gu
     adapter: llm
-    model: openai:gpt-4o-mini    # the composer's default model
+    model: azure:gpt-5.6-luna    # needs AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY
     temperature: 0.0
     timeout_seconds: 20
   # bhb:                         # Bhili, through Marathi
