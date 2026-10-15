@@ -170,12 +170,12 @@ def test_the_llm_translator_satisfies_the_port():
     from dss.adapters.llm.stub import StubLLM
     from dss.adapters.translator.llm import LLMTranslator, TranslatedTexts
 
+    llm = StubLLM(
+        {TranslatedTexts: TranslatedTexts(texts=["a", "b"])},
+        text_chunks=("[gu] ", "c"),
+    )
     translator = LLMTranslator(
-        llm=StubLLM(
-            {TranslatedTexts: TranslatedTexts(texts=["a", "b"])},
-            text_chunks=("[gu] ", "c"),
-        ),
-        prompts=FakePromptProvider(),
+        batch_llm=llm, stream_llm=llm, prompts=FakePromptProvider()
     )
     gujarati = LanguageTag("gu")
 

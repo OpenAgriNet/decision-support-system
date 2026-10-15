@@ -537,8 +537,10 @@ async def test_translation_is_traced_both_ways_and_the_turn_keeps_the_farmers_wo
 
     await _drain(orch, _build_turn(GUJARATI))
 
-    assert _read_span_contents(spans, "dss.stage.translation") == [
-        (QUERY, f"[en] {QUERY}"),
-        (ANSWER, f"[gu] {ANSWER}"),
+    assert _read_span_contents(spans, "dss.stage.translation_in") == [
+        (QUERY, f"[en] {QUERY}")
+    ]
+    assert _read_span_contents(spans, "dss.stage.translation_out") == [
+        (ANSWER, f"[gu] {ANSWER}")
     ]
     assert _read_span_contents(spans, "dss.turn") == [(QUERY, f"[gu] {ANSWER}")]

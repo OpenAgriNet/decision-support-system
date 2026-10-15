@@ -52,6 +52,7 @@ from dss.adapters.translator.llm import LLMTranslator
 from dss.adapters.translator.stub import StubTranslator
 from dss.config.clarification_text_loader import load_clarification_text
 from dss.config.edge_translation_loader import (
+    LLMBinding,
     StubBinding,
     TranslationBinding,
     load_edge_translation_config,
@@ -308,14 +309,31 @@ def _build_translator(
     if isinstance(binding, StubBinding) or settings.stub_llm:
         return StubTranslator(language=language)
     return LLMTranslator(
-        llm=PydanticAILLMProvider(
-            _resolve_model(binding.model, settings),
-            name=f"translator-{language}",
-            stage=Stage.TRANSLATION,
-            temperature=binding.temperature,
-            timeout=binding.timeout_seconds,
+        batch_llm=_build_translator_llm(
+            binding,
+            name=f"translator-{language}-in",
+            stage=Stage.TRANSLATION_IN,
+            settings=settings,
+        ),
+        stream_llm=_build_translator_llm(
+            binding,
+            name=f"translator-{language}-out",
+            stage=Stage.TRANSLATION_OUT,
+            settings=settings,
         ),
         prompts=prompts,
+    )
+
+
+def _build_translator_llm(
+    binding: LLMBinding, *, name: str, stage: Stage, settings: Settings
+) -> LLMProvider:
+    return PydanticAILLMProvider(
+        _resolve_model(binding.model, settings),
+        name=name,
+        stage=stage,
+        temperature=binding.temperature,
+        timeout=binding.timeout_seconds,
     )
 
 

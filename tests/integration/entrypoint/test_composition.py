@@ -412,7 +412,25 @@ def test_an_llm_route_with_a_model_uses_its_own(tmp_path: Path) -> None:
         prompts=_prompts(),
     )
 
-    assert routes["gu"].translator._llm._model == "openai:a-translator"
+    translator = routes["gu"].translator
+    assert translator._batch_llm._model == "openai:a-translator"
+    assert translator._stream_llm._model == "openai:a-translator"
+
+
+def test_an_llm_route_times_each_direction_as_its_own_stage(tmp_path: Path) -> None:
+    from dss.entrypoint.composition import _build_translation_routes
+    from dss.observability.stages import Stage
+
+    routes = _build_translation_routes(
+        Settings(
+            evidence_dir=tmp_path, edge_translation_config_path=_SHIPPED_TRANSLATION
+        ),
+        prompts=_prompts(),
+    )
+
+    translator = routes["gu"].translator
+    assert translator._batch_llm._stage is Stage.TRANSLATION_IN
+    assert translator._stream_llm._stage is Stage.TRANSLATION_OUT
 
 
 def test_stubbed_models_put_every_route_on_the_stub(tmp_path: Path) -> None:

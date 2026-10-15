@@ -34,7 +34,7 @@ async def translate_in(
 
     if translation is None:
         return farmer_turn
-    with trace_component(Stage.TRANSLATION, trace_id):
+    with trace_component(Stage.TRANSLATION_IN, trace_id):
         core_turn = await translation.translate_in(farmer_turn)
         set_current_span_content(
             input=farmer_turn.original_query, output=core_turn.original_query
@@ -67,7 +67,7 @@ async def translate_out(
             continue
         answer_stream = AnswerStream()
         translated: list[str] = []
-        with trace_component(Stage.TRANSLATION, trace_id):
+        with trace_component(Stage.TRANSLATION_OUT, trace_id):
             for block in event.content:
                 # `aclosing`: a farmer who closes the screen mid-answer must
                 # close the translator's stream too.
