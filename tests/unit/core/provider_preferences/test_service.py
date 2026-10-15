@@ -14,7 +14,7 @@ from dss.core.provider_discovery.models import (
     ProviderCapability,
 )
 from dss.core.provider_preferences.models import NO_PREFERENCE, PreferenceBook
-from dss.core.provider_preferences.service import prioritise, ranking_for_ask
+from dss.core.provider_preferences.service import prioritise, priority_for_ask
 
 WEATHER = "openagrinet:WeatherObservation"
 
@@ -100,6 +100,21 @@ def test_answers_the_catalog_already_held_are_ranked_too() -> None:
     assert [a.provider_id for a in result.answers[0]] == ["imd"]
 
 
+def test_direct_answers_come_from_the_best_ranked_provider_only() -> None:
+    """One ask is answered by one provider. Direct answers skip the planner's
+    first-that-answered funnel, so the cut happens here — without it an ask
+    the catalog answered twice over would blend two providers' data."""
+
+    discovery = _discovered(answers=(_answer("imd"), _answer("vistaar")))
+    preference = _book(app={"weather": ("vistaar", "imd")}).for_client("app")
+
+    result = prioritise(discovery, intent=_intent(), preference=preference)
+
+    assert [a.provider_id for a in result.answers[0]] == ["vistaar"]
+    # The runner-up stays on the record, so the order can be judged later.
+    assert result.priorities[0].kept == ("vistaar", "imd")
+
+
 def test_a_topic_nobody_ranked_keeps_every_provider_in_discovery_order() -> None:
     """The behaviour that existed before any preference did."""
 
@@ -118,7 +133,7 @@ def test_no_preference_at_all_leaves_discovery_untouched() -> None:
     result = prioritise(discovery, intent=_intent(), preference=NO_PREFERENCE)
 
     assert result.capabilities == discovery.capabilities
-    assert ranking_for_ask(result, ask_index=0) is None
+    assert priority_for_ask(result, ask_index=0) is None
 
 
 def test_two_clients_asking_the_same_question_get_their_own_first_choice() -> None:
