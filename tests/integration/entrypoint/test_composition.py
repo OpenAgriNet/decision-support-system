@@ -368,7 +368,7 @@ def test_an_identifier_that_cannot_be_built_stops_the_boot(tmp_path: Path) -> No
 
 # --- edge translation --------------------------------------------------------
 
-_SHIPPED_TRANSLATION = Path(__file__).parents[3] / "configs" / "edge-translation.yaml"
+_TRANSLATION = Path(__file__).parent / "fixtures" / "edge-translation.yaml"
 
 
 def _prompts():
@@ -383,15 +383,23 @@ def test_no_translation_path_builds_no_routes(tmp_path: Path) -> None:
     assert _build_translation_routes(_settings(tmp_path), prompts=_prompts()) == {}
 
 
-def test_shipped_config_builds_a_gujarati_llm_route(tmp_path: Path) -> None:
+@pytest.fixture
+def azure_placeholders(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The shipped translator is an `azure:` deployment. Building its client
+    reads these, and calls nothing."""
+
+    monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", "https://azure.invalid/openai/v1")
+    monkeypatch.setenv("AZURE_OPENAI_API_KEY", "placeholder")
+
+
+@pytest.mark.usefixtures("azure_placeholders")
+def test_an_llm_entry_builds_an_llm_route(tmp_path: Path) -> None:
     from dss.adapters.translator.llm import LLMTranslator
     from dss.core.shared.language import ENGLISH
     from dss.entrypoint.composition import _build_translation_routes
 
     routes = _build_translation_routes(
-        Settings(
-            evidence_dir=tmp_path, edge_translation_config_path=_SHIPPED_TRANSLATION
-        ),
+        Settings(evidence_dir=tmp_path, edge_translation_config_path=_TRANSLATION),
         prompts=_prompts(),
     )
 
@@ -417,14 +425,13 @@ def test_an_llm_route_with_a_model_uses_its_own(tmp_path: Path) -> None:
     assert translator._stream_llm._model == "openai:a-translator"
 
 
+@pytest.mark.usefixtures("azure_placeholders")
 def test_an_llm_route_times_each_direction_as_its_own_stage(tmp_path: Path) -> None:
     from dss.entrypoint.composition import _build_translation_routes
     from dss.observability.stages import Stage
 
     routes = _build_translation_routes(
-        Settings(
-            evidence_dir=tmp_path, edge_translation_config_path=_SHIPPED_TRANSLATION
-        ),
+        Settings(evidence_dir=tmp_path, edge_translation_config_path=_TRANSLATION),
         prompts=_prompts(),
     )
 
@@ -440,7 +447,7 @@ def test_stubbed_models_put_every_route_on_the_stub(tmp_path: Path) -> None:
     from dss.entrypoint.composition import _build_translation_routes
 
     routes = _build_translation_routes(
-        _settings(tmp_path, edge_translation_config_path=_SHIPPED_TRANSLATION),
+        _settings(tmp_path, edge_translation_config_path=_TRANSLATION),
         prompts=_prompts(),
     )
 
@@ -462,7 +469,7 @@ async def test_a_gujarati_turn_goes_in_and_out_through_the_stub(
 
     gujarati = LanguageTag("gu")
     runner = build_runner(
-        _settings(tmp_path, edge_translation_config_path=_SHIPPED_TRANSLATION)
+        _settings(tmp_path, edge_translation_config_path=_TRANSLATION)
     )
     turn = UserTurn(
         original_query="આજે વરસાદ પડશે?",
