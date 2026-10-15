@@ -633,6 +633,73 @@ curl -X POST http://127.0.0.1:8077/v1/turns \
   `«phone_1»`; only the bytes sent to the provider carry the number.
 - The answer the farmer gets has the number back in it.
 
+### Translation
+
+Off unless `DSS_EDGE_TRANSLATION_CONFIG_PATH` names a translation file
+(ADR-0019). The shipped one, `configs/edge-translation.yaml`, translates
+Gujarati into English with a model:
+
+```yaml
+languages:
+  gu:
+    to: en
+    adapter: llm
+    model: openai:gpt-4o-mini
+```
+
+A Gujarati turn is translated into English right after redaction, runs
+through the normal pipeline in English, and its answer streams back in
+Gujarati. Any language not listed is untouched.
+
+- **`adapter: llm`** names its `model`, the same kind of string as the
+  `DSS_*_MODEL` settings. With the gateway on (`DSS_GATEWAY_URL`), that is a
+  gateway name such as `dss-composer`; the shipped `openai:gpt-4o-mini` would
+  be sent to the gateway as a name it may not know. Copy the file, put your
+  composer's model in it, and point the setting at the copy.
+- **`adapter: stub`** needs no model. Any turn in its language asks "Will it
+  rain today?", and answers come back marked `[gu]`.
+- **`DSS_STUB_LLM=true`** puts every language on the stub.
+- A bad file (unknown adapter, an `llm` entry with no model, a key like
+  `GU` or `gu-IN`, a `to` that loops or chains) stops the boot and names the
+  entry.
+
+**Try it with no key and no network:**
+
+```bash
+DSS_STUB_LLM=true \
+DSS_EDGE_TRANSLATION_CONFIG_PATH=configs/edge-translation.yaml \
+uv run uvicorn --factory dss.entrypoint.app:create_app --port 8077
+```
+
+```bash
+sed -e 's/"targetLanguage": "en"/"targetLanguage": "gu"/' \
+    -e 's/"sourceLanguage": "en"/"sourceLanguage": "gu"/' \
+    -e 's/Will it rain in Nashik over the next five days?/આજે વરસાદ પડશે?/' \
+    docs/api-contracts/examples/answered_weather.json > /tmp/gu_turn.json
+
+curl -N -X POST http://127.0.0.1:8077/v1/turns \
+  -H 'Content-Type: application/json' -H 'Accept: text/event-stream' \
+  --data-binary @/tmp/gu_turn.json
+```
+
+The reply arrives as `claim.delta` pieces starting `[gu] `, then
+`claim.completed`. With no network wired it is the no-provider answer. In
+`var/evidence/turns.jsonl` the question and the answer are both in Gujarati.
+
+**With a model:** leave out `DSS_STUB_LLM`, load the model keys
+(`set -a; source .env.local; set +a`), and set the model in the file as above.
+With the mock network (see "Stand up a fake network"), the same turn gets a
+real Nashik forecast back in Gujarati.
+
+**What to look for in a trace:** `dss.stage.translation_in` after redaction
+and `dss.stage.translation_out` at the end, each with a `translator-gu-in` or
+`translator-gu-out` model call under it. With
+`DSS_TRACE_INCLUDE_MESSAGE_CONTENT=true` they show the text going in and out.
+The turn's own trace keeps the farmer's Gujarati.
+
+**Not in Docker yet.** `docker-compose.yml` lists each setting it passes to
+the container, and `DSS_EDGE_TRANSLATION_CONFIG_PATH` is not one of them.
+
 ### The area index
 
 `src/dss/config/areas.csv` turns a place the farmer names into the point the
@@ -1081,6 +1148,7 @@ Every stub is marked `STUB(#nn)` in the source. Grep for it.
 | the deny word list | `core/moderation/service.py` | #82 policy evaluator |
 | the fixed prompt | `core/intent/service.py` | #83 real prompt |
 | the in-memory turn record | `adapters/sinks/memory.py` | #85 durable store |
+| the canned translator | `adapters/translator/stub.py` | `adapters/translator/llm.py`; set `adapter: llm` in the translation file (ADR-0019) |
 
 The composer is no longer fixed sentences: `orchestration/compose.py` writes
 the answer from the planner's `Evidence`. It is only reached once the network
@@ -1100,7 +1168,18 @@ uv run pytest tests/unit      # pure — mapping, framing, core rules, boundarie
 uv run pytest tests/integration/entrypoint     # the HTTP layer against a fake runner
 uv run pytest tests/integration/orchestration  # the runner against fake ports
 uv run pytest tests/unit/benchmarks tests/integration/benchmarks   # the benchmark itself
+uv run pytest tests/integration/orchestration/test_orchestrator_translation.py  # translation, against a fake translator
 uv run ruff check . && uv run ruff format --check .
+```
+
+Tests that call a real model skip unless the model's key is in the shell or
+`.env`. The Azure keys live in `.env.local`, so load it first and name the
+files, or every live test in the repo runs:
+
+```bash
+set -a; source .env.local; set +a
+uv run pytest tests/llm/structural/test_translator_round_trip.py \
+  tests/e2e/test_gujarati_weather_through_the_stub.py -v -s
 ```
 
 ## Related
