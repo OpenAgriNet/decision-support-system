@@ -7,10 +7,20 @@
 #   A gu entry also serves gu-IN.
 # - `to` is any language tag, except the key's own language or another
 #   language listed here. No loops, no chains.
+# - `adapter: llm` names its `model`: a name the model gateway resolves, or a
+#   Pydantic AI model string without one, like the `DSS_*_MODEL` settings.
+#   `temperature` and `timeout_seconds` are optional.
+# - `adapter: stub` takes only `to`: canned, no model, local runs only. Every
+#   turn in its language asks "Will it rain today?", and answers come back
+#   marked [gu].
 languages:
   gu:
-    to: en          # the language the pipeline runs in for gu
-    adapter: stub   # canned, no model: every Gujarati turn asks "Will it rain today?"
-  # bhb:            # Bhili, through Marathi
+    to: en                       # the language the pipeline runs in for gu
+    adapter: llm
+    model: openai:gpt-4o-mini    # the composer's default model
+    temperature: 0.0
+    timeout_seconds: 20
+  # bhb:                         # Bhili, through Marathi
   #   to: mr
-  #   adapter: stub
+  #   adapter: llm
+  #   model: dss-translator-bhb

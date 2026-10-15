@@ -164,3 +164,26 @@ def test_the_stub_translator_satisfies_the_port():
     assert isinstance(translator, Translator)
     assert translated == (CANNED_QUESTION, CANNED_QUESTION)
     assert "".join(pieces) == "[gu] c"
+
+
+def test_the_llm_translator_satisfies_the_port():
+    from dss.adapters.llm.stub import StubLLM
+    from dss.adapters.translator.llm import LLMTranslator, TranslatedTexts
+
+    translator = LLMTranslator(
+        llm=StubLLM(
+            {TranslatedTexts: TranslatedTexts(texts=["a", "b"])},
+            text_chunks=("[gu] ", "c"),
+        ),
+        prompts=FakePromptProvider(),
+    )
+    gujarati = LanguageTag("gu")
+
+    translated = translate_through(
+        translator, ["અ", "બ"], from_lang=gujarati, to_lang=ENGLISH
+    )
+    pieces = stream_through(translator, "c", from_lang=ENGLISH, to_lang=gujarati)
+
+    assert isinstance(translator, Translator)
+    assert translated == ("a", "b")
+    assert "".join(pieces) == "[gu] c"

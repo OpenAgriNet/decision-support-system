@@ -371,24 +371,62 @@ def test_an_identifier_that_cannot_be_built_stops_the_boot(tmp_path: Path) -> No
 _SHIPPED_TRANSLATION = Path(__file__).parents[3] / "configs" / "edge-translation.yaml"
 
 
+def _prompts():
+    from dss.config.prompt_service import build_prompt_service
+
+    return build_prompt_service(Path(__file__).parents[3] / "configs" / "prompts.yaml")
+
+
 def test_no_translation_path_builds_no_routes(tmp_path: Path) -> None:
     from dss.entrypoint.composition import _translation_routes
 
-    assert _translation_routes(_settings(tmp_path)) == {}
+    assert _translation_routes(_settings(tmp_path), _prompts()) == {}
 
 
-def test_shipped_config_builds_a_gujarati_stub_route(tmp_path: Path) -> None:
-    from dss.adapters.translator.stub import StubTranslator
+def test_shipped_config_builds_a_gujarati_llm_route(tmp_path: Path) -> None:
+    from dss.adapters.translator.llm import LLMTranslator
     from dss.core.shared.language import ENGLISH
     from dss.entrypoint.composition import _translation_routes
 
     routes = _translation_routes(
-        _settings(tmp_path, edge_translation_config_path=_SHIPPED_TRANSLATION)
+        Settings(
+            evidence_dir=tmp_path, edge_translation_config_path=_SHIPPED_TRANSLATION
+        ),
+        _prompts(),
     )
 
     assert list(routes) == ["gu"]
-    assert isinstance(routes["gu"].translator, StubTranslator)
+    assert isinstance(routes["gu"].translator, LLMTranslator)
     assert routes["gu"].to == ENGLISH
+
+
+def test_an_llm_route_with_a_model_uses_its_own(tmp_path: Path) -> None:
+    from dss.entrypoint.composition import _translation_routes
+
+    config = tmp_path / "edge-translation.yaml"
+    config.write_text(
+        "languages:\n  gu: {to: en, adapter: llm, model: openai:a-translator}\n"
+    )
+    routes = _translation_routes(
+        Settings(evidence_dir=tmp_path, edge_translation_config_path=config),
+        _prompts(),
+    )
+
+    assert routes["gu"].translator._llm._model == "openai:a-translator"
+
+
+def test_stubbed_models_put_every_route_on_the_stub(tmp_path: Path) -> None:
+    """`DSS_STUB_LLM` means no model is called, translation included."""
+
+    from dss.adapters.translator.stub import StubTranslator
+    from dss.entrypoint.composition import _translation_routes
+
+    routes = _translation_routes(
+        _settings(tmp_path, edge_translation_config_path=_SHIPPED_TRANSLATION),
+        _prompts(),
+    )
+
+    assert isinstance(routes["gu"].translator, StubTranslator)
 
 
 async def test_a_gujarati_turn_goes_in_and_out_through_the_stub(
