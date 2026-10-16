@@ -108,6 +108,9 @@ class UserTurn(BaseModel):
     location: Location | None = None
     response_max_chars: int | None = None
 
+    def is_target_lang_within(self, broader: LanguageTag) -> bool:
+        return self.target_lang.is_within(broader)
+
 
 # ---------------------------------------------------------------------------
 # What a turn produces. Added by the /v1/turns transport (spec 87); main has no

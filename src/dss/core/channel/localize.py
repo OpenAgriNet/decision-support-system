@@ -61,7 +61,7 @@ def build_localizer(*, llm: LLMProvider, prompts: PromptProvider) -> LocalizeTex
     so the composition root is the only place that names either."""
 
     async def localize(text: str, *, turn: UserTurn) -> str:
-        if turn.target_lang.is_within(ENGLISH) or not text.strip():
+        if turn.is_target_lang_within(ENGLISH) or not text.strip():
             return text
         try:
             rendered = await llm.structured(
