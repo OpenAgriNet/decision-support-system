@@ -62,12 +62,12 @@ async def test_prompt_is_asked_in_english_with_the_pair_as_placeholders():
         (
             PromptIdentifier.TRANSLATOR,
             ENGLISH,
-            {"translate_from": "gu", "translate_to": "en"},
+            {"translate_from": GUJARATI, "translate_to": ENGLISH},
         ),
         (
             PromptIdentifier.TRANSLATOR,
             ENGLISH,
-            {"translate_from": "en", "translate_to": "gu"},
+            {"translate_from": ENGLISH, "translate_to": GUJARATI},
         ),
     ]
     assert all(
