@@ -62,7 +62,7 @@ class LLMTranslator:
             PromptIdentifier.TRANSLATOR,
             lang=ENGLISH,
             placeholder_values={
-                "translate_from": str(from_lang),
-                "translate_to": str(to_lang),
+                "translate_from": from_lang,
+                "translate_to": to_lang,
             },
         )
