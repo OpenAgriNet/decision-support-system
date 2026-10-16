@@ -1,0 +1,7 @@
+# The composition tests' own copy of configs/edge-translation.yaml. An
+# `openai:` model is only read when called, so building the route needs no key.
+languages:
+  gu:
+    to: en
+    adapter: llm
+    model: openai:test-translator

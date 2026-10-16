@@ -1,0 +1,10 @@
+# Languages the DSS translates, and the language the pipeline runs in for each
+# (`to`). Read only when DSS_EDGE_TRANSLATION_CONFIG_PATH points here; see
+# docs/RUNNING.md.
+languages:
+  gu:
+    to: en
+    adapter: llm
+    model: azure:gpt-5.6-luna    # needs AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY
+    temperature: 0.0
+    timeout_seconds: 20

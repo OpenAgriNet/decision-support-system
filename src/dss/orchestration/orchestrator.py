@@ -8,6 +8,9 @@ that knows the sequence. Order is code, not config.
     redaction                first — every stage below sees tags (ADR-0015)
           │
           ▼
+    translate in             only for a language with a route (#174); every
+          │                  stage below reads the route's language
+          ▼
     intent ∥ moderation      run together — both need only the turn (ADR-0003)
           │
           ▼
@@ -31,6 +34,10 @@ tested there. This runner adds what the transport needs on top: the planner
 and composer, the event stream, the evidence writes, and the mapping from a
 turn's findings to a contract outcome.
 
+Three layers: `run` is the edge (redact, record, reveal kept values),
+`orchestration/translation.py` translates in and out or passes through, and
+`_run_core` runs the pipeline on tags only.
+
 Nothing side-effecting runs until moderation has cleared — the planner is
 reached only on `PROCEED`, and its own `select` tool waits on the `Verdict`
 before it touches a provider.
@@ -38,7 +45,7 @@ before it touches a provider.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Mapping, Sequence
+from collections.abc import AsyncGenerator, AsyncIterator, Mapping, Sequence
 from contextlib import aclosing, suppress
 from dataclasses import dataclass
 
@@ -67,6 +74,7 @@ from dss.core.policy.models import Policy
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.redaction.turn import texts_of, with_texts
 from dss.core.redaction.visibility import StreamReveal, Visibility
+from dss.core.shared.answer_stream import AnswerStream
 from dss.core.shared.models import (
     Cause,
     Claim,
@@ -83,12 +91,15 @@ from dss.core.shared.models import (
     UserTurn,
 )
 from dss.core.stream_response.service import ComposeStream
+from dss.core.translation.service import EdgeTranslation
 from dss.observability.stages import Stage
 from dss.observability.trace_log import bind_turn_ids, trace_component
 from dss.orchestration.discovery import DiscoverProviders
+from dss.orchestration.events import CoreEvent
 from dss.orchestration.plan import Plan
 from dss.orchestration.redaction import RedactTexts
 from dss.orchestration.stage_content import asks_text, evidence_text, sources_text
+from dss.orchestration.translation import translate_in, translate_out
 from dss.orchestration.turn import run_turn
 from dss.ports.area_lookup import AreaLookup
 from dss.ports.llm import LLMProvider
@@ -169,6 +180,7 @@ class Orchestrator:
         area_lookup: AreaLookup,
         clarification_text: ClarificationText,
         schemas: Mapping[str, DomainSchema],
+        edge_translation: EdgeTranslation,
     ) -> None:
         self._intent_llm = intent_llm
         self._moderation_llm = moderation_llm
@@ -188,8 +200,9 @@ class Orchestrator:
         # The same schemas the planner validates against. Read here for one
         # thing only: whether a pack serves an ask that names no place.
         self._schemas = schemas
+        self._edge_translation = edge_translation
 
-    async def run(self, turn: UserTurn, ctx: TurnContext) -> AsyncIterator[TurnEvent]:  # noqa: C901, PLR0915
+    async def run(self, turn: UserTurn, ctx: TurnContext) -> AsyncIterator[TurnEvent]:
         bind_turn_ids(
             ctx.trace_id, message_id=ctx.message_id, session_id=ctx.session_id
         )
@@ -208,202 +221,259 @@ class Orchestrator:
                 redaction = await self._components.redact(
                     texts_of(turn), request_id=turn.transaction_id
                 )
-            turn = with_texts(turn, redaction.texts)
-            visibility = redaction.visibility
+            farmer_turn = with_texts(turn, redaction.texts)
             recorder.redacted(found=redaction.found, failed=redaction.failed)
-            self._turns.opened(ctx, turn)
+            self._turns.opened(ctx, farmer_turn)
 
-            # Intent ∥ moderation, discovery chained off intent, and the barrier —
-            # all owned by `run_turn`. It blanks intent and discovery on any
-            # non-PROCEED outcome, so a refused turn surfaces neither.
-            result = await run_turn(
-                turn,
-                intent_llm=self._intent_llm,
-                moderation_llm=self._moderation_llm,
-                prompts=self._prompts,
-                policies=self._policies,
-                discover_providers=self._components.discover,
-                area_lookup=self._area_lookup,
-                scheme_catalog=self._scheme_catalog,
-                scheme_fuzzy_threshold=self._scheme_fuzzy_threshold,
-                nearest_max_km=self._nearest_max_km,
-            )
-            decision = result.decision
-            self._note("moderation", ctx, decision.outcome.value)
-
-            if decision.outcome is not Outcome.PROCEED:
-                outcome, refusal = _refused(decision)
-                refusal = await localize_answer(
-                    refusal, self._components.localize, turn=turn
-                )
-                yield self._finish(ctx, turn, (outcome, refusal), recorder, visibility)
-                return
-
-            self._note("intent", ctx, _classified(result.intent))
-            # After the moderation gate, so a refused turn's asks are not
-            # counted as something farmers asked for.
-            asks = result.intent.asks
-            recorder.asked(
-                categories=[ask.subject_categories.value for ask in asks],
-                interactions=[ask.interaction_type.value for ask in asks],
-                subjects=[ask.agriculture_subjects or "" for ask in asks],
+            translation = self._edge_translation.for_turn(farmer_turn)
+            core_turn = await translate_in(
+                farmer_turn, translation, trace_id=ctx.trace_id
             )
 
-            # Nothing to ask about. Every reply below is built per ask, so
-            # from zero asks it would be an empty bubble. Say so instead.
-            if not asks:
-                answer = await localize_answer(
-                    no_match_answer(), self._components.localize, turn=turn
-                )
-                yield self._finish(
-                    ctx,
-                    turn,
-                    (outcome_for(TurnStatus.NO_MATCH), answer),
-                    recorder,
-                    visibility,
-                )
-                return
+            # `aclosing` each layer: closing an async generator does not reach the
+            # one it reads from, and a closed screen must close every model stream.
+            async with (
+                aclosing(
+                    self._run_core(
+                        core_turn,
+                        ctx=ctx,
+                        recorder=recorder,
+                        visibility=redaction.visibility,
+                    )
+                ) as core_events,
+                aclosing(
+                    translate_out(core_events, translation, trace_id=ctx.trace_id)
+                ) as translated_events,
+                aclosing(
+                    self._reveal_to_farmer(
+                        translated_events,
+                        ctx=ctx,
+                        farmer_turn=farmer_turn,
+                        recorder=recorder,
+                        visibility=redaction.visibility,
+                    )
+                ) as farmer_events,
+            ):
+                async for event in farmer_events:
+                    yield event
 
-            # No ask has a place to search around: named nowhere, a name the
-            # index does not carry, or a name matching several. Ask rather
-            # than answer from nowhere or guess. If any ask has a place, the
-            # turn goes on; the others reach the composer as failures.
-            #
-            # An ask naming nowhere is not always missing a place: the pack
-            # decides (`core/planner/place.py`), which is why this needs
-            # discovery and runs after it rather than inside `run_turn`.
-            # Discovery is read-only and already allowed to be wasted (it
-            # starts before moderation has cleared the turn), so letting it
-            # run and discarding it costs one cheap call.
-            place_optional = place_optional_asks(
-                result.intent, result.discovery, self._schemas
+    async def _run_core(
+        self,
+        turn: UserTurn,
+        *,
+        ctx: TurnContext,
+        recorder: TurnRecorder,
+        visibility: Visibility,
+    ) -> AsyncGenerator[CoreEvent]:
+        """The pipeline on a redacted turn. It yields tags only; `visibility` is
+        for the planner's provider calls.
+        """
+
+        # Intent ∥ moderation, discovery chained off intent, and the barrier —
+        # all owned by `run_turn`. It blanks intent and discovery on any
+        # non-PROCEED outcome, so a refused turn surfaces neither.
+        result = await run_turn(
+            turn,
+            intent_llm=self._intent_llm,
+            moderation_llm=self._moderation_llm,
+            prompts=self._prompts,
+            policies=self._policies,
+            discover_providers=self._components.discover,
+            area_lookup=self._area_lookup,
+            scheme_catalog=self._scheme_catalog,
+            scheme_fuzzy_threshold=self._scheme_fuzzy_threshold,
+            nearest_max_km=self._nearest_max_km,
+        )
+        decision = result.decision
+        self._note("moderation", ctx, decision.outcome.value)
+
+        if decision.outcome is not Outcome.PROCEED:
+            outcome, refusal = _refused(decision)
+            refusal = await localize_answer(
+                refusal, self._components.localize, turn=turn
             )
-            clarification = answer_for_unplaced_asks(
+            yield _build_turn_finished(outcome, refusal)
+            return
+
+        self._note("intent", ctx, _classified(result.intent))
+        # After the moderation gate, so a refused turn's asks are not
+        # counted as something farmers asked for.
+        asks = result.intent.asks
+        recorder.asked(
+            categories=[ask.subject_categories.value for ask in asks],
+            interactions=[ask.interaction_type.value for ask in asks],
+            subjects=[ask.agriculture_subjects or "" for ask in asks],
+        )
+
+        # Nothing to ask about. Every reply below is built per ask, so
+        # from zero asks it would be an empty bubble. Say so instead.
+        if not asks:
+            answer = await localize_answer(
+                no_match_answer(), self._components.localize, turn=turn
+            )
+            yield _build_turn_finished(outcome_for(TurnStatus.NO_MATCH), answer)
+            return
+
+        # No ask has a place to search around: named nowhere, a name the
+        # index does not carry, or a name matching several. Ask rather
+        # than answer from nowhere or guess. If any ask has a place, the
+        # turn goes on; the others reach the composer as failures.
+        #
+        # An ask naming nowhere is not always missing a place: the pack
+        # decides (`core/planner/place.py`), which is why this needs
+        # discovery and runs after it rather than inside `run_turn`.
+        # Discovery is read-only and already allowed to be wasted (it
+        # starts before moderation has cleared the turn), so letting it
+        # run and discarding it costs one cheap call.
+        place_optional = place_optional_asks(
+            result.intent, result.discovery, self._schemas
+        )
+        clarification = answer_for_unplaced_asks(
+            result.intent.asks,
+            self._clarification_text,
+            place_optional=place_optional,
+        )
+        if clarification is not None:
+            clarification = await localize_answer(
+                clarification, self._components.localize, turn=turn
+            )
+            yield _build_turn_finished(
+                outcome_for(TurnStatus.REQUIRES_INPUT), clarification
+            )
+            return
+
+        # Nobody can serve the ask: no provider is reachable for it, so there is
+        # nothing for the planner to call and nothing for the composer to write
+        # from. Answer NO_MATCH here rather than spend a planner and composer
+        # round-trip to arrive at the same empty-handed place.
+        if _nobody_serves(result.discovery):
+            status = TurnStatus.NO_MATCH
+            answer = answer_for_unserved_asks(
+                result.intent.asks, self._clarification_text
+            )
+            # An ask whose place matched several was never searched. Still
+            # ask which one, so the farmer's reply can finish it.
+            question = question_for_unplaced_asks(
                 result.intent.asks,
                 self._clarification_text,
                 place_optional=place_optional,
             )
-            if clarification is not None:
-                clarification = await localize_answer(
-                    clarification, self._components.localize, turn=turn
+            if question is not None:
+                status = TurnStatus.REQUIRES_INPUT
+                answer = ComposedAnswer(
+                    content=(*answer.content, TextBlock(text=question))
                 )
-                yield self._finish(
-                    ctx,
-                    turn,
-                    (outcome_for(TurnStatus.REQUIRES_INPUT), clarification),
-                    recorder,
-                    visibility,
-                )
-                return
+            answer = await localize_answer(answer, self._components.localize, turn=turn)
+            yield _build_turn_finished(outcome_for(status), answer)
+            return
 
-            # Nobody can serve the ask: no provider is reachable for it, so there is
-            # nothing for the planner to call and nothing for the composer to write
-            # from. Answer NO_MATCH here rather than spend a planner and composer
-            # round-trip to arrive at the same empty-handed place.
-            if _nobody_serves(result.discovery):
-                status = TurnStatus.NO_MATCH
-                answer = answer_for_unserved_asks(
-                    result.intent.asks, self._clarification_text
-                )
-                # An ask whose place matched several was never searched. Still
-                # ask which one, so the farmer's reply can finish it.
-                question = question_for_unplaced_asks(
-                    result.intent.asks,
-                    self._clarification_text,
-                    place_optional=place_optional,
-                )
-                if question is not None:
-                    status = TurnStatus.REQUIRES_INPUT
-                    answer = ComposedAnswer(
-                        content=(*answer.content, TextBlock(text=question))
-                    )
-                answer = await localize_answer(
-                    answer, self._components.localize, turn=turn
-                )
-                yield self._finish(
-                    ctx, turn, (outcome_for(status), answer), recorder, visibility
-                )
-                return
-
-            # Past the barrier: the decision cleared, so the planner's `select` tool
-            # is free to call providers. The `Verdict` is how that clearance reaches
-            # the tool, which may be several model round-trips deep.
-            verdict = Verdict()
-            verdict.set(decision)
-            with trace_component(Stage.PLANNER, ctx.trace_id):
-                evidence = await self._components.plan(
-                    turn,
-                    intent=result.intent,
-                    discovery=result.discovery,
-                    verdict=verdict,
-                    visibility=visibility,
-                )
-                set_current_span_content(
-                    input=asks_text(result.intent.asks),
-                    output=evidence_text(evidence),
-                )
-
-            # The span stays open across the yields below, so it measures the
-            # whole composition rather than closing on the first piece.
-            with trace_component(Stage.COMPOSER, ctx.trace_id):
-                written: list[str] = []
-                # The farmer reads their own values; `written` keeps the tags.
-                shown = StreamReveal(visibility)
-                # `aclosing`, not a bare `async for`: a farmer who closes the
-                # screen mid-answer must close the model's stream too, and
-                # closing an async generator does not reach the one it relays
-                # from.
-                async with aclosing(
-                    self._components.compose(evidence, result.intent, turn=turn)
-                ) as pieces:
-                    async for delta in pieces:
-                        if not written:
-                            recorder.first_delta()
-                        written.append(delta)
-                        if piece := shown.feed(delta):
-                            yield ClaimDelta(text=piece)
-                if rest := shown.flush():
-                    yield ClaimDelta(text=rest)
-                # A failure before this line propagates: the pieces already
-                # yielded cannot be recalled, so there is no retry to make and
-                # nothing to roll back. The transport reports a failed turn.
-                # An ask still missing its place was not answered: a name that
-                # matched several, or nowhere named where the pack needs one.
-                # Ask as the last piece of the same answer, so it is one
-                # bubble and the farmer's next reply can finish it.
-                question = question_for_unplaced_asks(
-                    result.intent.asks,
-                    self._clarification_text,
-                    place_optional=place_optional,
-                )
-                if question is not None:
-                    question = await self._components.localize(question, turn=turn)
-                    written.append(f"\n\n{question}")
-                    yield ClaimDelta(text=written[-1])
-                text = "".join(written)
-                set_current_span_content(input=sources_text(evidence), output=text)
-            answer = answer_from_evidence(text, evidence)
-            recorder.composed()
-            for block in answer.content:
-                yield Claim(
-                    content=_revealed(block, visibility), sources=answer.sources
-                )
-            self._note("channel", ctx, str(len(answer.content)))
-
-            status, cause = _status_for(evidence, result.intent)
-            yield self._finish(
-                ctx, turn, (outcome_for(status, cause), answer), recorder, visibility
+        # Past the barrier: the decision cleared, so the planner's `select` tool
+        # is free to call providers. The `Verdict` is how that clearance reaches
+        # the tool, which may be several model round-trips deep.
+        verdict = Verdict()
+        verdict.set(decision)
+        with trace_component(Stage.PLANNER, ctx.trace_id):
+            evidence = await self._components.plan(
+                turn,
+                intent=result.intent,
+                discovery=result.discovery,
+                verdict=verdict,
+                visibility=visibility,
+            )
+            set_current_span_content(
+                input=asks_text(result.intent.asks),
+                output=evidence_text(evidence),
             )
 
-    def _finish(
+        # The span stays open across the yields below, so it measures the
+        # whole composition rather than closing on the first piece.
+        with trace_component(Stage.COMPOSER, ctx.trace_id):
+            answer_stream = AnswerStream()
+            # `aclosing`, not a bare `async for`: a farmer who closes the
+            # screen mid-answer must close the model's stream too, and
+            # closing an async generator does not reach the one it relays
+            # from.
+            async with aclosing(
+                self._components.compose(evidence, result.intent, turn=turn)
+            ) as pieces:
+                async for piece in pieces:
+                    yield answer_stream.add_piece(piece)
+            # A failure before this line propagates: the pieces already
+            # yielded cannot be recalled, so there is no retry to make and
+            # nothing to roll back. The transport reports a failed turn.
+            # An ask still missing its place was not answered: a name that
+            # matched several, or nowhere named where the pack needs one.
+            # Ask as the last piece of the same answer, so it is one
+            # bubble and the farmer's next reply can finish it.
+            question = question_for_unplaced_asks(
+                result.intent.asks,
+                self._clarification_text,
+                place_optional=place_optional,
+            )
+            if question is not None:
+                question = await self._components.localize(question, turn=turn)
+                yield answer_stream.add_piece(f"\n\n{question}")
+
+            set_current_span_content(
+                input=sources_text(evidence), output=answer_stream.written
+            )
+
+        answer = answer_from_evidence(answer_stream.written, evidence)
+        recorder.composed()
+        # One block: the composer's prose is never split (`answer_from_evidence`).
+        (block,) = answer.content
+        yield answer_stream.claim(block, answer.sources)
+        self._note("channel", ctx, str(len(answer.content)))
+
+        status, cause = _status_for(evidence, result.intent)
+        yield answer_stream.finish(outcome_for(status, cause))
+
+    async def _reveal_to_farmer(
         self,
+        events: AsyncIterator[CoreEvent],
+        *,
         ctx: TurnContext,
-        turn: UserTurn,
-        resolved: tuple[TurnOutcome, ComposedAnswer],
+        farmer_turn: UserTurn,
+        recorder: TurnRecorder,
+        visibility: Visibility,
+    ) -> AsyncGenerator[TurnEvent]:
+        """The turn's events as the farmer reads them, with their own values
+        in place of the tags. The record and the trace keep the tags."""
+
+        shown = StreamReveal(visibility)
+        answer_stream = AnswerStream()
+        has_first_delta = False
+        async for event in events:
+            match event:
+                case ClaimDelta(text=text):
+                    if not has_first_delta:
+                        recorder.first_delta()
+                        has_first_delta = True
+                    if piece := shown.feed(text):
+                        yield answer_stream.add_piece(piece)
+                case Claim(content=block, sources=sources):
+                    if rest := shown.flush():
+                        yield answer_stream.add_piece(rest)
+                    yield answer_stream.claim(block, sources)
+                case TurnFinished():
+                    yield self._record_and_reveal(
+                        event,
+                        ctx=ctx,
+                        farmer_turn=farmer_turn,
+                        recorder=recorder,
+                        visibility=visibility,
+                    )
+
+    def _record_and_reveal(
+        self,
+        finished: TurnFinished,
+        *,
+        ctx: TurnContext,
+        farmer_turn: UserTurn,
         recorder: TurnRecorder,
         visibility: Visibility,
     ) -> TurnFinished:
-        """Build the terminal event and record it.
+        """Record the terminal event, then hand it back revealed.
 
         The record keeps the tags; the event the farmer gets has their own
         values back in it.
@@ -412,22 +482,18 @@ class Orchestrator:
         answering while silently failing to record the turn is not a success
         worth having.
 
-        Every one of the four ways out passes through here, which is why the
+        Every way out of the core ends in a `TurnFinished`, which is why the
         span's `status` is set here rather than at each of them. It is set
         after the turn is recorded, so a turn whose record failed stays
         ``error``.
         """
 
-        outcome, answer = resolved
-        finished = TurnFinished(
-            outcome=outcome, content=answer.content, sources=answer.sources
-        )
         self._turns.closed(ctx, finished)
-        recorder.status(outcome.status.value)
+        recorder.status(finished.outcome.status.value)
         # The trace gets the redacted question and the tagged answer.
         recorder.content(
-            query=turn.original_query,
-            answer=[block.text for block in answer.content],
+            query=farmer_turn.original_query,
+            answer=[block.text for block in finished.content],
         )
         if not visibility.values:
             return finished
@@ -446,6 +512,10 @@ class Orchestrator:
         # An optional sink may fail any way it likes.
         with suppress(Exception):
             self._telemetry.stage(stage, ctx, outcome)
+
+
+def _build_turn_finished(outcome: TurnOutcome, answer: ComposedAnswer) -> TurnFinished:
+    return TurnFinished(outcome=outcome, content=answer.content, sources=answer.sources)
 
 
 def _revealed(block: OutputContent, visibility: Visibility) -> OutputContent:

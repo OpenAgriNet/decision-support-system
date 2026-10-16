@@ -87,3 +87,13 @@ localizer:
       system_prompt: prompts/localizer/en/prompt.j2
     hi:
       system_prompt: prompts/localizer/hi/prompt.j2
+
+# Translates turns and answers for languages in configs/edge-translation.yaml
+# (#174). English only: it instructs the model, whatever the text's language.
+translator:
+  placeholders:
+    - translate_from
+    - translate_to
+  language_prompts:
+    en:
+      system_prompt: prompts/translator/en/prompt.j2

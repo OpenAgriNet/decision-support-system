@@ -3,6 +3,17 @@
 ## [Unreleased]
 
 ### Added
+- A deployment can serve a language the models handle poorly through one
+  they handle well. Languages listed in `configs/edge-translation.yaml` are
+  translated in right after redaction, run through the normal pipeline in
+  the chosen language, and their answer streams back translated. The
+  translator only ever sees redaction tags, never a farmer's own details;
+  the record and the trace keep the farmer's language. Off unless
+  `DSS_EDGE_TRANSLATION_CONFIG_PATH` is set, and languages not listed are
+  untouched. Gujarati into English ships as the first entry. A translated
+  answer starts later than an untranslated one, because the whole answer is
+  written before translation begins. New trace stages: `translation_in` and
+  `translation_out`. (#174)
 - A farmer now reads refusals, clarification questions and the no-provider
   answers in their own language. The DSS keeps writing these as one reviewed
   English vocabulary and renders each in the turn's target language on the

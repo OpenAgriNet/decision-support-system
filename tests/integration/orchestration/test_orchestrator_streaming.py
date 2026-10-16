@@ -28,6 +28,7 @@ from dss.core.shared.models import (
     UserTurn,
 )
 from dss.core.stream_response.service import build_stream_response
+from dss.core.translation.service import EdgeTranslation
 from dss.orchestration.orchestrator import Components, Orchestrator
 from dss.orchestration.redaction import pass_through
 from tests.integration.orchestration.test_orchestrator import (
@@ -50,6 +51,7 @@ from tests.support.fakes import (
     FakePromptProvider,
     FakeSchemeCatalog,
 )
+from tests.support.turn_events import assert_well_formed
 
 CHUNKS = ("Wheat is ", "2,2", "75 Rs [1].")
 WHOLE = "Wheat is 2,275 Rs [1]."
@@ -81,12 +83,15 @@ def _build(
         area_lookup=FakeAreaLookup({"pune": [_PUNE_MATCH]}),
         clarification_text=load_clarification_text(),
         schemas={},
+        edge_translation=EdgeTranslation(routes={}),
     )
     return orch, turns
 
 
 async def _collect(orch: Orchestrator, turn: UserTurn | None = None):
-    return [event async for event in orch.run(turn or _turn(), _ctx())]
+    events = [event async for event in orch.run(turn or _turn(), _ctx())]
+    assert_well_formed(events)
+    return events
 
 
 async def test_the_answer_leaves_in_pieces_before_the_turn_finishes() -> None:
@@ -207,6 +212,7 @@ async def test_the_real_component_streams_through_the_runner() -> None:
         area_lookup=FakeAreaLookup({"pune": [_PUNE_MATCH]}),
         clarification_text=load_clarification_text(),
         schemas={},
+        edge_translation=EdgeTranslation(routes={}),
     )
 
     events = await _collect(orch)

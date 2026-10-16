@@ -205,6 +205,16 @@ class Settings(BaseSettings):
     redaction_enabled: bool = False
     redaction_config_path: Path | None = None
 
+    # Languages translated at the DSS's edges (#174). Unset → off; set but
+    # missing or malformed, the boot stops (see edge_translation_loader).
+    edge_translation_config_path: Path | None = None
+
+    # Compose passes an unset variable as "", which would be the working directory.
+    @field_validator("edge_translation_config_path", mode="before")
+    @classmethod
+    def _treat_empty_as_off(cls, value: object) -> object:
+        return None if value == "" else value
+
     # How close a farmer's spelling has to be to count as an alias ("makna"
     # for "makhana"). Tried only after every exact lookup misses. `None` turns
     # similarity matching off; the floor is above 0, which matches anything.

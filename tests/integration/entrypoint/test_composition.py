@@ -364,3 +364,137 @@ def test_an_identifier_that_cannot_be_built_stops_the_boot(tmp_path: Path) -> No
         _redaction(
             _settings(tmp_path, redaction_enabled=True, redaction_config_path=rules)
         )
+
+
+# --- edge translation --------------------------------------------------------
+
+_TRANSLATION = Path(__file__).parent / "fixtures" / "edge-translation.yaml"
+
+
+def _prompts():
+    from dss.config.prompt_service import build_prompt_service
+
+    return build_prompt_service(Path(__file__).parents[3] / "configs" / "prompts.yaml")
+
+
+def test_no_translation_path_builds_no_routes(tmp_path: Path) -> None:
+    from dss.entrypoint.composition import _build_translation_routes
+
+    assert _build_translation_routes(_settings(tmp_path), prompts=_prompts()) == {}
+
+
+@pytest.fixture
+def azure_placeholders(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The shipped translator is an `azure:` deployment. Building its client
+    reads these, and calls nothing."""
+
+    monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", "https://azure.invalid/openai/v1")
+    monkeypatch.setenv("AZURE_OPENAI_API_KEY", "placeholder")
+
+
+@pytest.mark.usefixtures("azure_placeholders")
+def test_an_llm_entry_builds_an_llm_route(tmp_path: Path) -> None:
+    from dss.adapters.translator.llm import LLMTranslator
+    from dss.core.shared.language import ENGLISH
+    from dss.entrypoint.composition import _build_translation_routes
+
+    routes = _build_translation_routes(
+        Settings(evidence_dir=tmp_path, edge_translation_config_path=_TRANSLATION),
+        prompts=_prompts(),
+    )
+
+    assert list(routes) == ["gu"]
+    assert isinstance(routes["gu"].translator, LLMTranslator)
+    assert routes["gu"].to == ENGLISH
+
+
+def test_an_llm_route_with_a_model_uses_its_own(tmp_path: Path) -> None:
+    from dss.entrypoint.composition import _build_translation_routes
+
+    config = tmp_path / "edge-translation.yaml"
+    config.write_text(
+        "languages:\n  gu: {to: en, adapter: llm, model: openai:a-translator}\n"
+    )
+    routes = _build_translation_routes(
+        Settings(evidence_dir=tmp_path, edge_translation_config_path=config),
+        prompts=_prompts(),
+    )
+
+    translator = routes["gu"].translator
+    assert translator._batch_llm._model == "openai:a-translator"
+    assert translator._stream_llm._model == "openai:a-translator"
+
+
+@pytest.mark.usefixtures("azure_placeholders")
+def test_an_llm_route_times_each_direction_as_its_own_stage(tmp_path: Path) -> None:
+    from dss.entrypoint.composition import _build_translation_routes
+    from dss.observability.stages import Stage
+
+    routes = _build_translation_routes(
+        Settings(evidence_dir=tmp_path, edge_translation_config_path=_TRANSLATION),
+        prompts=_prompts(),
+    )
+
+    translator = routes["gu"].translator
+    assert translator._batch_llm._stage is Stage.TRANSLATION_IN
+    assert translator._stream_llm._stage is Stage.TRANSLATION_OUT
+
+
+def test_stubbed_models_put_every_route_on_the_stub(tmp_path: Path) -> None:
+    """`DSS_STUB_LLM` means no model is called, translation included."""
+
+    from dss.adapters.translator.stub import StubTranslator
+    from dss.entrypoint.composition import _build_translation_routes
+
+    routes = _build_translation_routes(
+        _settings(tmp_path, edge_translation_config_path=_TRANSLATION),
+        prompts=_prompts(),
+    )
+
+    assert isinstance(routes["gu"].translator, StubTranslator)
+
+
+async def test_a_gujarati_turn_goes_in_and_out_through_the_stub(
+    tmp_path: Path,
+) -> None:
+    from dss.core.shared.language import ENGLISH, LanguageTag
+    from dss.core.shared.models import (
+        ClaimDelta,
+        Geometry,
+        Location,
+        TurnContext,
+        TurnFinished,
+        UserTurn,
+    )
+
+    gujarati = LanguageTag("gu")
+    runner = build_runner(
+        _settings(tmp_path, edge_translation_config_path=_TRANSLATION)
+    )
+    turn = UserTurn(
+        original_query="આજે વરસાદ પડશે?",
+        enriched_query="આજે વરસાદ પડશે?",
+        session_id="s1",
+        transaction_id="t1",
+        source_lang=gujarati,
+        target_lang=gujarati,
+        channel="web",
+        location=Location(geometry=Geometry(coordinates=[73.7898, 19.9975])),
+    )
+
+    events = [
+        event
+        async for event in runner.run(
+            turn, TurnContext(trace_id="t1", message_id="m1", session_id="s1")
+        )
+    ]
+
+    stub = runner._edge_translation.routes["gu"].translator
+    first = stub.calls[0]
+    assert (first.from_lang, first.to_lang) == (gujarati, ENGLISH)
+    finished = events[-1]
+    assert isinstance(finished, TurnFinished)
+    assert finished.outcome.status.value == "no_match"
+    assert finished.content
+    assert all(block.text.startswith("[gu] ") for block in finished.content)
+    assert any(isinstance(event, ClaimDelta) for event in events)

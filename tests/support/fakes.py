@@ -8,12 +8,12 @@ fails, which is the point of having a contract at all.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Mapping, Sequence
-from typing import Any
+from typing import Any, Literal
 
 from dss.core.enrichment.models import Scheme
 from dss.core.enrichment.normalize import alias_key
 from dss.core.planner.models import Skill
-from dss.core.shared.errors import ProviderUnavailableError
+from dss.core.shared.errors import ProviderUnavailableError, TranslationError
 from dss.core.shared.language import LanguageTag
 from dss.core.shared.models import Geometry, TurnContext, TurnEvent, UserTurn
 from dss.ports.area_lookup import AreaMatch
@@ -144,6 +144,62 @@ class FakeLocalizer:
     async def __call__(self, text: str, *, turn: UserTurn) -> str:
         self.calls.append((text, turn.target_lang))
         return f"[{turn.target_lang}] {text}" if self.mark else text
+
+
+class FakeTranslator:
+    """A `Translator` that marks each text with the language it was sent to.
+
+    `drop_one=True` returns one text fewer than it was given, so a caller's
+    count check can be exercised. `fail_on` names the method that raises
+    `TranslationError`; `stream` raises after its first piece. `stream` yields
+    the marked text in `pieces` chunks and sets `stream_closed` when the stream
+    is closed, early or not.
+    """
+
+    def __init__(
+        self,
+        *,
+        fail_on: Literal["translate", "stream"] | None = None,
+        pieces: int = 3,
+        drop_one: bool = False,
+    ) -> None:
+        self.fail_on = fail_on
+        self.pieces = pieces
+        self.drop_one = drop_one
+        self.calls: list[tuple[str, tuple[str, ...], LanguageTag, LanguageTag]] = []
+        self.stream_closed = False
+
+    async def translate(
+        self, texts: Sequence[str], *, from_lang: LanguageTag, to_lang: LanguageTag
+    ) -> tuple[str, ...]:
+        self.calls.append(("translate", tuple(texts), from_lang, to_lang))
+        if self.fail_on == "translate":
+            raise TranslationError("translator unreachable")
+        translated = tuple(f"[{to_lang}] {text}" for text in texts)
+        return translated[:-1] if self.drop_one else translated
+
+    async def stream(
+        self, text: str, *, from_lang: LanguageTag, to_lang: LanguageTag
+    ) -> AsyncIterator[str]:
+        self.calls.append(("stream", (text,), from_lang, to_lang))
+        try:
+            first, *rest = _split_into_pieces(f"[{to_lang}] {text}", self.pieces)
+            yield first
+            if self.fail_on == "stream":
+                raise TranslationError("translator stream broke")
+            for piece in rest:
+                yield piece
+        finally:
+            self.stream_closed = True
+
+
+def _split_into_pieces(text: str, count: int) -> list[str]:
+    """`count` consecutive slices of `text` that join back to it."""
+
+    return [
+        text[len(text) * index // count : len(text) * (index + 1) // count]
+        for index in range(count)
+    ]
 
 
 class FakeAreaLookup:

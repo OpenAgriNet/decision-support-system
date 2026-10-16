@@ -1,6 +1,7 @@
 """The prompt port — where a component's system prompt comes from.
 
-Every LLM component (intent, moderation, planner, composer, localizer) asks
+Every LLM component (intent, moderation, planner, composer, localizer,
+translator) asks
 this port for its system prompt instead of holding the text in code. What the
 port promises:
 
@@ -45,6 +46,7 @@ class PromptIdentifier(StrEnum):
     PLANNER = "planner"
     COMPOSER = "composer"
     LOCALIZER = "localizer"
+    TRANSLATOR = "translator"
 
 
 @runtime_checkable

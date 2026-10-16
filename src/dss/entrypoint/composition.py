@@ -48,7 +48,15 @@ from dss.adapters.pii_identifier.factory import build_identifiers
 from dss.adapters.schema_packs.filesystem import FilesystemSchemaPackSource
 from dss.adapters.scheme_catalog.csv_file import load_scheme_catalog
 from dss.adapters.sinks.file import FileTelemetrySink, FileTurnSink
+from dss.adapters.translator.llm import LLMTranslator
+from dss.adapters.translator.stub import StubTranslator
 from dss.config.clarification_text_loader import load_clarification_text
+from dss.config.edge_translation_loader import (
+    LLMBinding,
+    StubBinding,
+    TranslationBinding,
+    load_edge_translation_config,
+)
 from dss.config.identity_loader import load_identity
 from dss.config.policy_loader import load_policy_pack
 from dss.config.prompt_service import build_prompt_service
@@ -70,6 +78,8 @@ from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import UserTurn
 from dss.core.shared.network import NetworkTransactionID
 from dss.core.stream_response.service import build_stream_response
+from dss.core.translation.models import TranslationRoute
+from dss.core.translation.service import EdgeTranslation
 from dss.observability.stages import Stage
 from dss.orchestration.discovery import (
     DiscoverProviders,
@@ -82,6 +92,8 @@ from dss.orchestration.redaction import RedactTexts, pass_through, redact_texts
 from dss.ports.area_lookup import AreaLookup
 from dss.ports.invocation import CapabilityInvocation
 from dss.ports.llm import LLMProvider
+from dss.ports.prompts import PromptProvider
+from dss.ports.translator import Translator
 from dss.ports.turn import TurnRunner
 
 logger = logging.getLogger(__name__)
@@ -150,6 +162,8 @@ def build_runner_with_lifecycle(
     # Before the network, like the other boot checks: a bad rule or a missing
     # name model stops the boot here, never on a farmer's turn.
     redact = _redaction(settings)
+    # Same: a bad edge translation config stops the boot here (#174).
+    translation_routes = _build_translation_routes(settings, prompts=prompts)
 
     discover, invocation, schemas, schema_context_index, client = _network(
         settings, fetch=fetch
@@ -196,6 +210,7 @@ def build_runner_with_lifecycle(
         area_lookup=area_lookup,
         clarification_text=clarification_text,
         schemas=schemas,
+        edge_translation=EdgeTranslation(routes=translation_routes),
     )
     return runner, _aclose_all(_aclose_for(client), area_aclose)
 
@@ -259,6 +274,66 @@ def _redaction(settings: Settings) -> RedactTexts:
         redact_texts,
         identifiers=build_identifiers(config.identifiers),
         policy=config.policy,
+    )
+
+
+def _build_translation_routes(
+    settings: Settings, *, prompts: PromptProvider
+) -> dict[str, TranslationRoute]:
+    """One route per language in the edge translation config (#174); none
+    when `DSS_EDGE_TRANSLATION_CONFIG_PATH` is unset."""
+
+    return {
+        language: TranslationRoute(
+            translator=_build_translator(
+                language, binding, settings=settings, prompts=prompts
+            ),
+            to=binding.to,
+        )
+        for language, binding in load_edge_translation_config(
+            settings.edge_translation_config_path
+        ).items()
+    }
+
+
+def _build_translator(
+    language: str,
+    binding: TranslationBinding,
+    *,
+    settings: Settings,
+    prompts: PromptProvider,
+) -> Translator:
+    """The adapter a language's entry names. With models stubbed, every
+    language gets the stub: no model is called, translation included."""
+
+    if isinstance(binding, StubBinding) or settings.stub_llm:
+        return StubTranslator(language=language)
+    return LLMTranslator(
+        batch_llm=_build_translator_llm(
+            binding,
+            name=f"translator-{language}-in",
+            stage=Stage.TRANSLATION_IN,
+            settings=settings,
+        ),
+        stream_llm=_build_translator_llm(
+            binding,
+            name=f"translator-{language}-out",
+            stage=Stage.TRANSLATION_OUT,
+            settings=settings,
+        ),
+        prompts=prompts,
+    )
+
+
+def _build_translator_llm(
+    binding: LLMBinding, *, name: str, stage: Stage, settings: Settings
+) -> LLMProvider:
+    return PydanticAILLMProvider(
+        _resolve_model(binding.model, settings),
+        name=name,
+        stage=stage,
+        temperature=binding.temperature,
+        timeout=binding.timeout_seconds,
     )
 
 
