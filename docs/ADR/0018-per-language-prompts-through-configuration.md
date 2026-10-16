@@ -1,7 +1,7 @@
 # ADR-0018: Per-Language Prompts Through Configuration
 
 - **Status:** ACCEPTED
-- **Date:** 2026-10-07 (extended 2026-10-08 with system-text localization)
+- **Date:** 2026-10-07 (extended 2026-10-08 with system-text localization; 2026-10-13 with the language tag type)
 - **Deciders:** DSS implementation
 
 ---
@@ -96,8 +96,10 @@ the orchestrator seam) for the system-authored text.
   Core services call the port like they call `LLMProvider`; the
   implementation (`config/prompt_service.py`, Jinja2) is the only thing that
   reads the files. Driver 5 holds.
-- **Fallback.** Lookup is exact tag, then primary subtag (`hi-IN` → `hi`),
-  then `en`. `en` is required for every component, checked at boot. The fall
+- **Fallback.** Lookup drops subtags from the end of the tag
+  (`gu-Gujr-IN` → `gu-Gujr` → `gu`), then falls back to `en` (extended
+  2026-10-13, #174: languages are a `LanguageTag` on the turn and in the
+  registry). `en` is required for every component, checked at boot. The fall
   to English is recorded as a trace event (`event=language_fallback`), which
   is how the team sees where English is filling a gap (driver 3). Even an
   override that fails to render serves English rather than failing the turn.

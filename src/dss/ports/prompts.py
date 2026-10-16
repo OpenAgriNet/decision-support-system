@@ -4,11 +4,11 @@ Every LLM component (intent, moderation, planner, composer, localizer) asks
 this port for its system prompt instead of holding the text in code. What the
 port promises:
 
-- ``get_prompt(PromptIdentifier.INTENT, lang="hi", placeholder_values={...})``
-  returns the Hindi version of the intent prompt when the deployment
-  configured one, and the English version otherwise. **A missing language
-  never fails a turn** — English is always there, and each prompt falls back
-  on its own.
+- ``get_prompt(PromptIdentifier.INTENT, lang=LanguageTag("hi"),
+  placeholder_values={...})`` returns the Hindi version of the intent prompt
+  when the deployment configured one, and the English version otherwise.
+  **A missing language never fails a turn** — English is always there, and
+  each prompt falls back on its own.
 - ``placeholder_values`` carries what only the caller knows (the history
   window, the identity, the rendered sections); the template text itself is
   configuration.
@@ -26,6 +26,7 @@ from enum import StrEnum
 from typing import Any, Protocol, runtime_checkable
 
 from dss.core.planner.models import Skill
+from dss.core.shared.language import LanguageTag
 
 
 class PromptIdentifier(StrEnum):
@@ -51,7 +52,7 @@ class PromptProvider(Protocol):
     def get_prompt(
         self,
         prompt_identifier: PromptIdentifier,
-        lang: str,
+        lang: LanguageTag,
         placeholder_values: Mapping[str, Any] | None = None,
     ) -> str:
         """The rendered system prompt for one component, in ``lang`` when the
@@ -59,7 +60,7 @@ class PromptProvider(Protocol):
         ...
 
     def get_skills(
-        self, prompt_identifier: PromptIdentifier, lang: str
+        self, prompt_identifier: PromptIdentifier, lang: LanguageTag
     ) -> tuple[Skill, ...]:
         """The skills configured beside that prompt, with the same language
         fallback. Empty for components that declare none."""

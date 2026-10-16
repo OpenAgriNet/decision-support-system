@@ -17,6 +17,7 @@ from dss.core.intent.models import (
     SubjectCategory,
     UnresolvedPlace,
 )
+from dss.core.shared.language import LanguageTag
 from dss.core.shared.models import Geometry, UserTurn
 from dss.ports.area_lookup import AreaMatch
 
@@ -310,3 +311,7 @@ def test_non_bcp47_language_raises() -> None:
             target_lang="en",
             channel="web",
         )
+
+
+def test_a_turn_reads_plain_strings_as_language_tags(a_turn) -> None:
+    assert a_turn(target_lang="HI-in").target_lang == LanguageTag("hi-IN")
