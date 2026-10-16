@@ -73,7 +73,7 @@ async def test_the_localizer_prompt_is_asked_for_in_the_target_language() -> Non
     [(identifier, lang, kwargs)] = prompts.calls
     assert identifier is PromptIdentifier.LOCALIZER
     assert lang == LanguageTag("mr")
-    assert kwargs == {"target_lang": "mr"}
+    assert kwargs == {"target_lang": LanguageTag("mr")}
 
 
 @pytest.mark.parametrize("tag", ["en", "en-IN", "EN"])

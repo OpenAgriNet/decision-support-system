@@ -68,7 +68,7 @@ def build_localizer(*, llm: LLMProvider, prompts: PromptProvider) -> LocalizeTex
                 system_prompt=prompts.get_prompt(
                     PromptIdentifier.LOCALIZER,
                     lang=turn.target_lang,
-                    placeholder_values={"target_lang": str(turn.target_lang)},
+                    placeholder_values={"target_lang": turn.target_lang},
                 ),
                 user_query=text,
                 schema=LocalizedText,

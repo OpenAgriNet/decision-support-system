@@ -298,7 +298,7 @@ def test_system_prompt_hands_the_identity_and_language_to_the_template() -> None
         "name": "Kisan Mitra",
         "persona": "a calm advisor.",
         "boundaries": "Never gives legal advice.",
-        "target_lang": "mr",
+        "target_lang": LanguageTag("mr"),
     }
 
 

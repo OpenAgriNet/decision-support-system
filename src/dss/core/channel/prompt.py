@@ -47,7 +47,7 @@ def system_prompt(
             "name": identity.name,
             "persona": identity.persona,
             "boundaries": identity.boundaries,
-            "target_lang": str(turn.target_lang),
+            "target_lang": turn.target_lang,
         },
     )
 

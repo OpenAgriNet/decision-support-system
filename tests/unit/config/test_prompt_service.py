@@ -18,7 +18,7 @@ import pytest
 from jinja2 import UndefinedError
 
 from dss.config.prompt_service import build_prompt_service
-from dss.core.shared.language import LanguageTag
+from dss.core.shared.language import ENGLISH, LanguageTag
 from dss.ports.prompts import PromptIdentifier
 
 _SKILL = """---
@@ -107,6 +107,12 @@ def test_the_configured_language_is_served() -> None:
 def test_a_language_with_no_entry_falls_back_to_english(tmp_path: Path) -> None:
     service = build_prompt_service(_registry(tmp_path))
     assert service.get_prompt(_PROBE, LanguageTag("mr"), {"name": "x"}) == "Hello x"
+
+
+def test_a_language_tag_renders_as_its_plain_tag(tmp_path: Path) -> None:
+    service = build_prompt_service(_registry(tmp_path))
+    rendered = service.get_prompt(_PROBE, ENGLISH, {"name": LanguageTag("gu-in")})
+    assert rendered == "Hello gu-IN"
 
 
 def test_the_fallback_is_recorded_as_a_trace_event(
