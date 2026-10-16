@@ -172,3 +172,16 @@ def test_a_photon_limit_of_zero_raises(
     monkeypatch.setenv(name, "0")
     with pytest.raises(ValueError):
         Settings(_env_file=None)
+
+
+def test_a_blank_provider_preferences_path_counts_as_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`docker-compose.yml` passes the variable empty when the operator sets
+    nothing. Read as a path, `""` is the working directory — which exists, so
+    the loader would get past its own missing-file check and then try to read
+    a directory."""
+
+    monkeypatch.setenv("DSS_PROVIDER_PREFERENCES_PATH", "")
+
+    assert Settings().provider_preferences_path is None

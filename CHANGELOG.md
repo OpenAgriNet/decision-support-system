@@ -3,6 +3,20 @@
 ## [Unreleased]
 
 ### Added
+- An adopter can now say which providers answer their farmers, per topic, in
+  order of preference. The caller names itself in an `X-Client-Id` header; a
+  mounted file (`DSS_PROVIDER_PREFERENCES_PATH`) ranks provider ids per client
+  and topic, and the first-choice provider answers whenever it returns
+  anything, falling to the next when it does not. A ranking is exclusive — a
+  provider it does not name is never called. A caller with no header, or one
+  nobody configured, is served a default ranking and answered normally.
+  Nothing ships mounted: unset, every ask keeps whichever providers discovery
+  found, exactly as before. ADR-0019 (#191)
+- Every provider consulted for an ask is recorded — including the ones whose
+  answers were not used — so a ranking's order can be judged later. Ids,
+  counts and the one that answered go to the turn's log at INFO; response
+  bodies stay at DEBUG where the invocation adapter already puts them.
+  ADR-0019 (#191)
 - A farmer now reads refusals, clarification questions and the no-provider
   answers in their own language. The DSS keeps writing these as one reviewed
   English vocabulary and renders each in the turn's target language on the
