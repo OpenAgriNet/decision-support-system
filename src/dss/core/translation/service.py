@@ -114,6 +114,8 @@ async def _translate_each(
     """
 
     to_send = [text for text in texts if text.strip()]
+    if not to_send:
+        return tuple(texts)
     translated = await translator.translate(
         to_send, from_lang=from_lang, to_lang=to_lang
     )
