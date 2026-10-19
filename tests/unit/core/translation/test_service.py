@@ -170,6 +170,17 @@ async def test_empty_history_text_keeps_its_slot(a_gujarati_turn):
     ]
 
 
+async def test_nothing_to_translate_makes_no_call(a_gujarati_turn):
+    translator = FakeTranslator()
+    turn = a_gujarati_turn(query=" ", history=[])
+
+    result = await _build_turn_translation(turn, translator).translate_in(turn)
+
+    assert translator.calls == []
+    assert result.original_query == " "
+    assert result.target_lang == ENGLISH
+
+
 async def test_translate_in_rejects_a_wrong_count(a_gujarati_turn):
     turn = a_gujarati_turn()
     translation = _build_turn_translation(turn, FakeTranslator(drop_one=True))
