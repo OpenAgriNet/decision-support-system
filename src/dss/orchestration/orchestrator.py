@@ -423,7 +423,6 @@ class Orchestrator:
         # One block: the composer's prose is never split (`answer_from_evidence`).
         (block,) = answer.content
         yield answer_stream.claim(block, answer.sources)
-        self._note("channel", ctx, str(len(answer.content)))
 
         status, cause = _status_for(evidence, result.intent)
         yield answer_stream.finish(outcome_for(status, cause))
@@ -456,27 +455,26 @@ class Orchestrator:
                         yield answer_stream.add_piece(rest)
                     yield answer_stream.claim(block, sources)
                 case TurnFinished():
-                    yield self._record_and_reveal(
-                        event,
-                        ctx=ctx,
-                        farmer_turn=farmer_turn,
-                        recorder=recorder,
-                        visibility=visibility,
+                    self._record_finished(
+                        event, ctx=ctx, farmer_turn=farmer_turn, recorder=recorder
+                    )
+                    # A streamed reply ends on what the farmer was streamed; a
+                    # fixed one reaches the edge whole, with no claims before it.
+                    yield (
+                        answer_stream.finish(event.outcome)
+                        if answer_stream.has_claims
+                        else _reveal_finished(event, visibility)
                     )
 
-    def _record_and_reveal(
+    def _record_finished(
         self,
         finished: TurnFinished,
         *,
         ctx: TurnContext,
         farmer_turn: UserTurn,
         recorder: TurnRecorder,
-        visibility: Visibility,
-    ) -> TurnFinished:
-        """Record the terminal event, then hand it back revealed.
-
-        The record keeps the tags; the event the farmer gets has their own
-        values back in it.
+    ) -> None:
+        """Record the terminal event, with its tags.
 
         The turn sink is required, so a failure here is deliberately not caught —
         answering while silently failing to record the turn is not a success
@@ -495,15 +493,6 @@ class Orchestrator:
             query=farmer_turn.original_query,
             answer=[block.text for block in finished.content],
         )
-        if not visibility.values:
-            return finished
-        return finished.model_copy(
-            update={
-                "content": tuple(
-                    _revealed(block, visibility) for block in finished.content
-                )
-            }
-        )
 
     def _note(self, stage: str, ctx: TurnContext, outcome: str) -> None:
         """Telemetry is optional (`ports/sinks.py`), so losing a span must never
@@ -516,6 +505,16 @@ class Orchestrator:
 
 def _build_turn_finished(outcome: TurnOutcome, answer: ComposedAnswer) -> TurnFinished:
     return TurnFinished(outcome=outcome, content=answer.content, sources=answer.sources)
+
+
+def _reveal_finished(finished: TurnFinished, visibility: Visibility) -> TurnFinished:
+    if not visibility.values:
+        return finished
+    return finished.model_copy(
+        update={
+            "content": tuple(_revealed(block, visibility) for block in finished.content)
+        }
+    )
 
 
 def _revealed(block: OutputContent, visibility: Visibility) -> OutputContent:

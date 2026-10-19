@@ -297,7 +297,7 @@ async def test_a_served_ask_is_answered_end_to_end() -> None:
     assert plan.calls == 1 and plan.verdict_was_set is True
     assert compose.calls == 1
     # the turn was recorded closed
-    assert turns.records["t1"].finished is finished
+    assert turns.records["t1"].finished == finished
 
 
 async def test_moderation_reject_refuses_before_the_planner() -> None:
