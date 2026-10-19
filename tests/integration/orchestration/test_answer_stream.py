@@ -1,8 +1,7 @@
-"""Tier 1 — the events of a streamed answer agree with each other."""
+"""Tier 3 — the events of a streamed answer agree with each other."""
 
 from __future__ import annotations
 
-from dss.core.shared.answer_stream import AnswerStream
 from dss.core.shared.models import (
     ClaimDelta,
     RefusalBlock,
@@ -12,6 +11,7 @@ from dss.core.shared.models import (
     TurnOutcome,
     TurnStatus,
 )
+from dss.orchestration.answer_stream import AnswerStream
 
 IMD = Source(id="1", name="IMD", kind=SourceKind.PROVIDER)
 AGMARKNET = Source(id="2", name="Agmarknet", kind=SourceKind.PROVIDER)

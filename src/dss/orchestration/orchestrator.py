@@ -74,7 +74,6 @@ from dss.core.policy.models import Policy
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.redaction.turn import texts_of, with_texts
 from dss.core.redaction.visibility import StreamReveal, Visibility
-from dss.core.shared.answer_stream import AnswerStream
 from dss.core.shared.models import (
     Cause,
     Claim,
@@ -94,6 +93,7 @@ from dss.core.stream_response.service import ComposeStream
 from dss.core.translation.service import EdgeTranslation
 from dss.observability.stages import Stage
 from dss.observability.trace_log import bind_turn_ids, trace_component
+from dss.orchestration.answer_stream import AnswerStream
 from dss.orchestration.discovery import DiscoverProviders
 from dss.orchestration.events import CoreEvent
 from dss.orchestration.plan import Plan
