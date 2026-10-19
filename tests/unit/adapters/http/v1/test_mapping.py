@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from dss.adapters.http.v1 import mapping, schema
+from dss.core.shared.language import LanguageTag
 from dss.core.shared.models import ConversationMessage, Geometry
 
 
@@ -88,8 +89,19 @@ def test_several_content_parts_join_into_one_query(a_body):
 def test_languages_and_channel_reach_the_turn(a_body):
     turn = mapping.to_user_turn(schema.TurnRequest.model_validate(a_body()))
 
-    assert (turn.source_lang, turn.target_lang) == ("hi", "hi")
+    assert (turn.source_lang, turn.target_lang) == (
+        LanguageTag("hi"),
+        LanguageTag("hi"),
+    )
     assert turn.channel == "web"
+
+
+def test_a_language_that_is_not_a_tag_is_refused(a_body):
+    body = schema.TurnRequest.model_validate(
+        a_body(message__attributes__targetLanguage="gujarati")
+    )
+    with pytest.raises(ValueError):
+        mapping.to_user_turn(body)
 
 
 def test_the_response_cap_reaches_the_turn(a_body):

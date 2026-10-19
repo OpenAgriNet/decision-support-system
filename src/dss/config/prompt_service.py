@@ -3,7 +3,7 @@
 ``configs/prompts.yaml`` names, per LLM component and per language, which
 template under ``prompts/`` is the system prompt (and, for the planner, which
 skill files ride with it). This module loads that registry once at boot and
-answers ``get_prompt(PromptIdentifier.INTENT, lang="hi",
+answers ``get_prompt(PromptIdentifier.INTENT, lang=LanguageTag("hi"),
 placeholder_values={...})`` per turn.
 
 The two properties the design leans on:
@@ -44,6 +44,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 
 from dss.config.skill_loader import load_skill_file
 from dss.core.planner.models import Skill
+from dss.core.shared.language import ENGLISH, LanguageTag
 from dss.observability.trace_log import log_event
 from dss.ports.prompts import PromptIdentifier
 
@@ -55,7 +56,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_CONFIG = Path("configs/prompts.yaml")
 
 # The language every component must ship and every turn can fall back to.
-FALLBACK_LANGUAGE = "en"
+FALLBACK_LANGUAGE = ENGLISH
 
 
 class _LanguageSpec(BaseModel):
@@ -76,7 +77,7 @@ class _ComponentSpec(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     placeholders: frozenset[str] = frozenset()
-    language_prompts: dict[str, _LanguageSpec]
+    language_prompts: dict[LanguageTag, _LanguageSpec]
 
 
 @dataclass(frozen=True)
@@ -94,7 +95,7 @@ class _ComponentPrompts:
     languages."""
 
     placeholders: frozenset[str]
-    languages: dict[str, _LanguageEntry]
+    languages: dict[LanguageTag, _LanguageEntry]
 
 
 class PromptService:
@@ -108,7 +109,7 @@ class PromptService:
     def get_prompt(
         self,
         prompt_identifier: PromptIdentifier,
-        lang: str,
+        lang: LanguageTag,
         placeholder_values: Mapping[str, Any] | None = None,
     ) -> str:
         component = self._components[prompt_identifier.value]
@@ -123,14 +124,14 @@ class PromptService:
             if served == FALLBACK_LANGUAGE:
                 raise
             logger.exception(
-                "the %s prompt for %r failed to render; serving English instead",
+                "the %s prompt for %s failed to render; serving English instead",
                 prompt_identifier.value,
                 served,
             )
             return component.languages[FALLBACK_LANGUAGE].template.render(**values)
 
     def get_skills(
-        self, prompt_identifier: PromptIdentifier, lang: str
+        self, prompt_identifier: PromptIdentifier, lang: LanguageTag
     ) -> tuple[Skill, ...]:
         component = self._components[prompt_identifier.value]
         served = self._resolve(prompt_identifier, component, lang)
@@ -141,37 +142,40 @@ class PromptService:
         # from English — "each prompt falls back on its own" holds per file.
         return component.languages[FALLBACK_LANGUAGE].skills
 
-    def languages_for(self, prompt_identifier: PromptIdentifier) -> tuple[str, ...]:
+    def languages_for(
+        self, prompt_identifier: PromptIdentifier
+    ) -> tuple[LanguageTag, ...]:
         """Which languages have their own version of this prompt. For
         visibility (logged at boot), not for routing."""
 
-        return tuple(sorted(self._components[prompt_identifier.value].languages))
+        return tuple(
+            sorted(self._components[prompt_identifier.value].languages, key=str)
+        )
 
     def _resolve(
         self,
         prompt_identifier: PromptIdentifier,
         component: _ComponentPrompts,
-        lang: str,
-    ) -> str:
-        """Exact tag, then primary subtag, then English — recording the fall
-        to English as a trace event, because a deployment reads that event to
-        see which languages still run on the English prompt."""
+        lang: LanguageTag,
+    ) -> LanguageTag:
+        """The most specific form of the tag the registry has, then English —
+        recording the fall to English as a trace event, because a deployment
+        reads that event to see which languages still run on the English
+        prompt."""
 
-        # BCP-47 terms: "hi-IN" is a language tag, "hi" its primary subtag.
-        language_tag = lang.lower()
-        if language_tag in component.languages:
-            return language_tag
-        primary_subtag = language_tag.split("-", 1)[0]
-        if primary_subtag in component.languages:
-            return primary_subtag
-        # Neither matched. `en` always has an entry (checked at boot), so the
+        served = next(
+            (tag for tag in lang.lookup_order if tag in component.languages), None
+        )
+        if served is not None:
+            return served
+        # Nothing matched. `en` always has an entry (checked at boot), so the
         # request was non-English — record the gap, unconditionally.
         log_event(
             "prompts",
             event="language_fallback",
             prompt=prompt_identifier.value,
-            requested=lang,
-            served=FALLBACK_LANGUAGE,
+            requested=str(lang),
+            served=str(FALLBACK_LANGUAGE),
         )
         return FALLBACK_LANGUAGE
 
@@ -219,7 +223,7 @@ def build_prompt_service(path: Path | None = None) -> PromptService:
         logger.info(
             "prompt %s: languages %s",
             name,
-            ", ".join(sorted(component.languages)),
+            ", ".join(sorted(map(str, component.languages))),
         )
     return PromptService(components)
 
@@ -233,7 +237,7 @@ def _load_component(
         raise ValueError(f"prompt {name!r}: {error}") from error
 
     languages = {
-        str(language_tag).lower(): _load_language(
+        language_tag: _load_language(
             environment, base, f"{name}/{language_tag}", spec.placeholders, entry
         )
         for language_tag, entry in spec.language_prompts.items()

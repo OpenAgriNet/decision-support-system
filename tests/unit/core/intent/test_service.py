@@ -15,6 +15,7 @@ from dss.core.intent.models import (
     SubjectCategory,
 )
 from dss.core.intent.service import classify_intent
+from dss.core.shared.language import LanguageTag
 from dss.core.shared.models import ConversationMessage, UserTurn
 from dss.ports.prompts import PromptIdentifier
 from tests.support.fakes import FakePromptProvider
@@ -124,7 +125,7 @@ async def test_the_prompt_is_asked_for_in_the_turns_target_language() -> None:
 
     [(identifier, lang, kwargs)] = prompts.calls
     assert identifier is PromptIdentifier.INTENT
-    assert lang == "hi"
+    assert lang == LanguageTag("hi")
 
 
 async def test_the_taxonomy_is_supplied_to_the_template() -> None:

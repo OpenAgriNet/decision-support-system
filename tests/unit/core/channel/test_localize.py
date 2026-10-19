@@ -15,6 +15,7 @@ from dss.core.channel.localize import (
     localize_answer,
 )
 from dss.core.channel.models import ComposedAnswer
+from dss.core.shared.language import LanguageTag
 from dss.core.shared.models import RefusalBlock, Source, SourceKind, TextBlock, UserTurn
 from dss.ports.prompts import PromptIdentifier
 from tests.support.fakes import FakePromptProvider
@@ -71,8 +72,8 @@ async def test_the_localizer_prompt_is_asked_for_in_the_target_language() -> Non
 
     [(identifier, lang, kwargs)] = prompts.calls
     assert identifier is PromptIdentifier.LOCALIZER
-    assert lang == "mr"
-    assert kwargs == {"target_lang": "mr"}
+    assert lang == LanguageTag("mr")
+    assert kwargs == {"target_lang": LanguageTag("mr")}
 
 
 @pytest.mark.parametrize("tag", ["en", "en-IN", "EN"])

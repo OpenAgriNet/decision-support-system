@@ -20,6 +20,7 @@ from dss.core.intent.models import (
     SubjectCategory,
 )
 from dss.core.provider_discovery.models import DiscoveryResult
+from dss.core.shared.language import LanguageTag
 from dss.core.shared.models import ClaimDelta, Geometry, TurnStatus
 from dss.ports.area_lookup import AreaMatch
 from tests.integration.orchestration.test_orchestrator import (
@@ -42,7 +43,9 @@ from tests.support.fakes import FakeAreaLookup, FakeLocalizer
 def _hindi(turn):
     """The same turn, asked by a Hindi farmer."""
 
-    return turn.model_copy(update={"source_lang": "hi", "target_lang": "hi"})
+    return turn.model_copy(
+        update={"source_lang": LanguageTag("hi"), "target_lang": LanguageTag("hi")}
+    )
 
 
 async def test_a_refusal_is_localized() -> None:
@@ -63,7 +66,7 @@ async def test_a_refusal_is_localized() -> None:
     assert finished.outcome.status is TurnStatus.REJECTED
     assert all(block.text.startswith("[hi] ") for block in finished.content)
     assert localize.calls, "the refusal never reached the localizer"
-    assert all(lang == "hi" for _, lang in localize.calls)
+    assert all(lang == LanguageTag("hi") for _, lang in localize.calls)
 
 
 async def test_the_no_place_clarification_is_localized() -> None:
@@ -152,7 +155,7 @@ async def test_the_appended_which_place_question_is_localized() -> None:
     deltas = [e.text for e in events if isinstance(e, ClaimDelta)]
     # the composed answer streams untouched; the appended question is localized
     assert deltas[-1] == f"\n\n[hi] {question}"
-    assert localize.calls == [(question, "hi")]
+    assert localize.calls == [(question, LanguageTag("hi"))]
     # the pieces still join back to the recorded answer
     finished = events[-1]
     assert "".join(deltas) == finished.content[0].text

@@ -368,7 +368,7 @@ async def discover_providers(  # noqa: PLR0913
     value. Keyword-only makes that impossible to write.
     """
 
-    languages = (turn.target_lang,)
+    languages = (str(turn.target_lang),)
     index = schema_pack_cache.current()
 
     queries_to_asks, ask_capabilities, unresolved_asks, events = _build_queries(

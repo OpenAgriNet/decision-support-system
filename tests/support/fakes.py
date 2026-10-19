@@ -14,6 +14,7 @@ from dss.core.enrichment.models import Scheme
 from dss.core.enrichment.normalize import alias_key
 from dss.core.planner.models import Skill
 from dss.core.shared.errors import ProviderUnavailableError
+from dss.core.shared.language import LanguageTag
 from dss.core.shared.models import Geometry, TurnContext, TurnEvent, UserTurn
 from dss.ports.area_lookup import AreaMatch
 from dss.ports.prompts import PromptIdentifier
@@ -105,12 +106,12 @@ class FakePromptProvider:
 
     def __init__(self, skills: Sequence[Skill] = ()) -> None:
         self._skills = tuple(skills)
-        self.calls: list[tuple[PromptIdentifier, str, dict[str, Any]]] = []
+        self.calls: list[tuple[PromptIdentifier, LanguageTag, dict[str, Any]]] = []
 
     def get_prompt(
         self,
         prompt_identifier: PromptIdentifier,
-        lang: str,
+        lang: LanguageTag,
         placeholder_values: Mapping[str, Any] | None = None,
     ) -> str:
         values = dict(placeholder_values or {})
@@ -126,7 +127,7 @@ class FakePromptProvider:
         return "\n".join(lines)
 
     def get_skills(
-        self, prompt_identifier: PromptIdentifier, lang: str
+        self, prompt_identifier: PromptIdentifier, lang: LanguageTag
     ) -> tuple[Skill, ...]:
         return self._skills
 
@@ -138,7 +139,7 @@ class FakeLocalizer:
 
     def __init__(self, *, mark: bool = False) -> None:
         self.mark = mark
-        self.calls: list[tuple[str, str]] = []  # (text, target_lang)
+        self.calls: list[tuple[str, LanguageTag]] = []  # (text, target_lang)
 
     async def __call__(self, text: str, *, turn: UserTurn) -> str:
         self.calls.append((text, turn.target_lang))
