@@ -21,6 +21,10 @@ class AnswerStream:
         self._claims: list[Claim] = []
 
     @property
+    def has_claims(self) -> bool:
+        return bool(self._claims)
+
+    @property
     def written(self) -> str:
         """The pieces since the last claim: the text the next claim holds."""
 

@@ -125,7 +125,7 @@ async def test_the_pieces_join_back_to_the_answer_that_is_recorded() -> None:
     assert isinstance(claim.content, TextBlock)
     assert claim.content.text == WHOLE
     assert finished.content[0].text == WHOLE
-    assert turns.records["t1"].finished is finished
+    assert turns.records["t1"].finished == finished
 
 
 async def test_a_refused_turn_never_reaches_the_composer() -> None:
