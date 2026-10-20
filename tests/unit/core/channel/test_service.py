@@ -313,6 +313,48 @@ def test_answer_for_unplaced_asks_reports_every_distinct_failure() -> None:
     assert "Xyzzy" in text
 
 
+def _ambiguous(name: str, *parts: tuple[str, ...]) -> AmbiguousPlace:
+    return AmbiguousPlace(
+        unresolved_name=name,
+        candidates=tuple(
+            AreaMatch(
+                name=name,
+                region="IN-XX",
+                within=("India", *within),
+                geometry=Geometry(coordinates=[75.0, 19.0]),
+            )
+            for within in parts
+        ),
+    )
+
+
+_ASHTI = _ambiguous("Ashti", ("Maharashtra", "Wardha"), ("Maharashtra", "Beed"))
+_BILASPUR = _ambiguous("Bilaspur", ("Himachal Pradesh",), ("Chhattisgarh",))
+_TWO_PLACE_LISTS = (
+    "Which Bilaspur?\n1. Bilaspur, Himachal Pradesh\n2. Bilaspur, Chhattisgarh"
+    "\n\n"
+    "Which Ashti?\n1. Ashti, Wardha\n2. Ashti, Beed"
+)
+
+
+def test_each_place_list_is_its_own_paragraph() -> None:
+    """A blank line ends one numbered list before the next question, or a
+    Markdown reader runs them into one list numbered 1 to 4."""
+
+    asks = (_ask(place=_BILASPUR), _ask(place=_ASHTI))
+
+    answer = answer_for_unplaced_asks(asks, _TEXT)
+
+    assert answer is not None
+    assert answer.content[0].text == _TWO_PLACE_LISTS
+
+
+def test_the_closing_question_keeps_each_place_list_apart() -> None:
+    asks = (_ask(place=_PUNE), _ask(place=_BILASPUR), _ask(place=_ASHTI))
+
+    assert question_for_unplaced_asks(asks, _TEXT) == _TWO_PLACE_LISTS
+
+
 def test_answer_for_unplaced_asks_shows_the_generic_question_once() -> None:
     """Every plain-`None` ask shares the identical question — asked once, not
     once per ask that needs it."""

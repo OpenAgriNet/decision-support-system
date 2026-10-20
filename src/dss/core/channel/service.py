@@ -153,18 +153,18 @@ def question_for_unplaced_asks(
     `place_optional` means the same as in `answer_for_unplaced_asks`.
     """
 
-    lines: list[str] = []
+    paragraphs: list[str] = []
     reported: list[AmbiguousPlace] = []
     needs_place = False
     for index, ask in enumerate(asks):
         if isinstance(ask.place, AmbiguousPlace) and ask.place not in reported:
             reported.append(ask.place)
-            lines.extend(_ambiguous_lines(ask.place, text))
+            paragraphs.append("\n".join(_ambiguous_lines(ask.place, text)))
         elif ask.place is None and index not in place_optional:
             needs_place = True
     if needs_place:
-        lines.append(text.needs_place)
-    return "\n".join(lines) or None
+        paragraphs.append(text.needs_place)
+    return _join_paragraphs(paragraphs) or None
 
 
 def answer_for_unplaced_asks(
@@ -192,7 +192,7 @@ def answer_for_unplaced_asks(
     ):
         return None
 
-    lines: list[str] = []
+    paragraphs: list[str] = []
     needs_place = False
     # A list, not a set: a place's geometry holds a list, so it cannot hash.
     reported: list[AmbiguousPlace | UnresolvedPlace] = []
@@ -203,19 +203,24 @@ def answer_for_unplaced_asks(
                 continue
             reported.append(ask.place)
         if isinstance(ask.place, AmbiguousPlace):
-            lines.extend(_ambiguous_lines(ask.place, text))
+            paragraphs.append("\n".join(_ambiguous_lines(ask.place, text)))
         elif isinstance(ask.place, UnresolvedPlace) and ask.place.region:
-            lines.append(text.region_place.format(name=ask.place.region))
+            paragraphs.append(text.region_place.format(name=ask.place.region))
         elif isinstance(ask.place, UnresolvedPlace):
-            lines.append(_not_found_line(ask.place.unresolved_name, text))
+            paragraphs.append(_not_found_line(ask.place.unresolved_name, text))
         else:
             needs_place = True
 
     if needs_place:
-        lines.append(text.needs_place)
-    if not lines:
+        paragraphs.append(text.needs_place)
+    if not paragraphs:
         return None
-    return ComposedAnswer(content=(TextBlock(text="\n".join(lines)),))
+    return ComposedAnswer(content=(TextBlock(text=_join_paragraphs(paragraphs)),))
+
+
+def _join_paragraphs(paragraphs: Sequence[str]) -> str:
+    # A blank line ends a numbered list, so Markdown starts the next at 1.
+    return "\n\n".join(paragraphs)
 
 
 def _to_wire_source(source: EvidenceSource) -> Source:
