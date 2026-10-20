@@ -99,7 +99,11 @@ from dss.orchestration.discovery import DiscoverProviders
 from dss.orchestration.events import CoreEvent
 from dss.orchestration.plan import Plan
 from dss.orchestration.redaction import RedactTexts
-from dss.orchestration.stage_content import asks_text, evidence_text, sources_text
+from dss.orchestration.stage_content import (
+    asks_text,
+    cited_sources_text,
+    evidence_text,
+)
 from dss.orchestration.translation import translate_in, translate_out
 from dss.orchestration.turn import run_turn
 from dss.ports.area_lookup import AreaLookup
@@ -420,7 +424,8 @@ class Orchestrator:
                 yield answer_stream.add_piece(numbers.feed(f"\n\n{question}"))
 
             set_current_span_content(
-                input=sources_text(evidence), output=numbers.composed
+                input=cited_sources_text(evidence, numbers.cited),
+                output=numbers.composed,
             )
 
         answer = answer_from_evidence(numbers.composed, evidence)
