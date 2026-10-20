@@ -116,17 +116,21 @@ def _group_lines(
     return _candidate_lines(candidates)
 
 
-def _ambiguous_lines(place: AmbiguousPlace, text: ClarificationText) -> list[str]:
+def _ambiguous_paragraph(place: AmbiguousPlace, text: ClarificationText) -> str:
+    """The "which one?" question, then its options, one per line."""
+
     name = place.unresolved_name
     if len(place.candidates) > text.max_choices:
-        return [
+        lines = [
             text.grouped_place_header.format(name=name),
             *_group_lines(name, place.candidates, text),
         ]
-    return [
-        text.ambiguous_place_header.format(name=name),
-        *_candidate_lines(place.candidates),
-    ]
+    else:
+        lines = [
+            text.ambiguous_place_header.format(name=name),
+            *_candidate_lines(place.candidates),
+        ]
+    return "\n".join(lines)
 
 
 def _not_found_line(name: str, text: ClarificationText) -> str:
@@ -159,7 +163,7 @@ def question_for_unplaced_asks(
     for index, ask in enumerate(asks):
         if isinstance(ask.place, AmbiguousPlace) and ask.place not in reported:
             reported.append(ask.place)
-            paragraphs.append("\n".join(_ambiguous_lines(ask.place, text)))
+            paragraphs.append(_ambiguous_paragraph(ask.place, text))
         elif ask.place is None and index not in place_optional:
             needs_place = True
     if needs_place:
@@ -203,7 +207,7 @@ def answer_for_unplaced_asks(
                 continue
             reported.append(ask.place)
         if isinstance(ask.place, AmbiguousPlace):
-            paragraphs.append("\n".join(_ambiguous_lines(ask.place, text)))
+            paragraphs.append(_ambiguous_paragraph(ask.place, text))
         elif isinstance(ask.place, UnresolvedPlace) and ask.place.region:
             paragraphs.append(text.region_place.format(name=ask.place.region))
         elif isinstance(ask.place, UnresolvedPlace):
