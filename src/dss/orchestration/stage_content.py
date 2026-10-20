@@ -7,7 +7,7 @@ the model calls underneath. Writing them onto a span is
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 from dss.core.intent.models import (
     AmbiguousPlace,
@@ -76,6 +76,19 @@ def sources_text(evidence: Evidence) -> str:
     if not evidence.sources:
         return "no sources"
     return "\n".join(f"[{s.id}] {s.name}" for s in evidence.sources)
+
+
+def cited_sources_text(evidence: Evidence, cited: Mapping[str, str]) -> str:
+    """Each source with the number the farmer read it under."""
+
+    if not evidence.sources:
+        return "no sources"
+    return "\n".join(
+        f"[{s.id}] {s.name} → [{cited[s.id]}]"
+        if s.id in cited
+        else f"[{s.id}] {s.name} → not cited"
+        for s in evidence.sources
+    )
 
 
 def evidence_text(evidence: Evidence) -> str:
