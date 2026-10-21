@@ -4,15 +4,13 @@
 snake_case (`CONVENTIONS.md`). Aliases bridge the two here and only here, so
 `mapping.py` and everything inward never sees a camelCase name.
 
-`extra="forbid"` throughout: the contract sets `additionalProperties: false`, and
-a typo in a caller's payload must fail loudly rather than be silently dropped.
+The two bases differ deliberately:
 
-The two bases differ on one setting, deliberately:
-
-- `_WireIn` sets `populate_by_name=False`, so **only** camelCase is accepted. A
-  snake_case key is an unknown field, which is what the contract says it is.
-- `_WireOut` sets `populate_by_name=True`, because `mapping.py` constructs these
-  by field name. They are serialized with `by_alias=True`.
+- `_WireIn` ignores unknown fields, so a caller can add one before the DSS knows
+  it. It sets `populate_by_name=False`, so **only** camelCase is accepted; a
+  snake_case key is an unknown field and is dropped.
+- `_WireOut`: response models we build ourselves, so it stays strict. It is
+  built with snake_case names and written out as camelCase.
 """
 
 from __future__ import annotations
@@ -34,7 +32,7 @@ class _WireIn(BaseModel):
     """Inbound. camelCase only."""
 
     model_config = ConfigDict(
-        alias_generator=to_camel, populate_by_name=False, extra="forbid"
+        alias_generator=to_camel, populate_by_name=False, extra="ignore"
     )
 
 
@@ -47,8 +45,7 @@ class _WireOut(BaseModel):
 
 
 class Context(_WireIn):
-    """`RequestContext` in the contract. `additionalProperties: false`, so a
-    field this does not name is rejected outright."""
+    """`RequestContext` in the contract."""
 
     id: Literal["api.dss.turn"]
     timestamp: datetime
@@ -56,6 +53,7 @@ class Context(_WireIn):
     transaction_id: str  # required; echoed back as `traceId`
     version: str | None = None
     message_id: str | None = None
+    sender_id: str | None = None
 
 
 class Identity(_WireIn):

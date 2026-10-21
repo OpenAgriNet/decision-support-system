@@ -485,7 +485,10 @@ async def test_a_gujarati_turn_goes_in_and_out_through_the_stub(
     events = [
         event
         async for event in runner.run(
-            turn, TurnContext(trace_id="t1", message_id="m1", session_id="s1")
+            turn,
+            TurnContext(
+                trace_id="t1", message_id="m1", session_id="s1", sender_id="c1"
+            ),
         )
     ]
 

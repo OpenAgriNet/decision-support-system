@@ -114,7 +114,9 @@ def _geometry(wire: schema.Geometry | None) -> Geometry | None:
     return Geometry(coordinates=list(wire.coordinates))
 
 
-def to_turn_context(body: schema.TurnRequest, *, message_id: str) -> TurnContext:
+def to_turn_context(
+    body: schema.TurnRequest, *, message_id: str, network_sender_id: str
+) -> TurnContext:
     """Assemble the ids a response is filed under.
 
     The trace id **is** the caller's `transactionId` — the contract says
@@ -129,7 +131,12 @@ def to_turn_context(body: schema.TurnRequest, *, message_id: str) -> TurnContext
         trace_id=body.context.transaction_id or str(uuid4()),
         message_id=body.context.message_id or message_id,
         session_id=body.context.session_id,
+        sender_id=_caller_or_host(body.context.sender_id, network_sender_id),
     )
+
+
+def _caller_or_host(sender_id: str | None, network_sender_id: str) -> str:
+    return sender_id if sender_id and sender_id.strip() else network_sender_id
 
 
 UNAVAILABLE_MESSAGE = "A service this turn needed could not be reached."
