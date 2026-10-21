@@ -48,7 +48,7 @@ from dss.orchestration.orchestrator import Components, Orchestrator
 from dss.orchestration.plan import Plan
 from dss.orchestration.redaction import RedactTexts, pass_through
 from dss.ports.area_lookup import AreaMatch
-from tests.support.evidence import build_evidence
+from tests.support.evidence import ANY_ASK, build_evidence
 from tests.support.fakes import (
     FakeAreaLookup,
     FakeLocalizer,
@@ -132,12 +132,16 @@ def _served_discovery() -> DiscoveryResult:
 
 
 def _evidence(
-    *, results: tuple[Result, ...], failures: tuple[Failure, ...] = ()
+    *,
+    results: tuple[Result, ...],
+    failures: tuple[Failure, ...] = (),
+    ask_count: int = 1,
 ) -> Evidence:
     return build_evidence(
         sources=(Source(id="1", name="Agmarknet", kind=SourceKind.PROVIDER, url=None),),
         results=results,
         failures=failures,
+        asks=(ANY_ASK,) * ask_count,
     )
 
 
@@ -461,6 +465,7 @@ async def test_mixed_turn_answers_then_asks_place() -> None:
     plan = _FakePlan(
         _evidence(
             results=(Result(ask_index=0, source_id="1", data={"sow": "October"}),),
+            ask_count=2,
         )
     )
     orch, _ = _build(
@@ -510,6 +515,7 @@ async def test_some_asks_unserved_is_partial() -> None:
     plan = _FakePlan(
         _evidence(
             results=(Result(ask_index=0, source_id="1", data={"modal": 2275}),),
+            ask_count=2,
         )
     )
     compose = _FakeCompose("Wheat is 2,275 Rs [1]. I could not find the cotton price.")
@@ -537,6 +543,7 @@ async def test_one_place_not_found_still_answers_the_other() -> None:
     plan = _FakePlan(
         _evidence(
             results=(Result(ask_index=0, source_id="1", data={"rain": "none"}),),
+            ask_count=2,
         )
     )
     compose = _FakeCompose("No rain in Pune [1]. I could not find Xyzzy.")
@@ -577,6 +584,7 @@ async def test_an_ambiguous_place_is_asked_after_the_answer_for_the_other() -> N
     plan = _FakePlan(
         _evidence(
             results=(Result(ask_index=0, source_id="1", data={"rain": "none"}),),
+            ask_count=2,
         )
     )
     orch, _ = _build(
@@ -700,6 +708,7 @@ async def test_a_place_failure_alone_is_not_an_outage() -> None:
                     retryable=False,
                 ),
             ),
+            ask_count=2,
         )
     )
     compose = _FakeCompose("No weather for Pune today. I could not find Xyzzy.")
