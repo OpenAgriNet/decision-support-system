@@ -15,10 +15,17 @@ from dss.core.intent.models import (
     UnresolvedPlace,
 )
 from dss.core.planner.evidence import assemble_evidence, place_failures
-from dss.core.planner.models import Failure, SourceKind
+from dss.core.planner.models import Evidence, Failure, Result, SourceKind
 from dss.core.provider_discovery.models import DiscoveredAnswer
 from dss.core.shared.models import Geometry
 from dss.ports.area_lookup import AreaMatch
+
+
+def _results(evidence: Evidence) -> list[Result]:
+    """Every result, in ask order — first-seen order too, for these tests."""
+
+    return [result for entry in evidence.ask_evidences for result in entry.results]
+
 
 # One answer per capability this change touches. `attributes` holds a
 # resource's `resourceAttributes` verbatim (see the adapter, which reads
@@ -149,8 +156,7 @@ def test_one_answer_becomes_one_source_and_one_result(
     assert source.kind is SourceKind.PROVIDER
     assert source.url == answer.source_url
 
-    assert len(evidence.results) == 1
-    result = evidence.results[0]
+    [result] = _results(evidence)
     assert result.ask_index == 0
     assert result.source_id == "1"
     assert result.data == answer.attributes
@@ -182,9 +188,8 @@ def test_one_provider_answering_two_asks_is_one_source() -> None:
     )
 
     assert [source.id for source in evidence.sources] == ["1"]
-    assert [result.source_id for result in evidence.results] == ["1", "1"]
-    assert [result.ask_index for result in evidence.results] == [0, 1]
-    assert evidence.served == (0, 1)
+    assert [result.source_id for result in _results(evidence)] == ["1", "1"]
+    assert [result.ask_index for result in _results(evidence)] == [0, 1]
 
 
 def test_two_providers_are_numbered_in_first_seen_order() -> None:
@@ -200,7 +205,7 @@ def test_two_providers_are_numbered_in_first_seen_order() -> None:
         ("1", "Agmarknet"),  # no source block — falls back to the provider
         ("2", "Agriculture Knowledge Provider"),
     ]
-    assert [result.source_id for result in evidence.results] == ["1", "2"]
+    assert [result.source_id for result in _results(evidence)] == ["1", "2"]
 
 
 def test_no_answers_assembles_empty_evidence() -> None:
@@ -210,8 +215,7 @@ def test_no_answers_assembles_empty_evidence() -> None:
     evidence = assemble_evidence([], intent=_intent(PRICE_ASK))
 
     assert evidence.sources == ()
-    assert evidence.results == ()
-    assert evidence.served == ()
+    assert evidence.has_any_result is False
 
 
 def test_a_direct_answer_reaches_the_evidence() -> None:
@@ -226,8 +230,8 @@ def test_a_direct_answer_reaches_the_evidence() -> None:
     )
 
     assert [source.name for source in evidence.sources] == ["Agmarknet"]
-    assert evidence.results[0].data == MANDI_PRICE.attributes
-    assert evidence.served == (0,)
+    [result] = _results(evidence)
+    assert result.data == MANDI_PRICE.attributes
 
 
 def test_every_ask_gets_its_own_evidence_in_ask_order() -> None:
@@ -277,8 +281,7 @@ def test_a_direct_answer_and_a_selected_one_share_a_source() -> None:
     )
 
     assert [source.id for source in evidence.sources] == ["1"]
-    assert sorted(result.ask_index for result in evidence.results) == [0, 1]
-    assert sorted(evidence.served) == [0, 1]
+    assert [result.ask_index for result in _results(evidence)] == [0, 1]
 
 
 def test_failures_are_carried_onto_the_evidence() -> None:
@@ -295,7 +298,7 @@ def test_failures_are_carried_onto_the_evidence() -> None:
 
     evidence = assemble_evidence([], failures=[failure], intent=_intent(PRICE_ASK))
 
-    assert evidence.failed == (failure,)
+    assert evidence.ask_evidences[0].failures == (failure,)
 
 
 def test_the_originator_outranks_the_provider_that_served_it() -> None:
@@ -350,7 +353,7 @@ def test_one_provider_relaying_two_originators_is_two_sources() -> None:
         ("1", "IMD Mausamgram NWP"),
         ("2", "Skymet"),
     ]
-    assert [result.source_id for result in evidence.results] == ["1", "2"]
+    assert [result.source_id for result in _results(evidence)] == ["1", "2"]
 
 
 def test_two_providers_relaying_one_originator_stay_two_sources() -> None:
@@ -396,7 +399,7 @@ def test_the_same_originator_twice_from_one_provider_is_one_source() -> None:
     )
 
     assert [s.id for s in evidence.sources] == ["1"]
-    assert [result.source_id for result in evidence.results] == ["1", "1"]
+    assert [result.source_id for result in _results(evidence)] == ["1", "1"]
 
 
 _PUNE_PLACE = ResolvedPlace(

@@ -220,8 +220,9 @@ async def test_the_asks_resolved_place_reaches_the_model() -> None:
 
     llm = _FakeLLM()
 
+    [paddy] = EVIDENCE.ask_evidences
     evidence = build_evidence(
-        sources=EVIDENCE.sources, results=EVIDENCE.results, asks=(_ask(PUNE),)
+        sources=EVIDENCE.sources, results=paddy.results, asks=(_ask(PUNE),)
     )
 
     await _collect(llm, evidence)

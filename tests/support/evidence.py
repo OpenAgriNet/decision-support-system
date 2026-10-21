@@ -30,9 +30,6 @@ def build_evidence(
         raise ValueError(f"parts name {named} asks, but only {len(asks)} given")
     return Evidence(
         sources=tuple(sources),
-        results=tuple(results),
-        served=tuple(dict.fromkeys(result.ask_index for result in results)),
-        failed=tuple(failures),
         ask_evidences=group_by_ask(asks, results=results, failures=failures),
     )
 

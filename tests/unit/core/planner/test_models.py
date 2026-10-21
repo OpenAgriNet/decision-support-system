@@ -153,9 +153,7 @@ _PROVIDER_FAILED = AskEvidence(ask=_ASK, results=(), failures=(_PROVIDER_FAILURE
 
 
 def _evidence(*ask_evidences: AskEvidence) -> Evidence:
-    return Evidence(
-        sources=(), results=(), served=(), failed=(), ask_evidences=ask_evidences
-    )
+    return Evidence(sources=(), ask_evidences=ask_evidences)
 
 
 def test_an_ask_no_result_served_is_reported() -> None:
@@ -189,31 +187,19 @@ def test_a_turn_has_a_provider_failure_only_when_a_provider_was_called() -> None
     assert _evidence(_PLACE_FAILED, _PROVIDER_FAILED).has_provider_failure is True
 
 
-def test_evidence_assembles_sources_results_and_gaps() -> None:
+def test_evidence_carries_sources_and_each_asks_evidence() -> None:
     source = Source(id="1", name="Agmarknet", kind=SourceKind.PROVIDER, url=None)
-    result = Result(ask_index=0, source_id="1", data={"modal_price": "2100"})
-    failure = Failure(
-        ask_index=1, capability="KnowledgeAdvisory", reason="timeout", retryable=True
-    )
 
-    evidence = Evidence(
-        sources=(source,),
-        results=(result,),
-        served=(0,),
-        failed=(failure,),
-        ask_evidences=(),
-    )
+    evidence = Evidence(sources=(source,), ask_evidences=(_SERVED, _UNSERVED))
 
     assert evidence.sources == (source,)
-    assert evidence.results == (result,)
-    assert evidence.served == (0,)
-    assert evidence.failed == (failure,)
+    assert evidence.ask_evidences == (_SERVED, _UNSERVED)
 
 
 def test_evidence_is_frozen() -> None:
-    evidence = Evidence(sources=(), results=(), served=(), failed=(), ask_evidences=())
-    with pytest.raises(ValidationError):
-        evidence.served = (0,)
+    evidence = _evidence()
+    with pytest.raises(FrozenInstanceError):
+        evidence.sources = ()  # type: ignore[misc]
 
 
 def test_identity_carries_name_persona_boundaries() -> None:

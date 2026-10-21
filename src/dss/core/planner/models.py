@@ -83,9 +83,9 @@ class Result(BaseModel):
 
     The design doc's ``Result.step_id`` names a ``Plan`` step; there is no
     ``Plan`` here. ``ask_index`` names what a result actually answers instead
-    — the position into ``Intent.asks`` — so sufficiency can compare
-    ``Evidence.served`` against it directly. No ``url`` here: it lives on the
-    ``Source`` this result's ``source_id`` points to.
+    — the position into ``Intent.asks`` — so ``assemble_evidence`` can file
+    it under its ask. No ``url`` here: it lives on the ``Source`` this
+    result's ``source_id`` points to.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -147,17 +147,16 @@ class AskEvidence:
         return any(failure.is_provider_failure for failure in self.failures)
 
 
-class Evidence(BaseModel):
-    """What the loop gathered for a turn — every source, every result, every
-    gap. ``served`` indexes into ``Intent.asks`` (design doc §8, open item 14).
+@dataclass(frozen=True)
+class Evidence:
+    """What the loop gathered for a turn: every source it cites, and per ask,
+    every result and every gap (design doc §8, open item 14).
+
+    ``sources`` spans the turn, numbered in first-seen order, because one
+    source can answer several asks and a claim cites it by that one number.
     """
 
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
     sources: tuple[Source, ...]
-    results: tuple[Result, ...]
-    served: tuple[int, ...]
-    failed: tuple[Failure, ...]
     # One per ``Intent.asks``, in ask order.
     ask_evidences: tuple[AskEvidence, ...]
 

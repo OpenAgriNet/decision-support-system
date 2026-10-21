@@ -161,8 +161,8 @@ async def test_plan_returns_evidence_from_what_the_tools_returned() -> None:
 
     assert len(invocation.calls) == 1
     assert [source.name for source in evidence.sources] == ["Agmarknet"]
-    assert evidence.results[0].data == {"prices": {"modal": 2200}}
-    assert evidence.served == (0,)
+    [served] = evidence.ask_evidences
+    assert served.results[0].data == {"prices": {"modal": 2200}}
 
 
 async def test_the_prompt_carries_the_identity_and_the_marked_history() -> None:
@@ -269,8 +269,8 @@ async def test_a_direct_answer_reaches_the_evidence_through_plan() -> None:
 
     assert invocation.calls == []  # no provider call was needed
     assert [source.name for source in evidence.sources] == ["Krishi Knowledge Base"]
-    assert evidence.results[0].data == {"soilType": "sandy loam"}
-    assert evidence.served == (0,)
+    [served] = evidence.ask_evidences
+    assert served.results[0].data == {"soilType": "sandy loam"}
 
 
 async def test_an_ask_whose_place_failed_is_a_failure_even_if_never_called() -> None:
@@ -301,7 +301,11 @@ async def test_an_ask_whose_place_failed_is_a_failure_even_if_never_called() -> 
         verdict=_cleared_verdict(),
     )
 
-    assert [(f.ask_index, f.capability) for f in evidence.failed] == [(1, None)]
+    assert [
+        (failure.ask_index, failure.capability)
+        for entry in evidence.ask_evidences
+        for failure in entry.failures
+    ] == [(1, None)]
 
 
 async def test_the_planner_binds_its_own_model_settings() -> None:
@@ -376,9 +380,8 @@ async def test_a_rejected_turn_yields_empty_evidence() -> None:
     )
 
     assert invocation.calls == []
-    assert evidence.results == ()
+    assert evidence.has_any_result is False
     assert evidence.sources == ()
-    assert evidence.served == ()
 
 
 async def test_a_planner_run_that_fails_still_records_what_it_spent() -> None:

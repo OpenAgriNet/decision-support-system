@@ -125,12 +125,8 @@ def assemble_evidence(
             )
         )
 
-    served = tuple(dict.fromkeys(ask_index for ask_index, _ in [*direct, *raw_answers]))
     return Evidence(
         sources=tuple(sources),
-        results=tuple(results),
-        served=served,
-        failed=tuple(failures),
         ask_evidences=group_by_ask(intent.asks, results=results, failures=failures),
     )
 
