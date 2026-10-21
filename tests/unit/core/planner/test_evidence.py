@@ -203,23 +203,15 @@ def test_two_providers_are_numbered_in_first_seen_order() -> None:
     assert [result.source_id for result in evidence.results] == ["1", "2"]
 
 
-def test_no_answers_is_not_sufficient() -> None:
+def test_no_answers_assembles_empty_evidence() -> None:
     """The loop ended without a single result, so there is nothing to answer
-    from. ``sufficient`` is the composer's cue to say "I don't know" rather
-    than invent."""
+    from."""
 
     evidence = assemble_evidence([], intent=_intent(PRICE_ASK))
 
     assert evidence.sources == ()
     assert evidence.results == ()
     assert evidence.served == ()
-    assert evidence.sufficient is False
-
-
-def test_any_answer_is_sufficient() -> None:
-    evidence = assemble_evidence([(0, MANDI_PRICE)], intent=_intent(PRICE_ASK))
-
-    assert evidence.sufficient is True
 
 
 def test_a_direct_answer_reaches_the_evidence() -> None:
@@ -236,7 +228,6 @@ def test_a_direct_answer_reaches_the_evidence() -> None:
     assert [source.name for source in evidence.sources] == ["Agmarknet"]
     assert evidence.results[0].data == MANDI_PRICE.attributes
     assert evidence.served == (0,)
-    assert evidence.sufficient is True
 
 
 def test_a_direct_answer_and_a_selected_one_share_a_source() -> None:
@@ -269,7 +260,6 @@ def test_failures_are_carried_onto_the_evidence() -> None:
     evidence = assemble_evidence([], failures=[(0, failure)], intent=_intent(PRICE_ASK))
 
     assert evidence.failed == (failure,)
-    assert evidence.sufficient is False
 
 
 def test_the_originator_outranks_the_provider_that_served_it() -> None:

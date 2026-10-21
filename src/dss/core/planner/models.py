@@ -126,8 +126,8 @@ class Identity(BaseModel):
 
 class Evidence(BaseModel):
     """What the loop gathered for a turn — every source, every result, every
-    gap. ``served`` indexes into ``Intent.asks``; ``sufficiency.py`` sets
-    ``sufficient`` by comparing the two (design doc §8, open item 14).
+    gap. ``served`` indexes into ``Intent.asks``; ``sufficiency.py`` compares
+    the two (design doc §8, open item 14).
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -136,4 +136,3 @@ class Evidence(BaseModel):
     results: tuple[Result, ...]
     served: tuple[int, ...]
     failed: tuple[Failure, ...]
-    sufficient: bool

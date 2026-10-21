@@ -129,5 +129,4 @@ def assemble_evidence(
         results=tuple(results),
         served=served,
         failed=tuple(failure for _, failure in failures),
-        sufficient=bool(results),
     )

@@ -105,20 +105,18 @@ def test_evidence_assembles_sources_results_and_gaps() -> None:
         results=(result,),
         served=(0,),
         failed=(failure,),
-        sufficient=True,
     )
 
     assert evidence.sources == (source,)
     assert evidence.results == (result,)
     assert evidence.served == (0,)
     assert evidence.failed == (failure,)
-    assert evidence.sufficient is True
 
 
 def test_evidence_is_frozen() -> None:
-    evidence = Evidence(sources=(), results=(), served=(), failed=(), sufficient=False)
+    evidence = Evidence(sources=(), results=(), served=(), failed=())
     with pytest.raises(ValidationError):
-        evidence.sufficient = True
+        evidence.served = (0,)
 
 
 def test_identity_carries_name_persona_boundaries() -> None:

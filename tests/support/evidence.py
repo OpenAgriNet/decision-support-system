@@ -18,5 +18,4 @@ def build_evidence(
         results=tuple(results),
         served=tuple(dict.fromkeys(result.ask_index for result in results)),
         failed=tuple(failures),
-        sufficient=bool(results),
     )
