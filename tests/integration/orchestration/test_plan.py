@@ -163,7 +163,6 @@ async def test_plan_returns_evidence_from_what_the_tools_returned() -> None:
     assert [source.name for source in evidence.sources] == ["Agmarknet"]
     assert evidence.results[0].data == {"prices": {"modal": 2200}}
     assert evidence.served == (0,)
-    assert evidence.sufficient is True
 
 
 async def test_the_prompt_carries_the_identity_and_the_marked_history() -> None:
@@ -272,7 +271,6 @@ async def test_a_direct_answer_reaches_the_evidence_through_plan() -> None:
     assert [source.name for source in evidence.sources] == ["Krishi Knowledge Base"]
     assert evidence.results[0].data == {"soilType": "sandy loam"}
     assert evidence.served == (0,)
-    assert evidence.sufficient is True
 
 
 async def test_an_ask_whose_place_failed_is_a_failure_even_if_never_called() -> None:
@@ -345,7 +343,7 @@ async def test_the_planner_binds_its_own_model_settings() -> None:
     assert settings[0]["timeout"] == 30.0
 
 
-async def test_a_rejected_turn_yields_empty_insufficient_evidence() -> None:
+async def test_a_rejected_turn_yields_empty_evidence() -> None:
     """The barrier stops ``select`` inside the tool, so the loop still runs
     and ``plan`` still returns. What it must not return is evidence: no
     provider was called, so there is nothing to answer from."""
@@ -381,7 +379,6 @@ async def test_a_rejected_turn_yields_empty_insufficient_evidence() -> None:
     assert evidence.results == ()
     assert evidence.sources == ()
     assert evidence.served == ()
-    assert evidence.sufficient is False
 
 
 async def test_a_planner_run_that_fails_still_records_what_it_spent() -> None:

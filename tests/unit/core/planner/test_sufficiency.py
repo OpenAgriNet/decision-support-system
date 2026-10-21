@@ -1,8 +1,7 @@
 """Tier 1 — which asks the turn never answered.
 
-Separate from ``Evidence.sufficient``, which only says whether anything came
-back at all. ``failed`` catches calls that errored; this catches asks the
-model never attempted, which look identical on a bare Evidence.
+``failed`` catches calls that errored; this catches asks the model never
+attempted, which look identical on a bare Evidence.
 """
 
 from __future__ import annotations
@@ -34,7 +33,6 @@ def _evidence(*served: int) -> Evidence:
         ),
         served=served,
         failed=(),
-        sufficient=bool(served),
     )
 
 
