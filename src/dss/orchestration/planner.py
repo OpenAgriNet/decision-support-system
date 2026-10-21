@@ -115,7 +115,7 @@ async def _select(
     # No call without a place the pack needs: it would go out with no
     # location and could come back for somewhere else. An ask naming nowhere
     # is fine for a pack that indexes no location (an advisory), and the
-    # schema is what says which. `plan()` already recorded the failure.
+    # schema is what says which. `plan()` records the failure.
     # Not a ModelRetry: retrying cannot fix the place.
     if isinstance(ask.place, AmbiguousPlace | UnresolvedPlace) or (
         ask.place is None and schema.needs_place
