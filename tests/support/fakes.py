@@ -49,27 +49,27 @@ class FakeProviderPreferences:
 
     def __init__(
         self,
-        clients: dict[str, dict[str, list[str]]] | None = None,
+        senders: dict[str, dict[str, list[str]]] | None = None,
         *,
         default: dict[str, list[str]] | None = None,
     ) -> None:
         self._book = PreferenceBook(
             default=_ranked(default or {}),
-            clients={
+            senders={
                 client: _ranked(rankings)
-                for client, rankings in (clients or {}).items()
+                for client, rankings in (senders or {}).items()
             },
         )
         self.asked: list[str | None] = []
 
-    async def for_client(self, client_id: str | None):
-        self.asked.append(client_id)
-        return self._book.for_client(client_id)
+    async def for_sender(self, sender_id: str | None, *, transaction_id: str = "txn"):
+        self.asked.append(sender_id)
+        return self._book.for_sender(sender_id)
 
 
 def _ranked(rankings: dict[str, list[str]]) -> dict[str, tuple[str, ...]]:
     """Topic names keyed the way the real loader keys them, so a fake cannot
-    answer a lookup the YAML adapter could not."""
+    answer a lookup the registry adapter could not."""
 
     return {topic_key(topic): tuple(providers) for topic, providers in rankings.items()}
 

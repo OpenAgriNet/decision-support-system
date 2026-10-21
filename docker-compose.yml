@@ -68,12 +68,14 @@ services:
       # Translation (#174). Off unless set. The gateway is always on here, so
       # the file's `model` must be a gateway name: mount a copy, see RUNNING.md.
       DSS_EDGE_TRANSLATION_CONFIG_PATH: ${DSS_EDGE_TRANSLATION_CONFIG_PATH:-}
-      # Which providers each client wants, per topic (ADR-0019). Unset, no
-      # ranking applies and every ask keeps whichever providers discovery
-      # found. The example file ships in the image; point this at it, or at a
-      # mounted file of your own, to turn ranking on. Named here so it reaches
-      # the container at all.
-      DSS_PROVIDER_PREFERENCES_PATH: ${DSS_PROVIDER_PREFERENCES_PATH:-}
+      # Which providers each sender wants, per topic (ADR-0019, ADR-0020).
+      # The rankings live in the network registry, never in the DSS: set the
+      # base URL and the DSS asks it on every turn for the request's senderId
+      # and for `default`. Unset, no ranking applies and every ask keeps
+      # whichever providers discovery found. Named here so they reach the
+      # container at all.
+      DSS_PROVIDER_PREFERENCES_BASE_URL: ${DSS_PROVIDER_PREFERENCES_BASE_URL:-}
+      DSS_PROVIDER_PREFERENCES_TIMEOUT_SECONDS: ${DSS_PROVIDER_PREFERENCES_TIMEOUT_SECONDS:-3}
       # Photon, by service name. Set it empty in .env to turn Photon off; the
       # DSS then never asks it. Countries default to those in the area file.
       DSS_PHOTON_BASE_URL: ${DSS_PHOTON_BASE_URL:-http://photon:2322}

@@ -3,7 +3,7 @@
 The wrapper in `orchestration/discovery.py` is the one place a ranking is
 applied (ADR-0019). Everything downstream — the no-match check, the planner's
 candidates, `describe_capability` — reads the ranked result and knows nothing
-about clients, so these tests pin that it really is ranked on the way out.
+about senders, so these tests pin that it really is ranked on the way out.
 
 Ordering itself is tier 1. These are about the wiring: that the turn's client
 is the one looked up, and that what was dropped is said out loud.
@@ -80,7 +80,7 @@ class _FakeDiscovery:
         )
 
 
-def _turn(client_id: str | None) -> UserTurn:
+def _turn(sender_id: str | None) -> UserTurn:
     return UserTurn(
         original_query="will it rain in nashik",
         enriched_query="will it rain in nashik",
@@ -89,7 +89,7 @@ def _turn(client_id: str | None) -> UserTurn:
         source_lang="en",
         target_lang="en",
         channel="web",
-        client_id=client_id,
+        sender_id=sender_id,
     )
 
 
@@ -188,7 +188,7 @@ async def test_what_the_ranking_dropped_is_logged(
         for record in caplog.records
         if "event=ranking_applied" in record.message
     )
-    assert "client_id=kisan-mitra-web" in line
+    assert "sender_id=kisan-mitra-web" in line
     assert "topic=Weather" in line
     assert "dropped=unvetted,mausamgram" in line
     assert "nashik" not in line.lower()
