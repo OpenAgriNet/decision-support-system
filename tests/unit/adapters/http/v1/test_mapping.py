@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-from pydantic import ValidationError
 
 from dss.adapters.http.v1 import mapping, schema
 from dss.core.shared.language import LanguageTag
@@ -140,5 +139,7 @@ def test_the_trace_id_comes_from_the_caller_span_not_the_body(a_body):
     body = a_body()
     body["context"]["traceId"] = "forged"
 
-    with pytest.raises(ValidationError):
-        schema.TurnRequest.model_validate(body)
+    validated = schema.TurnRequest.model_validate(body)
+    ctx = mapping.to_turn_context(validated, message_id="minted")
+
+    assert ctx.trace_id != "forged"

@@ -79,7 +79,8 @@ Every request has two top-level objects. `context` carries operational metadata 
     "transactionId": "9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44",
     "messageId": "7d41b9e0-52a6-4c18-8b73-1e9f0a4c6d22",
     "timestamp": "2026-08-26T06:12:04.918Z",
-    "sessionId": "conv_8f3a1c"
+    "sessionId": "conv_8f3a1c",
+    "senderId": "bap.example.org"
   },
   "message": {
     "userContext": [
@@ -125,6 +126,7 @@ Every request has two top-level objects. `context` carries operational metadata 
 Rules:
 
 - `context.id`, `context.timestamp`, `context.sessionId` and `context.transactionId` are required.
+- `context.senderId` is optional. It is the network participant id of the immediate caller. Missing or blank means the host network (`network_sender_id`).
 - `message.userContext` is an array of typed identity facts, following the same typed-variant pattern as `message.input`. It carries no phone, name, email, or JWT claims — only opaque, per-turn facts DSS is allowed to see. New facts (e.g. a Provider reference token) are added as new typed variants, not as untyped keys.
 - `message.input` contains the current user message and any earlier messages that the Experience chooses to supply.
 - `message.attributes` contains the language, channel, location, and non-personal domain facts DSS may use when processing the input.
@@ -134,7 +136,7 @@ Rules:
 - Location attributes contain only the minimum non-personal information needed for the turn.
 - The `Accept` header selects streaming. There is no streaming flag in the request.
 - The composer streams either way. `Accept` decides only whether its pieces are framed as `claim.delta` events or drained into one body.
-- Unknown request fields are rejected where the schema declares a closed object. Clients must ignore unknown optional response fields to remain compatible with later `/v1` releases.
+- Unknown request fields are ignored, not rejected. Clients must ignore unknown optional response fields to remain compatible with later `/v1` releases.
 
 ### 2.0 Types used in this request
 

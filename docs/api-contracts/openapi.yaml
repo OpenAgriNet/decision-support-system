@@ -149,7 +149,6 @@ components:
 
     TurnRequest:
       type: object
-      additionalProperties: false
       required: [context, message]
       properties:
         context:
@@ -159,7 +158,6 @@ components:
 
     RequestContext:
       type: object
-      additionalProperties: false
       required: [id, timestamp, sessionId, transactionId]
       description: Operational metadata for identity, correlation, and timestamps. Never model input.
       properties:
@@ -185,10 +183,15 @@ components:
         sessionId:
           type: string
           description: Conversation key. The Experience owns conversation storage.
+        senderId:
+          type: string
+          description: |
+            Network participant id of the immediate caller. Optional. Missing or
+            blank means the host network (`network_sender_id`).
+          example: bap.example.org
 
     RequestMessage:
       type: object
-      additionalProperties: false
       required: [input, attributes]
       properties:
         userContext:
@@ -218,7 +221,6 @@ components:
 
     IdentityFact:
       type: object
-      additionalProperties: false
       required: [type, userId]
       properties:
         type:
@@ -231,7 +233,6 @@ components:
 
     InputMessage:
       type: object
-      additionalProperties: false
       required: [role, content]
       properties:
         role:
@@ -256,7 +257,6 @@ components:
 
     InputText:
       type: object
-      additionalProperties: false
       required: [type, text]
       properties:
         type:
@@ -268,7 +268,6 @@ components:
 
     InputImage:
       type: object
-      additionalProperties: false
       required: [type, attachment]
       properties:
         type:
@@ -279,7 +278,6 @@ components:
 
     ImageAttachment:
       type: object
-      additionalProperties: false
       required: [url, mediaType, sha256]
       description: |
         A link to bytes in the deployment's own blob store. The bytes never pass
@@ -316,7 +314,6 @@ components:
 
     RequestAttributes:
       type: object
-      additionalProperties: false
       required: [sourceLanguage, targetLanguage, channel]
       description: Caller-supplied facts that qualify the input. Language, channel, location, and non-personal domain facts.
       properties:
@@ -332,7 +329,6 @@ components:
           $ref: '#/components/schemas/Location'
         response:
           type: object
-          additionalProperties: false
           properties:
             maxCharacters:
               type: integer
@@ -350,7 +346,6 @@ components:
 
     Location:
       type: object
-      additionalProperties: false
       description: Only the minimum non-personal information needed for the turn.
       properties:
         region:
@@ -366,7 +361,6 @@ components:
 
     GeoJsonPoint:
       type: object
-      additionalProperties: false
       required: [type, coordinates]
       description: RFC 7946 / WGS-84. Coordinates are `[longitude, latitude]` — GeoJSON order.
       properties:
