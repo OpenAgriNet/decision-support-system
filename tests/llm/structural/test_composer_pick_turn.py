@@ -23,7 +23,6 @@ from dss.config.prompt_service import build_prompt_service
 from dss.config.settings import Settings
 from dss.core.intent.models import (
     Ask,
-    Intent,
     InteractionType,
     PlaceSource,
     ResolvedPlace,
@@ -70,16 +69,13 @@ async def test_pick_reply_still_answers() -> None:
         geometry=Geometry(coordinates=[77.63, 31.45]),
         source=PlaceSource.NAMED,
     )
-    intent = Intent(
-        asks=(
-            Ask(
-                subject_categories=SubjectCategory.WEATHER,
-                interaction_type=InteractionType.OBSERVE,
-                place=rampur,
-            ),
-        )
+    ask = Ask(
+        subject_categories=SubjectCategory.WEATHER,
+        interaction_type=InteractionType.OBSERVE,
+        place=rampur,
     )
     evidence = build_evidence(
+        asks=(ask,),
         sources=(Source(id="1", name="IMD", kind=SourceKind.PROVIDER, url=None),),
         results=(
             Result(
@@ -109,7 +105,6 @@ async def test_pick_reply_still_answers() -> None:
 
     pieces = stream_response(
         evidence,
-        intent,
         turn=turn,
         identity=load_identity(),
         llm=_composer_llm(Settings()),

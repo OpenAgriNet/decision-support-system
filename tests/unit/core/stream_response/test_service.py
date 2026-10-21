@@ -14,7 +14,6 @@ import pytest
 
 from dss.core.intent.models import (
     Ask,
-    Intent,
     InteractionType,
     PlaceSource,
     ResolvedPlace,
@@ -74,8 +73,6 @@ def _ask(place: ResolvedPlace | None = None) -> Ask:
         place=place,
     )
 
-
-INTENT = Intent(asks=(_ask(),))
 
 PUNE = ResolvedPlace(
     name="Pune",
@@ -150,14 +147,11 @@ def _turn(query: str = "What is the price of paddy?") -> UserTurn:
     )
 
 
-async def _collect(
-    llm: _FakeLLM, evidence: Evidence = EVIDENCE, intent: Intent = INTENT
-) -> list[str]:
+async def _collect(llm: _FakeLLM, evidence: Evidence = EVIDENCE) -> list[str]:
     return [
         delta
         async for delta in stream_response(
             evidence,
-            intent,
             turn=_turn(),
             identity=IDENTITY,
             llm=llm,
@@ -276,7 +270,6 @@ async def test_a_failure_part_way_through_is_not_swallowed() -> None:
     with pytest.raises(RuntimeError, match="stream dropped"):
         async for delta in stream_response(
             EVIDENCE,
-            INTENT,
             turn=_turn(),
             identity=IDENTITY,
             llm=llm,
@@ -301,7 +294,6 @@ async def test_abandoning_the_stream_closes_the_model_call() -> None:
     llm = _FakeLLM()
     pieces = stream_response(
         EVIDENCE,
-        INTENT,
         turn=_turn(),
         identity=IDENTITY,
         llm=llm,

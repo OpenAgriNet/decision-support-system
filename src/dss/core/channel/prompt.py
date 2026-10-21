@@ -22,7 +22,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping, Sequence
 
-from dss.core.intent.models import Ask, Intent, ResolvedPlace
+from dss.core.intent.models import Ask, ResolvedPlace
 from dss.core.planner.markers import (
     CONVERSATION,
     QUESTION,
@@ -53,7 +53,7 @@ def system_prompt(
     )
 
 
-def user_prompt(evidence: Evidence, intent: Intent, *, turn: UserTurn) -> str:
+def user_prompt(evidence: Evidence, *, turn: UserTurn) -> str:
     """The question and the provider's values, wrapped as data.
 
     A provider's text is third-party and must never read as instructions, and

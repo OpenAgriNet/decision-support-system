@@ -11,7 +11,6 @@ from __future__ import annotations
 from dss.core.channel.prompt import render_evidence, system_prompt, user_prompt
 from dss.core.intent.models import (
     Ask,
-    Intent,
     InteractionType,
     PlaceSource,
     ResolvedPlace,
@@ -296,7 +295,7 @@ def test_composer_sees_last_three_messages() -> None:
     )
     evidence = build_evidence()
 
-    prompt = user_prompt(evidence, Intent(), turn=turn)
+    prompt = user_prompt(evidence, turn=turn)
 
     assert "<BEGIN CONVERSATION>" in prompt
     assert "Good to hear." in prompt
