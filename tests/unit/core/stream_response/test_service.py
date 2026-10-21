@@ -30,6 +30,7 @@ from dss.core.planner.models import (
 )
 from dss.core.shared.models import Geometry, UserTurn
 from dss.core.stream_response.service import stream_response
+from tests.support.evidence import build_evidence
 from tests.support.fakes import FakePromptProvider
 
 IDENTITY = Identity(
@@ -38,7 +39,7 @@ IDENTITY = Identity(
     boundaries="Never gives financial advice.",
 )
 
-EVIDENCE = Evidence(
+EVIDENCE = build_evidence(
     sources=(Source(id="1", name="Agmarknet", kind=SourceKind.PROVIDER, url=None),),
     results=(
         Result(
@@ -50,18 +51,12 @@ EVIDENCE = Evidence(
             },
         ),
     ),
-    served=(0,),
-    failed=(),
-    sufficient=True,
 )
 
-NOTHING_FOUND = Evidence(sources=(), results=(), served=(), failed=(), sufficient=False)
+NOTHING_FOUND = build_evidence()
 
-UNREACHABLE = Evidence(
-    sources=(),
-    results=(),
-    served=(),
-    failed=(
+UNREACHABLE = build_evidence(
+    failures=(
         Failure(
             ask_index=0,
             capability="openagrinet:MandiPrice",
@@ -69,7 +64,6 @@ UNREACHABLE = Evidence(
             retryable=True,
         ),
     ),
-    sufficient=False,
 )
 
 

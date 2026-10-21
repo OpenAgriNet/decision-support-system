@@ -134,7 +134,6 @@ async def test_the_appended_which_place_question_is_localized() -> None:
         plan=_FakePlan(
             _evidence(
                 results=(Result(ask_index=0, source_id="1", data={"rain": "none"}),),
-                served=(0,),
             )
         ),
         compose=_FakeCompose("No rain in Pune [1]."),
