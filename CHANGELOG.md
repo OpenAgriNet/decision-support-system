@@ -3,6 +3,22 @@
 ## [Unreleased]
 
 ### Added
+- Provider rankings live in the network registry, never in the DSS. Set
+  `DSS_PROVIDER_PREFERENCES_BASE_URL` and the DSS asks the registry on every
+  turn — two parallel searches, the request's `senderId` and the reserved id
+  `default` — so an operator's edit applies on the next turn with no restart,
+  and an unregistered sender still lands on the default ladder. A registry
+  that fails or times out costs the ranking, never the turn; unset, no
+  ranking applies anywhere. ADR-0020 (#191)
+
+### Changed
+- The calling application now names itself in the request body, as
+  `context.senderId`, and is called the sender throughout — the `X-Client-Id`
+  header is gone and a caller still sending it is served the default ranking.
+  Absent, blank, or unregistered senders are answered normally, never refused.
+  ADR-0020 (#191)
+
+### Added
 - A deployment can serve a language the models handle poorly through one
   they handle well. Languages listed in `configs/edge-translation.yaml` are
   translated in right after redaction, run through the normal pipeline in
@@ -15,14 +31,11 @@
   written before translation begins. New trace stages: `translation_in` and
   `translation_out`. (#174)
 - An adopter can now say which providers answer their farmers, per topic, in
-  order of preference. The caller names itself in an `X-Client-Id` header; a
-  mounted file (`DSS_PROVIDER_PREFERENCES_PATH`) ranks provider ids per client
-  and topic, and the first-choice provider answers whenever it returns
-  anything, falling to the next when it does not. A ranking is exclusive — a
-  provider it does not name is never called. A caller with no header, or one
-  nobody configured, is served a default ranking and answered normally.
-  Nothing ships mounted: unset, every ask keeps whichever providers discovery
-  found, exactly as before. ADR-0019 (#191)
+  order of preference: ranked provider ids per sender and topic, and the
+  first-choice provider answers whenever it returns anything, falling to the
+  next when it does not. A ranking is exclusive — a provider it does not name
+  is never called. A caller that names no sender, or one nobody registered,
+  is served the default ranking and answered normally. ADR-0019 (#191)
 - Every provider consulted for an ask is recorded — including the ones whose
   answers were not used — so a ranking's order can be judged later. Ids,
   counts and the one that answered go to the turn's log at INFO; response
