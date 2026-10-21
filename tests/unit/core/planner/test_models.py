@@ -146,6 +146,49 @@ def test_ask_evidence_is_frozen() -> None:
         ask_evidence.results = (_RESULT,)  # type: ignore[misc]
 
 
+_SERVED = AskEvidence(ask=_ASK, results=(_RESULT,), failures=())
+_UNSERVED = AskEvidence(ask=_ASK, results=(), failures=())
+_PLACE_FAILED = AskEvidence(ask=_ASK, results=(), failures=(_PLACE_FAILURE,))
+_PROVIDER_FAILED = AskEvidence(ask=_ASK, results=(), failures=(_PROVIDER_FAILURE,))
+
+
+def _evidence(*ask_evidences: AskEvidence) -> Evidence:
+    return Evidence(
+        sources=(), results=(), served=(), failed=(), ask_evidences=ask_evidences
+    )
+
+
+def test_an_ask_no_result_served_is_reported() -> None:
+    assert _evidence(_SERVED, _UNSERVED).unserved_asks == (_UNSERVED,)
+
+
+def test_every_ask_served_leaves_no_gap() -> None:
+    assert _evidence(_SERVED, _SERVED).unserved_asks == ()
+
+
+def test_nothing_served_reports_every_ask() -> None:
+    """Every ask is a gap — distinct from a turn with no asks, which has
+    nothing to report."""
+
+    evidence = _evidence(_UNSERVED, _PLACE_FAILED)
+
+    assert evidence.unserved_asks == (_UNSERVED, _PLACE_FAILED)
+    assert _evidence().unserved_asks == ()
+
+
+def test_any_served_ask_is_a_result() -> None:
+    assert _evidence(_UNSERVED, _SERVED).has_any_result is True
+    assert _evidence(_UNSERVED, _PROVIDER_FAILED).has_any_result is False
+
+
+def test_a_turn_has_a_provider_failure_only_when_a_provider_was_called() -> None:
+    """A place failure called no provider, so it is not an outage and must not
+    tell the farmer to retry."""
+
+    assert _evidence(_SERVED, _PLACE_FAILED).has_provider_failure is False
+    assert _evidence(_PLACE_FAILED, _PROVIDER_FAILED).has_provider_failure is True
+
+
 def test_evidence_assembles_sources_results_and_gaps() -> None:
     source = Source(id="1", name="Agmarknet", kind=SourceKind.PROVIDER, url=None)
     result = Result(ask_index=0, source_id="1", data={"modal_price": "2100"})

@@ -149,8 +149,7 @@ class AskEvidence:
 
 class Evidence(BaseModel):
     """What the loop gathered for a turn — every source, every result, every
-    gap. ``served`` indexes into ``Intent.asks``; ``sufficiency.py`` compares
-    the two (design doc §8, open item 14).
+    gap. ``served`` indexes into ``Intent.asks`` (design doc §8, open item 14).
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -161,3 +160,18 @@ class Evidence(BaseModel):
     failed: tuple[Failure, ...]
     # One per ``Intent.asks``, in ask order.
     ask_evidences: tuple[AskEvidence, ...]
+
+    @property
+    def unserved_asks(self) -> tuple[AskEvidence, ...]:
+        return tuple(entry for entry in self.ask_evidences if not entry.is_served)
+
+    @property
+    def has_any_result(self) -> bool:
+        return any(entry.is_served for entry in self.ask_evidences)
+
+    @property
+    def has_provider_failure(self) -> bool:
+        """A place failure called no provider, so it is not an outage and must
+        not tell the farmer to retry."""
+
+        return any(entry.has_provider_failure for entry in self.ask_evidences)
