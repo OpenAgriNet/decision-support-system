@@ -591,46 +591,41 @@ models (`DSS_PLANNER_MODEL`, `DSS_COMPOSER_MODEL`) — `DSS_STUB_LLM` only stubs
 intent and moderation, so a real provider-backed answer needs both the network
 settings and real model access.
 
-### Which provider answers (ADR-0019)
+### Which provider answers (ADR-0019, ADR-0020)
 
-Off unless `DSS_PROVIDER_PREFERENCES_PATH` names a file. Unset, every ask
-keeps whichever providers discovery found, in whatever order it found them —
-which is what every local run does. Set, and the DSS asks the providers that
-file ranks, in the order it ranks them.
+The rankings live in the network registry, never in the DSS. Off unless
+`DSS_PROVIDER_PREFERENCES_BASE_URL` points at it — unset, every ask keeps
+whichever providers discovery found, in whatever order it found them, which
+is what every local run does.
 
-A ready file to copy is `src/dss/config/examples/provider-preferences.yaml`.
-Its `default:` ids are the mock network's (`tools/mock_network`), and its two
-sample clients rank a state provider the mock does not have — which is what
-makes it worth running: it shows both halves of the rule on a local turn.
+Set, the DSS asks the registry on every turn, like `/discover` and `/select`:
+two parallel searches on `POST {base}/api/v1/SenderPreference/search`, one
+for the turn's `senderId` and one for the reserved id `default`, so a sender
+nobody registered still lands on the default ladder. A search that fails or
+times out (`DSS_PROVIDER_PREFERENCES_TIMEOUT_SECONDS`, default 3s) counts as
+"no row" and is logged — it costs the ranking, never the turn. An operator's
+edit to a registry row applies on the very next turn; nothing is cached.
 
 ```bash
-export DSS_PROVIDER_PREFERENCES_PATH=src/dss/config/examples/provider-preferences.yaml
+export DSS_PROVIDER_PREFERENCES_BASE_URL=https://<your-registry>
+# the caller names itself in the request context, not a header (ADR-0020)
 curl -s localhost:8077/v1/turns \
   -H 'content-type: application/json' \
-  -H 'X-Client-Id: kisan-mitra-web' \
-  -d "$BODY"   # any request body from the curl recipes above
+  -d "$(jq '.context.senderId = "kisan-mitra-web"' <<< "$BODY")"
 ```
 
-With `kisan-mitra-web` a weather question is answered: its ranking is
-`[maharashtra-vistaar, mausamgram-mock]`, the state provider is not on the
-network, and the ranking falls to the mock. Send the same question as
-`vistaar-whatsapp`, whose ranking is `[maharashtra-vistaar]` alone, and the
-turn comes back `no_match` — the mock weather provider is there, and that
-client ruled it out. That is an exclusive ranking doing exactly what it says;
-send no header at all and the `default:` list answers.
-
-Three things to know before editing the file:
+Three things to know before editing a sender's row:
 
 - **A ranking is exclusive.** A provider it does not name is never called, so
-  a file naming providers your deployment does not talk to drops every
-  candidate and reads as "nobody serves this". That is why nothing is mounted
-  by default.
-- **The fallback is per topic.** A client that ranks only `Weather` is served
-  the `default:` list for `Market`. No header, or a client nobody configured,
-  gets `default:` throughout — never a refusal.
-- **A typo refuses to boot.** Topics are checked against the subject
-  categories (`Crop`, `Livestock`, `Weather`, `Market`, `Scheme`,
-  `Facility`), and an empty or duplicated ranking is rejected.
+  a row naming providers your deployment does not talk to drops every
+  candidate and reads as "nobody serves this".
+- **The fallback is per topic.** A sender that ranks only `Weather` is served
+  the `default` row's list for `Market`. No `senderId`, or a sender nobody
+  registered, gets the `default` row throughout — never a refusal.
+- **A malformed row is skipped, not fatal.** The registry is edited while the
+  DSS runs, so a bad entry is dropped with a WARNING and a topic outside the
+  subject categories (`Crop`, `Livestock`, `Weather`, `Market`, `Scheme`,
+  `Facility`) is logged — it can never match an ask.
 
 To see what a ranking did to a turn, grep the server's log output for the
 turn's `transactionId`:
