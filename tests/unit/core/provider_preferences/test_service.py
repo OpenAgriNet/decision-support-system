@@ -61,13 +61,13 @@ def _discovered(
     )
 
 
-def _book(**clients: dict[str, tuple[str, ...]]) -> PreferenceBook:
-    return PreferenceBook(default={}, clients=clients)
+def _book(**senders: dict[str, tuple[str, ...]]) -> PreferenceBook:
+    return PreferenceBook(default={}, senders=senders)
 
 
 def test_the_first_choice_provider_is_consulted_first() -> None:
     discovery = _discovered((_capability("imd"), _capability("vistaar")))
-    preference = _book(app={"weather": ("vistaar", "imd")}).for_client("app")
+    preference = _book(app={"weather": ("vistaar", "imd")}).for_sender("app")
 
     result = prioritise(discovery, intent=_intent(), preference=preference)
 
@@ -79,7 +79,7 @@ def test_a_provider_the_ranking_does_not_name_is_dropped() -> None:
     provider nobody vetted answers nothing."""
 
     discovery = _discovered((_capability("imd"), _capability("unvetted")))
-    preference = _book(app={"weather": ("imd",)}).for_client("app")
+    preference = _book(app={"weather": ("imd",)}).for_sender("app")
 
     result = prioritise(discovery, intent=_intent(), preference=preference)
 
@@ -93,7 +93,7 @@ def test_answers_the_catalog_already_held_are_ranked_too() -> None:
     the same wrong answer whether or not we had to ask for it."""
 
     discovery = _discovered(answers=(_answer("unvetted"), _answer("imd")))
-    preference = _book(app={"weather": ("imd",)}).for_client("app")
+    preference = _book(app={"weather": ("imd",)}).for_sender("app")
 
     result = prioritise(discovery, intent=_intent(), preference=preference)
 
@@ -106,7 +106,7 @@ def test_direct_answers_come_from_the_best_ranked_provider_only() -> None:
     the catalog answered twice over would blend two providers' data."""
 
     discovery = _discovered(answers=(_answer("imd"), _answer("vistaar")))
-    preference = _book(app={"weather": ("vistaar", "imd")}).for_client("app")
+    preference = _book(app={"weather": ("vistaar", "imd")}).for_sender("app")
 
     result = prioritise(discovery, intent=_intent(), preference=preference)
 
@@ -119,7 +119,7 @@ def test_a_topic_nobody_ranked_keeps_every_provider_in_discovery_order() -> None
     """The behaviour that existed before any preference did."""
 
     discovery = _discovered((_capability("imd"), _capability("vistaar")))
-    preference = _book(app={"market": ("agmarknet",)}).for_client("app")
+    preference = _book(app={"market": ("agmarknet",)}).for_sender("app")
 
     result = prioritise(discovery, intent=_intent(), preference=preference)
 
@@ -142,8 +142,8 @@ def test_two_clients_asking_the_same_question_get_their_own_first_choice() -> No
         one={"weather": ("imd", "vistaar")}, two={"weather": ("vistaar", "imd")}
     )
 
-    first = prioritise(discovery, intent=_intent(), preference=book.for_client("one"))
-    second = prioritise(discovery, intent=_intent(), preference=book.for_client("two"))
+    first = prioritise(discovery, intent=_intent(), preference=book.for_sender("one"))
+    second = prioritise(discovery, intent=_intent(), preference=book.for_sender("two"))
 
     assert first.capabilities[0][0].provider_id == "imd"
     assert second.capabilities[0][0].provider_id == "vistaar"
@@ -161,7 +161,7 @@ def test_each_ask_is_ranked_on_its_own_topic() -> None:
     )
     preference = _book(
         app={"weather": ("vistaar",), "market": ("state-mandi",)}
-    ).for_client("app")
+    ).for_sender("app")
 
     result = prioritise(
         discovery,
@@ -184,7 +184,7 @@ def test_one_providers_several_resources_keep_discoverys_order() -> None:
             _capability("vistaar"),
         )
     )
-    preference = _book(app={"weather": ("imd", "vistaar")}).for_client("app")
+    preference = _book(app={"weather": ("imd", "vistaar")}).for_sender("app")
 
     result = prioritise(discovery, intent=_intent(), preference=preference)
 
@@ -200,7 +200,7 @@ def test_a_ranking_that_matches_nobody_leaves_the_ask_with_no_provider() -> None
     an exclusive ranking means when none of its providers serve the area."""
 
     discovery = _discovered((_capability("imd"),))
-    preference = _book(app={"weather": ("maharashtra-vistaar",)}).for_client("app")
+    preference = _book(app={"weather": ("maharashtra-vistaar",)}).for_sender("app")
 
     result = prioritise(discovery, intent=_intent(), preference=preference)
 
@@ -214,12 +214,12 @@ def test_the_record_says_which_layer_answered_and_what_it_dropped() -> None:
     than another's for the same question."""
 
     discovery = _discovered((_capability("imd"), _capability("unvetted")))
-    book = PreferenceBook(default={"weather": ("imd",)}, clients={"app": {}})
+    book = PreferenceBook(default={"weather": ("imd",)}, senders={"app": {}})
 
-    result = prioritise(discovery, intent=_intent(), preference=book.for_client("app"))
+    result = prioritise(discovery, intent=_intent(), preference=book.for_sender("app"))
 
     priority = result.priorities[0]
-    assert priority.client_id == "app"
+    assert priority.sender_id == "app"
     assert priority.topic == "Weather"
     assert priority.source == "default"
     assert priority.ranking == ("imd",)
@@ -232,7 +232,7 @@ def test_an_ask_discovery_found_nobody_for_gains_no_entry() -> None:
     the same thing to the farmer, one more key for every later reader."""
 
     discovery = DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
-    preference = _book(app={"weather": ("imd",)}).for_client("app")
+    preference = _book(app={"weather": ("imd",)}).for_sender("app")
 
     result = prioritise(discovery, intent=_intent(), preference=preference)
 

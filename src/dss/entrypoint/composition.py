@@ -45,7 +45,7 @@ from dss.adapters.llm.pydantic_ai_provider import (
 )
 from dss.adapters.llm.stub import StubLLM
 from dss.adapters.pii_identifier.factory import build_identifiers
-from dss.adapters.provider_preferences.yaml_file import load_provider_preferences
+from dss.adapters.provider_preferences.registry import RegistryProviderPreferences
 from dss.adapters.schema_packs.filesystem import FilesystemSchemaPackSource
 from dss.adapters.scheme_catalog.csv_file import load_scheme_catalog
 from dss.adapters.sinks.file import FileTelemetrySink, FileTurnSink
@@ -75,6 +75,7 @@ from dss.core.provider_discovery.models import (
     SchemaPackFiles,
 )
 from dss.core.provider_discovery.schema_pack_cache import SchemaPackCache
+from dss.core.provider_preferences.models import NO_PREFERENCE, SenderPreference
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import UserTurn
 from dss.core.shared.network import NetworkTransactionID
@@ -167,14 +168,15 @@ def build_runner_with_lifecycle(
     # Same: a bad edge translation config stops the boot here (#174).
     translation_routes = _build_translation_routes(settings, prompts=prompts)
 
-    # Which providers each client wants (ADR-0019). Loaded with the other boot
+    # Which providers each sender wants (ADR-0019). Loaded with the other boot
     # config, before the network gate: a malformed ranking must stop the boot
     # whether or not this deployment talks to providers, so an unwired local
-    # run still catches the typo.
-    preferences = load_provider_preferences(settings.provider_preferences_path)
+    # run still catches the typo. Registry mode (ADR-0020) swaps the real
+    # adapter in inside `_network`, where the network's HTTP client exists.
+    preferences = _boot_preferences(settings)
 
-    discover, invocation, schemas, schema_context_index, client = _network(
-        settings, fetch=fetch, preferences=preferences
+    discover, invocation, schemas, schema_context_index, client, _preferences = (
+        _network(settings, fetch=fetch, preferences=preferences)
     )
 
     # One binding for everything the farmer reads: the streamed answer and the
@@ -266,6 +268,43 @@ def _aclose_all(
                 stack.push_async_callback(close)
 
     return aclose
+
+
+class _NoRankings:
+    """The `ProviderPreferences` of a deployment with no registry configured.
+
+    Every ask keeps whichever providers discovery found — the behaviour that
+    existed before rankings did. The DSS holds no rankings of its own
+    (ADR-0020): the registry is the one source, so without it there is
+    nothing to load, only this to answer with.
+    """
+
+    async def for_sender(
+        self, sender_id: str | None, *, transaction_id: str
+    ) -> SenderPreference:
+        return NO_PREFERENCE
+
+
+def _boot_preferences(settings: Settings) -> ProviderPreferences:
+    """The ranking source that exists before the network does.
+
+    Registry mode (ADR-0020) needs the network's HTTP client, so `_network`
+    swaps the real adapter in once that client exists; until then — and for
+    good, when no registry is configured — no ranking applies. Unset is a real
+    deployment state, but an operator has to be told once, or a ranking that
+    silently never applies looks exactly like a registry that returned
+    nothing.
+    """
+
+    if settings.provider_preferences_base_url is None:
+        logger.warning(
+            "DSS_PROVIDER_PREFERENCES_BASE_URL is not set, so no sender "
+            "provider ranking applies: every ask keeps whichever providers "
+            "discovery found, in whatever order it found them, for every "
+            "sender. Point it at the registry to have a sender's vetted "
+            "providers answer first."
+        )
+    return _NoRankings()
 
 
 def _redaction(settings: Settings) -> RedactTexts:
@@ -391,18 +430,29 @@ def _network(
     dict[str, DomainSchema],
     dict[str, str],
     httpx.AsyncClient | None,
+    ProviderPreferences,
 ]:
     """Wire discovery + invocation, or return the unwired stand-ins.
 
     Returns everything the planner needs that varies with the network — the
     per-turn `discover` callable, the `invocation` port, and the two schema
     dicts the planner validates and routes against — plus the shared HTTP
-    client whose lifecycle the caller owns (`None` when unwired). Unwired, the
+    client whose lifecycle the caller owns (`None` when unwired), and the
+    ranking source actually in force: the registry adapter rides that client
+    (ADR-0020), so registry mode is resolved here. Unwired, the
     dicts are empty and discovery finds nobody — all harmless, because the
     planner is never reached."""
 
     if not settings.network_enabled:
-        return _discovers_nothing, _UnwiredInvocation(), {}, {}, None
+        if settings.provider_preferences_base_url is not None:
+            # Harmless — an unwired run calls no provider for a ranking to
+            # order — but said out loud, so a half-configured deployment reads
+            # as one rather than as a registry that returned nothing.
+            logger.warning(
+                "DSS_PROVIDER_PREFERENCES_BASE_URL is set but the network is "
+                "not configured, so no provider ranking will ever apply"
+            )
+        return _discovers_nothing, _UnwiredInvocation(), {}, {}, None, preferences
 
     _ensure_schema_packs(settings, fetch=fetch)
 
@@ -426,6 +476,19 @@ def _network(
         base_url=settings.discovery_base_url,
         schema_pack_cache=cache,
     )
+    if settings.provider_preferences_base_url is not None:
+        # The registry, asked on every turn over the same client the network
+        # calls ride (ADR-0020). Swapped in here rather than at boot because
+        # this client is the thing it needs.
+        preferences = RegistryProviderPreferences(
+            client=client,
+            base_url=settings.provider_preferences_base_url,
+            timeout_seconds=settings.provider_preferences_timeout_seconds,
+        )
+        logger.info(
+            "provider rankings come from the registry at %s",
+            settings.provider_preferences_base_url,
+        )
     discover = build_discover_providers(
         discovery=discovery,
         schema_pack_cache=cache,
@@ -451,7 +514,7 @@ def _network(
     good = tuple(pack for pack in packs if pack.pack_name not in skipped)
     schemas = _planner_schemas(good)
     schema_context_index = cache.current_schema_context()
-    return discover, invocation, schemas, schema_context_index, client
+    return discover, invocation, schemas, schema_context_index, client, preferences
 
 
 async def _aclose_nothing() -> None:

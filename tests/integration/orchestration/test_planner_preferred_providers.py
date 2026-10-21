@@ -137,8 +137,8 @@ def _ranked(*providers: str) -> dict[int, AskPriority]:
         0: AskPriority(
             ask_index=0,
             topic="Weather",
-            client_id="kisan-mitra-web",
-            source="client",
+            sender_id="kisan-mitra-web",
+            source="sender",
             ranking=providers,
             kept=providers,
             dropped=(),
@@ -163,7 +163,7 @@ def _deps(
             source_lang="en",
             target_lang="en",
             channel="web",
-            client_id="kisan-mitra-web",
+            sender_id="kisan-mitra-web",
         ),
         intent=_intent(),
         discovery=DiscoveryResult(

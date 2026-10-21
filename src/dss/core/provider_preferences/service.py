@@ -1,14 +1,14 @@
 """Behaviour for provider_preferences. Plain Python in, plain Python out.
 
 One job: take what discovery found and leave behind only the providers this
-client ranked, in the order they ranked them. Everything downstream — the
+sender ranked, in the order they ranked them. Everything downstream — the
 planner's candidate list, `describe_capability`, the Direct answers the
 catalog already held — reads the result and needs to know nothing about
-clients or preferences.
+senders or preferences.
 
 **A ranking is exclusive.** A provider discovery found that the ranking does
 not name is dropped, not appended. The alternative — rank the named ones and
-keep the rest underneath — would mean a client's list only ever changed
+keep the rest underneath — would mean a sender's list only ever changed
 *which* provider answered first, never *whether* an unvetted one could
 answer at all, and vetting is the point (ADR-0019).
 
@@ -27,8 +27,8 @@ from dss.core.intent.models import Intent
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.provider_preferences.models import (
     AskPriority,
-    ClientPreference,
     ProviderId,
+    SenderPreference,
 )
 
 
@@ -36,7 +36,7 @@ class _HasProvider(Protocol):
     """What ordering needs off a candidate: its provider id.
 
     `ProviderCapability` and `DiscoveredAnswer` share nothing but this, and
-    both have to be ordered the same way — a client that ranked a provider
+    both have to be ordered the same way — a sender that ranked a provider
     out of its weather list must not then be served that provider's Direct
     answer, which no `select` call would have been needed for.
     """
@@ -48,9 +48,9 @@ def prioritise(
     discovery: DiscoveryResult,
     *,
     intent: Intent,
-    preference: ClientPreference,
+    preference: SenderPreference,
 ) -> DiscoveryResult:
-    """Reorder and filter discovery's findings to this client's ranking.
+    """Reorder and filter discovery's findings to this sender's ranking.
 
     Both halves of a finding are governed: `capabilities`, which the planner
     calls, and `answers`, which the catalog already holds. An ask whose topic
@@ -76,7 +76,7 @@ def prioritise(
         priorities[index] = AskPriority(
             ask_index=index,
             topic=topic,
-            client_id=preference.client_id,
+            sender_id=preference.sender_id,
             source=preference.source_for(topic) if ranking else None,
             ranking=ranking,
             kept=_kept(found, ranking) if ranking else (),
