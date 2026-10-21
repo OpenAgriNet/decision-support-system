@@ -169,7 +169,7 @@ class _FakeDiscovery:
     def __init__(self, result: DiscoveryResult) -> None:
         self._result = result
 
-    async def __call__(self, intent, turn, now) -> DiscoveryResult:  # noqa: ANN001
+    async def __call__(self, intent, turn, now) -> DiscoveryResult:
         return self._result
 
 
@@ -181,7 +181,7 @@ class _FakePlan:
 
     async def __call__(
         self, turn, *, intent, discovery, verdict, visibility
-    ) -> Evidence:  # noqa: ANN001
+    ) -> Evidence:
         self.calls += 1
         self.verdict_was_set = verdict.is_set()
         self.turn = turn
@@ -206,7 +206,7 @@ class _FakeCompose:
         self.calls = 0
         self.closed = False
 
-    async def __call__(self, evidence, intent, *, turn):  # noqa: ANN001
+    async def __call__(self, evidence, intent, *, turn):
         self.calls += 1
         self.turn = turn
         try:
@@ -222,7 +222,7 @@ class _Telemetry:
     def __init__(self) -> None:
         self.stages: list[str] = []
 
-    def stage(self, name, ctx, outcome) -> None:  # noqa: ANN001
+    def stage(self, name, ctx, outcome) -> None:
         self.stages.append(name)
 
 
@@ -371,8 +371,8 @@ async def test_an_ask_whose_every_provider_the_client_ruled_out_is_no_match() ->
             0: AskPriority(
                 ask_index=0,
                 topic="Market",
-                client_id="vistaar-whatsapp",
-                source="client",
+                sender_id="vistaar-whatsapp",
+                source="sender",
                 ranking=("state-mandi",),
                 kept=(),
                 dropped=("agmarknet",),

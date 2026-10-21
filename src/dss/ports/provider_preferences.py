@@ -1,36 +1,41 @@
-"""The seam for a client's preferred providers — implemented by an adapter.
+"""The seam for a sender's preferred providers — implemented by an adapter.
 
-**Async on purpose, over an implementation that needs nothing of the sort.**
-The rankings are a mounted YAML file today, read once at boot and answered
-from memory (ADR-0019). The planned next step is a preference service the
-DSS asks at turn time, so the one caller already awaits this and swapping in
-an HTTP adapter is a change in the composition root and nowhere else. A
-synchronous port would have made that swap a change to every caller instead.
+Implemented by the network registry adapter, asked on every turn
+(ADR-0020) — the DSS holds no rankings of its own. The composition root's
+no-registry stand-in answers "no preference" for every sender. The port is
+async so the two are interchangeable in the composition root and nowhere
+else.
 
-The port answers for *one client*, already resolved against the default
-ranking — not "give me the whole book". A preference service will hold far
-more clients than any one deployment serves, and a port that could only hand
-over everything would have no sensible implementation against it.
+The port answers for *one sender*, already resolved against the default
+ranking — not "give me the whole book". The registry holds far more senders
+than any one deployment serves, and a port that could only hand over
+everything would have no sensible implementation against it.
 """
 
 from __future__ import annotations
 
 from typing import Protocol
 
-from dss.core.provider_preferences.models import ClientPreference
+from dss.core.provider_preferences.models import SenderPreference
 
 
 class ProviderPreferences(Protocol):
-    async def for_client(self, client_id: str | None) -> ClientPreference:
-        """Which providers this client wants, per topic, best first.
+    async def for_sender(
+        self, sender_id: str | None, *, transaction_id: str
+    ) -> SenderPreference:
+        """Which providers this sender wants, per topic, best first.
 
-        `client_id` is `None` when the caller sent no `X-Client-Id` header,
-        and an arbitrary string when it sent one nobody configured. Both get
-        the default ranking: an unrecognised caller is answered, never
-        refused, because refusing would make every experience layer's
-        rollout of the header a breaking change.
+        `sender_id` is `None` when the request carried no `senderId`, and an
+        arbitrary string when it carried one nobody registered. Both get the
+        default ranking: an unrecognised caller is answered, never refused,
+        because refusing would make every experience layer's rollout of the
+        field a breaking change.
 
-        Never raises for an unknown client. A configuration this cannot read
-        is a boot-time failure, not a turn-time one.
+        `transaction_id` is the turn's own, for the adapter's request and
+        response log lines (ADR-0014) — an implementation that makes no call
+        ignores it.
+
+        Never raises. A registry that cannot be reached at turn time is
+        answered as "no row found", never as a failed turn.
         """
         ...

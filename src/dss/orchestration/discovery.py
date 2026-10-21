@@ -47,20 +47,20 @@ def build_discover_providers(
     radius_m: int,
     preferences: ProviderPreferences,
 ) -> DiscoverProviders:
-    """Bakes in the built adapter, cache, configured radius, and the client
+    """Bakes in the built adapter, cache, configured radius, and the sender
     ranking source, so callers only ever supply what changes per turn: intent,
     turn, and now.
 
     Discovery only reads ``ask.place``; ``core.location.resolve_places`` fills
     it before discovery runs.
 
-    **The client's ranking is applied here**, on the way out, rather than at
+    **The sender's ranking is applied here**, on the way out, rather than at
     each place that consumes a candidate (ADR-0019). The turn already carries
-    the client id and the intent already carries each ask's topic, so this is
+    the sender id and the intent already carries each ask's topic, so this is
     the first point where both are in hand — and filtering once at the source
     means every later reader (the no-match check, the planner's candidate
     list, ``describe_capability``, the Direct answers the catalog held) sees
-    the ranked set without knowing a client expressed a preference at all.
+    the ranked set without knowing a sender expressed a preference at all.
 
     The fan-out reports two counts, onto the span already open around it —
     `trace_component("discovery")` in `turn.py` brackets exactly this call, so
@@ -86,7 +86,9 @@ def build_discover_providers(
         intent: Intent, turn: UserTurn, *, now: datetime
     ) -> DiscoveryResult:
         result = await bound(intent, turn, now=now)
-        preference = await preferences.for_client(turn.client_id)
+        preference = await preferences.for_sender(
+            turn.sender_id, transaction_id=turn.transaction_id
+        )
         result = prioritise(result, intent=intent, preference=preference)
         _report(result, turn=turn)
         # `asks_total`, not "asks queried": the core service seeds `failures`
@@ -97,7 +99,7 @@ def build_discover_providers(
         set_current_span_attributes(
             asks_total=len(result.failures),
             asks_failed=sum(1 for failures in result.failures.values() if failures),
-            client_id=turn.client_id or "",
+            sender_id=turn.sender_id or "",
             asks_ranked=sum(1 for p in result.priorities.values() if p.applied),
             providers_dropped=sum(len(p.dropped) for p in result.priorities.values()),
         )
@@ -116,8 +118,8 @@ def _report(result: DiscoveryResult, *, turn: UserTurn) -> None:
 
     `dropped` is the line's reason for existing: a provider discovery found
     and the ranking excluded is invisible everywhere else, and it is the
-    first thing to look at when a client's answers come back thinner than
-    another client's for the same question.
+    first thing to look at when a sender's answers come back thinner than
+    another sender's for the same question.
     """
 
     for priority in result.priorities.values():
@@ -129,7 +131,7 @@ def _report(result: DiscoveryResult, *, turn: UserTurn) -> None:
             event="ranking_applied",
             ask_index=priority.ask_index,
             topic=priority.topic,
-            client_id=priority.client_id or "-",
+            sender_id=priority.sender_id or "-",
             source=priority.source,
             ranked=_ids(priority.ranking),
             found=_ids(priority.kept),

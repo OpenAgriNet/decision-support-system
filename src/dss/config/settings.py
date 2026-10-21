@@ -193,24 +193,25 @@ class Settings(BaseSettings):
     # on a different config.
     prompt_config_path: Path = Path("configs/prompts.yaml")
 
-    # Which providers each client wants, per topic (ADR-0019). Nothing ships
-    # mounted: a ranking is exclusive, so a file naming providers a deployment
-    # does not talk to would drop every candidate and read as "nobody serves
-    # this". Unset → no ranking applies anywhere and the loader warns once at
-    # boot; set-but-missing raises, as the policy pack does.
-    # `config/examples/provider-preferences.yaml` is a ready file to copy.
-    provider_preferences_path: Path | None = None
+    # The registry that holds each sender's provider ranking, per topic
+    # (ADR-0019, ADR-0020). The DSS holds no rankings of its own: set, it asks
+    # the registry on every turn — two parallel searches, the sender's row and
+    # the `default` row. Unset → no ranking applies anywhere, every ask keeps
+    # whichever providers discovery found, and the boot warns once.
+    provider_preferences_base_url: str | None = None
+    # A ranking lookup is routing, not the answer: a slow registry must not
+    # hold up the turn. A call that misses this window counts as "no row",
+    # and the turn is answered on whatever the other call returned.
+    provider_preferences_timeout_seconds: float = Field(3.0, gt=0.0)
 
-    @field_validator("provider_preferences_path", mode="before")
+    @field_validator("provider_preferences_base_url", mode="before")
     @classmethod
     def _unset_when_blank(cls, value: object) -> object:
-        """An empty variable is an operator leaving it off, not a path.
+        """An empty variable is an operator leaving it off, not a URL.
 
-        `DSS_PROVIDER_PREFERENCES_PATH=` is what `docker-compose.yml` passes
-        when the operator sets nothing, and pydantic reads `""` as
-        `Path(".")` — a directory that exists, so the loader would get past
-        its own missing-file check and die reading the working directory.
-        Same stance as `DSS_PHOTON_BASE_URL`, where empty also means off.
+        `DSS_PROVIDER_PREFERENCES_BASE_URL=` is what `docker-compose.yml`
+        passes when the operator sets nothing. Same stance as
+        `DSS_PHOTON_BASE_URL`, where empty also means off.
         """
 
         if isinstance(value, str) and not value.strip():

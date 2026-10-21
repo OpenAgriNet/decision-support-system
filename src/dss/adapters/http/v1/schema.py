@@ -56,6 +56,10 @@ class Context(_WireIn):
     transaction_id: str  # required; echoed back as `traceId`
     version: str | None = None
     message_id: str | None = None
+    # Which experience-layer application is calling (ADR-0020). Optional: a
+    # caller that sends none is served the default provider ranking, so an
+    # older experience layer keeps working.
+    sender_id: str | None = None
 
 
 class Identity(_WireIn):
