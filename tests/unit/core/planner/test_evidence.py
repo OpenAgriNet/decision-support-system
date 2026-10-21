@@ -257,7 +257,7 @@ def test_failures_are_carried_onto_the_evidence() -> None:
         retryable=True,
     )
 
-    evidence = assemble_evidence([], failures=[(0, failure)], intent=_intent(PRICE_ASK))
+    evidence = assemble_evidence([], failures=[failure], intent=_intent(PRICE_ASK))
 
     assert evidence.failed == (failure,)
 
@@ -392,8 +392,8 @@ def test_an_unresolved_place_is_a_failure_without_a_provider() -> None:
     failures = place_failures(intent)
 
     assert len(failures) == 1
-    index, failure = failures[0]
-    assert index == failure.ask_index == 1
+    [failure] = failures
+    assert failure.ask_index == 1
     assert failure.capability is None
     assert failure.retryable is False
     assert "Xyzzy" in failure.reason
@@ -425,8 +425,8 @@ def test_an_ambiguous_place_is_a_failure_without_a_provider() -> None:
     failures = place_failures(intent)
 
     assert len(failures) == 1
-    index, failure = failures[0]
-    assert index == failure.ask_index == 1
+    [failure] = failures
+    assert failure.ask_index == 1
     assert failure.capability is None
     assert "Aurangabad" in failure.reason
     assert "several" in failure.reason
@@ -449,6 +449,7 @@ def test_missing_needed_place_fails() -> None:
 
     failures = place_failures(intent, place_optional={0})
 
-    assert [index for index, _ in failures] == [1]
-    assert failures[0][1].capability is None
-    assert "place" in failures[0][1].reason
+    [failure] = failures
+    assert failure.ask_index == 1
+    assert failure.capability is None
+    assert "place" in failure.reason

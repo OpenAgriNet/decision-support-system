@@ -24,7 +24,7 @@ from dss.core.provider_discovery.models import DiscoveredAnswer
 
 def place_failures(
     intent: Intent, *, place_optional: Collection[int] = ()
-) -> list[tuple[int, Failure]]:
+) -> list[Failure]:
     """One failure per ask whose place has nowhere to search.
 
     Recorded before the planner runs, so the farmer hears about the ask even
@@ -34,7 +34,7 @@ def place_failures(
     the pack serves it from nowhere (`core/planner/place.py`).
     """
 
-    failures: list[tuple[int, Failure]] = []
+    failures: list[Failure] = []
     for index, ask in enumerate(intent.asks):
         if isinstance(ask.place, UnresolvedPlace):
             reason = f"{ask.place.unresolved_name}: place not found"
@@ -45,12 +45,7 @@ def place_failures(
         else:
             continue
         failures.append(
-            (
-                index,
-                Failure(
-                    ask_index=index, capability=None, reason=reason, retryable=False
-                ),
-            )
+            Failure(ask_index=index, capability=None, reason=reason, retryable=False)
         )
     return failures
 
@@ -60,7 +55,7 @@ def assemble_evidence(
     *,
     intent: Intent,
     direct_answers: Mapping[int, tuple[DiscoveredAnswer, ...]] | None = None,
-    failures: Sequence[tuple[int, Failure]] = (),
+    failures: Sequence[Failure] = (),
 ) -> Evidence:
     """Turn everything the turn gathered into ``Evidence``.
 
@@ -128,5 +123,5 @@ def assemble_evidence(
         sources=tuple(sources),
         results=tuple(results),
         served=served,
-        failed=tuple(failure for _, failure in failures),
+        failed=tuple(failures),
     )
