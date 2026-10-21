@@ -66,7 +66,7 @@ class PlannerDeps:
     # than called inside core so a test can fix the day.
     today: Callable[[], date] = lambda: datetime.now(UTC).date()
     raw_answers: list[tuple[int, DiscoveredAnswer]] = field(default_factory=list)
-    failures: list[tuple[int, Failure]] = field(default_factory=list)
+    failures: list[Failure] = field(default_factory=list)
 
 
 async def _select(
@@ -162,14 +162,11 @@ async def _select(
         # the model's retry budget. Not a raise either — one unreachable
         # provider must not fail a turn whose other asks can still be served.
         deps.failures.append(
-            (
-                ask_index,
-                Failure(
-                    ask_index=ask_index,
-                    capability=exc.capability,
-                    reason=exc.detail or str(exc.status_code),
-                    retryable=exc.failure_class is FailureClass.TRANSIENT,
-                ),
+            Failure(
+                ask_index=ask_index,
+                capability=exc.capability,
+                reason=exc.detail or str(exc.status_code),
+                retryable=exc.failure_class is FailureClass.TRANSIENT,
             )
         )
         return (

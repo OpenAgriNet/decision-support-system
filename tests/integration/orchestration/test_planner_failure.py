@@ -167,9 +167,8 @@ async def test_the_failure_is_recorded_for_the_evidence() -> None:
     with agent.override(model=FunctionModel(_calls_select_then_answers)):
         await agent.run("price of paddy", deps=deps)
 
-    assert len(deps.failures) == 1
-    ask_index, failure = deps.failures[0]
-    assert ask_index == 0
+    [failure] = deps.failures
+    assert failure.ask_index == 0
     assert failure.capability == "openagrinet:MandiPrice"
     assert failure.retryable is True
 
