@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import StrEnum
 
 import anyio
 from pydantic import BaseModel, ConfigDict
 
+from dss.core.intent.models import Ask
 from dss.core.moderation.models import ModerationDecision
 
 
@@ -109,6 +111,10 @@ class Failure(BaseModel):
     reason: str
     retryable: bool
 
+    @property
+    def is_provider_failure(self) -> bool:
+        return self.capability is not None
+
 
 class Identity(BaseModel):
     """Who the assistant is (design doc §6.7). One per deployment, loaded from
@@ -124,6 +130,23 @@ class Identity(BaseModel):
     boundaries: str
 
 
+@dataclass(frozen=True)
+class AskEvidence:
+    """What the turn gathered for one ask: its results and its failures."""
+
+    ask: Ask
+    results: tuple[Result, ...]
+    failures: tuple[Failure, ...]
+
+    @property
+    def is_served(self) -> bool:
+        return bool(self.results)
+
+    @property
+    def has_provider_failure(self) -> bool:
+        return any(failure.is_provider_failure for failure in self.failures)
+
+
 class Evidence(BaseModel):
     """What the loop gathered for a turn — every source, every result, every
     gap. ``served`` indexes into ``Intent.asks``; ``sufficiency.py`` compares
@@ -136,3 +159,5 @@ class Evidence(BaseModel):
     results: tuple[Result, ...]
     served: tuple[int, ...]
     failed: tuple[Failure, ...]
+    # One per ``Intent.asks``, in ask order.
+    ask_evidences: tuple[AskEvidence, ...]
