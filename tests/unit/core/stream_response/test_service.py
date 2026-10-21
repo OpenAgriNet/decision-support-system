@@ -226,7 +226,11 @@ async def test_the_asks_resolved_place_reaches_the_model() -> None:
 
     llm = _FakeLLM()
 
-    await _collect(llm, intent=Intent(asks=(_ask(PUNE),)))
+    evidence = build_evidence(
+        sources=EVIDENCE.sources, results=EVIDENCE.results, asks=(_ask(PUNE),)
+    )
+
+    await _collect(llm, evidence)
 
     assert "Pune" in llm.everything
 
