@@ -118,14 +118,14 @@ def test_no_response_block_means_no_cap(a_body, omit):
     assert turn.response_max_chars is None
 
 
-HOST_SENDER_ID = "consumer.oan.dev"
+NETWORK_SENDER_ID = "consumer.oan.dev"
 
 
 def _context_from(body: dict) -> TurnContext:
     return mapping.to_turn_context(
         schema.TurnRequest.model_validate(body),
         message_id="minted",
-        default_sender_id=HOST_SENDER_ID,
+        network_sender_id=NETWORK_SENDER_ID,
     )
 
 
@@ -143,14 +143,14 @@ def test_the_context_carries_the_session_and_the_callers_transaction_id(a_body):
     assert mapping.to_user_turn(validated).transaction_id == "txn_77"
 
 
-def test_the_trace_id_comes_from_the_caller_span_not_the_body(a_body):
-    """`traceparent` is the source (contract §1.1). A body field would let a
-    caller forge the audit key, so the wire model has no place to put one."""
+def test_a_body_trace_id_is_ignored(a_body):
+    """The trace id is the caller's `transactionId`; a `traceId` field cannot
+    replace it."""
 
     body = a_body()
     body["context"]["traceId"] = "forged"
 
-    assert _context_from(body).trace_id != "forged"
+    assert _context_from(body).trace_id == body["context"]["transactionId"]
 
 
 def test_the_sender_id_is_kept(a_body):
@@ -160,9 +160,16 @@ def test_the_sender_id_is_kept(a_body):
     assert _context_from(body).sender_id == "bap.example.org"
 
 
+def test_a_missing_sender_id_falls_back(a_body):
+    body = a_body()
+    body["context"].pop("senderId", None)
+
+    assert _context_from(body).sender_id == NETWORK_SENDER_ID
+
+
 @pytest.mark.parametrize("blank", ["", "   "])
 def test_a_blank_sender_id_falls_back(a_body, blank):
     body = a_body()
     body["context"]["senderId"] = blank
 
-    assert _context_from(body).sender_id == HOST_SENDER_ID
+    assert _context_from(body).sender_id == NETWORK_SENDER_ID
