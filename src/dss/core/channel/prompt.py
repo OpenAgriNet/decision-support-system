@@ -153,9 +153,7 @@ def _render_failures(evidence: Evidence) -> list[str]:
 
     "We could not reach Agmarknet" and "nobody serves this" are the same
     empty result but very different things to tell a farmer. Without this the
-    composer saw only ``results`` and rendered both as "Nothing was
-    retrieved.", which is the confusion ``Evidence.failed`` was added to
-    prevent.
+    composer saw only results and rendered both as "Nothing was retrieved."
     """
 
     return [
