@@ -9,17 +9,15 @@ from __future__ import annotations
 
 from dss.core.channel.service import answer_from_evidence
 from dss.core.planner.models import Evidence, Result, Source, SourceKind
+from tests.support.evidence import build_evidence
 
 
 def _evidence(*sources: Source) -> Evidence:
-    return Evidence(
+    return build_evidence(
         sources=tuple(sources),
         results=tuple(
             Result(ask_index=0, source_id=s.id, data={"v": 1}) for s in sources
         ),
-        served=(0,) if sources else (),
-        failed=(),
-        sufficient=bool(sources),
     )
 
 

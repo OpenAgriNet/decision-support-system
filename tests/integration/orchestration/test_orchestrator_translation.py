@@ -428,7 +428,6 @@ async def test_ambiguous_place_question_is_translated_with_the_answer() -> None:
         plan=_FakePlan(
             _evidence(
                 results=(Result(ask_index=0, source_id="1", data={"rain": "none"}),),
-                served=(0,),
             )
         ),
         compose=_FakeCompose("No rain in Pune [1]."),

@@ -48,6 +48,7 @@ from dss.orchestration.orchestrator import Components, Orchestrator
 from dss.orchestration.plan import Plan
 from dss.orchestration.redaction import RedactTexts, pass_through
 from dss.ports.area_lookup import AreaMatch
+from tests.support.evidence import build_evidence
 from tests.support.fakes import (
     FakeAreaLookup,
     FakeLocalizer,
@@ -131,20 +132,17 @@ def _served_discovery() -> DiscoveryResult:
 
 
 def _evidence(
-    *, results: tuple[Result, ...], served: tuple[int, ...], failed=()
+    *, results: tuple[Result, ...], failures: tuple[Failure, ...] = ()
 ) -> Evidence:
-    return Evidence(
+    return build_evidence(
         sources=(Source(id="1", name="Agmarknet", kind=SourceKind.PROVIDER, url=None),),
         results=results,
-        served=served,
-        failed=failed,
-        sufficient=bool(results),
+        failures=failures,
     )
 
 
 _ANSWERED_EVIDENCE = _evidence(
     results=(Result(ask_index=0, source_id="1", data={"modal": 2275}),),
-    served=(0,),
 )
 
 
@@ -168,7 +166,7 @@ class _FakeDiscovery:
     def __init__(self, result: DiscoveryResult) -> None:
         self._result = result
 
-    async def __call__(self, intent, turn, now) -> DiscoveryResult:  # noqa: ANN001
+    async def __call__(self, intent, turn, now) -> DiscoveryResult:
         return self._result
 
 
@@ -180,7 +178,7 @@ class _FakePlan:
 
     async def __call__(
         self, turn, *, intent, discovery, verdict, visibility
-    ) -> Evidence:  # noqa: ANN001
+    ) -> Evidence:
         self.calls += 1
         self.verdict_was_set = verdict.is_set()
         self.turn = turn
@@ -205,7 +203,7 @@ class _FakeCompose:
         self.calls = 0
         self.closed = False
 
-    async def __call__(self, evidence, intent, *, turn):  # noqa: ANN001
+    async def __call__(self, evidence, intent, *, turn):
         self.calls += 1
         self.turn = turn
         try:
@@ -221,7 +219,7 @@ class _Telemetry:
     def __init__(self) -> None:
         self.stages: list[str] = []
 
-    def stage(self, name, ctx, outcome) -> None:  # noqa: ANN001
+    def stage(self, name, ctx, outcome) -> None:
         self.stages.append(name)
 
 
@@ -463,7 +461,6 @@ async def test_mixed_turn_answers_then_asks_place() -> None:
     plan = _FakePlan(
         _evidence(
             results=(Result(ask_index=0, source_id="1", data={"sow": "October"}),),
-            served=(0,),
         )
     )
     orch, _ = _build(
@@ -513,7 +510,6 @@ async def test_some_asks_unserved_is_partial() -> None:
     plan = _FakePlan(
         _evidence(
             results=(Result(ask_index=0, source_id="1", data={"modal": 2275}),),
-            served=(0,),
         )
     )
     compose = _FakeCompose("Wheat is 2,275 Rs [1]. I could not find the cotton price.")
@@ -541,7 +537,6 @@ async def test_one_place_not_found_still_answers_the_other() -> None:
     plan = _FakePlan(
         _evidence(
             results=(Result(ask_index=0, source_id="1", data={"rain": "none"}),),
-            served=(0,),
         )
     )
     compose = _FakeCompose("No rain in Pune [1]. I could not find Xyzzy.")
@@ -582,7 +577,6 @@ async def test_an_ambiguous_place_is_asked_after_the_answer_for_the_other() -> N
     plan = _FakePlan(
         _evidence(
             results=(Result(ask_index=0, source_id="1", data={"rain": "none"}),),
-            served=(0,),
         )
     )
     orch, _ = _build(
@@ -666,8 +660,7 @@ async def test_all_calls_failing_is_unavailable() -> None:
     plan = _FakePlan(
         _evidence(
             results=(),
-            served=(),
-            failed=(
+            failures=(
                 Failure(
                     ask_index=0,
                     capability="openagrinet:MandiPrice",
@@ -699,8 +692,7 @@ async def test_a_place_failure_alone_is_not_an_outage() -> None:
     plan = _FakePlan(
         _evidence(
             results=(),
-            served=(),
-            failed=(
+            failures=(
                 Failure(
                     ask_index=1,
                     capability=None,
@@ -739,7 +731,7 @@ async def test_a_streamed_claim_carries_the_sources_it_cites() -> None:
 
 async def test_the_one_source_cited_reaches_the_farmer_as_one() -> None:
 
-    evidence = Evidence(
+    evidence = build_evidence(
         sources=(
             Source(
                 id="1", name="Package of Practices", kind=SourceKind.PROVIDER, url=None
@@ -750,9 +742,6 @@ async def test_the_one_source_cited_reaches_the_farmer_as_one() -> None:
             Result(ask_index=0, source_id="1", data={"v": 1}),
             Result(ask_index=0, source_id="2", data={"v": 2}),
         ),
-        served=(0,),
-        failed=(),
-        sufficient=True,
     )
     orch, _ = _build(
         intent=_one_ask(),
