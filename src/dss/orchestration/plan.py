@@ -115,14 +115,6 @@ def build_plan(  # noqa: PLR0913
             schema_context_index=schema_context_index,
             invocation=invocation,
             verdict=verdict,
-            # An ask with nowhere to search fails up front, so it is reported
-            # whether or not the model tries to call anything for it. An ask
-            # with no place at all is only such a failure when every option
-            # found for it needs one — the pack decides.
-            failures=place_failures(
-                intent,
-                place_optional=place_optional_asks(intent, discovery, schemas),
-            ),
             visibility=visibility,
         )
         # Our own counter, so a run that fails after several paid round-trips
@@ -147,6 +139,12 @@ def build_plan(  # noqa: PLR0913
         # the answer), but log it so the model's final say is visible next to
         # the provider calls its `select` tool made.
         log_external_response("llm.planner", turn.transaction_id, body=result.output)
+        # A place failure is known before the run and no tool reads it, so it
+        # skips the deps. An ask with no place at all only fails when every
+        # option found for it needs one — the pack decides.
+        unplaced = place_failures(
+            intent, place_optional=place_optional_asks(intent, discovery, schemas)
+        )
         # Direct answers too: they need no select call, so they never land in
         # raw_answers, and leaving them out lost an ask the catalog had
         # already answered.
@@ -154,7 +152,7 @@ def build_plan(  # noqa: PLR0913
             deps.raw_answers,
             intent=intent,
             direct_answers=discovery.answers,
-            failures=deps.failures,
+            failures=[*unplaced, *deps.failures],
         )
 
     return plan
