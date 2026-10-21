@@ -230,6 +230,42 @@ def test_a_direct_answer_reaches_the_evidence() -> None:
     assert evidence.served == (0,)
 
 
+def test_every_ask_gets_its_own_evidence_in_ask_order() -> None:
+    """Answered or not, every ask is listed, so a reader never looks it up
+    again in the intent."""
+
+    evidence = assemble_evidence(
+        [(1, MANDI_PRICE)], intent=_intent(PRICE_ASK, ADVISORY_ASK)
+    )
+
+    assert [entry.ask for entry in evidence.ask_evidences] == [
+        PRICE_ASK,
+        ADVISORY_ASK,
+    ]
+    assert [entry.is_served for entry in evidence.ask_evidences] == [False, True]
+
+
+def test_results_and_failures_sit_under_the_ask_they_are_about() -> None:
+    failure = Failure(
+        ask_index=0,
+        capability="openagrinet:MandiPrice",
+        reason="too many requests",
+        retryable=True,
+    )
+
+    evidence = assemble_evidence(
+        [(1, MANDI_PRICE)],
+        failures=[failure],
+        intent=_intent(PRICE_ASK, ADVISORY_ASK),
+    )
+
+    price, advisory = evidence.ask_evidences
+    assert price.results == ()
+    assert price.failures == (failure,)
+    assert [result.ask_index for result in advisory.results] == [1]
+    assert advisory.failures == ()
+
+
 def test_a_direct_answer_and_a_selected_one_share_a_source() -> None:
     """Both are ``DiscoveredAnswer``s from the same provider, so they cite as
     one source — the same rule as two selected answers."""

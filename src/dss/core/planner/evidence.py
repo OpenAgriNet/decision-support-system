@@ -17,8 +17,15 @@ from __future__ import annotations
 
 from collections.abc import Collection, Mapping, Sequence
 
-from dss.core.intent.models import AmbiguousPlace, Intent, UnresolvedPlace
-from dss.core.planner.models import Evidence, Failure, Result, Source, SourceKind
+from dss.core.intent.models import AmbiguousPlace, Ask, Intent, UnresolvedPlace
+from dss.core.planner.models import (
+    AskEvidence,
+    Evidence,
+    Failure,
+    Result,
+    Source,
+    SourceKind,
+)
 from dss.core.provider_discovery.models import DiscoveredAnswer
 
 
@@ -124,4 +131,25 @@ def assemble_evidence(
         results=tuple(results),
         served=served,
         failed=tuple(failures),
+        ask_evidences=group_by_ask(intent.asks, results=results, failures=failures),
+    )
+
+
+def group_by_ask(
+    asks: Sequence[Ask],
+    *,
+    results: Sequence[Result],
+    failures: Sequence[Failure],
+) -> tuple[AskEvidence, ...]:
+    """One entry per ask, in ask order, holding that ask's results and failures."""
+
+    return tuple(
+        AskEvidence(
+            ask=ask,
+            results=tuple(result for result in results if result.ask_index == index),
+            failures=tuple(
+                failure for failure in failures if failure.ask_index == index
+            ),
+        )
+        for index, ask in enumerate(asks)
     )

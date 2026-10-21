@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from dataclasses import FrozenInstanceError
+
 import pytest
 from pydantic import ValidationError
 
+from dss.core.intent.models import Ask, InteractionType, SubjectCategory
 from dss.core.planner.models import (
+    AskEvidence,
     Evidence,
     Failure,
     Identity,
@@ -93,6 +97,55 @@ def test_failure_is_frozen() -> None:
         failure.retryable = False
 
 
+_ASK = Ask(
+    subject_categories=SubjectCategory.MARKET, interaction_type=InteractionType.OBSERVE
+)
+_RESULT = Result(ask_index=0, source_id="1", data={"modal_price": "2100"})
+_PROVIDER_FAILURE = Failure(
+    ask_index=0, capability="MandiPrice", reason="timeout", retryable=True
+)
+_PLACE_FAILURE = Failure(
+    ask_index=0, capability=None, reason="Xyzzy: place not found", retryable=False
+)
+
+
+def test_a_place_failure_is_not_a_provider_failure() -> None:
+    """No provider was called, so none can be blamed."""
+
+    assert _PROVIDER_FAILURE.is_provider_failure is True
+    assert _PLACE_FAILURE.is_provider_failure is False
+
+
+def test_an_ask_with_a_result_is_served_even_if_a_call_failed() -> None:
+    ask_evidence = AskEvidence(
+        ask=_ASK, results=(_RESULT,), failures=(_PROVIDER_FAILURE,)
+    )
+
+    assert ask_evidence.is_served is True
+
+
+def test_an_ask_with_no_result_is_not_served() -> None:
+    ask_evidence = AskEvidence(ask=_ASK, results=(), failures=(_PROVIDER_FAILURE,))
+
+    assert ask_evidence.is_served is False
+
+
+def test_an_ask_has_a_provider_failure_only_when_a_provider_was_called() -> None:
+    place_only = AskEvidence(ask=_ASK, results=(), failures=(_PLACE_FAILURE,))
+    both = AskEvidence(
+        ask=_ASK, results=(), failures=(_PLACE_FAILURE, _PROVIDER_FAILURE)
+    )
+
+    assert place_only.has_provider_failure is False
+    assert both.has_provider_failure is True
+
+
+def test_ask_evidence_is_frozen() -> None:
+    ask_evidence = AskEvidence(ask=_ASK, results=(), failures=())
+    with pytest.raises(FrozenInstanceError):
+        ask_evidence.results = (_RESULT,)  # type: ignore[misc]
+
+
 def test_evidence_assembles_sources_results_and_gaps() -> None:
     source = Source(id="1", name="Agmarknet", kind=SourceKind.PROVIDER, url=None)
     result = Result(ask_index=0, source_id="1", data={"modal_price": "2100"})
@@ -105,6 +158,7 @@ def test_evidence_assembles_sources_results_and_gaps() -> None:
         results=(result,),
         served=(0,),
         failed=(failure,),
+        ask_evidences=(),
     )
 
     assert evidence.sources == (source,)
@@ -114,7 +168,7 @@ def test_evidence_assembles_sources_results_and_gaps() -> None:
 
 
 def test_evidence_is_frozen() -> None:
-    evidence = Evidence(sources=(), results=(), served=(), failed=())
+    evidence = Evidence(sources=(), results=(), served=(), failed=(), ask_evidences=())
     with pytest.raises(ValidationError):
         evidence.served = (0,)
 
