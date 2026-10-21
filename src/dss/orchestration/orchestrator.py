@@ -399,9 +399,7 @@ class Orchestrator:
             # closing an async generator does not reach the one it relays
             # from.
             async with (
-                aclosing(
-                    self._components.compose(evidence, result.intent, turn=turn)
-                ) as written,
+                aclosing(self._components.compose(evidence, turn=turn)) as written,
                 aclosing(numbers.renumber(written)) as pieces,
             ):
                 async for piece in pieces:

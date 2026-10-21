@@ -207,7 +207,7 @@ class _FakeCompose:
         self.calls = 0
         self.closed = False
 
-    async def __call__(self, evidence, intent, *, turn):
+    async def __call__(self, evidence, *, turn):
         self.calls += 1
         self.turn = turn
         try:
