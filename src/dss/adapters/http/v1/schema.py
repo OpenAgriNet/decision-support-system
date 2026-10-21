@@ -53,6 +53,7 @@ class Context(_WireIn):
     transaction_id: str  # required; echoed back as `traceId`
     version: str | None = None
     message_id: str | None = None
+    sender_id: str | None = None
 
 
 class Identity(_WireIn):

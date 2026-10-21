@@ -7,7 +7,12 @@ import json
 from dss.adapters.sinks.stdout import StdoutTelemetrySink
 from dss.core.shared.models import TurnContext
 
-CTX = TurnContext(trace_id="trc_1", session_id="conv_1", message_id="msg_in")
+CTX = TurnContext(
+    trace_id="trc_1",
+    session_id="conv_1",
+    message_id="msg_in",
+    sender_id="consumer.oan.dev",
+)
 
 
 def test_each_stage_is_one_json_line(capsys):

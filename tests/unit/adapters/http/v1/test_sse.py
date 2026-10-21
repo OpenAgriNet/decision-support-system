@@ -24,7 +24,12 @@ NOW = datetime(2026, 9, 4, 8, 0, tzinfo=UTC)
 
 @pytest.fixture
 def stream():
-    ctx = TurnContext(trace_id="trc_1", session_id="conv_1", message_id="msg_in")
+    ctx = TurnContext(
+        trace_id="trc_1",
+        session_id="conv_1",
+        message_id="msg_in",
+        sender_id="consumer.oan.dev",
+    )
     return sse.Stream(ctx, response_id="msg_out_1", clock=lambda: NOW)
 
 

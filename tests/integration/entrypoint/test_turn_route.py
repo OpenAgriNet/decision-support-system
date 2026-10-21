@@ -170,6 +170,15 @@ def test_an_unknown_field_is_ignored(a_body):
     assert len(runner.calls) == 1
 
 
+def test_no_sender_id_means_the_host_network(a_body):
+    app, runner = client(network_sender_id="host.example.org")
+
+    app.post("/v1/turns", json=a_body())
+
+    [(_, ctx)] = runner.calls
+    assert ctx.sender_id == "host.example.org"
+
+
 def test_a_missing_required_field_is_unprocessable(a_body):
     app, runner = client()
     body = a_body()

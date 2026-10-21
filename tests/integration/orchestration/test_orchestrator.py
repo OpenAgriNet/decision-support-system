@@ -107,7 +107,7 @@ def _turn(
 
 
 def _ctx() -> TurnContext:
-    return TurnContext(trace_id="t1", message_id="m1", session_id="s1")
+    return TurnContext(trace_id="t1", message_id="m1", session_id="s1", sender_id="c1")
 
 
 def _one_ask(n: int = 1) -> IntentClassification:

@@ -6,7 +6,7 @@ import pytest
 
 from dss.adapters.http.v1 import mapping, schema
 from dss.core.shared.language import LanguageTag
-from dss.core.shared.models import ConversationMessage, Geometry
+from dss.core.shared.models import ConversationMessage, Geometry, TurnContext
 
 
 def test_geometry_coordinates_are_longitude_then_latitude(a_body):
@@ -118,12 +118,23 @@ def test_no_response_block_means_no_cap(a_body, omit):
     assert turn.response_max_chars is None
 
 
+HOST_SENDER_ID = "consumer.oan.dev"
+
+
+def _context_from(body: dict) -> TurnContext:
+    return mapping.to_turn_context(
+        schema.TurnRequest.model_validate(body),
+        message_id="minted",
+        default_sender_id=HOST_SENDER_ID,
+    )
+
+
 def test_the_context_carries_the_session_and_the_callers_transaction_id(a_body):
     body = a_body()
     body["context"]["transactionId"] = "txn_77"
 
     validated = schema.TurnRequest.model_validate(body)
-    ctx = mapping.to_turn_context(validated, message_id="minted")
+    ctx = _context_from(body)
 
     assert ctx.session_id == "conv_8f3a1c"
     # `transaction_id` is not duplicated on the context — `trace_id` already is
@@ -139,7 +150,19 @@ def test_the_trace_id_comes_from_the_caller_span_not_the_body(a_body):
     body = a_body()
     body["context"]["traceId"] = "forged"
 
-    validated = schema.TurnRequest.model_validate(body)
-    ctx = mapping.to_turn_context(validated, message_id="minted")
+    assert _context_from(body).trace_id != "forged"
 
-    assert ctx.trace_id != "forged"
+
+def test_the_sender_id_is_kept(a_body):
+    body = a_body()
+    body["context"]["senderId"] = "bap.example.org"
+
+    assert _context_from(body).sender_id == "bap.example.org"
+
+
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_a_blank_sender_id_falls_back(a_body, blank):
+    body = a_body()
+    body["context"]["senderId"] = blank
+
+    assert _context_from(body).sender_id == HOST_SENDER_ID
