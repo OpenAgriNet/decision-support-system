@@ -56,7 +56,7 @@ def build_discover_providers(
 
     **The sender's ranking is applied here**, on the way out, rather than at
     each place that consumes a candidate (ADR-0019). The turn already carries
-    the sender id and the intent already carries each ask's topic, so this is
+    the sender id and the intent already carries each ask's capability, so
     the first point where both are in hand — and filtering once at the source
     means every later reader (the no-match check, the planner's candidate
     list, ``describe_capability``, the Direct answers the catalog held) sees
@@ -130,7 +130,7 @@ def _report(result: DiscoveryResult, *, turn: UserTurn) -> None:
             turn.transaction_id,
             event="ranking_applied",
             ask_index=priority.ask_index,
-            topic=priority.topic,
+            capability=priority.capability,
             sender_id=priority.sender_id or "-",
             source=priority.source,
             ranked=_ids(priority.ranking),

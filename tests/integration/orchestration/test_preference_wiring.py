@@ -189,6 +189,6 @@ async def test_what_the_ranking_dropped_is_logged(
         if "event=ranking_applied" in record.message
     )
     assert "sender_id=kisan-mitra-web" in line
-    assert "topic=Weather" in line
+    assert "capability=Weather" in line
     assert "dropped=unvetted,mausamgram" in line
     assert "nashik" not in line.lower()

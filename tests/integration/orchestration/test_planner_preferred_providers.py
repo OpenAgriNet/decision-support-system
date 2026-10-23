@@ -136,7 +136,7 @@ def _ranked(*providers: str) -> dict[int, AskPriority]:
     return {
         0: AskPriority(
             ask_index=0,
-            topic="Weather",
+            capability="Weather",
             sender_id="kisan-mitra-web",
             source="sender",
             ranking=providers,

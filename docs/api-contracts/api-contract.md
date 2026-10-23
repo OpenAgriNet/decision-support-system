@@ -126,7 +126,7 @@ Every request has two top-level objects. `context` carries operational metadata 
 Rules:
 
 - `context.id`, `context.timestamp`, `context.sessionId` and `context.transactionId` are required.
-- `context.senderId` is optional. It is the network participant id of the immediate caller. Missing or blank means the host network (`network_sender_id`).
+- `context.senderId` is optional. It is the network participant id of the immediate caller; missing or blank means the host network (`network_sender_id`). It also selects whose provider ranking applies to the turn (ADR-0020) — a sender with no registered preference is served the default ranking and answered normally, never refused.
 - `message.userContext` is an array of typed identity facts, following the same typed-variant pattern as `message.input`. It carries no phone, name, email, or JWT claims — only opaque, per-turn facts DSS is allowed to see. New facts (e.g. a Provider reference token) are added as new typed variants, not as untyped keys.
 - `message.input` contains the current user message and any earlier messages that the Experience chooses to supply.
 - `message.attributes` contains the language, channel, location, and non-personal domain facts DSS may use when processing the input.

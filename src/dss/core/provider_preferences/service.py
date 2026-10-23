@@ -12,7 +12,7 @@ keep the rest underneath — would mean a sender's list only ever changed
 *which* provider answered first, never *whether* an unvetted one could
 answer at all, and vetting is the point (ADR-0019).
 
-**No ranking leaves the ask alone.** A topic nobody configured keeps every
+**No ranking leaves the ask alone.** A capability nobody ranked keeps every
 candidate discovery found, in discovery's own order, which is the behaviour
 that existed before any preference did.
 """
@@ -23,7 +23,7 @@ from collections.abc import Sequence
 from dataclasses import replace
 from typing import Protocol
 
-from dss.core.intent.models import Intent
+from dss.core.intent.models import Ask, Intent
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.provider_preferences.models import (
     AskPriority,
@@ -53,51 +53,68 @@ def prioritise(
     """Reorder and filter discovery's findings to this sender's ranking.
 
     Both halves of a finding are governed: `capabilities`, which the planner
-    calls, and `answers`, which the catalog already holds. An ask whose topic
-    carries no ranking passes through untouched.
+    calls, and `answers`, which the catalog already holds. An ask whose
+    capability carries no ranking passes through untouched.
 
     The record of what happened rides back on `DiscoveryResult.priorities` —
     one entry per ask, whether or not a ranking applied. It is the only thing
     downstream that can tell "this provider was never asked" from "this
     provider had nothing".
+
+    Only keys discovery itself wrote are rewritten. Writing a key for an ask
+    it never found anyone for would turn "this ask is absent from the result"
+    into "this ask found nobody" — the same thing to the farmer, a different
+    line in `discovery_text` and one more key for every later reader to
+    account for.
     """
 
-    answers = dict(discovery.answers)
-    capabilities = dict(discovery.capabilities)
-    priorities: dict[int, AskPriority] = {}
-
-    for index, ask in enumerate(intent.asks):
-        topic = ask.subject_categories.value
-        ranking = preference.ranking_for(topic)
-        found = (
-            *discovery.capabilities.get(index, ()),
-            *discovery.answers.get(index, ()),
+    priorities = {
+        index: _priority(index, ask, discovery=discovery, preference=preference)
+        for index, ask in enumerate(intent.asks)
+    }
+    rankings = {
+        index: priority.ranking
+        for index, priority in priorities.items()
+        if priority.applied
+    }
+    capabilities = {
+        index: _ordered(found, rankings[index]) if index in rankings else found
+        for index, found in discovery.capabilities.items()
+    }
+    answers = {
+        index: (
+            _best_provider_only(_ordered(found, rankings[index]))
+            if index in rankings
+            else found
         )
-        priorities[index] = AskPriority(
-            ask_index=index,
-            topic=topic,
-            sender_id=preference.sender_id,
-            source=preference.source_for(topic) if ranking else None,
-            ranking=ranking,
-            kept=_kept(found, ranking) if ranking else (),
-            dropped=_dropped(found, ranking) if ranking else (),
-        )
-        if not ranking:
-            continue
-        # Only where discovery left something to filter. Writing a key for an
-        # ask it never found anyone for would turn "this ask is absent from
-        # the result" into "this ask found nobody" — the same thing to the
-        # farmer, a different line in `discovery_text` and one more key for
-        # every later reader to account for.
-        if index in discovery.capabilities:
-            capabilities[index] = _ordered(discovery.capabilities[index], ranking)
-        if index in discovery.answers:
-            answers[index] = _best_provider_only(
-                _ordered(discovery.answers[index], ranking)
-            )
+        for index, found in discovery.answers.items()
+    }
 
     return replace(
         discovery, answers=answers, capabilities=capabilities, priorities=priorities
+    )
+
+
+def _priority(
+    index: int, ask: Ask, *, discovery: DiscoveryResult, preference: SenderPreference
+) -> AskPriority:
+    """What the sender's ranking means for this one ask — the record alone,
+    before anything is reordered by it."""
+
+    capability = ask.subject_categories.value
+    ranking = preference.ranking_for(capability)
+    found = (
+        *discovery.capabilities.get(index, ()),
+        *discovery.answers.get(index, ()),
+    )
+    return AskPriority(
+        ask_index=index,
+        capability=capability,
+        sender_id=preference.sender_id,
+        source=preference.source_for(capability) if ranking else None,
+        ranking=ranking,
+        kept=_kept(found, ranking) if ranking else (),
+        dropped=_dropped(found, ranking) if ranking else (),
     )
 
 
@@ -172,7 +189,7 @@ def priority_for_ask(
     if none did.
 
     ``None`` covers three states that have to behave identically: no
-    preferences are mounted, the ask's topic carries no ranking, and the
+    registry is configured, the ask's capability carries no ranking, and the
     result predates preferences entirely (an unwired deployment, a test
     building a `DiscoveryResult` by hand). Each one means "do what the system
     did before a ranking existed", and a caller that branched on `priorities`

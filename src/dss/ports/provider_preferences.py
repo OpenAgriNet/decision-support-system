@@ -23,7 +23,7 @@ class ProviderPreferences(Protocol):
     async def for_sender(
         self, sender_id: str | None, *, transaction_id: str
     ) -> SenderPreference:
-        """Which providers this sender wants, per topic, best first.
+        """Which providers this sender wants, per capability, best first.
 
         `sender_id` is `None` when the request carried no `senderId`, and an
         arbitrary string when it carried one nobody registered. Both get the
