@@ -7,7 +7,7 @@ costs a model call it doesn't need.
 
 Flow for this slice:
 
-    the query text (+ history for reference)
+    the question (+ history for reference)
       → word-check policies      strip words, warn, flag frustration (non-terminal)
       → llm policies (one call)  reject if the model reports a violation
       → PROCEED                  carrying the sanitized query + warnings
