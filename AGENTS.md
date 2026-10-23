@@ -55,6 +55,9 @@ Do not duplicate architecture, domain model, or design-decision detail here — 
   Photon (an OpenStreetMap place search) over HTTP when `DSS_PHOTON_BASE_URL` is
   set. An optional cache on `async-lru`, off by default. Counted in
   `dss.area_lookup.count`. An adopter's own source is a later story.
+- Container base images: Docker Hardened Images from `dhi.io`, every one (ADR-0019).
+  The DSS image builds on `dhi.io/python:3.13-dev` and runs on `dhi.io/python:3.13`
+  as user 65532, with no shell. Pulling needs `docker login dhi.io`.
 - Speed benchmark: `benchmarks/` CLI, real models with the mock network; load mode
   runs the DSS in a 1 CPU / 1 GiB container (ADR-0013).
 

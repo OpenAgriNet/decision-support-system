@@ -316,7 +316,7 @@ Cache keys use the **normalised** query. Raw user utterances can carry personal 
 
 ### 5.3 Deployment model 
 
-- Distributed as a versioned container image (`agent-core:X.Y.Z`).
+- Distributed as a versioned container image (`agent-core:X.Y.Z`), built on Docker Hardened Images and run as a non-root user with no shell (ADR-0019).
 - Adopters pull the image, run it in their network alongside the Experience API, mount their `/config` volume.
 - Same immutable image across all adopters and versions.
 - Extension happens through mounted config, not code changes.

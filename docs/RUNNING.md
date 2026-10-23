@@ -109,6 +109,51 @@ Colima. `CONTAINER_RUNTIME=docker` or `=podman` forces one.
 The sections below are what the script automates. Read them when it refuses,
 or to run a piece by hand.
 
+## Docker Hardened Images
+
+Every image the compose files and the Dockerfile start from is a Docker
+Hardened Image (`dhi.io`): minimal, no shell in most of them, and non-root.
+Pulling one needs a login. Use a Docker Hub username and an access token:
+
+```bash
+docker login dhi.io
+```
+
+CI does the same with the `DHI_USERNAME` and `DHI_TOKEN` repository secrets.
+
+What that changes when you run it:
+
+- **No shell in the Photon, Redis, Grafana and DSS images.** So Photon and
+  the OpenTelemetry collector have no healthcheck or a different one, and
+  `docker compose exec <service> sh` fails on those. ClickHouse and MinIO check
+  themselves with bash instead of `wget`/`mc`.
+- **Photon's download is a Python script**, `scripts/photon_index.py`, run by
+  the `photon-index` container as root. It also fixes the owner of the volume,
+  so an existing `photon-data` volume needs nothing from you.
+- **The collector is the `contrib` build** (`dhi.io/opentelemetry-collector`,
+  tag `0.150-contrib`). The plain build has no `transform` processor or
+  ClickHouse exporter.
+
+**Existing volumes need a one-time owner change.** The old images ran as
+other users than the Hardened ones. Stop the stack first, then run these once.
+Use your own project's volume names (`docker volume ls`):
+
+```bash
+# Langfuse Postgres (the Hardened image runs as user 70)
+docker run --rm -u 0 --entrypoint chown -v langfuse_postgres_data:/d \
+  dhi.io/python:3.13-dev -R 70:70 /d
+
+# Langfuse Redis (runs as 65532)
+docker run --rm -u 0 --entrypoint chown -v langfuse_redis_data:/d \
+  dhi.io/python:3.13-dev -R 65532:65532 /d
+```
+
+Not needed: the model gateway's Postgres (same user as before), both
+ClickHouse volumes (kept at user 101), MinIO (runs as root) and Photon (above).
+Postgres volumes are now mounted at the image's own data directory,
+`/var/lib/postgresql/<version>/data`; an existing volume's files sit at its
+top level, so they are found there.
+
 ## Get the schema packs
 
 The packs describe what a provider can answer — one per capability
