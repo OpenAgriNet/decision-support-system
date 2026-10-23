@@ -270,6 +270,24 @@ def test_results_and_failures_sit_under_the_ask_they_are_about() -> None:
     assert advisory.failures == ()
 
 
+@pytest.mark.parametrize("ask_index", [1, -1])
+def test_a_result_for_an_ask_the_turn_lacks_is_refused(ask_index: int) -> None:
+    """Every producer keeps the index in range, so one outside it is a bug.
+    Dropping the result instead would quietly turn the turn into no_match."""
+
+    with pytest.raises(ValueError, match=f"ask {ask_index} "):
+        assemble_evidence([(ask_index, MANDI_PRICE)], intent=_intent(PRICE_ASK))
+
+
+def test_a_failure_for_an_ask_the_turn_lacks_is_refused() -> None:
+    failure = Failure(
+        ask_index=2, capability=None, reason="Xyzzy: place not found", retryable=False
+    )
+
+    with pytest.raises(ValueError, match="ask 2 "):
+        assemble_evidence([], failures=[failure], intent=_intent(PRICE_ASK))
+
+
 def test_a_direct_answer_and_a_selected_one_share_a_source() -> None:
     """Both are ``DiscoveredAnswer``s from the same provider, so they cite as
     one source — the same rule as two selected answers."""

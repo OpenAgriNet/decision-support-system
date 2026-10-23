@@ -22,12 +22,8 @@ def build_evidence(
     """Evidence as `assemble_evidence` would shape it, from its parts. With no
     `asks`, every ask index the parts name stands for `ANY_ASK`."""
 
-    named = _count_asks_named(results, failures)
     if asks is None:
-        asks = (ANY_ASK,) * named
-    if named > len(asks):
-        # `assemble_evidence` never drops a part; a fake that did would pass by luck.
-        raise ValueError(f"parts name {named} asks, but only {len(asks)} given")
+        asks = (ANY_ASK,) * _count_asks_named(results, failures)
     return Evidence(
         sources=tuple(sources),
         ask_evidences=group_by_ask(asks, results=results, failures=failures),
