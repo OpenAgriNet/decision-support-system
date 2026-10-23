@@ -20,15 +20,16 @@ answer arrives in pieces.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping, Sequence
 
-from dss.core.intent.models import Intent, ResolvedPlace
+from dss.core.intent.models import Ask, ResolvedPlace
 from dss.core.planner.markers import (
     CONVERSATION,
     QUESTION,
     RETRIEVED_DATA,
     wrap_as_data,
 )
-from dss.core.planner.models import Evidence, Failure, Identity
+from dss.core.planner.models import AskEvidence, Evidence, Failure, Identity, Result
 from dss.core.shared.models import UserTurn
 from dss.ports.prompts import PromptIdentifier, PromptProvider
 
@@ -52,7 +53,7 @@ def system_prompt(
     )
 
 
-def user_prompt(evidence: Evidence, intent: Intent, *, turn: UserTurn) -> str:
+def user_prompt(evidence: Evidence, *, turn: UserTurn) -> str:
     """The question and the provider's values, wrapped as data.
 
     A provider's text is third-party and must never read as instructions, and
@@ -64,7 +65,7 @@ def user_prompt(evidence: Evidence, intent: Intent, *, turn: UserTurn) -> str:
     question = (
         wrap_as_data(turn.enriched_query, QUESTION)
         + "\n\n"
-        + wrap_as_data(render_evidence(evidence, intent), RETRIEVED_DATA)
+        + wrap_as_data(render_evidence(evidence), RETRIEVED_DATA)
     )
     recent = turn.history[-_HISTORY_WINDOW:]
     if not recent:
@@ -73,19 +74,19 @@ def user_prompt(evidence: Evidence, intent: Intent, *, turn: UserTurn) -> str:
     return wrap_as_data(lines, CONVERSATION) + "\n\n" + question
 
 
-def _place_label(ask_index: int, intent: Intent) -> str:
+def _place_label(ask: Ask) -> str:
     """ "— about <place>, <place above it>", or nothing if the ask has no
     resolved place or the place has no name (a device point the turn sent
     without an area). The place above is what tells two Rampurs apart."""
 
-    place = intent.asks[ask_index].place
+    place = ask.place
     if not isinstance(place, ResolvedPlace) or not place.name:
         return ""
     above = f", {place.within[-1]}" if place.within else ""
     return f" — about {place.name}{above}"
 
 
-def render_evidence(evidence: Evidence, intent: Intent) -> str:
+def render_evidence(evidence: Evidence) -> str:
     """Lay out the sources and their values for the model.
 
     ``Result.data`` is a provider's ``resourceAttributes`` verbatim — each
@@ -103,52 +104,70 @@ def render_evidence(evidence: Evidence, intent: Intent) -> str:
     two-place turn ("wheat price in Pune, will it rain in Anand") labels each
     question with its own place. It is a fallback the model uses only when
     the data itself names no place.
+
+    Questions come in ask order, numbered among the asks that were served.
     """
 
     name_by_id = {source.id: source.name for source in evidence.sources}
-    by_question: dict[int, dict[str, list[dict]]] = {}
-    for result in evidence.results:
-        by_question.setdefault(result.ask_index, {}).setdefault(
-            result.source_id, []
-        ).append(result.data)
-
-    blocks: list[str] = []
-    for position, (ask_index, sources) in enumerate(by_question.items(), start=1):
-        label = _place_label(ask_index, intent)
-        for source_id, payloads in sources.items():
-            name = name_by_id.get(source_id, "unknown")
-            body = "\n\n".join(
-                json.dumps(payload, indent=2, ensure_ascii=False)
-                for payload in payloads
-            )
-            blocks.append(f"Question {position} — [{source_id}] {name}{label}\n{body}")
-    blocks.extend(_render_failures(evidence, intent))
+    served = [entry for entry in evidence.ask_evidences if entry.is_served]
+    blocks = [
+        block
+        for position, entry in enumerate(served, start=1)
+        for block in _render_results(entry, position=position, name_by_id=name_by_id)
+    ]
+    blocks += [
+        block for entry in evidence.ask_evidences for block in _render_failures(entry)
+    ]
 
     if not blocks:
         return "Nothing was retrieved."
     return "\n\n".join(blocks)
 
 
-def _render_failures(evidence: Evidence, intent: Intent) -> list[str]:
-    """Calls that did not answer, and why.
+def _render_results(
+    ask_evidence: AskEvidence, *, position: int, name_by_id: Mapping[str, str]
+) -> list[str]:
+    """One block per source that answered this ask, in first-seen order."""
+
+    label = _place_label(ask_evidence.ask)
+    return [
+        f"Question {position} — [{source_id}] {name_by_id.get(source_id, 'unknown')}"
+        f"{label}\n{_render_payloads(payloads)}"
+        for source_id, payloads in _payloads_by_source(ask_evidence.results).items()
+    ]
+
+
+def _payloads_by_source(results: Sequence[Result]) -> dict[str, list[dict]]:
+    payloads_by_source: dict[str, list[dict]] = {}
+    for result in results:
+        payloads_by_source.setdefault(result.source_id, []).append(result.data)
+    return payloads_by_source
+
+
+def _render_payloads(payloads: Sequence[dict]) -> str:
+    return "\n\n".join(
+        json.dumps(payload, indent=2, ensure_ascii=False) for payload in payloads
+    )
+
+
+def _render_failures(ask_evidence: AskEvidence) -> list[str]:
+    """This ask's calls that did not answer, and why.
 
     "We could not reach Agmarknet" and "nobody serves this" are the same
     empty result but very different things to tell a farmer. Without this the
-    composer saw only ``results`` and rendered both as "Nothing was
-    retrieved.", which is the confusion ``Evidence.failed`` was added to
-    prevent.
+    composer saw only results and rendered both as "Nothing was retrieved."
     """
 
+    label = _place_label(ask_evidence.ask)
     return [
-        f"{_failure_lead(failure)}"
-        f"{_place_label(failure.ask_index, intent)}: {failure.reason}"
-        for failure in evidence.failed
+        f"{_failure_lead(failure)}{label}: {failure.reason}"
+        for failure in ask_evidence.failures
     ]
 
 
 def _failure_lead(failure: Failure) -> str:
     # No capability means no call was made: the ask's place failed. Blaming a
     # provider would have the composer tell the farmer a service is down.
-    if failure.capability is None:
+    if not failure.is_provider_failure:
         return "Nothing searched"
     return f"Could not reach a provider for {failure.capability}"

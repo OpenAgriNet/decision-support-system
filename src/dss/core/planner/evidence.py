@@ -17,14 +17,21 @@ from __future__ import annotations
 
 from collections.abc import Collection, Mapping, Sequence
 
-from dss.core.intent.models import AmbiguousPlace, Intent, UnresolvedPlace
-from dss.core.planner.models import Evidence, Failure, Result, Source, SourceKind
+from dss.core.intent.models import AmbiguousPlace, Ask, Intent, UnresolvedPlace
+from dss.core.planner.models import (
+    AskEvidence,
+    Evidence,
+    Failure,
+    Result,
+    Source,
+    SourceKind,
+)
 from dss.core.provider_discovery.models import DiscoveredAnswer
 
 
 def place_failures(
     intent: Intent, *, place_optional: Collection[int] = ()
-) -> list[tuple[int, Failure]]:
+) -> list[Failure]:
     """One failure per ask whose place has nowhere to search.
 
     Recorded before the planner runs, so the farmer hears about the ask even
@@ -34,7 +41,7 @@ def place_failures(
     the pack serves it from nowhere (`core/planner/place.py`).
     """
 
-    failures: list[tuple[int, Failure]] = []
+    failures: list[Failure] = []
     for index, ask in enumerate(intent.asks):
         if isinstance(ask.place, UnresolvedPlace):
             reason = f"{ask.place.unresolved_name}: place not found"
@@ -45,12 +52,7 @@ def place_failures(
         else:
             continue
         failures.append(
-            (
-                index,
-                Failure(
-                    ask_index=index, capability=None, reason=reason, retryable=False
-                ),
-            )
+            Failure(ask_index=index, capability=None, reason=reason, retryable=False)
         )
     return failures
 
@@ -60,7 +62,7 @@ def assemble_evidence(
     *,
     intent: Intent,
     direct_answers: Mapping[int, tuple[DiscoveredAnswer, ...]] | None = None,
-    failures: Sequence[tuple[int, Failure]] = (),
+    failures: Sequence[Failure] = (),
 ) -> Evidence:
     """Turn everything the turn gathered into ``Evidence``.
 
@@ -74,10 +76,10 @@ def assemble_evidence(
       already answered reached the planner's prompt and then vanished: the
       planner is told not to answer, and the composer never saw it.
 
-    ``failures`` are calls that errored after the adapter's retries. They ride
-    alongside the results so the composer can say "we could not reach
-    Agmarknet" rather than "nobody serves this" — the same empty result, two
-    different things to tell a farmer.
+    ``failures`` are calls that errored after the adapter's retries, and asks
+    whose place left nowhere to search. They ride alongside the results so the
+    composer can say "we could not reach Agmarknet" rather than "nobody serves
+    this" — the same empty result, two different things to tell a farmer.
 
     Sources are numbered ``"1"``, ``"2"``, … in first-seen order, one per
     ``(provider, originator)`` pair:
@@ -123,11 +125,45 @@ def assemble_evidence(
             )
         )
 
-    served = tuple(dict.fromkeys(ask_index for ask_index, _ in [*direct, *raw_answers]))
     return Evidence(
         sources=tuple(sources),
-        results=tuple(results),
-        served=served,
-        failed=tuple(failure for _, failure in failures),
-        sufficient=bool(results),
+        ask_evidences=group_by_ask(intent.asks, results=results, failures=failures),
     )
+
+
+def group_by_ask(
+    asks: Sequence[Ask],
+    *,
+    results: Sequence[Result],
+    failures: Sequence[Failure],
+) -> tuple[AskEvidence, ...]:
+    """One entry per ask, in ask order, holding that ask's results and failures.
+
+    Raises ``ValueError`` for a part naming an ask the turn does not have.
+    """
+
+    _reject_stray_ask_indexes(len(asks), results=results, failures=failures)
+    return tuple(
+        AskEvidence(
+            ask=ask,
+            results=tuple(result for result in results if result.ask_index == index),
+            failures=tuple(
+                failure for failure in failures if failure.ask_index == index
+            ),
+        )
+        for index, ask in enumerate(asks)
+    )
+
+
+def _reject_stray_ask_indexes(
+    ask_count: int, *, results: Sequence[Result], failures: Sequence[Failure]
+) -> None:
+    # Every producer keeps the index in range, so a stray one is a bug. Dropping
+    # the part instead would quietly turn the turn into no_match.
+    stray = [
+        part.ask_index
+        for part in (*results, *failures)
+        if not 0 <= part.ask_index < ask_count
+    ]
+    if stray:
+        raise ValueError(f"ask {stray[0]} is not one of the turn's {ask_count} asks")

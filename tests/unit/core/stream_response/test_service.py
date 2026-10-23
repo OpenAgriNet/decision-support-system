@@ -14,7 +14,6 @@ import pytest
 
 from dss.core.intent.models import (
     Ask,
-    Intent,
     InteractionType,
     PlaceSource,
     ResolvedPlace,
@@ -30,6 +29,7 @@ from dss.core.planner.models import (
 )
 from dss.core.shared.models import Geometry, UserTurn
 from dss.core.stream_response.service import stream_response
+from tests.support.evidence import build_evidence
 from tests.support.fakes import FakePromptProvider
 
 IDENTITY = Identity(
@@ -38,7 +38,7 @@ IDENTITY = Identity(
     boundaries="Never gives financial advice.",
 )
 
-EVIDENCE = Evidence(
+EVIDENCE = build_evidence(
     sources=(Source(id="1", name="Agmarknet", kind=SourceKind.PROVIDER, url=None),),
     results=(
         Result(
@@ -50,18 +50,12 @@ EVIDENCE = Evidence(
             },
         ),
     ),
-    served=(0,),
-    failed=(),
-    sufficient=True,
 )
 
-NOTHING_FOUND = Evidence(sources=(), results=(), served=(), failed=(), sufficient=False)
+NOTHING_FOUND = build_evidence()
 
-UNREACHABLE = Evidence(
-    sources=(),
-    results=(),
-    served=(),
-    failed=(
+UNREACHABLE = build_evidence(
+    failures=(
         Failure(
             ask_index=0,
             capability="openagrinet:MandiPrice",
@@ -69,7 +63,6 @@ UNREACHABLE = Evidence(
             retryable=True,
         ),
     ),
-    sufficient=False,
 )
 
 
@@ -80,8 +73,6 @@ def _ask(place: ResolvedPlace | None = None) -> Ask:
         place=place,
     )
 
-
-INTENT = Intent(asks=(_ask(),))
 
 PUNE = ResolvedPlace(
     name="Pune",
@@ -156,14 +147,11 @@ def _turn(query: str = "What is the price of paddy?") -> UserTurn:
     )
 
 
-async def _collect(
-    llm: _FakeLLM, evidence: Evidence = EVIDENCE, intent: Intent = INTENT
-) -> list[str]:
+async def _collect(llm: _FakeLLM, evidence: Evidence = EVIDENCE) -> list[str]:
     return [
         delta
         async for delta in stream_response(
             evidence,
-            intent,
             turn=_turn(),
             identity=IDENTITY,
             llm=llm,
@@ -232,7 +220,12 @@ async def test_the_asks_resolved_place_reaches_the_model() -> None:
 
     llm = _FakeLLM()
 
-    await _collect(llm, intent=Intent(asks=(_ask(PUNE),)))
+    [paddy] = EVIDENCE.ask_evidences
+    evidence = build_evidence(
+        sources=EVIDENCE.sources, results=paddy.results, asks=(_ask(PUNE),)
+    )
+
+    await _collect(llm, evidence)
 
     assert "Pune" in llm.everything
 
@@ -278,7 +271,6 @@ async def test_a_failure_part_way_through_is_not_swallowed() -> None:
     with pytest.raises(RuntimeError, match="stream dropped"):
         async for delta in stream_response(
             EVIDENCE,
-            INTENT,
             turn=_turn(),
             identity=IDENTITY,
             llm=llm,
@@ -303,7 +295,6 @@ async def test_abandoning_the_stream_closes_the_model_call() -> None:
     llm = _FakeLLM()
     pieces = stream_response(
         EVIDENCE,
-        INTENT,
         turn=_turn(),
         identity=IDENTITY,
         llm=llm,

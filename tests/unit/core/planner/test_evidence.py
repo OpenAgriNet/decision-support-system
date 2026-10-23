@@ -15,10 +15,17 @@ from dss.core.intent.models import (
     UnresolvedPlace,
 )
 from dss.core.planner.evidence import assemble_evidence, place_failures
-from dss.core.planner.models import Failure, SourceKind
+from dss.core.planner.models import Evidence, Failure, Result, SourceKind
 from dss.core.provider_discovery.models import DiscoveredAnswer
 from dss.core.shared.models import Geometry
 from dss.ports.area_lookup import AreaMatch
+
+
+def _results(evidence: Evidence) -> list[Result]:
+    """Every result, in ask order — first-seen order too, for these tests."""
+
+    return [result for entry in evidence.ask_evidences for result in entry.results]
+
 
 # One answer per capability this change touches. `attributes` holds a
 # resource's `resourceAttributes` verbatim (see the adapter, which reads
@@ -149,8 +156,7 @@ def test_one_answer_becomes_one_source_and_one_result(
     assert source.kind is SourceKind.PROVIDER
     assert source.url == answer.source_url
 
-    assert len(evidence.results) == 1
-    result = evidence.results[0]
+    [result] = _results(evidence)
     assert result.ask_index == 0
     assert result.source_id == "1"
     assert result.data == answer.attributes
@@ -182,9 +188,8 @@ def test_one_provider_answering_two_asks_is_one_source() -> None:
     )
 
     assert [source.id for source in evidence.sources] == ["1"]
-    assert [result.source_id for result in evidence.results] == ["1", "1"]
-    assert [result.ask_index for result in evidence.results] == [0, 1]
-    assert evidence.served == (0, 1)
+    assert [result.source_id for result in _results(evidence)] == ["1", "1"]
+    assert [result.ask_index for result in _results(evidence)] == [0, 1]
 
 
 def test_two_providers_are_numbered_in_first_seen_order() -> None:
@@ -200,26 +205,17 @@ def test_two_providers_are_numbered_in_first_seen_order() -> None:
         ("1", "Agmarknet"),  # no source block — falls back to the provider
         ("2", "Agriculture Knowledge Provider"),
     ]
-    assert [result.source_id for result in evidence.results] == ["1", "2"]
+    assert [result.source_id for result in _results(evidence)] == ["1", "2"]
 
 
-def test_no_answers_is_not_sufficient() -> None:
+def test_no_answers_assembles_empty_evidence() -> None:
     """The loop ended without a single result, so there is nothing to answer
-    from. ``sufficient`` is the composer's cue to say "I don't know" rather
-    than invent."""
+    from."""
 
     evidence = assemble_evidence([], intent=_intent(PRICE_ASK))
 
     assert evidence.sources == ()
-    assert evidence.results == ()
-    assert evidence.served == ()
-    assert evidence.sufficient is False
-
-
-def test_any_answer_is_sufficient() -> None:
-    evidence = assemble_evidence([(0, MANDI_PRICE)], intent=_intent(PRICE_ASK))
-
-    assert evidence.sufficient is True
+    assert evidence.has_any_result is False
 
 
 def test_a_direct_answer_reaches_the_evidence() -> None:
@@ -234,9 +230,62 @@ def test_a_direct_answer_reaches_the_evidence() -> None:
     )
 
     assert [source.name for source in evidence.sources] == ["Agmarknet"]
-    assert evidence.results[0].data == MANDI_PRICE.attributes
-    assert evidence.served == (0,)
-    assert evidence.sufficient is True
+    [result] = _results(evidence)
+    assert result.data == MANDI_PRICE.attributes
+
+
+def test_every_ask_gets_its_own_evidence_in_ask_order() -> None:
+    """Answered or not, every ask is listed, so a reader never looks it up
+    again in the intent."""
+
+    evidence = assemble_evidence(
+        [(1, MANDI_PRICE)], intent=_intent(PRICE_ASK, ADVISORY_ASK)
+    )
+
+    assert [entry.ask for entry in evidence.ask_evidences] == [
+        PRICE_ASK,
+        ADVISORY_ASK,
+    ]
+    assert [entry.is_served for entry in evidence.ask_evidences] == [False, True]
+
+
+def test_results_and_failures_sit_under_the_ask_they_are_about() -> None:
+    failure = Failure(
+        ask_index=0,
+        capability="openagrinet:MandiPrice",
+        reason="too many requests",
+        retryable=True,
+    )
+
+    evidence = assemble_evidence(
+        [(1, MANDI_PRICE)],
+        failures=[failure],
+        intent=_intent(PRICE_ASK, ADVISORY_ASK),
+    )
+
+    price, advisory = evidence.ask_evidences
+    assert price.results == ()
+    assert price.failures == (failure,)
+    assert [result.ask_index for result in advisory.results] == [1]
+    assert advisory.failures == ()
+
+
+@pytest.mark.parametrize("ask_index", [1, -1])
+def test_a_result_for_an_ask_the_turn_lacks_is_refused(ask_index: int) -> None:
+    """Every producer keeps the index in range, so one outside it is a bug.
+    Dropping the result instead would quietly turn the turn into no_match."""
+
+    with pytest.raises(ValueError, match=f"ask {ask_index} "):
+        assemble_evidence([(ask_index, MANDI_PRICE)], intent=_intent(PRICE_ASK))
+
+
+def test_a_failure_for_an_ask_the_turn_lacks_is_refused() -> None:
+    failure = Failure(
+        ask_index=2, capability=None, reason="Xyzzy: place not found", retryable=False
+    )
+
+    with pytest.raises(ValueError, match="ask 2 "):
+        assemble_evidence([], failures=[failure], intent=_intent(PRICE_ASK))
 
 
 def test_a_direct_answer_and_a_selected_one_share_a_source() -> None:
@@ -250,8 +299,7 @@ def test_a_direct_answer_and_a_selected_one_share_a_source() -> None:
     )
 
     assert [source.id for source in evidence.sources] == ["1"]
-    assert sorted(result.ask_index for result in evidence.results) == [0, 1]
-    assert sorted(evidence.served) == [0, 1]
+    assert [result.ask_index for result in _results(evidence)] == [0, 1]
 
 
 def test_failures_are_carried_onto_the_evidence() -> None:
@@ -266,10 +314,9 @@ def test_failures_are_carried_onto_the_evidence() -> None:
         retryable=True,
     )
 
-    evidence = assemble_evidence([], failures=[(0, failure)], intent=_intent(PRICE_ASK))
+    evidence = assemble_evidence([], failures=[failure], intent=_intent(PRICE_ASK))
 
-    assert evidence.failed == (failure,)
-    assert evidence.sufficient is False
+    assert evidence.ask_evidences[0].failures == (failure,)
 
 
 def test_the_originator_outranks_the_provider_that_served_it() -> None:
@@ -324,7 +371,7 @@ def test_one_provider_relaying_two_originators_is_two_sources() -> None:
         ("1", "IMD Mausamgram NWP"),
         ("2", "Skymet"),
     ]
-    assert [result.source_id for result in evidence.results] == ["1", "2"]
+    assert [result.source_id for result in _results(evidence)] == ["1", "2"]
 
 
 def test_two_providers_relaying_one_originator_stay_two_sources() -> None:
@@ -370,7 +417,7 @@ def test_the_same_originator_twice_from_one_provider_is_one_source() -> None:
     )
 
     assert [s.id for s in evidence.sources] == ["1"]
-    assert [result.source_id for result in evidence.results] == ["1", "1"]
+    assert [result.source_id for result in _results(evidence)] == ["1", "1"]
 
 
 _PUNE_PLACE = ResolvedPlace(
@@ -401,9 +448,8 @@ def test_an_unresolved_place_is_a_failure_without_a_provider() -> None:
 
     failures = place_failures(intent)
 
-    assert len(failures) == 1
-    index, failure = failures[0]
-    assert index == failure.ask_index == 1
+    [failure] = failures
+    assert failure.ask_index == 1
     assert failure.capability is None
     assert failure.retryable is False
     assert "Xyzzy" in failure.reason
@@ -434,9 +480,8 @@ def test_an_ambiguous_place_is_a_failure_without_a_provider() -> None:
 
     failures = place_failures(intent)
 
-    assert len(failures) == 1
-    index, failure = failures[0]
-    assert index == failure.ask_index == 1
+    [failure] = failures
+    assert failure.ask_index == 1
     assert failure.capability is None
     assert "Aurangabad" in failure.reason
     assert "several" in failure.reason
@@ -459,6 +504,7 @@ def test_missing_needed_place_fails() -> None:
 
     failures = place_failures(intent, place_optional={0})
 
-    assert [index for index, _ in failures] == [1]
-    assert failures[0][1].capability is None
-    assert "place" in failures[0][1].reason
+    [failure] = failures
+    assert failure.ask_index == 1
+    assert failure.capability is None
+    assert "place" in failure.reason

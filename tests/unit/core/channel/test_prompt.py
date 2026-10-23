@@ -11,7 +11,6 @@ from __future__ import annotations
 from dss.core.channel.prompt import render_evidence, system_prompt, user_prompt
 from dss.core.intent.models import (
     Ask,
-    Intent,
     InteractionType,
     PlaceSource,
     ResolvedPlace,
@@ -28,6 +27,7 @@ from dss.core.planner.models import (
 from dss.core.shared.language import LanguageTag
 from dss.core.shared.models import ConversationMessage, Geometry, UserTurn
 from dss.ports.prompts import PromptIdentifier
+from tests.support.evidence import build_evidence
 from tests.support.fakes import FakePromptProvider
 
 PULSES = Source(id="1", name="PulsesGuidelines2025", kind=SourceKind.PROVIDER, url=None)
@@ -52,18 +52,10 @@ def _ask(place: ResolvedPlace | None = None) -> Ask:
     )
 
 
-# Two asks naming no place: the layout tests below are about grouping, not
-# the place label, so nothing adds a label to their headings.
-_NO_PLACES = Intent(asks=(_ask(), _ask()))
-
-
 def _evidence(*results: Result, sources: tuple[Source, ...]) -> Evidence:
-    return Evidence(
+    return build_evidence(
         sources=sources,
         results=results,
-        served=tuple(dict.fromkeys(result.ask_index for result in results)),
-        failed=(),
-        sufficient=bool(results),
     )
 
 
@@ -78,7 +70,7 @@ def test_one_sources_passages_are_gathered_under_one_heading() -> None:
         sources=(PULSES,),
     )
 
-    rendered = render_evidence(evidence, _NO_PLACES)
+    rendered = render_evidence(evidence)
 
     assert rendered.count("PulsesGuidelines2025") == 1
     assert '"passage": "a"' in rendered
@@ -95,7 +87,7 @@ def test_each_source_answering_one_question_is_its_own_block() -> None:
         sources=(PULSES, ICAR),
     )
 
-    rendered = render_evidence(evidence, _NO_PLACES)
+    rendered = render_evidence(evidence)
 
     assert "[1] PulsesGuidelines2025" in rendered
     assert "[2] ICAR Agro-Advisories" in rendered
@@ -112,7 +104,7 @@ def test_results_are_grouped_by_the_question_they_answer() -> None:
         sources=(PULSES, AGMARKNET),
     )
 
-    rendered = render_evidence(evidence, _NO_PLACES)
+    rendered = render_evidence(evidence)
 
     assert "Question 1" in rendered
     assert "Question 2" in rendered
@@ -120,22 +112,17 @@ def test_results_are_grouped_by_the_question_they_answer() -> None:
 
 
 def test_nothing_retrieved_still_says_so() -> None:
-    assert (
-        render_evidence(_evidence(sources=()), _NO_PLACES) == "Nothing was retrieved."
-    )
+    assert render_evidence(_evidence(sources=())) == "Nothing was retrieved."
 
 
 def test_a_result_is_labelled_with_its_asks_resolved_place() -> None:
-    intent = Intent(asks=(_ask(_place("Pune")),))
-    evidence = Evidence(
+    evidence = build_evidence(
+        asks=(_ask(_place("Pune")),),
         sources=(Source(id="1", name="Agmarknet", kind=SourceKind.PROVIDER, url=None),),
         results=(Result(ask_index=0, source_id="1", data={"modal": 2200}),),
-        served=(0,),
-        failed=(),
-        sufficient=True,
     )
 
-    rendered = render_evidence(evidence, intent)
+    rendered = render_evidence(evidence)
 
     assert "Pune" in rendered
 
@@ -147,16 +134,13 @@ def test_the_label_names_the_place_above_so_two_rampurs_are_told_apart() -> None
         geometry=Geometry(coordinates=[77.63, 31.45]),
         source=PlaceSource.NAMED,
     )
-    intent = Intent(asks=(_ask(rampur),))
-    evidence = Evidence(
+    evidence = build_evidence(
+        asks=(_ask(rampur),),
         sources=(Source(id="1", name="IMD", kind=SourceKind.PROVIDER, url=None),),
         results=(Result(ask_index=0, source_id="1", data={"rain": 2}),),
-        served=(0,),
-        failed=(),
-        sufficient=True,
     )
 
-    rendered = render_evidence(evidence, intent)
+    rendered = render_evidence(evidence)
 
     assert "— about Rampur, Himachal Pradesh\n" in rendered
 
@@ -170,27 +154,23 @@ def test_a_place_with_nothing_above_it_is_labelled_with_its_name_alone() -> None
         geometry=Geometry(coordinates=[72.95, 22.56]),
         source=PlaceSource.ASSERTED_GEOMETRY,
     )
-    intent = Intent(asks=(_ask(anand),))
-    evidence = Evidence(
+    evidence = build_evidence(
+        asks=(_ask(anand),),
         sources=(Source(id="1", name="IMD", kind=SourceKind.PROVIDER, url=None),),
         results=(Result(ask_index=0, source_id="1", data={"rain": 2}),),
-        served=(0,),
-        failed=(),
-        sufficient=True,
     )
 
-    rendered = render_evidence(evidence, intent)
+    rendered = render_evidence(evidence)
 
     assert "— about Anand\n" in rendered
 
 
 def test_a_failure_is_labelled_with_its_asks_resolved_place() -> None:
-    intent = Intent(asks=(_ask(_place("Anand")),))
-    evidence = Evidence(
+    evidence = build_evidence(
+        asks=(_ask(_place("Anand")),),
         sources=(),
         results=(),
-        served=(),
-        failed=(
+        failures=(
             Failure(
                 ask_index=0,
                 capability="openagrinet:WeatherObservation",
@@ -198,10 +178,9 @@ def test_a_failure_is_labelled_with_its_asks_resolved_place() -> None:
                 retryable=True,
             ),
         ),
-        sufficient=False,
     )
 
-    rendered = render_evidence(evidence, intent)
+    rendered = render_evidence(evidence)
 
     assert "Anand" in rendered
 
@@ -210,12 +189,11 @@ def test_a_place_failure_does_not_blame_a_provider() -> None:
     """No provider was called for Xyzzy. "Could not reach a provider" would
     have the composer tell the farmer a service is down."""
 
-    intent = Intent(asks=(_ask(_place("Pune")), _ask()))
-    evidence = Evidence(
+    evidence = build_evidence(
+        asks=(_ask(_place("Pune")), _ask()),
         sources=(),
         results=(),
-        served=(),
-        failed=(
+        failures=(
             Failure(
                 ask_index=1,
                 capability=None,
@@ -223,10 +201,9 @@ def test_a_place_failure_does_not_blame_a_provider() -> None:
                 retryable=False,
             ),
         ),
-        sufficient=False,
     )
 
-    rendered = render_evidence(evidence, intent)
+    rendered = render_evidence(evidence)
 
     assert "Xyzzy: place not found" in rendered
     assert "Could not reach a provider" not in rendered
@@ -236,32 +213,26 @@ def test_a_device_point_with_no_name_labels_nothing() -> None:
     """A device point with no area has no name. "about " with nothing after it
     is noise the composer might try to fill."""
 
-    intent = Intent(asks=(_ask(_place("")),))
-    evidence = Evidence(
+    evidence = build_evidence(
+        asks=(_ask(_place("")),),
         sources=(Source(id="1", name="IMD", kind=SourceKind.PROVIDER, url=None),),
         results=(Result(ask_index=0, source_id="1", data={"rain": "none"}),),
-        served=(0,),
-        failed=(),
-        sufficient=True,
     )
 
-    assert "about" not in render_evidence(evidence, intent)
+    assert "about" not in render_evidence(evidence)
 
 
 def test_no_place_resolved_labels_nothing() -> None:
     """`place=None` — nothing named, no fallback, or the ask needed none —
     is not a fact worth stating, so no label is added."""
 
-    intent = Intent(asks=(_ask(place=None),))
-    evidence = Evidence(
+    evidence = build_evidence(
+        asks=(_ask(place=None),),
         sources=(Source(id="1", name="Agmarknet", kind=SourceKind.PROVIDER, url=None),),
         results=(Result(ask_index=0, source_id="1", data={"modal": 2200}),),
-        served=(0,),
-        failed=(),
-        sufficient=True,
     )
 
-    rendered = render_evidence(evidence, intent)
+    rendered = render_evidence(evidence)
 
     assert "about" not in rendered.lower()
 
@@ -322,9 +293,9 @@ def test_composer_sees_last_three_messages() -> None:
         channel="web",
         history=history,
     )
-    evidence = Evidence(sources=(), results=(), served=(), failed=(), sufficient=False)
+    evidence = build_evidence()
 
-    prompt = user_prompt(evidence, Intent(), turn=turn)
+    prompt = user_prompt(evidence, turn=turn)
 
     assert "<BEGIN CONVERSATION>" in prompt
     assert "Good to hear." in prompt

@@ -4,18 +4,15 @@ from __future__ import annotations
 
 from dss.core.planner.models import Evidence, Source, SourceKind
 from dss.orchestration.stage_content import cited_sources_text
+from tests.support.evidence import build_evidence
 
 
 def _evidence(*names: str) -> Evidence:
-    return Evidence(
+    return build_evidence(
         sources=tuple(
             Source(id=str(i), name=name, kind=SourceKind.PROVIDER, url=None)
             for i, name in enumerate(names, start=1)
         ),
-        results=(),
-        served=(),
-        failed=(),
-        sufficient=False,
     )
 
 

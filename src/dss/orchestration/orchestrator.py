@@ -68,7 +68,6 @@ from dss.core.moderation.messages import messages_for
 from dss.core.moderation.models import ModerationDecision, Outcome
 from dss.core.planner.models import Evidence, Verdict
 from dss.core.planner.place import place_optional_asks
-from dss.core.planner.sufficiency import provider_failed, unserved_asks
 from dss.core.planner.validation import DomainSchema
 from dss.core.policy.models import Policy
 from dss.core.provider_discovery.models import DiscoveryResult
@@ -400,9 +399,7 @@ class Orchestrator:
             # closing an async generator does not reach the one it relays
             # from.
             async with (
-                aclosing(
-                    self._components.compose(evidence, result.intent, turn=turn)
-                ) as written,
+                aclosing(self._components.compose(evidence, turn=turn)) as written,
                 aclosing(numbers.renumber(written)) as pieces,
             ):
                 async for piece in pieces:
@@ -434,7 +431,7 @@ class Orchestrator:
         (block,) = answer.content
         yield answer_stream.claim(block, answer.sources)
 
-        status, cause = _status_for(evidence, result.intent)
+        status, cause = _status_for(evidence)
         yield answer_stream.finish(outcome_for(status, cause))
 
     async def _reveal_to_farmer(
@@ -543,7 +540,7 @@ def _nobody_serves(discovery: DiscoveryResult) -> bool:
     )
 
 
-def _status_for(evidence: Evidence, intent: Intent) -> tuple[TurnStatus, Cause | None]:
+def _status_for(evidence: Evidence) -> tuple[TurnStatus, Cause | None]:
     """Map what the loop actually gathered to a contract outcome. Reads facts
     off `Evidence` — it invents no rule, so no business `if` escapes `core/`:
 
@@ -556,11 +553,11 @@ def _status_for(evidence: Evidence, intent: Intent) -> tuple[TurnStatus, Cause |
     - every ask served → `answered`.
     """
 
-    if not evidence.results:
-        if provider_failed(evidence):
+    if not evidence.has_any_result:
+        if evidence.has_provider_failure:
             return TurnStatus.UNAVAILABLE, Cause.PROVIDER_UNAVAILABLE
         return TurnStatus.NO_MATCH, None
-    if unserved_asks(evidence, intent=intent):
+    if evidence.unserved_asks:
         return TurnStatus.PARTIALLY_ANSWERED, None
     return TurnStatus.ANSWERED, None
 

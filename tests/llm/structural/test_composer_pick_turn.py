@@ -23,16 +23,16 @@ from dss.config.prompt_service import build_prompt_service
 from dss.config.settings import Settings
 from dss.core.intent.models import (
     Ask,
-    Intent,
     InteractionType,
     PlaceSource,
     ResolvedPlace,
     SubjectCategory,
 )
-from dss.core.planner.models import Evidence, Result, Source, SourceKind
+from dss.core.planner.models import Result, Source, SourceKind
 from dss.core.shared.models import ConversationMessage, Geometry, UserTurn
 from dss.core.stream_response.service import stream_response
 from dss.entrypoint.composition import _composer_llm
+from tests.support.evidence import build_evidence
 from tests.support.live_model import missing_model_key
 
 _DOTENV = Path(__file__).parents[3] / ".env"
@@ -69,16 +69,13 @@ async def test_pick_reply_still_answers() -> None:
         geometry=Geometry(coordinates=[77.63, 31.45]),
         source=PlaceSource.NAMED,
     )
-    intent = Intent(
-        asks=(
-            Ask(
-                subject_categories=SubjectCategory.WEATHER,
-                interaction_type=InteractionType.OBSERVE,
-                place=rampur,
-            ),
-        )
+    ask = Ask(
+        subject_categories=SubjectCategory.WEATHER,
+        interaction_type=InteractionType.OBSERVE,
+        place=rampur,
     )
-    evidence = Evidence(
+    evidence = build_evidence(
+        asks=(ask,),
         sources=(Source(id="1", name="IMD", kind=SourceKind.PROVIDER, url=None),),
         results=(
             Result(
@@ -87,9 +84,6 @@ async def test_pick_reply_still_answers() -> None:
                 data={"forecast": "light rain", "rainfall_mm": 37},
             ),
         ),
-        served=(0,),
-        failed=(),
-        sufficient=True,
     )
     turn = UserTurn(
         original_query="2",
@@ -111,7 +105,6 @@ async def test_pick_reply_still_answers() -> None:
 
     pieces = stream_response(
         evidence,
-        intent,
         turn=turn,
         identity=load_identity(),
         llm=_composer_llm(Settings()),

@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import StrEnum
 
 import anyio
 from pydantic import BaseModel, ConfigDict
 
+from dss.core.intent.models import Ask
 from dss.core.moderation.models import ModerationDecision
 
 
@@ -81,9 +83,9 @@ class Result(BaseModel):
 
     The design doc's ``Result.step_id`` names a ``Plan`` step; there is no
     ``Plan`` here. ``ask_index`` names what a result actually answers instead
-    — the position into ``Intent.asks`` — so sufficiency can compare
-    ``Evidence.served`` against it directly. No ``url`` here: it lives on the
-    ``Source`` this result's ``source_id`` points to.
+    — the position into ``Intent.asks`` — so ``assemble_evidence`` can file
+    it under its ask. No ``url`` here: it lives on the ``Source`` this
+    result's ``source_id`` points to.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -97,8 +99,8 @@ class Failure(BaseModel):
     """An ask that did not produce a result.
 
     ``ask_index`` names what the call was answering — the position into
-    ``Intent.asks`` — the same way ``Result.ask_index`` does, so the composer
-    can say which ask's place a failure is about.
+    ``Intent.asks`` — the same way ``Result.ask_index`` does, so
+    ``assemble_evidence`` can file it under its ask.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -108,6 +110,10 @@ class Failure(BaseModel):
     capability: str | None
     reason: str
     retryable: bool
+
+    @property
+    def is_provider_failure(self) -> bool:
+        return self.capability is not None
 
 
 class Identity(BaseModel):
@@ -124,16 +130,47 @@ class Identity(BaseModel):
     boundaries: str
 
 
-class Evidence(BaseModel):
-    """What the loop gathered for a turn — every source, every result, every
-    gap. ``served`` indexes into ``Intent.asks``; ``sufficiency.py`` sets
-    ``sufficient`` by comparing the two (design doc §8, open item 14).
+@dataclass(frozen=True)
+class AskEvidence:
+    """What the turn gathered for one ask: its results and its failures."""
+
+    ask: Ask
+    results: tuple[Result, ...]
+    failures: tuple[Failure, ...]
+
+    @property
+    def is_served(self) -> bool:
+        return bool(self.results)
+
+    @property
+    def has_provider_failure(self) -> bool:
+        return any(failure.is_provider_failure for failure in self.failures)
+
+
+@dataclass(frozen=True)
+class Evidence:
+    """What the loop gathered for a turn: every source it cites, and per ask,
+    every result and every gap (design doc §8, open item 14).
+
+    ``sources`` spans the turn, numbered in first-seen order, because one
+    source can answer several asks and a claim cites it by that one number.
+    ``ask_evidences`` holds one entry per ``Intent.asks``, in ask order.
     """
 
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
     sources: tuple[Source, ...]
-    results: tuple[Result, ...]
-    served: tuple[int, ...]
-    failed: tuple[Failure, ...]
-    sufficient: bool
+    ask_evidences: tuple[AskEvidence, ...]
+
+    @property
+    def unserved_asks(self) -> tuple[AskEvidence, ...]:
+        return tuple(entry for entry in self.ask_evidences if not entry.is_served)
+
+    @property
+    def has_any_result(self) -> bool:
+        return any(entry.is_served for entry in self.ask_evidences)
+
+    @property
+    def has_provider_failure(self) -> bool:
+        """A place failure called no provider, so it is not an outage and must
+        not tell the farmer to retry."""
+
+        return any(entry.has_provider_failure for entry in self.ask_evidences)

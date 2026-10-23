@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from dataclasses import FrozenInstanceError
+
 import pytest
 from pydantic import ValidationError
 
+from dss.core.intent.models import Ask, InteractionType, SubjectCategory
 from dss.core.planner.models import (
+    AskEvidence,
     Evidence,
     Failure,
     Identity,
@@ -93,32 +97,109 @@ def test_failure_is_frozen() -> None:
         failure.retryable = False
 
 
-def test_evidence_assembles_sources_results_and_gaps() -> None:
-    source = Source(id="1", name="Agmarknet", kind=SourceKind.PROVIDER, url=None)
-    result = Result(ask_index=0, source_id="1", data={"modal_price": "2100"})
-    failure = Failure(
-        ask_index=1, capability="KnowledgeAdvisory", reason="timeout", retryable=True
+_ASK = Ask(
+    subject_categories=SubjectCategory.MARKET, interaction_type=InteractionType.OBSERVE
+)
+_RESULT = Result(ask_index=0, source_id="1", data={"modal_price": "2100"})
+_PROVIDER_FAILURE = Failure(
+    ask_index=0, capability="MandiPrice", reason="timeout", retryable=True
+)
+_PLACE_FAILURE = Failure(
+    ask_index=0, capability=None, reason="Xyzzy: place not found", retryable=False
+)
+
+
+def test_a_place_failure_is_not_a_provider_failure() -> None:
+    """No provider was called, so none can be blamed."""
+
+    assert _PROVIDER_FAILURE.is_provider_failure is True
+    assert _PLACE_FAILURE.is_provider_failure is False
+
+
+def test_an_ask_with_a_result_is_served_even_if_a_call_failed() -> None:
+    ask_evidence = AskEvidence(
+        ask=_ASK, results=(_RESULT,), failures=(_PROVIDER_FAILURE,)
     )
 
-    evidence = Evidence(
-        sources=(source,),
-        results=(result,),
-        served=(0,),
-        failed=(failure,),
-        sufficient=True,
+    assert ask_evidence.is_served is True
+
+
+def test_an_ask_with_no_result_is_not_served() -> None:
+    ask_evidence = AskEvidence(ask=_ASK, results=(), failures=(_PROVIDER_FAILURE,))
+
+    assert ask_evidence.is_served is False
+
+
+def test_an_ask_has_a_provider_failure_only_when_a_provider_was_called() -> None:
+    place_only = AskEvidence(ask=_ASK, results=(), failures=(_PLACE_FAILURE,))
+    both = AskEvidence(
+        ask=_ASK, results=(), failures=(_PLACE_FAILURE, _PROVIDER_FAILURE)
     )
+
+    assert place_only.has_provider_failure is False
+    assert both.has_provider_failure is True
+
+
+def test_ask_evidence_is_frozen() -> None:
+    ask_evidence = AskEvidence(ask=_ASK, results=(), failures=())
+    with pytest.raises(FrozenInstanceError):
+        ask_evidence.results = (_RESULT,)  # type: ignore[misc]
+
+
+_SERVED = AskEvidence(ask=_ASK, results=(_RESULT,), failures=())
+_UNSERVED = AskEvidence(ask=_ASK, results=(), failures=())
+_PLACE_FAILED = AskEvidence(ask=_ASK, results=(), failures=(_PLACE_FAILURE,))
+_PROVIDER_FAILED = AskEvidence(ask=_ASK, results=(), failures=(_PROVIDER_FAILURE,))
+
+
+def _evidence(*ask_evidences: AskEvidence) -> Evidence:
+    return Evidence(sources=(), ask_evidences=ask_evidences)
+
+
+def test_an_ask_no_result_served_is_reported() -> None:
+    assert _evidence(_SERVED, _UNSERVED).unserved_asks == (_UNSERVED,)
+
+
+def test_every_ask_served_leaves_no_gap() -> None:
+    assert _evidence(_SERVED, _SERVED).unserved_asks == ()
+
+
+def test_nothing_served_reports_every_ask() -> None:
+    """Every ask is a gap — distinct from a turn with no asks, which has
+    nothing to report."""
+
+    evidence = _evidence(_UNSERVED, _PLACE_FAILED)
+
+    assert evidence.unserved_asks == (_UNSERVED, _PLACE_FAILED)
+    assert _evidence().unserved_asks == ()
+
+
+def test_any_served_ask_is_a_result() -> None:
+    assert _evidence(_UNSERVED, _SERVED).has_any_result is True
+    assert _evidence(_UNSERVED, _PROVIDER_FAILED).has_any_result is False
+
+
+def test_a_turn_has_a_provider_failure_only_when_a_provider_was_called() -> None:
+    """A place failure called no provider, so it is not an outage and must not
+    tell the farmer to retry."""
+
+    assert _evidence(_SERVED, _PLACE_FAILED).has_provider_failure is False
+    assert _evidence(_PLACE_FAILED, _PROVIDER_FAILED).has_provider_failure is True
+
+
+def test_evidence_carries_sources_and_each_asks_evidence() -> None:
+    source = Source(id="1", name="Agmarknet", kind=SourceKind.PROVIDER, url=None)
+
+    evidence = Evidence(sources=(source,), ask_evidences=(_SERVED, _UNSERVED))
 
     assert evidence.sources == (source,)
-    assert evidence.results == (result,)
-    assert evidence.served == (0,)
-    assert evidence.failed == (failure,)
-    assert evidence.sufficient is True
+    assert evidence.ask_evidences == (_SERVED, _UNSERVED)
 
 
 def test_evidence_is_frozen() -> None:
-    evidence = Evidence(sources=(), results=(), served=(), failed=(), sufficient=False)
-    with pytest.raises(ValidationError):
-        evidence.sufficient = True
+    evidence = _evidence()
+    with pytest.raises(FrozenInstanceError):
+        evidence.sources = ()  # type: ignore[misc]
 
 
 def test_identity_carries_name_persona_boundaries() -> None:
