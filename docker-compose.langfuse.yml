@@ -5,7 +5,7 @@
 # External connections from other machines will not be able to reach these services directly.
 services:
   langfuse-worker:
-    image: docker.langfuse.com/langfuse/langfuse-worker:4
+    image: dhi.io/langfuse-worker:4
     restart: always
     depends_on: &langfuse-depends-on
       postgres:
@@ -105,7 +105,7 @@ services:
       LANGFUSE_IN_APP_AGENT_SANDBOX_AWS_LAMBDA_MICROVM_REGION: ${LANGFUSE_IN_APP_AGENT_SANDBOX_AWS_LAMBDA_MICROVM_REGION:-}
 
   langfuse-web:
-    image: docker.langfuse.com/langfuse/langfuse:4
+    image: dhi.io/langfuse:4
     restart: always
     depends_on: *langfuse-depends-on
     ports:
@@ -138,8 +138,11 @@ services:
       LANGFUSE_IN_APP_AGENT_MAX_ACTIVE_RUNS_PER_ORG: ${LANGFUSE_IN_APP_AGENT_MAX_ACTIVE_RUNS_PER_ORG:-}
 
   clickhouse:
-    image: docker.io/clickhouse/clickhouse-server:25.12
+    image: dhi.io/clickhouse-server:25.12
     restart: always
+    # Kept at 101, the user the old image wrote the volumes as. The Hardened
+    # Image's own user is 65532, which would need a one-time chown of both
+    # volumes; the image works as either.
     user: "101:101"
     environment:
       CLICKHOUSE_DB: default
@@ -154,14 +157,15 @@ services:
     # fails the whole `up`. `docker exec <container> clickhouse-client` is the
     # way in when you need one.
     healthcheck:
-      test: wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1
+      # No wget in the image, so bash asks the port itself.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/8123 && printf 'GET /ping HTTP/1.0\\r\\n\\r\\n' >&3 && read -r status <&3 && [[ $$status == *200* ]]"]
       interval: 5s
       timeout: 5s
       retries: 10
       start_period: 1s
 
   minio:
-    image: cgr.dev/chainguard/minio
+    image: dhi.io/minio:latest
     restart: always
     entrypoint: sh
     # create the 'langfuse' bucket before starting the service
@@ -174,19 +178,28 @@ services:
     volumes:
       - langfuse_minio_data:/data
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      # No `mc` in the image, so bash asks MinIO's liveness endpoint itself.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/9000 && printf 'GET /minio/health/live HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && read -r status <&3 && [[ $$status == *200* ]]"]
       interval: 1s
       timeout: 5s
       retries: 5
       start_period: 1s
 
   redis:
-    image: docker.io/redis:7
+    # Hardened Image: runs as 65532, so an existing volume needs a one-time
+    # chown (see docs/RUNNING.md).
+    image: dhi.io/redis:7
     restart: always
     # CHANGEME: row below to secure redis password
-    command: >
-      --requirepass ${REDIS_AUTH:-myredissecret}
-      --maxmemory-policy noeviction
+    # The image's command is `redis-server /etc/redis/redis.conf`, and a command
+    # here replaces it whole, so the program is named.
+    command:
+      - redis-server
+      - /etc/redis/redis.conf
+      - --requirepass
+      - ${REDIS_AUTH:-myredissecret}
+      - --maxmemory-policy
+      - noeviction
     # Not published: internal to this project.
     volumes:
       - langfuse_redis_data:/data
@@ -197,7 +210,9 @@ services:
       retries: 10
 
   postgres:
-    image: docker.io/postgres:${POSTGRES_VERSION:-17}
+    # Hardened Image, runs as user 70. An existing volume needs a one-time chown
+    # (see docs/RUNNING.md).
+    image: dhi.io/postgres:${POSTGRES_VERSION:-17}
     restart: always
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
@@ -213,7 +228,9 @@ services:
     # Not published: internal to this project, and the host's 5432 is one
     # `up` away from colliding with another service's Postgres.
     volumes:
-      - langfuse_postgres_data:/var/lib/postgresql/data
+      # The image's PGDATA, not /var/lib/postgresql/data: a fresh volume at the
+      # old path is root-owned and Postgres cannot start in it.
+      - langfuse_postgres_data:/var/lib/postgresql/${POSTGRES_VERSION:-17}/data
 
 volumes:
   langfuse_postgres_data:

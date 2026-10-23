@@ -7,7 +7,7 @@
 # Start docker-compose.langfuse.yml first.
 services:
   litellm:
-    image: ghcr.io/berriai/litellm:${LITELLM_TAG:-main-stable}
+    image: dhi.io/litellm:${LITELLM_TAG:-1}
     depends_on:
       litellm-postgres:
         condition: service_healthy
@@ -33,7 +33,8 @@ services:
     restart: unless-stopped
 
   litellm-otel:
-    image: otel/opentelemetry-collector-contrib:${OTEL_COLLECTOR_TAG:-latest}
+    # Hardened Image, contrib build. Non-root, no shell.
+    image: dhi.io/opentelemetry-collector:${OTEL_COLLECTOR_TAG:-0.150-contrib}
     command: ["--config=/etc/otel/collector-gateway.yaml"]
     volumes:
       - ./otel/collector-gateway.yaml:/etc/otel/collector-gateway.yaml:ro
@@ -43,7 +44,9 @@ services:
     restart: unless-stopped
 
   litellm-postgres:
-    image: postgres:16-alpine
+    # Hardened Image, Alpine build like the one it replaces, so an existing
+    # volume keeps its collation. Same user id (70) as before.
+    image: dhi.io/postgres:16-alpine
     environment:
       POSTGRES_USER: litellm
       POSTGRES_PASSWORD: litellm
@@ -54,7 +57,9 @@ services:
       timeout: 5s
       retries: 10
     volumes:
-      - litellm_postgres_data:/var/lib/postgresql/data
+      # The image's PGDATA, not /var/lib/postgresql/data: a fresh volume at the
+      # old path is root-owned and Postgres cannot start in it.
+      - litellm_postgres_data:/var/lib/postgresql/16/data
     # Bound to 127.0.0.1 so a GUI client on this machine can read the spend
     # tables. 5433, because Langfuse's own Postgres has first claim on 5432.
     ports:
