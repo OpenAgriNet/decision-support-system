@@ -100,7 +100,7 @@ def a_turn():
 
     from dss.core.shared.models import TextQuery, UserDetails, UserTurn
 
-    def _turn(**overrides: Any) -> UserTurn:
+    def _turn(**overrides: Any) -> UserTurn[TextQuery]:
         query = overrides.pop("query", _TEXT)
         fields: dict[str, Any] = {
             "input": TextQuery(text=query),
@@ -111,7 +111,7 @@ def a_turn():
             "channel": "web",
             "user": UserDetails(user_id="usr_9921"),
         }
-        return UserTurn(**(fields | overrides))
+        return UserTurn[TextQuery](**(fields | overrides))
 
     return _turn
 
