@@ -142,3 +142,22 @@ def test_the_trace_id_comes_from_the_caller_span_not_the_body(a_body):
 
     with pytest.raises(ValidationError):
         schema.TurnRequest.model_validate(body)
+
+
+def test_the_sender_id_is_carried_onto_the_turn(a_body):
+    """It rides the request context (ADR-0020), so the mapping reads it off
+    the body like every other field."""
+
+    body = schema.TurnRequest.model_validate(
+        a_body(context__senderId="kisan-mitra-web")
+    )
+
+    assert mapping.to_user_turn(body).sender_id == "kisan-mitra-web"
+
+
+def test_a_turn_from_a_caller_that_named_nobody_carries_no_sender(a_body):
+    """Every caller that predates the field. The default ranking serves it."""
+
+    body = schema.TurnRequest.model_validate(a_body())
+
+    assert mapping.to_user_turn(body).sender_id is None

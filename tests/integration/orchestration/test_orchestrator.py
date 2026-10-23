@@ -30,6 +30,7 @@ from dss.core.policy.models import (
     PolicyExample,
 )
 from dss.core.provider_discovery.models import DiscoveryResult, ProviderCapability
+from dss.core.provider_preferences.models import AskPriority
 from dss.core.shared.models import (
     Claim,
     ClaimDelta,
@@ -168,7 +169,7 @@ class _FakeDiscovery:
     def __init__(self, result: DiscoveryResult) -> None:
         self._result = result
 
-    async def __call__(self, intent, turn, now) -> DiscoveryResult:  # noqa: ANN001
+    async def __call__(self, intent, turn, now) -> DiscoveryResult:
         return self._result
 
 
@@ -180,7 +181,7 @@ class _FakePlan:
 
     async def __call__(
         self, turn, *, intent, discovery, verdict, visibility
-    ) -> Evidence:  # noqa: ANN001
+    ) -> Evidence:
         self.calls += 1
         self.verdict_was_set = verdict.is_set()
         self.turn = turn
@@ -205,7 +206,7 @@ class _FakeCompose:
         self.calls = 0
         self.closed = False
 
-    async def __call__(self, evidence, intent, *, turn):  # noqa: ANN001
+    async def __call__(self, evidence, intent, *, turn):
         self.calls += 1
         self.turn = turn
         try:
@@ -221,7 +222,7 @@ class _Telemetry:
     def __init__(self) -> None:
         self.stages: list[str] = []
 
-    def stage(self, name, ctx, outcome) -> None:  # noqa: ANN001
+    def stage(self, name, ctx, outcome) -> None:
         self.stages.append(name)
 
 
@@ -350,6 +351,45 @@ async def test_nobody_serving_names_the_place() -> None:
     assert [block.text for block in events[-1].content] == [
         "I could not find a source that answers this for Pune yet."
     ]
+
+
+async def test_an_ask_whose_every_provider_the_client_ruled_out_is_no_match() -> None:
+    """The accepted cost of an exclusive ranking (ADR-0019).
+
+    A provider was there and the client's ranking excluded it, so the ask has
+    nowhere left to go. The farmer is told we could not find enough
+    information — the same reply as "nobody serves this" — and never an
+    error, because nothing failed. The planner is not spent on it either.
+    """
+
+    ranked_out = DiscoveryResult(
+        answers={0: ()},
+        capabilities={0: ()},
+        failures={},
+        events=(),
+        priorities={
+            0: AskPriority(
+                ask_index=0,
+                capability="Market",
+                sender_id="vistaar-whatsapp",
+                source="sender",
+                ranking=("state-mandi",),
+                kept=(),
+                dropped=("agmarknet",),
+            )
+        },
+    )
+    plan = _FakePlan(_ANSWERED_EVIDENCE)
+    compose = _FakeCompose("unused")
+    orch, _ = _build(
+        intent=_one_ask(), discovery=ranked_out, plan=plan, compose=compose
+    )
+
+    events = await _collect(orch)
+
+    assert events[-1].outcome.status is TurnStatus.NO_MATCH
+    assert events[-1].outcome.cause is None  # not a failure — a ruled-out ask
+    assert plan.calls == 0 and compose.calls == 0
 
 
 async def test_no_asks_is_no_match_with_a_message() -> None:

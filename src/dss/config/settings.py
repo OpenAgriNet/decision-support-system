@@ -193,6 +193,31 @@ class Settings(BaseSettings):
     # on a different config.
     prompt_config_path: Path = Path("configs/prompts.yaml")
 
+    # The registry that holds each sender's provider ranking, per capability
+    # (ADR-0019, ADR-0020). The DSS holds no rankings of its own: set, it asks
+    # the registry on every turn — one search fetching the sender's row and
+    # the `default` row together. Unset → no ranking applies anywhere, every ask keeps
+    # whichever providers discovery found, and the boot warns once.
+    provider_preferences_base_url: str | None = None
+    # A ranking lookup is routing, not the answer: a slow registry must not
+    # hold up the turn. A call that misses this window counts as "no rows",
+    # and the turn runs as if no preference existed.
+    provider_preferences_timeout_seconds: float = Field(3.0, gt=0.0)
+
+    @field_validator("provider_preferences_base_url", mode="before")
+    @classmethod
+    def _unset_when_blank(cls, value: object) -> object:
+        """An empty variable is an operator leaving it off, not a URL.
+
+        `DSS_PROVIDER_PREFERENCES_BASE_URL=` is what `docker-compose.yml`
+        passes when the operator sets nothing. Same stance as
+        `DSS_PHOTON_BASE_URL`, where empty also means off.
+        """
+
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
     # Where the tenant's scheme catalog CSV is mounted (issue #34). Nothing
     # ships in the image, so unset → no catalog, enrichment is inert, and the
     # loader warns once at boot. Set-but-missing raises, as the policy pack does.

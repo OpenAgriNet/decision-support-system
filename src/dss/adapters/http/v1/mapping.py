@@ -37,6 +37,12 @@ def to_user_turn(body: schema.TurnRequest) -> UserTurn:
     `enriched_query` mirrors `original_query`: enrichment has not landed, and
     `core/shared/models.py` defines both so later slices need not re-thread the
     second field through every signature.
+
+    `senderId` rides on the request context (ADR-0020): it names the
+    experience-layer application calling, and selects whose provider ranking
+    applies. Blank counts as absent — a proxy that fills the field with an
+    empty string has not named anybody — and absent is served the default
+    ranking, never refused.
     """
 
     thread = body.message.input
@@ -63,6 +69,7 @@ def to_user_turn(body: schema.TurnRequest) -> UserTurn:
         ],
         location=_location(attributes.location),
         response_max_chars=response.max_characters if response else None,
+        sender_id=(body.context.sender_id or "").strip() or None,
     )
 
 

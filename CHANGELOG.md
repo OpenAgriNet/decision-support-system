@@ -3,6 +3,22 @@
 ## [Unreleased]
 
 ### Added
+- Provider rankings live in the network registry, never in the DSS. Set
+  `DSS_PROVIDER_PREFERENCES_BASE_URL` and the DSS asks the registry on every
+  turn — two parallel searches, the request's `senderId` and the reserved id
+  `default` — so an operator's edit applies on the next turn with no restart,
+  and an unregistered sender still lands on the default ladder. A registry
+  that fails or times out costs the ranking, never the turn; unset, no
+  ranking applies anywhere. ADR-0020 (#191)
+
+### Changed
+- The calling application now names itself in the request body, as
+  `context.senderId`, and is called the sender throughout — the `X-Client-Id`
+  header is gone and a caller still sending it is served the default ranking.
+  Absent, blank, or unregistered senders are answered normally, never refused.
+  ADR-0020 (#191)
+
+### Added
 - A deployment can serve a language the models handle poorly through one
   they handle well. Languages listed in `configs/edge-translation.yaml` are
   translated in right after redaction, run through the normal pipeline in
@@ -14,6 +30,18 @@
   answer starts later than an untranslated one, because the whole answer is
   written before translation begins. New trace stages: `translation_in` and
   `translation_out`. (#174)
+- An adopter can now say which providers answer their farmers, per
+  capability, in order of preference: ranked provider ids per sender and
+  capability (an ask's subject category), and the
+  first-choice provider answers whenever it returns anything, falling to the
+  next when it does not. A ranking is exclusive — a provider it does not name
+  is never called. A caller that names no sender, or one nobody registered,
+  is served the default ranking and answered normally. ADR-0019 (#191)
+- Every provider consulted for an ask is recorded — including the ones whose
+  answers were not used — so a ranking's order can be judged later. Ids,
+  counts and the one that answered go to the turn's log at INFO; response
+  bodies stay at DEBUG where the invocation adapter already puts them.
+  ADR-0019 (#191)
 - A farmer now reads refusals, clarification questions and the no-provider
   answers in their own language. The DSS keeps writing these as one reviewed
   English vocabulary and renders each in the turn's target language on the

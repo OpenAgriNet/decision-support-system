@@ -178,6 +178,16 @@ components:
         messageId:
           type: string
           description: Caller-supplied id for this message. Retry and duplicate-detection behaviour is an open item.
+        senderId:
+          type: string
+          description: |
+            Which experience-layer application is calling. Selects whose
+            provider ranking applies to the turn — the registry holds, per
+            sender and per topic, an ordered list of the providers that sender
+            wants asked. Absent, blank, or naming a sender with no registered
+            preference is served by the default ranking and answered normally,
+            never refused.
+          example: kisan-mitra-web
         timestamp:
           type: string
           format: date-time

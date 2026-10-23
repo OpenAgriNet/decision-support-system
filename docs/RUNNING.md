@@ -591,6 +591,54 @@ models (`DSS_PLANNER_MODEL`, `DSS_COMPOSER_MODEL`) — `DSS_STUB_LLM` only stubs
 intent and moderation, so a real provider-backed answer needs both the network
 settings and real model access.
 
+### Which provider answers (ADR-0019, ADR-0020)
+
+The rankings live in the network registry, never in the DSS. Off unless
+`DSS_PROVIDER_PREFERENCES_BASE_URL` points at it — unset, every ask keeps
+whichever providers discovery found, in whatever order it found them, which
+is what every local run does.
+
+Set, the DSS asks the registry on every turn, like `/discover` and `/select`:
+one search on `POST {base}/api/v1/SenderPreference/search`, whose `or` filter
+names the turn's `senderId` and the reserved id `default` together, so a
+sender nobody registered still lands on the default ladder with no second
+call. A search that fails or times out (`DSS_PROVIDER_PREFERENCES_TIMEOUT_SECONDS`, default 3s) counts as
+"no row" and is logged — it costs the ranking, never the turn. An operator's
+edit to a registry row applies on the very next turn; nothing is cached.
+
+```bash
+export DSS_PROVIDER_PREFERENCES_BASE_URL=https://<your-registry>
+# the caller names itself in the request context, not a header (ADR-0020)
+curl -s localhost:8077/v1/turns \
+  -H 'content-type: application/json' \
+  -d "$(jq '.context.senderId = "kisan-mitra-web"' <<< "$BODY")"
+```
+
+Three things to know before editing a sender's row:
+
+- **A ranking is exclusive.** A provider it does not name is never called, so
+  a row naming providers your deployment does not talk to drops every
+  candidate and reads as "nobody serves this".
+- **The fallback is per capability.** A sender that ranks only `Weather` is served
+  the `default` row's list for `Market`. No `senderId`, or a sender nobody
+  registered, gets the `default` row throughout — never a refusal.
+- **A malformed row is skipped, not fatal.** The registry is edited while the
+  DSS runs, so a bad entry is dropped with a WARNING and a topic outside the
+  subject categories (`Crop`, `Livestock`, `Weather`, `Market`, `Scheme`,
+  `Facility`) is logged — it can never match an ask.
+
+To see what a ranking did to a turn, grep the server's log output for the
+turn's `transactionId`:
+
+```
+request_id=<txn> component=provider_preferences event=...
+```
+
+`event=ranking_applied` says what was ranked and what was dropped;
+`event=provider_consulted` gives one line per provider the ask actually
+called, with its result count and whether its answer was the one used. The
+response bodies themselves are at DEBUG on `dss.trace`.
+
 ### Redaction
 
 Off unless `DSS_REDACTION_ENABLED=true`; then `DSS_REDACTION_CONFIG_PATH` must

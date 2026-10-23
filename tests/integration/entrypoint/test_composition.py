@@ -14,12 +14,14 @@ from pathlib import Path
 import httpx
 import pytest
 
+from dss.adapters.provider_preferences.registry import RegistryProviderPreferences
 from dss.config.settings import Settings
 from dss.core.provider_discovery.models import SchemaPackFiles
 from dss.entrypoint.composition import (
     _aclose_for,
     _discovers_nothing,
     _network,
+    _NoRankings,
     _planner_schemas,
     build_runner,
 )
@@ -40,6 +42,13 @@ def _settings(tmp_path: Path, **overrides) -> Settings:
     return Settings(stub_llm=True, evidence_dir=tmp_path, **overrides)
 
 
+def _no_preferences():
+    """No registry configured — what `_network` is handed on an unconfigured
+    deployment, which is every one of these tests."""
+
+    return _NoRankings()
+
+
 def test_build_runner_returns_a_turn_runner(tmp_path: Path) -> None:
     runner = build_runner(_settings(tmp_path))
 
@@ -48,8 +57,8 @@ def test_build_runner_returns_a_turn_runner(tmp_path: Path) -> None:
 
 
 def test_unwired_network_discovers_nothing(tmp_path: Path) -> None:
-    discover, _invocation, schemas, schema_context_index, client = _network(
-        _settings(tmp_path)
+    discover, _invocation, schemas, schema_context_index, client, _prefs = _network(
+        _settings(tmp_path), preferences=_no_preferences()
     )
 
     # the seam is the single unwired function, and the planner's dicts are empty
@@ -68,7 +77,9 @@ def test_wired_network_builds_the_planner_schemas(tmp_path: Path) -> None:
     )
     assert settings.network_enabled
 
-    discover, _invocation, schemas, schema_context_index, client = _network(settings)
+    discover, _invocation, schemas, schema_context_index, client, _prefs = _network(
+        settings, preferences=_no_preferences()
+    )
 
     # the real client replaced the unwired stand-in...
     assert discover is not _discovers_nothing
@@ -107,7 +118,7 @@ def test_the_network_refuses_to_boot_with_no_packs(tmp_path: Path) -> None:
         return ()
 
     with pytest.raises(ValueError, match="fetch_schema_packs"):
-        _network(settings, fetch=fetches_nothing)
+        _network(settings, fetch=fetches_nothing, preferences=_no_preferences())
 
 
 async def test_the_runner_builds_inside_a_running_event_loop(tmp_path: Path) -> None:
@@ -154,8 +165,8 @@ def test_packs_already_on_disk_are_not_re_fetched(tmp_path: Path) -> None:
     def must_not_be_called(**_kwargs) -> tuple[str, ...]:
         raise AssertionError("fetched with packs already on disk")
 
-    discover, _invocation, _schemas, index, _client = _network(
-        settings, fetch=must_not_be_called
+    discover, _invocation, _schemas, index, _client, _prefs = _network(
+        settings, fetch=must_not_be_called, preferences=_no_preferences()
     )
 
     assert discover is not _discovers_nothing
@@ -291,7 +302,7 @@ def test_a_skipped_pack_is_logged_for_an_operator_to_see(
     )
 
     with caplog.at_level("WARNING"):
-        _network(settings)
+        _network(settings, preferences=_no_preferences())
 
     # `SchemaPackSkipped.pack_name` and `.reason` both reach the log — an
     # operator reading it can tell which pack and why, not just "something
@@ -498,3 +509,57 @@ async def test_a_gujarati_turn_goes_in_and_out_through_the_stub(
     assert finished.content
     assert all(block.text.startswith("[gu] ") for block in finished.content)
     assert any(isinstance(event, ClaimDelta) for event in events)
+
+
+# --------------------------------------------------------------- preferences
+
+
+def test_no_registry_url_warns_that_no_ranking_applies(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Unset is a real deployment state — every ask keeps what discovery
+    found — but an operator has to be told, or a ranking that silently never
+    applies looks exactly like a registry that returned nothing."""
+
+    with caplog.at_level("WARNING"):
+        build_runner(_settings(tmp_path))
+
+    assert any(
+        "no sender provider ranking applies" in record.message
+        for record in caplog.records
+    )
+
+
+def test_a_registry_url_without_the_network_boots_with_a_warning(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Harmless — an unwired run calls no provider for a ranking to order —
+    but a half-configured deployment must read as one in the log."""
+
+    with caplog.at_level("WARNING"):
+        build_runner(
+            _settings(tmp_path, provider_preferences_base_url="http://registry.local")
+        )
+
+    assert any(
+        "DSS_PROVIDER_PREFERENCES_BASE_URL" in record.message
+        for record in caplog.records
+    )
+
+
+def test_a_registry_url_swaps_the_registry_adapter_in(tmp_path: Path) -> None:
+    """Registry mode rides the network's own HTTP client, so the swap happens
+    where that client exists (ADR-0020). The YAML book handed in is the
+    fallback and must be replaced, not wrapped."""
+
+    settings = _settings(
+        tmp_path,
+        discovery_base_url="https://discovery.example/oan",
+        invocation_base_url="https://select.example/oan",
+        schema_pack_dir=SCHEMA_PACKS_FIXTURE_ROOT,
+        provider_preferences_base_url="https://registry.example",
+    )
+
+    *_rest, preferences = _network(settings, preferences=_no_preferences())
+
+    assert isinstance(preferences, RegistryProviderPreferences)
