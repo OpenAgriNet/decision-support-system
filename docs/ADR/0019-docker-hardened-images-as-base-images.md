@@ -66,7 +66,7 @@ or package manager in most of them.
 **What it costs to run.**
 
 - **A login.** Pulling needs `docker login dhi.io`. CI needs the
-  `DHI_USERNAME` and `DHI_TOKEN` secrets. A PR from a fork cannot build.
+  `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` secrets. A PR from a fork cannot build.
 - **No shell in several images.** Photon (Java), Redis, Grafana, the collector
   and the DSS image have none. Photon lost its healthcheck, since it had only
   `curl`. ClickHouse and MinIO check themselves with bash instead of

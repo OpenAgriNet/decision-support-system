@@ -119,7 +119,7 @@ Pulling one needs a login. Use a Docker Hub username and an access token:
 docker login dhi.io
 ```
 
-CI does the same with the `DHI_USERNAME` and `DHI_TOKEN` repository secrets.
+CI does the same with the `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` repository secrets.
 
 What that changes when you run it:
 
