@@ -87,6 +87,17 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
+      # The Dockerfile builds FROM Docker Hardened Images, which need a login to
+      # pull. Needed on a PR too. Add DHI_USERNAME and DHI_TOKEN (a Docker Hub
+      # username and an access token) as repository secrets. A PR from a fork
+      # cannot read them, so its build step fails at the pull.
+      - name: Log in to Docker Hardened Images
+        uses: docker/login-action@v3
+        with:
+          registry: dhi.io
+          username: ${{ secrets.DHI_USERNAME }}
+          password: ${{ secrets.DHI_TOKEN }}
+
       # Skipped on a PR — that leg only builds, for early Dockerfile feedback, and never pushes.
       # Falls back to GITHUB_TOKEN if GHCR_PAT is unset.
       - name: Log in to GHCR
