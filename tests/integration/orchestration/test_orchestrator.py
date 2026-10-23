@@ -372,7 +372,7 @@ async def test_an_ask_whose_every_provider_the_client_ruled_out_is_no_match() ->
         priorities={
             0: AskPriority(
                 ask_index=0,
-                topic="Market",
+                capability="Market",
                 sender_id="vistaar-whatsapp",
                 source="sender",
                 ranking=("state-mandi",),

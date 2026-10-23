@@ -13,7 +13,7 @@ from typing import Any, Literal
 from dss.core.enrichment.models import Scheme
 from dss.core.enrichment.normalize import alias_key
 from dss.core.planner.models import Skill
-from dss.core.provider_preferences.models import PreferenceBook, topic_key
+from dss.core.provider_preferences.models import PreferenceBook, capability_key
 from dss.core.shared.errors import ProviderUnavailableError, TranslationError
 from dss.core.shared.language import LanguageTag
 from dss.core.shared.models import Geometry, TurnContext, TurnEvent, UserTurn
@@ -68,10 +68,10 @@ class FakeProviderPreferences:
 
 
 def _ranked(rankings: dict[str, list[str]]) -> dict[str, tuple[str, ...]]:
-    """Topic names keyed the way the real loader keys them, so a fake cannot
+    """Capability names keyed the way the real loader keys them, so a fake cannot
     answer a lookup the registry adapter could not."""
 
-    return {topic_key(topic): tuple(providers) for topic, providers in rankings.items()}
+    return {capability_key(c): tuple(providers) for c, providers in rankings.items()}
 
 
 NO_PREFERENCES = FakeProviderPreferences()

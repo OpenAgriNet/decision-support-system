@@ -599,10 +599,10 @@ whichever providers discovery found, in whatever order it found them, which
 is what every local run does.
 
 Set, the DSS asks the registry on every turn, like `/discover` and `/select`:
-two parallel searches on `POST {base}/api/v1/SenderPreference/search`, one
-for the turn's `senderId` and one for the reserved id `default`, so a sender
-nobody registered still lands on the default ladder. A search that fails or
-times out (`DSS_PROVIDER_PREFERENCES_TIMEOUT_SECONDS`, default 3s) counts as
+one search on `POST {base}/api/v1/SenderPreference/search`, whose `or` filter
+names the turn's `senderId` and the reserved id `default` together, so a
+sender nobody registered still lands on the default ladder with no second
+call. A search that fails or times out (`DSS_PROVIDER_PREFERENCES_TIMEOUT_SECONDS`, default 3s) counts as
 "no row" and is logged — it costs the ranking, never the turn. An operator's
 edit to a registry row applies on the very next turn; nothing is cached.
 
@@ -619,7 +619,7 @@ Three things to know before editing a sender's row:
 - **A ranking is exclusive.** A provider it does not name is never called, so
   a row naming providers your deployment does not talk to drops every
   candidate and reads as "nobody serves this".
-- **The fallback is per topic.** A sender that ranks only `Weather` is served
+- **The fallback is per capability.** A sender that ranks only `Weather` is served
   the `default` row's list for `Market`. No `senderId`, or a sender nobody
   registered, gets the `default` row throughout — never a refusal.
 - **A malformed row is skipped, not fatal.** The registry is edited while the

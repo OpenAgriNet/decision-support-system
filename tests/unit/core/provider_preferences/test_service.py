@@ -220,7 +220,7 @@ def test_the_record_says_which_layer_answered_and_what_it_dropped() -> None:
 
     priority = result.priorities[0]
     assert priority.sender_id == "app"
-    assert priority.topic == "Weather"
+    assert priority.capability == "Weather"
     assert priority.source == "default"
     assert priority.ranking == ("imd",)
     assert priority.kept == ("imd",)

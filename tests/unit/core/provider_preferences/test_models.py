@@ -54,7 +54,7 @@ def test_a_turn_with_no_sender_id_is_served_the_default() -> None:
 
 def test_a_configured_client_is_known_even_when_it_matches_the_default() -> None:
     """`known` separates "asked for exactly the default" from "never heard of
-    them" — identical in `by_topic`, different to an operator."""
+    them" — identical in `by_capability`, different to an operator."""
 
     book = PreferenceBook(default={"weather": ("imd",)}, senders={"same": {}})
 

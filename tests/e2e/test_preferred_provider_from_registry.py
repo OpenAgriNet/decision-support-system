@@ -2,7 +2,7 @@
 
 Two weather providers serve Nashik with different rainfall numbers. The
 request names its sender in `context.senderId`; the DSS asks the stub
-registry for that sender's ranking and the `default` row in parallel, and the
+registry for that sender's ranking and the `default` row — one search — and the
 farmer reads the first-choice provider's number. Without a sender the default
 ranking applies — and it is exclusive, so the provider it does not name is
 never called at all.
@@ -103,12 +103,12 @@ VISTAAR_SELECT = _vistaar_select_response()
 DEFAULT_ROW = {
     "senderId": "default",
     "status": "active",
-    "preferences": [{"topic": "Weather", "providers": [IMD_ID]}],
+    "preferences": [{"capability": "Weather", "providers": [IMD_ID]}],
 }
 SENDER_ROW = {
     "senderId": SENDER,
     "status": "active",
-    "preferences": [{"topic": "Weather", "providers": [VISTAAR_ID, IMD_ID]}],
+    "preferences": [{"capability": "Weather", "providers": [VISTAAR_ID, IMD_ID]}],
 }
 
 
@@ -139,10 +139,11 @@ class _Network:
         return self._json(SELECT_RESPONSE)
 
     def search(self, request: Request) -> Response:
-        asked = json.loads(request.get_data())["filters"]["senderId"]["eq"]
-        self.searched_senders.append(asked)
-        row = {r["senderId"]: r for r in (DEFAULT_ROW, SENDER_ROW)}.get(asked)
-        return self._json({"totalCount": 1 if row else 0, "data": [row] if row else []})
+        asked = json.loads(request.get_data())["filters"]["senderId"]["or"]
+        self.searched_senders.extend(asked)
+        rows = {r["senderId"]: r for r in (DEFAULT_ROW, SENDER_ROW)}
+        found = [rows[one] for one in asked if one in rows]
+        return self._json({"totalCount": len(found), "data": found})
 
     @staticmethod
     def _json(body: dict[str, Any], status: int = 200) -> Response:
@@ -213,7 +214,7 @@ def test_the_senders_first_choice_answers_the_turn(
     message = response.json()["message"]
     assert message["outcome"]["status"] == "answered", message["outcome"]
 
-    # The registry was asked twice, in one turn: the sender and the default.
+    # One search asked for both rows: the sender's and the default.
     assert sorted(set(live_network.searched_senders)) == ["default", SENDER]
 
     # Every ranked provider was consulted — the unused answer is recorded —
@@ -234,7 +235,7 @@ def test_a_turn_without_a_sender_rides_the_default_ranking(
     message = response.json()["message"]
     assert message["outcome"]["status"] == "answered", message["outcome"]
 
-    # Only the default row was fetched — there was no sender to ask about.
+    # Only the default row was asked for — there was no sender to name.
     assert set(live_network.searched_senders) == {"default"}
 
     # The default ranking is exclusive: the provider it does not name was

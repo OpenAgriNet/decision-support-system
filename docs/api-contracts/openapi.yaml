@@ -179,12 +179,15 @@ components:
         senderId:
           type: string
           description: |
-            Which experience-layer application is calling. Selects whose
-            provider ranking applies to the turn — the registry holds, per
-            sender and per topic, an ordered list of the providers that sender
-            wants asked. Absent, blank, or naming a sender with no registered
-            preference is served by the default ranking and answered normally,
-            never refused.
+            Who the immediate caller is. Optional; one field, two uses. It
+            selects whose provider ranking applies to the turn — the registry
+            holds, per sender and per capability, an ordered list of the
+            providers that sender wants asked; absent, blank, or naming a
+            sender with no registered preference is served by the default
+            ranking and answered normally, never refused. It is also echoed on
+            the response envelope as the caller's network participant id —
+            missing or blank there means the host network
+            (`network_sender_id`).
           example: kisan-mitra-web
         timestamp:
           type: string
@@ -193,12 +196,6 @@ components:
         sessionId:
           type: string
           description: Conversation key. The Experience owns conversation storage.
-        senderId:
-          type: string
-          description: |
-            Network participant id of the immediate caller. Optional. Missing or
-            blank means the host network (`network_sender_id`).
-          example: bap.example.org
 
     RequestMessage:
       type: object

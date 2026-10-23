@@ -30,8 +30,9 @@
   answer starts later than an untranslated one, because the whole answer is
   written before translation begins. New trace stages: `translation_in` and
   `translation_out`. (#174)
-- An adopter can now say which providers answer their farmers, per topic, in
-  order of preference: ranked provider ids per sender and topic, and the
+- An adopter can now say which providers answer their farmers, per
+  capability, in order of preference: ranked provider ids per sender and
+  capability (an ask's subject category), and the
   first-choice provider answers whenever it returns anything, falling to the
   next when it does not. A ranking is exclusive — a provider it does not name
   is never called. A caller that names no sender, or one nobody registered,
