@@ -448,7 +448,6 @@ def test_an_unresolved_place_is_a_failure_without_a_provider() -> None:
 
     failures = place_failures(intent)
 
-    assert len(failures) == 1
     [failure] = failures
     assert failure.ask_index == 1
     assert failure.capability is None
@@ -481,7 +480,6 @@ def test_an_ambiguous_place_is_a_failure_without_a_provider() -> None:
 
     failures = place_failures(intent)
 
-    assert len(failures) == 1
     [failure] = failures
     assert failure.ask_index == 1
     assert failure.capability is None
