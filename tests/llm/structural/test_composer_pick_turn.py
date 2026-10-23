@@ -29,7 +29,7 @@ from dss.core.intent.models import (
     SubjectCategory,
 )
 from dss.core.planner.models import Result, Source, SourceKind
-from dss.core.shared.models import ConversationMessage, Geometry, UserTurn
+from dss.core.shared.models import ConversationMessage, Geometry, TextQuery, UserTurn
 from dss.core.stream_response.service import stream_response
 from dss.entrypoint.composition import _composer_llm
 from tests.support.evidence import build_evidence
@@ -86,8 +86,7 @@ async def test_pick_reply_still_answers() -> None:
         ),
     )
     turn = UserTurn(
-        original_query="2",
-        enriched_query="2",
+        input=TextQuery(text="2"),
         session_id="s1",
         transaction_id="t1",
         source_lang="en",

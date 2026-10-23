@@ -27,7 +27,7 @@ from dss.core.planner.models import (
     Source,
     SourceKind,
 )
-from dss.core.shared.models import Geometry, UserTurn
+from dss.core.shared.models import Geometry, TextQuery, UserTurn
 from dss.core.stream_response.service import stream_response
 from tests.support.evidence import build_evidence
 from tests.support.fakes import FakePromptProvider
@@ -137,8 +137,7 @@ class _FakeLLM:
 
 def _turn(query: str = "What is the price of paddy?") -> UserTurn:
     return UserTurn(
-        original_query=query,
-        enriched_query=query,
+        input=TextQuery(text=query),
         transaction_id="txn-1",
         session_id="s-1",
         source_lang="en",

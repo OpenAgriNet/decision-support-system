@@ -16,7 +16,7 @@ from dss.core.intent.models import (
 )
 from dss.core.intent.service import classify_intent
 from dss.core.shared.language import LanguageTag
-from dss.core.shared.models import ConversationMessage, UserTurn
+from dss.core.shared.models import ConversationMessage, TextQuery, UserTurn
 from dss.ports.prompts import PromptIdentifier
 from tests.support.fakes import FakePromptProvider
 
@@ -27,8 +27,7 @@ def _turn(
     target_lang: str = "en",
 ) -> UserTurn:
     return UserTurn(
-        original_query=query,
-        enriched_query=query,
+        input=TextQuery(text=query),
         session_id="s1",
         transaction_id="t1",
         source_lang="en",

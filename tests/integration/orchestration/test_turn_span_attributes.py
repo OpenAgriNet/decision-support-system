@@ -358,7 +358,7 @@ async def test_with_content_on_the_trace_shows_the_query_and_the_answer(
 
     attributes = _turn_span(spans).attributes
     (finished,) = [e for e in events if isinstance(e, TurnFinished)]
-    assert attributes["langfuse.observation.input"] == _turn().original_query
+    assert attributes["langfuse.observation.input"] == _turn().input.text
     assert attributes["langfuse.observation.output"] == "\n".join(
         block.text for block in finished.content
     )
@@ -433,9 +433,7 @@ async def test_with_content_on_every_stage_shows_its_input_and_output(
         assert attributes["langfuse.observation.input"], name
         assert attributes["langfuse.observation.output"], name
     assert _stage(spans, "moderation")["langfuse.observation.input"]
-    assert _stage(spans, "intent")["langfuse.observation.input"] == (
-        _turn().original_query
-    )
+    assert _stage(spans, "intent")["langfuse.observation.input"] == (_turn().input.text)
     assert "wheat" in _stage(spans, "intent")["langfuse.observation.output"]
     assert "Agmarknet" in _stage(spans, "planner")["langfuse.observation.output"]
     assert _stage(spans, "composer")["langfuse.observation.output"] == (

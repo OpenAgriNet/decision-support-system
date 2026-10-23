@@ -18,7 +18,7 @@ from dss.core.intent.models import (
     SubjectCategory,
 )
 from dss.core.provider_discovery.models import DiscoveryResult
-from dss.core.shared.models import UserTurn
+from dss.core.shared.models import TextQuery, UserTurn
 from dss.orchestration.turn import run_turn
 from tests.support.fakes import FakeAreaLookup, FakePromptProvider, FakeSchemeCatalog
 
@@ -28,8 +28,7 @@ CATALOG = FakeSchemeCatalog({"makhana scheme": MAKHANA})
 
 def _turn(query: str) -> UserTurn:
     return UserTurn(
-        original_query=query,
-        enriched_query=query,
+        input=TextQuery(text=query),
         session_id="s1",
         transaction_id="t1",
         source_lang="en",

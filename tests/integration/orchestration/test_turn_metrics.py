@@ -309,7 +309,7 @@ async def test_redaction_is_counted_by_entity_never_by_value(reader) -> None:
     await _collect(orch, _turn("call 9876543210 or 9876543210"))
 
     found = points(reader, "dss.redaction.found")
-    # Two in the question, two in its enriched copy: every span replaced.
-    assert [(p.attributes, p.value) for p in found] == [({"entity": "phone"}, 4)]
+    # Two in the question: every span replaced.
+    assert [(p.attributes, p.value) for p in found] == [({"entity": "phone"}, 2)]
     failed = points(reader, "dss.redaction.failed")
     assert [(p.attributes, p.value) for p in failed] == [({"identifier": "broken"}, 1)]
