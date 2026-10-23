@@ -7,7 +7,7 @@ costs a model call it doesn't need.
 
 Flow for this slice:
 
-    original_query (+ history for reference)
+    the question (+ history for reference)
       → word-check policies      strip words, warn, flag frustration (non-terminal)
       → llm policies (one call)  reject if the model reports a violation
       → PROCEED                  carrying the sanitized query + warnings
@@ -85,7 +85,7 @@ async def moderate(
     said); the conversation history is handed to the LLM as context so a
     reference-bearing follow-up resolves against it."""
 
-    query = context.turn.original_query
+    query = context.turn.input.text
     warnings: list[str] = []
     sanitized_query: str | None = None
     frustration_detected = False

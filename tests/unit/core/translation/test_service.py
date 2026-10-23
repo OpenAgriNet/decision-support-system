@@ -93,7 +93,7 @@ async def test_translate_in_is_one_call_from_the_edge_to_the_core(a_gujarati_tur
     assert (from_lang, to_lang) == (GUJARATI, ENGLISH)
 
 
-async def test_translate_in_skips_an_unchanged_enriched_query(a_gujarati_turn):
+async def test_translate_in_sends_the_question_then_the_history(a_gujarati_turn):
     translator = FakeTranslator()
     turn = a_gujarati_turn()
 
@@ -101,18 +101,7 @@ async def test_translate_in_skips_an_unchanged_enriched_query(a_gujarati_turn):
 
     [(_, texts, _, _)] = translator.calls
     assert texts == ("આજે વરસાદ પડશે?", "નમસ્તે", "Hello")
-    assert result.enriched_query == result.original_query
-
-
-async def test_translate_in_sends_an_enriched_query_that_differs(a_gujarati_turn):
-    translator = FakeTranslator()
-    turn = a_gujarati_turn(enriched_query="આજે આણંદમાં વરસાદ પડશે?")
-
-    result = await _build_turn_translation(turn, translator).translate_in(turn)
-
-    [(_, texts, _, _)] = translator.calls
-    assert texts[:2] == ("આજે વરસાદ પડશે?", "આજે આણંદમાં વરસાદ પડશે?")
-    assert result.enriched_query == "[en] આજે આણંદમાં વરસાદ પડશે?"
+    assert result.input.text == "[en] આજે વરસાદ પડશે?"
     assert [message.text for message in result.history] == ["[en] નમસ્તે", "[en] Hello"]
 
 
@@ -177,7 +166,7 @@ async def test_nothing_to_translate_makes_no_call(a_gujarati_turn):
     result = await _build_turn_translation(turn, translator).translate_in(turn)
 
     assert translator.calls == []
-    assert result.original_query == " "
+    assert result.input.text == " "
     assert result.target_lang == ENGLISH
 
 

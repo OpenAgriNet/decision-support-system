@@ -12,7 +12,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from dss.core.shared.models import UserTurn
+from dss.core.shared.models import TextQuery, UserTurn
 
 
 class Outcome(StrEnum):
@@ -52,7 +52,7 @@ class ModerationContext(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    turn: UserTurn
+    turn: UserTurn[TextQuery]
 
 
 class ModerationDecision(BaseModel):

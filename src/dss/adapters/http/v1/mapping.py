@@ -7,6 +7,7 @@ from datetime import datetime
 from uuid import uuid4
 
 from dss.adapters.http.v1 import schema
+from dss.core.shared.language import LanguageTag
 from dss.core.shared.models import (
     Cause,
     Claim,
@@ -18,6 +19,7 @@ from dss.core.shared.models import (
     RefusalBlock,
     Source,
     TextBlock,
+    TextQuery,
     TurnContext,
     TurnFinished,
     TurnOutcome,
@@ -31,13 +33,8 @@ from dss.core.shared.models import (
 DSS_RELEASE = "v1.0.0"
 
 
-def to_user_turn(body: schema.TurnRequest) -> UserTurn:
-    """Normalize a validated request body into the turn the core works with.
-
-    `enriched_query` mirrors `original_query`: enrichment has not landed, and
-    `core/shared/models.py` defines both so later slices need not re-thread the
-    second field through every signature.
-    """
+def to_user_turn(body: schema.TurnRequest) -> UserTurn[TextQuery]:
+    """Normalize a validated request body into the turn the core works with."""
 
     thread = body.message.input
     current = _current_index(thread)
@@ -45,17 +42,16 @@ def to_user_turn(body: schema.TurnRequest) -> UserTurn:
     response = attributes.response
     query = _text(thread[current])
 
-    return UserTurn(
-        original_query=query,
-        enriched_query=query,
+    return UserTurn[TextQuery](
+        input=TextQuery(text=query),
         session_id=body.context.session_id,
         transaction_id=(
             body.context.transaction_id
             if body.context.transaction_id is not None
             else str(uuid4())
         ),
-        source_lang=attributes.source_language,
-        target_lang=attributes.target_language,
+        source_lang=LanguageTag(attributes.source_language),
+        target_lang=LanguageTag(attributes.target_language),
         channel=attributes.channel,
         user=_user(body.message.user_context),
         history=[

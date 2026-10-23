@@ -16,6 +16,7 @@ from dss.core.shared.models import (
     Claim,
     ClaimDelta,
     ConversationMessage,
+    TextQuery,
     TurnFinished,
     UserDetails,
     UserTurn,
@@ -93,8 +94,7 @@ class _RecordingModerationLLM(_FakeModerationLLM):
 
 def _turn(query: str) -> UserTurn:
     return UserTurn(
-        original_query=query,
-        enriched_query=query,
+        input=TextQuery(text=query),
         session_id="0b6f3c1e-2f4a-4d7e-9a51-3c2d8e7f6a10",
         transaction_id="5d1e9a7c-8b3f-4c2a-b6d4-7e9f0a1b2c3d",
         source_lang="en",
@@ -140,8 +140,8 @@ async def test_no_stage_after_redaction_sees_a_real_value() -> None:
     for prompt in intent_llm.seen + moderation_llm.seen:
         assert PHONE not in prompt and AADHAAR not in prompt
     for turn in (plan.turn, compose.turn):
-        assert "«phone_1»" in turn.original_query
-        assert "«aadhaar_1»" in turn.original_query
+        assert "«phone_1»" in turn.input.text
+        assert "«aadhaar_1»" in turn.input.text
         assert PHONE not in turn.model_dump_json()
         # One value, one tag — in the question and in the history.
         assert turn.history[0].text == "earlier I gave «phone_1»"
@@ -191,13 +191,13 @@ async def test_the_farmer_reads_their_own_number_back() -> None:
 async def test_a_failing_identifier_is_dropped_and_the_others_still_apply() -> None:
     _, plan, _, _ = await _run(redact=_redact(_Breaks(), _FindsValues(phone=PHONE)))
 
-    assert PHONE not in plan.turn.original_query
+    assert PHONE not in plan.turn.input.text
 
 
 async def test_with_redaction_off_the_turn_passes_through_unchanged() -> None:
     _, plan, _, _ = await _run(redact=pass_through)
 
-    assert PHONE in plan.turn.original_query
+    assert PHONE in plan.turn.input.text
     assert plan.visibility.values == {}
 
 
@@ -217,6 +217,6 @@ async def test_the_users_phone_gets_the_same_tag_as_the_question() -> None:
     _ = [event async for event in orch.run(turn, _ctx())]
 
     assert plan.turn.user.phone == "«phone_1»"
-    assert plan.turn.original_query == "status for «phone_1»"
+    assert plan.turn.input.text == "status for «phone_1»"
     assert PHONE not in turns.records["t1"].turn.model_dump_json()
     assert plan.visibility.values == {"«phone_1»": PHONE}

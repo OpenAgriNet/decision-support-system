@@ -34,7 +34,7 @@ from dss.core.provider_discovery.models import (
     ProviderCapability,
 )
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
-from dss.core.shared.models import ConversationMessage, UserTurn
+from dss.core.shared.models import ConversationMessage, TextQuery, UserTurn
 from dss.orchestration.plan import build_plan
 from tests.support.fakes import FakePromptProvider
 
@@ -100,8 +100,7 @@ class _FakeInvocation:
 
 def _turn() -> UserTurn:
     return UserTurn(
-        original_query="price of paddy",
-        enriched_query="price of paddy",
+        input=TextQuery(text="price of paddy"),
         transaction_id="txn-1",
         session_id="s-1",
         source_lang="en",
@@ -194,7 +193,7 @@ async def test_the_prompt_carries_the_identity_and_the_marked_history() -> None:
     )
     turn = _turn().model_copy(
         update={
-            "enriched_query": "I am from Pune",
+            "input": TextQuery(text="I am from Pune"),
             "history": [
                 ConversationMessage(role="user", text="Can I get advisory for potato"),
                 ConversationMessage(role="assistant", text="Where is your location?"),

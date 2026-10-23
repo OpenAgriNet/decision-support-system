@@ -4,7 +4,7 @@ from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import aclosing
 
 from dss.adapters.observability.tracing import set_current_span_content
-from dss.core.shared.models import TurnFinished, UserTurn
+from dss.core.shared.models import TextQuery, TurnFinished, UserTurn
 from dss.core.translation.service import TurnTranslation
 from dss.observability.stages import Stage
 from dss.observability.trace_log import trace_component
@@ -13,8 +13,11 @@ from dss.orchestration.events import CoreEvent
 
 
 async def translate_in(
-    farmer_turn: UserTurn, translation: TurnTranslation | None, *, trace_id: str
-) -> UserTurn:
+    farmer_turn: UserTurn[TextQuery],
+    translation: TurnTranslation | None,
+    *,
+    trace_id: str,
+) -> UserTurn[TextQuery]:
     """The turn the core runs on: in the route's language, or the farmer's
     turn as it is when there is no route."""
 
@@ -23,7 +26,7 @@ async def translate_in(
     with trace_component(Stage.TRANSLATION_IN, trace_id):
         core_turn = await translation.translate_in(farmer_turn)
         set_current_span_content(
-            input=farmer_turn.original_query, output=core_turn.original_query
+            input=farmer_turn.input.text, output=core_turn.input.text
         )
     return core_turn
 

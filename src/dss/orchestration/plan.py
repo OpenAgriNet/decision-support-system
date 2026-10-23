@@ -31,7 +31,7 @@ from dss.core.planner.prompt import (
 from dss.core.planner.validation import DomainSchema
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
-from dss.core.shared.models import UserTurn
+from dss.core.shared.models import TextQuery, UserTurn
 from dss.observability.stages import Stage
 from dss.observability.trace_log import log_external_response
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
@@ -44,7 +44,7 @@ class Plan(Protocol):
 
     async def __call__(
         self,
-        turn: UserTurn,
+        turn: UserTurn[TextQuery],
         *,
         intent: Intent,
         discovery: DiscoveryResult,
@@ -82,7 +82,7 @@ def build_plan(  # noqa: PLR0913
     model_settings = {"temperature": temperature, "timeout": timeout_seconds}
 
     async def plan(
-        turn: UserTurn,
+        turn: UserTurn[TextQuery],
         *,
         intent: Intent,
         discovery: DiscoveryResult,
@@ -134,7 +134,7 @@ def build_plan(  # noqa: PLR0913
             # in markers — the model resolves a subject named in an earlier turn
             # from here (see the provider-invocation skill's guidance).
             result = await agent.run(
-                build_user_message(query=turn.enriched_query, history=turn.history),
+                build_user_message(query=turn.input.text, history=turn.history),
                 deps=deps,
                 model_settings=model_settings,
                 usage=usage,

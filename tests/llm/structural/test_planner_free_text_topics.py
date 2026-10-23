@@ -40,7 +40,7 @@ from dss.core.provider_discovery.models import (
     ProviderCapability,
 )
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
-from dss.core.shared.models import ConversationMessage, UserTurn
+from dss.core.shared.models import ConversationMessage, TextQuery, UserTurn
 from dss.entrypoint.composition import _resolve_model
 from dss.orchestration.plan import build_plan
 from tests.support.live_model import missing_model_key
@@ -141,8 +141,7 @@ def _turn() -> UserTurn:
     history; the place is only in the current message."""
 
     return UserTurn(
-        original_query="i want to grow in pune",
-        enriched_query="i want to grow in pune",
+        input=TextQuery(text="i want to grow in pune"),
         transaction_id="txn-topics",
         session_id="s-topics",
         source_lang="en",

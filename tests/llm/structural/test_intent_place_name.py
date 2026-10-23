@@ -38,7 +38,7 @@ from dss.core.intent.models import (
 )
 from dss.core.intent.service import classify_intent
 from dss.core.location.service import resolve_places
-from dss.core.shared.models import ConversationMessage, UserTurn
+from dss.core.shared.models import ConversationMessage, TextQuery, UserTurn
 from dss.entrypoint.composition import _resolve_model
 from dss.observability.stages import Stage
 from tests.support.live_model import missing_model_key
@@ -118,8 +118,7 @@ def _turn(
     history: list[ConversationMessage] | None = None,
 ) -> UserTurn:
     return UserTurn(
-        original_query=query,
-        enriched_query=query,
+        input=TextQuery(text=query),
         session_id="s1",
         transaction_id="t1",
         source_lang=source_lang,
