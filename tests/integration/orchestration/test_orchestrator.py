@@ -38,6 +38,7 @@ from dss.core.shared.models import (
     Location,
     RefusalBlock,
     TextBlock,
+    TextQuery,
     TurnContext,
     TurnFinished,
     TurnStarted,
@@ -97,8 +98,7 @@ def _turn(
     question — so they would all stop testing what they were written for."""
 
     return UserTurn(
-        original_query=query,
-        enriched_query=query,
+        input=TextQuery(text=query),
         session_id="s1",
         transaction_id="t1",
         source_lang="en",

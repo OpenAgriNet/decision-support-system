@@ -30,6 +30,7 @@ from dss.core.shared.models import (
     Geometry,
     Location,
     RefusalBlock,
+    TextQuery,
     TurnEvent,
     TurnFinished,
     TurnStatus,
@@ -79,8 +80,7 @@ def _build_turn(
     lang: LanguageTag, query: str = QUERY, *, location: Location | None = _PUNE
 ) -> UserTurn:
     return UserTurn(
-        original_query=query,
-        enriched_query=query,
+        input=TextQuery(text=query),
         session_id="s1",
         transaction_id="t1",
         source_lang=lang,
@@ -224,7 +224,7 @@ async def test_audit_record_keeps_the_original_language() -> None:
     await _drain(orch, _build_turn(GUJARATI))
 
     recorded = turns.records["t1"].turn
-    assert recorded.original_query == QUERY
+    assert recorded.input.text == QUERY
     assert recorded.target_lang == GUJARATI
 
 

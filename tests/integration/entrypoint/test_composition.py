@@ -473,6 +473,7 @@ async def test_a_gujarati_turn_goes_in_and_out_through_the_stub(
         ClaimDelta,
         Geometry,
         Location,
+        TextQuery,
         TurnContext,
         TurnFinished,
         UserTurn,
@@ -483,8 +484,7 @@ async def test_a_gujarati_turn_goes_in_and_out_through_the_stub(
         _settings(tmp_path, edge_translation_config_path=_TRANSLATION)
     )
     turn = UserTurn(
-        original_query="આજે વરસાદ પડશે?",
-        enriched_query="આજે વરસાદ પડશે?",
+        input=TextQuery(text="આજે વરસાદ પડશે?"),
         session_id="s1",
         transaction_id="t1",
         source_lang=gujarati,

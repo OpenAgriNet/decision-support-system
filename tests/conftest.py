@@ -96,20 +96,14 @@ def omit():
 
 @pytest.fixture
 def a_turn():
-    """Build a `UserTurn`.
+    """Build a `UserTurn`. `query=` is a shorthand for `input=TextQuery(text=...)`."""
 
-    `query=` is a convenience that sets `original_query` and `enriched_query`
-    together — enrichment has not landed, so they mirror each other
-    (`core/shared/models.py`).
-    """
-
-    from dss.core.shared.models import UserDetails, UserTurn
+    from dss.core.shared.models import TextQuery, UserDetails, UserTurn
 
     def _turn(**overrides: Any) -> UserTurn:
         query = overrides.pop("query", _TEXT)
         fields: dict[str, Any] = {
-            "original_query": query,
-            "enriched_query": query,
+            "input": TextQuery(text=query),
             "session_id": "conv_8f3a1c",
             "transaction_id": _TRANSACTION,
             "source_lang": "hi",

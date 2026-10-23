@@ -21,7 +21,7 @@ from dss.core.intent.models import (
     InteractionType,
     SubjectCategory,
 )
-from dss.core.shared.models import UserTurn
+from dss.core.shared.models import TextQuery, UserTurn
 from dss.ports.llm import LLMProvider
 from dss.ports.prompts import PromptIdentifier, PromptProvider
 
@@ -31,7 +31,7 @@ _HISTORY_WINDOW = 6
 
 
 async def classify_intent(
-    turn: UserTurn, llm: LLMProvider, prompts: PromptProvider
+    turn: UserTurn[TextQuery], llm: LLMProvider, prompts: PromptProvider
 ) -> IntentClassification:
     """Classify the raw query in the context of the turn's recent history."""
 
@@ -48,6 +48,6 @@ async def classify_intent(
                 "history": tuple(turn.history[-_HISTORY_WINDOW:]),
             },
         ),
-        user_query=turn.original_query,
+        user_query=turn.input.text,
         schema=IntentClassification,
     )

@@ -58,7 +58,7 @@ from dss.core.moderation.models import (
 from dss.core.moderation.service import moderate
 from dss.core.policy.models import Policy
 from dss.core.provider_discovery.models import DiscoveryResult
-from dss.core.shared.models import UserTurn
+from dss.core.shared.models import TextQuery, UserTurn
 from dss.observability.stages import Stage
 from dss.observability.trace_log import log_event, trace_component
 from dss.orchestration.discovery import DiscoverProviders
@@ -150,7 +150,7 @@ def moderation_attributes(decision: ModerationDecision) -> dict[str, str]:
 
 def _enrich(
     intent: Intent,
-    turn: UserTurn,
+    turn: UserTurn[TextQuery],
     catalog: SchemeCatalog | None,
     fuzzy_threshold: float | None,
 ) -> Intent:
@@ -167,7 +167,7 @@ def _enrich(
 
     resolution = resolve_scheme_subjects(
         intent,
-        turn.original_query,
+        turn.input.text,
         catalog.aliases(),
         fuzzy_threshold=fuzzy_threshold,
     )
@@ -207,7 +207,7 @@ class TurnResult(BaseModel):
 
 
 async def run_turn(  # noqa: PLR0913
-    turn: UserTurn,
+    turn: UserTurn[TextQuery],
     *,
     intent_llm: LLMProvider,
     moderation_llm: LLMProvider,
@@ -245,7 +245,7 @@ async def run_turn(  # noqa: PLR0913
         with trace_component(Stage.INTENT, turn.transaction_id):
             classification = await classify_intent(turn, intent_llm, prompts)
             set_current_span_content(
-                input=turn.original_query, output=asks_text(classification.asks)
+                input=turn.input.text, output=asks_text(classification.asks)
             )
         with trace_component(Stage.LOCATION, turn.transaction_id):
             intent = await resolve_places(
@@ -274,7 +274,7 @@ async def run_turn(  # noqa: PLR0913
                 ModerationContext(turn=turn), policies, moderation_llm, prompts
             )
             set_current_span_attributes(**moderation_attributes(decision))
-            set_current_span_content(input=turn.original_query)
+            set_current_span_content(input=turn.input.text)
 
     async with anyio.create_task_group() as task_group:
         task_group.start_soon(run_moderation)

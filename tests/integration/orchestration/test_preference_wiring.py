@@ -28,7 +28,7 @@ from dss.core.provider_discovery.models import (
     DiscoveryResult,
     ProviderCapability,
 )
-from dss.core.shared.models import Geometry, UserTurn
+from dss.core.shared.models import Geometry, TextQuery, UserTurn
 from dss.orchestration.discovery import build_discover_providers
 from tests.support.fakes import FakeProviderPreferences
 
@@ -80,10 +80,9 @@ class _FakeDiscovery:
         )
 
 
-def _turn(sender_id: str | None) -> UserTurn:
+def _turn(sender_id: str | None) -> UserTurn[TextQuery]:
     return UserTurn(
-        original_query="will it rain in nashik",
-        enriched_query="will it rain in nashik",
+        input=TextQuery(text="will it rain in nashik"),
         transaction_id="txn-1",
         session_id="s-1",
         source_lang="en",

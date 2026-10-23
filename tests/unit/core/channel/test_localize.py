@@ -16,15 +16,21 @@ from dss.core.channel.localize import (
 )
 from dss.core.channel.models import ComposedAnswer
 from dss.core.shared.language import LanguageTag
-from dss.core.shared.models import RefusalBlock, Source, SourceKind, TextBlock, UserTurn
+from dss.core.shared.models import (
+    RefusalBlock,
+    Source,
+    SourceKind,
+    TextBlock,
+    TextQuery,
+    UserTurn,
+)
 from dss.ports.prompts import PromptIdentifier
 from tests.support.fakes import FakePromptProvider
 
 
 def _turn(target_lang: str) -> UserTurn:
     return UserTurn(
-        original_query="q",
-        enriched_query="q",
+        input=TextQuery(text="q"),
         session_id="s1",
         transaction_id="t1",
         source_lang=target_lang,

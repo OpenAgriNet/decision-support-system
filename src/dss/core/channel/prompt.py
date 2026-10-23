@@ -30,7 +30,7 @@ from dss.core.planner.markers import (
     wrap_as_data,
 )
 from dss.core.planner.models import AskEvidence, Evidence, Failure, Identity, Result
-from dss.core.shared.models import UserTurn
+from dss.core.shared.models import TextQuery, UserTurn
 from dss.ports.prompts import PromptIdentifier, PromptProvider
 
 # A reply like "2" means nothing without the question it answers. Three
@@ -39,7 +39,7 @@ _HISTORY_WINDOW = 3
 
 
 def system_prompt(
-    identity: Identity, *, turn: UserTurn, prompts: PromptProvider
+    identity: Identity, *, turn: UserTurn[TextQuery], prompts: PromptProvider
 ) -> str:
     return prompts.get_prompt(
         PromptIdentifier.COMPOSER,
@@ -53,7 +53,7 @@ def system_prompt(
     )
 
 
-def user_prompt(evidence: Evidence, *, turn: UserTurn) -> str:
+def user_prompt(evidence: Evidence, *, turn: UserTurn[TextQuery]) -> str:
     """The question and the provider's values, wrapped as data.
 
     A provider's text is third-party and must never read as instructions, and
@@ -63,7 +63,7 @@ def user_prompt(evidence: Evidence, *, turn: UserTurn) -> str:
     """
 
     question = (
-        wrap_as_data(turn.enriched_query, QUESTION)
+        wrap_as_data(turn.input.text, QUESTION)
         + "\n\n"
         + wrap_as_data(render_evidence(evidence), RETRIEVED_DATA)
     )

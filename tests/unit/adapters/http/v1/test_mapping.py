@@ -49,7 +49,7 @@ def _thread() -> list[dict]:
 def test_the_last_user_message_is_the_current_query(a_body):
     body = schema.TurnRequest.model_validate(a_body(message__input=_thread()))
 
-    assert mapping.to_user_turn(body).original_query == "And potato?"
+    assert mapping.to_user_turn(body).input.text == "And potato?"
 
 
 def test_messages_before_the_current_query_become_history(a_body):
@@ -80,7 +80,7 @@ def test_several_content_parts_join_into_one_query(a_body):
     )
 
     assert (
-        mapping.to_user_turn(body).original_query
+        mapping.to_user_turn(body).input.text
         == "What disease is this? The leaves are curling."
     )
 

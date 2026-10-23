@@ -40,7 +40,7 @@ from dss.core.provider_discovery.models import (
 )
 from dss.core.provider_preferences.models import AskPriority
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
-from dss.core.shared.models import Geometry, UserTurn
+from dss.core.shared.models import Geometry, TextQuery, UserTurn
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
 from dss.ports.invocation import SelectFailedError
 
@@ -156,8 +156,7 @@ def _deps(
     verdict.set(ModerationDecision(outcome=Outcome.PROCEED))
     return PlannerDeps(
         turn=UserTurn(
-            original_query="will it rain in nashik",
-            enriched_query="will it rain in nashik",
+            input=TextQuery(text="will it rain in nashik"),
             transaction_id="txn-1",
             session_id="s-1",
             source_lang="en",

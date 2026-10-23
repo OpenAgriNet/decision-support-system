@@ -18,7 +18,7 @@ from dss.core.intent.models import (
     UnresolvedPlace,
 )
 from dss.core.shared.language import LanguageTag
-from dss.core.shared.models import Geometry, UserTurn
+from dss.core.shared.models import Geometry, TextQuery, UserTurn
 from dss.ports.area_lookup import AreaMatch
 
 
@@ -289,11 +289,11 @@ def test_intent_is_frozen() -> None:
         intent.confidence = 0.9
 
 
-def test_user_turn_requires_both_query_fields() -> None:
+def test_user_turn_requires_an_input() -> None:
     with pytest.raises(ValidationError):
         UserTurn(
-            original_query="hi",
             session_id="s",
+            transaction_id="t",
             source_lang="en",
             target_lang="en",
             channel="web",
@@ -303,8 +303,7 @@ def test_user_turn_requires_both_query_fields() -> None:
 def test_non_bcp47_language_raises() -> None:
     with pytest.raises(ValidationError):
         UserTurn(
-            original_query="hi",
-            enriched_query="hi",
+            input=TextQuery(text="hi"),
             session_id="s",
             transaction_id="t",
             source_lang="gujarati",  # full name, not a code
