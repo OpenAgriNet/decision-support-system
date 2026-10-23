@@ -115,7 +115,9 @@ def render_evidence(evidence: Evidence) -> str:
         for position, entry in enumerate(served, start=1)
         for block in _render_results(entry, position=position, name_by_id=name_by_id)
     ]
-    blocks.extend(_render_failures(evidence))
+    blocks += [
+        block for entry in evidence.ask_evidences for block in _render_failures(entry)
+    ]
 
     if not blocks:
         return "Nothing was retrieved."
@@ -148,18 +150,18 @@ def _render_payloads(payloads: Sequence[dict]) -> str:
     )
 
 
-def _render_failures(evidence: Evidence) -> list[str]:
-    """Calls that did not answer, and why.
+def _render_failures(ask_evidence: AskEvidence) -> list[str]:
+    """This ask's calls that did not answer, and why.
 
     "We could not reach Agmarknet" and "nobody serves this" are the same
     empty result but very different things to tell a farmer. Without this the
     composer saw only results and rendered both as "Nothing was retrieved."
     """
 
+    label = _place_label(ask_evidence.ask)
     return [
-        f"{_failure_lead(failure)}{_place_label(entry.ask)}: {failure.reason}"
-        for entry in evidence.ask_evidences
-        for failure in entry.failures
+        f"{_failure_lead(failure)}{label}: {failure.reason}"
+        for failure in ask_evidence.failures
     ]
 
 
