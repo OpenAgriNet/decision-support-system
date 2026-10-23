@@ -279,7 +279,7 @@ else
     -e LANGFUSE_AUTH_HEADER="Basic $(printf '%s:%s' "$LANGFUSE_PUBLIC_KEY" "$LANGFUSE_SECRET_KEY" | base64 | tr -d '\n')" \
     ${clickhouse_env[@]+"${clickhouse_env[@]}"} \
     -v "$PWD/$COLLECTOR_CONFIG:/etc/otel/collector.yaml:ro" \
-    "otel/opentelemetry-collector-contrib:${OTEL_COLLECTOR_TAG:-latest}" \
+    "dhi.io/opentelemetry-collector:${OTEL_COLLECTOR_TAG:-0.150-contrib}" \
     --config=/etc/otel/collector.yaml >/dev/null
 fi
 

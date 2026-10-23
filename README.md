@@ -7,6 +7,10 @@ A reasoning runtime that interprets user queries and delivers curated answers fr
 
 ## Run it
 
+The container images are built on Docker Hardened Images, so run
+`docker login dhi.io` once before `docker compose` (see
+[`docs/RUNNING.md`](./docs/RUNNING.md)).
+
 ```bash
 uv sync
 uv run uvicorn --factory dss.entrypoint.app:create_app --port 8077

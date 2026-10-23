@@ -33,6 +33,15 @@
   ADR-0018
 
 ### Changed
+- Every image the DSS builds or starts is now a Docker Hardened Image
+  (`dhi.io`): the DSS image itself, and Photon, the collector, ClickHouse,
+  Postgres, Redis, Grafana, MinIO, the model gateway and Langfuse in the
+  compose files. The DSS image runs as a non-root user and has no shell.
+  Pulling needs `docker login dhi.io`; CI needs the `DOCKERHUB_USERNAME` and
+  `DOCKERHUB_TOKEN` secrets. Existing Langfuse Postgres and Redis volumes need a
+  one-time owner change (`docs/RUNNING.md`). Photon has no healthcheck any
+  more, and its place index is fetched by `scripts/photon_index.py`.
+  ADR-0019
 - Languages now have one shared type across the turn and the prompt
   registry. A tag is stored in standard casing (`HI-in` becomes `hi-IN`), so
   the same language always finds the same prompt. A tag with a script tries
