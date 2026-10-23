@@ -76,10 +76,10 @@ def assemble_evidence(
       already answered reached the planner's prompt and then vanished: the
       planner is told not to answer, and the composer never saw it.
 
-    ``failures`` are calls that errored after the adapter's retries. They ride
-    alongside the results so the composer can say "we could not reach
-    Agmarknet" rather than "nobody serves this" — the same empty result, two
-    different things to tell a farmer.
+    ``failures`` are calls that errored after the adapter's retries, and asks
+    whose place left nowhere to search. They ride alongside the results so the
+    composer can say "we could not reach Agmarknet" rather than "nobody serves
+    this" — the same empty result, two different things to tell a farmer.
 
     Sources are numbered ``"1"``, ``"2"``, … in first-seen order, one per
     ``(provider, originator)`` pair:
