@@ -193,15 +193,15 @@ class Settings(BaseSettings):
     # on a different config.
     prompt_config_path: Path = Path("configs/prompts.yaml")
 
-    # The registry that holds each sender's provider ranking, per topic
+    # The registry that holds each sender's provider ranking, per capability
     # (ADR-0019, ADR-0020). The DSS holds no rankings of its own: set, it asks
-    # the registry on every turn — two parallel searches, the sender's row and
-    # the `default` row. Unset → no ranking applies anywhere, every ask keeps
+    # the registry on every turn — one search fetching the sender's row and
+    # the `default` row together. Unset → no ranking applies anywhere, every ask keeps
     # whichever providers discovery found, and the boot warns once.
     provider_preferences_base_url: str | None = None
     # A ranking lookup is routing, not the answer: a slow registry must not
-    # hold up the turn. A call that misses this window counts as "no row",
-    # and the turn is answered on whatever the other call returned.
+    # hold up the turn. A call that misses this window counts as "no rows",
+    # and the turn runs as if no preference existed.
     provider_preferences_timeout_seconds: float = Field(3.0, gt=0.0)
 
     @field_validator("provider_preferences_base_url", mode="before")

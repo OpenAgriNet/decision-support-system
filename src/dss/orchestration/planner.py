@@ -326,7 +326,7 @@ def _nothing_came_back(
     The ask is finished only when no candidate is left unconsulted. Without a
     ranking this call consulted the one candidate the model named, and the
     others it did not name may still answer — the behaviour before any
-    preference existed. With one, a ranked provider can serve the same topic
+    preference existed. With one, a ranked provider can serve the same need
     through another `@type`, whose fields this call could not author; picking
     such a candidate is a fresh `select`, not a re-run of this set.
     """
