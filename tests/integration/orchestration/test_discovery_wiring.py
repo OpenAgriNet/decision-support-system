@@ -24,7 +24,7 @@ from dss.core.intent.models import (
 )
 from dss.core.provider_discovery.models import ProviderQuery
 from dss.core.provider_discovery.schema_pack_cache import SchemaPackCache
-from dss.core.shared.models import Geometry, Location, UserTurn
+from dss.core.shared.models import Geometry, Location, TextQuery, UserTurn
 from dss.observability.trace_log import set_stage_span_opener, trace_component
 from dss.orchestration.discovery import (
     build_capability_discovery,
@@ -105,8 +105,7 @@ async def test_the_wired_discover_providers_bakes_in_radius() -> None:
         )
         intent = Intent(asks=(ask,), confidence=0.9)
         turn = UserTurn(
-            original_query="onion price",
-            enriched_query="onion price",
+            input=TextQuery(text="onion price"),
             session_id="s1",
             transaction_id="t1",
             source_lang="hi",
@@ -156,8 +155,7 @@ async def test_the_fan_out_runs_inside_a_span(monkeypatch) -> None:
             interaction_type=InteractionType.OBSERVE,
         )
         turn = UserTurn(
-            original_query="onion price",
-            enriched_query="onion price",
+            input=TextQuery(text="onion price"),
             session_id="s1",
             transaction_id="t1",
             source_lang="hi",
@@ -224,8 +222,7 @@ async def test_the_fan_out_span_counts_how_many_asks_went_unanswered(
             interaction_type=InteractionType.OBSERVE,
         )
         turn = UserTurn(
-            original_query="onion price",
-            enriched_query="onion price",
+            input=TextQuery(text="onion price"),
             session_id="s1",
             transaction_id="t1",
             source_lang="hi",
@@ -294,8 +291,7 @@ async def test_run_turn_can_call_the_composed_discover_providers() -> None:
 
         result = await run_turn(
             UserTurn(
-                original_query="onion price",
-                enriched_query="onion price",
+                input=TextQuery(text="onion price"),
                 session_id="s1",
                 transaction_id="t1",
                 source_lang="en",

@@ -5,14 +5,13 @@ from __future__ import annotations
 from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
 from dss.core.planner.models import Verdict
 from dss.core.provider_discovery.models import DiscoveryResult
-from dss.core.shared.models import UserTurn
+from dss.core.shared.models import TextQuery, UserTurn
 from dss.orchestration.planner import PlannerDeps
 
 
 def _turn() -> UserTurn:
     return UserTurn(
-        original_query="price of potato",
-        enriched_query="price of potato",
+        input=TextQuery(text="price of potato"),
         transaction_id="txn-1",
         session_id="s-1",
         source_lang="en",

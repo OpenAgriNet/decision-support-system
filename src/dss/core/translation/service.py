@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from dss.core.shared.errors import TranslationError
 from dss.core.shared.language import LanguageTag
-from dss.core.shared.models import UserTurn
+from dss.core.shared.models import TextQuery, UserTurn
 from dss.core.translation.models import TranslationRoute
 from dss.ports.translator import Translator
 
@@ -17,7 +17,7 @@ class EdgeTranslation:
 
     routes: Mapping[str, TranslationRoute]
 
-    def for_turn(self, turn: UserTurn) -> TurnTranslation | None:
+    def for_turn(self, turn: UserTurn[TextQuery]) -> TurnTranslation | None:
         """This turn's translation, or None when the DSS serves its language
         directly. Found by the language alone, so `gu-IN` is served by `gu`."""
 
@@ -41,7 +41,7 @@ class TurnTranslation:
     edge_lang: LanguageTag
     core_lang: LanguageTag
 
-    async def translate_in(self, turn: UserTurn) -> UserTurn:
+    async def translate_in(self, turn: UserTurn[TextQuery]) -> UserTurn[TextQuery]:
         """A new turn in the core language, in one translate call."""
 
         translated = await _translate_each(
@@ -60,36 +60,22 @@ class TurnTranslation:
         )
 
 
-def _has_own_enriched_query(turn: UserTurn) -> bool:
-    return turn.enriched_query != turn.original_query
+def _collect_texts_to_translate(turn: UserTurn[TextQuery]) -> list[str]:
+    """The question, then the history. Never the phone: after redaction it is
+    only a tag."""
 
-
-def _collect_texts_to_translate(turn: UserTurn) -> list[str]:
-    """The question, the enriched question when it differs, then the history.
-    Never the phone: after redaction it is only a tag."""
-
-    enriched = [turn.enriched_query] if _has_own_enriched_query(turn) else []
-    return [
-        turn.original_query,
-        *enriched,
-        *(message.text for message in turn.history),
-    ]
+    return [turn.input.text, *(message.text for message in turn.history)]
 
 
 def _replace_turn_texts(
-    turn: UserTurn, translated: Sequence[str], *, lang: LanguageTag
-) -> UserTurn:
+    turn: UserTurn[TextQuery], translated: Sequence[str], *, lang: LanguageTag
+) -> UserTurn[TextQuery]:
     """`turn` with `translated` in place, in `_collect_texts_to_translate` order."""
 
-    query, *rest = translated
-    if _has_own_enriched_query(turn):
-        enriched, *history = rest
-    else:
-        enriched, history = query, rest
+    query, *history = translated
     return turn.model_copy(
         update={
-            "original_query": query,
-            "enriched_query": enriched,
+            "input": turn.input.model_copy(update={"text": query}),
             "history": [
                 message.model_copy(update={"text": text})
                 for message, text in zip(turn.history, history, strict=True)

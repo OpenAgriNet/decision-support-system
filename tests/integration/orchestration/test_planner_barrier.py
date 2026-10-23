@@ -28,7 +28,7 @@ from dss.core.provider_discovery.models import (
     ProviderCapability,
 )
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
-from dss.core.shared.models import UserTurn
+from dss.core.shared.models import TextQuery, UserTurn
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
 
 CAPABILITY = ProviderCapability(
@@ -110,8 +110,7 @@ def _intent(category: SubjectCategory = SubjectCategory.MARKET) -> Intent:
 def _deps(invocation: _RecordingInvocation, verdict: Verdict) -> PlannerDeps:
     return PlannerDeps(
         turn=UserTurn(
-            original_query="price of paddy",
-            enriched_query="price of paddy",
+            input=TextQuery(text="price of paddy"),
             transaction_id="txn-1",
             session_id="s-1",
             source_lang="en",

@@ -9,7 +9,7 @@ from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
 from dss.core.planner.models import Skill, Verdict
 from dss.core.planner.validation import DomainSchema
 from dss.core.provider_discovery.models import DiscoveryResult, ProviderCapability
-from dss.core.shared.models import UserTurn
+from dss.core.shared.models import TextQuery, UserTurn
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
 
 CAPABILITY = ProviderCapability(
@@ -68,8 +68,7 @@ def _intent(category: SubjectCategory = SubjectCategory.MARKET) -> Intent:
 def _deps() -> PlannerDeps:
     return PlannerDeps(
         turn=UserTurn(
-            original_query="price of paddy",
-            enriched_query="price of paddy",
+            input=TextQuery(text="price of paddy"),
             transaction_id="txn-1",
             session_id="s-1",
             source_lang="en",

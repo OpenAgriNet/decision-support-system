@@ -48,6 +48,7 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator, AsyncIterator, Mapping, Sequence
 from contextlib import aclosing, suppress
 from dataclasses import dataclass
+from typing import cast
 
 from dss.adapters.observability.tracing import (
     TurnRecorder,
@@ -81,9 +82,11 @@ from dss.core.shared.models import (
     OutputContent,
     RefusalBlock,
     TextBlock,
+    TextQuery,
     TurnContext,
     TurnEvent,
     TurnFinished,
+    TurnInput,
     TurnOutcome,
     TurnStarted,
     TurnStatus,
@@ -136,6 +139,13 @@ _STUB_CONFIDENCE = {
 
 def outcome_for(status: TurnStatus, cause: Cause | None = None) -> TurnOutcome:
     return TurnOutcome(status=status, cause=cause, confidence=_STUB_CONFIDENCE[status])
+
+
+def _as_text_turn(turn: UserTurn[TurnInput]) -> UserTurn[TextQuery]:
+    # TODO(#205): a path per input kind replaces this check.
+    if not isinstance(turn.input, TextQuery):
+        raise TypeError(f"no path for a {type(turn.input).__name__} input")
+    return cast("UserTurn[TextQuery]", turn)
 
 
 @dataclass(frozen=True)
@@ -207,7 +217,10 @@ class Orchestrator:
         self._schemas = schemas
         self._edge_translation = edge_translation
 
-    async def run(self, turn: UserTurn, ctx: TurnContext) -> AsyncIterator[TurnEvent]:
+    async def run(
+        self, turn: UserTurn[TurnInput], ctx: TurnContext
+    ) -> AsyncIterator[TurnEvent]:
+        text_turn = _as_text_turn(turn)
         bind_turn_ids(
             ctx.trace_id, message_id=ctx.message_id, session_id=ctx.session_id
         )
@@ -224,9 +237,9 @@ class Orchestrator:
 
             with trace_component(Stage.REDACTION, ctx.trace_id):
                 redaction = await self._components.redact(
-                    texts_of(turn), request_id=turn.transaction_id
+                    texts_of(text_turn), request_id=turn.transaction_id
                 )
-            farmer_turn = with_texts(turn, redaction.texts)
+            farmer_turn = with_texts(text_turn, redaction.texts)
             recorder.redacted(found=redaction.found, failed=redaction.failed)
             self._turns.opened(ctx, farmer_turn)
 
@@ -264,7 +277,7 @@ class Orchestrator:
 
     async def _run_core(
         self,
-        turn: UserTurn,
+        turn: UserTurn[TextQuery],
         *,
         ctx: TurnContext,
         recorder: TurnRecorder,
@@ -442,7 +455,7 @@ class Orchestrator:
         events: AsyncIterator[CoreEvent],
         *,
         ctx: TurnContext,
-        farmer_turn: UserTurn,
+        farmer_turn: UserTurn[TextQuery],
         recorder: TurnRecorder,
         visibility: Visibility,
     ) -> AsyncGenerator[TurnEvent]:
@@ -481,7 +494,7 @@ class Orchestrator:
         finished: TurnFinished,
         *,
         ctx: TurnContext,
-        farmer_turn: UserTurn,
+        farmer_turn: UserTurn[TextQuery],
         recorder: TurnRecorder,
     ) -> None:
         """Record the terminal event, with its tags.
@@ -500,7 +513,7 @@ class Orchestrator:
         recorder.status(finished.outcome.status.value)
         # The trace gets the redacted question and the tagged answer.
         recorder.content(
-            query=farmer_turn.original_query,
+            query=farmer_turn.input.text,
             answer=[block.text for block in finished.content],
         )
 

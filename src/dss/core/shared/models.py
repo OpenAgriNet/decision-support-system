@@ -1,10 +1,7 @@
 """The request envelope — the normalized turn the DSS receives (spec 0002, §5.1).
 
-``UserTurn`` carries the ``(original_query, enriched_query)`` pair from the start
-(architecture §3.0): moderation evaluates the enriched query, and until
-enrichment lands ``enriched_query`` mirrors ``original_query``. Defining both now
-means later slices do not have to re-thread the second field through every
-signature.
+The ``input`` is its own type so a turn can carry more kinds than text, and a
+module can declare the kind it handles.
 
 The conversation ``history``, ``location``, and the actor's ``reference`` token
 are typed here because the Experience-API envelope carries them and the
@@ -18,10 +15,20 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, SerializeAsAny
 
 from dss.core.shared.language import LanguageTag
 from dss.core.shared.network import NetworkTransactionID
+
+
+class TurnInput(BaseModel):
+    """What the farmer sent this turn."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class TextQuery(TurnInput):
+    text: str
 
 
 class ReferenceToken(BaseModel):
@@ -91,13 +98,14 @@ class Refused(BaseModel):
     reason: str  # "outside agriculture"
 
 
-class UserTurn(BaseModel):
+class UserTurn[InputT: TurnInput](BaseModel):
     """One normalized turn from the Experience API."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    original_query: str
-    enriched_query: str
+    # Without SerializeAsAny a turn typed by the base serialises its input as
+    # an empty TurnInput.
+    input: SerializeAsAny[InputT]
     session_id: str
     transaction_id: NetworkTransactionID
     source_lang: LanguageTag  # language the user spoke/typed

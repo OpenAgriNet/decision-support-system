@@ -26,7 +26,7 @@ from dss.core.planner.models import (
     SourceKind,
 )
 from dss.core.shared.language import LanguageTag
-from dss.core.shared.models import ConversationMessage, Geometry, UserTurn
+from dss.core.shared.models import ConversationMessage, Geometry, TextQuery, UserTurn
 from dss.ports.prompts import PromptIdentifier
 from tests.support.fakes import FakePromptProvider
 
@@ -280,8 +280,7 @@ def test_system_prompt_hands_the_identity_and_language_to_the_template() -> None
         boundaries="Never gives legal advice.",
     )
     turn = UserTurn(
-        original_query="q",
-        enriched_query="q",
+        input=TextQuery(text="q"),
         session_id="s1",
         transaction_id="t1",
         source_lang="mr",
@@ -313,8 +312,7 @@ def test_composer_sees_last_three_messages() -> None:
         ConversationMessage(role="assistant", text="Which Rampur? 1. … 2. …"),
     ]
     turn = UserTurn(
-        original_query="2",
-        enriched_query="2",
+        input=TextQuery(text="2"),
         session_id="s1",
         transaction_id="t1",
         source_lang="en",

@@ -29,15 +29,14 @@ from dss.core.provider_discovery.models import (
     Validity,
 )
 from dss.core.provider_discovery.service import discover_providers
-from dss.core.shared.models import UserTurn
+from dss.core.shared.models import TextQuery, UserTurn
 
 NOW = datetime(2026, 8, 26, 12, 0, 0, tzinfo=UTC)
 
 
 def _turn(**overrides) -> UserTurn:
     defaults = dict(
-        original_query="market price",
-        enriched_query="market price",
+        input=TextQuery(text="market price"),
         session_id="s1",
         transaction_id="t1",
         source_lang="hi",

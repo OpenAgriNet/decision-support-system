@@ -21,7 +21,7 @@ from dss.core.policy.models import (
     PolicyExample,
     WordCheckPolicy,
 )
-from dss.core.shared.models import ConversationMessage, UserTurn
+from dss.core.shared.models import ConversationMessage, TextQuery, UserTurn
 from tests.support.fakes import FakePromptProvider
 
 PROFANITY = WordCheckPolicy(
@@ -50,8 +50,7 @@ def _turn(
 ) -> ModerationContext:
     return ModerationContext(
         turn=UserTurn(
-            original_query=query,
-            enriched_query=query,
+            input=TextQuery(text=query),
             session_id="s1",
             transaction_id="t1",
             source_lang="en",
@@ -103,26 +102,6 @@ async def test_clean_query_has_no_frustration_flag() -> None:
         _turn("When should I sow wheat?"), [PROFANITY], llm, FakePromptProvider()
     )
     assert decision.frustration_detected is False
-
-
-async def test_raw_query_is_what_is_judged() -> None:
-    """Moderation reads the raw query, not an enriched rewrite."""
-    llm = _FakeLLM(violated=None)
-    ctx = ModerationContext(
-        turn=UserTurn(
-            original_query="What is the potato price?",
-            enriched_query="ENRICHED SHOULD BE IGNORED",
-            session_id="s1",
-            transaction_id="t1",
-            source_lang="en",
-            target_lang="en",
-            channel="web",
-        )
-    )
-
-    await moderate(ctx, [DELETE_COMMAND], llm, FakePromptProvider())
-
-    assert llm.seen_query == "What is the potato price?"
 
 
 async def test_history_is_passed_to_the_llm_for_followups() -> None:

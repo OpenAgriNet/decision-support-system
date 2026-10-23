@@ -14,7 +14,7 @@ from dss.core.intent.models import (
     UnresolvedPlace,
 )
 from dss.core.location.service import resolve_places
-from dss.core.shared.models import Geometry, Location, UserTurn
+from dss.core.shared.models import Geometry, Location, TextQuery, UserTurn
 from dss.ports.area_lookup import AreaMatch
 
 
@@ -71,8 +71,7 @@ def _turn(
     if area is not None or geometry is not None or region is not None:
         location = Location(area=area, geometry=geometry, region=region)
     return UserTurn(
-        original_query="q",
-        enriched_query="q",
+        input=TextQuery(text="q"),
         session_id="s1",
         transaction_id="t1",
         source_lang="en",
