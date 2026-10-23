@@ -106,8 +106,21 @@ Code says **what**. A comment says **why**, and only when the code can't.
 - Before writing a comment, try a better name or a smaller function instead.
 - Keep: non-obvious reasons, constraints from outside (a spec, a bug, a vendor quirk), surprising decisions. One or two lines.
 - Delete: comments that restate the code, narrate steps, describe history ("used to…", "now we…"), or repeat the docstring.
-- Docstrings: one line saying what it returns or does. Add more only for a contract a caller must know.
+- Docstrings are for the caller, and only when the name and signature can't say it: an ordering guarantee, a unit, what is raised, a surprise. One line. A second paragraph only for a contract.
+  - No docstring when the name says it. `class TextQuery: text: str` needs none. "Build a turn" above `build_turn` is noise.
+  - Don't add one because the file's other classes have one. Matching style is not a reason.
+  - Tests: none, unless the reasoning isn't in the name.
+  - Modules: say why the module exists, not what is in it.
   ```python
+  # Bad — the name already says it
+  class TextQuery(TurnInput):
+      """What the farmer typed or said."""
+      text: str
+
+  # Good — a contract a caller depends on
+  def texts_of(turn: UserTurn[TextQuery]) -> list[str]:
+      """The question, then every history message, then the phone. `with_texts` relies on this order."""
+
   # Bad — restates the code
   # loop over packs and skip bad ones
   for pack in packs: ...
