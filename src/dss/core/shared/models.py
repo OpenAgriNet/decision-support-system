@@ -57,6 +57,41 @@ class FormReference(BaseModel):
     submission_id: str | None = None
 
 
+class FieldKind(StrEnum):
+    TEXT = "text"
+    TEXTAREA = "textarea"
+    SELECT = "select"
+    SECRET = "secret"  # noqa: S105  # a kind of field, not a password
+
+
+class Option(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    value: str
+    label: str
+
+
+class FieldRules(BaseModel):
+    """What the pack lets a client check before sending, and the DSS after."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    required: bool = False
+    pattern: str | None = None
+    min_length: int | None = None
+    max_length: int | None = None
+    options: tuple[Option, ...] = ()
+
+
+class FieldDefinition(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    name: str  # the pack's path, e.g. "grievance.description"
+    label: str
+    kind: FieldKind
+    rules: FieldRules = FieldRules()
+
+
 class ReferenceToken(BaseModel):
     """A provider-call credential the DSS passes on but does not itself consume.
     An expired token is treated as absent at the mapping boundary (spec: "An
@@ -251,7 +286,18 @@ class RefusalBlock(BaseModel):
     text: str
 
 
-OutputContent = TextBlock | RefusalBlock
+class FormBlock(BaseModel):
+    """A form for the farmer to fill. ``form_id`` names this one offer, not
+    the form's type; ``context`` does that."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    form_id: str
+    context: FormContext
+    fields: tuple[FieldDefinition, ...]
+
+
+OutputContent = TextBlock | RefusalBlock | FormBlock
 
 
 class TurnOutcome(BaseModel):

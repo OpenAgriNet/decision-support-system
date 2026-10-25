@@ -4,13 +4,21 @@ import pytest
 
 from dss.core.shared.language import ENGLISH
 from dss.core.shared.models import (
+    Claim,
     ConversationMessage,
+    FieldDefinition,
+    FieldKind,
+    FieldRules,
+    FormBlock,
     FormContext,
     FormReference,
+    Option,
     TextQuery,
     TurnInput,
     UserTurn,
 )
+
+_PMFBY_GRIEVANCE = FormContext(scheme="PMFBY", category="Grievance", action="support")
 
 
 @pytest.mark.parametrize(
@@ -46,22 +54,51 @@ def test_form_contexts_with_the_same_type_are_equal() -> None:
 
 
 def test_history_message_can_carry_a_form_reference() -> None:
-    context = FormContext(scheme="PMFBY", category="Grievance", action="support")
+    reference = FormReference(form_id="8f3c", context=_PMFBY_GRIEVANCE)
 
     message = ConversationMessage(
-        role="assistant",
-        text="Please fill this in.",
-        form=FormReference(form_id="8f3c", context=context),
+        role="assistant", text="Please fill this in.", form=reference
     )
 
     assert message.text == "Please fill this in."
-    assert message.form == FormReference(form_id="8f3c", context=context)
+    assert message.form == reference
 
 
 def test_submission_message_has_no_words() -> None:
-    context = FormContext(scheme="PMFBY", category="Grievance", action="support")
-    reference = FormReference(form_id="8f3c", context=context, submission_id="s1")
+    reference = FormReference(
+        form_id="8f3c", context=_PMFBY_GRIEVANCE, submission_id="s1"
+    )
 
     message = ConversationMessage(role="user", form=reference)
 
     assert message.text == ""
+
+
+def test_form_block_is_output_content() -> None:
+    phone = FieldDefinition(
+        name="applicantPhone",
+        label="Phone used at enrolment",
+        kind=FieldKind.TEXT,
+        rules=FieldRules(required=True, pattern=r"^[6-9][0-9]{9}$"),
+    )
+    block = FormBlock(form_id="8f3c", context=_PMFBY_GRIEVANCE, fields=(phone,))
+
+    claim = Claim(content=block)
+
+    assert claim.content == block
+
+
+def test_select_field_carries_its_options() -> None:
+    seasons = (
+        Option(value="Kharif", label="Kharif"),
+        Option(value="Rabi", label="Rabi"),
+    )
+
+    season = FieldDefinition(
+        name="season",
+        label="Season",
+        kind=FieldKind.SELECT,
+        rules=FieldRules(required=True, options=seasons),
+    )
+
+    assert season.rules.options == seasons
