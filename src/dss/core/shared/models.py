@@ -31,67 +31,6 @@ class TextQuery(TurnInput):
     text: str
 
 
-class FormContext(BaseModel):
-    """The form's type. Sent with the form, copied back with the submission."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    scheme: str
-    category: str
-    action: str
-
-    # Pydantic adds the same hash to frozen models; declared so a type checker
-    # sees a context can be a dict key.
-    def __hash__(self) -> int:
-        return hash((self.scheme, self.category, self.action))
-
-
-class FormReference(BaseModel):
-    """What history keeps of a form: its id and type, never its fields or
-    values. ``submission_id`` is None for the offer itself."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    form_id: str
-    context: FormContext
-    submission_id: str | None = None
-
-
-class FieldKind(StrEnum):
-    TEXT = "text"
-    TEXTAREA = "textarea"
-    SELECT = "select"
-    SECRET = "secret"  # noqa: S105  # a kind of field, not a password
-
-
-class Option(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    value: str
-    label: str
-
-
-class FieldRules(BaseModel):
-    """What the pack lets a client check before sending, and the DSS after."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    required: bool = False
-    pattern: str | None = None
-    min_length: int | None = None
-    max_length: int | None = None
-    options: tuple[Option, ...] = ()
-
-
-class FieldDefinition(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    name: str  # the pack's path, e.g. "grievance.description"
-    label: str
-    kind: FieldKind
-    rules: FieldRules = FieldRules()
-
-
 class ReferenceToken(BaseModel):
     """A provider-call credential the DSS passes on but does not itself consume.
     An expired token is treated as absent at the mapping boundary (spec: "An
@@ -121,9 +60,7 @@ class ConversationMessage(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     role: Literal["user", "assistant"]
-    # Empty when the message carried only a form: a submission has no words.
-    text: str = ""
-    form: FormReference | None = None
+    text: str
 
 
 class Geometry(BaseModel):
@@ -269,35 +206,23 @@ class Source(BaseModel):
     url: str | None = None
 
 
-class TextBlock(BaseModel):
-    """One whole sentence the farmer reads, with the sources behind it."""
+class OutputBlock(BaseModel):
+    """One piece of a reply. Each function adds its own kinds."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class TextBlock(OutputBlock):
+    """One whole sentence the farmer reads, with the sources behind it."""
 
     text: str
     source_ids: tuple[str, ...] = ()
 
 
-class RefusalBlock(BaseModel):
+class RefusalBlock(OutputBlock):
     """Something the DSS will not answer, in words the farmer reads."""
 
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
     text: str
-
-
-class FormBlock(BaseModel):
-    """A form for the farmer to fill. ``form_id`` names this one offer, not
-    the form's type; ``context`` does that."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    form_id: str
-    context: FormContext
-    fields: tuple[FieldDefinition, ...]
-
-
-OutputContent = TextBlock | RefusalBlock | FormBlock
 
 
 class TurnOutcome(BaseModel):
@@ -351,7 +276,7 @@ class Claim(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    content: OutputContent
+    content: SerializeAsAny[OutputBlock]
     sources: tuple[Source, ...] = ()
 
 
@@ -362,7 +287,7 @@ class TurnFinished(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     outcome: TurnOutcome
-    content: tuple[OutputContent, ...] = ()
+    content: tuple[SerializeAsAny[OutputBlock], ...] = ()
     sources: tuple[Source, ...] = ()
 
 

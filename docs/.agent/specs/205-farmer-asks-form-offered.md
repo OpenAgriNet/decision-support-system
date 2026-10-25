@@ -30,22 +30,23 @@ Scope: task 2 of three. Task 1 (form registry) and task 3 (submission) build on 
 - `TurnInput`: frozen base class. One subclass per kind.
 - `TextQuery(TurnInput)`: one field, `text`. Replaces `original_query` and `enriched_query`. Enrichment has not landed, so `enriched_query` always mirrored the original; it comes back when enrichment ships.
 - `UserTurn.input: SerializeAsAny[TurnInput]`. `original_query` and `enriched_query` are removed. The 9 readers move to `turn.input.text`. Tests build turns through the `a_turn` fixture in `tests/conftest.py`; the few that build a `UserTurn` by hand move onto it, so the next shape change is one edit.
-- `FormContext`: `scheme`, `category`, `action`. The form's type. Sent out, copied back.
-- `FormReference`: `form_id`, `context`, `submission_id: str | None`. What history carries. `None` means an offer.
-- `ConversationMessage` gains `form: FormReference | None = None`. `text` stays required.
-- `FieldKind`, `Option`, `FieldRules`, `FieldDefinition` (`name`, `label`, `kind`, `rules`, `pii`). They cross the wire inside `FormBlock`, so they are shared.
-- `FormBlock`: `form_id`, `context`, `fields`.
-- `OutputContent = TextBlock | RefusalBlock | FormBlock`.
+- `OutputBlock`: frozen base class for reply blocks. `TextBlock` and `RefusalBlock` extend it. `Claim.content` and `TurnFinished.content` are typed by it, with `SerializeAsAny`. It replaces the closed `OutputContent` union.
+
+Shared holds the slots: an input, a reply block. Each function fills them with its own kinds, so shared never names a form.
 
 ### `core/forms/models.py`
 
+- `FormContext`: `scheme`, `category`, `action`. The form's type. Sent out, copied back. Hashable, so a registry can key on it.
+- `FieldKind`, `Option`, `FieldRules`, `FieldDefinition` (`name`, `label`, `kind`, `rules`). The `pii` flag comes with the wire task, which is the first thing that reads it.
+- `FormBlock(OutputBlock)`: `form_id`, `context`, `fields`.
 - `FormDefinition`: `scheme`, `category`, `action`, `fields`. `context` property. `field(name)` lookup.
 
 Dependency direction: `core/forms` imports `core/shared`. Never the reverse.
 
 ### Deferred to task 3
 
-Everything a submission produces or consumes: `FormSubmission` (the second `TurnInput` kind), `FieldValue`, `FieldErrorCode`, `FieldError`, `FormErrors`, `ValidSubmission`, `FormErrorBlock` and `Cause.INVALID_INPUT`. `docs/exploration/form-flow.md` holds their draft shapes.
+- Everything a submission produces or consumes: `FormSubmission` (the second `TurnInput` kind), `FieldValue`, `FieldErrorCode`, `FieldError`, `FormErrors`, `ValidSubmission`, `FormErrorBlock` and `Cause.INVALID_INPUT`. `docs/exploration/form-flow.md` holds their draft shapes.
+- History references. `FormReference` and the field on `ConversationMessage` that carries it have no reader until validation. They land with task 3, through a third shared slot, an open base on the message, so shared still never names a form.
 
 ### `core/intent/models.py`
 

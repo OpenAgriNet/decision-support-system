@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from dss.core.shared.models import OutputContent, Source
+from dss.core.shared.models import OutputBlock, Source
 
 
 class ComposedAnswer(BaseModel):
@@ -16,7 +16,7 @@ class ComposedAnswer(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    content: tuple[OutputContent, ...]
+    content: tuple[OutputBlock, ...]
     sources: tuple[Source, ...] = ()
 
 

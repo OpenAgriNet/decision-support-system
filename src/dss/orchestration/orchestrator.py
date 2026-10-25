@@ -78,7 +78,7 @@ from dss.core.shared.models import (
     Cause,
     Claim,
     ClaimDelta,
-    OutputContent,
+    OutputBlock,
     RefusalBlock,
     TextBlock,
     TextQuery,
@@ -510,8 +510,7 @@ class Orchestrator:
         recorder.status(finished.outcome.status.value)
         # The trace gets the redacted question and the tagged answer.
         recorder.content(
-            query=farmer_turn.input.text,
-            answer=[block.text for block in finished.content],
+            query=farmer_turn.input.text, answer=_spoken_text(finished.content)
         )
 
     def _note(self, stage: str, ctx: TurnContext, outcome: str) -> None:
@@ -537,8 +536,21 @@ def _reveal_finished(finished: TurnFinished, visibility: Visibility) -> TurnFini
     )
 
 
-def _revealed(block: OutputContent, visibility: Visibility) -> OutputContent:
-    return block.model_copy(update={"text": visibility.reveal(block.text)})
+def _spoken_text(blocks: Sequence[OutputBlock]) -> list[str]:
+    """What the farmer reads. A block with no words, such as a form, adds none."""
+
+    return [
+        block.text for block in blocks if isinstance(block, TextBlock | RefusalBlock)
+    ]
+
+
+def _revealed(block: OutputBlock, visibility: Visibility) -> OutputBlock:
+    """Only words can hold a tag, so only a block with words changes."""
+
+    match block:
+        case TextBlock() | RefusalBlock():
+            return block.model_copy(update={"text": visibility.reveal(block.text)})
+    return block
 
 
 def _nobody_serves(discovery: DiscoveryResult) -> bool:
