@@ -18,6 +18,7 @@ _PHONE = FieldDefinition(
     kind=FieldKind.TEXT,
     rules=FieldRules(required=True, pattern=r"^[6-9][0-9]{9}$"),
 )
+_GRIEVANCE_FORM = FormDefinition(context=_PMFBY_GRIEVANCE, fields=(_PHONE,))
 
 
 def test_form_contexts_with_the_same_type_are_equal() -> None:
@@ -28,8 +29,8 @@ def test_form_contexts_with_the_same_type_are_equal() -> None:
     assert len({_PMFBY_GRIEVANCE, other}) == 1
 
 
-def test_form_block_is_output_content() -> None:
-    block = FormBlock(form_id="8f3c", context=_PMFBY_GRIEVANCE, fields=(_PHONE,))
+def test_form_block_is_a_reply_block() -> None:
+    block = FormBlock(form_id="8f3c", form=_GRIEVANCE_FORM)
 
     claim = Claim(content=block)
 
@@ -39,12 +40,12 @@ def test_form_block_is_output_content() -> None:
 def test_finished_turn_serialises_a_form_block() -> None:
     """Content is typed by the base block, so without SerializeAsAny a form
     would dump as an empty object."""
-    block = FormBlock(form_id="8f3c", context=_PMFBY_GRIEVANCE, fields=(_PHONE,))
+    block = FormBlock(form_id="8f3c", form=_GRIEVANCE_FORM)
     outcome = TurnOutcome(status=TurnStatus.REQUIRES_INPUT, confidence=80)
 
     dumped = TurnFinished(outcome=outcome, content=(block,)).model_dump()
 
-    assert dumped["content"][0]["fields"][0]["name"] == "applicantPhone"
+    assert dumped["content"][0]["form"]["fields"][0]["name"] == "applicantPhone"
 
 
 def test_select_field_carries_its_options() -> None:
@@ -64,7 +65,5 @@ def test_select_field_carries_its_options() -> None:
 
 
 def test_form_definition_finds_a_field_by_name() -> None:
-    definition = FormDefinition(context=_PMFBY_GRIEVANCE, fields=(_PHONE,))
-
-    assert definition.field("applicantPhone") == _PHONE
-    assert definition.field("cropYear") is None
+    assert _GRIEVANCE_FORM.field("applicantPhone") == _PHONE
+    assert _GRIEVANCE_FORM.field("cropYear") is None

@@ -88,7 +88,7 @@ This decouples the two logical functions, so they fan out concurrently (`orchest
 
 Consequences that remain load-bearing:
 
-- **Moderation judges the raw query, with history for reference only.** `moderate()` reads `turn.original_query`; the deterministic word-check runs on that text and the LLM policies see the recent thread as reference context (`build_llm_prompt(policies, history)`). There is no enriched-query substitution step in front of moderation on this branch.
+- **Moderation judges the raw query, with history for reference only.** `moderate()` reads `turn.input.text`; the deterministic word-check runs on that text and the LLM policies see the recent thread as reference context (`build_llm_prompt(policies, history)`). There is no enriched-query substitution step in front of moderation on this branch.
 - **History is untrusted input to any prompt that reads it.** Both intent classification and moderation read unmoderated prior user text. Prior turns must be treated as data, never as instructions.
 
 Nothing may be written to any cross-session store before moderation passes — see §5.2.
@@ -191,9 +191,12 @@ class UserDetails:
     phone: str | None = None
     reference: ReferenceToken | None = None   # passed on to Provider calls, not consumed
 
-class UserTurn:
-    original_query: str
-    enriched_query: str       # mirrors original_query until enrichment lands
+class TurnInput: ...          # what the farmer sent; one subclass per kind
+class TextQuery(TurnInput):
+    text: str
+
+class UserTurn[InputT: TurnInput]:
+    input: InputT             # a TextQuery today; a form submission next (#205)
     session_id: str           # from request context.sessionId
     transaction_id: str       # from request context.transactionId; passed through to Provider calls
     source_lang: LanguageTag  # language the user spoke/typed
@@ -204,6 +207,8 @@ class UserTurn:
     location: Location | None = None
     response_max_chars: int | None = None
 ```
+
+**The envelope has two open slots (#205).** What comes in is a `TurnInput`, and each piece of what goes out is an `OutputBlock` (`core/shared/models.py`). Both are base classes with no fields of their own. Each logical function adds its kinds in its own module: text is `TextQuery`, `TextBlock` and `RefusalBlock` in shared, since every function reads them; forms add `FormBlock` and, later, a submission in `core/forms/`. Shared never names a form. A module that handles one kind says so in its signature, `UserTurn[TextQuery]`, and the orchestrator narrows once at the top; a path per kind replaces that check when the second kind lands. The cost is that the type checker no longer proves every reader handles every kind, so a reader that only wants words, such as the trace recorder, must say which kinds have them.
 
 **Per-component model binding (ADR-0004).** Each logical function binds its own model from the environment — `DSS_INTENT_MODEL`, `DSS_MODERATION_MODEL`, etc. — so a deployment can run intent on a small fast model and moderation on a stronger one without code change.
 
@@ -218,7 +223,7 @@ class UserTurn:
 **Translation happens inside the DSS, for the languages a deployment lists (#174).** This reverses the earlier rule that translation belonged to the Experience Layer: redaction and streaming both live inside the DSS, and a translator outside it would see the farmer's details before they are hidden. Translating at each way out of `run()` was tried first and dropped: it spread translation through the pipeline. Making each layer its own `TurnRunner` is the cleaner shape, but needs the reveal step and the turn trace moved out of `run()` first. The orchestrator runs in three layers. The edge redacts the turn, writes the record and the trace, and reveals kept values in everything the farmer gets. Translation sits between the edge and the core. The core runs the pipeline on the turn it is given and never knows it was translated. Kept values are revealed after translation, so the translator only ever sees tags such as `«phone_1»`.
 
 - **Which languages.** `configs/edge-translation.yaml`, read only when `DSS_EDGE_TRANSLATION_CONFIG_PATH` points at it. Each entry is a route: a translator (`llm`, naming its model, or `stub` for local runs) and the language the pipeline runs in for it (`to`). `to` need not be English: a Bhili turn routed to Marathi becomes a normal Marathi turn. A route is found by the turn's `target_lang` language, so `gu-IN` uses `gu`. A loop or a chain stops the boot.
-- **In.** Right after redaction, the question, the enriched question and the history are translated in one call. Both of the turn's languages become `to`, so every later stage, its per-language prompts and the localizer work in `to`.
+- **In.** Right after redaction, the question and the history are translated in one call. Both of the turn's languages become `to`, so every later stage, its per-language prompts and the localizer work in `to`.
 - **Out, always streamed.** The layer waits for the core's final event, which holds the whole answer, then streams each block's translation to the farmer followed by its claim. This holds for the composed answer and the fixed replies alike. Sources were worked out from the untranslated text and stay as they are.
 - **Untranslated languages** pass straight through and still stream piece by piece.
 - **Failure** fails the turn; there is no fallback yet.
