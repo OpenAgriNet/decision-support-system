@@ -15,7 +15,7 @@ from dss.core.shared.models import (
     ConversationMessage,
     Geometry,
     Location,
-    OutputContent,
+    OutputBlock,
     RefusalBlock,
     Source,
     TextBlock,
@@ -245,13 +245,17 @@ def _error(outcome: TurnOutcome) -> schema.TurnError | None:
 
 
 def _block(
-    content: OutputContent, sources: Sequence[Source]
+    content: OutputBlock, sources: Sequence[Source]
 ) -> schema.OutputText | schema.OutputRefusal:
-    if isinstance(content, RefusalBlock):
-        return schema.OutputRefusal(text=content.text)
-    return schema.OutputText(
-        text=content.text, annotations=_annotations(content, sources)
-    )
+    match content:
+        case RefusalBlock():
+            return schema.OutputRefusal(text=content.text)
+        case TextBlock():
+            return schema.OutputText(
+                text=content.text, annotations=_annotations(content, sources)
+            )
+    # TODO(#205): the form block gets its wire shape with the form step.
+    raise TypeError(f"no wire shape for a {type(content).__name__}")
 
 
 def _annotations(

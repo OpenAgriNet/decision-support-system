@@ -5,7 +5,7 @@ from collections.abc import Iterable, Sequence
 from dss.core.shared.models import (
     Claim,
     ClaimDelta,
-    OutputContent,
+    OutputBlock,
     Source,
     TurnFinished,
     TurnOutcome,
@@ -34,7 +34,7 @@ class AnswerStream:
         self._pieces.append(text)
         return ClaimDelta(text=text)
 
-    def claim(self, block: OutputContent, sources: Sequence[Source]) -> Claim:
+    def claim(self, block: OutputBlock, sources: Sequence[Source]) -> Claim:
         """Close the block the pieces since the last claim wrote. `block`
         gives its type and citations; its text is always the pieces'."""
 
