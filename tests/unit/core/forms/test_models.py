@@ -6,6 +6,7 @@ from dss.core.forms.models import (
     FieldRules,
     FormBlock,
     FormContext,
+    FormDefinition,
     Option,
 )
 from dss.core.shared.models import Claim, TurnFinished, TurnOutcome, TurnStatus
@@ -60,3 +61,10 @@ def test_select_field_carries_its_options() -> None:
     )
 
     assert season.rules.options == seasons
+
+
+def test_form_definition_finds_a_field_by_name() -> None:
+    definition = FormDefinition(context=_PMFBY_GRIEVANCE, fields=(_PHONE,))
+
+    assert definition.field("applicantPhone") == _PHONE
+    assert definition.field("cropYear") is None

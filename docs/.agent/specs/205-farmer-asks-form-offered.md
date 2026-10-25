@@ -39,7 +39,7 @@ Shared holds the slots: an input, a reply block. Each function fills them with i
 - `FormContext`: `scheme`, `category`, `action`. The form's type. Sent out, copied back. Hashable, so a registry can key on it.
 - `FieldKind`, `Option`, `FieldRules`, `FieldDefinition` (`name`, `label`, `kind`, `rules`). The `pii` flag comes with the wire task, which is the first thing that reads it.
 - `FormBlock(OutputBlock)`: `form_id`, `context`, `fields`.
-- `FormDefinition`: `scheme`, `category`, `action`, `fields`. `context` property. `field(name)` lookup.
+- `FormDefinition`: `context`, `fields`. `field(name)` lookup. The registry keys on its context; the block copies it.
 
 Dependency direction: `core/forms` imports `core/shared`. Never the reverse.
 
