@@ -71,9 +71,8 @@ class FormDefinition(BaseModel):
 
 
 class FormBlock(OutputBlock):
-    """A form for the farmer to fill. ``form_id`` names this one offer, not
-    the form's type; ``context`` does that."""
+    """One offer of a form to one farmer. ``form_id`` names the offer, not the
+    form's type; ``form.context`` does that."""
 
     form_id: str
-    context: FormContext
-    fields: tuple[FieldDefinition, ...]
+    form: FormDefinition
