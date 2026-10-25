@@ -57,6 +57,19 @@ class FieldDefinition(BaseModel):
     rules: FieldRules = FieldRules()
 
 
+class FormDefinition(BaseModel):
+    """One form as the registry holds it, cut from one API schema pack for one
+    action. ``fields`` are the farmer's; the catalog supplies the rest."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    context: FormContext
+    fields: tuple[FieldDefinition, ...]
+
+    def field(self, name: str) -> FieldDefinition | None:
+        return next((field for field in self.fields if field.name == name), None)
+
+
 class FormBlock(OutputBlock):
     """A form for the farmer to fill. ``form_id`` names this one offer, not
     the form's type; ``context`` does that."""
