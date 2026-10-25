@@ -56,7 +56,7 @@ Dependency direction: `core/forms` imports `core/shared`. Never the reverse.
 
 ### Depends on (task 1)
 
-`FormRegistry.find_for_ask(scheme, category, interaction) -> FormDefinition | None`. Proposed rule for picking the action: `ACT` maps to `support`, `OBSERVE` maps to `status`. Story #206 confirms it.
+`FormLookup`, a protocol in `core/forms/registry.py` with one method, `find(context) -> FormDefinition | None`. The registry built from the packs satisfies it by shape. The text path maps intent's interaction to the action, `ACT` to `support` and `OBSERVE` to `status`, and builds the `FormContext` itself, so forms never imports intent. Task 3's validation calls the same `find`. Story #206 confirms the `status` mapping.
 
 ### Orchestration
 
