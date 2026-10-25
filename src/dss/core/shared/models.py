@@ -31,6 +31,32 @@ class TextQuery(TurnInput):
     text: str
 
 
+class FormContext(BaseModel):
+    """The form's type. Sent with the form, copied back with the submission."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    scheme: str
+    category: str
+    action: str
+
+    # Pydantic adds the same hash to frozen models; declared so a type checker
+    # sees a context can be a dict key.
+    def __hash__(self) -> int:
+        return hash((self.scheme, self.category, self.action))
+
+
+class FormReference(BaseModel):
+    """What history keeps of a form: its id and type, never its fields or
+    values. ``submission_id`` is None for the offer itself."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    form_id: str
+    context: FormContext
+    submission_id: str | None = None
+
+
 class ReferenceToken(BaseModel):
     """A provider-call credential the DSS passes on but does not itself consume.
     An expired token is treated as absent at the mapping boundary (spec: "An
@@ -60,7 +86,9 @@ class ConversationMessage(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     role: Literal["user", "assistant"]
-    text: str
+    # Empty when the message carried only a form: a submission has no words.
+    text: str = ""
+    form: FormReference | None = None
 
 
 class Geometry(BaseModel):
