@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import pytest
+
 from dss.core.forms.models import (
+    ActionField,
+    ActionSchema,
     FieldDefinition,
     FieldKind,
     FieldRules,
+    FieldSource,
     FormBlock,
     FormContext,
     FormDefinition,
@@ -67,3 +72,91 @@ def test_select_field_carries_its_options() -> None:
 def test_form_definition_finds_a_field_by_name() -> None:
     assert _GRIEVANCE_FORM.field("applicantPhone") == _PHONE
     assert _GRIEVANCE_FORM.field("cropYear") is None
+
+
+def _farmer(path: str, **rules: object) -> ActionField:
+    return ActionField(path=path, source=FieldSource.FARMER, **rules)
+
+
+def _schema(*fields: ActionField) -> ActionSchema:
+    return ActionSchema(context=_PMFBY_GRIEVANCE, must_send=fields)
+
+
+def test_form_keeps_only_the_farmer_fields_in_order() -> None:
+    schema = _schema(
+        ActionField(
+            path="informationMode",
+            source=FieldSource.FIXED,
+            allowed_values=("OnDemand",),
+        ),
+        ActionField(path="provider.id", source=FieldSource.PROVIDER),
+        _farmer("enrolmentId"),
+        _farmer("cropYear"),
+    )
+
+    form = schema.form()
+
+    assert form.context == _PMFBY_GRIEVANCE
+    assert [field.name for field in form.fields] == ["enrolmentId", "cropYear"]
+
+
+def test_form_field_carries_the_pack_rules_and_is_required() -> None:
+    form = _schema(
+        _farmer("enrolmentId", pattern="^[A-Z0-9]+$", min_length=10, max_length=30)
+    ).form()
+
+    assert form.fields[0].rules == FieldRules(
+        required=True, pattern="^[A-Z0-9]+$", min_length=10, max_length=30
+    )
+
+
+def test_a_field_with_allowed_values_is_a_select_of_them() -> None:
+    form = _schema(_farmer("season", allowed_values=("Kharif", "Rabi"))).form()
+
+    season = form.fields[0]
+
+    assert season.kind is FieldKind.SELECT
+    assert season.rules.options == (
+        Option(value="Kharif", label="Kharif"),
+        Option(value="Rabi", label="Rabi"),
+    )
+
+
+def test_an_option_that_is_not_text_is_written_as_json() -> None:
+    form = _schema(_farmer("isUrgent", allowed_values=(True, False))).form()
+
+    assert [option.value for option in form.fields[0].rules.options] == [
+        "true",
+        "false",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("pii_class", "kind"),
+    [
+        ("credential", FieldKind.SECRET),
+        ("freetext", FieldKind.TEXTAREA),
+        ("contact", FieldKind.TEXT),
+        (None, FieldKind.TEXT),
+    ],
+)
+def test_the_pii_class_picks_the_kind(pii_class: str | None, kind: FieldKind) -> None:
+    form = _schema(_farmer("value", pii_class=pii_class)).form()
+
+    assert form.fields[0].kind is kind
+
+
+@pytest.mark.parametrize(
+    ("path", "label"),
+    [
+        ("cropYear", "Crop year"),
+        ("applicantMobile", "Applicant mobile"),
+        ("grievance.description", "Grievance description"),
+        ("case.ticketNo", "Case ticket no"),
+        ("aadhaarOTP", "Aadhaar OTP"),
+        ("PMKISANId", "PMKISAN id"),
+        ("use2FA", "Use 2 FA"),
+    ],
+)
+def test_the_label_is_the_path_in_words(path: str, label: str) -> None:
+    assert _schema(_farmer(path)).form().fields[0].label == label

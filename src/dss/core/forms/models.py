@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+import re
+from collections.abc import Mapping
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict
@@ -105,6 +108,68 @@ class ActionSchema(BaseModel):
 
     context: FormContext
     must_send: tuple[ActionField, ...]
+
+    def form(self) -> FormDefinition:
+        """The fields the farmer fills in; the rest come from the schema or
+        from discovery."""
+
+        return FormDefinition(
+            context=self.context,
+            fields=tuple(
+                _to_form_field(field)
+                for field in self.must_send
+                if field.source is FieldSource.FARMER
+            ),
+        )
+
+
+_KIND_BY_PII_CLASS: Mapping[str | None, FieldKind] = {
+    "credential": FieldKind.SECRET,
+    "freetext": FieldKind.TEXTAREA,
+}
+# camelCase, an acronym before a word (`PMKISANId`), letters before digits.
+_WORD_BREAK = re.compile(
+    r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])|(?<=[A-Za-z])(?=[0-9])"
+)
+
+
+def _to_form_field(field: ActionField) -> FieldDefinition:
+    return FieldDefinition(
+        name=field.path,
+        label=_label_for(field.path),
+        kind=_kind_for(field),
+        rules=FieldRules(
+            required=True,
+            pattern=field.pattern,
+            min_length=field.min_length,
+            max_length=field.max_length,
+            options=tuple(_option_for(value) for value in field.allowed_values),
+        ),
+    )
+
+
+def _kind_for(field: ActionField) -> FieldKind:
+    if field.allowed_values:  # a select whatever its PII class
+        return FieldKind.SELECT
+    return _KIND_BY_PII_CLASS.get(field.pii_class, FieldKind.TEXT)
+
+
+def _option_for(value: JsonScalar) -> Option:
+    # Written as JSON writes it, so `true` stays `true`, not Python's `True`.
+    text = value if isinstance(value, str) else json.dumps(value)
+    return Option(value=text, label=text)
+
+
+def _label_for(path: str) -> str:
+    """``"grievance.description"`` → "Grievance description". The pack has no
+    titles yet."""
+
+    words = " ".join(
+        word if word.isupper() else word.lower()
+        for segment in path.split(".")
+        for word in _WORD_BREAK.split(segment)
+    )
+    return words[:1].upper() + words[1:]
 
 
 class FormBlock(OutputBlock):
