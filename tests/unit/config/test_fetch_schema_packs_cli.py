@@ -11,7 +11,10 @@ from pathlib import Path
 
 import pytest
 
-from dss.config.schema_pack_fetch import SchemaPackFetchFailedError
+from dss.config.schema_pack_fetch import (
+    API_PACK_SET,
+    SchemaPackFetchFailedError,
+)
 from scripts.fetch_schema_packs import main
 
 
@@ -57,3 +60,18 @@ def test_the_ref_is_an_argument_and_defaults_to_main(monkeypatch, tmp_path) -> N
 
     main(["--ref", "schema-packs-v0.1", "--dest", str(tmp_path)])
     assert seen["ref"] == "schema-packs-v0.1"
+
+
+def test_api_fetches_the_api_packs_into_their_own_folder(monkeypatch) -> None:
+    seen: dict = {}
+
+    def record(**kwargs):
+        seen.update(kwargs)
+        return ("Grievance",)
+
+    monkeypatch.setattr("scripts.fetch_schema_packs.fetch_packs", record)
+
+    main(["--api", "--ref", "api-schema-packs-v0.1"])
+
+    assert seen["pack_set"] == API_PACK_SET
+    assert seen["dest"] == API_PACK_SET.default_dir
