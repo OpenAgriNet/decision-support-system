@@ -149,6 +149,17 @@ hour unauthenticated.
 declares `subjectCategories`, which the capability index reads unguarded, so
 the pack would be silently dropped anyway. See `TODO.md`.
 
+### API schema packs (forms)
+
+Forms (#205) are built from a second kind of pack, under `api-schemas/` in
+network-specs. Fetch them separately:
+
+```bash
+uv run python scripts/fetch_schema_packs.py --api --ref api-schema-packs-v0.1
+```
+
+That writes `Grievance` into `var/api-schema-packs/` (gitignored).
+
 ## Stand up a fake network
 
 Discovery and invocation leave for the OAN network, which a local build does

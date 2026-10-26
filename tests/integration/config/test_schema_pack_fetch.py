@@ -13,12 +13,17 @@ for the network.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 from pytest_httpserver import HTTPServer
 
 from dss.adapters.schema_packs.filesystem import FilesystemSchemaPackSource
-from dss.config.schema_pack_fetch import fetch_packs
+from dss.config.schema_pack_fetch import (
+    API_PACK_SET,
+    CATALOG_PACK_SET,
+    fetch_packs,
+)
 
 _ATTRIBUTES = """
 components:
@@ -39,6 +44,7 @@ components:
 
 _PROFILE = '{"filterable_paths": ["beckn:resourceAttributes.informationMode"]}'
 _EXAMPLE = '{"subjectCategories": ["Market"]}'
+_MANDI_ONLY = replace(CATALOG_PACK_SET, names=("MandiPrice",))
 
 
 def _serve_one_pack(httpserver: HTTPServer, ref: str) -> None:
@@ -73,7 +79,7 @@ async def test_the_fetched_tree_is_one_the_loader_reads(
     written = fetch_packs(
         ref="schema-packs-v0.1",
         dest=tmp_path,
-        packs=("MandiPrice",),
+        pack_set=_MANDI_ONLY,
         raw_host=httpserver.url_for("").rstrip("/"),
         api_host=httpserver.url_for("").rstrip("/"),
     )
@@ -103,10 +109,38 @@ async def test_the_destination_does_not_have_to_exist(
     written = fetch_packs(
         ref="schema-packs-v0.1",
         dest=absent,
-        packs=("MandiPrice",),
+        pack_set=_MANDI_ONLY,
         raw_host=httpserver.url_for("").rstrip("/"),
         api_host=httpserver.url_for("").rstrip("/"),
     )
 
     assert written == ("MandiPrice",)
     assert (absent / "MandiPrice" / "v0.1" / "attributes.yaml").exists()
+
+
+async def test_an_api_pack_is_fetched_from_api_schemas_and_loads(
+    httpserver: HTTPServer, tmp_path: Path
+) -> None:
+    ref = "api-schema-packs-v0.1"
+    base = f"/OpenAgriNet/network-specs/{ref}/api-schemas/Grievance/v0.1"
+    httpserver.expect_request(f"{base}/attributes.yaml").respond_with_data(
+        "components: {schemas: {}}"
+    )
+    httpserver.expect_request(f"{base}/profile.json").respond_with_data("{}")
+    httpserver.expect_request(
+        "/repos/OpenAgriNet/network-specs/contents/api-schemas/Grievance/v0.1/examples",
+        query_string=f"ref={ref}",
+    ).respond_with_json([])
+
+    written = fetch_packs(
+        ref=ref,
+        dest=tmp_path,
+        pack_set=API_PACK_SET,
+        raw_host=httpserver.url_for("").rstrip("/"),
+        api_host=httpserver.url_for("").rstrip("/"),
+    )
+
+    assert written == ("Grievance",)
+    packs = await FilesystemSchemaPackSource(root=tmp_path).fetch_packs()
+    assert [pack.pack_name for pack in packs] == ["Grievance"]
+    assert packs[0].attributes_yaml == "components: {schemas: {}}"

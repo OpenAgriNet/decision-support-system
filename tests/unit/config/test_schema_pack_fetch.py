@@ -10,7 +10,8 @@ from __future__ import annotations
 import pytest
 
 from dss.config.schema_pack_fetch import (
-    PACKS,
+    API_PACK_SET,
+    CATALOG_PACK_SET,
     SchemaPackFetchFailedError,
     examples_api_url,
     raise_for_empty,
@@ -25,7 +26,12 @@ def test_raw_url_points_at_the_file_on_the_given_ref() -> None:
     a pack and a 404 — it has to be visible in the URL a failure reports.
     """
 
-    url = raw_url(ref="schema-packs-v0.1", pack="MandiPrice", filename="profile.json")
+    url = raw_url(
+        ref="schema-packs-v0.1",
+        pack="MandiPrice",
+        filename="profile.json",
+        folder=CATALOG_PACK_SET.folder,
+    )
 
     assert url == (
         "https://raw.githubusercontent.com/OpenAgriNet/network-specs/"
@@ -42,7 +48,9 @@ def test_the_examples_url_carries_the_ref_as_a_query_parameter() -> None:
     no packs.
     """
 
-    url = examples_api_url(ref="schema-packs-v0.1", pack="MandiPrice")
+    url = examples_api_url(
+        ref="schema-packs-v0.1", pack="MandiPrice", folder=CATALOG_PACK_SET.folder
+    )
 
     assert url == (
         "https://api.github.com/repos/OpenAgriNet/network-specs/contents/"
@@ -60,9 +68,32 @@ def test_a_ref_with_no_packs_fails_and_names_the_ref() -> None:
     """
 
     with pytest.raises(SchemaPackFetchFailedError) as caught:
-        raise_for_empty(fetched=(), ref="main")
+        raise_for_empty(fetched=(), ref="main", pack_set=CATALOG_PACK_SET)
 
     message = str(caught.value)
     assert "main" in message  # which ref was tried
-    assert f"0 of {len(PACKS)}" in message  # how much was found
+    assert f"0 of {len(CATALOG_PACK_SET.names)}" in message  # how much was found
     assert "schema-packs-v0.1" in message  # where the packs are
+
+
+def test_an_api_pack_is_read_from_the_api_schemas_folder() -> None:
+    url = raw_url(
+        ref="api-schema-packs-v0.1",
+        pack="Grievance",
+        filename="attributes.yaml",
+        folder=API_PACK_SET.folder,
+    )
+
+    assert url == (
+        "https://raw.githubusercontent.com/OpenAgriNet/network-specs/"
+        "api-schema-packs-v0.1/api-schemas/Grievance/v0.1/attributes.yaml"
+    )
+
+
+def test_an_empty_api_fetch_names_the_ref_the_api_packs_are_on() -> None:
+    with pytest.raises(SchemaPackFetchFailedError) as caught:
+        raise_for_empty(fetched=(), ref="main", pack_set=API_PACK_SET)
+
+    message = str(caught.value)
+    assert f"0 of {len(API_PACK_SET.names)}" in message
+    assert "api-schema-packs-v0.1" in message
