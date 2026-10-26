@@ -131,3 +131,13 @@ Dependency direction: `core/forms` imports `core/shared`. Never the reverse.
 - Whether the free-text complaint goes through moderation (task 3).
 - Whether a failed filing is a `FormErrorBlock` or text (task 3).
 - Whether `PROVIDER_REJECTED` is added to `Cause` (task 3).
+
+## Checked against the Grievance pack (26 Oct)
+
+Branch `api-schema-packs-v0.1`, `api-schemas/Grievance/v0.1`. The models fit; three things the exploration doc assumed differently:
+
+- **No `x-enum-details`.** Enums are bare values, `["Kharif", "Rabi", "Zaid"]`. `Option.label` falls back to the value.
+- **Grievance categories come from the catalog, not the pack.** The desk publishes `grievanceOptions` at discovery time, so a `FormDefinition` built at startup cannot hold them. They are `maySend`, and the five-field form skips them.
+- **The PII mark is `x-oan-pii: {class, handling}`**, with handling drawn from `no-log`, `no-trace`, `no-echo`, `no-forward`. When `FieldDefinition` gains a privacy field it carries that, not a bool.
+
+The farmer's phone is `applicantMobile` in the pack; the story's `applicantPhone` is the old name.
