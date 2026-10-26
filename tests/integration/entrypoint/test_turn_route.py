@@ -158,12 +158,36 @@ def test_an_empty_input_list_is_unprocessable(a_body):
     assert runner.calls == []
 
 
-def test_an_unknown_field_is_unprocessable(a_body):
-    app, _ = client()
+def test_an_unknown_field_is_ignored(a_body):
+    """A caller can add a field before the DSS knows it."""
+    app, runner = client()
     body = a_body()
     body["message"]["attributes"]["temperature"] = 0.7
 
-    assert app.post("/v1/turns", json=body).status_code == 422
+    response = app.post("/v1/turns", json=body)
+
+    assert response.status_code == 200
+    assert len(runner.calls) == 1
+
+
+def test_no_sender_id_means_the_host_network(a_body):
+    app, runner = client(network_sender_id="host.example.org")
+
+    app.post("/v1/turns", json=a_body())
+
+    [(_, ctx)] = runner.calls
+    assert ctx.sender_id == "host.example.org"
+
+
+def test_a_missing_required_field_is_unprocessable(a_body):
+    app, runner = client()
+    body = a_body()
+    del body["context"]["sessionId"]
+
+    response = app.post("/v1/turns", json=body)
+
+    assert response.status_code == 422
+    assert runner.calls == []
 
 
 def test_a_non_json_content_type_is_unsupported(a_body):

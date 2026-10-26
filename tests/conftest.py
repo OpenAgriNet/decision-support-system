@@ -127,5 +127,8 @@ def a_context():
     from dss.core.shared.models import TurnContext
 
     return TurnContext(
-        trace_id=_TRANSACTION, message_id="msg_mandi_wheat_01", session_id="conv_8f3a1c"
+        trace_id=_TRANSACTION,
+        message_id="msg_mandi_wheat_01",
+        session_id="conv_8f3a1c",
+        sender_id="consumer.oan.dev",
     )

@@ -349,8 +349,8 @@ a detail.
 snake_case; aliases on the wire models bridge the two, and nothing inward of
 `mapping.py` ever sees a camelCase name.
 
-Input is strict. A snake_case key is an unknown field, and the contract sets
-`additionalProperties: false`, so it comes back `422`. `context.transactionId` is
+Unknown fields are ignored, not rejected. A snake_case key is an unknown field,
+so the camelCase field it stands for counts as missing. `context.transactionId` is
 required — it is the correlation key, echoed back as `context.traceId`.
 
 Responses are validated against `docs/api-contracts/openapi.yaml` in CI by
@@ -463,8 +463,8 @@ Every one of these is a test case as well as a curl.
 | Try | Get |
 |---|---|
 | `--data-binary '{not json'` | `400 malformed_request` |
-| any extra field, e.g. `attributes.temperature` | `422 extra_forbidden` |
-| a snake_case key, e.g. `sessionId` sent as `session_id` | `422` — the wire is camelCase |
+| any extra field, e.g. `attributes.temperature` | `200` — ignored |
+| a snake_case key, e.g. `sessionId` sent as `session_id` | `422` — `sessionId` is missing |
 | `"input": []` | `422 too_short` |
 | `-H 'Content-Type: text/plain'` | `415` |
 | `-H 'Accept: application/xml'` | `406` |

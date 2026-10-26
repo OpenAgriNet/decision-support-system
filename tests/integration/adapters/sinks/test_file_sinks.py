@@ -22,7 +22,12 @@ from dss.core.shared.models import (
 )
 
 NOW = datetime(2026, 9, 4, 8, 0, tzinfo=UTC)
-CTX = TurnContext(trace_id="trc_1", session_id="conv_1", message_id="msg_in")
+CTX = TurnContext(
+    trace_id="trc_1",
+    session_id="conv_1",
+    message_id="msg_in",
+    sender_id="consumer.oan.dev",
+)
 
 
 def _lines(path) -> list[dict]:

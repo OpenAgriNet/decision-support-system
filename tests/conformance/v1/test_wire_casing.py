@@ -4,8 +4,7 @@ Python stays snake_case (`CONVENTIONS.md`). The two are bridged by aliases on th
 wire models alone, so `mapping.py` and everything inward never sees a camelCase
 name. That is the whole reason the seam exists.
 
-Input is strict: a snake_case key is an *unknown* field, and the contract sets
-`additionalProperties: false`.
+A snake_case key is an unknown field, so it is ignored.
 """
 
 from __future__ import annotations
@@ -85,9 +84,9 @@ def test_a_camel_case_request_validates():
         (("message", "attributes"), "source_language", "sourceLanguage"),
     ],
 )
-def test_a_snake_case_key_is_an_unknown_field(path, snake, camel):
-    """Strict on input: the contract forbids unknown properties, and a
-    snake_case name is one."""
+def test_a_snake_case_key_is_not_read(path, snake, camel):
+    """A snake_case key is ignored, so the camelCase field it replaced counts
+    as missing."""
 
     body = json.loads(json.dumps(CAMEL_REQUEST))
     target = body

@@ -125,7 +125,8 @@ class TurnContext(BaseModel):
     `message_id` is the caller's, or one the transport minted — the contract
     requires it on every response. `session_id` is copied from the turn because
     every frame carries it; `transaction_id` is deliberately absent, since
-    `trace_id` already is it.
+    `trace_id` already is it. `sender_id` is the immediate caller's network
+    participant id; the host network when the caller sends none.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -133,6 +134,7 @@ class TurnContext(BaseModel):
     trace_id: NetworkTransactionID
     message_id: str
     session_id: str
+    sender_id: str
 
 
 class TurnStatus(StrEnum):

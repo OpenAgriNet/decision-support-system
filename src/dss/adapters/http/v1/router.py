@@ -74,7 +74,12 @@ def turn_router(
         admitted = await _admit(request, settings)
         if isinstance(admitted, Response):
             return admitted
-        return await _run(admitted, runner=runner, clock=clock)
+        return await _run(
+            admitted,
+            runner=runner,
+            clock=clock,
+            network_sender_id=settings.network_sender_id,
+        )
 
     router = APIRouter()
     router.add_api_route(
@@ -147,7 +152,11 @@ async def _admit(request: Request, settings: Settings) -> Response | _Admitted: 
 
 
 async def _run(
-    admitted: _Admitted, *, runner: TurnRunner, clock: Callable[[], datetime]
+    admitted: _Admitted,
+    *,
+    runner: TurnRunner,
+    clock: Callable[[], datetime],
+    network_sender_id: str,
 ) -> Response:
     """Map the admitted request into the domain and dispatch it.
 
@@ -157,7 +166,9 @@ async def _run(
     because only the mapping can tell.
     """
 
-    ctx = mapping.to_turn_context(admitted.body, message_id=_minted_id())
+    ctx = mapping.to_turn_context(
+        admitted.body, message_id=_minted_id(), network_sender_id=network_sender_id
+    )
     try:
         turn = mapping.to_user_turn(admitted.body)
     except ValueError as exc:
