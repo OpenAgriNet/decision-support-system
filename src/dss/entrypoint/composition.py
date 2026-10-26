@@ -77,7 +77,7 @@ from dss.core.provider_discovery.models import (
 from dss.core.provider_discovery.schema_pack_cache import SchemaPackCache
 from dss.core.provider_preferences.models import NO_PREFERENCE, SenderPreference
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
-from dss.core.shared.models import UserTurn
+from dss.core.shared.models import TextQuery, UserTurn
 from dss.core.shared.network import NetworkTransactionID
 from dss.core.stream_response.service import build_stream_response
 from dss.core.translation.models import TranslationRoute
@@ -88,7 +88,7 @@ from dss.orchestration.discovery import (
     build_capability_discovery,
     build_discover_providers,
 )
-from dss.orchestration.orchestrator import Components, Orchestrator
+from dss.orchestration.orchestrator import Components, Orchestrator, TextPath
 from dss.orchestration.plan import build_plan
 from dss.orchestration.redaction import RedactTexts, pass_through, redact_texts
 from dss.ports.area_lookup import AreaLookup
@@ -206,7 +206,7 @@ def build_runner_with_lifecycle(
         localize=build_localizer(llm=composer_llm, prompts=prompts),
     )
 
-    runner = Orchestrator(
+    text_path = TextPath(
         intent_llm=_intent_llm(settings),
         moderation_llm=_moderation_llm(settings),
         prompts=prompts,
@@ -222,6 +222,7 @@ def build_runner_with_lifecycle(
         schemas=schemas,
         edge_translation=EdgeTranslation(routes=translation_routes),
     )
+    runner = Orchestrator(paths={TextQuery: text_path})
     return runner, _aclose_all(_aclose_for(client), area_aclose)
 
 

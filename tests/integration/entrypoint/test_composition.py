@@ -503,7 +503,9 @@ async def test_a_gujarati_turn_goes_in_and_out_through_the_stub(
         )
     ]
 
-    stub = runner._edge_translation.routes["gu"].translator
+    assert isinstance(runner, Orchestrator)
+    text_path = runner._paths[TextQuery]
+    stub = text_path._edge_translation.routes["gu"].translator
     first = stub.calls[0]
     assert (first.from_lang, first.to_lang) == (gujarati, ENGLISH)
     finished = events[-1]

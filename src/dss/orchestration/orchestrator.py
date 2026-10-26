@@ -34,7 +34,9 @@ tested there. This runner adds what the transport needs on top: the planner
 and composer, the event stream, the evidence writes, and the mapping from a
 turn's findings to a contract outcome.
 
-Three layers: `run` is the edge (redact, record, reveal kept values),
+`Orchestrator.run` opens the turn's span and hands the turn to the path for
+its input kind. `TextPath` is the path for a sentence, in three layers: `run`
+is the edge (redact, record, reveal kept values),
 `orchestration/translation.py` translates in and out or passes through, and
 `_run_core` runs the pipeline on tags only.
 
@@ -48,7 +50,7 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator, AsyncIterator, Mapping, Sequence
 from contextlib import aclosing, suppress
 from dataclasses import dataclass
-from typing import cast
+from typing import Any, Protocol
 
 from dss.adapters.observability.tracing import (
     TurnRecorder,
@@ -140,13 +142,6 @@ def outcome_for(status: TurnStatus, cause: Cause | None = None) -> TurnOutcome:
     return TurnOutcome(status=status, cause=cause, confidence=_STUB_CONFIDENCE[status])
 
 
-def _as_text_turn(turn: UserTurn[TurnInput]) -> UserTurn[TextQuery]:
-    # TODO(#205): a path per input kind replaces this check.
-    if not isinstance(turn.input, TextQuery):
-        raise TypeError(f"no path for a {type(turn.input).__name__} input")
-    return cast("UserTurn[TextQuery]", turn)
-
-
 @dataclass(frozen=True)
 class Components:
     """The real components a turn runs through downstream of the understand
@@ -174,9 +169,51 @@ class Components:
     localize: LocalizeText
 
 
+class TurnPath[InputT: TurnInput](Protocol):
+    """One input kind's pipeline, from the turn as sent to the events the
+    farmer reads."""
+
+    def run(
+        self, turn: UserTurn[InputT], *, ctx: TurnContext, recorder: TurnRecorder
+    ) -> AsyncGenerator[TurnEvent]: ...
+
+
 class Orchestrator:
-    """Satisfies `ports.turn.TurnRunner`. The live runner: real intent,
-    moderation, discovery, planner and composer, streamed to the transport."""
+    """Satisfies `ports.turn.TurnRunner`. Opens the turn's span, then runs the
+    path wired for the input's kind."""
+
+    # `Any`: the table mixes kinds, and the type checker cannot say that a
+    # value's kind equals its key. The boot check does.
+    def __init__(self, *, paths: Mapping[type[TurnInput], TurnPath[Any]]) -> None:
+        self._paths = paths
+
+    async def run(
+        self, turn: UserTurn[TurnInput], ctx: TurnContext
+    ) -> AsyncIterator[TurnEvent]:
+        bind_turn_ids(
+            ctx.trace_id, message_id=ctx.message_id, session_id=ctx.session_id
+        )
+        # Opened around the whole turn so every span Pydantic AI makes inside it
+        # — intent, moderation, planner, composer — lands under one trace with
+        # the ids on its root. `run` is an async generator, so the span stays
+        # open across the yields and closes when the consumer is done with it.
+        with turn_span(
+            trace_id=ctx.trace_id,
+            message_id=ctx.message_id,
+            session_id=ctx.session_id,
+        ) as recorder:
+            yield TurnStarted()
+            path = self._paths[type(turn.input)]
+            # `aclosing`: closing this generator does not reach the path's, and
+            # a closed screen must close every model stream.
+            async with aclosing(path.run(turn, ctx=ctx, recorder=recorder)) as events:
+                async for event in events:
+                    yield event
+
+
+class TextPath:
+    """The path for a sentence: real intent, moderation, discovery, planner and
+    composer, streamed to the transport."""
 
     def __init__(  # noqa: PLR0913
         self,
@@ -217,62 +254,45 @@ class Orchestrator:
         self._edge_translation = edge_translation
 
     async def run(
-        self, turn: UserTurn[TurnInput], ctx: TurnContext
-    ) -> AsyncIterator[TurnEvent]:
-        text_turn = _as_text_turn(turn)
-        bind_turn_ids(
-            ctx.trace_id, message_id=ctx.message_id, session_id=ctx.session_id
-        )
-        # Opened around the whole turn so every span Pydantic AI makes inside it
-        # — intent, moderation, planner, composer — lands under one trace with
-        # the ids on its root. `run` is an async generator, so the span stays
-        # open across the yields and closes when the consumer is done with it.
-        with turn_span(
-            trace_id=ctx.trace_id,
-            message_id=ctx.message_id,
-            session_id=ctx.session_id,
-        ) as recorder:
-            yield TurnStarted()
-
-            with trace_component(Stage.REDACTION, ctx.trace_id):
-                redaction = await self._components.redact(
-                    texts_of(text_turn), request_id=turn.transaction_id
-                )
-            farmer_turn = with_texts(text_turn, redaction.texts)
-            recorder.redacted(found=redaction.found, failed=redaction.failed)
-            self._turns.opened(ctx, farmer_turn)
-
-            translation = self._edge_translation.for_turn(farmer_turn)
-            core_turn = await translate_in(
-                farmer_turn, translation, trace_id=ctx.trace_id
+        self, turn: UserTurn[TextQuery], *, ctx: TurnContext, recorder: TurnRecorder
+    ) -> AsyncGenerator[TurnEvent]:
+        with trace_component(Stage.REDACTION, ctx.trace_id):
+            redaction = await self._components.redact(
+                texts_of(turn), request_id=turn.transaction_id
             )
+        farmer_turn = with_texts(turn, redaction.texts)
+        recorder.redacted(found=redaction.found, failed=redaction.failed)
+        self._turns.opened(ctx, farmer_turn)
 
-            # `aclosing` each layer: closing an async generator does not reach the
-            # one it reads from, and a closed screen must close every model stream.
-            async with (
-                aclosing(
-                    self._run_core(
-                        core_turn,
-                        ctx=ctx,
-                        recorder=recorder,
-                        visibility=redaction.visibility,
-                    )
-                ) as core_events,
-                aclosing(
-                    translate_out(core_events, translation, trace_id=ctx.trace_id)
-                ) as translated_events,
-                aclosing(
-                    self._reveal_to_farmer(
-                        translated_events,
-                        ctx=ctx,
-                        farmer_turn=farmer_turn,
-                        recorder=recorder,
-                        visibility=redaction.visibility,
-                    )
-                ) as farmer_events,
-            ):
-                async for event in farmer_events:
-                    yield event
+        translation = self._edge_translation.for_turn(farmer_turn)
+        core_turn = await translate_in(farmer_turn, translation, trace_id=ctx.trace_id)
+
+        # `aclosing` each layer: closing an async generator does not reach the
+        # one it reads from, and a closed screen must close every model stream.
+        async with (
+            aclosing(
+                self._run_core(
+                    core_turn,
+                    ctx=ctx,
+                    recorder=recorder,
+                    visibility=redaction.visibility,
+                )
+            ) as core_events,
+            aclosing(
+                translate_out(core_events, translation, trace_id=ctx.trace_id)
+            ) as translated_events,
+            aclosing(
+                self._reveal_to_farmer(
+                    translated_events,
+                    ctx=ctx,
+                    farmer_turn=farmer_turn,
+                    recorder=recorder,
+                    visibility=redaction.visibility,
+                )
+            ) as farmer_events,
+        ):
+            async for event in farmer_events:
+                yield event
 
     async def _run_core(
         self,

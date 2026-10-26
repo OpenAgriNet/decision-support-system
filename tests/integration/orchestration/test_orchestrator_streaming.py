@@ -22,6 +22,7 @@ from dss.core.shared.models import (
     Claim,
     ClaimDelta,
     TextBlock,
+    TextQuery,
     TurnFinished,
     TurnStarted,
     TurnStatus,
@@ -29,7 +30,7 @@ from dss.core.shared.models import (
 )
 from dss.core.stream_response.service import build_stream_response
 from dss.core.translation.service import EdgeTranslation
-from dss.orchestration.orchestrator import Components, Orchestrator
+from dss.orchestration.orchestrator import Components, Orchestrator, TextPath
 from dss.orchestration.redaction import pass_through
 from tests.integration.orchestration.test_orchestrator import (
     _ANSWERED_EVIDENCE,
@@ -63,7 +64,7 @@ def _build(
     discovery: DiscoveryResult | None = None,
 ) -> tuple[Orchestrator, MemoryTurnSink]:
     turns = MemoryTurnSink()
-    orch = Orchestrator(
+    text_path = TextPath(
         intent_llm=_FakeIntentLLM(_one_ask()),
         moderation_llm=_FakeModerationLLM(),
         prompts=FakePromptProvider(),
@@ -85,6 +86,7 @@ def _build(
         schemas={},
         edge_translation=EdgeTranslation(routes={}),
     )
+    orch = Orchestrator(paths={TextQuery: text_path})
     return orch, turns
 
 
@@ -184,7 +186,7 @@ async def test_the_real_component_streams_through_the_runner() -> None:
 
     chunks = ("Wheat is ", "2,275 Rs [1].")
     orch, _ = _build()
-    orch = Orchestrator(
+    text_path = TextPath(
         intent_llm=_FakeIntentLLM(_one_ask()),
         moderation_llm=_FakeModerationLLM(),
         prompts=FakePromptProvider(),
@@ -214,6 +216,7 @@ async def test_the_real_component_streams_through_the_runner() -> None:
         schemas={},
         edge_translation=EdgeTranslation(routes={}),
     )
+    orch = Orchestrator(paths={TextQuery: text_path})
 
     events = await _collect(orch)
 

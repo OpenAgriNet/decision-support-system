@@ -13,7 +13,13 @@ import asyncio
 from collections.abc import Sequence
 
 from dss.core.shared.language import ENGLISH, LanguageTag
-from dss.core.shared.models import TurnContext, TurnEvent, TurnFinished, UserTurn
+from dss.core.shared.models import (
+    TextQuery,
+    TurnContext,
+    TurnEvent,
+    TurnFinished,
+    UserTurn,
+)
 from dss.orchestration.stub_runner import StubRunner
 from dss.ports.translator import Translator
 from dss.ports.turn import TurnRunner
@@ -73,10 +79,10 @@ def test_the_orchestrator_satisfies_the_port(a_turn, a_context):
     from dss.adapters.sinks.stdout import StdoutTelemetrySink
     from dss.config.clarification_text_loader import load_clarification_text
     from dss.core.translation.service import EdgeTranslation
-    from dss.orchestration.orchestrator import Components, Orchestrator
+    from dss.orchestration.orchestrator import Components, Orchestrator, TextPath
     from dss.orchestration.redaction import pass_through
 
-    runner = Orchestrator(
+    text_path = TextPath(
         intent_llm=StubLLM(),
         moderation_llm=StubLLM(),
         prompts=FakePromptProvider(),
@@ -100,6 +106,7 @@ def test_the_orchestrator_satisfies_the_port(a_turn, a_context):
         clarification_text=load_clarification_text(),
         edge_translation=EdgeTranslation(routes={}),
     )
+    runner = Orchestrator(paths={TextQuery: text_path})
 
     events = drive(runner, a_turn(), a_context)
 
