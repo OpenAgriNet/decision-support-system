@@ -1,0 +1,817 @@
+openapi: 3.1.1
+info:
+  title: OpenAgriNet - Grievance API Attributes
+  version: 0.1.0
+  description: >
+    File a grievance against a government scheme and check where it stands.
+    One scheme per payload, named by scheme.code. Each scheme defines one flat
+    schema per call it serves and nothing else, so a new scheme or a new call
+    is an addition and never an edit. Per-call shapes, worked examples and the
+    reasoning behind every constraint are in README.md.
+
+components:
+  schemas:
+
+    # ---------------------------------------------------------------- type
+
+    Grievance:
+      x-beckn-container-by-action:
+        catalog/publish: resourceAttributes
+        init: commitmentAttributes
+        status: commitmentAttributes
+        support: channels
+      x-jsonld:
+        "@context": "https://openagrinet.github.io/network-specs/api-schemas/Grievance/v0.1/context.jsonld"
+        "@type": openagrinet:Grievance
+      x-oan-schema-by-action:
+        catalog/publish: GrievanceCatalog
+        init: GrievanceInit
+        status: GrievanceStatus
+        support: GrievanceSupport
+      oneOf:
+        - $ref: "#/components/schemas/PMFBYCatalog"
+        - $ref: "#/components/schemas/PMFBYStatus"
+        - $ref: "#/components/schemas/PMFBYSupport"
+        - $ref: "#/components/schemas/PMKISANCatalog"
+        - $ref: "#/components/schemas/PMKISANInit"
+        - $ref: "#/components/schemas/PMKISANStatus"
+        - $ref: "#/components/schemas/PMKISANSupport"
+
+    # ------------------------------------------------------------ per call
+
+    GrievanceCatalog:
+      oneOf:
+        - $ref: "#/components/schemas/PMFBYCatalog"
+        - $ref: "#/components/schemas/PMKISANCatalog"
+
+    GrievanceInit:
+      oneOf:
+        - $ref: "#/components/schemas/PMKISANInit"
+
+    GrievanceStatus:
+      oneOf:
+        - $ref: "#/components/schemas/PMFBYStatus"
+        - $ref: "#/components/schemas/PMKISANStatus"
+
+    GrievanceSupport:
+      oneOf:
+        - $ref: "#/components/schemas/PMFBYSupport"
+        - $ref: "#/components/schemas/PMKISANSupport"
+
+    # ---------------------------------------------------------------- PMFBY
+
+    IsPMFBY:
+      type: object
+      required: [scheme]
+      properties:
+        scheme:
+          type: object
+          required: [code]
+          properties:
+            code: { const: PMFBY }
+
+    IsPMKISAN:
+      type: object
+      required: [scheme]
+      properties:
+        scheme:
+          type: object
+          required: [code]
+          properties:
+            code: { const: PM-KISAN }
+
+    PMFBYCatalog:
+      x-oan-fields:
+        mustSend:  [informationMode, scheme.code, scheme.name,
+                    grievanceOptions.categories, grievanceOptions.subCategories,
+                    actions]
+      allOf:
+        - $ref: "#/components/schemas/IsPMFBY"
+        - type: object
+          additionalProperties: false
+          required: ["@context", "@type", informationMode, scheme, grievanceOptions,
+                     actions]
+          properties:
+            "@context": { $ref: "#/components/schemas/Context" }
+            "@type": { $ref: "#/components/schemas/Type" }
+            informationMode:
+              type: string
+              enum: [OnDemand]
+              x-jsonld-id: "openagrinet:informationMode"
+            scheme:
+              type: object
+              additionalProperties: false
+              required: [code, name]
+              properties:
+                code: { type: string, enum: [PMFBY] }
+                name: { type: string, minLength: 1 }
+              x-jsonld-id: "openagrinet:scheme"
+            grievanceOptions:
+              type: object
+              additionalProperties: false
+              required: [categories, subCategories]
+              properties:
+                categories:
+                  type: array
+                  minItems: 1
+                  uniqueItems: true
+                  items: { $ref: "#/components/schemas/PMFBYOption" }
+                  x-jsonld-id: "openagrinet:grievanceCategoryOption"
+                subCategories:
+                  type: array
+                  minItems: 1
+                  uniqueItems: true
+                  items: { $ref: "#/components/schemas/PMFBYOption" }
+                  x-jsonld-id: "openagrinet:grievanceSubCategoryOption"
+              x-jsonld-id: "openagrinet:grievanceOptions"
+            actions:
+              type: array
+              minItems: 2
+              maxItems: 2
+              uniqueItems: true
+              items:
+                allOf:
+                  - $ref: "#/components/schemas/PublishedAction"
+                  # One arm per call this desk serves. The arm pins the schema and
+                  # attributesAt that go with the action; the wording is the desk's
+                  # own, and `default` only records the wording this pack ships.
+                  - oneOf:
+                      - properties:
+                          action: { const: support }
+                          description:
+                            default: >-
+                                          File a new grievance. Needs the enrolment number,
+                                          the applicant's mobile, the crop year, the season
+                                          and a description of the problem. Returns
+                                          case.ticketNo, which status requires. Needs no
+                                          OTP, so it can be called without init.
+                          schema: { const: "https://openagrinet.github.io/network-specs/api-schemas/Grievance/v0.1/attributes.yaml#/components/schemas/PMFBYSupport" }
+                          attributesAt: { const: "$.message.support.channels[0]" }
+                      - properties:
+                          action: { const: status }
+                          description:
+                            default: >-
+                                          Read where a filed grievance stands: its status
+                                          code, the portal's reply and the crop it concerns.
+                                          Needs case.ticketNo from an earlier support call,
+                                          plus the applicant's mobile. Cases cannot be
+                                          listed by enrolment number, so support must come
+                                          first.
+                          schema: { const: "https://openagrinet.github.io/network-specs/api-schemas/Grievance/v0.1/attributes.yaml#/components/schemas/PMFBYStatus" }
+                          attributesAt: { const: "$.message.contract.commitments[0].commitmentAttributes" }
+              x-jsonld-id: "openagrinet:publishedAction"
+
+    PMFBYStatus:
+      x-oan-fields:
+        mustSend:  [informationMode, scheme.code, applicantMobile, case.ticketNo]
+        maySend:   [scheme.name, enrolmentId, cropYear, season]
+        comesBack: [informationMode, scheme.code, scheme.name, enrolmentId,
+                    cropYear, season,
+                    grievance.category.code, grievance.category.name,
+                    grievance.subCategory.code, grievance.subCategory.name,
+                    grievance.description,
+                    case.ticketNo, case.status.code, case.filedOn,
+                    case.reply, case.cropName]
+      allOf:
+        - $ref: "#/components/schemas/IsPMFBY"
+        - type: object
+          additionalProperties: false
+          required: ["@context", "@type", informationMode, scheme, applicantMobile, case]
+          properties:
+            "@context": { $ref: "#/components/schemas/Context" }
+            "@type": { $ref: "#/components/schemas/Type" }
+            informationMode:
+              type: string
+              enum: [OnDemand]
+              x-jsonld-id: "openagrinet:informationMode"
+            scheme:
+              type: object
+              additionalProperties: false
+              required: [code]
+              properties:
+                code: { type: string, enum: [PMFBY] }
+                name: { type: string, minLength: 1 }
+              x-jsonld-id: "openagrinet:scheme"
+            applicantMobile:
+              type: string
+              pattern: "^[6-9][0-9]{9}$"
+              x-oan-pii:
+                class: contact
+                handling: [no-log, no-trace, no-echo]
+              x-jsonld-id: "openagrinet:applicantMobile"
+            enrolmentId:
+              type: string
+              minLength: 10
+              maxLength: 30
+              not: { pattern: "^[0-9]{12}$" }
+              x-oan-pii:
+                class: identifier
+                handling: [no-log, no-trace]
+              x-jsonld-id: "openagrinet:enrolmentId"
+            cropYear:
+              type: string
+              pattern: "^[0-9]{4}$"
+              x-jsonld-id: "openagrinet:cropYear"
+            season:
+              type: string
+              enum: [Kharif, Rabi, Zaid]
+              x-jsonld-id: "openagrinet:season"
+            grievance:
+              type: object
+              additionalProperties: false
+              required: [description]
+              properties:
+                category: { $ref: "#/components/schemas/PMFBYSubject" }
+                subCategory: { $ref: "#/components/schemas/PMFBYSubject" }
+                description: { $ref: "#/components/schemas/Description" }
+              x-jsonld-id: "openagrinet:grievance"
+            case:
+              type: object
+              additionalProperties: false
+              required: [ticketNo]
+              properties:
+                ticketNo:
+                  type: string
+                  pattern: "^[0-9]+$"
+                  maxLength: 32
+                  x-jsonld-id: "openagrinet:ticketNo"
+                status: { $ref: "#/components/schemas/CaseStatus" }
+                filedOn:
+                  allOf: [{ $ref: "#/components/schemas/CalendarDate" }]
+                  x-jsonld-id: "openagrinet:filedOn"
+                reply: { $ref: "#/components/schemas/Reply" }
+                cropName:
+                  type: string
+                  minLength: 1
+                  maxLength: 120
+                  x-jsonld-id: "openagrinet:cropName"
+              x-jsonld-id: "openagrinet:case"
+
+    PMFBYSupport:
+      x-oan-fields:
+        mustSend:  [informationMode, scheme.code,
+                    provider.id, provider.descriptor.name,
+                    enrolmentId, applicantMobile, cropYear, season,
+                    grievance.description]
+        maySend:   [scheme.name,
+                    grievance.category, grievance.subCategory,
+                    complaintDate, receiptSourceId]
+        comesBack: [informationMode, provider.id, provider.descriptor.name,
+                    scheme.code, scheme.name, enrolmentId,
+                    grievance.category.code, grievance.subCategory.code,
+                    grievance.description,
+                    case.ticketNo, case.status.code, case.filedOn]
+      allOf:
+        - $ref: "#/components/schemas/IsPMFBY"
+        - type: object
+          additionalProperties: false
+          required: ["@context", "@type", informationMode, scheme, provider,
+                     enrolmentId, applicantMobile, cropYear, season, grievance]
+          properties:
+            "@context": { $ref: "#/components/schemas/Context" }
+            "@type": { $ref: "#/components/schemas/Type" }
+            informationMode:
+              type: string
+              enum: [OnDemand]
+              x-jsonld-id: "openagrinet:informationMode"
+            scheme:
+              type: object
+              additionalProperties: false
+              required: [code]
+              properties:
+                code: { type: string, enum: [PMFBY] }
+                name: { type: string, minLength: 1 }
+              x-jsonld-id: "openagrinet:scheme"
+            provider:
+              allOf: [{ $ref: "#/components/schemas/Provider" }]
+              x-jsonld-id: "openagrinet:provider"
+            enrolmentId:
+              type: string
+              minLength: 10
+              maxLength: 30
+              not: { pattern: "^[0-9]{12}$" }
+              x-oan-pii:
+                class: identifier
+                handling: [no-log, no-trace]
+              x-jsonld-id: "openagrinet:enrolmentId"
+            applicantMobile:
+              type: string
+              pattern: "^[6-9][0-9]{9}$"
+              x-oan-pii:
+                class: contact
+                handling: [no-log, no-trace, no-echo]
+              x-jsonld-id: "openagrinet:applicantMobile"
+            cropYear:
+              type: string
+              pattern: "^[0-9]{4}$"
+              x-jsonld-id: "openagrinet:cropYear"
+            season:
+              type: string
+              enum: [Kharif, Rabi, Zaid]
+              x-jsonld-id: "openagrinet:season"
+            complaintDate:
+              allOf: [{ $ref: "#/components/schemas/CalendarDate" }]
+              x-jsonld-id: "openagrinet:complaintDate"
+            receiptSourceId:
+              type: string
+              pattern: "^[0-9]+$"
+              maxLength: 16
+              x-jsonld-id: "openagrinet:receiptSourceId"
+            grievance:
+              type: object
+              additionalProperties: false
+              required: [description]
+              properties:
+                category: { $ref: "#/components/schemas/PMFBYSubject" }
+                subCategory: { $ref: "#/components/schemas/PMFBYSubject" }
+                description: { $ref: "#/components/schemas/Description" }
+              x-jsonld-id: "openagrinet:grievance"
+            case:
+              type: object
+              additionalProperties: false
+              required: [ticketNo]
+              properties:
+                ticketNo:
+                  type: string
+                  pattern: "^[0-9]+$"
+                  maxLength: 32
+                  x-jsonld-id: "openagrinet:ticketNo"
+                status: { $ref: "#/components/schemas/CaseStatus" }
+                filedOn:
+                  allOf: [{ $ref: "#/components/schemas/CalendarDate" }]
+                  x-jsonld-id: "openagrinet:filedOn"
+              x-jsonld-id: "openagrinet:case"
+
+    PMFBYOption:
+      type: object
+      additionalProperties: false
+      required: [code]
+      properties:
+        code:
+          type: string
+          pattern: "^[0-9]+$"
+          x-jsonld-id: "openagrinet:optionCode"
+        name:
+          type: string
+          minLength: 1
+          x-jsonld-id: "openagrinet:optionName"
+        help:
+          type: string
+          minLength: 1
+          x-jsonld-id: "openagrinet:optionHelp"
+
+    PMFBYSubject:
+      type: object
+      additionalProperties: false
+      required: [code]
+      properties:
+        code: { type: string, pattern: "^[0-9]+$" }
+        name: { type: string, minLength: 1 }
+
+    # -------------------------------------------------------------- PM-KISAN
+
+    PMKISANCatalog:
+      x-oan-fields:
+        mustSend:  [informationMode, scheme.code, scheme.name,
+                    challenge.methods, grievanceOptions.categories,
+                    actions]
+      allOf:
+        - $ref: "#/components/schemas/IsPMKISAN"
+        - type: object
+          additionalProperties: false
+          required: ["@context", "@type", informationMode, scheme, challenge, grievanceOptions,
+                     actions]
+          properties:
+            "@context": { $ref: "#/components/schemas/Context" }
+            "@type": { $ref: "#/components/schemas/Type" }
+            informationMode:
+              type: string
+              enum: [OnDemand]
+              x-jsonld-id: "openagrinet:informationMode"
+            scheme:
+              type: object
+              additionalProperties: false
+              required: [code, name]
+              properties:
+                code: { type: string, enum: [PM-KISAN] }
+                name: { type: string, minLength: 1 }
+              x-jsonld-id: "openagrinet:scheme"
+            challenge:
+              type: object
+              additionalProperties: false
+              required: [methods]
+              properties:
+                methods:
+                  type: array
+                  minItems: 1
+                  uniqueItems: true
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [method, channel, length, valueType]
+                    properties:
+                      method: { type: string, enum: [OTP] }
+                      channel: { type: string, enum: [SMS] }
+                      length: { type: integer, enum: [4] }
+                      valueType: { type: string, enum: [NUMERIC] }
+                  x-jsonld-id: "openagrinet:challengeMethods"
+              x-jsonld-id: "openagrinet:challenge"
+            grievanceOptions:
+              type: object
+              additionalProperties: false
+              required: [categories]
+              properties:
+                categories:
+                  type: array
+                  minItems: 1
+                  uniqueItems: true
+                  items: { $ref: "#/components/schemas/PMKISANOption" }
+                  x-jsonld-id: "openagrinet:grievanceCategoryOption"
+              x-jsonld-id: "openagrinet:grievanceOptions"
+            actions:
+              type: array
+              minItems: 3
+              maxItems: 3
+              uniqueItems: true
+              items:
+                allOf:
+                  - $ref: "#/components/schemas/PublishedAction"
+                  # One arm per call this desk serves. The arm pins the schema and
+                  # attributesAt that go with the action; the wording is the desk's
+                  # own, and `default` only records the wording this pack ships.
+                  - oneOf:
+                      - properties:
+                          action: { const: init }
+                          description:
+                            default: >-
+                                          Ask PM-KISAN to send a four-digit OTP to the
+                                          mobile registered against this enrolment number.
+                                          Needs only the enrolment number. Call before
+                                          status or support: both require challenge.response
+                                          carrying this OTP.
+                          schema: { const: "https://openagrinet.github.io/network-specs/api-schemas/Grievance/v0.1/attributes.yaml#/components/schemas/PMKISANInit" }
+                          attributesAt: { const: "$.message.contract.commitments[0].commitmentAttributes" }
+                      - properties:
+                          action: { const: status }
+                          description:
+                            default: >-
+                                          Read a grievance already filed against this
+                                          enrolment number: its status code, the officer's
+                                          reply and when it was given. Needs the OTP from
+                                          init and case.filedOn, the filing date support
+                                          returned, which picks one case out of all those on
+                                          the registration.
+                          schema: { const: "https://openagrinet.github.io/network-specs/api-schemas/Grievance/v0.1/attributes.yaml#/components/schemas/PMKISANStatus" }
+                          attributesAt: { const: "$.message.contract.commitments[0].commitmentAttributes" }
+                      - properties:
+                          action: { const: support }
+                          description:
+                            default: >-
+                                          File a new grievance against this enrolment
+                                          number, under one of the categories published
+                                          above. Needs the OTP from init. Returns
+                                          case.ticketNo and case.filedOn; keep filedOn,
+                                          because status selects a case by it.
+                          schema: { const: "https://openagrinet.github.io/network-specs/api-schemas/Grievance/v0.1/attributes.yaml#/components/schemas/PMKISANSupport" }
+                          attributesAt: { const: "$.message.support.channels[0]" }
+              x-jsonld-id: "openagrinet:publishedAction"
+
+    PMKISANInit:
+      x-oan-fields:
+        mustSend:  [informationMode, scheme.code, enrolmentId]
+        maySend:   [scheme.name]
+        comesBack: [informationMode, scheme.code, scheme.name,
+                    challenge.issued.method, challenge.issued.channel, challenge.issued.length,
+                    challenge.issued.valueType, challenge.issued.expiresAt]
+      allOf:
+        - $ref: "#/components/schemas/IsPMKISAN"
+        - type: object
+          additionalProperties: false
+          required: ["@context", "@type", informationMode, scheme]
+          oneOf:
+            - allOf:
+                - required: [enrolmentId]
+                - not: { required: [challenge] }
+            - required: [challenge]
+          properties:
+            "@context": { $ref: "#/components/schemas/Context" }
+            "@type": { $ref: "#/components/schemas/Type" }
+            informationMode:
+              type: string
+              enum: [OnDemand]
+              x-jsonld-id: "openagrinet:informationMode"
+            scheme:
+              type: object
+              additionalProperties: false
+              required: [code]
+              properties:
+                code: { type: string, enum: [PM-KISAN] }
+                name: { type: string, minLength: 1 }
+              x-jsonld-id: "openagrinet:scheme"
+            enrolmentId: { $ref: "#/components/schemas/PMKISANEnrolmentId" }
+            challenge:
+              type: object
+              additionalProperties: false
+              required: [issued]
+              properties:
+                issued:
+                  type: object
+                  additionalProperties: false
+                  required: [method, channel, length, valueType, expiresAt]
+                  properties:
+                    method: { type: string, enum: [OTP] }
+                    channel: { type: string, enum: [SMS] }
+                    length: { type: integer, enum: [4] }
+                    valueType: { type: string, enum: [NUMERIC] }
+                    expiresAt: { $ref: "#/components/schemas/Instant" }
+                  x-jsonld-id: "openagrinet:challengeIssued"
+              x-jsonld-id: "openagrinet:challenge"
+
+    PMKISANStatus:
+      x-oan-fields:
+        mustSend:  [informationMode, scheme.code, enrolmentId, case.filedOn,
+                    challenge.response.method, challenge.response.value]
+        maySend:   [scheme.name]
+        comesBack: [informationMode, scheme.code, scheme.name,
+                    grievance.description,
+                    case.status.code, case.filedOn,
+                    case.reply, case.repliedOn]
+      allOf:
+        - $ref: "#/components/schemas/IsPMKISAN"
+        - type: object
+          additionalProperties: false
+          required: ["@context", "@type", informationMode, scheme, enrolmentId, challenge, case]
+          properties:
+            "@context": { $ref: "#/components/schemas/Context" }
+            "@type": { $ref: "#/components/schemas/Type" }
+            informationMode:
+              type: string
+              enum: [OnDemand]
+              x-jsonld-id: "openagrinet:informationMode"
+            scheme:
+              type: object
+              additionalProperties: false
+              required: [code]
+              properties:
+                code: { type: string, enum: [PM-KISAN] }
+                name: { type: string, minLength: 1 }
+              x-jsonld-id: "openagrinet:scheme"
+            enrolmentId: { $ref: "#/components/schemas/PMKISANEnrolmentId" }
+            challenge: { $ref: "#/components/schemas/PMKISANChallengeResponse" }
+            grievance:
+              type: object
+              additionalProperties: false
+              required: [description]
+              properties:
+                description: { $ref: "#/components/schemas/Description" }
+              x-jsonld-id: "openagrinet:grievance"
+            case:
+              type: object
+              additionalProperties: false
+              required: [filedOn]
+              oneOf:
+                - not: { required: [repliedOn] }
+                - required: [repliedOn, reply]
+              properties:
+                ticketNo:
+                  type: string
+                  minLength: 1
+                  maxLength: 64
+                  x-jsonld-id: "openagrinet:ticketNo"
+                status: { $ref: "#/components/schemas/CaseStatus" }
+                filedOn:
+                  allOf: [{ $ref: "#/components/schemas/CalendarDate" }]
+                  x-jsonld-id: "openagrinet:filedOn"
+                reply: { $ref: "#/components/schemas/Reply" }
+                repliedOn:
+                  allOf: [{ $ref: "#/components/schemas/CalendarDate" }]
+                  x-jsonld-id: "openagrinet:repliedOn"
+              x-jsonld-id: "openagrinet:case"
+
+    PMKISANSupport:
+      x-oan-fields:
+        mustSend:  [informationMode, scheme.code,
+                    provider.id, provider.descriptor.name, enrolmentId,
+                    grievance.category.code, grievance.description,
+                    challenge.response.method, challenge.response.value]
+        maySend:   [scheme.name]
+        comesBack: [informationMode, provider.id, provider.descriptor.name,
+                    scheme.code, scheme.name, enrolmentId,
+                    grievance.category.code, grievance.description,
+                    case.ticketNo, case.status.code, case.filedOn]
+      allOf:
+        - $ref: "#/components/schemas/IsPMKISAN"
+        - type: object
+          additionalProperties: false
+          required: ["@context", "@type", informationMode, scheme, provider,
+                     enrolmentId, grievance, challenge]
+          properties:
+            "@context": { $ref: "#/components/schemas/Context" }
+            "@type": { $ref: "#/components/schemas/Type" }
+            informationMode:
+              type: string
+              enum: [OnDemand]
+              x-jsonld-id: "openagrinet:informationMode"
+            scheme:
+              type: object
+              additionalProperties: false
+              required: [code]
+              properties:
+                code: { type: string, enum: [PM-KISAN] }
+                name: { type: string, minLength: 1 }
+              x-jsonld-id: "openagrinet:scheme"
+            provider:
+              allOf: [{ $ref: "#/components/schemas/Provider" }]
+              x-jsonld-id: "openagrinet:provider"
+            enrolmentId: { $ref: "#/components/schemas/PMKISANEnrolmentId" }
+            challenge: { $ref: "#/components/schemas/PMKISANChallengeResponse" }
+            grievance:
+              type: object
+              additionalProperties: false
+              required: [category, description]
+              properties:
+                category: { $ref: "#/components/schemas/PMKISANSubject" }
+                description: { $ref: "#/components/schemas/Description" }
+              x-jsonld-id: "openagrinet:grievance"
+            case:
+              type: object
+              additionalProperties: false
+              required: [filedOn]
+              properties:
+                ticketNo:
+                  type: string
+                  minLength: 1
+                  maxLength: 64
+                  x-jsonld-id: "openagrinet:ticketNo"
+                status: { $ref: "#/components/schemas/CaseStatus" }
+                filedOn:
+                  allOf: [{ $ref: "#/components/schemas/CalendarDate" }]
+                  x-jsonld-id: "openagrinet:filedOn"
+              x-jsonld-id: "openagrinet:case"
+
+    PMKISANEnrolmentId:
+      type: string
+      pattern: "^[A-Za-z0-9]+$"
+      minLength: 6
+      maxLength: 20
+      not: { pattern: "^[0-9]{12}$" }
+      x-oan-pii:
+        class: identifier
+        handling: [no-log, no-trace]
+      x-jsonld-id: "openagrinet:enrolmentId"
+
+    PMKISANChallengeResponse:
+      type: object
+      additionalProperties: false
+      required: [response]
+      properties:
+        response:
+          type: object
+          additionalProperties: false
+          required: [method, value]
+          properties:
+            method: { type: string, enum: [OTP] }
+            value:
+              type: string
+              pattern: "^[0-9]{4}$"
+              x-oan-pii:
+                class: credential
+                handling: [no-log, no-trace, no-echo, no-forward]
+              x-jsonld-id: "openagrinet:challengeValue"
+          x-jsonld-id: "openagrinet:challengeResponse"
+      x-jsonld-id: "openagrinet:challenge"
+
+    PMKISANOption:
+      type: object
+      additionalProperties: false
+      required: [code]
+      properties:
+        code:
+          type: string
+          enum: [G001, G002, G003, G004, G005, G006, G007, G008, G009, G010]
+          x-jsonld-id: "openagrinet:optionCode"
+        name:
+          type: string
+          minLength: 1
+          x-jsonld-id: "openagrinet:optionName"
+        help:
+          type: string
+          minLength: 1
+          x-jsonld-id: "openagrinet:optionHelp"
+
+    PMKISANSubject:
+      type: object
+      additionalProperties: false
+      required: [code]
+      properties:
+        code:
+          type: string
+          enum: [G001, G002, G003, G004, G005, G006, G007, G008, G009, G010]
+        name: { type: string, minLength: 1 }
+
+    # ---------------------------------------------------------- value types
+
+    Description:
+      type: string
+      minLength: 10
+      maxLength: 2000
+      x-oan-pii:
+        class: freetext
+        handling: [no-log, no-trace]
+      x-jsonld-id: "openagrinet:grievanceDescription"
+
+    Reply:
+      type: string
+      minLength: 1
+      maxLength: 2000
+      x-oan-pii:
+        class: freetext
+        handling: [no-log, no-trace]
+      x-jsonld-id: "openagrinet:caseReply"
+
+    CaseStatus:
+      type: object
+      additionalProperties: false
+      required: [code]
+      properties:
+        code:
+          type: string
+          enum: [Registered, UnderReview, AwaitingApplicant, Replied, Resolved, Rejected, Closed]
+      x-jsonld-id: "openagrinet:caseStatus"
+
+    PublishedAction:
+      type: object
+      additionalProperties: false
+      required: [action, description, schema, attributesAt]
+      properties:
+        action:
+          type: string
+          enum: [init, status, support]
+          x-jsonld-id: "openagrinet:actionName"
+        description:
+          type: string
+          minLength: 1
+          maxLength: 400
+          x-jsonld-id: "openagrinet:actionDescription"
+        schema:
+          type: string
+          format: uri
+          pattern: "^https://openagrinet\\.github\\.io/network-specs/api-schemas/Grievance/v0\\.1/attributes\\.yaml#/components/schemas/[A-Za-z]+$"
+          x-jsonld-id: "openagrinet:actionSchema"
+        attributesAt:
+          type: string
+          pattern: "^\\$\\.message\\.[A-Za-z0-9.\\[\\]]+$"
+          x-jsonld-id: "openagrinet:actionAttributesAt"
+
+    Provider:
+      type: object
+      additionalProperties: false
+      required: [id, descriptor]
+      properties:
+        id:
+          type: string
+          pattern: "^[a-z0-9][a-z0-9.-]*$"
+          maxLength: 100
+        descriptor:
+          type: object
+          additionalProperties: false
+          required: [name]
+          properties:
+            name: { type: string, minLength: 1, maxLength: 200 }
+
+    CalendarDate:
+      type: string
+      format: date
+      pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+
+    Instant:
+      type: string
+      format: date-time
+      pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$"
+
+    Context:
+      oneOf:
+        - type: string
+          const: https://openagrinet.github.io/network-specs/api-schemas/Grievance/v0.1/context.jsonld
+        - type: array
+          minItems: 2
+          uniqueItems: true
+          items: { type: string, minLength: 1 }
+          contains:
+            const: https://openagrinet.github.io/network-specs/api-schemas/Grievance/v0.1/context.jsonld
+
+    Type:
+      oneOf:
+        - type: string
+          const: openagrinet:Grievance
+        - type: array
+          minItems: 2
+          uniqueItems: true
+          contains:
+            const: openagrinet:Grievance
+          items:
+            oneOf:
+              - const: openagrinet:Grievance
+              - type: string
+                minLength: 1
+                not: { pattern: "^openagrinet:" }

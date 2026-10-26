@@ -70,6 +70,43 @@ class FormDefinition(BaseModel):
         return next((field for field in self.fields if field.name == name), None)
 
 
+type JsonScalar = str | int | float | bool
+
+
+class FieldSource(StrEnum):
+    """Who supplies a path's value on the call."""
+
+    FIXED = "fixed"
+    PROVIDER = "provider"
+    FARMER = "farmer"
+
+
+class ActionField(BaseModel):
+    """One mustSend path of a leaf, and what the pack says about its value."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    path: str
+    source: FieldSource
+    # The pack's `enum`, or its `const` alone, with JSON's own types kept.
+    allowed_values: tuple[JsonScalar, ...] = ()
+    pattern: str | None = None
+    min_length: int | None = None
+    max_length: int | None = None
+    # `x-oan-pii.class`: identifier, contact, freetext or credential.
+    pii_class: str | None = None
+
+
+class ActionSchema(BaseModel):
+    """What one call needs in its attributes, read from one leaf of an API
+    pack. ``must_send`` keeps the leaf's order."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    context: FormContext
+    must_send: tuple[ActionField, ...]
+
+
 class FormBlock(OutputBlock):
     """One offer of a form to one farmer. ``form_id`` names the offer, not the
     form's type; ``form.context`` does that."""
