@@ -24,6 +24,9 @@ class FormContext(BaseModel):
     def __hash__(self) -> int:
         return hash((self.scheme, self.category, self.action))
 
+    def __str__(self) -> str:
+        return f"{self.scheme}/{self.category}/{self.action}"
+
 
 class FieldKind(StrEnum):
     TEXT = "text"

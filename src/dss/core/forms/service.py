@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Container, Mapping, Sequence
+from dataclasses import dataclass
 
 import yaml
 
@@ -9,9 +10,12 @@ from dss.core.forms.models import (
     ActionSchema,
     FieldSource,
     FormContext,
+    FormDefinition,
     JsonScalar,
 )
-from dss.core.provider_discovery.models import SchemaPackFiles
+from dss.core.forms.registry import FormRegistry
+from dss.core.provider_discovery.index import PACK_DEFECTS
+from dss.core.provider_discovery.models import SchemaPackFiles, SchemaPackSkipped
 from dss.core.shared.schema import resolve_schema
 
 _ACTION_MAP = "x-oan-schema-by-action"
@@ -19,6 +23,94 @@ _ACTION_MAP = "x-oan-schema-by-action"
 _CATALOG_ACTION = "catalog/publish"
 _SCHEME_PATH = "scheme.code"
 _PROVIDER_PREFIX = "provider."
+# The DSS cannot run this OTP step yet, so a scheme that needs it is not served.
+_OTP_CHALLENGE_ACTION = "init"
+
+
+@dataclass(frozen=True)
+class _ParsedPack:
+    pack_name: str
+    schemas: tuple[ActionSchema, ...]
+
+
+@dataclass(frozen=True)
+class _SchemeKey:
+    scheme: str
+    category: str
+
+    @classmethod
+    def of(cls, context: FormContext) -> _SchemeKey:
+        return cls(context.scheme, context.category)
+
+
+@dataclass(frozen=True)
+class _Registration:
+    forms: tuple[FormDefinition, ...]
+    skipped: tuple[SchemaPackSkipped, ...]
+
+
+def build_form_registry(packs: Sequence[SchemaPackFiles]) -> FormRegistry:
+    """Never raises. A pack it cannot read, or a form the DSS cannot serve
+    yet, is left out and named in ``skipped``. Of two forms for one context,
+    the first pack's wins."""
+
+    pack_outcomes = tuple(_parse_or_skip(pack) for pack in packs)
+    parsed = tuple(o for o in pack_outcomes if isinstance(o, _ParsedPack))
+    unreadable = tuple(o for o in pack_outcomes if isinstance(o, SchemaPackSkipped))
+    registration = _register_servable(
+        parsed, challenged=_schemes_needing_a_challenge(parsed)
+    )
+    return FormRegistry(
+        registration.forms, skipped=(*unreadable, *registration.skipped)
+    )
+
+
+def _parse_or_skip(pack: SchemaPackFiles) -> _ParsedPack | SchemaPackSkipped:
+    try:
+        return _ParsedPack(pack.pack_name, parse_api_pack(pack))
+    except PACK_DEFECTS as exc:
+        return SchemaPackSkipped(pack.pack_name, f"{type(exc).__name__}: {exc}")
+
+
+def _schemes_needing_a_challenge(
+    parsed: Sequence[_ParsedPack],
+) -> frozenset[_SchemeKey]:
+    return frozenset(
+        _SchemeKey.of(schema.context)
+        for pack in parsed
+        for schema in pack.schemas
+        if schema.context.action == _OTP_CHALLENGE_ACTION
+    )
+
+
+def _register_servable(
+    parsed: Sequence[_ParsedPack], *, challenged: frozenset[_SchemeKey]
+) -> _Registration:
+    forms: dict[FormContext, FormDefinition] = {}
+    skipped: list[SchemaPackSkipped] = []
+    for pack in parsed:
+        for schema in pack.schemas:
+            reason = _why_unserved(schema.context, challenged=challenged, taken=forms)
+            if reason is None:
+                forms[schema.context] = schema.form()
+            else:
+                skipped.append(SchemaPackSkipped(pack.pack_name, reason))
+    return _Registration(tuple(forms.values()), tuple(skipped))
+
+
+def _why_unserved(
+    context: FormContext,
+    *,
+    challenged: frozenset[_SchemeKey],
+    taken: Container[FormContext],
+) -> str | None:
+    if _SchemeKey.of(context) in challenged:
+        return (
+            f"{context}: needs an {_OTP_CHALLENGE_ACTION} step the DSS cannot run yet"
+        )
+    if context in taken:
+        return f"{context}: a form for this context exists"
+    return None
 
 
 def parse_api_pack(pack: SchemaPackFiles) -> tuple[ActionSchema, ...]:
@@ -30,10 +122,10 @@ def parse_api_pack(pack: SchemaPackFiles) -> tuple[ActionSchema, ...]:
 
     try:
         return _read_pack(yaml.safe_load(pack.attributes_yaml))
-    except AttributeError as exc:
-        # A list where a mapping belongs fails on `.get` / `.items`. Callers
-        # skip a bad pack on PACK_DEFECTS, which does not name AttributeError.
-        raise TypeError(f"malformed API pack {pack.pack_name}: {exc}") from exc
+    except (AttributeError, RecursionError) as exc:
+        # A list where a mapping belongs fails on `.get`; a `$ref` cycle never
+        # ends. Callers skip a bad pack on PACK_DEFECTS, which names neither.
+        raise TypeError(f"malformed API pack {pack.pack_name}: {exc!r}") from exc
 
 
 def _read_pack(document: dict) -> tuple[ActionSchema, ...]:
