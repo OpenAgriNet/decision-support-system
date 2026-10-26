@@ -42,6 +42,13 @@ _PACK_MARKER = "attributes.yaml"
 _PACK_DEFECTS = (OSError, ValueError)
 
 
+def has_packs(root: Path) -> bool:
+    """Whether ``root`` holds at least one pack this source would read. A
+    stray ``.DS_Store`` does not count."""
+
+    return any(root.glob(f"*/*/{_PACK_MARKER}"))
+
+
 def _flattened(
     attributes_yaml: str, *, pack_name: str, shared_yaml: str | None
 ) -> dict:
@@ -57,7 +64,9 @@ def _flattened(
         return flatten_fields(
             attributes_yaml, pack_name=pack_name, shared_yaml=shared_yaml
         )
-    except PACK_DEFECTS:
+    except (*PACK_DEFECTS, AttributeError, RecursionError):
+        # A list where a mapping belongs fails on `.get`; a `$ref` cycle never
+        # ends. Neither is in PACK_DEFECTS, and either would stop the boot.
         return {}
 
 

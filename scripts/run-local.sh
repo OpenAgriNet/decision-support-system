@@ -187,6 +187,16 @@ else
   echo "==> schema packs present"
 fi
 
+# Forms (#205) come from a second kind of pack. Without them the DSS boots and
+# offers no forms, so this is a convenience, not a prerequisite.
+if [ -z "$(ls -A var/api-schema-packs 2>/dev/null || true)" ]; then
+  echo "==> fetching API schema packs (api-schema-packs-v0.1)"
+  uv run python scripts/fetch_schema_packs.py --api --ref api-schema-packs-v0.1 \
+    || echo "==> API schema packs not fetched; no forms will be offered"
+else
+  echo "==> API schema packs present"
+fi
+
 # --- langfuse --------------------------------------------------------------
 #
 # Not waited on. A cold start spends minutes in ClickHouse migrations, and the

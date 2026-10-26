@@ -16,7 +16,10 @@ import pytest
 
 from dss.adapters.provider_preferences.registry import RegistryProviderPreferences
 from dss.config.settings import Settings
+from dss.core.forms.models import FormContext
+from dss.core.forms.registry import FormLookup
 from dss.core.provider_discovery.models import SchemaPackFiles
+from dss.core.shared.models import TextQuery
 from dss.entrypoint.composition import (
     _aclose_for,
     _discovers_nothing,
@@ -568,3 +571,104 @@ def test_a_registry_url_swaps_the_registry_adapter_in(tmp_path: Path) -> None:
     *_rest, preferences = _network(settings, preferences=_no_preferences())
 
     assert isinstance(preferences, RegistryProviderPreferences)
+
+
+_GRIEVANCE_ATTRIBUTES = (
+    Path(__file__).parents[2] / "fixtures" / "api_packs" / "grievance_attributes.yaml"
+)
+_PMFBY_SUPPORT = FormContext(scheme="PMFBY", category="Grievance", action="support")
+
+
+def _write_api_packs(root: Path) -> Path:
+    version_dir = root / "Grievance" / "v0.1"
+    version_dir.mkdir(parents=True)
+    (version_dir / "attributes.yaml").write_text(
+        _GRIEVANCE_ATTRIBUTES.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    (version_dir / "profile.json").write_text("{}", encoding="utf-8")
+    return root
+
+
+def _forms_of(runner: TurnRunner) -> FormLookup:
+    assert isinstance(runner, Orchestrator)
+    return runner._paths[TextQuery]._forms
+
+
+def test_the_text_path_gets_the_forms_built_from_the_api_packs(
+    tmp_path: Path,
+) -> None:
+    api_root = _write_api_packs(tmp_path / "api-schemas")
+
+    runner = build_runner(_settings(tmp_path, api_schema_pack_dir=api_root))
+
+    assert isinstance(runner, Orchestrator)
+    assert _forms_of(runner).find(_PMFBY_SUPPORT) is not None
+
+
+def test_no_api_packs_boots_with_no_forms_and_says_how_to_fetch(
+    tmp_path: Path, caplog
+) -> None:
+    with caplog.at_level("WARNING"):
+        runner = build_runner(
+            _settings(tmp_path, api_schema_pack_dir=tmp_path / "absent")
+        )
+
+    assert isinstance(runner, Orchestrator)
+    assert _forms_of(runner).find(_PMFBY_SUPPORT) is None
+    assert any("--api" in record.message for record in caplog.records)
+
+
+def test_a_form_left_out_is_logged_for_an_operator_to_see(
+    tmp_path: Path, caplog
+) -> None:
+    api_root = _write_api_packs(tmp_path / "api-schemas")
+
+    with caplog.at_level("WARNING"):
+        build_runner(_settings(tmp_path, api_schema_pack_dir=api_root))
+
+    assert any("PM-KISAN/Grievance/support" in r.message for r in caplog.records)
+
+
+def test_a_malformed_api_pack_does_not_stop_the_boot(tmp_path: Path, caplog) -> None:
+    """A root schema that is a list once raised AttributeError while the
+    pack's fields were flattened, before any skip rule could run."""
+    api_root = _write_api_packs(tmp_path / "api-schemas")
+    broken = api_root / "Broken" / "v0.1"
+    broken.mkdir(parents=True)
+    (broken / "attributes.yaml").write_text(
+        "components: {schemas: {Broken: [1, 2]}}", encoding="utf-8"
+    )
+    (broken / "profile.json").write_text("{}", encoding="utf-8")
+
+    with caplog.at_level("WARNING"):
+        runner = build_runner(_settings(tmp_path, api_schema_pack_dir=api_root))
+
+    assert isinstance(runner, Orchestrator)
+    assert _forms_of(runner).find(_PMFBY_SUPPORT) is not None
+    assert any("Broken" in record.message for record in caplog.records)
+
+
+def test_an_empty_api_pack_dir_turns_forms_off(tmp_path: Path, caplog) -> None:
+    with caplog.at_level("INFO"):
+        runner = build_runner(_settings(tmp_path, api_schema_pack_dir=""))
+
+    assert isinstance(runner, Orchestrator)
+    assert _forms_of(runner).find(_PMFBY_SUPPORT) is None
+    assert any("forms are off" in record.message for record in caplog.records)
+
+
+def test_an_api_pack_the_source_cannot_read_is_logged(tmp_path: Path, caplog) -> None:
+    api_root = _write_api_packs(tmp_path / "api-schemas")
+    for version in ("v0.1", "v0.2"):
+        (api_root / "Twice" / version).mkdir(parents=True)
+        (api_root / "Twice" / version / "attributes.yaml").write_text(
+            "components: {}", encoding="utf-8"
+        )
+
+    with caplog.at_level("WARNING"):
+        build_runner(_settings(tmp_path, api_schema_pack_dir=api_root))
+
+    assert any(
+        "Twice" in record.message and "unreadable" in record.message
+        for record in caplog.records
+    )

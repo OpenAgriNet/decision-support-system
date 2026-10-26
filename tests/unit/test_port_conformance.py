@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Sequence
 
+from dss.core.forms.registry import FormRegistry
 from dss.core.shared.language import ENGLISH, LanguageTag
 from dss.core.shared.models import (
     TextQuery,
@@ -105,6 +106,7 @@ def test_the_orchestrator_satisfies_the_port(a_turn, a_context):
         schemas={},
         clarification_text=load_clarification_text(),
         edge_translation=EdgeTranslation(routes={}),
+        forms=FormRegistry(),
     )
     runner = Orchestrator(paths={TextQuery: text_path})
 
