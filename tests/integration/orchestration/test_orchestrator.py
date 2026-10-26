@@ -41,12 +41,13 @@ from dss.core.shared.models import (
     TextQuery,
     TurnContext,
     TurnFinished,
+    TurnOutcome,
     TurnStarted,
     TurnStatus,
     UserTurn,
 )
 from dss.core.translation.service import EdgeTranslation
-from dss.orchestration.orchestrator import Components, Orchestrator
+from dss.orchestration.orchestrator import Components, Orchestrator, TextPath
 from dss.orchestration.plan import Plan
 from dss.orchestration.redaction import RedactTexts, pass_through
 from dss.ports.area_lookup import AreaMatch
@@ -228,6 +229,17 @@ class _Telemetry:
         self.stages.append(name)
 
 
+class _FakePath:
+    def __init__(self) -> None:
+        self.turns: list[UserTurn] = []
+
+    async def run(self, turn, *, ctx, recorder):
+        self.turns.append(turn)
+        yield TurnFinished(
+            outcome=TurnOutcome(status=TurnStatus.ANSWERED, confidence=80)
+        )
+
+
 def _build(
     *,
     intent: IntentClassification,
@@ -245,7 +257,7 @@ def _build(
     edge_translation: EdgeTranslation | None = None,
 ) -> tuple[Orchestrator, MemoryTurnSink]:
     turns = MemoryTurnSink()
-    orch = Orchestrator(
+    text_path = TextPath(
         schemas=schemas or {},
         intent_llm=intent_llm or _FakeIntentLLM(intent),
         moderation_llm=moderation_llm or _FakeModerationLLM(violated=violated),
@@ -267,13 +279,24 @@ def _build(
         clarification_text=load_clarification_text(),
         edge_translation=edge_translation or EdgeTranslation(routes={}),
     )
-    return orch, turns
+    return Orchestrator(paths={TextQuery: text_path}), turns
 
 
 async def _collect(orch: Orchestrator, turn: UserTurn | None = None):
     events = [event async for event in orch.run(turn or _turn(), _ctx())]
     assert_well_formed(events)
     return events
+
+
+async def test_a_text_turn_runs_on_its_path() -> None:
+    path = _FakePath()
+    orch = Orchestrator(paths={TextQuery: path})
+
+    events = [event async for event in orch.run(_turn(), _ctx())]
+
+    assert isinstance(events[0], TurnStarted)
+    assert isinstance(events[1], TurnFinished)
+    assert path.turns == [_turn()]
 
 
 async def test_a_served_ask_is_answered_end_to_end() -> None:
