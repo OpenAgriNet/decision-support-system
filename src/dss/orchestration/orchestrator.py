@@ -66,6 +66,7 @@ from dss.core.channel.service import (
     no_match_answer,
     question_for_unplaced_asks,
 )
+from dss.core.forms.registry import FormLookup
 from dss.core.intent.models import Intent
 from dss.core.moderation.messages import messages_for
 from dss.core.moderation.models import ModerationDecision, Outcome
@@ -250,6 +251,7 @@ class TextPath:
         clarification_text: ClarificationText,
         schemas: Mapping[str, DomainSchema],
         edge_translation: EdgeTranslation,
+        forms: FormLookup,
     ) -> None:
         self._intent_llm = intent_llm
         self._moderation_llm = moderation_llm
@@ -270,6 +272,9 @@ class TextPath:
         # thing only: whether a pack serves an ask that names no place.
         self._schemas = schemas
         self._edge_translation = edge_translation
+        # Required: no packs is an empty registry, so a default would make a
+        # wiring mistake look like a deployment that serves no forms.
+        self._forms = forms
 
     async def run(
         self, turn: UserTurn[TextQuery], *, ctx: TurnContext, recorder: TurnRecorder

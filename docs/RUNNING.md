@@ -158,7 +158,11 @@ network-specs. Fetch them separately:
 uv run python scripts/fetch_schema_packs.py --api --ref api-schema-packs-v0.1
 ```
 
-That writes `Grievance` into `var/api-schema-packs/` (gitignored).
+That writes `Grievance` into `var/api-schema-packs/` (gitignored). Without
+them the DSS still boots, logs a warning, and offers no forms.
+`DSS_API_SCHEMA_PACK_DIR` points it elsewhere; set it empty to turn forms
+off. `scripts/run-local.sh` fetches them on first run. The container image
+does not, so a container offers no forms unless the folder is mounted.
 
 ## Stand up a fake network
 

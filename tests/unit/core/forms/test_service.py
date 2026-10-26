@@ -11,7 +11,7 @@ from dss.core.provider_discovery.models import SchemaPackFiles
 
 # The Grievance pack at network-specs `api-schema-packs-v0.1`, untrimmed.
 _GRIEVANCE_YAML = (
-    Path(__file__).parent / "fixtures" / "grievance_attributes.yaml"
+    Path(__file__).parents[3] / "fixtures" / "api_packs" / "grievance_attributes.yaml"
 ).read_text(encoding="utf-8")
 
 _PMFBY_SUPPORT = FormContext(scheme="PMFBY", category="Grievance", action="support")

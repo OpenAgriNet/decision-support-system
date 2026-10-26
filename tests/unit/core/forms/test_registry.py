@@ -11,7 +11,7 @@ from dss.core.forms.service import build_form_registry
 from dss.core.provider_discovery.models import SchemaPackFiles, SchemaPackSkipped
 
 _GRIEVANCE_YAML = (
-    Path(__file__).parent / "fixtures" / "grievance_attributes.yaml"
+    Path(__file__).parents[3] / "fixtures" / "api_packs" / "grievance_attributes.yaml"
 ).read_text(encoding="utf-8")
 
 _PMFBY_SUPPORT = FormContext(scheme="PMFBY", category="Grievance", action="support")

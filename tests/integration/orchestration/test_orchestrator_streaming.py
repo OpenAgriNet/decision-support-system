@@ -16,6 +16,7 @@ import pytest
 from dss.adapters.llm.stub import StubLLM
 from dss.adapters.sinks.memory import MemoryTurnSink
 from dss.config.clarification_text_loader import load_clarification_text
+from dss.core.forms.registry import FormRegistry
 from dss.core.planner.models import Identity
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.shared.models import (
@@ -85,6 +86,7 @@ def _build(
         clarification_text=load_clarification_text(),
         schemas={},
         edge_translation=EdgeTranslation(routes={}),
+        forms=FormRegistry(),
     )
     orch = Orchestrator(paths={TextQuery: text_path})
     return orch, turns
@@ -215,6 +217,7 @@ async def test_the_real_component_streams_through_the_runner() -> None:
         clarification_text=load_clarification_text(),
         schemas={},
         edge_translation=EdgeTranslation(routes={}),
+        forms=FormRegistry(),
     )
     orch = Orchestrator(paths={TextQuery: text_path})
 
