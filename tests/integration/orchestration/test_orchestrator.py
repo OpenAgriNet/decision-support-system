@@ -41,13 +41,19 @@ from dss.core.shared.models import (
     TextQuery,
     TurnContext,
     TurnFinished,
+    TurnInput,
     TurnOutcome,
     TurnStarted,
     TurnStatus,
     UserTurn,
 )
 from dss.core.translation.service import EdgeTranslation
-from dss.orchestration.orchestrator import Components, Orchestrator, TextPath
+from dss.orchestration.orchestrator import (
+    Components,
+    Orchestrator,
+    TextPath,
+    unrouted_kinds,
+)
 from dss.orchestration.plan import Plan
 from dss.orchestration.redaction import RedactTexts, pass_through
 from dss.ports.area_lookup import AreaMatch
@@ -829,3 +835,12 @@ async def test_the_one_source_cited_reaches_the_farmer_as_one() -> None:
     assert streamed == claim.content.text == "Plant grafts in June. [1]"
     assert [(s.id, s.name) for s in claim.sources] == [("1", "KAU Mango Guide")]
     assert claim.content.source_ids == ("1",)
+
+
+def test_unrouted_kinds_lists_the_kind_without_a_path() -> None:
+    class _OtpReply(TurnInput):
+        code: str
+
+    kinds = [TextQuery, _OtpReply]
+
+    assert unrouted_kinds({TextQuery: _FakePath()}, kinds) == [_OtpReply]

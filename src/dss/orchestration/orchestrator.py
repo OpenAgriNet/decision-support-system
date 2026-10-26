@@ -47,7 +47,7 @@ before it touches a provider.
 
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator, AsyncIterator, Mapping, Sequence
+from collections.abc import AsyncGenerator, AsyncIterator, Iterable, Mapping, Sequence
 from contextlib import aclosing, suppress
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -178,13 +178,16 @@ class TurnPath[InputT: TurnInput](Protocol):
     ) -> AsyncGenerator[TurnEvent]: ...
 
 
+# `Any`: the table mixes kinds, and the type checker cannot say that a value's
+# kind equals its key. The boot check does.
+type TurnPaths = Mapping[type[TurnInput], TurnPath[Any]]
+
+
 class Orchestrator:
     """Satisfies `ports.turn.TurnRunner`. Opens the turn's span, then runs the
     path wired for the input's kind."""
 
-    # `Any`: the table mixes kinds, and the type checker cannot say that a
-    # value's kind equals its key. The boot check does.
-    def __init__(self, *, paths: Mapping[type[TurnInput], TurnPath[Any]]) -> None:
+    def __init__(self, *, paths: TurnPaths) -> None:
         self._paths = paths
 
     async def run(
@@ -209,6 +212,12 @@ class Orchestrator:
             async with aclosing(path.run(turn, ctx=ctx, recorder=recorder)) as events:
                 async for event in events:
                     yield event
+
+
+def unrouted_kinds(
+    paths: TurnPaths, kinds: Iterable[type[TurnInput]]
+) -> list[type[TurnInput]]:
+    return [kind for kind in kinds if kind not in paths]
 
 
 class TextPath:
