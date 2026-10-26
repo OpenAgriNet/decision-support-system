@@ -10,8 +10,11 @@ services:
   # Not `clickhouse`: Langfuse's has that name on `oan-edge`, and two
   # services with one name on one network resolve to either.
   dss-clickhouse:
-    image: docker.io/clickhouse/clickhouse-server:25.12
+    image: dhi.io/clickhouse-server:25.12
     container_name: dss-clickhouse
+    # 101, the user the old image wrote the volume as. The Hardened Image's own
+    # user is 65532; this keeps an existing volume readable with no chown.
+    user: "101:101"
     environment:
       CLICKHOUSE_DB: otel
       CLICKHOUSE_USER: dss
@@ -22,14 +25,16 @@ services:
       # For `curl` only. Not 8123: HyperDX's ClickHouse often holds it.
       - "127.0.0.1:${CLICKHOUSE_HTTP_PORT:-18123}:8123"
     healthcheck:
-      test: wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1
+      # No wget in the image, so bash asks the port itself.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/8123 && printf 'GET /ping HTTP/1.0\\r\\n\\r\\n' >&3 && read -r status <&3 && [[ $$status == *200* ]]"]
       interval: 5s
       timeout: 5s
       retries: 10
     restart: unless-stopped
 
   dss-grafana:
-    image: docker.io/grafana/grafana:${GRAFANA_TAG:-latest}
+    # Hardened Image: runs as 65532, no shell.
+    image: dhi.io/grafana:${GRAFANA_TAG:-12}
     container_name: dss-grafana
     depends_on:
       dss-clickhouse:
