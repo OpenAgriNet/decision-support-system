@@ -60,8 +60,8 @@ Dependency direction: `core/forms` imports `core/shared`. Never the reverse.
 
 ### Orchestration
 
-- `TurnPath` protocol: `run(input, turn, *, ctx, recorder) -> AsyncGenerator[CoreEvent]`.
-- `Orchestrator(*, paths: Mapping[type[TurnInput], TurnPath], ...)`. `run` looks up `type(turn.input)`.
+- `TurnPath[InputT: TurnInput]` protocol: `run(turn: UserTurn[InputT], *, ctx, recorder) -> AsyncGenerator[TurnEvent]`. The path owns redaction, translation and reveal too, because all of them read the text turn. Replaces the `CoreEvent` sketch (26 Oct).
+- `Orchestrator(*, paths: TurnPaths)` with `TurnPaths = Mapping[type[TurnInput], TurnPath[Any]]`. `run` opens the span, yields `TurnStarted`, then runs the path for `type(turn.input)`.
 - Boot check in the composition root: every `TurnInput` subclass has a path, or the app refuses to start.
 - `TextPath`: today's pipeline, plus the form step after discovery.
 - `offer_form(definition) -> ComposedAnswer` in `core/forms/service.py`: an intro `TextBlock` and a `FormBlock` with a new UUID `form_id`.
@@ -97,8 +97,8 @@ Dependency direction: `core/forms` imports `core/shared`. Never the reverse.
    - [ ] Given `FormDefinition`, when `field(name)` is called, then it returns the field or `None`.
    - [ ] Given the 9 readers and the tests, when `uv run pytest` runs, then it is green with `turn.input.text` and no behaviour change.
 2. **Orchestrator branches by table**
-   - [ ] Given a `TextQuery` turn, when `Orchestrator.run` runs, then `TextPath` handles it and output matches today's.
-   - [ ] Given a `TurnInput` subclass with no path, when the app boots, then it refuses to start with a clear message.
+   - [x] Given a `TextQuery` turn, when `Orchestrator.run` runs, then `TextPath` handles it and output matches today's.
+   - [x] Given a `TurnInput` subclass with no path, when the app boots, then it refuses to start with a clear message.
 3. **Intent learns Grievance**
    - [ ] Given "I want to file a PMFBY grievance", when intent runs, then the ask is `PMFBY`, `Grievance`, `ACT`.
 4. **The form step on `TextPath`**
