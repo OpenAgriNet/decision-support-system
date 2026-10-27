@@ -34,6 +34,9 @@ class FormRegistry:
     def find(self, context: FormContext) -> FormDefinition | None:
         return self._forms.get(context)
 
+    def __len__(self) -> int:
+        return len(self._forms)
+
     @property
     def skipped(self) -> tuple[SchemaPackSkipped, ...]:
         """Packs and forms left out, for an operator: a missing form looks

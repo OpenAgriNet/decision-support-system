@@ -16,13 +16,19 @@ _GRIEVANCE_YAML = (
 
 _PMFBY_SUPPORT = FormContext(scheme="PMFBY", category="Grievance", action="support")
 _PMFBY_STATUS = FormContext(scheme="PMFBY", category="Grievance", action="status")
+_API_PROFILE = '{"semantic_model": "provider-api"}'
 
 
-def _pack(attributes_yaml: str, *, pack_name: str = "Grievance") -> SchemaPackFiles:
+def _pack(
+    attributes_yaml: str,
+    *,
+    pack_name: str = "Grievance",
+    profile_json: str = _API_PROFILE,
+) -> SchemaPackFiles:
     return SchemaPackFiles(
         pack_name=pack_name,
         version="v0.1",
-        profile_json="{}",
+        profile_json=profile_json,
         attributes_yaml=attributes_yaml,
         examples_json=(),
     )
@@ -40,6 +46,13 @@ def test_registry_finds_a_form_by_its_context() -> None:
 def test_an_empty_registry_finds_nothing() -> None:
     assert FormRegistry().find(_PMFBY_SUPPORT) is None
     assert FormRegistry().skipped == ()
+
+
+def test_registry_counts_its_forms() -> None:
+    form = FormDefinition(context=_PMFBY_SUPPORT, fields=())
+
+    assert len(FormRegistry([form])) == 1
+    assert len(FormRegistry()) == 0
 
 
 def test_registry_satisfies_the_lookup_the_orchestrator_takes() -> None:
@@ -134,3 +147,34 @@ def test_a_second_form_for_a_taken_context_is_skipped() -> None:
         )
         in registry.skipped
     )
+
+
+def test_a_catalog_pack_beside_the_api_packs_is_not_a_form_source() -> None:
+    """Both kinds share one folder; only `profile.json` tells them apart."""
+    catalog = _pack(
+        "components: {schemas: {MandiPrice: {}}}",
+        pack_name="MandiPrice",
+        profile_json='{"semantic_model": "generalised"}',
+    )
+
+    registry = build_form_registry([catalog, _pack(_GRIEVANCE_YAML)])
+
+    assert registry.find(_PMFBY_SUPPORT) is not None
+    assert "MandiPrice" not in {skip.pack_name for skip in registry.skipped}
+
+
+@pytest.mark.parametrize(
+    "profile_json",
+    [
+        pytest.param("{}", id="no semantic_model"),
+        pytest.param("{not json", id="unreadable profile"),
+        pytest.param("[]", id="not an object"),
+    ],
+)
+def test_a_pack_whose_kind_cannot_be_read_is_skipped(profile_json: str) -> None:
+    unknown = _pack(_GRIEVANCE_YAML, pack_name="Unknown", profile_json=profile_json)
+
+    registry = build_form_registry([unknown])
+
+    assert registry.find(_PMFBY_SUPPORT) is None
+    assert [skip.pack_name for skip in registry.skipped] == ["Unknown"]
