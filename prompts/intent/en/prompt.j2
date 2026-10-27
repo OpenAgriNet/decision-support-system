@@ -20,6 +20,7 @@ Each ask has:
     Market — what something sells for: mandi prices, rates, arrivals.
     Scheme — a government programme: eligibility, benefits, applying.
     Facility — a physical place with a service: a warehouse, cold storage, a soil lab, a mandi yard. Where to take something, or where one is.
+    Grievance — a complaint about a scheme: an enrolment, claim or payment that went wrong, to be filed or followed up.
   Pick by what the answer is about, not by which word appears. 'Is my wheat insured under PMFBY' is Scheme, not Crop.
 - interaction_type: one of [{{ interactions }}] — advise to explain/guide, observe to look up a value/record/status, act to perform an action (book, apply, submit, update, escalate).
   advise wants a recommendation the assistant reasons out; observe wants a fact someone already holds; act changes something in the world. Asking *how* to apply is advise; asking to *be* applied is act.
@@ -28,6 +29,7 @@ Each ask has:
 
 Examples:
   'what is the onion rate at Lasalgaon' -> one ask: Market / observe / 'onion'.
+  'file a complaint about my PMFBY claim' -> one ask: Grievance / act / 'PMFBY'.
   'am I eligible for PM-KISAN' -> one ask: Scheme / observe / 'PM-KISAN'. Eligibility is a fact about the user, not advice.
   'how do I apply for PM-KISAN' -> one ask: Scheme / advise / 'PM-KISAN'. Explaining the steps is advice; only submitting is act.
   'my cotton leaves are curling' -> one ask: Crop / advise / 'cotton'. A problem description is still a request for guidance.

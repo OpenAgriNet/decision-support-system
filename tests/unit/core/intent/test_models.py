@@ -265,6 +265,7 @@ def test_subject_category_values() -> None:
         "Market",
         "Scheme",
         "Facility",
+        "Grievance",
     }
 
 
