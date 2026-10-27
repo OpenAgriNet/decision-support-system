@@ -4,20 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict
 
-from dss.core.intent.models import Intent
-
-
-class Scheme(BaseModel):
-    """One government scheme as the catalog knows it.
-
-    ``code`` is the catalog's stable row key. Nothing reads it yet, but names
-    and aliases get edited, so it is carried rather than dropped.
-    """
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    code: str
-    name: str
+from dss.core.intent.models import Intent, Scheme
 
 
 class SchemeMatch(BaseModel):

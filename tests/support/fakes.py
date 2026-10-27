@@ -10,8 +10,8 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Mapping, Sequence
 from typing import Any, Literal
 
-from dss.core.enrichment.models import Scheme
 from dss.core.enrichment.normalize import alias_key
+from dss.core.intent.models import Scheme
 from dss.core.planner.models import Skill
 from dss.core.provider_preferences.models import PreferenceBook, capability_key
 from dss.core.shared.errors import ProviderUnavailableError, TranslationError

@@ -111,6 +111,19 @@ class UnresolvedPlace(BaseModel):
     region: str | None = None
 
 
+class Scheme(BaseModel):
+    """One government scheme as the catalog knows it.
+
+    ``code`` is the catalog's stable row key. Nothing reads it yet, but names
+    and aliases get edited, so it is carried rather than dropped.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    code: str
+    name: str
+
+
 class Ask(BaseModel):
     """One thing the turn wants: a subject on a single interaction type.
 
