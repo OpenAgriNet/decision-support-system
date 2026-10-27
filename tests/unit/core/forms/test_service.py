@@ -97,7 +97,6 @@ def test_a_field_carries_the_rules_the_pack_writes_on_it() -> None:
         path="applicantMobile",
         source=FieldSource.FARMER,
         pattern="^[6-9][0-9]{9}$",
-        pii_class="contact",
     )
     assert _field(schema, "season").allowed_values == ("Kharif", "Rabi", "Zaid")
 
@@ -107,7 +106,6 @@ def test_a_ref_is_followed_to_the_rules_it_points_at() -> None:
     description = _field(_schema_for(_PMFBY_SUPPORT), "grievance.description")
 
     assert (description.min_length, description.max_length) == (10, 2000)
-    assert description.pii_class == "freetext"
 
 
 def test_status_needs_the_mobile_and_the_ticket() -> None:

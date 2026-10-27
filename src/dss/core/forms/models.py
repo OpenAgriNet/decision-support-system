@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Mapping
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict
@@ -99,8 +98,6 @@ class ActionField(BaseModel):
     pattern: str | None = None
     min_length: int | None = None
     max_length: int | None = None
-    # `x-oan-pii.class`: identifier, contact, freetext or credential.
-    pii_class: str | None = None
 
 
 class ActionSchema(BaseModel):
@@ -126,10 +123,9 @@ class ActionSchema(BaseModel):
         )
 
 
-_KIND_BY_PII_CLASS: Mapping[str | None, FieldKind] = {
-    "credential": FieldKind.SECRET,
-    "freetext": FieldKind.TEXTAREA,
-}
+# Above this a farmer is writing prose, not filling in a value. Our number: the
+# pack gives no layout hints.
+_LONGEST_ONE_LINE_ANSWER = 255
 # camelCase, an acronym before a word (`PMKISANId`), letters before digits.
 _WORD_BREAK = re.compile(
     r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])|(?<=[A-Za-z])(?=[0-9])"
@@ -152,9 +148,11 @@ def _to_form_field(field: ActionField) -> FieldDefinition:
 
 
 def _kind_for(field: ActionField) -> FieldKind:
-    if field.allowed_values:  # a select whatever its PII class
+    if field.allowed_values:
         return FieldKind.SELECT
-    return _KIND_BY_PII_CLASS.get(field.pii_class, FieldKind.TEXT)
+    if field.max_length is not None and field.max_length > _LONGEST_ONE_LINE_ANSWER:
+        return FieldKind.TEXTAREA
+    return FieldKind.TEXT
 
 
 def _option_for(value: JsonScalar) -> Option:

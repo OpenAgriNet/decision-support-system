@@ -132,18 +132,25 @@ def test_an_option_that_is_not_text_is_written_as_json() -> None:
 
 
 @pytest.mark.parametrize(
-    ("pii_class", "kind"),
+    ("max_length", "kind"),
     [
-        ("credential", FieldKind.SECRET),
-        ("freetext", FieldKind.TEXTAREA),
-        ("contact", FieldKind.TEXT),
+        (2000, FieldKind.TEXTAREA),
+        (256, FieldKind.TEXTAREA),
+        (255, FieldKind.TEXT),
+        (30, FieldKind.TEXT),
         (None, FieldKind.TEXT),
     ],
 )
-def test_the_pii_class_picks_the_kind(pii_class: str | None, kind: FieldKind) -> None:
-    form = _schema(_farmer("value", pii_class=pii_class)).form()
+def test_a_long_answer_is_a_textarea(max_length: int | None, kind: FieldKind) -> None:
+    form = _schema(_farmer("value", max_length=max_length)).form()
 
     assert form.fields[0].kind is kind
+
+
+def test_options_make_a_select_however_long_the_answer() -> None:
+    form = _schema(_farmer("value", allowed_values=("a",), max_length=2000)).form()
+
+    assert form.fields[0].kind is FieldKind.SELECT
 
 
 @pytest.mark.parametrize(
