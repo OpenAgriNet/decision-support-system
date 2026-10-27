@@ -13,8 +13,8 @@ import logging
 from collections.abc import Mapping
 from pathlib import Path
 
-from dss.core.enrichment.models import Scheme
 from dss.core.enrichment.normalize import alias_key
+from dss.core.intent.models import Scheme
 
 logger = logging.getLogger(__name__)
 

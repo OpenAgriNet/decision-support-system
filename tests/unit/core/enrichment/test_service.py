@@ -4,14 +4,13 @@ is a plain mapping, so no port double is needed.
 
 from __future__ import annotations
 
-from dss.core.enrichment.models import Scheme
 from dss.core.enrichment.normalize import alias_key
 from dss.core.enrichment.service import (
     find_scheme,
     find_similar_scheme,
     resolve_scheme_subjects,
 )
-from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
+from dss.core.intent.models import Ask, Intent, InteractionType, Scheme, SubjectCategory
 
 MAKHANA = Scheme(
     code="makhana",

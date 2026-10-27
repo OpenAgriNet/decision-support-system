@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Protocol
 
-from dss.core.enrichment.models import Scheme
+from dss.core.intent.models import Scheme
 
 
 class SchemeCatalog(Protocol):
