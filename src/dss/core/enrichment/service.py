@@ -117,6 +117,7 @@ def resolve_scheme_subjects(
                 update={
                     "agriculture_subjects": match.scheme.name,
                     "subject_categories": SubjectCategory.SCHEME,
+                    "scheme": match.scheme,
                 }
             )
         )
