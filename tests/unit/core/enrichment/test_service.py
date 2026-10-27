@@ -100,6 +100,16 @@ def test_canonicalizes_the_subject_of_a_scheme_ask() -> None:
     assert resolution.matches[0].scheme == MAKHANA
 
 
+def test_an_alias_hit_sets_the_scheme_on_the_ask() -> None:
+    """The code is the key a scheme pack selects by; words alone cannot carry it."""
+
+    intent = Intent(asks=(_ask("makhana"),), confidence=0.9)
+
+    resolution = resolve_scheme_subjects(intent, "about makhana scheme", ALIASES)
+
+    assert resolution.intent.asks[0].scheme == MAKHANA
+
+
 def test_leaves_a_non_scheme_ask_alone() -> None:
     """`makhana scheme` is in the query, but this ask is a market lookup and a
     non-scheme ask is judged on its own subject only — and `makhana` alone is

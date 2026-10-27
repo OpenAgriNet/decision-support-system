@@ -112,11 +112,9 @@ class UnresolvedPlace(BaseModel):
 
 
 class Scheme(BaseModel):
-    """One government scheme as the catalog knows it.
-
-    ``code`` is the catalog's stable row key. Nothing reads it yet, but names
-    and aliases get edited, so it is carried rather than dropped.
-    """
+    """One government scheme as the catalog knows it. ``code`` is the network's
+    scheme code, verbatim: the key a scheme pack selects its form and its
+    provider by."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -135,6 +133,8 @@ class Ask(BaseModel):
     ("how do I grow potatoes"). It is only ever a failure type
     (``AmbiguousPlace``/``UnresolvedPlace``) when a name was actually given
     and the lookup could not turn it into one place.
+
+    ``scheme`` is set by enrichment when the words match a catalog alias.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -143,6 +143,7 @@ class Ask(BaseModel):
     subject_categories: SubjectCategory
     interaction_type: InteractionType
     place: ResolvedPlace | AmbiguousPlace | UnresolvedPlace | None = None
+    scheme: Scheme | None = None
 
 
 # The docstrings of ClassifiedAsk and IntentClassification go to the model as
