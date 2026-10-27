@@ -183,6 +183,10 @@ class TurnPath[InputT: TurnInput](Protocol):
 type TurnPaths = Mapping[type[TurnInput], TurnPath[Any]]
 
 
+class NoPathForKindError(Exception):
+    pass
+
+
 class Orchestrator:
     """Satisfies `ports.turn.TurnRunner`. Opens the turn's span, then runs the
     path wired for the input's kind."""
@@ -206,12 +210,17 @@ class Orchestrator:
             session_id=ctx.session_id,
         ) as recorder:
             yield TurnStarted()
-            path = self._paths[type(turn.input)]
+            path = self._path_for(type(turn.input))
             # `aclosing`: closing this generator does not reach the path's, and
             # a closed screen must close every model stream.
             async with aclosing(path.run(turn, ctx=ctx, recorder=recorder)) as events:
                 async for event in events:
                     yield event
+
+    def _path_for(self, kind: type[TurnInput]) -> TurnPath[Any]:
+        if kind not in self._paths:
+            raise NoPathForKindError(kind.__name__)
+        return self._paths[kind]
 
 
 def unrouted_kinds(
