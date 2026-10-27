@@ -2,7 +2,7 @@
 
 The packs are an external checkout: they live in the `OpenAgriNet/network-specs`
 repo, not this one, and nothing clones them. This module pulls the ones the DSS
-routes against onto disk, where `FilesystemSchemaPackSource` reads them.
+reads onto disk, where `FilesystemSchemaPackSource` reads them.
 
 `urllib.request` rather than `httpx2`, deliberately: this runs before the app
 is built — and from `scripts/fetch_schema_packs.py`, which a fresh clone may
@@ -49,18 +49,13 @@ DEFAULT_REF = "main"
 # `var/` — a deployment sets DSS_SCHEMA_PACK_DIR to a mounted path instead.
 DEFAULT_PACK_DIR = Path(__file__).parents[3] / "var" / "schema-packs"
 
-# The packs the DSS routes against.
+# The packs the DSS reads.
 #
-# AgricultureResource is not routed to directly — the other three `$ref` it
+# AgricultureResource is not routed to directly — the other catalog packs `$ref` it
 # with a relative path (`../../AgricultureResource/v0.1/attributes.yaml`), so
 # it has to be on disk beside them. Nothing resolves those refs today
 # (`yaml.safe_load` treats `$ref` as a plain string key), so it looks unused;
 # it is not. Do not drop it.
-#
-# AgricultureFacility is left out on purpose: none of its examples declares
-# `subjectCategories`, which `provider_discovery.index` reads unguarded, so the
-# pack is skipped as defective and never reaches the capability index. See
-# TODO.md.
 PACKS = (
     "AgricultureResource",
     "MandiPrice",

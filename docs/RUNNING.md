@@ -124,8 +124,8 @@ That writes the packs into `var/schema-packs/` (gitignored):
 `AgricultureResource`, `MandiPrice`, `WeatherObservation`, `KnowledgeAdvisory`,
 `AgricultureFacility`, and `Grievance`, which forms are built from (see below).
 
-`AgricultureResource` is not a capability anything routes to. The other three
-`$ref` it for their shared fields, so it has to sit beside them.
+`AgricultureResource` is not a capability anything routes to. The other
+catalog packs `$ref` it for their shared fields, so it has to sit beside them.
 
 **`--ref` is required in practice.** It defaults to `main`, which carries only
 a README, so a default run fetches nothing and exits `1`:
