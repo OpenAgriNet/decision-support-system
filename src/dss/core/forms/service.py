@@ -229,7 +229,6 @@ def _read_field(path: str, definition: dict) -> ActionField:
         pattern=definition.get("pattern"),
         min_length=definition.get("minLength"),
         max_length=definition.get("maxLength"),
-        pii_class=definition.get("x-oan-pii", {}).get("class"),
     )
 
 
