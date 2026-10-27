@@ -102,7 +102,7 @@ Dependency direction: `core/forms` imports `core/shared`. Never the reverse.
    - [x] Given a `TextQuery` turn, when `Orchestrator.run` runs, then `TextPath` handles it and output matches today's.
    - [x] Given a `TurnInput` subclass with no path, when the app boots, then it refuses to start with a clear message.
 3. **Intent learns Grievance**
-   - [ ] Given "I want to file a PMFBY grievance", when intent runs, then the ask is `PMFBY`, `Grievance`, `ACT`.
+   - [x] Given "I want to file a PMFBY grievance", when intent runs, then the ask is `PMFBY`, `Grievance`, `ACT`.
 4. **The form step on `TextPath`**
    - [ ] Given a PMFBY grievance ask with a provider and a registry form, when the turn runs, then it ends `requires_input` with a text block then a form block, and the planner LLM is not called.
    - [ ] Given the same ask with no provider, when the turn runs, then it is `no_match` with text only.
