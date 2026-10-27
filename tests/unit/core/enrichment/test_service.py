@@ -238,6 +238,23 @@ def test_an_alias_hit_overrides_a_wrong_category() -> None:
     assert ask.agriculture_subjects == PKVY.name
 
 
+def test_a_grievance_ask_keeps_its_category() -> None:
+    """A grievance is about a scheme, and the classifier already said which
+    kind of ask it is. Forcing `Scheme` would send it to an answer instead of
+    a form."""
+
+    intent = Intent(
+        asks=(_ask("pkvy", SubjectCategory.GRIEVANCE, InteractionType.ACT),),
+        confidence=0.9,
+    )
+
+    resolution = resolve_scheme_subjects(intent, "complaint about pkvy", ALIASES)
+
+    ask = resolution.intent.asks[0]
+    assert ask.subject_categories is SubjectCategory.GRIEVANCE
+    assert ask.scheme == PKVY
+
+
 def test_a_non_scheme_ask_is_not_rescued_by_the_shared_query() -> None:
     """The guard that makes the override safe. The query is shared by every
     ask, so a scheme mentioned anywhere in the turn must not convert the

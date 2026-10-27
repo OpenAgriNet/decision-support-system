@@ -95,7 +95,7 @@ def resolve_scheme_subjects(
     fuzzy_threshold: float | None = NO_FUZZY_MATCHING,
 ) -> SchemeResolution:
     """Rewrite a matched ask's subject to the canonical scheme name and its
-    category to ``Scheme``.
+    category to ``Scheme``, unless the classifier said ``Grievance``.
 
     The override is the point: discovery routes on ``subject_categories``
     alone, and an alias hit beats a classifier that does not know "PKVY" names
@@ -116,7 +116,7 @@ def resolve_scheme_subjects(
             ask.model_copy(
                 update={
                     "agriculture_subjects": match.scheme.name,
-                    "subject_categories": SubjectCategory.SCHEME,
+                    "subject_categories": _resolved_category(ask),
                     "scheme": match.scheme,
                 }
             )
@@ -128,3 +128,11 @@ def resolve_scheme_subjects(
         intent=intent.model_copy(update={"asks": tuple(resolved)}),
         matches=tuple(matches),
     )
+
+
+def _resolved_category(ask: Ask) -> SubjectCategory:
+    # A grievance is about a scheme, and the classifier already said which kind
+    # of ask it is. `Scheme` would send it to an answer instead of a form.
+    if ask.subject_categories is SubjectCategory.GRIEVANCE:
+        return SubjectCategory.GRIEVANCE
+    return SubjectCategory.SCHEME
