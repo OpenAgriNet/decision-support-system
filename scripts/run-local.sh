@@ -23,7 +23,7 @@ MOCK_PORT="${MOCK_PORT:-8078}"
 LANGFUSE_PORT="${LANGFUSE_PORT:-3000}"
 OTEL_PORT="${OTEL_PORT:-4318}"
 COLLECTOR="${COLLECTOR:-dss-otel-collector}"
-SCHEMA_PACK_REF="${SCHEMA_PACK_REF:-schema-packs-v0.1}"
+SCHEMA_PACK_REF="${SCHEMA_PACK_REF:-api-schema-packs-v0.1}"
 COMPOSE_PROJECT="${COMPOSE_PROJECT:-decision-support-system}"
 ENV_LOCAL="${ENV_LOCAL:-.env.local}"
 
@@ -185,16 +185,6 @@ if [ -z "$(ls -A var/schema-packs 2>/dev/null || true)" ]; then
   uv run python scripts/fetch_schema_packs.py --ref "$SCHEMA_PACK_REF"
 else
   echo "==> schema packs present"
-fi
-
-# Forms (#205) come from a second kind of pack. Without them the DSS boots and
-# offers no forms, so this is a convenience, not a prerequisite.
-if [ -z "$(ls -A var/api-schema-packs 2>/dev/null || true)" ]; then
-  echo "==> fetching API schema packs (api-schema-packs-v0.1)"
-  uv run python scripts/fetch_schema_packs.py --api --ref api-schema-packs-v0.1 \
-    || echo "==> API schema packs not fetched; no forms will be offered"
-else
-  echo "==> API schema packs present"
 fi
 
 # --- langfuse --------------------------------------------------------------

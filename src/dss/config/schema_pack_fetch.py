@@ -17,7 +17,6 @@ import shutil
 import tempfile
 import urllib.error
 import urllib.request
-from dataclasses import dataclass
 from pathlib import Path
 
 _REPO = "OpenAgriNet/network-specs"
@@ -28,9 +27,11 @@ _API_HOST = "https://api.github.com"
 # lookup, not a constant.
 _VERSION = "v0.1"
 
-# The ref that actually carries the catalog packs today. `main` holds only a
-# README, so a failure quotes this to say where to look — see `raise_for_empty`.
-_CATALOG_PUBLISHED_REF = "schema-packs-v0.1"
+# The ref that actually carries packs today. `main` holds only a README, so a
+# failure quotes this to say where to look — see `raise_for_empty`. The only
+# ref with the API packs (Grievance) as well; its catalog packs match
+# `schema-packs-v0.1` byte for byte.
+PUBLISHED_REF = "api-schema-packs-v0.1"
 
 # `main` is where the packs are expected to land, so that is what we track —
 # even though it carries only a README today and a default run therefore
@@ -47,7 +48,6 @@ DEFAULT_REF = "main"
 # module under `site-packages`, where there is no repo root and no
 # `var/` — a deployment sets DSS_SCHEMA_PACK_DIR to a mounted path instead.
 DEFAULT_PACK_DIR = Path(__file__).parents[3] / "var" / "schema-packs"
-DEFAULT_API_PACK_DIR = Path(__file__).parents[3] / "var" / "api-schema-packs"
 
 # The packs the DSS routes against.
 #
@@ -67,32 +67,8 @@ PACKS = (
     "WeatherObservation",
     "KnowledgeAdvisory",
     "AgricultureFacility",
-)
-
-
-@dataclass(frozen=True)
-class PackSet:
-    """One kind of pack. ``published_ref`` is quoted when a fetch on another
-    ref finds nothing."""
-
-    folder: str
-    names: tuple[str, ...]
-    published_ref: str
-    default_dir: Path
-
-
-CATALOG_PACK_SET = PackSet(
-    folder="schema",
-    names=PACKS,
-    published_ref=_CATALOG_PUBLISHED_REF,
-    default_dir=DEFAULT_PACK_DIR,
-)
-# The calls a farmer fills a form for: filing a grievance, reading its case.
-API_PACK_SET = PackSet(
-    folder="api-schemas",
-    names=("Grievance",),
-    published_ref="api-schema-packs-v0.1",
-    default_dir=DEFAULT_API_PACK_DIR,
+    # An API pack: forms are built from it (#205). Its `profile.json` says so.
+    "Grievance",
 )
 
 # What the loader needs. Absent either, the pack is not on this ref.
@@ -109,14 +85,7 @@ class SchemaPackFetchFailedError(RuntimeError):
     """The fetch produced nothing usable. Never raised for a partial result."""
 
 
-def raw_url(
-    *,
-    ref: str,
-    pack: str,
-    filename: str,
-    folder: str,
-    host: str = _RAW_HOST,
-) -> str:
+def raw_url(*, ref: str, pack: str, filename: str, host: str = _RAW_HOST) -> str:
     """Where one file of one pack lives, on one ref.
 
     The ref sits in the path, so it appears in any URL a failure reports —
@@ -126,16 +95,10 @@ def raw_url(
     socket; production never passes it.
     """
 
-    return f"{host}/{_REPO}/{ref}/{folder}/{pack}/{_VERSION}/{filename}"
+    return f"{host}/{_REPO}/{ref}/schema/{pack}/{_VERSION}/{filename}"
 
 
-def examples_api_url(
-    *,
-    ref: str,
-    pack: str,
-    folder: str,
-    host: str = _API_HOST,
-) -> str:
+def examples_api_url(*, ref: str, pack: str, host: str = _API_HOST) -> str:
     """Where to list a pack's `examples/` directory.
 
     The example filenames vary per pack and plain HTTP cannot list a
@@ -144,16 +107,14 @@ def examples_api_url(
     default branch instead of erroring.
     """
 
-    return (
-        f"{host}/repos/{_REPO}/contents/{folder}/{pack}/{_VERSION}/examples?ref={ref}"
-    )
+    return f"{host}/repos/{_REPO}/contents/schema/{pack}/{_VERSION}/examples?ref={ref}"
 
 
 def fetch_packs(
     *,
     ref: str,
     dest: Path,
-    pack_set: PackSet = CATALOG_PACK_SET,
+    packs: tuple[str, ...] = PACKS,
     raw_host: str = _RAW_HOST,
     api_host: str = _API_HOST,
 ) -> tuple[str, ...]:
@@ -173,25 +134,19 @@ def fetch_packs(
     """
 
     fetched: list[str] = []
-    for pack in pack_set.names:
-        staged = _download_pack(
-            pack,
-            ref=ref,
-            folder=pack_set.folder,
-            raw_host=raw_host,
-            api_host=api_host,
-        )
+    for pack in packs:
+        staged = _download_pack(pack, ref=ref, raw_host=raw_host, api_host=api_host)
         if staged is None:
             continue
         _publish(staged, dest / pack / _VERSION)
         fetched.append(pack)
 
-    raise_for_empty(fetched=tuple(fetched), ref=ref, pack_set=pack_set)
+    raise_for_empty(fetched=tuple(fetched), ref=ref)
     return tuple(fetched)
 
 
 def _download_pack(
-    pack: str, *, ref: str, folder: str, raw_host: str, api_host: str
+    pack: str, *, ref: str, raw_host: str, api_host: str
 ) -> dict[str, bytes] | None:
     """Every file of one pack, keyed by its path within the version directory.
 
@@ -200,34 +155,29 @@ def _download_pack(
     fetched so the on-disk tree mirrors upstream.
     """
 
-    def fetch_file(filename: str) -> bytes | None:
-        return _get(
-            raw_url(ref=ref, pack=pack, filename=filename, folder=folder, host=raw_host)
-        )
-
     files: dict[str, bytes] = {}
     for filename in _ESSENTIAL_FILES:
-        body = fetch_file(filename)
+        body = _get(raw_url(ref=ref, pack=pack, filename=filename, host=raw_host))
         if body is None:
             return None
         files[filename] = body
 
     for filename in _OPTIONAL_FILES:
-        body = fetch_file(filename)
+        body = _get(raw_url(ref=ref, pack=pack, filename=filename, host=raw_host))
         if body is not None:
             files[filename] = body
 
-    for name in _example_names(pack, ref=ref, folder=folder, api_host=api_host):
-        body = fetch_file(f"examples/{name}")
+    for name in _example_names(pack, ref=ref, api_host=api_host):
+        body = _get(
+            raw_url(ref=ref, pack=pack, filename=f"examples/{name}", host=raw_host)
+        )
         if body is not None:
             files[f"examples/{name}"] = body
 
     return files
 
 
-def _example_names(
-    pack: str, *, ref: str, folder: str, api_host: str
-) -> tuple[str, ...]:
+def _example_names(pack: str, *, ref: str, api_host: str) -> tuple[str, ...]:
     """The pack's example filenames, from the Contents API.
 
     One call per pack, because plain HTTP cannot list a directory. An
@@ -236,7 +186,7 @@ def _example_names(
     pack but not the boot.
     """
 
-    body = _get(examples_api_url(ref=ref, pack=pack, folder=folder, host=api_host))
+    body = _get(examples_api_url(ref=ref, pack=pack, host=api_host))
     if body is None:
         return ()
     try:
@@ -296,7 +246,7 @@ def _publish(files: dict[str, bytes], version_dir: Path) -> None:
         shutil.move(str(staged), str(version_dir))
 
 
-def raise_for_empty(*, fetched: tuple[str, ...], ref: str, pack_set: PackSet) -> None:
+def raise_for_empty(*, fetched: tuple[str, ...], ref: str) -> None:
     """Refuse a fetch that found no pack at all.
 
     Zero packs means the DSS cannot route to anything, so reporting success
@@ -310,12 +260,12 @@ def raise_for_empty(*, fetched: tuple[str, ...], ref: str, pack_set: PackSet) ->
 
     hint = (
         ""
-        if ref == pack_set.published_ref
+        if ref == PUBLISHED_REF
         else (
-            f" The published packs are on {pack_set.published_ref!r} — "
-            f"re-run with --ref {pack_set.published_ref}."
+            f" The published packs are on {PUBLISHED_REF!r} — "
+            f"re-run with --ref {PUBLISHED_REF}."
         )
     )
     raise SchemaPackFetchFailedError(
-        f"no schema packs found on ref {ref!r} (0 of {len(pack_set.names)}).{hint}"
+        f"no schema packs found on ref {ref!r} (0 of {len(PACKS)}).{hint}"
     )

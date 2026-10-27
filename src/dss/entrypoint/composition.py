@@ -66,7 +66,7 @@ from dss.config.policy_loader import load_policy_pack
 from dss.config.prompt_service import build_prompt_service
 from dss.config.redaction_loader import load_redaction_config
 from dss.config.schema_pack_fetch import (
-    API_PACK_SET,
+    PUBLISHED_REF,
     SchemaPackFetchFailedError,
     fetch_packs,
 )
@@ -189,12 +189,13 @@ def build_runner_with_lifecycle(
     # run still catches the typo. Registry mode (ADR-0020) swaps the real
     # adapter in inside `_network`, where the network's HTTP client exists.
     preferences = _boot_preferences(settings)
-    # Forms (#205) are boot config too, and independent of the network gate.
-    forms = _boot_forms(settings)
 
     discover, invocation, schemas, schema_context_index, client, _preferences = (
         _network(settings, fetch=fetch, preferences=preferences)
     )
+    # Forms (#205) work with the network off too. After `_network`, because
+    # its startup fetch is what fills the folder they are read from.
+    forms = _boot_forms(settings)
 
     # One binding for everything the farmer reads: the streamed answer and the
     # localized system text ride the same model, temperature and timeout.
@@ -492,7 +493,7 @@ def _network(
             f"{settings.schema_pack_dir} — refusing to boot, because every turn "
             f"would come back no_match and look like 'no provider serves this'. "
             f"Run: uv run python scripts/fetch_schema_packs.py "
-            f"--ref schema-packs-v0.1"
+            f"--ref {PUBLISHED_REF}"
         )
 
     discovery = build_capability_discovery(
@@ -657,25 +658,33 @@ def _boot_forms(settings: Settings) -> FormRegistry:
     """The forms the farmer can be offered, built once from the API packs.
     No packs is an empty registry and a log line, never a failed boot."""
 
-    directory = settings.api_schema_pack_dir
+    directory = settings.schema_pack_dir
     if directory is None:
-        logger.info("DSS_API_SCHEMA_PACK_DIR is empty, so forms are off")
+        logger.info("DSS_SCHEMA_PACK_DIR is not set, so forms are off")
         return FormRegistry()
     if not has_packs(directory):
         logger.warning(
-            "no API schema packs in %s, so no forms will be offered. Run: "
-            "uv run python scripts/fetch_schema_packs.py --api --ref %s",
+            "no schema packs in %s, so no forms will be offered. Run: "
+            "uv run python scripts/fetch_schema_packs.py --ref %s",
             directory,
-            API_PACK_SET.published_ref,
+            PUBLISHED_REF,
         )
         return FormRegistry()
 
     source = FilesystemSchemaPackSource(root=directory)
     registry = build_form_registry(_run_on_fresh_loop(source.fetch_packs))
     for skip in source.skipped_packs():
-        logger.warning("API pack %r unreadable: %s", skip.pack_name, skip.reason)
+        logger.warning("pack %r unreadable: %s", skip.pack_name, skip.reason)
     for skip in registry.skipped:
-        logger.warning("form left out of API pack %r: %s", skip.pack_name, skip.reason)
+        logger.warning("form left out of pack %r: %s", skip.pack_name, skip.reason)
+    if not registry:
+        # A folder fetched from `schema-packs-v0.1` has packs but no Grievance.
+        logger.warning(
+            "no API schema pack in %s, so no forms will be offered. Delete the "
+            "folder and run: uv run python scripts/fetch_schema_packs.py --ref %s",
+            directory,
+            PUBLISHED_REF,
+        )
     return registry
 
 

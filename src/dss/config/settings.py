@@ -17,11 +17,7 @@ from typing import Annotated
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
-from dss.config.schema_pack_fetch import (
-    DEFAULT_API_PACK_DIR,
-    DEFAULT_PACK_DIR,
-    DEFAULT_REF,
-)
+from dss.config.schema_pack_fetch import DEFAULT_PACK_DIR, DEFAULT_REF
 from dss.core.location.service import DEFAULT_NEAREST_MAX_KM
 
 # Ships beside this module, so it resolves the same however the app is started.
@@ -107,9 +103,6 @@ class Settings(BaseSettings):
     # is empty. `main` carries only a README today, so a fetch on the default
     # fails loudly naming the ref that has them.
     schema_pack_ref: str = DEFAULT_REF
-    # The API schema packs forms are built from (#205). Not fetched at boot;
-    # with none, no forms are offered. Empty turns forms off.
-    api_schema_pack_dir: Path | None = DEFAULT_API_PACK_DIR
     # How far around the turn's location to look for a provider. Only consulted
     # once the network is wired and the turn carries a geometry.
     discovery_radius_m: int = Field(25_000, ge=0)
@@ -242,9 +235,7 @@ class Settings(BaseSettings):
     edge_translation_config_path: Path | None = None
 
     # Compose passes an unset variable as "", which would be the working directory.
-    @field_validator(
-        "edge_translation_config_path", "api_schema_pack_dir", mode="before"
-    )
+    @field_validator("edge_translation_config_path", mode="before")
     @classmethod
     def _treat_empty_as_off(cls, value: object) -> object:
         return None if value == "" else value

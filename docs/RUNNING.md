@@ -117,11 +117,12 @@ The packs describe what a provider can answer — one per capability
 repo, **not this one**, and nothing clones them. A fresh checkout has none.
 
 ```bash
-uv run python scripts/fetch_schema_packs.py --ref schema-packs-v0.1
+uv run python scripts/fetch_schema_packs.py --ref api-schema-packs-v0.1
 ```
 
-That writes four packs into `var/schema-packs/` (gitignored):
-`AgricultureResource`, `MandiPrice`, `WeatherObservation`, `KnowledgeAdvisory`.
+That writes the packs into `var/schema-packs/` (gitignored):
+`AgricultureResource`, `MandiPrice`, `WeatherObservation`, `KnowledgeAdvisory`,
+`AgricultureFacility`, and `Grievance`, which forms are built from (see below).
 
 `AgricultureResource` is not a capability anything routes to. The other three
 `$ref` it for their shared fields, so it has to sit beside them.
@@ -130,8 +131,8 @@ That writes four packs into `var/schema-packs/` (gitignored):
 a README, so a default run fetches nothing and exits `1`:
 
 ```
-error: no schema packs found on ref 'main' (0 of 4). The published packs are
-on 'schema-packs-v0.1' — re-run with --ref schema-packs-v0.1.
+error: no schema packs found on ref 'main' (0 of 6). The published packs are
+on 'api-schema-packs-v0.1' — re-run with --ref api-schema-packs-v0.1.
 ```
 
 That is deliberate. `main` is where the packs are expected to land; until they
@@ -139,30 +140,19 @@ do, the fetch says so rather than quietly reading a branch nobody chose.
 
 | Flag | Default | Notes |
 |---|---|---|
-| `--ref` | `main` | the network-specs branch or tag. Use `schema-packs-v0.1` today |
+| `--ref` | `main` | the network-specs branch or tag. Use `api-schema-packs-v0.1` today |
 | `--dest` | `var/schema-packs/` | resolved from the repo root, not your working directory |
 
 Set `GITHUB_TOKEN` if you re-run it often — the listing call is capped at 60 an
 hour unauthenticated.
 
-`AgricultureFacility` is deliberately not fetched: none of its examples
-declares `subjectCategories`, which the capability index reads unguarded, so
-the pack would be silently dropped anyway. See `TODO.md`.
-
 ### API schema packs (forms)
 
-Forms (#205) are built from a second kind of pack, under `api-schemas/` in
-network-specs. Fetch them separately:
-
-```bash
-uv run python scripts/fetch_schema_packs.py --api --ref api-schema-packs-v0.1
-```
-
-That writes `Grievance` into `var/api-schema-packs/` (gitignored). Without
-them the DSS still boots, logs a warning, and offers no forms.
-`DSS_API_SCHEMA_PACK_DIR` points it elsewhere; set it empty to turn forms
-off. `scripts/run-local.sh` fetches them on first run. The container image
-does not, so a container offers no forms unless the folder is mounted.
+Forms (#205) are built from a second kind of pack, the API schema pack
+(`Grievance`). It sits in the same folder as the others; its `profile.json`
+says `"semantic_model": "provider-api"`. Without one the DSS still boots, logs
+a warning, and offers no forms. A `var/schema-packs/` fetched from
+`schema-packs-v0.1` has no `Grievance`: delete it and fetch again.
 
 ## Stand up a fake network
 
