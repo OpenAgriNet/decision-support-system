@@ -10,6 +10,8 @@ the four ways out map from the verdict and the evidence.
 
 from __future__ import annotations
 
+import pytest
+
 from dss.adapters.sinks.memory import MemoryTurnSink
 from dss.config.clarification_text_loader import load_clarification_text
 from dss.core.channel.service import NO_MATCH_TEXT
@@ -50,6 +52,7 @@ from dss.core.shared.models import (
 from dss.core.translation.service import EdgeTranslation
 from dss.orchestration.orchestrator import (
     Components,
+    NoPathForKindError,
     Orchestrator,
     TextPath,
     unrouted_kinds,
@@ -835,6 +838,13 @@ async def test_the_one_source_cited_reaches_the_farmer_as_one() -> None:
     assert streamed == claim.content.text == "Plant grafts in June. [1]"
     assert [(s.id, s.name) for s in claim.sources] == [("1", "KAU Mango Guide")]
     assert claim.content.source_ids == ("1",)
+
+
+async def test_a_kind_without_a_path_names_itself() -> None:
+    orch = Orchestrator(paths={})
+
+    with pytest.raises(NoPathForKindError, match="TextQuery"):
+        await _collect(orch)
 
 
 def test_unrouted_kinds_lists_the_kind_without_a_path() -> None:
