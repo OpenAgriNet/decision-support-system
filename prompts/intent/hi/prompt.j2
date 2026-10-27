@@ -8,7 +8,7 @@
 
   Translation rules (must hold in every language version):
   - The model still RETURNS English tokens: category values (Crop, Livestock,
-    Weather, Market, Scheme, Facility), interaction values (advise, observe,
+    Weather, Market, Scheme, Facility, Grievance), interaction values (advise, observe,
     act), field names (subject_categories, interaction_type,
     agriculture_subjects, place_name, place_from_history), null/true, and
     place names transliterated to English.
@@ -27,6 +27,7 @@
     Market — किसी चीज़ का भाव: मंडी भाव, दरें, आवक।
     Scheme — कोई सरकारी योजना: पात्रता, लाभ, आवेदन।
     Facility — सेवा देने वाला भौतिक स्थान: गोदाम, कोल्ड स्टोरेज, मिट्टी जाँच प्रयोगशाला, मंडी यार्ड। कोई चीज़ कहाँ ले जाएँ, या कोई सुविधा कहाँ है।
+    Grievance — किसी योजना के बारे में शिकायत: नामांकन, दावा या भुगतान में जो गड़बड़ हुई, उसे दर्ज कराना या उसकी स्थिति पूछना।
   उत्तर किस विषय के बारे में होगा उससे चुनिए, न कि कौन-सा शब्द दिखा उससे। 'Is my wheat insured under PMFBY' Scheme है, Crop नहीं।
 - interaction_type: [{{ interactions }}] में से एक — समझाने/मार्गदर्शन के लिए advise, कोई मान/रिकॉर्ड/स्थिति देखने के लिए observe, कोई कार्रवाई करने के लिए act (बुक करना, आवेदन करना, जमा करना, अपडेट करना, आगे बढ़ाना)।
   advise में सहायक तर्क करके सिफ़ारिश देता है; observe में कोई पहले से दर्ज तथ्य चाहिए; act दुनिया में कुछ बदलता है। आवेदन *कैसे* करें पूछना advise है; आवेदन *करवाना* act है।
@@ -35,6 +36,7 @@
 
 उदाहरण:
   'what is the onion rate at Lasalgaon' -> एक ask: Market / observe / 'onion'।
+  'file a complaint about my PMFBY claim' -> एक ask: Grievance / act / 'PMFBY'।
   'am I eligible for PM-KISAN' -> एक ask: Scheme / observe / 'PM-KISAN'। पात्रता उपयोगकर्ता के बारे में एक तथ्य है, सलाह नहीं।
   'how do I apply for PM-KISAN' -> एक ask: Scheme / advise / 'PM-KISAN'। चरण समझाना सलाह है; केवल जमा करना act है।
   'my cotton leaves are curling' -> एक ask: Crop / advise / 'cotton'। समस्या का वर्णन भी मार्गदर्शन का ही अनुरोध है।

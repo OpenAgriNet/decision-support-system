@@ -52,6 +52,9 @@ class SubjectCategory(StrEnum):
     # disk. Adding `Practice` before something serves it would only widen what
     # the classifier can emit and nothing can answer.
     FACILITY = "Facility"
+    # The Grievance API pack's type: a complaint filed or followed up against
+    # a scheme. Kept apart from `Scheme` because it ends in a form, not an answer.
+    GRIEVANCE = "Grievance"
 
 
 class PlaceSource(StrEnum):
