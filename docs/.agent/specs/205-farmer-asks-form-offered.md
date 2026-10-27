@@ -51,6 +51,8 @@ Dependency direction: `core/forms` imports `core/shared`. Never the reverse.
 ### `core/intent/models.py`
 
 - `SubjectCategory.GRIEVANCE = "Grievance"`. Lands with the intent work, not the models PR, because it widens what the classifier may emit.
+- `Scheme(code, name)` moves here from enrichment, since `Ask` now holds it. `Ask.scheme: Scheme | None`, set by enrichment on an alias hit. `code` is the network's scheme code, verbatim; the form step builds `FormContext.scheme` from it.
+- Enrichment keeps a `Grievance` category on an alias hit. Only other categories become `Scheme`.
 
 ## API contracts
 

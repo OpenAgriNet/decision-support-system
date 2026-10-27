@@ -1,6 +1,8 @@
 """Reads the scheme catalog from a tenant-mounted CSV (issue #34).
 
 Columns: ``scheme_code,scheme_name,scheme_aliases``, aliases ``|``-separated.
+``scheme_code`` is the network's scheme code, verbatim and case-exact: a scheme
+pack selects its form and its provider by it.
 CSV rather than the repo's YAML house style because this is domain data owned
 by an agriculture officer, whose scheme lists already live in spreadsheets.
 Nothing ships in the image; a missing configured path raises, as in `policy_loader`.
