@@ -144,8 +144,8 @@ def _planner_attributes(capability: ProviderCapability, model_filled: dict) -> d
 def pack_dir(tmp_path: Path) -> Path:
     """A pack directory of the shape `DSS_SCHEMA_PACK_DIR` points at.
 
-    The packs the mock serves, so one running mock can be asked for any of
-    them — which is the point of keying scenarios off `@type`.
+    The packs these tests discover, so one running mock can be asked for any
+    of them — which is the point of keying scenarios off `@type`.
     """
 
     _write_pack(tmp_path, "WeatherObservation", "Weather")
@@ -314,8 +314,30 @@ async def test_grievance_discover_finds_the_pmfby_and_pm_kisan_desks(
     assert desks["pmfby"].resource_id == "res:pmfby:grievance"
     assert desks["pmkisan"].resource_id == "res:pmkisan:grievance"
     assert all(desk.observed_categories == ("Grievance",) for desk in desks.values())
-    assert "challenge" not in desks["pmfby"].advertised
-    assert "challenge" in desks["pmkisan"].advertised
+
+
+async def test_only_the_pm_kisan_desk_advertises_an_otp_challenge(
+    discovery: HttpCapabilityDiscovery,
+) -> None:
+    """The form flow reads `challenge` to know it must ask for an OTP first."""
+
+    result = await discovery.discover(
+        ProviderQuery(
+            capabilities=(_GRIEVANCE,),
+            subject_category="Grievance",
+            languages=("en",),
+            coverage=None,
+        ),
+        ask_indices=(0,),
+        transaction_id="9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44",
+    )
+
+    challenged = {
+        desk.provider_id
+        for desk in result.capabilities[0]
+        if "challenge" in desk.advertised
+    }
+    assert challenged == {"pmkisan"}
 
 
 async def test_select_returns_the_values_the_composer_will_quote(
