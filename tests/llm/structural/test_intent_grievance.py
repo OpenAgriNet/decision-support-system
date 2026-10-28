@@ -81,3 +81,7 @@ async def test_filing_a_scheme_complaint_is_a_grievance_act() -> None:
     (ask,) = classification.asks
     assert ask.subject_categories is SubjectCategory.GRIEVANCE
     assert ask.interaction_type is InteractionType.ACT
+    # The model's own words: the prompt says copy them, so any spelling passes.
+    assert "pmfby" in (ask.agriculture_subjects or "").casefold()
+    assert ask.place_name is None
+    assert ask.place_from_history is False
