@@ -66,6 +66,7 @@ from dss.core.channel.service import (
     no_match_answer,
     question_for_unplaced_asks,
 )
+from dss.core.forms.models import FormDefinition
 from dss.core.forms.registry import FormLookup
 from dss.core.forms.service import offer_form
 from dss.core.intent.models import Intent
@@ -331,9 +332,58 @@ class TextPath:
         for the planner's provider calls.
         """
 
-        # Intent ∥ moderation, discovery chained off intent, and the barrier —
-        # all owned by `run_turn`. It blanks intent and discovery on any
-        # non-PROCEED outcome, so a refused turn surfaces neither.
+        result = await self._understand(turn, ctx)
+        if result.decision.outcome is not Outcome.PROCEED:
+            yield await self._refusal(result.decision, turn)
+            return
+
+        self._record_asks(result.intent, ctx, recorder)
+        if not result.intent.asks:
+            yield await self._no_match(turn)
+            return
+
+        # The asks a form answers: settled once discovery has said who serves
+        # what, and before the place question, because a form ask needs no
+        # place; the form carries what its call needs.
+        awaiting = find_forms(result.intent, result.discovery, self._forms)
+        place_optional = place_optional_asks(
+            result.intent, result.discovery, self._schemas, awaiting=awaiting
+        )
+        clarification = await self._place_clarification(
+            result.intent, turn, place_optional=place_optional
+        )
+        if clarification is not None:
+            yield clarification
+            return
+
+        if _nobody_serves(result.discovery):
+            yield await self._unserved_reply(
+                result, turn=turn, place_optional=place_optional
+            )
+            return
+
+        evidence = await self._plan(
+            turn, result, ctx=ctx, visibility=visibility, awaiting=awaiting
+        )
+        trailing_question = question_for_unplaced_asks(
+            result.intent.asks, self._clarification_text, place_optional=place_optional
+        )
+        # `aclosing`: closing this generator does not reach the composer's.
+        async with aclosing(
+            self._compose(
+                turn, evidence, question=trailing_question, ctx=ctx, recorder=recorder
+            )
+        ) as events:
+            async for event in events:
+                yield event
+
+    async def _understand(
+        self, turn: UserTurn[TextQuery], ctx: TurnContext
+    ) -> TurnResult:
+        """Intent ∥ moderation, discovery chained off intent, and the barrier.
+        `run_turn` blanks intent and discovery on any non-PROCEED outcome, so a
+        refused turn surfaces neither."""
+
         result = await run_turn(
             turn,
             intent_llm=self._intent_llm,
@@ -346,84 +396,83 @@ class TextPath:
             scheme_fuzzy_threshold=self._scheme_fuzzy_threshold,
             nearest_max_km=self._nearest_max_km,
         )
-        decision = result.decision
-        self._note("moderation", ctx, decision.outcome.value)
+        self._note("moderation", ctx, result.decision.outcome.value)
+        return result
 
-        if decision.outcome is not Outcome.PROCEED:
-            outcome, refusal = _refused(decision)
-            refusal = await localize_answer(
-                refusal, self._components.localize, turn=turn
-            )
-            yield build_turn_finished(outcome, refusal)
-            return
+    async def _refusal(
+        self, decision: ModerationDecision, turn: UserTurn[TextQuery]
+    ) -> TurnFinished:
+        outcome, refusal = _refused(decision)
+        refusal = await localize_answer(refusal, self._components.localize, turn=turn)
+        return build_turn_finished(outcome, refusal)
 
-        self._note("intent", ctx, _classified(result.intent))
-        # After the moderation gate, so a refused turn's asks are not
-        # counted as something farmers asked for.
-        asks = result.intent.asks
+    def _record_asks(
+        self, intent: Intent, ctx: TurnContext, recorder: TurnRecorder
+    ) -> None:
+        """After the moderation gate, so a refused turn's asks are not counted
+        as something farmers asked for."""
+
+        self._note("intent", ctx, _classified(intent))
+        asks = intent.asks
         recorder.asked(
             categories=[ask.subject_categories.value for ask in asks],
             interactions=[ask.interaction_type.value for ask in asks],
             subjects=[ask.agriculture_subjects or "" for ask in asks],
         )
 
-        # Nothing to ask about. Every reply below is built per ask, so
-        # from zero asks it would be an empty bubble. Say so instead.
-        if not asks:
-            answer = await localize_answer(
-                no_match_answer(), self._components.localize, turn=turn
-            )
-            yield build_turn_finished(outcome_for(TurnStatus.NO_MATCH), answer)
-            return
+    async def _no_match(self, turn: UserTurn[TextQuery]) -> TurnFinished:
+        """Every reply is built per ask, so from zero asks it would be an empty
+        bubble. Say so instead."""
 
-        # No ask has a place to search around: named nowhere, a name the
-        # index does not carry, or a name matching several. Ask rather
-        # than answer from nowhere or guess. If any ask has a place, the
-        # turn goes on; the others reach the composer as failures.
-        #
-        # An ask naming nowhere is not always missing a place: the pack
-        # decides (`core/planner/place.py`), which is why this needs
-        # discovery and runs after it rather than inside `run_turn`.
-        # Discovery is read-only and already allowed to be wasted (it
-        # starts before moderation has cleared the turn), so letting it
-        # run and discarding it costs one cheap call.
-        #
-        # The asks a form answers. Settled here, once discovery has said who
-        # serves what, and before the place question: a form ask needs no
-        # place, the form carries what its call needs.
-        awaiting = find_forms(result.intent, result.discovery, self._forms)
-        place_optional = place_optional_asks(
-            result.intent, result.discovery, self._schemas, awaiting=awaiting
+        answer = await localize_answer(
+            no_match_answer(), self._components.localize, turn=turn
         )
+        return build_turn_finished(outcome_for(TurnStatus.NO_MATCH), answer)
+
+    async def _place_clarification(
+        self,
+        intent: Intent,
+        turn: UserTurn[TextQuery],
+        *,
+        place_optional: frozenset[int],
+    ) -> TurnFinished | None:
+        """REQUIRES_INPUT when no ask has a place to search around: named
+        nowhere, a name the index does not carry, or a name matching several.
+        Ask rather than guess. If any ask has a place the turn goes on, and the
+        others reach the composer as failures.
+
+        After discovery, not inside `run_turn`: whether an ask needs a place is
+        the pack's call (`core/planner/place.py`). Discovery is read-only and
+        starts before moderation clears the turn, so the call wasted on a turn
+        that stops here is already an accepted cost."""
+
         clarification = answer_for_unplaced_asks(
-            result.intent.asks,
-            self._clarification_text,
-            place_optional=place_optional,
+            intent.asks, self._clarification_text, place_optional=place_optional
         )
-        if clarification is not None:
-            clarification = await localize_answer(
-                clarification, self._components.localize, turn=turn
-            )
-            yield build_turn_finished(
-                outcome_for(TurnStatus.REQUIRES_INPUT), clarification
-            )
-            return
+        if clarification is None:
+            return None
+        clarification = await localize_answer(
+            clarification, self._components.localize, turn=turn
+        )
+        return build_turn_finished(
+            outcome_for(TurnStatus.REQUIRES_INPUT), clarification
+        )
 
-        # Nobody can serve the ask: no provider is reachable for it, so there is
-        # nothing for the planner to call and nothing for the composer to write
-        # from. Answer NO_MATCH here rather than spend a planner and composer
-        # round-trip to arrive at the same empty-handed place.
-        if _nobody_serves(result.discovery):
-            yield await self._unserved_reply(
-                result, turn=turn, place_optional=place_optional
-            )
-            return
+    async def _plan(
+        self,
+        turn: UserTurn[TextQuery],
+        result: TurnResult,
+        *,
+        ctx: TurnContext,
+        visibility: Visibility,
+        awaiting: Mapping[int, FormDefinition],
+    ) -> Evidence:
+        """Past the barrier: the decision cleared, so the planner's `select`
+        tool is free to call providers. The `Verdict` is how that clearance
+        reaches the tool, which may be several model round-trips deep."""
 
-        # Past the barrier: the decision cleared, so the planner's `select` tool
-        # is free to call providers. The `Verdict` is how that clearance reaches
-        # the tool, which may be several model round-trips deep.
         verdict = Verdict()
-        verdict.set(decision)
+        verdict.set(result.decision)
         with trace_component(Stage.PLANNER, ctx.trace_id):
             evidence = await self._components.plan(
                 turn,
@@ -437,42 +486,29 @@ class TextPath:
                 input=asks_text(result.intent.asks),
                 output=evidence_text(evidence),
             )
+        return evidence
 
-        # The span stays open across the yields below, so it measures the
-        # whole composition rather than closing on the first piece.
-        with trace_component(Stage.COMPOSER, ctx.trace_id):
-            answer_stream = AnswerStream()
-            numbers = CitationNumbers(source.id for source in evidence.sources)
-            # `aclosing`, not a bare `async for`: a farmer who closes the
-            # screen mid-answer must close the model's stream too, and
-            # closing an async generator does not reach the one it relays
-            # from.
-            async with (
-                aclosing(self._components.compose(evidence, turn=turn)) as written,
-                aclosing(numbers.renumber(written)) as pieces,
-            ):
-                async for piece in pieces:
-                    yield answer_stream.add_piece(piece)
-            # A failure before this line propagates: the pieces already
-            # yielded cannot be recalled, so there is no retry to make and
-            # nothing to roll back. The transport reports a failed turn.
-            # An ask still missing its place was not answered: a name that
-            # matched several, or nowhere named where the pack needs one.
-            # Ask as the last piece of the same answer, so it is one
-            # bubble and the farmer's next reply can finish it.
-            question = question_for_unplaced_asks(
-                result.intent.asks,
-                self._clarification_text,
-                place_optional=place_optional,
-            )
-            if question is not None:
-                question = await self._components.localize(question, turn=turn)
-                yield answer_stream.add_piece(numbers.feed(f"\n\n{question}"))
+    async def _compose(
+        self,
+        turn: UserTurn[TextQuery],
+        evidence: Evidence,
+        *,
+        question: str | None,
+        ctx: TurnContext,
+        recorder: TurnRecorder,
+    ) -> AsyncGenerator[CoreEvent]:
+        """The answer as the composer writes it, then its claim, the forms
+        offered, and the outcome read off the evidence."""
 
-            set_current_span_content(
-                input=cited_sources_text(evidence, numbers.cited),
-                output=numbers.composed,
+        answer_stream = AnswerStream()
+        numbers = CitationNumbers(source.id for source in evidence.sources)
+        async with aclosing(
+            self._write_answer(
+                turn, evidence, numbers=numbers, ctx=ctx, question=question
             )
+        ) as pieces:
+            async for piece in pieces:
+                yield answer_stream.add_piece(piece)
 
         answer = answer_from_evidence(numbers.composed, evidence)
         recorder.composed()
@@ -484,6 +520,42 @@ class TextPath:
 
         status, cause = _status_for(evidence)
         yield answer_stream.finish(outcome_for(status, cause))
+
+    async def _write_answer(
+        self,
+        turn: UserTurn[TextQuery],
+        evidence: Evidence,
+        *,
+        numbers: CitationNumbers,
+        ctx: TurnContext,
+        question: str | None,
+    ) -> AsyncGenerator[str]:
+        """The composer's pieces, renumbered. ``question``, the place question
+        for an ask still missing its place, goes last: one bubble, and the
+        farmer's next reply can finish it.
+
+        A failure mid-stream propagates: the pieces already yielded cannot be
+        recalled, so there is no retry to make and nothing to roll back."""
+
+        # The span stays open across the yields, so it measures the whole
+        # writing rather than closing on the first piece.
+        with trace_component(Stage.COMPOSER, ctx.trace_id):
+            # `aclosing`: a farmer who closes the screen mid-answer must close
+            # the model's stream too, and closing an async generator does not
+            # reach the one it relays from.
+            async with (
+                aclosing(self._components.compose(evidence, turn=turn)) as written,
+                aclosing(numbers.renumber(written)) as pieces,
+            ):
+                async for piece in pieces:
+                    yield piece
+            if question is not None:
+                question = await self._components.localize(question, turn=turn)
+                yield numbers.feed(f"\n\n{question}")
+            set_current_span_content(
+                input=cited_sources_text(evidence, numbers.cited),
+                output=numbers.composed,
+            )
 
     async def _unserved_reply(
         self,
