@@ -16,9 +16,22 @@ import yaml
 from dss.core.provider_discovery.models import SchemaPackFiles, SchemaPackSkipped
 
 _ACTION_TYPES = ("Knowledge", "Service")
+# Catalog and API packs share one folder; `profile.json` names the kind.
+_API_PACK_MODEL = "provider-api"
 
 # The pack is read as data, so any shape defect surfaces as one of these.
 PACK_DEFECTS = (KeyError, TypeError, ValueError, yaml.YAMLError)
+
+
+def is_api_pack(pack: SchemaPackFiles) -> bool:
+    """A profile with no ``semantic_model`` is a catalog pack.
+
+    Raises one of ``PACK_DEFECTS`` when ``profile.json`` can't be read.
+    """
+    profile = json.loads(pack.profile_json)
+    if not isinstance(profile, dict):
+        raise TypeError(f"profile.json of pack {pack.pack_name} is not an object")
+    return profile.get("semantic_model") == _API_PACK_MODEL
 
 
 def extract_type_const(attributes_yaml: str, pack_name: str) -> str:

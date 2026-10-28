@@ -9,6 +9,7 @@ assembles the planner's schema dicts correctly from real schema packs.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import httpx
@@ -257,6 +258,24 @@ def test_a_pack_with_a_non_dict_profile_does_not_crash_the_boot() -> None:
     schemas = _planner_schemas((_pack_with_non_dict_profile(),))
 
     assert schemas == {}
+
+
+def test_an_api_pack_is_not_a_planner_schema() -> None:
+    """Its calls are forms, not filters a `select` is checked against."""
+    grievance = SchemaPackFiles(
+        pack_name="Grievance",
+        version="v0.1",
+        profile_json=json.dumps(
+            {
+                "semantic_model": "provider-api",
+                "filterable_paths": ["beckn:resourceAttributes.scheme.code"],
+            }
+        ),
+        attributes_yaml=_GRIEVANCE_ATTRIBUTES.read_text(encoding="utf-8"),
+        examples_json=(),
+    )
+
+    assert _planner_schemas((grievance,)) == {}
 
 
 def _write_good_pack(root: Path) -> None:
