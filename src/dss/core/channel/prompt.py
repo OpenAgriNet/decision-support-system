@@ -172,9 +172,6 @@ def _render_failures(ask_evidence: AskEvidence) -> list[str]:
 
 
 def _render_awaiting(ask: Ask, form: FormDefinition) -> str:
-    """Neither a result nor a gap: the farmer fills in a form next, and the
-    composer must point at it rather than apologise."""
-
     scheme = ask.scheme.name if ask.scheme else form.context.scheme
     return (
         f"Awaits a form{_place_label(ask)}: the farmer fills in the {scheme} "
