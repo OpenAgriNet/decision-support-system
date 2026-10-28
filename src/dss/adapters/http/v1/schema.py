@@ -206,6 +206,37 @@ class OutputRefusal(_WireOut):
     text: str
 
 
+class OutputFormOption(_WireOut):
+    value: str
+    label: str
+
+
+class OutputFormField(_WireOut):
+    """One field, flat: the rules sit on it, so a UI reads a field as one thing."""
+
+    name: str
+    label: str
+    kind: str
+    required: bool
+    pattern: str | None = None
+    min_length: int | None = None
+    max_length: int | None = None
+    options: list[OutputFormOption] = []
+
+class OutputFormContext(_WireOut):
+    scheme: str
+    category: str
+    action: str
+
+class OutputForm(_WireOut):
+    """An empty form for the farmer to fill in (#205). `context` comes back
+    verbatim with the submission, so the DSS can find the form again."""
+
+    type: Literal["form"] = "form"
+    form_id: str
+    context: OutputFormContext
+    fields: list[OutputFormField]
+
 class Source(_WireOut):
     id: str
     name: str
@@ -229,7 +260,7 @@ class ResponseMessage(_WireOut):
     result."""
 
     outcome: Outcome | None = None
-    content: list[OutputText | OutputTextDelta | OutputRefusal] = []
+    content: list[OutputText | OutputTextDelta | OutputRefusal | OutputForm] = []
     sources: list[Source] = []
     error: TurnError | None = None
 

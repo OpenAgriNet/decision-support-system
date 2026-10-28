@@ -11,7 +11,8 @@ request path.
 
 `core.shared` is exempt because it is the domain *language* — the types the
 request maps into. Depending on a type is not skipping a hop; calling a service
-is.
+is. A function's own `models` module is language too: the reply's open slot
+means each function keeps its block kinds, so the wire must name them there.
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ SRC = Path(__file__).resolve().parents[2] / "src"
 TRANSPORT_ROOTS = (SRC / "dss" / "adapters" / "http", SRC / "dss" / "entrypoint")
 
 ALLOWED_CORE_PREFIXES = ("dss.core.shared",)
+ALLOWED_CORE_SUFFIX = ".models"
 
 # The composition root is the one module allowed to name every concrete type,
 # core ones included — building a runner means loading a policy pack, which
@@ -39,7 +41,9 @@ def _forbidden(modules: set[str]) -> set[str]:
     return {
         name
         for name in modules
-        if name.startswith("dss.core") and not name.startswith(ALLOWED_CORE_PREFIXES)
+        if name.startswith("dss.core")
+        and not name.startswith(ALLOWED_CORE_PREFIXES)
+        and not name.endswith(ALLOWED_CORE_SUFFIX)
     }
 
 
@@ -81,6 +85,11 @@ def test_a_core_service_hidden_behind_importlib_is_caught() -> None:
     tree = ast.parse(source)
 
     assert _forbidden(dynamic_import_modules(tree)) == {"dss.core.intent"}
+
+
+def test_a_functions_models_module_is_allowed() -> None:
+    tree = ast.parse("from dss.core.forms.models import FormBlock\n")
+    assert _forbidden(imported_modules(tree)) == set()
 
 
 def test_the_domain_language_and_the_ports_are_allowed() -> None:

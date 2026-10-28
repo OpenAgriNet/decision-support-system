@@ -9,6 +9,15 @@ from datetime import UTC, datetime
 import pytest
 
 from dss.adapters.http.v1 import mapping
+from dss.core.forms.models import (
+    FieldDefinition,
+    FieldKind,
+    FieldRules,
+    FormBlock,
+    FormContext,
+    FormDefinition,
+    Option,
+)
 from dss.core.shared.models import (
     Cause,
     Claim,
@@ -310,3 +319,54 @@ def test_an_unresolved_source_id_keeps_the_citation_unnamed(ctx):
     annotation = frame.message.content[0].annotations[0]
     assert annotation.source_id == "src_9"
     assert (annotation.source_name, annotation.url) == (None, None)
+
+
+_GRIEVANCE_FORM = FormDefinition(
+    context=FormContext(scheme="PMFBY", category="Grievance", action="support"),
+    fields=(
+        FieldDefinition(
+            name="applicantMobile",
+            label="Applicant mobile",
+            kind=FieldKind.TEXT,
+            rules=FieldRules(required=True, pattern=r"^[6-9][0-9]{9}$"),
+        ),
+        FieldDefinition(
+            name="season",
+            label="Season",
+            kind=FieldKind.SELECT,
+            rules=FieldRules(
+                required=True,
+                options=(Option(value="Kharif", label="Kharif"),),
+            ),
+        ),
+    ),
+)
+
+
+def test_a_form_block_is_a_form_item_with_flat_fields(ctx):
+    """The UI reads a field as one flat thing: the rules sit on the field,
+    camelCase, with no `rules` object and nothing about PII."""
+
+    claim = Claim(content=FormBlock(form_id="8f3c", form=_GRIEVANCE_FORM))
+
+    frame = mapping.to_claim_frame(claim, ctx, now=NOW, seq=2, response_id=RESPONSE_ID)
+    item = json.loads(frame.model_dump_json(by_alias=True, exclude_none=True))[
+        "message"
+    ]["content"][0]
+
+    assert item["type"] == "form"
+    assert item["formId"] == "8f3c"
+    assert item["context"] == {
+        "scheme": "PMFBY",
+        "category": "Grievance",
+        "action": "support",
+    }
+    assert item["fields"][0] == {
+        "name": "applicantMobile",
+        "label": "Applicant mobile",
+        "kind": "text",
+        "required": True,
+        "pattern": "^[6-9][0-9]{9}$",
+        "options": [],
+    }
+    assert item["fields"][1]["options"] == [{"value": "Kharif", "label": "Kharif"}]
