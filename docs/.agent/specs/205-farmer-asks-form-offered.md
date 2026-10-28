@@ -65,8 +65,9 @@ Dependency direction: `core/forms` imports `core/shared`. Never the reverse.
 - `TurnPath[InputT: TurnInput]` protocol: `run(turn: UserTurn[InputT], *, ctx, recorder) -> AsyncGenerator[TurnEvent]`. The path owns redaction, translation and reveal too, because all of them read the text turn. Replaces the `CoreEvent` sketch (26 Oct).
 - `Orchestrator(*, paths: TurnPaths)` with `TurnPaths = Mapping[type[TurnInput], TurnPath[Any]]`. `run` opens the span, yields `TurnStarted`, then runs the path for `type(turn.input)`.
 - Boot check in the composition root: every `TurnInput` subclass has a path, or the app refuses to start.
-- `TextPath`: today's pipeline, plus the form step after discovery.
-- `offer_form(definition) -> ComposedAnswer` in `core/forms/service.py`: an intro `TextBlock` and a `FormBlock` with a new UUID `form_id`.
+- `TextPath`: today's pipeline, plus the form step once discovery is in. `find_forms` names the asks a form answers: served at their position, and the registry has a form for their context. Those positions are place-optional and go to the planner as `awaiting`.
+- The planner marks an awaiting ask in its prompt, skips the agent run when every ask awaits a form, and records the form on the ask's `Evidence`. `select` cannot call a Grievance desk because its schema index holds catalog packs only. The composer gets one line per awaiting ask and writes the referral itself. After the composed text, `offer_form(definition) -> FormBlock` mints a block per awaiting ask, each its own whole claim. Status `requires_input` comes from the evidence.
+- Rule for the one-shape follow-up: a pack declares the calls it serves, `support` and `status` from its action map, or `select` implied for a catalog pack. Each tool checks its call is among them. That is what keeps `select` off a Grievance desk once discovery indexes API packs.
 
 ### Wire (`adapters/http/v1`)
 
@@ -78,7 +79,7 @@ Dependency direction: `core/forms` imports `core/shared`. Never the reverse.
 ## Edge cases
 
 - Intent gives `(PMFBY, Grievance, ACT)` and a provider exists, but the registry has no form: the turn carries on down today's path.
-- Several asks in one turn, one of them a form ask: the form step runs for the first form ask only. The others go through the planner as today. Noted as a limit, not solved.
+- Several asks in one turn, one of them a form ask: the form is added to the answer, never instead of it. The planner and composer handle the others as today, the composed text comes first, the forms last. Status is per turn, so "weather answered, form offered" reports `requires_input`.
 - A form is open in history and the farmer asks a plain question: today's path answers. The DSS does not resend the form or remind the farmer. The history reference is passed to prompts as one fixed line, "a form was offered", never as fields.
 - The UI sends the full form block in history: the DSS reads only the three reference keys.
 - Two offers of the same form type in one session: each has its own `form_id`.
@@ -87,7 +88,7 @@ Dependency direction: `core/forms` imports `core/shared`. Never the reverse.
 
 - No provider for `scheme.code = PMFBY`: `no_match`, text only, no form.
 - A `TurnInput` subclass with no path: refused at boot, not on the first turn.
-- Localizer fails on the intro text: English intro, form still sent, same as other system text.
+- The composer writes the intro, so there is no system intro text to localize. A form-only turn still makes the composer call.
 
 ## Implementation tasks
 
@@ -104,9 +105,9 @@ Dependency direction: `core/forms` imports `core/shared`. Never the reverse.
 3. **Intent learns Grievance**
    - [x] Given "I want to file a PMFBY grievance", when intent runs, then the ask is `PMFBY`, `Grievance`, `ACT`.
 4. **The form step on `TextPath`**
-   - [ ] Given a PMFBY grievance ask with a provider and a registry form, when the turn runs, then it ends `requires_input` with a text block then a form block, and the planner LLM is not called.
-   - [ ] Given the same ask with no provider, when the turn runs, then it is `no_match` with text only.
-   - [ ] Given the same ask with a provider but no registry form, when the turn runs, then the planner runs as today.
+   - [x] Given a PMFBY grievance ask with a provider and a registry form, when the turn runs, then it ends `requires_input` with a text block then a form block, and the planner's agent run is not made.
+   - [x] Given the same ask with no provider, when the turn runs, then it is `no_match` with text only.
+   - [x] Given the same ask with a provider but no registry form, when the turn runs, then the planner runs as today.
 5. **Wire: emit the form, accept references in history**
    - [ ] Given a form block, when the reply is JSON, then `message.content` holds `text` then `form` with camelCase fields and no `pii` key.
    - [ ] Given a form block, when the reply is SSE, then it arrives whole in `claim.completed`, never in a delta.
@@ -133,6 +134,8 @@ Dependency direction: `core/forms` imports `core/shared`. Never the reverse.
 - Whether the free-text complaint goes through moderation (task 3).
 - Whether a failed filing is a `FormErrorBlock` or text (task 3).
 - Whether `PROVIDER_REJECTED` is added to `Cause` (task 3).
+- Form labels in the farmer's language: translated once per form and language and cached, or tenant-mounted label files. Own story after task 5.
+- Discovery does not index API packs yet, so no grievance ask is served on real traffic until that follow-up lands. The form step is complete and tested before the data turns it on.
 
 ## Checked against the Grievance pack (26 Oct)
 
