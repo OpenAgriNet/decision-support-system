@@ -52,10 +52,8 @@ services:
       DSS_TRACE_INCLUDE_MESSAGE_CONTENT: ${DSS_TRACE_INCLUDE_MESSAGE_CONTENT:-}
       DSS_INVOCATION_BASE_URL: ${DSS_INVOCATION_BASE_URL:-}
       DSS_DISCOVERY_BASE_URL: ${DSS_DISCOVERY_BASE_URL:-}
-      # The published packs are on this tag, not on `main` — the settings
-      # default is `main`, which carries none, so a container that does not
-      # set this fetches nothing and then dies on the missing directory.
-      DSS_SCHEMA_PACK_REF: ${DSS_SCHEMA_PACK_REF:-api-schema-packs-v0.1}
+      # Every pack, catalog and API, is on this ref of network-specs.
+      DSS_SCHEMA_PACK_REF: ${DSS_SCHEMA_PACK_REF:-schema-packs-v0.1}
       # Read straight from os.environ by app.py, not through Settings, so it
       # has to be named here to reach the container at all. DEBUG is what puts
       # the /discover and /select request bodies in the log.

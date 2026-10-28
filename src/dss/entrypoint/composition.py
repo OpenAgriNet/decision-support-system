@@ -686,7 +686,7 @@ def _boot_forms(settings: Settings) -> FormRegistry:
     for skip in registry.skipped:
         logger.warning("form left out of pack %r: %s", skip.pack_name, skip.reason)
     if not registry:
-        # A folder fetched from `schema-packs-v0.1` has packs but no Grievance.
+        # A folder from an older fetch has catalog packs but no API pack.
         logger.warning(
             "no API schema pack in %s, so no forms will be offered. Delete the "
             "folder and run: uv run python scripts/fetch_schema_packs.py --ref %s",

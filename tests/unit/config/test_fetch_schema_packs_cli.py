@@ -36,14 +36,9 @@ def test_a_failed_fetch_exits_non_zero(monkeypatch, tmp_path: Path) -> None:
     assert caught.value.code == 1
 
 
-def test_the_ref_is_an_argument_and_defaults_to_main(monkeypatch, tmp_path) -> None:
-    """`--ref` selects the branch; unset it is `main`.
-
-    `main` carries only a README today, so the default fetches nothing and the
-    script exits 1 — deliberate, and the failure message says where the packs
-    are.
-    """
-
+def test_the_ref_is_an_argument_and_defaults_to_the_published_ref(
+    monkeypatch, tmp_path
+) -> None:
     seen: dict = {}
 
     def record(**kwargs):
@@ -53,7 +48,7 @@ def test_the_ref_is_an_argument_and_defaults_to_main(monkeypatch, tmp_path) -> N
     monkeypatch.setattr("scripts.fetch_schema_packs.fetch_packs", record)
 
     main(["--dest", str(tmp_path)])
-    assert seen["ref"] == "main"
-
-    main(["--ref", "schema-packs-v0.1", "--dest", str(tmp_path)])
     assert seen["ref"] == "schema-packs-v0.1"
+
+    main(["--ref", "main", "--dest", str(tmp_path)])
+    assert seen["ref"] == "main"

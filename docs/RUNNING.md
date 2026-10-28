@@ -117,7 +117,7 @@ The packs describe what a provider can answer — one per capability
 repo, **not this one**, and nothing clones them. A fresh checkout has none.
 
 ```bash
-uv run python scripts/fetch_schema_packs.py --ref api-schema-packs-v0.1
+uv run python scripts/fetch_schema_packs.py
 ```
 
 That writes the packs into `var/schema-packs/` (gitignored):
@@ -127,20 +127,19 @@ That writes the packs into `var/schema-packs/` (gitignored):
 `AgricultureResource` is not a capability anything routes to. The other
 catalog packs `$ref` it for their shared fields, so it has to sit beside them.
 
-**`--ref` is required in practice.** It defaults to `main`, which carries only
-a README, so a default run fetches nothing and exits `1`:
+It reads `schema-packs-v0.1` of network-specs, which carries every pack the
+DSS reads in one `schema/` folder. The app's own startup fetch, Docker compose
+and `scripts/run-local.sh` read the same ref. A ref with no packs on it, such
+as `main`, fetches nothing and exits `1`, naming the ref that has them:
 
 ```
 error: no schema packs found on ref 'main' (0 of 6). The published packs are
-on 'api-schema-packs-v0.1' — re-run with --ref api-schema-packs-v0.1.
+on 'schema-packs-v0.1' — re-run with --ref schema-packs-v0.1.
 ```
-
-That is deliberate. `main` is where the packs are expected to land; until they
-do, the fetch says so rather than quietly reading a branch nobody chose.
 
 | Flag | Default | Notes |
 |---|---|---|
-| `--ref` | `main` | the network-specs branch or tag. Use `api-schema-packs-v0.1` today |
+| `--ref` | `schema-packs-v0.1` | the network-specs branch or tag |
 | `--dest` | `var/schema-packs/` | resolved from the repo root, not your working directory |
 
 Set `GITHUB_TOKEN` if you re-run it often — the listing call is capped at 60 an
@@ -151,8 +150,8 @@ hour unauthenticated.
 Forms (#205) are built from a second kind of pack, the API schema pack
 (`Grievance`). It sits in the same folder as the others; its `profile.json`
 says `"semantic_model": "provider-api"`. Without one the DSS still boots, logs
-a warning, and offers no forms. A `var/schema-packs/` fetched from
-`schema-packs-v0.1` has no `Grievance`: delete it and fetch again.
+a warning, and offers no forms. A `var/schema-packs/` fetched before
+`Grievance` was published has none: delete it and fetch again.
 
 ## Stand up a fake network
 

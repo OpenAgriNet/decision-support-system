@@ -635,7 +635,7 @@ def test_no_packs_boots_with_no_forms_and_says_how_to_fetch(
     assert isinstance(runner, Orchestrator)
     assert _forms_of(runner).find(_PMFBY_SUPPORT) is None
     assert any(
-        "fetch_schema_packs.py --ref api-schema-packs-v0.1" in record.message
+        "fetch_schema_packs.py --ref schema-packs-v0.1" in record.message
         for record in caplog.records
     )
 
@@ -643,7 +643,7 @@ def test_no_packs_boots_with_no_forms_and_says_how_to_fetch(
 def test_packs_with_no_api_pack_boot_with_no_forms_and_say_so(
     tmp_path: Path, caplog
 ) -> None:
-    """A folder fetched from `schema-packs-v0.1` holds catalog packs only."""
+    """A folder from an older fetch holds catalog packs only."""
     version_dir = tmp_path / "schema" / "MandiPrice" / "v0.1"
     version_dir.mkdir(parents=True)
     (version_dir / "attributes.yaml").write_text("components: {}", encoding="utf-8")

@@ -17,7 +17,7 @@ from typing import Annotated
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
-from dss.config.schema_pack_fetch import DEFAULT_PACK_DIR, DEFAULT_REF
+from dss.config.schema_pack_fetch import DEFAULT_PACK_DIR, PUBLISHED_REF
 from dss.core.location.service import DEFAULT_NEAREST_MAX_KM
 
 # Ships beside this module, so it resolves the same however the app is started.
@@ -100,9 +100,8 @@ class Settings(BaseSettings):
     # deployment sets DSS_SCHEMA_PACK_DIR to its mounted path.
     schema_pack_dir: Path | None = DEFAULT_PACK_DIR
     # Which network-specs ref the startup fetch reads when the directory above
-    # is empty. `main` carries only a README today, so a fetch on the default
-    # fails loudly naming the ref that has them.
-    schema_pack_ref: str = DEFAULT_REF
+    # is empty.
+    schema_pack_ref: str = PUBLISHED_REF
     # How far around the turn's location to look for a provider. Only consulted
     # once the network is wired and the turn carries a geometry.
     discovery_radius_m: int = Field(25_000, ge=0)
