@@ -66,6 +66,7 @@ from dss.core.channel.service import (
     no_match_answer,
     question_for_unplaced_asks,
 )
+from dss.core.forms.service import offer_form
 from dss.core.intent.models import Intent
 from dss.core.moderation.messages import messages_for
 from dss.core.moderation.models import ModerationDecision, Outcome
@@ -481,6 +482,8 @@ class TextPath:
         # One block: the composer's prose is never split (`answer_from_evidence`).
         (block,) = answer.content
         yield answer_stream.claim(block, answer.sources)
+        for definition in evidence.awaiting_forms:
+            yield answer_stream.add_block(offer_form(definition))
 
         status, cause = _status_for(evidence)
         yield answer_stream.finish(outcome_for(status, cause))
@@ -611,6 +614,8 @@ def _status_for(evidence: Evidence) -> tuple[TurnStatus, Cause | None]:
     """Map what the loop actually gathered to a contract outcome. Reads facts
     off `Evidence` — it invents no rule, so no business `if` escapes `core/`:
 
+    - an ask awaits a form → `requires_input`: the farmer's next turn fills
+      it in, whatever else was answered.
     - no results, but provider calls failed → the providers exist but could
       not be reached: `unavailable`, which the transport reports as a
       retryable error.
@@ -620,6 +625,8 @@ def _status_for(evidence: Evidence) -> tuple[TurnStatus, Cause | None]:
     - every ask served → `answered`.
     """
 
+    if evidence.awaiting_forms:
+        return TurnStatus.REQUIRES_INPUT, None
     if not evidence.has_any_result:
         if evidence.has_provider_failure:
             return TurnStatus.UNAVAILABLE, Cause.PROVIDER_UNAVAILABLE

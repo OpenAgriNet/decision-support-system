@@ -174,8 +174,10 @@ class Evidence:
         )
 
     @property
-    def awaiting_forms(self) -> tuple[AskEvidence, ...]:
-        return tuple(entry for entry in self.ask_evidences if entry.awaiting)
+    def awaiting_forms(self) -> tuple[FormDefinition, ...]:
+        """In ask order: the reply carries one form block per entry."""
+
+        return tuple(entry.awaiting for entry in self.ask_evidences if entry.awaiting)
 
     @property
     def has_any_result(self) -> bool:

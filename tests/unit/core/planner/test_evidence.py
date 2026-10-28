@@ -303,7 +303,7 @@ def test_an_ask_that_awaits_a_form_is_not_an_unserved_ask() -> None:
     )
 
     assert [entry.ask for entry in evidence.unserved_asks] == [ADVISORY_ASK]
-    assert [entry.ask for entry in evidence.awaiting_forms] == [PRICE_ASK]
+    assert evidence.awaiting_forms == (GRIEVANCE_FORM,)
 
 
 def test_a_form_for_an_ask_the_turn_lacks_is_refused() -> None:
