@@ -4,7 +4,13 @@ from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import aclosing
 
 from dss.adapters.observability.tracing import set_current_span_content
-from dss.core.shared.models import TextQuery, TurnFinished, UserTurn
+from dss.core.shared.models import (
+    RefusalBlock,
+    TextBlock,
+    TextQuery,
+    TurnFinished,
+    UserTurn,
+)
 from dss.core.translation.service import TurnTranslation
 from dss.observability.stages import Stage
 from dss.observability.trace_log import trace_component
@@ -52,7 +58,13 @@ async def translate_out(
         answer_stream = AnswerStream()
         translated: list[str] = []
         with trace_component(Stage.TRANSLATION_OUT, trace_id):
+            spoken: list[str] = []
             for block in event.content:
+                # A block with no words, such as a form, is claimed as it is.
+                if not isinstance(block, TextBlock | RefusalBlock):
+                    yield answer_stream.add_block(block)
+                    continue
+                spoken.append(block.text)
                 # `aclosing`: a farmer who closes the screen mid-answer must
                 # close the translator's stream too.
                 async with aclosing(
@@ -64,8 +76,7 @@ async def translate_out(
                 translated.append(claim.content.text)
                 yield claim
             set_current_span_content(
-                input="\n".join(block.text for block in event.content),
-                output="\n".join(translated),
+                input="\n".join(spoken), output="\n".join(translated)
             )
         yield answer_stream.finish(event.outcome)
 

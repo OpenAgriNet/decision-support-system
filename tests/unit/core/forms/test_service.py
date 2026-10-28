@@ -5,8 +5,14 @@ from pathlib import Path
 import pytest
 import yaml
 
-from dss.core.forms.models import ActionField, ActionSchema, FieldSource, FormContext
-from dss.core.forms.service import parse_api_pack
+from dss.core.forms.models import (
+    ActionField,
+    ActionSchema,
+    FieldSource,
+    FormContext,
+    FormDefinition,
+)
+from dss.core.forms.service import offer_form, parse_api_pack
 from dss.core.provider_discovery.models import SchemaPackFiles
 
 # The Grievance pack, untrimmed, as network-specs first published it. It lives on
@@ -202,3 +208,12 @@ def test_a_must_send_that_is_not_a_list_is_refused() -> None:
 
     with pytest.raises(TypeError, match="mustSend"):
         parse_api_pack(_pack(yaml.safe_dump(attributes)))
+
+
+def test_each_offer_gets_its_own_id() -> None:
+    form = FormDefinition(context=_PMFBY_SUPPORT, fields=())
+
+    first, second = offer_form(form), offer_form(form)
+
+    assert first.form == second.form == form
+    assert first.form_id and first.form_id != second.form_id

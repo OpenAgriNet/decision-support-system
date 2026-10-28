@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dss.core.forms.models import FormBlock, FormContext, FormDefinition
 from dss.core.shared.models import (
     ClaimDelta,
     RefusalBlock,
@@ -16,6 +17,13 @@ from dss.orchestration.answer_stream import AnswerStream
 IMD = Source(id="1", name="IMD", kind=SourceKind.PROVIDER)
 AGMARKNET = Source(id="2", name="Agmarknet", kind=SourceKind.PROVIDER)
 ANSWERED = TurnOutcome(status=TurnStatus.ANSWERED, confidence=92)
+GRIEVANCE_FORM = FormBlock(
+    form_id="8f3c",
+    form=FormDefinition(
+        context=FormContext(scheme="PMFBY", category="Grievance", action="support"),
+        fields=(),
+    ),
+)
 
 
 def test_a_piece_is_handed_on_as_a_delta():
@@ -81,3 +89,19 @@ def test_written_is_what_the_next_claim_would_hold():
     answer.add_piece("[1].")
 
     assert answer.written == "Rain [1]."
+
+
+def test_a_whole_block_is_claimed_as_it_is():
+    """A form has no words to stream: it is claimed whole, after the text."""
+
+    answer = AnswerStream()
+    answer.add_piece("Fill in the form below.")
+    answer.claim(TextBlock(text=""), ())
+
+    claim = answer.add_block(GRIEVANCE_FORM)
+
+    assert claim.content == GRIEVANCE_FORM
+    assert answer.finish(ANSWERED).content == (
+        TextBlock(text="Fill in the form below."),
+        GRIEVANCE_FORM,
+    )

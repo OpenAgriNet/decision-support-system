@@ -12,12 +12,14 @@ would merge the two components the design deliberately splits.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Protocol
 
 from pydantic_ai.models import Model
 from pydantic_ai.usage import RunUsage
 
 from dss.adapters.observability.metrics import model_that_ran, record_agent_run
+from dss.core.forms.models import FormDefinition
 from dss.core.intent.models import Intent
 from dss.core.planner.evidence import assemble_evidence, place_failures
 from dss.core.planner.models import Evidence, Identity, Verdict
@@ -42,7 +44,7 @@ from dss.ports.prompts import PromptIdentifier, PromptProvider
 class Plan(Protocol):
     """What the orchestrator calls: the per-turn half of ``build_plan``."""
 
-    async def __call__(
+    async def __call__(  # noqa: PLR0913
         self,
         turn: UserTurn[TextQuery],
         *,
@@ -50,6 +52,7 @@ class Plan(Protocol):
         discovery: DiscoveryResult,
         verdict: Verdict,
         visibility: Visibility = NOTHING_HELD,
+        awaiting: Mapping[int, FormDefinition] | None = None,
     ) -> Evidence: ...
 
 
@@ -81,14 +84,35 @@ def build_plan(  # noqa: PLR0913
 
     model_settings = {"temperature": temperature, "timeout": timeout_seconds}
 
-    async def plan(
+    async def plan(  # noqa: PLR0913
         turn: UserTurn[TextQuery],
         *,
         intent: Intent,
         discovery: DiscoveryResult,
         verdict: Verdict,
         visibility: Visibility = NOTHING_HELD,
+        awaiting: Mapping[int, FormDefinition] | None = None,
     ) -> Evidence:
+        awaiting = awaiting or {}
+        # A place failure is known before the run and no tool reads it, so it
+        # skips the deps. An ask with no place at all only fails when every
+        # option found for it needs one — the pack decides.
+        place_optional = place_optional_asks(
+            intent, discovery, schemas, awaiting=awaiting
+        )
+        unplaced = place_failures(intent, place_optional=place_optional)
+        # Nothing left to call when every ask is a form's: a run would only
+        # cost a model round-trip.
+        actionable = [i for i in range(len(intent.asks)) if i not in awaiting]
+        if not actionable:
+            return assemble_evidence(
+                [],
+                intent=intent,
+                direct_answers=discovery.answers,
+                failures=unplaced,
+                awaiting=awaiting,
+            )
+
         skills = prompts.get_skills(PromptIdentifier.PLANNER, turn.target_lang)
         agent = build_planner_agent(
             skills=skills,
@@ -102,7 +126,9 @@ def build_plan(  # noqa: PLR0913
                     "identity_persona": identity.persona,
                     "identity_boundaries": identity.boundaries,
                     "guidance_section": guidance_section(skills),
-                    "asks_section": asks_section(intent.asks),
+                    "asks_section": asks_section(
+                        intent.asks, awaiting=frozenset(awaiting)
+                    ),
                     "answers_section": answers_section(discovery.answers),
                 },
             ),
@@ -139,12 +165,6 @@ def build_plan(  # noqa: PLR0913
         # the answer), but log it so the model's final say is visible next to
         # the provider calls its `select` tool made.
         log_external_response("llm.planner", turn.transaction_id, body=result.output)
-        # A place failure is known before the run and no tool reads it, so it
-        # skips the deps. An ask with no place at all only fails when every
-        # option found for it needs one — the pack decides.
-        unplaced = place_failures(
-            intent, place_optional=place_optional_asks(intent, discovery, schemas)
-        )
         # Direct answers too: they need no select call, so they never land in
         # raw_answers, and leaving them out lost an ask the catalog had
         # already answered.
@@ -153,6 +173,7 @@ def build_plan(  # noqa: PLR0913
             intent=intent,
             direct_answers=discovery.answers,
             failures=[*unplaced, *deps.failures],
+            awaiting=awaiting,
         )
 
     return plan

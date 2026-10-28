@@ -21,6 +21,14 @@ from dss.ports.area_lookup import AreaMatch
 from dss.ports.prompts import PromptIdentifier
 
 
+def _scheme_for(alias: str, named: str | Scheme) -> Scheme:
+    """A bare name gets the alias as its code; a `Scheme` keeps its own."""
+
+    if isinstance(named, Scheme):
+        return named
+    return Scheme(code=alias_key(alias), name=named)
+
+
 class FakeSchemeCatalog:
     """A `SchemeCatalog` over an alias-text → scheme-name mapping.
 
@@ -29,10 +37,10 @@ class FakeSchemeCatalog:
     unmounted-catalog case.
     """
 
-    def __init__(self, schemes: dict[str, str] | None = None) -> None:
+    def __init__(self, schemes: dict[str, str | Scheme] | None = None) -> None:
         self._aliases = {
-            alias_key(alias): Scheme(code=alias_key(alias), name=name)
-            for alias, name in (schemes or {}).items()
+            alias_key(alias): _scheme_for(alias, named)
+            for alias, named in (schemes or {}).items()
         }
 
     def aliases(self):

@@ -46,6 +46,16 @@ class AnswerStream:
         self._pieces = []
         return claim
 
+    def add_block(self, block: OutputBlock) -> Claim:
+        """Raises ``ValueError`` if pieces were written and not claimed: a whole
+        block never carries streamed text."""
+
+        if self._pieces:
+            raise ValueError("pieces written but not claimed before a whole block")
+        claim = Claim(content=block)
+        self._claims.append(claim)
+        return claim
+
     def finish(self, outcome: TurnOutcome) -> TurnFinished:
         return TurnFinished(
             outcome=outcome,

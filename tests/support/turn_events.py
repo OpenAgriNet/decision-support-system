@@ -29,7 +29,9 @@ def assert_well_formed(events: Sequence[TurnEvent]) -> None:
         if isinstance(event, ClaimDelta):
             since_last_claim.append(event.text)
         elif isinstance(event, Claim):
-            assert "".join(since_last_claim) == event.content.text
+            # A block with no words, such as a form, is claimed whole.
+            expected = getattr(event.content, "text", "")
+            assert "".join(since_last_claim) == expected
             since_last_claim = []
             claimed.append(event.content)
     assert since_last_claim == [], "deltas no Claim closed"

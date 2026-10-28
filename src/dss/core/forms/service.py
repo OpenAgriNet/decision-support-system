@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Container, Mapping, Sequence
 from dataclasses import dataclass
+from uuid import uuid4
 
 import yaml
 
@@ -9,6 +10,7 @@ from dss.core.forms.models import (
     ActionField,
     ActionSchema,
     FieldSource,
+    FormBlock,
     FormContext,
     FormDefinition,
     JsonScalar,
@@ -47,6 +49,13 @@ class _SchemeKey:
 class _Registration:
     forms: tuple[FormDefinition, ...]
     skipped: tuple[SchemaPackSkipped, ...]
+
+
+def offer_form(definition: FormDefinition) -> FormBlock:
+    """A new offer each call: two offers of one form type are two forms to
+    fill in, and a submission names the offer it answers."""
+
+    return FormBlock(form_id=uuid4().hex, form=definition)
 
 
 def build_form_registry(packs: Sequence[SchemaPackFiles]) -> FormRegistry:

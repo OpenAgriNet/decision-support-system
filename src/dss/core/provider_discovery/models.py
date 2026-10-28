@@ -205,6 +205,16 @@ class DiscoveryResult:
     # construction — and an unwired deployment — stays valid.
     priorities: dict[int, AskPriority] = dataclass_field(default_factory=dict)
 
+    def serves(self, position: int) -> bool:
+        """Whether anyone was found for the ask at ``position``: a Direct
+        answer in ``answers`` or an OnDemand capability in ``capabilities``."""
+
+        return bool(self.answers.get(position) or self.capabilities.get(position))
+
+    @property
+    def serves_any_ask(self) -> bool:
+        return any(self.answers.values()) or any(self.capabilities.values())
+
 
 @dataclass(frozen=True)
 class SchemaPackSkipped:
