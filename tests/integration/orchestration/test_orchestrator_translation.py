@@ -24,12 +24,14 @@ from dss.core.planner.models import Result
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.shared.errors import TranslationError
 from dss.core.shared.language import ENGLISH, LanguageTag
+from dss.core.forms.models import FormBlock, FormContext, FormDefinition
 from dss.core.shared.models import (
     Claim,
     ClaimDelta,
     Geometry,
     Location,
     RefusalBlock,
+    TextBlock,
     TextQuery,
     TurnEvent,
     TurnFinished,
@@ -88,6 +90,42 @@ def _build_turn(
         channel="web",
         location=location,
     )
+
+
+async def test_a_form_block_passes_the_translator_whole() -> None:
+    """A form has no words: the text before it is translated, the form is
+    claimed as it is, after it."""
+
+    translator = FakeTranslator()
+    translation = EdgeTranslation(
+        routes={"gu": TranslationRoute(translator=translator, to=ENGLISH)}
+    ).for_turn(_build_turn(GUJARATI))
+    form = FormBlock(
+        form_id="8f3c",
+        form=FormDefinition(
+            context=FormContext(scheme="PMFBY", category="Grievance", action="support"),
+            fields=(),
+        ),
+    )
+    finished = TurnFinished(
+        outcome=outcome_for(TurnStatus.REQUIRES_INPUT),
+        content=(TextBlock(text="Fill in the form."), form),
+    )
+
+    async def core_events():
+        yield finished
+
+    events = [
+        event
+        async for event in translate_out(core_events(), translation, trace_id="t1")
+    ]
+
+    assert [texts for _, texts, _, _ in translator.calls] == [("Fill in the form.",)]
+    assert [claim.content for claim in _find_claims(events)] == [
+        TextBlock(text="[gu] Fill in the form."),
+        form,
+    ]
+    _assert_streamed_block_by_block(events)
 
 
 @dataclass(frozen=True)

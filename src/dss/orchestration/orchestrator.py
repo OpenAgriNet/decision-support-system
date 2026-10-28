@@ -508,10 +508,14 @@ class TextPath:
                         has_first_delta = True
                     if piece := shown.feed(text):
                         yield answer_stream.add_piece(piece)
-                case Claim(content=block, sources=sources):
+                case Claim(
+                    content=TextBlock() | RefusalBlock() as block, sources=sources
+                ):
                     if rest := shown.flush():
                         yield answer_stream.add_piece(rest)
                     yield answer_stream.claim(block, sources)
+                case Claim(content=block):
+                    yield answer_stream.add_block(block)
                 case TurnFinished():
                     self._record_finished(
                         event, ctx=ctx, farmer_turn=farmer_turn, recorder=recorder
