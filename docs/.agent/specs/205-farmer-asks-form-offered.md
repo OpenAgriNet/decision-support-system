@@ -46,7 +46,7 @@ Dependency direction: `core/forms` imports `core/shared`. Never the reverse.
 ### Deferred to task 3
 
 - Everything a submission produces or consumes: `FormSubmission` (the second `TurnInput` kind), `FieldValue`, `FieldErrorCode`, `FieldError`, `FormErrors`, `ValidSubmission`, `FormErrorBlock` and `Cause.INVALID_INPUT`. `docs/exploration/form-flow.md` holds their draft shapes.
-- History references. `FormReference` and the field on `ConversationMessage` that carries it have no reader until validation. They land with task 3, through a third shared slot, an open base on the message, so shared still never names a form.
+- History references. `FormReference` and the field on `ConversationMessage` that carries it have no reader until validation. They land with task 3, through a third shared slot, an open base on the message, so shared still never names a form. With them, the wire reads `form` and `form_error` history items as `formId`, `context`, `submissionId` and ignores `fields`.
 
 ### `core/intent/models.py`
 
@@ -108,10 +108,8 @@ Dependency direction: `core/forms` imports `core/shared`. Never the reverse.
    - [ ] Given the same ask with no provider, when the turn runs, then it is `no_match` with text only.
    - [ ] Given the same ask with a provider but no registry form, when the turn runs, then the planner runs as today.
 5. **Wire: emit the form, accept references in history**
-   - [ ] Given a form block, when the reply is JSON, then `message.content` holds `text` then `form` with camelCase fields and no `pii` key.
-   - [ ] Given a form block, when the reply is SSE, then it arrives whole in `claim.completed`, never in a delta.
-   - [ ] Given history with a `form` item carrying `fields`, when mapped, then `ConversationMessage.form` holds `formId`, `context`, `submissionId` only.
-   - [ ] Given history with a `form_error` item, when mapped, then it is a `FormReference` with its `submissionId`.
+   - [x] Given a form block, when the reply is JSON, then `message.content` holds `text` then `form` with camelCase fields and no `pii` key.
+   - [x] Given a form block, when the reply is SSE, then it arrives whole in `claim.completed`, never in a delta.
 6. **Prompts skip form references**
    - [ ] Given history with a form reference, when intent, moderation or the composer build a prompt, then the message shows as one fixed line, never field names.
 7. **Docs**

@@ -456,6 +456,28 @@ curl -X POST http://127.0.0.1:8077/v1/turns \
 Note what it is **not**: still HTTP `200`, and zero claim events before the
 terminal one. A refusal is a turn the DSS completed, not an error.
 
+## A turn that ends on a form
+
+When a served ask has a form in the registry, the reply carries the composer's
+referral and then the form, and the turn waits for the farmer:
+
+```json
+{"outcome": {"status": "requires_input", "cause": null},
+ "content": [
+   {"type": "text", "text": "Please fill in the form below for your PMFBY grievance."},
+   {"type": "form", "formId": "8f3c…",
+    "context": {"scheme": "PMFBY", "category": "Grievance", "action": "support"},
+    "fields": [{"name": "applicantMobile", "label": "Applicant mobile", "kind": "text",
+                "required": true, "pattern": "^[6-9][0-9]{9}$", "options": []}]}],
+ "sources": []}
+```
+
+On SSE the text streams as `claim.delta` frames and the form arrives whole in
+its own `claim.completed`, after the text's. A field is flat: its rules sit on
+it. `kind` is `text`, `textarea`, `select` or `secret`. Nothing about PII is
+sent. Not reachable yet on a local run: the registry lands with #133, and
+discovery does not index the Grievance pack until its follow-up.
+
 ## Poking the edges
 
 Every one of these is a test case as well as a curl.

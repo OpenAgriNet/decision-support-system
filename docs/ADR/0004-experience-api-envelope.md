@@ -127,3 +127,11 @@ components.
   intent consume for follow-up resolution.
 - `orchestration/` is the correct home: it owns composition and is the one place
   (with `adapters/`) allowed to hold boundary/framework code.
+
+## 9. Amendments
+
+- **2026-10-28.** `message.content` gains a third item type, `form`: an empty
+  form for the farmer to fill in, with `formId`, `context` and flat `fields`.
+  It is one more kind in the list the envelope already defined; the shape of
+  the envelope is unchanged. Spec:
+  `docs/.agent/specs/205-farmer-asks-form-offered.md`.
