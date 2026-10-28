@@ -20,12 +20,15 @@ from dss.core.forms.models import (
     FormErrorBlock,
     FormErrors,
     FormSubmission,
+    PiiClass,
+    ValidSubmission,
 )
 from dss.core.forms.registry import FormRegistry
 from dss.core.forms.service import (
     WITHHELD,
     build_form_registry,
     form_error_block,
+    free_text_of,
     offer_form,
     parse_api_pack,
     validate_submission,
@@ -122,6 +125,7 @@ def test_a_field_carries_the_rules_the_pack_writes_on_it() -> None:
         path="applicantMobile",
         source=FieldSource.FARMER,
         pattern="^[6-9][0-9]{9}$",
+        pii_class="contact",
     )
     assert _field(schema, "season").allowed_values == ("Kharif", "Rabi", "Zaid")
 
@@ -456,3 +460,18 @@ def test_a_pattern_python_cannot_compile_is_refused_at_parse() -> None:
 
     with pytest.raises(ValueError, match="cropYear"):
         parse_api_pack(_pack(yaml.safe_dump(attributes)))
+
+
+def test_a_field_carries_the_pii_class_the_pack_marks_it_with() -> None:
+    schema = _schema_for(_PMFBY_SUPPORT)
+
+    assert _field(schema, "grievance.description").pii_class == PiiClass.FREETEXT
+    assert _field(schema, "applicantMobile").pii_class == PiiClass.CONTACT
+    assert _field(schema, "cropYear").pii_class is None
+
+
+def test_the_free_text_of_a_submission_is_its_freetext_fields_only() -> None:
+    valid = validate_submission(_submission(_PMFBY_VALUES), _forms())
+    assert isinstance(valid, ValidSubmission)
+
+    assert free_text_of(valid) == (_PMFBY_VALUES["grievance.description"],)

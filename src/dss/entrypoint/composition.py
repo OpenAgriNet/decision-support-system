@@ -231,9 +231,11 @@ def build_runner_with_lifecycle(
     )
 
     turns = FileTurnSink(settings.turns_path)
+    telemetry = FileTelemetrySink(settings.telemetry_path)
+    moderation_llm = _moderation_llm(settings)
     text_path = TextPath(
         intent_llm=_intent_llm(settings),
-        moderation_llm=_moderation_llm(settings),
+        moderation_llm=moderation_llm,
         prompts=prompts,
         policies=policies,
         scheme_catalog=scheme_catalog,
@@ -241,7 +243,7 @@ def build_runner_with_lifecycle(
         nearest_max_km=settings.nearest_max_km,
         components=components,
         turns=turns,
-        telemetry=FileTelemetrySink(settings.telemetry_path),
+        telemetry=telemetry,
         area_lookup=area_lookup,
         clarification_text=clarification_text,
         schemas=schemas,
@@ -250,8 +252,12 @@ def build_runner_with_lifecycle(
     )
     form_path = FormPath(
         redact=redact,
+        moderation_llm=moderation_llm,
+        prompts=prompts,
+        policies=policies,
         forms=forms,
         turns=turns,
+        telemetry=telemetry,
         clarification_text=clarification_text,
         localize=components.localize,
     )

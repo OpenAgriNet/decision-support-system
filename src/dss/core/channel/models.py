@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
 from dss.core.shared.models import OutputBlock, Source
 
@@ -57,3 +57,27 @@ class ClarificationText(BaseModel):
     field_unknown: str
     # More choices than this are grouped one level up before they are listed.
     max_choices: int = Field(default=5, gt=0)
+
+    @field_validator(
+        "field_required",
+        "field_pattern",
+        "field_min_length",
+        "field_max_length",
+        "field_not_an_option",
+        "field_duplicate",
+        "field_unknown",
+    )
+    @classmethod
+    def _renders_with_the_known_placeholders(
+        cls, template: str, info: ValidationInfo
+    ) -> str:
+        """An adopter's typo stops the boot, not a farmer's submission."""
+
+        try:
+            template.format(label="", min=0, max=0)
+        except (KeyError, IndexError, ValueError) as exc:
+            allowed = "{label}, {min} and {max}"
+            raise ValueError(
+                f"{info.field_name}: only {allowed} may appear: {exc}"
+            ) from exc
+        return template

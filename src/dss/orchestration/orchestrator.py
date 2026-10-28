@@ -402,7 +402,7 @@ class TextPath:
     async def _refusal(
         self, decision: ModerationDecision, turn: UserTurn[TextQuery]
     ) -> TurnFinished:
-        outcome, refusal = _refused(decision)
+        outcome, refusal = refusal_for(decision)
         refusal = await localize_answer(refusal, self._components.localize, turn=turn)
         return build_turn_finished(outcome, refusal)
 
@@ -650,12 +650,18 @@ class TextPath:
         )
 
     def _note(self, stage: str, ctx: TurnContext, outcome: str) -> None:
-        """Telemetry is optional (`ports/sinks.py`), so losing a span must never
-        cost the farmer an answer."""
+        note_stage(self._telemetry, stage, ctx, outcome)
 
-        # An optional sink may fail any way it likes.
-        with suppress(Exception):
-            self._telemetry.stage(stage, ctx, outcome)
+
+def note_stage(
+    telemetry: TelemetrySink, stage: str, ctx: TurnContext, outcome: str
+) -> None:
+    """Telemetry is optional (`ports/sinks.py`), so losing a span must never
+    cost the farmer an answer."""
+
+    # An optional sink may fail any way it likes.
+    with suppress(Exception):
+        telemetry.stage(stage, ctx, outcome)
 
 
 def build_turn_finished(outcome: TurnOutcome, answer: ComposedAnswer) -> TurnFinished:
@@ -734,7 +740,7 @@ def _classified(intent: Intent) -> str:
     )
 
 
-def _refused(decision: ModerationDecision) -> tuple[TurnOutcome, ComposedAnswer]:
+def refusal_for(decision: ModerationDecision) -> tuple[TurnOutcome, ComposedAnswer]:
     """Turn a moderation decision into what the farmer reads.
 
     The wording comes from `core/moderation/messages.py` rather than from here —

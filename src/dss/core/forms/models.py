@@ -54,6 +54,15 @@ class FieldRules(BaseModel):
     options: tuple[Option, ...] = ()
 
 
+class PiiClass(StrEnum):
+    """The classes network-specs marks a field with (`x-oan-pii.class`)."""
+
+    CONTACT = "contact"
+    IDENTIFIER = "identifier"
+    FREETEXT = "freetext"
+    CREDENTIAL = "credential"
+
+
 class FieldDefinition(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -61,6 +70,9 @@ class FieldDefinition(BaseModel):
     label: str
     kind: FieldKind
     rules: FieldRules = FieldRules()
+    # A plain string, not `PiiClass`: a class this code does not know yet must
+    # not make the pack unreadable.
+    pii_class: str | None = None
 
 
 class FormDefinition(BaseModel):
@@ -99,6 +111,7 @@ class ActionField(BaseModel):
     pattern: str | None = None
     min_length: int | None = None
     max_length: int | None = None
+    pii_class: str | None = None
 
 
 class ActionSchema(BaseModel):
@@ -145,6 +158,7 @@ def _to_form_field(field: ActionField) -> FieldDefinition:
             max_length=field.max_length,
             options=tuple(_option_for(value) for value in field.allowed_values),
         ),
+        pii_class=field.pii_class,
     )
 
 

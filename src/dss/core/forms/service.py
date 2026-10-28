@@ -26,6 +26,7 @@ from dss.core.forms.models import (
     FormErrors,
     FormSubmission,
     JsonScalar,
+    PiiClass,
     ValidSubmission,
 )
 from dss.core.forms.registry import FormLookup, FormRegistry
@@ -39,6 +40,7 @@ _ACTION_MAP = "x-oan-schema-by-action"
 _CATALOG_ACTION = "catalog/publish"
 _SCHEME_PATH = "scheme.code"
 _PROVIDER_PREFIX = "provider."
+_PII_MARK = "x-oan-pii"
 # The DSS cannot run this OTP step yet, so a scheme that needs it is not served.
 _OTP_CHALLENGE_ACTION = "init"
 
@@ -245,6 +247,7 @@ def _read_field(path: str, definition: dict) -> ActionField:
         pattern=_python_pattern(path, definition.get("pattern")),
         min_length=definition.get("minLength"),
         max_length=definition.get("maxLength"),
+        pii_class=definition.get(_PII_MARK, {}).get("class"),
     )
 
 
@@ -391,9 +394,20 @@ def _first_broken_rule(field: FieldDefinition, value: str | None) -> FieldError 
     )
 
 
-# What the audit record and the trace hold in place of a farmer's value:
-# field tagging by the pack's PII mark is its own story, so until then no
-# value leaves the turn except inside the provider call.
+def free_text_of(valid: ValidSubmission) -> tuple[str, ...]:
+    """What a farmer wrote in prose, in field order: the part of a form that
+    is moderated like a question."""
+
+    return tuple(
+        valid.values[field.name]
+        for field in valid.definition.fields
+        if field.pii_class == PiiClass.FREETEXT and field.name in valid.values
+    )
+
+
+# What the audit record and the trace hold in place of a farmer's value.
+# Values are withheld, not tagged: tagging a form by the pack's PII mark is
+# its own story. Only the free text is tagged, and only to be moderated.
 WITHHELD = "[withheld]"
 
 
