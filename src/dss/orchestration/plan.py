@@ -96,10 +96,9 @@ def build_plan(  # noqa: PLR0913
         awaiting = awaiting or {}
         # A place failure is known before the run and no tool reads it, so it
         # skips the deps. An ask with no place at all only fails when every
-        # option found for it needs one — the pack decides. An ask a form
-        # answers needs none: the form carries what its call needs.
-        place_optional = place_optional_asks(intent, discovery, schemas) | frozenset(
-            awaiting
+        # option found for it needs one — the pack decides.
+        place_optional = place_optional_asks(
+            intent, discovery, schemas, awaiting=awaiting
         )
         unplaced = place_failures(intent, place_optional=place_optional)
         # Nothing left to call when every ask is a form's: a run would only

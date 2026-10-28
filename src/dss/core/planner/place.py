@@ -9,7 +9,7 @@ here, over discovery, not at intent time.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 
 from dss.core.intent.models import Intent
 from dss.core.planner.validation import DomainSchema
@@ -20,12 +20,16 @@ def place_optional_asks(
     intent: Intent,
     discovery: DiscoveryResult,
     schemas: Mapping[str, DomainSchema],
+    *,
+    awaiting: Collection[int] = frozenset(),
 ) -> frozenset[int]:
     """The indexes of the asks that name no place and are not failed for it:
     some option discovered for them comes from a pack that needs none, or no
     option was found at all. The second is not a place failure — nobody
     serves the ask, and a place would not change that — so it ends as
-    unserved rather than as a question the farmer's reply cannot finish."""
+    unserved rather than as a question the farmer's reply cannot finish.
+    An ask in ``awaiting`` needs none either: its form carries what its call
+    needs."""
 
     optional: set[int] = set()
     for index, ask in enumerate(intent.asks):
@@ -39,7 +43,7 @@ def place_optional_asks(
             _needs_no_place(option.capability, schemas) for option in options
         ):
             optional.add(index)
-    return frozenset(optional)
+    return frozenset(optional) | frozenset(awaiting)
 
 
 def _needs_no_place(schema_type: str, schemas: Mapping[str, DomainSchema]) -> bool:

@@ -393,8 +393,8 @@ class TextPath:
         # place, the form carries what its call needs.
         awaiting = find_forms(result.intent, result.discovery, self._forms)
         place_optional = place_optional_asks(
-            result.intent, result.discovery, self._schemas
-        ) | frozenset(awaiting)
+            result.intent, result.discovery, self._schemas, awaiting=awaiting
+        )
         clarification = answer_for_unplaced_asks(
             result.intent.asks,
             self._clarification_text,
