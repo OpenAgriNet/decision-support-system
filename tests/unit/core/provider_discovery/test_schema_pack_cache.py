@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
 from dss.core.provider_discovery import schema_pack_cache
 from dss.core.provider_discovery.models import SchemaPackFiles, SchemaPackSkipped
 from dss.core.provider_discovery.schema_pack_cache import SchemaPackCache
+from dss.core.provider_discovery.service import resolve_capability_type
 
 MANDI_PRICE_ATTRIBUTES = """
 components:
@@ -201,3 +205,39 @@ async def test_refresh_also_populates_the_schema_context_index() -> None:
         cache.current_schema_context()["openagrinet:MandiPrice"]
         == "https://schemas.openagrinet.global/schema/MandiPrice/v0.1/context.jsonld"
     )
+
+
+GRIEVANCE_PACK = SchemaPackFiles(
+    pack_name="Grievance",
+    version="v0.1",
+    profile_json=json.dumps(
+        {"semantic_model": "provider-api", "interaction_type": "Transact"}
+    ),
+    attributes_yaml=(
+        Path(__file__).parents[3]
+        / "fixtures"
+        / "api_packs"
+        / "grievance_attributes.yaml"
+    ).read_text(encoding="utf-8"),
+    examples_json=(),
+)
+
+
+async def test_an_api_pack_enters_both_indexes_beside_the_catalog_packs() -> None:
+    catalog_only = SchemaPackCache(_FakeSource(packs=(MANDI_PRICE_PACK,)))
+    await catalog_only.refresh()
+    cache = SchemaPackCache(_FakeSource(packs=(MANDI_PRICE_PACK, GRIEVANCE_PACK)))
+
+    await cache.refresh()
+
+    assert resolve_capability_type("Grievance", "Service", cache.current()) == (
+        ("openagrinet:Grievance",),
+        None,
+    )
+    assert resolve_capability_type("Grievance", "Knowledge", cache.current())[0] == ()
+    assert cache.current_schema_context()["openagrinet:Grievance"] == (
+        "https://openagrinet.github.io/network-specs/api-schemas/Grievance/v0.1/context.jsonld"
+    )
+    assert cache.skipped_packs() == ()
+    catalog_keys = catalog_only.current().keys()
+    assert {key: cache.current()[key] for key in catalog_keys} == catalog_only.current()
