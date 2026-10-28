@@ -230,7 +230,7 @@ curl -s -X POST http://127.0.0.1:8077/v1/turns \
   | python3 -m json.tool --no-ensure-ascii
 ```
 
-The mock serves three capabilities, and which one answers is decided by the
+The mock answers three capabilities, and which one answers is decided by the
 question — intent picks a subject category, discovery resolves that to a
 `@type`, and the mock keys its scenarios off that. So the same running pair
 answers either, with no restart:
@@ -240,6 +240,10 @@ answers either, with no restart:
 | `answered_streaming.json` | `openagrinet:MandiPrice` | potato prices at Mumbai APMC |
 | `answered_weather.json` | `openagrinet:WeatherObservation` | a forecast for Nashik's point, all 8 parameters |
 | `answered_advisory.json` | `openagrinet:KnowledgeAdvisory` | the set's cotton answer (weed control), matched on "cotton" |
+
+A grievance question finds the PMFBY and PM-KISAN desks, then fails at
+`/select` with a 400. That is by design: the mock lists the desks but files
+nothing yet.
 
 A question intent classifies into a category the mock does not serve comes
 back `no_match` — which is the honest answer, and worth telling apart from a
