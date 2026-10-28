@@ -27,17 +27,17 @@ _API_HOST = "https://api.github.com"
 # lookup, not a constant.
 _VERSION = "v0.1"
 
-# The ref that actually carries packs today. `main` holds only a README, so a
-# failure quotes this to say where to look — see `raise_for_empty`. The only
-# ref with the API packs (Grievance) as well; its catalog packs match
-# `schema-packs-v0.1` byte for byte.
-PUBLISHED_REF = "api-schema-packs-v0.1"
+# The ref every fetch reads unless told otherwise: it carries the catalog packs
+# and the API packs (Grievance) in one `schema/` folder. A failure on a ref with
+# no packs quotes this one — see `raise_for_empty`.
+PUBLISHED_REF = "schema-packs-v0.1"
 
-# `main` is where the packs are expected to land, so that is what we track —
-# even though it carries only a README today and a default run therefore
-# fails. Failing loudly with the right ref named beats silently reading a
-# pinned branch nobody chose.
-DEFAULT_REF = "main"
+# Every download error reads as "not there", so nothing on the published ref
+# means the fetch could not reach it, not that the packs are missing.
+_UNREACHABLE_HINT = (
+    " Check that raw.githubusercontent.com is reachable, set GITHUB_TOKEN if"
+    " rate-limited, and check the ref still exists on network-specs."
+)
 
 # Where the packs go. Anchored to this file, not the working directory: the
 # service is started with `uvicorn --factory` from wherever the operator
@@ -246,15 +246,15 @@ def raise_for_empty(*, fetched: tuple[str, ...], ref: str) -> None:
 
     Zero packs means the DSS cannot route to anything, so reporting success
     would move the failure to boot time and describe it as missing packs
-    rather than an empty ref. The ref is the usual cause — the default one has
-    only a README on it — so the message names it and says where to look.
+    rather than an empty ref. The message names the ref and says where to look:
+    the published ref when another was tried, the network when it was not.
     """
 
     if fetched:
         return
 
     hint = (
-        ""
+        _UNREACHABLE_HINT
         if ref == PUBLISHED_REF
         else (
             f" The published packs are on {PUBLISHED_REF!r} — "

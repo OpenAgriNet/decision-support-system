@@ -14,11 +14,12 @@
   up (#205)
 
 ### Changed
-- Schema packs are fetched from `api-schema-packs-v0.1`, which adds the
-  `Grievance` API pack to the same catalog packs. API and catalog packs share
-  one folder; each pack's `profile.json` says which it is. A `var/schema-packs/`
-  fetched earlier has no `Grievance`, so it offers no forms: delete it and
-  fetch again (#205)
+- Schema packs are fetched from `schema-packs-v0.1` by default, everywhere:
+  the fetch script, the app's startup fetch, Docker compose and
+  `run-local.sh`. That ref now carries the `Grievance` API pack beside the
+  catalog packs. API and catalog packs share one folder; each pack's
+  `profile.json` says which it is. A `var/schema-packs/` fetched earlier has
+  no `Grievance`, so it offers no forms: delete it and fetch again (#205)
 
 ### Added
 - Provider rankings live in the network registry, never in the DSS. Set

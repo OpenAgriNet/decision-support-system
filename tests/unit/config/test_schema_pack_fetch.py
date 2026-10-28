@@ -11,6 +11,7 @@ import pytest
 
 from dss.config.schema_pack_fetch import (
     PACKS,
+    PUBLISHED_REF,
     SchemaPackFetchFailedError,
     examples_api_url,
     raise_for_empty,
@@ -53,10 +54,9 @@ def test_the_examples_url_carries_the_ref_as_a_query_parameter() -> None:
 def test_a_ref_with_no_packs_fails_and_names_the_ref() -> None:
     """Zero packs is a failure, not an empty success.
 
-    This is the common case, not an edge one: the default ref carries only a
-    README, so a run that passes no `--ref` lands here. The message has to say
-    which ref was tried and where the packs actually are, or it reads as a bug
-    in the fetch rather than a ref that has nothing on it.
+    `main` carries only a README, so a run pointed at it lands here. The
+    message has to say which ref was tried and where the packs actually are,
+    or it reads as a bug in the fetch rather than a ref that has nothing on it.
     """
 
     with pytest.raises(SchemaPackFetchFailedError) as caught:
@@ -65,4 +65,17 @@ def test_a_ref_with_no_packs_fails_and_names_the_ref() -> None:
     message = str(caught.value)
     assert "main" in message  # which ref was tried
     assert f"0 of {len(PACKS)}" in message  # how much was found
-    assert "--ref api-schema-packs-v0.1" in message  # where the packs are
+    assert "--ref schema-packs-v0.1" in message  # where the packs are
+
+
+def test_nothing_on_the_published_ref_says_what_to_check() -> None:
+    """Every fetch error reads as "not there", so an empty published ref is
+    usually no network, a rate limit, or the ref deleted upstream."""
+
+    with pytest.raises(SchemaPackFetchFailedError) as caught:
+        raise_for_empty(fetched=(), ref=PUBLISHED_REF)
+
+    message = str(caught.value)
+    assert "raw.githubusercontent.com" in message
+    assert "GITHUB_TOKEN" in message
+    assert "still exists" in message

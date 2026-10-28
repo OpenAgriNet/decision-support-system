@@ -9,7 +9,8 @@ from dss.core.forms.models import ActionField, ActionSchema, FieldSource, FormCo
 from dss.core.forms.service import parse_api_pack
 from dss.core.provider_discovery.models import SchemaPackFiles
 
-# The Grievance pack at network-specs `api-schema-packs-v0.1`, untrimmed.
+# The Grievance pack, untrimmed, as network-specs first published it. It lives on
+# `schema-packs-v0.1` now; its URLs here still say `api-schemas/`.
 _GRIEVANCE_YAML = (
     Path(__file__).parents[3] / "fixtures" / "api_packs" / "grievance_attributes.yaml"
 ).read_text(encoding="utf-8")
