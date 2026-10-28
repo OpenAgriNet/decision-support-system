@@ -13,6 +13,14 @@ import pytest
 from fastapi.testclient import TestClient
 
 from dss.config.settings import Settings
+from dss.core.forms.models import (
+    FieldDefinition,
+    FieldKind,
+    FieldRules,
+    FormBlock,
+    FormContext,
+    FormDefinition,
+)
 from dss.core.shared.models import (
     Claim,
     ClaimDelta,
@@ -40,6 +48,34 @@ EVENTS = [
     *[ClaimDelta(text=text) for text in DELTAS],
     Claim(content=ANSWER.content[0]),
     ANSWER,
+]
+
+GRIEVANCE_FORM = FormBlock(
+    form_id="8f3c",
+    form=FormDefinition(
+        context=FormContext(scheme="PMFBY", category="Grievance", action="support"),
+        fields=(
+            FieldDefinition(
+                name="applicantMobile",
+                label="Applicant mobile",
+                kind=FieldKind.TEXT,
+                rules=FieldRules(required=True),
+            ),
+        ),
+    ),
+)
+REFERRAL = TextBlock(text="Please fill in the form below.", source_ids=())
+FORM_OFFERED = TurnFinished(
+    outcome=TurnOutcome(status=TurnStatus.REQUIRES_INPUT, confidence=80),
+    content=(REFERRAL, GRIEVANCE_FORM),
+)
+FORM_EVENTS = [
+    TurnStarted(),
+    ClaimDelta(text="Please fill in "),
+    ClaimDelta(text="the form below."),
+    Claim(content=REFERRAL),
+    Claim(content=GRIEVANCE_FORM),
+    FORM_OFFERED,
 ]
 
 
@@ -321,3 +357,45 @@ def test_a_fault_in_json_mode_is_still_a_two_hundred(a_body):
 
     assert response.status_code == 200
     assert response.json()["message"]["outcome"]["status"] == "unavailable"
+
+
+def test_a_form_arrives_whole_in_its_own_completed_claim(a_body):
+    app, _ = client(FakeRunner(FORM_EVENTS))
+
+    sent = frames(app.post("/v1/turns", json=a_body(), headers={"Accept": SSE}).text)
+
+    assert [name for name, _ in sent] == [
+        "turn.created",
+        "claim.delta",
+        "claim.delta",
+        "claim.completed",
+        "claim.completed",
+        "turn.completed",
+    ]
+    claimed = [
+        f["message"]["content"][0]["type"] for n, f in sent if n == "claim.completed"
+    ]
+    assert claimed == ["text", "form"]
+    assert all(
+        f["message"]["content"][0]["type"] != "form"
+        for n, f in sent
+        if n == "claim.delta"
+    )
+
+
+def test_a_json_turn_carries_the_text_then_the_form(a_body):
+    streaming, _ = client(FakeRunner(FORM_EVENTS))
+    plain, _ = client(FakeRunner(FORM_EVENTS))
+
+    stream = streaming.post("/v1/turns", json=a_body(), headers={"Accept": SSE})
+    single = plain.post("/v1/turns", json=a_body(), headers={"Accept": JSON})
+
+    body = single.json()["message"]
+    assert body["outcome"] == {
+        "status": "requires_input",
+        "confidence": 80,
+        "cause": None,
+    }
+    assert [b["type"] for b in body["content"]] == ["text", "form"]
+    assert body["content"][1]["formId"] == "8f3c"
+    assert frames(stream.text)[-1][1]["message"] == body

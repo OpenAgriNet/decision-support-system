@@ -20,6 +20,7 @@ Do not duplicate architecture, domain model, or design-decision detail here — 
 - HTTP framework: FastAPI on uvicorn (ADR-0006). One route, `POST /v1/turns`;
   `Accept` selects a single JSON body or the SSE stream. The composer always
   streams (ADR-0011) — SSE frames its pieces as `claim.delta`, JSON drains them.
+  A form is a `form` content item, sent whole.
 - Async concurrency: anyio
 - Dependency injection: Pydantic
 - Package manager: uv

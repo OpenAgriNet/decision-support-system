@@ -7,6 +7,7 @@ from datetime import datetime
 from uuid import uuid4
 
 from dss.adapters.http.v1 import schema
+from dss.core.forms.models import FieldDefinition, FormBlock
 from dss.core.shared.language import LanguageTag
 from dss.core.shared.models import (
     Cause,
@@ -246,7 +247,7 @@ def _error(outcome: TurnOutcome) -> schema.TurnError | None:
 
 def _block(
     content: OutputBlock, sources: Sequence[Source]
-) -> schema.OutputText | schema.OutputRefusal:
+) -> schema.OutputText | schema.OutputRefusal | schema.OutputForm:
     match content:
         case RefusalBlock():
             return schema.OutputRefusal(text=content.text)
@@ -254,8 +255,37 @@ def _block(
             return schema.OutputText(
                 text=content.text, annotations=_annotations(content, sources)
             )
-    # TODO(#205): the form block gets its wire shape with the form step.
+        case FormBlock():
+            return _form(content)
     raise TypeError(f"no wire shape for a {type(content).__name__}")
+
+
+def _form(block: FormBlock) -> schema.OutputForm:
+    context = block.form.context
+    return schema.OutputForm(
+        form_id=block.form_id,
+        context=schema.OutputFormContext(
+            scheme=context.scheme, category=context.category, action=context.action
+        ),
+        fields=[_form_field(field) for field in block.form.fields],
+    )
+
+
+def _form_field(field: FieldDefinition) -> schema.OutputFormField:
+    rules = field.rules
+    return schema.OutputFormField(
+        name=field.name,
+        label=field.label,
+        kind=field.kind.value,
+        required=rules.required,
+        pattern=rules.pattern,
+        min_length=rules.min_length,
+        max_length=rules.max_length,
+        options=[
+            schema.OutputFormOption(value=option.value, label=option.label)
+            for option in rules.options
+        ],
+    )
 
 
 def _annotations(
