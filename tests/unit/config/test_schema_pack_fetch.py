@@ -65,4 +65,4 @@ def test_a_ref_with_no_packs_fails_and_names_the_ref() -> None:
     message = str(caught.value)
     assert "main" in message  # which ref was tried
     assert f"0 of {len(PACKS)}" in message  # how much was found
-    assert "schema-packs-v0.1" in message  # where the packs are
+    assert "--ref api-schema-packs-v0.1" in message  # where the packs are

@@ -1,6 +1,6 @@
 """Download the network-specs schema packs the DSS routes against.
 
-    uv run python scripts/fetch_schema_packs.py --ref schema-packs-v0.1
+    uv run python scripts/fetch_schema_packs.py --ref api-schema-packs-v0.1
 
 The packs live in a separate repo and nothing clones them, so a fresh checkout
 has none — and with the network enabled but no packs, the DSS refuses to boot

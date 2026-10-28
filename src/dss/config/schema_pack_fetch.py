@@ -2,7 +2,7 @@
 
 The packs are an external checkout: they live in the `OpenAgriNet/network-specs`
 repo, not this one, and nothing clones them. This module pulls the ones the DSS
-routes against onto disk, where `FilesystemSchemaPackSource` reads them.
+reads onto disk, where `FilesystemSchemaPackSource` reads them.
 
 `urllib.request` rather than `httpx2`, deliberately: this runs before the app
 is built — and from `scripts/fetch_schema_packs.py`, which a fresh clone may
@@ -28,8 +28,10 @@ _API_HOST = "https://api.github.com"
 _VERSION = "v0.1"
 
 # The ref that actually carries packs today. `main` holds only a README, so a
-# failure quotes this to say where to look — see `raise_for_empty`.
-_PUBLISHED_REF = "schema-packs-v0.1"
+# failure quotes this to say where to look — see `raise_for_empty`. The only
+# ref with the API packs (Grievance) as well; its catalog packs match
+# `schema-packs-v0.1` byte for byte.
+PUBLISHED_REF = "api-schema-packs-v0.1"
 
 # `main` is where the packs are expected to land, so that is what we track —
 # even though it carries only a README today and a default run therefore
@@ -47,24 +49,21 @@ DEFAULT_REF = "main"
 # `var/` — a deployment sets DSS_SCHEMA_PACK_DIR to a mounted path instead.
 DEFAULT_PACK_DIR = Path(__file__).parents[3] / "var" / "schema-packs"
 
-# The packs the DSS routes against.
+# The packs the DSS reads.
 #
-# AgricultureResource is not routed to directly — the other three `$ref` it
+# AgricultureResource is not routed to directly — the other catalog packs `$ref` it
 # with a relative path (`../../AgricultureResource/v0.1/attributes.yaml`), so
 # it has to be on disk beside them. Nothing resolves those refs today
 # (`yaml.safe_load` treats `$ref` as a plain string key), so it looks unused;
 # it is not. Do not drop it.
-#
-# AgricultureFacility is left out on purpose: none of its examples declares
-# `subjectCategories`, which `provider_discovery.index` reads unguarded, so the
-# pack is skipped as defective and never reaches the capability index. See
-# TODO.md.
 PACKS = (
     "AgricultureResource",
     "MandiPrice",
     "WeatherObservation",
     "KnowledgeAdvisory",
     "AgricultureFacility",
+    # An API pack: forms are built from it (#205). Its `profile.json` says so.
+    "Grievance",
 )
 
 # What the loader needs. Absent either, the pack is not on this ref.
@@ -256,10 +255,10 @@ def raise_for_empty(*, fetched: tuple[str, ...], ref: str) -> None:
 
     hint = (
         ""
-        if ref == _PUBLISHED_REF
+        if ref == PUBLISHED_REF
         else (
-            f" The published packs are on {_PUBLISHED_REF!r} — "
-            f"re-run with --ref {_PUBLISHED_REF}."
+            f" The published packs are on {PUBLISHED_REF!r} — "
+            f"re-run with --ref {PUBLISHED_REF}."
         )
     )
     raise SchemaPackFetchFailedError(

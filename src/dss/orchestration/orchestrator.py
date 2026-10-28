@@ -274,6 +274,8 @@ class TextPath:
         # thing only: whether a pack serves an ask that names no place.
         self._schemas = schemas
         self._edge_translation = edge_translation
+        # Required: no packs is an empty registry, so a default would make a
+        # wiring mistake look like a deployment that serves no forms.
         self._forms = forms
 
     async def run(

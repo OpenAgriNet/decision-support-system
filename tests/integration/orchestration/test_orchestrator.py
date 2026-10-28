@@ -16,7 +16,7 @@ from dss.adapters.sinks.memory import MemoryTurnSink
 from dss.config.clarification_text_loader import load_clarification_text
 from dss.core.channel.service import NO_MATCH_TEXT
 from dss.core.forms.models import FormBlock, FormContext, FormDefinition
-from dss.core.forms.registry import FormLookup, NoForms
+from dss.core.forms.registry import FormLookup, FormRegistry
 from dss.core.intent.models import (
     ClassifiedAsk,
     IntentClassification,
@@ -300,7 +300,7 @@ def _build(
         area_lookup=area_lookup or FakeAreaLookup({"pune": [_PUNE_MATCH]}),
         clarification_text=load_clarification_text(),
         edge_translation=edge_translation or EdgeTranslation(routes={}),
-        forms=forms or NoForms(),
+        forms=forms or FormRegistry(),
     )
     return Orchestrator(paths={TextQuery: text_path}), turns
 

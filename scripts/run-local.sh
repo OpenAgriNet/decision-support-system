@@ -23,7 +23,7 @@ MOCK_PORT="${MOCK_PORT:-8078}"
 LANGFUSE_PORT="${LANGFUSE_PORT:-3000}"
 OTEL_PORT="${OTEL_PORT:-4318}"
 COLLECTOR="${COLLECTOR:-dss-otel-collector}"
-SCHEMA_PACK_REF="${SCHEMA_PACK_REF:-schema-packs-v0.1}"
+SCHEMA_PACK_REF="${SCHEMA_PACK_REF:-api-schema-packs-v0.1}"
 COMPOSE_PROJECT="${COMPOSE_PROJECT:-decision-support-system}"
 ENV_LOCAL="${ENV_LOCAL:-.env.local}"
 
