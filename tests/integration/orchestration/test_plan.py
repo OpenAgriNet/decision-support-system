@@ -7,6 +7,8 @@ discarded — the composer writes the answer from ``Evidence``.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 from pydantic_ai.messages import (
     ModelMessage,
@@ -18,6 +20,7 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
+from dss.core.forms.models import FormContext, FormDefinition
 from dss.core.intent.models import (
     Ask,
     Intent,
@@ -70,6 +73,15 @@ PRICE_ASK = Ask(
     agriculture_subjects="paddy",
     subject_categories=SubjectCategory.MARKET,
     interaction_type=InteractionType.OBSERVE,
+)
+GRIEVANCE_ASK = Ask(
+    agriculture_subjects="PMFBY",
+    subject_categories=SubjectCategory.GRIEVANCE,
+    interaction_type=InteractionType.ACT,
+)
+GRIEVANCE_FORM = FormDefinition(
+    context=FormContext(scheme="PMFBY", category="Grievance", action="support"),
+    fields=(),
 )
 
 
@@ -270,6 +282,92 @@ async def test_a_direct_answer_reaches_the_evidence_through_plan() -> None:
     assert [source.name for source in evidence.sources] == ["Krishi Knowledge Base"]
     [served] = evidence.ask_evidences
     assert served.results[0].data == {"soilType": "sandy loam"}
+
+
+def _must_not_run(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+    raise AssertionError("the agent ran with nothing to call")
+
+
+async def test_a_turn_with_only_form_asks_never_runs_the_agent() -> None:
+    """Nothing is left to call, so a model round-trip would only cost time.
+    The form still reaches the evidence."""
+
+    plan = build_plan(
+        schemas=SCHEMAS,
+        schema_context_index={},
+        invocation=_FakeInvocation(),
+        identity=IDENTITY,
+        prompts=FakePromptProvider(skills=(SKILL,)),
+        model=FunctionModel(_must_not_run),
+    )
+
+    evidence = await plan(
+        _turn(),
+        intent=Intent(asks=(GRIEVANCE_ASK,), confidence=0.9),
+        discovery=DiscoveryResult(
+            answers={}, capabilities={0: (CAPABILITY,)}, failures={}, events=()
+        ),
+        verdict=_cleared_verdict(),
+        awaiting={0: GRIEVANCE_FORM},
+    )
+
+    assert evidence.awaiting_forms == (GRIEVANCE_FORM,)
+    assert evidence.unserved_asks == ()
+
+
+def _calls_select_for_ask_0_then_answers(
+    messages: list[ModelMessage], info: AgentInfo
+) -> ModelResponse:
+    if len(messages) == 1:
+        return ModelResponse(
+            parts=[
+                ToolCallPart(
+                    tool_name="select",
+                    args={
+                        "ask_index": 0,
+                        "resource_id": CAPABILITY.resource_id,
+                        "resource_attributes": {},
+                    },
+                )
+            ]
+        )
+    return ModelResponse(parts=[TextPart(content="done")])
+
+
+async def test_a_model_that_still_selects_for_a_form_ask_reaches_no_provider() -> None:
+    """The ask line says "awaits a form"; a model that calls anyway finds no
+    schema it may call, because the Grievance pack is not one select serves.
+    The farmer's form is not lost over it."""
+
+    invocation = _FakeInvocation()
+    grievance_desk = replace(
+        CAPABILITY, capability="openagrinet:Grievance", observed_categories=()
+    )
+    plan = build_plan(
+        schemas=SCHEMAS,
+        schema_context_index={},
+        invocation=invocation,
+        identity=IDENTITY,
+        prompts=FakePromptProvider(skills=(SKILL,)),
+        model=FunctionModel(_calls_select_for_ask_0_then_answers),
+    )
+
+    evidence = await plan(
+        _turn(),
+        intent=Intent(asks=(GRIEVANCE_ASK, PRICE_ASK), confidence=0.9),
+        discovery=DiscoveryResult(
+            answers={},
+            capabilities={0: (grievance_desk,), 1: (CAPABILITY,)},
+            failures={},
+            events=(),
+        ),
+        verdict=_cleared_verdict(),
+        awaiting={0: GRIEVANCE_FORM},
+    )
+
+    assert invocation.calls == []
+    assert evidence.awaiting_forms == (GRIEVANCE_FORM,)
+    assert evidence.ask_evidences[0].failures == ()
 
 
 async def test_an_ask_whose_place_failed_is_a_failure_even_if_never_called() -> None:

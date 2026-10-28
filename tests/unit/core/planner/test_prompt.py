@@ -112,6 +112,20 @@ def test_asks_section_lists_each_ask() -> None:
     assert "ask 0: Weather (observe)" in asks_section((ask,))
 
 
+def test_an_ask_awaiting_a_form_is_marked() -> None:
+    """The form step settled that ask before the planner ran; the model must
+    know not to call a provider for it."""
+
+    ask = Ask(
+        subject_categories=SubjectCategory.GRIEVANCE,
+        interaction_type=InteractionType.ACT,
+    )
+
+    section = asks_section((ask,), awaiting=frozenset({0}))
+
+    assert "ask 0: Grievance (act), awaits a form" in section
+
+
 def test_no_asks_leaves_no_section() -> None:
     """Same reason as the "Already known" section: an empty heading reads as
     a gap to fill."""
