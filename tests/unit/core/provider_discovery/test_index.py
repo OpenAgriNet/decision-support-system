@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from dss.core.provider_discovery.index import (
+    PACK_DEFECTS,
     build_capability_index,
     build_schema_context_index,
+    is_api_pack,
 )
 from dss.core.provider_discovery.models import SchemaPackFiles
 
@@ -211,3 +215,39 @@ def test_schema_context_index_maps_a_type_to_the_url_the_pack_declares() -> None
     assert index["openagrinet:MandiPrice"] == (
         "https://schemas.openagrinet.global/schema/MandiPrice/v0.1/context.jsonld"
     )
+
+
+def _pack_with_profile(profile_json: str) -> SchemaPackFiles:
+    return SchemaPackFiles(
+        pack_name="Sample",
+        version="v0.1",
+        profile_json=profile_json,
+        attributes_yaml=MANDI_PRICE_ATTRIBUTES,
+        examples_json=(MANDI_PRICE_EXAMPLE,),
+    )
+
+
+@pytest.mark.parametrize(
+    ("profile_json", "expected"),
+    [
+        pytest.param('{"semantic_model": "provider-api"}', True, id="provider-api"),
+        pytest.param('{"semantic_model": "generalised"}', False, id="generalised"),
+        pytest.param("{}", False, id="no semantic_model"),
+    ],
+)
+def test_only_a_provider_api_profile_marks_an_api_pack(
+    profile_json: str, expected: bool
+) -> None:
+    assert is_api_pack(_pack_with_profile(profile_json)) is expected
+
+
+@pytest.mark.parametrize(
+    "profile_json",
+    [
+        pytest.param("{not json", id="unreadable profile"),
+        pytest.param("[]", id="not an object"),
+    ],
+)
+def test_a_profile_that_cannot_be_read_is_a_pack_defect(profile_json: str) -> None:
+    with pytest.raises(PACK_DEFECTS):
+        is_api_pack(_pack_with_profile(profile_json))

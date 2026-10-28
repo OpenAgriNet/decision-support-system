@@ -77,7 +77,11 @@ from dss.core.forms.service import build_form_registry
 from dss.core.intent.models import Intent
 from dss.core.planner.validation import DomainSchema, parse_domain_schema
 from dss.core.policy.models import Checkpoint
-from dss.core.provider_discovery.index import PACK_DEFECTS, extract_type_const
+from dss.core.provider_discovery.index import (
+    PACK_DEFECTS,
+    extract_type_const,
+    is_api_pack,
+)
 from dss.core.provider_discovery.models import (
     DiscoveryResult,
     ProviderCapability,
@@ -601,11 +605,15 @@ def _planner_schemas(packs: tuple[SchemaPackFiles, ...]) -> dict[str, DomainSche
     treats a malformed pack this way (`PACK_DEFECTS`), because network-specs
     is an external checkout and one bad pack must not blind every other
     capability. `extract_type_const` is the same reader that builds the
-    capability index, so the two never disagree on what a pack's @type is."""
+    capability index, so the two never disagree on what a pack's @type is.
+
+    An API pack is left out: its calls become forms, not filters to check."""
 
     schemas: dict[str, DomainSchema] = {}
     for pack in packs:
         try:
+            if is_api_pack(pack):
+                continue
             schema = parse_domain_schema(pack)
             type_const = extract_type_const(pack.attributes_yaml, pack.pack_name)
         except PACK_DEFECTS as exc:

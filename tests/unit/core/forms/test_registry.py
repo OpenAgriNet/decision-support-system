@@ -166,7 +166,6 @@ def test_a_catalog_pack_beside_the_api_packs_is_not_a_form_source() -> None:
 @pytest.mark.parametrize(
     "profile_json",
     [
-        pytest.param("{}", id="no semantic_model"),
         pytest.param("{not json", id="unreadable profile"),
         pytest.param("[]", id="not an object"),
     ],

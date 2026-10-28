@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from collections.abc import Container, Mapping, Sequence
 from dataclasses import dataclass
 
@@ -15,12 +14,10 @@ from dss.core.forms.models import (
     JsonScalar,
 )
 from dss.core.forms.registry import FormRegistry
-from dss.core.provider_discovery.index import PACK_DEFECTS
+from dss.core.provider_discovery.index import PACK_DEFECTS, is_api_pack
 from dss.core.provider_discovery.models import SchemaPackFiles, SchemaPackSkipped
 from dss.core.shared.schema import resolve_schema
 
-# Catalog and API packs share one folder; `profile.json` names the kind.
-_API_PACK_MODEL = "provider-api"
 _ACTION_MAP = "x-oan-schema-by-action"
 # A desk's catalog entry. Discovery reads it; nobody fills it in.
 _CATALOG_ACTION = "catalog/publish"
@@ -74,15 +71,11 @@ def _parse_api_pack_or_skip(
     """None for a catalog pack: nothing is wrong with it, it holds no form."""
 
     try:
-        if not _is_api_pack(pack):
+        if not is_api_pack(pack):
             return None
         return _ParsedPack(pack.pack_name, parse_api_pack(pack))
     except PACK_DEFECTS as exc:
         return SchemaPackSkipped(pack.pack_name, f"{type(exc).__name__}: {exc}")
-
-
-def _is_api_pack(pack: SchemaPackFiles) -> bool:
-    return json.loads(pack.profile_json)["semantic_model"] == _API_PACK_MODEL
 
 
 def _schemes_needing_a_challenge(
