@@ -9,6 +9,9 @@
   left out until the DSS can run it. Offering the forms in a conversation
   comes next. A missing or broken API pack never stops the boot; the log says
   which forms were left out (#205)
+- A grievance ask now finds the network's grievance desks: the Grievance pack
+  is indexed under its own name, for asks to file a grievance or follow one
+  up (#205)
 
 ### Changed
 - Schema packs are fetched from `api-schema-packs-v0.1`, which adds the
