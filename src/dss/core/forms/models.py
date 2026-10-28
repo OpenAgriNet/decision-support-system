@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Mapping
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict
 
-from dss.core.shared.models import OutputBlock
+from dss.core.shared.models import OutputBlock, TurnInput
 
 
 class FormContext(BaseModel):
@@ -179,3 +180,72 @@ class FormBlock(OutputBlock):
 
     form_id: str
     form: FormDefinition
+
+
+class FieldValue(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    name: str
+    value: str
+
+
+class FormSubmission(TurnInput):
+    form_id: str
+    context: FormContext
+    submission_id: str
+    values: tuple[FieldValue, ...]
+
+
+class FieldErrorCode(StrEnum):
+    REQUIRED = "required"
+    PATTERN = "pattern"
+    MIN_LENGTH = "min_length"
+    MAX_LENGTH = "max_length"
+    NOT_AN_OPTION = "not_an_option"
+    DUPLICATE = "duplicate"
+    UNKNOWN_FIELD = "unknown_field"
+
+
+class FieldError(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    name: str
+    code: FieldErrorCode
+
+
+class FormErrors(BaseModel):
+    """``definition`` is the form the values were checked against; ``None``
+    when nobody serves the context, and then ``field_errors`` is empty."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    form_id: str
+    context: FormContext
+    submission_id: str
+    definition: FormDefinition | None
+    field_errors: tuple[FieldError, ...] = ()
+
+
+class ValidSubmission(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    definition: FormDefinition
+    submission_id: str
+    values: Mapping[str, str]
+
+
+class FieldErrorEntry(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    name: str
+    label: str
+    error: str
+
+
+class FormErrorBlock(OutputBlock):
+    """Tells the UI the form is still the farmer's."""
+
+    form_id: str
+    context: FormContext
+    submission_id: str
+    fields: tuple[FieldErrorEntry, ...] = ()

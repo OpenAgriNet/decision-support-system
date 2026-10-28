@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from dss.core.forms.models import FormContext, FormDefinition
+from dss.core.forms.models import ActionSchema, FormContext, FormDefinition
 from dss.core.forms.registry import FormLookup, FormRegistry
 from dss.core.forms.service import build_form_registry
 from dss.core.provider_discovery.models import SchemaPackFiles, SchemaPackSkipped
@@ -35,11 +35,13 @@ def _pack(
 
 
 def test_registry_finds_a_form_by_its_context() -> None:
-    form = FormDefinition(context=_PMFBY_SUPPORT, fields=())
+    schema = ActionSchema(context=_PMFBY_SUPPORT, must_send=())
 
-    registry = FormRegistry([form])
+    registry = FormRegistry([schema])
 
-    assert registry.find(_PMFBY_SUPPORT) == form
+    assert registry.find(_PMFBY_SUPPORT) == FormDefinition(
+        context=_PMFBY_SUPPORT, fields=()
+    )
     assert registry.find(_PMFBY_STATUS) is None
 
 
@@ -49,9 +51,9 @@ def test_an_empty_registry_finds_nothing() -> None:
 
 
 def test_registry_counts_its_forms() -> None:
-    form = FormDefinition(context=_PMFBY_SUPPORT, fields=())
+    schema = ActionSchema(context=_PMFBY_SUPPORT, must_send=())
 
-    assert len(FormRegistry([form])) == 1
+    assert len(FormRegistry([schema])) == 1
     assert len(FormRegistry()) == 0
 
 
@@ -102,10 +104,10 @@ def test_an_init_in_one_pack_rules_out_the_scheme_in_another() -> None:
 
 
 def test_two_forms_for_one_context_are_refused() -> None:
-    form = FormDefinition(context=_PMFBY_SUPPORT, fields=())
+    schema = ActionSchema(context=_PMFBY_SUPPORT, must_send=())
 
     with pytest.raises(ValueError, match="PMFBY/Grievance/support"):
-        FormRegistry([form, form])
+        FormRegistry([schema, schema])
 
 
 @pytest.mark.parametrize(
@@ -177,3 +179,24 @@ def test_a_pack_whose_kind_cannot_be_read_is_skipped(profile_json: str) -> None:
 
     assert registry.find(_PMFBY_SUPPORT) is None
     assert [skip.pack_name for skip in registry.skipped] == ["Unknown"]
+
+
+def test_the_registry_keeps_the_schema_the_form_was_cut_from() -> None:
+    registry = build_form_registry([_pack(_GRIEVANCE_YAML)])
+
+    schema = registry.action_schema(_PMFBY_SUPPORT)
+
+    assert schema is not None
+    assert [field.path for field in schema.must_send] == [
+        "informationMode",
+        "scheme.code",
+        "provider.id",
+        "provider.descriptor.name",
+        "enrolmentId",
+        "applicantMobile",
+        "cropYear",
+        "season",
+        "grievance.description",
+    ]
+    assert registry.action_schema(_PMFBY_STATUS) is not None
+    assert FormRegistry().action_schema(_PMFBY_SUPPORT) is None

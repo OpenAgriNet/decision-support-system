@@ -72,6 +72,7 @@ from dss.config.schema_pack_fetch import (
 )
 from dss.config.settings import Settings
 from dss.core.channel.localize import build_localizer
+from dss.core.forms.models import FormSubmission
 from dss.core.forms.registry import FormRegistry
 from dss.core.forms.service import build_form_registry
 from dss.core.intent.models import Intent
@@ -101,6 +102,7 @@ from dss.orchestration.discovery import (
     build_capability_discovery,
     build_discover_providers,
 )
+from dss.orchestration.form_path import FormPath
 from dss.orchestration.orchestrator import (
     Components,
     Orchestrator,
@@ -228,6 +230,7 @@ def build_runner_with_lifecycle(
         localize=build_localizer(llm=composer_llm, prompts=prompts),
     )
 
+    turns = FileTurnSink(settings.turns_path)
     text_path = TextPath(
         intent_llm=_intent_llm(settings),
         moderation_llm=_moderation_llm(settings),
@@ -237,7 +240,7 @@ def build_runner_with_lifecycle(
         scheme_fuzzy_threshold=settings.scheme_fuzzy_threshold,
         nearest_max_km=settings.nearest_max_km,
         components=components,
-        turns=FileTurnSink(settings.turns_path),
+        turns=turns,
         telemetry=FileTelemetrySink(settings.telemetry_path),
         area_lookup=area_lookup,
         clarification_text=clarification_text,
@@ -245,7 +248,14 @@ def build_runner_with_lifecycle(
         edge_translation=EdgeTranslation(routes=translation_routes),
         forms=forms,
     )
-    paths: TurnPaths = {TextQuery: text_path}
+    form_path = FormPath(
+        redact=redact,
+        forms=forms,
+        turns=turns,
+        clarification_text=clarification_text,
+        localize=components.localize,
+    )
+    paths: TurnPaths = {TextQuery: text_path, FormSubmission: form_path}
     unrouted = unrouted_kinds(paths, TurnInput.__subclasses__())
     if unrouted:
         names = ", ".join(kind.__name__ for kind in unrouted)

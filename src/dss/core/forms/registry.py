@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Protocol
 
-from dss.core.forms.models import FormContext, FormDefinition
+from dss.core.forms.models import ActionSchema, FormContext, FormDefinition
 from dss.core.provider_discovery.models import SchemaPackSkipped
 
 
@@ -15,27 +15,33 @@ class FormLookup(Protocol):
 
 
 class FormRegistry:
-    """The forms built from the API packs, read once at boot. Raises
-    ``ValueError`` on two forms for one context: the builder picks, not this."""
+    """The action schemas read from the API packs at boot, and the forms cut
+    from them. Raises ``ValueError`` on two schemas for one context: the
+    builder picks, not this."""
 
     def __init__(
         self,
-        forms: Iterable[FormDefinition] = (),
+        schemas: Iterable[ActionSchema] = (),
         *,
         skipped: tuple[SchemaPackSkipped, ...] = (),
     ) -> None:
+        self._schemas: dict[FormContext, ActionSchema] = {}
         self._forms: dict[FormContext, FormDefinition] = {}
-        for form in forms:
-            if form.context in self._forms:
-                raise ValueError(f"two forms for {form.context}")
-            self._forms[form.context] = form
+        for schema in schemas:
+            if schema.context in self._schemas:
+                raise ValueError(f"two forms for {schema.context}")
+            self._schemas[schema.context] = schema
+            self._forms[schema.context] = schema.form()
         self._skipped = skipped
 
     def find(self, context: FormContext) -> FormDefinition | None:
         return self._forms.get(context)
 
+    def action_schema(self, context: FormContext) -> ActionSchema | None:
+        return self._schemas.get(context)
+
     def __len__(self) -> int:
-        return len(self._forms)
+        return len(self._schemas)
 
     @property
     def skipped(self) -> tuple[SchemaPackSkipped, ...]:

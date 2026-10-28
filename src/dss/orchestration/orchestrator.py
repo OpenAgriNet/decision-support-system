@@ -354,7 +354,7 @@ class TextPath:
             refusal = await localize_answer(
                 refusal, self._components.localize, turn=turn
             )
-            yield _build_turn_finished(outcome, refusal)
+            yield build_turn_finished(outcome, refusal)
             return
 
         self._note("intent", ctx, _classified(result.intent))
@@ -373,7 +373,7 @@ class TextPath:
             answer = await localize_answer(
                 no_match_answer(), self._components.localize, turn=turn
             )
-            yield _build_turn_finished(outcome_for(TurnStatus.NO_MATCH), answer)
+            yield build_turn_finished(outcome_for(TurnStatus.NO_MATCH), answer)
             return
 
         # No ask has a place to search around: named nowhere, a name the
@@ -404,7 +404,7 @@ class TextPath:
             clarification = await localize_answer(
                 clarification, self._components.localize, turn=turn
             )
-            yield _build_turn_finished(
+            yield build_turn_finished(
                 outcome_for(TurnStatus.REQUIRES_INPUT), clarification
             )
             return
@@ -505,7 +505,7 @@ class TextPath:
             status = TurnStatus.REQUIRES_INPUT
             answer = ComposedAnswer(content=(*answer.content, TextBlock(text=question)))
         answer = await localize_answer(answer, self._components.localize, turn=turn)
-        return _build_turn_finished(outcome_for(status), answer)
+        return build_turn_finished(outcome_for(status), answer)
 
     async def _reveal_to_farmer(
         self,
@@ -574,7 +574,7 @@ class TextPath:
         recorder.status(finished.outcome.status.value)
         # The trace gets the redacted question and the tagged answer.
         recorder.content(
-            query=farmer_turn.input.text, answer=_spoken_text(finished.content)
+            query=farmer_turn.input.text, answer=spoken_text(finished.content)
         )
 
     def _note(self, stage: str, ctx: TurnContext, outcome: str) -> None:
@@ -586,7 +586,7 @@ class TextPath:
             self._telemetry.stage(stage, ctx, outcome)
 
 
-def _build_turn_finished(outcome: TurnOutcome, answer: ComposedAnswer) -> TurnFinished:
+def build_turn_finished(outcome: TurnOutcome, answer: ComposedAnswer) -> TurnFinished:
     return TurnFinished(outcome=outcome, content=answer.content, sources=answer.sources)
 
 
@@ -600,7 +600,7 @@ def _reveal_finished(finished: TurnFinished, visibility: Visibility) -> TurnFini
     )
 
 
-def _spoken_text(blocks: Sequence[OutputBlock]) -> list[str]:
+def spoken_text(blocks: Sequence[OutputBlock]) -> list[str]:
     """What the farmer reads. A block with no words, such as a form, adds none."""
 
     return [

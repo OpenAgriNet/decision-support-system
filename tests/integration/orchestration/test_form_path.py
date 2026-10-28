@@ -1,0 +1,177 @@
+"""Tier 3 — the path a submitted form runs on, driven through the live
+`Orchestrator`. The registry is real, read from the Grievance pack; the sink
+and the localizer are fakes."""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from functools import partial
+from pathlib import Path
+
+from dss.adapters.sinks.memory import MemoryTurnSink
+from dss.config.clarification_text_loader import load_clarification_text
+from dss.core.forms.models import (
+    FieldErrorEntry,
+    FieldValue,
+    FormContext,
+    FormErrorBlock,
+    FormSubmission,
+)
+from dss.core.forms.service import build_form_registry
+from dss.core.provider_discovery.models import SchemaPackFiles
+from dss.core.shared.models import (
+    Cause,
+    ConversationMessage,
+    TextBlock,
+    TurnContext,
+    TurnEvent,
+    TurnStatus,
+    UserDetails,
+    UserTurn,
+)
+from dss.orchestration.form_path import FormPath
+from dss.orchestration.orchestrator import Orchestrator
+from dss.orchestration.redaction import RedactTexts, pass_through, redact_texts
+from tests.support.fakes import FakeLocalizer
+from tests.support.turn_events import assert_well_formed
+
+from .test_orchestrator_redaction import PHONE, POLICY, _FindsValues
+
+_GRIEVANCE_YAML = (
+    Path(__file__).parents[2] / "fixtures" / "api_packs" / "grievance_attributes.yaml"
+).read_text(encoding="utf-8")
+
+_PMFBY_SUPPORT = FormContext(scheme="PMFBY", category="Grievance", action="support")
+
+_VALUES = {
+    "enrolmentId": "PMFBY-2024-000123",
+    "applicantMobile": "9876543210",
+    "cropYear": "2024",
+    "season": "Kharif",
+    "grievance.description": "Claim for the Kharif crop loss has not been paid.",
+}
+
+
+def _turn(
+    values: Mapping[str, str], *, context: FormContext = _PMFBY_SUPPORT
+) -> UserTurn:
+    return UserTurn(
+        input=FormSubmission(
+            form_id="offer-1",
+            context=context,
+            submission_id="submission-1",
+            values=tuple(
+                FieldValue(name=name, value=value) for name, value in values.items()
+            ),
+        ),
+        session_id="s1",
+        transaction_id="t1",
+        source_lang="en",
+        target_lang="en",
+        channel="web",
+    )
+
+
+def _build(
+    *, localize: FakeLocalizer | None = None, redact: RedactTexts = pass_through
+) -> tuple[Orchestrator, MemoryTurnSink]:
+    pack = SchemaPackFiles(
+        pack_name="Grievance",
+        version="v0.1",
+        profile_json='{"semantic_model": "provider-api"}',
+        attributes_yaml=_GRIEVANCE_YAML,
+        examples_json=(),
+    )
+    turns = MemoryTurnSink()
+    path = FormPath(
+        redact=redact,
+        forms=build_form_registry([pack]),
+        turns=turns,
+        clarification_text=load_clarification_text(),
+        localize=localize or FakeLocalizer(),
+    )
+    return Orchestrator(paths={FormSubmission: path}), turns
+
+
+async def _collect(orch: Orchestrator, turn: UserTurn) -> list[TurnEvent]:
+    ctx = TurnContext(trace_id="t1", message_id="m1", session_id="s1", sender_id="c1")
+    events = [event async for event in orch.run(turn, ctx)]
+    assert_well_formed(events)
+    return events
+
+
+async def test_bad_values_hand_the_form_back_with_the_errors() -> None:
+    orch, _ = _build()
+
+    events = await _collect(orch, _turn({**_VALUES, "applicantMobile": "12345"}))
+
+    finished = events[-1]
+    assert finished.outcome.status is TurnStatus.REQUIRES_INPUT
+    assert finished.outcome.cause is Cause.INVALID_INPUT
+    text, errors = finished.content
+    assert isinstance(text, TextBlock)
+    assert errors == FormErrorBlock(
+        form_id="offer-1",
+        context=_PMFBY_SUPPORT,
+        submission_id="submission-1",
+        fields=(
+            FieldErrorEntry(
+                name="applicantMobile",
+                label="Applicant mobile",
+                error="Applicant mobile is not in the right format.",
+            ),
+        ),
+    )
+
+
+async def test_the_record_holds_names_and_references_never_a_value() -> None:
+    orch, turns = _build()
+
+    await _collect(orch, _turn({**_VALUES, "applicantMobile": "12345"}))
+
+    record = turns.records["t1"]
+    assert record.turn is not None and record.finished is not None
+    opened = record.turn.model_dump_json()
+    closed = record.finished.model_dump_json()
+    for value in (*_VALUES.values(), "12345"):
+        assert value not in opened and value not in closed
+    assert record.turn.input.submission_id == "submission-1"
+    assert [field.name for field in record.turn.input.values] == list(_VALUES)
+
+
+async def test_a_form_nobody_serves_gets_text_only() -> None:
+    kisan = FormContext(scheme="PM-KISAN", category="Grievance", action="support")
+    orch, _ = _build()
+
+    events = await _collect(orch, _turn(_VALUES, context=kisan))
+
+    finished = events[-1]
+    assert finished.outcome.status is TurnStatus.REQUIRES_INPUT
+    assert finished.outcome.cause is Cause.INVALID_INPUT
+    (text,) = finished.content
+    assert isinstance(text, TextBlock)
+    assert text.text == load_clarification_text().unknown_form
+
+
+async def test_history_and_the_phone_reach_the_record_as_tags() -> None:
+    """The form's values are withheld; the rest of the turn is redacted as on
+    the text path."""
+
+    redact = partial(
+        redact_texts, identifiers=[_FindsValues(phone=PHONE)], policy=POLICY
+    )
+    orch, turns = _build(redact=redact)
+    turn = _turn({**_VALUES, "applicantMobile": "12345"}).model_copy(
+        update={
+            "history": [ConversationMessage(role="user", text=f"Call me on {PHONE}")],
+            "user": UserDetails(phone=PHONE),
+        }
+    )
+
+    await _collect(orch, turn)
+
+    recorded = turns.records["t1"].turn
+    assert recorded is not None
+    assert PHONE not in recorded.model_dump_json()
+    assert recorded.history[0].text == "Call me on «phone_1»"
+    assert recorded.user.phone == "«phone_1»"

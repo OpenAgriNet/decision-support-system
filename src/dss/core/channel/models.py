@@ -44,5 +44,16 @@ class ClarificationText(BaseModel):
     # so the second one names no place.
     no_provider_for: str
     no_provider: str
+    # A submitted form the DSS cannot accept (#205). The field messages are
+    # `str.format` templates over `{label}`, `{min}` and `{max}`.
+    unknown_form: str
+    form_has_errors: str
+    field_required: str
+    field_pattern: str
+    field_min_length: str
+    field_max_length: str
+    field_not_an_option: str
+    field_duplicate: str
+    field_unknown: str
     # More choices than this are grouped one level up before they are listed.
     max_choices: int = Field(default=5, gt=0)

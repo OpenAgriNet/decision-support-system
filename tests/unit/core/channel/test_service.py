@@ -37,6 +37,15 @@ _TEXT = ClarificationText(
     more_places_hint="Not in this list? Tell me the area it is in.",
     no_provider_for="I could not find a source that answers this for {place} yet.",
     no_provider="I could not find a source that answers this yet.",
+    unknown_form="I do not know that form.",
+    form_has_errors="Please check the fields marked below.",
+    field_required="{label} is needed.",
+    field_pattern="{label} is not in the right format.",
+    field_min_length="{label} must be at least {min} characters.",
+    field_max_length="{label} must be at most {max} characters.",
+    field_not_an_option="{label} must be one of the given choices.",
+    field_duplicate="{label} was sent more than once.",
+    field_unknown="{label} is not part of this form.",
 )
 
 

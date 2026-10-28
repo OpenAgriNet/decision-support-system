@@ -181,6 +181,8 @@ class Cause(StrEnum):
     DOMAIN_UNMAPPED = "domain_unmapped"
     INTENT_LOW_CONFIDENCE = "intent_low_confidence"
     UNSUPPORTED_ACTION_TYPE = "unsupported_action_type"
+    # a submitted form the DSS cannot accept (#205)
+    INVALID_INPUT = "invalid_input"
     # infrastructure
     MODERATION_UNAVAILABLE = "moderation_unavailable"
     PROVIDER_UNAVAILABLE = "provider_unavailable"
