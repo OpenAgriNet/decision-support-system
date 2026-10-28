@@ -63,6 +63,9 @@ _DISCOVER_BY_TYPE = {
     "openagrinet:WeatherObservation": "weather_discover.json",
     "openagrinet:MandiPrice": "mandi_discover.json",
     "openagrinet:KnowledgeAdvisory": "advisory_discover.json",
+    # The network adapter's published catalogs, plus `subjectCategories`: the
+    # DSS discovers by it and the real desks do not publish it yet.
+    "openagrinet:Grievance": "grievance_discover.json",
 }
 
 
