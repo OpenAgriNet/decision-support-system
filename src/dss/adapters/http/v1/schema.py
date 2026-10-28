@@ -223,10 +223,12 @@ class OutputFormField(_WireOut):
     max_length: int | None = None
     options: list[OutputFormOption] = []
 
+
 class OutputFormContext(_WireOut):
     scheme: str
     category: str
     action: str
+
 
 class OutputForm(_WireOut):
     """An empty form for the farmer to fill in (#205). `context` comes back
@@ -236,6 +238,7 @@ class OutputForm(_WireOut):
     form_id: str
     context: OutputFormContext
     fields: list[OutputFormField]
+
 
 class Source(_WireOut):
     id: str

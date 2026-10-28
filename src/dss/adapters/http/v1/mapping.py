@@ -287,6 +287,7 @@ def _form_field(field: FieldDefinition) -> schema.OutputFormField:
         ],
     )
 
+
 def _annotations(
     block: TextBlock, sources: Sequence[Source]
 ) -> list[schema.Annotation]:
