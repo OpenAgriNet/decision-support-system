@@ -9,11 +9,13 @@ what makes "one source per question" a rule it can follow.
 from __future__ import annotations
 
 from dss.core.channel.prompt import render_evidence, system_prompt, user_prompt
+from dss.core.forms.models import FormContext, FormDefinition
 from dss.core.intent.models import (
     Ask,
     InteractionType,
     PlaceSource,
     ResolvedPlace,
+    Scheme,
     SubjectCategory,
 )
 from dss.core.planner.models import (
@@ -183,6 +185,29 @@ def test_a_failure_is_labelled_with_its_asks_resolved_place() -> None:
     rendered = render_evidence(evidence)
 
     assert "Anand" in rendered
+
+
+def test_an_ask_awaiting_a_form_is_rendered_as_such() -> None:
+    """Neither a result nor a gap: the composer must point at the form, not
+    apologise for it."""
+
+    pmfby = Scheme(code="PMFBY", name="Pradhan Mantri Fasal Bima Yojana")
+    ask = Ask(
+        agriculture_subjects=pmfby.name,
+        subject_categories=SubjectCategory.GRIEVANCE,
+        interaction_type=InteractionType.ACT,
+        scheme=pmfby,
+    )
+    form = FormDefinition(
+        context=FormContext(scheme="PMFBY", category="Grievance", action="support"),
+        fields=(),
+    )
+
+    rendered = render_evidence(build_evidence(asks=(ask,), awaiting={0: form}))
+
+    assert "Awaits a form" in rendered
+    assert "Pradhan Mantri Fasal Bima Yojana grievance form" in rendered
+    assert "Nothing was retrieved" not in rendered
 
 
 def test_a_place_failure_does_not_blame_a_provider() -> None:

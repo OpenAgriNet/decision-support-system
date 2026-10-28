@@ -3,6 +3,25 @@
 ## [Unreleased]
 
 ### Added
+- The DSS reads the forms a farmer will fill from the network's API schema
+  packs, once at boot. Today that is the PMFBY grievance: filing one and
+  checking its status. A scheme that needs an OTP step first (PM-KISAN) is
+  left out until the DSS can run it. Offering the forms in a conversation
+  comes next. A missing or broken API pack never stops the boot; the log says
+  which forms were left out (#205)
+- A grievance ask now finds the network's grievance desks: the Grievance pack
+  is indexed under its own name, for asks to file a grievance or follow one
+  up (#205)
+
+### Changed
+- Schema packs are fetched from `schema-packs-v0.1` by default, everywhere:
+  the fetch script, the app's startup fetch, Docker compose and
+  `run-local.sh`. That ref now carries the `Grievance` API pack beside the
+  catalog packs. API and catalog packs share one folder; each pack's
+  `profile.json` says which it is. A `var/schema-packs/` fetched earlier has
+  no `Grievance`, so it offers no forms: delete it and fetch again (#205)
+
+### Added
 - Provider rankings live in the network registry, never in the DSS. Set
   `DSS_PROVIDER_PREFERENCES_BASE_URL` and the DSS asks the registry on every
   turn — two parallel searches, the request's `senderId` and the reserved id

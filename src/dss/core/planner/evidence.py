@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from collections.abc import Collection, Mapping, Sequence
 
+from dss.core.forms.models import FormDefinition
 from dss.core.intent.models import AmbiguousPlace, Ask, Intent, UnresolvedPlace
 from dss.core.planner.models import (
     AskEvidence,
@@ -63,6 +64,7 @@ def assemble_evidence(
     intent: Intent,
     direct_answers: Mapping[int, tuple[DiscoveredAnswer, ...]] | None = None,
     failures: Sequence[Failure] = (),
+    awaiting: Mapping[int, FormDefinition] | None = None,
 ) -> Evidence:
     """Turn everything the turn gathered into ``Evidence``.
 
@@ -127,7 +129,9 @@ def assemble_evidence(
 
     return Evidence(
         sources=tuple(sources),
-        ask_evidences=group_by_ask(intent.asks, results=results, failures=failures),
+        ask_evidences=group_by_ask(
+            intent.asks, results=results, failures=failures, awaiting=awaiting
+        ),
     )
 
 
@@ -136,13 +140,18 @@ def group_by_ask(
     *,
     results: Sequence[Result],
     failures: Sequence[Failure],
+    awaiting: Mapping[int, FormDefinition] | None = None,
 ) -> tuple[AskEvidence, ...]:
-    """One entry per ask, in ask order, holding that ask's results and failures.
+    """One entry per ask, in ask order, holding that ask's results and
+    failures, and the form it awaits if any.
 
     Raises ``ValueError`` for a part naming an ask the turn does not have.
     """
 
-    _reject_stray_ask_indexes(len(asks), results=results, failures=failures)
+    awaiting = awaiting or {}
+    _reject_stray_ask_indexes(
+        len(asks), results=results, failures=failures, awaiting=awaiting
+    )
     return tuple(
         AskEvidence(
             ask=ask,
@@ -150,20 +159,22 @@ def group_by_ask(
             failures=tuple(
                 failure for failure in failures if failure.ask_index == index
             ),
+            awaiting=awaiting.get(index),
         )
         for index, ask in enumerate(asks)
     )
 
 
 def _reject_stray_ask_indexes(
-    ask_count: int, *, results: Sequence[Result], failures: Sequence[Failure]
+    ask_count: int,
+    *,
+    results: Sequence[Result],
+    failures: Sequence[Failure],
+    awaiting: Mapping[int, FormDefinition],
 ) -> None:
     # Every producer keeps the index in range, so a stray one is a bug. Dropping
     # the part instead would quietly turn the turn into no_match.
-    stray = [
-        part.ask_index
-        for part in (*results, *failures)
-        if not 0 <= part.ask_index < ask_count
-    ]
+    named = [*(part.ask_index for part in (*results, *failures)), *awaiting]
+    stray = [index for index in named if not 0 <= index < ask_count]
     if stray:
         raise ValueError(f"ask {stray[0]} is not one of the turn's {ask_count} asks")

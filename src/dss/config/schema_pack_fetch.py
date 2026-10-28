@@ -2,7 +2,7 @@
 
 The packs are an external checkout: they live in the `OpenAgriNet/network-specs`
 repo, not this one, and nothing clones them. This module pulls the ones the DSS
-routes against onto disk, where `FilesystemSchemaPackSource` reads them.
+reads onto disk, where `FilesystemSchemaPackSource` reads them.
 
 `urllib.request` rather than `httpx2`, deliberately: this runs before the app
 is built — and from `scripts/fetch_schema_packs.py`, which a fresh clone may
@@ -27,15 +27,17 @@ _API_HOST = "https://api.github.com"
 # lookup, not a constant.
 _VERSION = "v0.1"
 
-# The ref that actually carries packs today. `main` holds only a README, so a
-# failure quotes this to say where to look — see `raise_for_empty`.
-_PUBLISHED_REF = "schema-packs-v0.1"
+# The ref every fetch reads unless told otherwise: it carries the catalog packs
+# and the API packs (Grievance) in one `schema/` folder. A failure on a ref with
+# no packs quotes this one — see `raise_for_empty`.
+PUBLISHED_REF = "schema-packs-v0.1"
 
-# `main` is where the packs are expected to land, so that is what we track —
-# even though it carries only a README today and a default run therefore
-# fails. Failing loudly with the right ref named beats silently reading a
-# pinned branch nobody chose.
-DEFAULT_REF = "main"
+# Every download error reads as "not there", so nothing on the published ref
+# means the fetch could not reach it, not that the packs are missing.
+_UNREACHABLE_HINT = (
+    " Check that raw.githubusercontent.com is reachable, set GITHUB_TOKEN if"
+    " rate-limited, and check the ref still exists on network-specs."
+)
 
 # Where the packs go. Anchored to this file, not the working directory: the
 # service is started with `uvicorn --factory` from wherever the operator
@@ -47,24 +49,21 @@ DEFAULT_REF = "main"
 # `var/` — a deployment sets DSS_SCHEMA_PACK_DIR to a mounted path instead.
 DEFAULT_PACK_DIR = Path(__file__).parents[3] / "var" / "schema-packs"
 
-# The packs the DSS routes against.
+# The packs the DSS reads.
 #
-# AgricultureResource is not routed to directly — the other three `$ref` it
+# AgricultureResource is not routed to directly — the other catalog packs `$ref` it
 # with a relative path (`../../AgricultureResource/v0.1/attributes.yaml`), so
 # it has to be on disk beside them. Nothing resolves those refs today
 # (`yaml.safe_load` treats `$ref` as a plain string key), so it looks unused;
 # it is not. Do not drop it.
-#
-# AgricultureFacility is left out on purpose: none of its examples declares
-# `subjectCategories`, which `provider_discovery.index` reads unguarded, so the
-# pack is skipped as defective and never reaches the capability index. See
-# TODO.md.
 PACKS = (
     "AgricultureResource",
     "MandiPrice",
     "WeatherObservation",
     "KnowledgeAdvisory",
     "AgricultureFacility",
+    # An API pack: forms are built from it (#205). Its `profile.json` says so.
+    "Grievance",
 )
 
 # What the loader needs. Absent either, the pack is not on this ref.
@@ -247,19 +246,19 @@ def raise_for_empty(*, fetched: tuple[str, ...], ref: str) -> None:
 
     Zero packs means the DSS cannot route to anything, so reporting success
     would move the failure to boot time and describe it as missing packs
-    rather than an empty ref. The ref is the usual cause — the default one has
-    only a README on it — so the message names it and says where to look.
+    rather than an empty ref. The message names the ref and says where to look:
+    the published ref when another was tried, the network when it was not.
     """
 
     if fetched:
         return
 
     hint = (
-        ""
-        if ref == _PUBLISHED_REF
+        _UNREACHABLE_HINT
+        if ref == PUBLISHED_REF
         else (
-            f" The published packs are on {_PUBLISHED_REF!r} — "
-            f"re-run with --ref {_PUBLISHED_REF}."
+            f" The published packs are on {PUBLISHED_REF!r} — "
+            f"re-run with --ref {PUBLISHED_REF}."
         )
     )
     raise SchemaPackFetchFailedError(

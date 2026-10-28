@@ -25,7 +25,7 @@ wired in ``orchestration/planner.py``.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 
 from dss.core.intent.models import Ask
 from dss.core.planner.markers import CONVERSATION, RETRIEVED_DATA, wrap_as_data
@@ -45,19 +45,23 @@ def guidance_section(skills: Sequence[Skill]) -> str:
     return f"# Guidance\n\n{body}\n\n"
 
 
-def asks_section(asks: Sequence[Ask]) -> str:
+def asks_section(
+    asks: Sequence[Ask], *, awaiting: Collection[int] = frozenset()
+) -> str:
     """Which asks exist, by the index the tools take. Without it the model
     has to guess that ask 0 exists, and a weaker model gives up instead.
 
     The category and interaction type are DSS enums, not the farmer's words,
     so they are safe here. The place is left out: whether a capability needs
-    one is ``describe_capability``'s to say."""
+    one is ``describe_capability``'s to say. ``awaiting`` marks the asks a
+    form answers, so the model calls no provider for them."""
 
     if not asks:
         return ""
 
     lines = [
         f"- ask {index}: {ask.subject_categories.value} ({ask.interaction_type.value})"
+        + (", awaits a form" if index in awaiting else "")
         for index, ask in enumerate(asks)
     ]
     return "# Asks\n\n" + "\n".join(lines) + "\n\n"

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from dss.core.forms.models import FormContext, FormDefinition
 from dss.core.intent.models import (
     AmbiguousPlace,
     Ask,
@@ -277,6 +278,37 @@ def test_a_result_for_an_ask_the_turn_lacks_is_refused(ask_index: int) -> None:
 
     with pytest.raises(ValueError, match=f"ask {ask_index} "):
         assemble_evidence([(ask_index, MANDI_PRICE)], intent=_intent(PRICE_ASK))
+
+
+GRIEVANCE_FORM = FormDefinition(
+    context=FormContext(scheme="PMFBY", category="Grievance", action="support"),
+    fields=(),
+)
+
+
+def test_an_ask_that_awaits_a_form_carries_it() -> None:
+    evidence = assemble_evidence(
+        [], intent=_intent(PRICE_ASK), awaiting={0: GRIEVANCE_FORM}
+    )
+
+    assert evidence.ask_evidences[0].awaiting == GRIEVANCE_FORM
+
+
+def test_an_ask_that_awaits_a_form_is_not_an_unserved_ask() -> None:
+    """Not served, but not a gap to apologise for either: the farmer fills in
+    the form next."""
+
+    evidence = assemble_evidence(
+        [], intent=_intent(PRICE_ASK, ADVISORY_ASK), awaiting={0: GRIEVANCE_FORM}
+    )
+
+    assert [entry.ask for entry in evidence.unserved_asks] == [ADVISORY_ASK]
+    assert evidence.awaiting_forms == (GRIEVANCE_FORM,)
+
+
+def test_a_form_for_an_ask_the_turn_lacks_is_refused() -> None:
+    with pytest.raises(ValueError, match="ask 3 "):
+        assemble_evidence([], intent=_intent(PRICE_ASK), awaiting={3: GRIEVANCE_FORM})
 
 
 def test_a_failure_for_an_ask_the_turn_lacks_is_refused() -> None:

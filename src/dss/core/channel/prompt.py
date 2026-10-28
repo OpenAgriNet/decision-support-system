@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping, Sequence
 
+from dss.core.forms.models import FormDefinition
 from dss.core.intent.models import Ask, ResolvedPlace
 from dss.core.planner.markers import (
     CONVERSATION,
@@ -118,6 +119,11 @@ def render_evidence(evidence: Evidence) -> str:
     blocks += [
         block for entry in evidence.ask_evidences for block in _render_failures(entry)
     ]
+    blocks += [
+        _render_awaiting(entry.ask, entry.awaiting)
+        for entry in evidence.ask_evidences
+        if entry.awaiting
+    ]
 
     if not blocks:
         return "Nothing was retrieved."
@@ -163,6 +169,14 @@ def _render_failures(ask_evidence: AskEvidence) -> list[str]:
         f"{_failure_lead(failure)}{label}: {failure.reason}"
         for failure in ask_evidence.failures
     ]
+
+
+def _render_awaiting(ask: Ask, form: FormDefinition) -> str:
+    scheme = ask.scheme.name if ask.scheme else form.context.scheme
+    return (
+        f"Awaits a form{_place_label(ask)}: the farmer fills in the {scheme} "
+        f"{form.context.category.lower()} form shown below this reply."
+    )
 
 
 def _failure_lead(failure: Failure) -> str:

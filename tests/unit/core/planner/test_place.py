@@ -120,3 +120,15 @@ def test_one_option_needing_no_place_is_enough() -> None:
     discovery = _discovery(**{"0": (_capability(_WEATHER), _capability(_ADVISORY))})
 
     assert place_optional_asks(intent, discovery, _SCHEMAS) == frozenset({0})
+
+
+def test_an_ask_awaiting_a_form_needs_no_place() -> None:
+    """The form carries what its call needs, even where every option would
+    want a place."""
+
+    intent = Intent(asks=(_ask(),))
+    discovery = _discovery(**{"0": (_capability(_WEATHER),)})
+
+    optional = place_optional_asks(intent, discovery, _SCHEMAS, awaiting={0})
+
+    assert optional == frozenset({0})

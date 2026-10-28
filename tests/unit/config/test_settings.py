@@ -40,6 +40,10 @@ def test_the_pack_directory_default_ignores_the_working_directory(
     assert directory.parts[-2:] == ("var", "schema-packs")
 
 
+def test_the_startup_fetch_reads_the_ref_that_carries_every_pack() -> None:
+    assert Settings(_env_file=None).schema_pack_ref == "schema-packs-v0.1"
+
+
 def test_the_two_base_urls_are_what_enable_the_network() -> None:
     """The gate is the two URLs, not three settings.
 

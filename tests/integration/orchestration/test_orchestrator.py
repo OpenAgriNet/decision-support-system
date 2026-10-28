@@ -15,6 +15,8 @@ import pytest
 from dss.adapters.sinks.memory import MemoryTurnSink
 from dss.config.clarification_text_loader import load_clarification_text
 from dss.core.channel.service import NO_MATCH_TEXT
+from dss.core.forms.models import FormBlock, FormContext, FormDefinition
+from dss.core.forms.registry import FormLookup, FormRegistry
 from dss.core.intent.models import (
     ClassifiedAsk,
     IntentClassification,
@@ -146,14 +148,22 @@ def _evidence(
     *,
     results: tuple[Result, ...],
     failures: tuple[Failure, ...] = (),
+    awaiting: dict[int, FormDefinition] | None = None,
     ask_count: int = 1,
 ) -> Evidence:
     return build_evidence(
         sources=(Source(id="1", name="Agmarknet", kind=SourceKind.PROVIDER, url=None),),
         results=results,
         failures=failures,
+        awaiting=awaiting,
         asks=(ANY_ASK,) * ask_count,
     )
+
+
+_GRIEVANCE_FORM = FormDefinition(
+    context=FormContext(scheme="PMFBY", category="Grievance", action="support"),
+    fields=(),
+)
 
 
 _ANSWERED_EVIDENCE = _evidence(
@@ -192,9 +202,10 @@ class _FakePlan:
         self.verdict_was_set: bool | None = None
 
     async def __call__(
-        self, turn, *, intent, discovery, verdict, visibility
+        self, turn, *, intent, discovery, verdict, visibility, awaiting=None
     ) -> Evidence:
         self.calls += 1
+        self.awaiting = dict(awaiting or {})
         self.verdict_was_set = verdict.is_set()
         self.turn = turn
         self.visibility = visibility
@@ -264,6 +275,8 @@ def _build(
     localize: FakeLocalizer | None = None,
     schemas: dict[str, DomainSchema] | None = None,
     edge_translation: EdgeTranslation | None = None,
+    forms: FormLookup | None = None,
+    scheme_catalog: FakeSchemeCatalog | None = None,
 ) -> tuple[Orchestrator, MemoryTurnSink]:
     turns = MemoryTurnSink()
     text_path = TextPath(
@@ -272,7 +285,7 @@ def _build(
         moderation_llm=moderation_llm or _FakeModerationLLM(violated=violated),
         prompts=FakePromptProvider(),
         policies=list(policies),
-        scheme_catalog=FakeSchemeCatalog(),
+        scheme_catalog=scheme_catalog or FakeSchemeCatalog(),
         scheme_fuzzy_threshold=None,
         nearest_max_km=50.0,
         components=Components(
@@ -287,6 +300,7 @@ def _build(
         area_lookup=area_lookup or FakeAreaLookup({"pune": [_PUNE_MATCH]}),
         clarification_text=load_clarification_text(),
         edge_translation=edge_translation or EdgeTranslation(routes={}),
+        forms=forms or FormRegistry(),
     )
     return Orchestrator(paths={TextQuery: text_path}), turns
 
@@ -581,6 +595,26 @@ async def test_mixed_turn_answers_then_asks_place() -> None:
     deltas = [e.text for e in events if isinstance(e, ClaimDelta)]
     assert deltas[-1] == f"\n\n{question}"
     assert events[-1].outcome.status is TurnStatus.PARTIALLY_ANSWERED
+
+
+async def test_an_ask_awaiting_a_form_ends_the_turn_on_the_form() -> None:
+    """The composer's referral comes first, the form last, and the turn waits
+    for the farmer: requires_input, no cause."""
+
+    plan = _FakePlan(_evidence(results=(), awaiting={0: _GRIEVANCE_FORM}))
+    compose = _FakeCompose("Please fill in the form below.")
+    orch, _ = _build(
+        intent=_one_ask(), discovery=_served_discovery(), plan=plan, compose=compose
+    )
+
+    events = await _collect(orch)
+
+    finished = events[-1]
+    assert finished.outcome.status is TurnStatus.REQUIRES_INPUT
+    assert finished.outcome.cause is None
+    text, form = finished.content
+    assert isinstance(text, TextBlock) and text.text == "Please fill in the form below."
+    assert isinstance(form, FormBlock) and form.form == _GRIEVANCE_FORM
 
 
 async def test_some_asks_unserved_is_partial() -> None:

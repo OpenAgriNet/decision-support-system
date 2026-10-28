@@ -9,6 +9,8 @@ assembles the planner's schema dicts correctly from real schema packs.
 
 from __future__ import annotations
 
+import json
+import shutil
 from pathlib import Path
 
 import httpx
@@ -16,7 +18,10 @@ import pytest
 
 from dss.adapters.provider_preferences.registry import RegistryProviderPreferences
 from dss.config.settings import Settings
+from dss.core.forms.models import FormContext
+from dss.core.forms.registry import FormLookup
 from dss.core.provider_discovery.models import SchemaPackFiles
+from dss.core.shared.models import TextQuery
 from dss.entrypoint.composition import (
     _aclose_for,
     _discovers_nothing,
@@ -254,6 +259,24 @@ def test_a_pack_with_a_non_dict_profile_does_not_crash_the_boot() -> None:
     schemas = _planner_schemas((_pack_with_non_dict_profile(),))
 
     assert schemas == {}
+
+
+def test_an_api_pack_is_not_a_planner_schema() -> None:
+    """Its calls are forms, not filters a `select` is checked against."""
+    grievance = SchemaPackFiles(
+        pack_name="Grievance",
+        version="v0.1",
+        profile_json=json.dumps(
+            {
+                "semantic_model": "provider-api",
+                "filterable_paths": ["beckn:resourceAttributes.scheme.code"],
+            }
+        ),
+        attributes_yaml=_GRIEVANCE_ATTRIBUTES.read_text(encoding="utf-8"),
+        examples_json=(),
+    )
+
+    assert _planner_schemas((grievance,)) == {}
 
 
 def _write_good_pack(root: Path) -> None:
@@ -568,3 +591,162 @@ def test_a_registry_url_swaps_the_registry_adapter_in(tmp_path: Path) -> None:
     *_rest, preferences = _network(settings, preferences=_no_preferences())
 
     assert isinstance(preferences, RegistryProviderPreferences)
+
+
+_GRIEVANCE_ATTRIBUTES = (
+    Path(__file__).parents[2] / "fixtures" / "api_packs" / "grievance_attributes.yaml"
+)
+_PMFBY_SUPPORT = FormContext(scheme="PMFBY", category="Grievance", action="support")
+_API_PROFILE = '{"semantic_model": "provider-api"}'
+
+
+def _write_grievance_pack(root: Path) -> Path:
+    version_dir = root / "Grievance" / "v0.1"
+    version_dir.mkdir(parents=True)
+    (version_dir / "attributes.yaml").write_text(
+        _GRIEVANCE_ATTRIBUTES.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    (version_dir / "profile.json").write_text(_API_PROFILE, encoding="utf-8")
+    return root
+
+
+def _forms_of(runner: TurnRunner) -> FormLookup:
+    assert isinstance(runner, Orchestrator)
+    return runner._paths[TextQuery]._forms
+
+
+def test_the_text_path_gets_the_forms_built_from_the_api_packs(
+    tmp_path: Path,
+) -> None:
+    pack_root = _write_grievance_pack(tmp_path / "schema")
+
+    runner = build_runner(_settings(tmp_path, schema_pack_dir=pack_root))
+
+    assert isinstance(runner, Orchestrator)
+    assert _forms_of(runner).find(_PMFBY_SUPPORT) is not None
+
+
+def test_no_packs_boots_with_no_forms_and_says_how_to_fetch(
+    tmp_path: Path, caplog
+) -> None:
+    with caplog.at_level("WARNING"):
+        runner = build_runner(_settings(tmp_path, schema_pack_dir=tmp_path / "absent"))
+
+    assert isinstance(runner, Orchestrator)
+    assert _forms_of(runner).find(_PMFBY_SUPPORT) is None
+    assert any(
+        "fetch_schema_packs.py --ref schema-packs-v0.1" in record.message
+        for record in caplog.records
+    )
+
+
+def test_packs_with_no_api_pack_boot_with_no_forms_and_say_so(
+    tmp_path: Path, caplog
+) -> None:
+    """A folder from an older fetch holds catalog packs only."""
+    version_dir = tmp_path / "schema" / "MandiPrice" / "v0.1"
+    version_dir.mkdir(parents=True)
+    (version_dir / "attributes.yaml").write_text("components: {}", encoding="utf-8")
+    (version_dir / "profile.json").write_text(
+        '{"semantic_model": "generalised"}', encoding="utf-8"
+    )
+
+    with caplog.at_level("WARNING"):
+        runner = build_runner(_settings(tmp_path, schema_pack_dir=tmp_path / "schema"))
+
+    assert _forms_of(runner).find(_PMFBY_SUPPORT) is None
+    assert any("no forms" in record.message for record in caplog.records)
+
+
+def test_a_form_left_out_is_logged_for_an_operator_to_see(
+    tmp_path: Path, caplog
+) -> None:
+    pack_root = _write_grievance_pack(tmp_path / "schema")
+
+    with caplog.at_level("WARNING"):
+        build_runner(_settings(tmp_path, schema_pack_dir=pack_root))
+
+    assert any("PM-KISAN/Grievance/support" in r.message for r in caplog.records)
+
+
+def test_a_malformed_api_pack_does_not_stop_the_boot(tmp_path: Path, caplog) -> None:
+    """A root schema that is a list once raised AttributeError while the
+    pack's fields were flattened, before any skip rule could run."""
+    pack_root = _write_grievance_pack(tmp_path / "schema")
+    broken = pack_root / "Broken" / "v0.1"
+    broken.mkdir(parents=True)
+    (broken / "attributes.yaml").write_text(
+        "components: {schemas: {Broken: [1, 2]}}", encoding="utf-8"
+    )
+    (broken / "profile.json").write_text(_API_PROFILE, encoding="utf-8")
+
+    with caplog.at_level("WARNING"):
+        runner = build_runner(_settings(tmp_path, schema_pack_dir=pack_root))
+
+    assert isinstance(runner, Orchestrator)
+    assert _forms_of(runner).find(_PMFBY_SUPPORT) is not None
+    assert any("Broken" in record.message for record in caplog.records)
+
+
+def test_no_pack_dir_turns_forms_off(tmp_path: Path, caplog) -> None:
+    with caplog.at_level("INFO"):
+        runner = build_runner(_settings(tmp_path, schema_pack_dir=None))
+
+    assert isinstance(runner, Orchestrator)
+    assert _forms_of(runner).find(_PMFBY_SUPPORT) is None
+    assert any("forms are off" in record.message for record in caplog.records)
+
+
+def test_a_pack_the_source_cannot_read_is_logged(tmp_path: Path, caplog) -> None:
+    pack_root = _write_grievance_pack(tmp_path / "schema")
+    for version in ("v0.1", "v0.2"):
+        (pack_root / "Twice" / version).mkdir(parents=True)
+        (pack_root / "Twice" / version / "attributes.yaml").write_text(
+            "components: {}", encoding="utf-8"
+        )
+
+    with caplog.at_level("WARNING"):
+        build_runner(_settings(tmp_path, schema_pack_dir=pack_root))
+
+    assert any(
+        "Twice" in record.message and "unreadable" in record.message
+        for record in caplog.records
+    )
+
+
+def test_a_wired_network_indexes_grievance_but_plans_no_filters_for_it(
+    tmp_path: Path,
+) -> None:
+    """The context index holds only packs the capability index kept too."""
+    pack_root = tmp_path / "schema"
+    shutil.copytree(SCHEMA_PACKS_FIXTURE_ROOT, pack_root)
+    grievance_dir = _write_grievance_pack(pack_root) / "Grievance" / "v0.1"
+    # Like the real pack's examples: no subjectCategories.
+    (grievance_dir / "examples").mkdir()
+    (grievance_dir / "examples" / "pmfby-support.json").write_text(
+        '{"scheme": {"code": "PMFBY"}}', encoding="utf-8"
+    )
+    (grievance_dir / "profile.json").write_text(
+        json.dumps(
+            {
+                "semantic_model": "provider-api",
+                "interaction_type": "Transact",
+                "filterable_paths": ["beckn:resourceAttributes.scheme.code"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    settings = _settings(
+        tmp_path,
+        discovery_base_url="https://discovery.example/oan",
+        invocation_base_url="https://select.example/oan",
+        schema_pack_dir=pack_root,
+    )
+
+    _discover, _invocation, schemas, schema_context_index, _client, _prefs = _network(
+        settings, preferences=_no_preferences()
+    )
+
+    assert "openagrinet:Grievance" in schema_context_index
+    assert "openagrinet:MandiPrice" in schema_context_index
+    assert "openagrinet:Grievance" not in schemas
