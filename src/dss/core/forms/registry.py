@@ -10,3 +10,10 @@ class FormLookup(Protocol):
     registry built from the packs satisfies it by shape."""
 
     def find(self, context: FormContext) -> FormDefinition | None: ...
+
+
+# TODO(#205): the registry built from the packs replaces this in the
+# composition root.
+class NoForms:
+    def find(self, context: FormContext) -> FormDefinition | None:
+        return None

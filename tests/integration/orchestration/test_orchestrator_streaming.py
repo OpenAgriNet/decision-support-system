@@ -16,6 +16,7 @@ import pytest
 from dss.adapters.llm.stub import StubLLM
 from dss.adapters.sinks.memory import MemoryTurnSink
 from dss.config.clarification_text_loader import load_clarification_text
+from dss.core.forms.registry import NoForms
 from dss.core.planner.models import Identity
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.shared.models import (
@@ -65,6 +66,7 @@ def _build(
 ) -> tuple[Orchestrator, MemoryTurnSink]:
     turns = MemoryTurnSink()
     text_path = TextPath(
+        forms=NoForms(),
         intent_llm=_FakeIntentLLM(_one_ask()),
         moderation_llm=_FakeModerationLLM(),
         prompts=FakePromptProvider(),
@@ -187,6 +189,7 @@ async def test_the_real_component_streams_through_the_runner() -> None:
     chunks = ("Wheat is ", "2,275 Rs [1].")
     orch, _ = _build()
     text_path = TextPath(
+        forms=NoForms(),
         intent_llm=_FakeIntentLLM(_one_ask()),
         moderation_llm=_FakeModerationLLM(),
         prompts=FakePromptProvider(),

@@ -14,6 +14,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 
 from dss.adapters.observability.tracing import open_span
 from dss.adapters.sinks.memory import MemoryTurnSink
+from dss.core.forms.models import FormBlock, FormContext, FormDefinition
 from dss.core.intent.models import (
     ClassifiedAsk,
     IntentClassification,
@@ -24,7 +25,6 @@ from dss.core.planner.models import Result
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.shared.errors import TranslationError
 from dss.core.shared.language import ENGLISH, LanguageTag
-from dss.core.forms.models import FormBlock, FormContext, FormDefinition
 from dss.core.shared.models import (
     Claim,
     ClaimDelta,

@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Sequence
 
+from dss.core.forms.registry import NoForms
 from dss.core.shared.language import ENGLISH, LanguageTag
 from dss.core.shared.models import (
     TextQuery,
@@ -83,6 +84,7 @@ def test_the_orchestrator_satisfies_the_port(a_turn, a_context):
     from dss.orchestration.redaction import pass_through
 
     text_path = TextPath(
+        forms=NoForms(),
         intent_llm=StubLLM(),
         moderation_llm=StubLLM(),
         prompts=FakePromptProvider(),

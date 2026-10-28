@@ -65,6 +65,7 @@ from dss.config.redaction_loader import load_redaction_config
 from dss.config.schema_pack_fetch import SchemaPackFetchFailedError, fetch_packs
 from dss.config.settings import Settings
 from dss.core.channel.localize import build_localizer
+from dss.core.forms.registry import NoForms
 from dss.core.intent.models import Intent
 from dss.core.planner.validation import DomainSchema, parse_domain_schema
 from dss.core.policy.models import Checkpoint
@@ -227,6 +228,7 @@ def build_runner_with_lifecycle(
         clarification_text=clarification_text,
         schemas=schemas,
         edge_translation=EdgeTranslation(routes=translation_routes),
+        forms=NoForms(),
     )
     paths: TurnPaths = {TextQuery: text_path}
     unrouted = unrouted_kinds(paths, TurnInput.__subclasses__())

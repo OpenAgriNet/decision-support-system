@@ -16,6 +16,7 @@ from dss.adapters.sinks.memory import MemoryTurnSink
 from dss.config.clarification_text_loader import load_clarification_text
 from dss.core.channel.service import NO_MATCH_TEXT
 from dss.core.forms.models import FormBlock, FormContext, FormDefinition
+from dss.core.forms.registry import FormLookup, NoForms
 from dss.core.intent.models import (
     ClassifiedAsk,
     IntentClassification,
@@ -201,9 +202,10 @@ class _FakePlan:
         self.verdict_was_set: bool | None = None
 
     async def __call__(
-        self, turn, *, intent, discovery, verdict, visibility
+        self, turn, *, intent, discovery, verdict, visibility, awaiting=None
     ) -> Evidence:
         self.calls += 1
+        self.awaiting = dict(awaiting or {})
         self.verdict_was_set = verdict.is_set()
         self.turn = turn
         self.visibility = visibility
@@ -273,6 +275,8 @@ def _build(
     localize: FakeLocalizer | None = None,
     schemas: dict[str, DomainSchema] | None = None,
     edge_translation: EdgeTranslation | None = None,
+    forms: FormLookup | None = None,
+    scheme_catalog: FakeSchemeCatalog | None = None,
 ) -> tuple[Orchestrator, MemoryTurnSink]:
     turns = MemoryTurnSink()
     text_path = TextPath(
@@ -281,7 +285,7 @@ def _build(
         moderation_llm=moderation_llm or _FakeModerationLLM(violated=violated),
         prompts=FakePromptProvider(),
         policies=list(policies),
-        scheme_catalog=FakeSchemeCatalog(),
+        scheme_catalog=scheme_catalog or FakeSchemeCatalog(),
         scheme_fuzzy_threshold=None,
         nearest_max_km=50.0,
         components=Components(
@@ -296,6 +300,7 @@ def _build(
         area_lookup=area_lookup or FakeAreaLookup({"pune": [_PUNE_MATCH]}),
         clarification_text=load_clarification_text(),
         edge_translation=edge_translation or EdgeTranslation(routes={}),
+        forms=forms or NoForms(),
     )
     return Orchestrator(paths={TextQuery: text_path}), turns
 

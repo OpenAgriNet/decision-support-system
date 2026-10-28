@@ -66,6 +66,7 @@ from dss.core.channel.service import (
     no_match_answer,
     question_for_unplaced_asks,
 )
+from dss.core.forms.registry import FormLookup
 from dss.core.forms.service import offer_form
 from dss.core.intent.models import Intent
 from dss.core.moderation.messages import messages_for
@@ -102,6 +103,7 @@ from dss.observability.trace_log import bind_turn_ids, trace_component
 from dss.orchestration.answer_stream import AnswerStream
 from dss.orchestration.discovery import DiscoverProviders
 from dss.orchestration.events import CoreEvent
+from dss.orchestration.form_offer import find_forms
 from dss.orchestration.plan import Plan
 from dss.orchestration.redaction import RedactTexts
 from dss.orchestration.stage_content import (
@@ -110,7 +112,7 @@ from dss.orchestration.stage_content import (
     evidence_text,
 )
 from dss.orchestration.translation import translate_in, translate_out
-from dss.orchestration.turn import run_turn
+from dss.orchestration.turn import TurnResult, run_turn
 from dss.ports.area_lookup import AreaLookup
 from dss.ports.llm import LLMProvider
 from dss.ports.prompts import PromptProvider
@@ -251,6 +253,7 @@ class TextPath:
         clarification_text: ClarificationText,
         schemas: Mapping[str, DomainSchema],
         edge_translation: EdgeTranslation,
+        forms: FormLookup,
     ) -> None:
         self._intent_llm = intent_llm
         self._moderation_llm = moderation_llm
@@ -271,6 +274,7 @@ class TextPath:
         # thing only: whether a pack serves an ask that names no place.
         self._schemas = schemas
         self._edge_translation = edge_translation
+        self._forms = forms
 
     async def run(
         self, turn: UserTurn[TextQuery], *, ctx: TurnContext, recorder: TurnRecorder
@@ -381,9 +385,14 @@ class TextPath:
         # Discovery is read-only and already allowed to be wasted (it
         # starts before moderation has cleared the turn), so letting it
         # run and discarding it costs one cheap call.
+        #
+        # The asks a form answers. Settled here, once discovery has said who
+        # serves what, and before the place question: a form ask needs no
+        # place, the form carries what its call needs.
+        awaiting = find_forms(result.intent, result.discovery, self._forms)
         place_optional = place_optional_asks(
             result.intent, result.discovery, self._schemas
-        )
+        ) | frozenset(awaiting)
         clarification = answer_for_unplaced_asks(
             result.intent.asks,
             self._clarification_text,
@@ -403,24 +412,9 @@ class TextPath:
         # from. Answer NO_MATCH here rather than spend a planner and composer
         # round-trip to arrive at the same empty-handed place.
         if _nobody_serves(result.discovery):
-            status = TurnStatus.NO_MATCH
-            answer = answer_for_unserved_asks(
-                result.intent.asks, self._clarification_text
+            yield await self._unserved_reply(
+                result, turn=turn, place_optional=place_optional
             )
-            # An ask whose place matched several was never searched. Still
-            # ask which one, so the farmer's reply can finish it.
-            question = question_for_unplaced_asks(
-                result.intent.asks,
-                self._clarification_text,
-                place_optional=place_optional,
-            )
-            if question is not None:
-                status = TurnStatus.REQUIRES_INPUT
-                answer = ComposedAnswer(
-                    content=(*answer.content, TextBlock(text=question))
-                )
-            answer = await localize_answer(answer, self._components.localize, turn=turn)
-            yield _build_turn_finished(outcome_for(status), answer)
             return
 
         # Past the barrier: the decision cleared, so the planner's `select` tool
@@ -435,6 +429,7 @@ class TextPath:
                 discovery=result.discovery,
                 verdict=verdict,
                 visibility=visibility,
+                awaiting=awaiting,
             )
             set_current_span_content(
                 input=asks_text(result.intent.asks),
@@ -487,6 +482,28 @@ class TextPath:
 
         status, cause = _status_for(evidence)
         yield answer_stream.finish(outcome_for(status, cause))
+
+    async def _unserved_reply(
+        self,
+        result: TurnResult,
+        *,
+        turn: UserTurn[TextQuery],
+        place_optional: frozenset[int],
+    ) -> TurnFinished:
+        """NO_MATCH, or REQUIRES_INPUT with the place question when an ask's
+        place matched several: it was never searched, so still ask which one
+        and the farmer's reply can finish it."""
+
+        status = TurnStatus.NO_MATCH
+        answer = answer_for_unserved_asks(result.intent.asks, self._clarification_text)
+        question = question_for_unplaced_asks(
+            result.intent.asks, self._clarification_text, place_optional=place_optional
+        )
+        if question is not None:
+            status = TurnStatus.REQUIRES_INPUT
+            answer = ComposedAnswer(content=(*answer.content, TextBlock(text=question)))
+        answer = await localize_answer(answer, self._components.localize, turn=turn)
+        return _build_turn_finished(outcome_for(status), answer)
 
     async def _reveal_to_farmer(
         self,
@@ -605,9 +622,7 @@ def _nobody_serves(discovery: DiscoveryResult) -> bool:
     present for any ask is the no-match the composer would otherwise be asked to
     narrate from nothing."""
 
-    return not any(discovery.answers.values()) and not any(
-        discovery.capabilities.values()
-    )
+    return not discovery.serves_any_ask
 
 
 def _status_for(evidence: Evidence) -> tuple[TurnStatus, Cause | None]:
