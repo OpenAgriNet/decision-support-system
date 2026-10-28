@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -251,3 +252,97 @@ def test_only_a_provider_api_profile_marks_an_api_pack(
 def test_a_profile_that_cannot_be_read_is_a_pack_defect(profile_json: str) -> None:
     with pytest.raises(PACK_DEFECTS):
         is_api_pack(_pack_with_profile(profile_json))
+
+
+_GRIEVANCE_ATTRIBUTES = (
+    Path(__file__).parents[3] / "fixtures" / "api_packs" / "grievance_attributes.yaml"
+).read_text(encoding="utf-8")
+
+
+def _grievance_pack(profile: dict[str, str]) -> SchemaPackFiles:
+    """Its examples carry no subjectCategories, like the real pack's."""
+    return SchemaPackFiles(
+        pack_name="Grievance",
+        version="v0.1",
+        profile_json=json.dumps(profile),
+        attributes_yaml=_GRIEVANCE_ATTRIBUTES,
+        examples_json=('{"scheme": {"code": "PMFBY"}}',),
+    )
+
+
+_TRANSACT_API_PROFILE = {
+    "semantic_model": "provider-api",
+    "interaction_type": "Transact",
+}
+
+
+def test_an_api_pack_is_indexed_under_its_type_name_for_service_asks_only() -> None:
+    index, skipped = build_capability_index((_grievance_pack(_TRANSACT_API_PROFILE),))
+
+    assert index == {("Grievance", "Service"): ("openagrinet:Grievance",)}
+    assert skipped == ()
+
+
+def test_an_advise_api_pack_is_indexed_for_knowledge_asks_only() -> None:
+    profile = {"semantic_model": "provider-api", "interaction_type": "Advise"}
+
+    index, _ = build_capability_index((_grievance_pack(profile),))
+
+    assert index == {("Grievance", "Knowledge"): ("openagrinet:Grievance",)}
+
+
+@pytest.mark.parametrize(
+    "profile",
+    [
+        pytest.param({"semantic_model": "provider-api"}, id="no interaction_type"),
+        pytest.param(
+            {"semantic_model": "provider-api", "interaction_type": "Haggle"},
+            id="unknown interaction_type",
+        ),
+    ],
+)
+def test_an_api_pack_whose_interaction_cannot_be_placed_is_skipped(
+    profile: dict[str, str],
+) -> None:
+    good = _pack("MandiPrice", MANDI_PRICE_ATTRIBUTES, MANDI_PRICE_EXAMPLE)
+
+    index, skipped = build_capability_index((good, _grievance_pack(profile)))
+
+    assert set(index) == {("Market", "Knowledge"), ("Market", "Service")}
+    assert [s.pack_name for s in skipped] == ["Grievance"]
+    assert "interaction_type" in skipped[0].reason
+
+
+def test_a_catalog_pack_beside_an_api_pack_indexes_as_before() -> None:
+    catalog = _pack("MandiPrice", MANDI_PRICE_ATTRIBUTES, MANDI_PRICE_EXAMPLE)
+    alone, _ = build_capability_index((catalog,))
+
+    together, _ = build_capability_index(
+        (catalog, _grievance_pack(_TRANSACT_API_PROFILE))
+    )
+
+    assert {key: together[key] for key in alone} == alone
+
+
+@pytest.mark.parametrize(
+    "type_line",
+    [
+        pytest.param('"@type": [openagrinet:Grievance]', id="a list"),
+        pytest.param('"@type": ~', id="null"),
+        pytest.param('"@type": "openagrinet:"', id="no name after the prefix"),
+    ],
+)
+def test_an_api_pack_whose_type_names_no_category_is_skipped(type_line: str) -> None:
+    broken = _GRIEVANCE_ATTRIBUTES.replace('"@type": openagrinet:Grievance', type_line)
+    pack = SchemaPackFiles(
+        pack_name="Grievance",
+        version="v0.1",
+        profile_json=json.dumps(_TRANSACT_API_PROFILE),
+        attributes_yaml=broken,
+        examples_json=(),
+    )
+
+    index, skipped = build_capability_index((pack,))
+
+    assert index == {}
+    assert [s.pack_name for s in skipped] == ["Grievance"]

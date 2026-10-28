@@ -10,6 +10,7 @@ assembles the planner's schema dicts correctly from real schema packs.
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 import httpx
@@ -711,3 +712,41 @@ def test_a_pack_the_source_cannot_read_is_logged(tmp_path: Path, caplog) -> None
         "Twice" in record.message and "unreadable" in record.message
         for record in caplog.records
     )
+
+
+def test_a_wired_network_indexes_grievance_but_plans_no_filters_for_it(
+    tmp_path: Path,
+) -> None:
+    """The context index holds only packs the capability index kept too."""
+    pack_root = tmp_path / "schema"
+    shutil.copytree(SCHEMA_PACKS_FIXTURE_ROOT, pack_root)
+    grievance_dir = _write_grievance_pack(pack_root) / "Grievance" / "v0.1"
+    # Like the real pack's examples: no subjectCategories.
+    (grievance_dir / "examples").mkdir()
+    (grievance_dir / "examples" / "pmfby-support.json").write_text(
+        '{"scheme": {"code": "PMFBY"}}', encoding="utf-8"
+    )
+    (grievance_dir / "profile.json").write_text(
+        json.dumps(
+            {
+                "semantic_model": "provider-api",
+                "interaction_type": "Transact",
+                "filterable_paths": ["beckn:resourceAttributes.scheme.code"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    settings = _settings(
+        tmp_path,
+        discovery_base_url="https://discovery.example/oan",
+        invocation_base_url="https://select.example/oan",
+        schema_pack_dir=pack_root,
+    )
+
+    _discover, _invocation, schemas, schema_context_index, _client, _prefs = _network(
+        settings, preferences=_no_preferences()
+    )
+
+    assert "openagrinet:Grievance" in schema_context_index
+    assert "openagrinet:MandiPrice" in schema_context_index
+    assert "openagrinet:Grievance" not in schemas
