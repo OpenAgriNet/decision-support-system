@@ -1,0 +1,260 @@
+{
+  "@context": {
+    "openagrinet": "https://openagrinet.github.io/network-specs/vocab#",
+    "rdfs": "http://www.w3.org/2000/01/rdf-schema#"
+  },
+  "@graph": [
+    {
+      "@id": "openagrinet:Grievance",
+      "@type": "rdfs:Class",
+      "rdfs:label": "Grievance",
+      "rdfs:comment": "A complaint raised against a government scheme, filed on demand and answered directly. One scheme per payload, named by scheme.code."
+    },
+    {
+      "@id": "openagrinet:informationMode",
+      "@type": "rdfs:Property",
+      "rdfs:label": "information mode",
+      "rdfs:comment": "Where the answer comes from. OnDemand is its only value: the portal answers, so the caller makes the call that follows discovery."
+    },
+    {
+      "@id": "openagrinet:provider",
+      "@type": "rdfs:Property",
+      "rdfs:label": "provider",
+      "rdfs:comment": "The portal the payload came from. Carried on the support call only; on init and status the same fact lives in commitments[].offer.provider."
+    },
+    {
+      "@id": "openagrinet:scheme",
+      "@type": "rdfs:Property",
+      "rdfs:label": "scheme",
+      "rdfs:comment": "The government scheme the grievance is raised against. Present on every payload in both directions."
+    },
+    {
+      "@id": "openagrinet:enrolmentId",
+      "@type": "rdfs:Property",
+      "rdfs:label": "enrolment id",
+      "rdfs:comment": "The enrolment the grievance is about, as the scheme numbers it: a crop insurance application number for PMFBY, a registration number or exchanged token for PM-KISAN."
+    },
+    {
+      "@id": "openagrinet:applicantMobile",
+      "@type": "rdfs:Property",
+      "rdfs:label": "applicant mobile",
+      "rdfs:comment": "Ten-digit Indian mobile number of the farmer. Sent inbound only and never returned."
+    },
+    {
+      "@id": "openagrinet:cropYear",
+      "@type": "rdfs:Property",
+      "rdfs:label": "crop year",
+      "rdfs:comment": "Crop year of the insurance application, as a four-digit year. PMFBY only."
+    },
+    {
+      "@id": "openagrinet:season",
+      "@type": "rdfs:Property",
+      "rdfs:label": "season",
+      "rdfs:comment": "Crop season of the insurance application: Kharif, Rabi or Zaid. PMFBY only."
+    },
+    {
+      "@id": "openagrinet:complaintDate",
+      "@type": "rdfs:Property",
+      "rdfs:label": "complaint date",
+      "rdfs:comment": "The date the complaint was filed, supplied by the caller. Comes back in the case band as filedOn."
+    },
+    {
+      "@id": "openagrinet:receiptSourceId",
+      "@type": "rdfs:Property",
+      "rdfs:label": "receipt source id",
+      "rdfs:comment": "The integrating channel a ticket arrived through. Names the channel, not the farmer."
+    },
+    {
+      "@id": "openagrinet:challenge",
+      "@type": "rdfs:Property",
+      "rdfs:label": "challenge",
+      "rdfs:comment": "Challenging on this desk, gathered in one place: what it accepts, what it sent, what the caller answered. Absent altogether on a desk that challenges nothing."
+    },
+    {
+      "@id": "openagrinet:challengeMethods",
+      "@type": "rdfs:Property",
+      "rdfs:label": "challenge methods",
+      "rdfs:comment": "What this desk challenges with before a guarded call. Catalog only."
+    },
+    {
+      "@id": "openagrinet:challengeIssued",
+      "@type": "rdfs:Property",
+      "rdfs:label": "challenge issued",
+      "rdfs:comment": "The portal's acknowledgement that it sent a challenge, and what shape the answer must take."
+    },
+    {
+      "@id": "openagrinet:challengeResponse",
+      "@type": "rdfs:Property",
+      "rdfs:label": "challenge response",
+      "rdfs:comment": "The caller's answer to a challenge, presented on a guarded call."
+    },
+    {
+      "@id": "openagrinet:challengeChannel",
+      "@type": "rdf:Property",
+      "rdfs:label": "challenge channel",
+      "rdfs:comment": "How the challenge reaches the farmer. SMS is a text message to the registered mobile. Described where delivery is offered and confirmed; not echoed when the answer is presented."
+    },
+    {
+      "@id": "openagrinet:challengeMethod",
+      "@type": "rdfs:Property",
+      "rdfs:label": "challenge method",
+      "rdfs:comment": "The kind of secret demanded. OTP is a one-time code; the route it travels is challenge channel."
+    },
+    {
+      "@id": "openagrinet:challengeLength",
+      "@type": "rdfs:Property",
+      "rdfs:label": "challenge length",
+      "rdfs:comment": "Number of characters in the issued code."
+    },
+    {
+      "@id": "openagrinet:challengeValueType",
+      "@type": "rdfs:Property",
+      "rdfs:label": "challenge value type",
+      "rdfs:comment": "What the code is made of: NUMERIC or ALPHANUMERIC."
+    },
+    {
+      "@id": "openagrinet:challengeValue",
+      "@type": "rdfs:Property",
+      "rdfs:label": "challenge value",
+      "rdfs:comment": "The one-time code the caller presents. Never logged, traced, echoed or forwarded."
+    },
+    {
+      "@id": "openagrinet:challengeExpiresAt",
+      "@type": "rdfs:Property",
+      "rdfs:label": "challenge expires at",
+      "rdfs:comment": "The instant the issued code stops being accepted."
+    },
+    {
+      "@id": "openagrinet:grievanceOptions",
+      "@type": "rdfs:Property",
+      "rdfs:label": "grievance options",
+      "rdfs:comment": "The complaint form this desk publishes: the values grievance.category.code and, where the desk classifies at two levels, grievance.subCategory.code may take. Catalog only."
+    },
+    {
+      "@id": "openagrinet:grievanceCategoryOption",
+      "@type": "rdfs:Property",
+      "rdfs:label": "grievance category option",
+      "rdfs:comment": "One selectable category on the published complaint form."
+    },
+    {
+      "@id": "openagrinet:grievanceSubCategoryOption",
+      "@type": "rdfs:Property",
+      "rdfs:label": "grievance sub-category option",
+      "rdfs:comment": "One selectable sub-category on the published complaint form, where the desk classifies at two levels."
+    },
+    {
+      "@id": "openagrinet:optionCode",
+      "@type": "rdfs:Property",
+      "rdfs:label": "option code",
+      "rdfs:comment": "The value a caller sends for a published option."
+    },
+    {
+      "@id": "openagrinet:optionName",
+      "@type": "rdfs:Property",
+      "rdfs:label": "option name",
+      "rdfs:comment": "The portal's own label for a published option."
+    },
+    {
+      "@id": "openagrinet:optionHelp",
+      "@type": "rdfs:Property",
+      "rdfs:label": "option help",
+      "rdfs:comment": "Plain-language help text for a published option. Shown to the farmer and never sent."
+    },
+    {
+      "@id": "openagrinet:grievance",
+      "@type": "rdfs:Property",
+      "rdfs:label": "grievance",
+      "rdfs:comment": "What the farmer says went wrong. Every member is authored by the farmer."
+    },
+    {
+      "@id": "openagrinet:grievanceCategory",
+      "@type": "rdfs:Property",
+      "rdfs:label": "grievance category",
+      "rdfs:comment": "How the desk classifies the complaint at its first level. Carries a code, a name, or both: a read may answer with a name and no id."
+    },
+    {
+      "@id": "openagrinet:grievanceSubCategory",
+      "@type": "rdfs:Property",
+      "rdfs:label": "grievance sub-category",
+      "rdfs:comment": "The second classification level, where the desk numbers two."
+    },
+    {
+      "@id": "openagrinet:grievanceDescription",
+      "@type": "rdfs:Property",
+      "rdfs:label": "grievance description",
+      "rdfs:comment": "What went wrong, in the farmer's own words. Returned verbatim on a case read."
+    },
+    {
+      "@id": "openagrinet:case",
+      "@type": "rdfs:Property",
+      "rdfs:label": "case",
+      "rdfs:comment": "What the portal recorded about the grievance. Every member is authored by the portal."
+    },
+    {
+      "@id": "openagrinet:ticketNo",
+      "@type": "rdfs:Property",
+      "rdfs:label": "ticket number",
+      "rdfs:comment": "The handle the portal issued when the grievance was filed."
+    },
+    {
+      "@id": "openagrinet:caseStatus",
+      "@type": "rdfs:Property",
+      "rdfs:label": "case status",
+      "rdfs:comment": "Where the case stands, as a CaseStatusCode. The portal's own status phrase does not travel."
+    },
+    {
+      "@id": "openagrinet:filedOn",
+      "@type": "rdfs:Property",
+      "rdfs:label": "filed on",
+      "rdfs:comment": "The calendar date the grievance was filed."
+    },
+    {
+      "@id": "openagrinet:caseReply",
+      "@type": "rdfs:Property",
+      "rdfs:label": "case reply",
+      "rdfs:comment": "What the portal answered against the ticket."
+    },
+    {
+      "@id": "openagrinet:repliedOn",
+      "@type": "rdfs:Property",
+      "rdfs:label": "replied on",
+      "rdfs:comment": "The calendar date the reply was written. Only meaningful alongside a reply."
+    },
+    {
+      "@id": "openagrinet:cropName",
+      "@type": "rdfs:Property",
+      "rdfs:label": "crop name",
+      "rdfs:comment": "The insured crop a PMFBY ticket was raised against, as the portal names it."
+    },
+    {
+      "@id": "openagrinet:publishedAction",
+      "@type": "rdfs:Property",
+      "rdfs:label": "published action",
+      "rdfs:comment": "The calls this catalog entry serves. One entry per call, each naming the schema to build and where that payload rides in the envelope. Published on catalog/publish only; a call absent from the list is a call this scheme does not serve."
+    },
+    {
+      "@id": "openagrinet:actionName",
+      "@type": "rdfs:Property",
+      "rdfs:label": "action name",
+      "rdfs:comment": "The Beckn action to call, as it appears in context.action."
+    },
+    {
+      "@id": "openagrinet:actionDescription",
+      "@type": "rdfs:Property",
+      "rdfs:label": "action description",
+      "rdfs:comment": "What this call does and when to use it, in plain language. Carries ordering a schema cannot state: which call must come first, and what it returns that a later call needs."
+    },
+    {
+      "@id": "openagrinet:actionSchema",
+      "@type": "rdfs:Property",
+      "rdfs:label": "action schema",
+      "rdfs:comment": "A URL naming the one leaf schema this scheme accepts for this call. Resolves to attributes.yaml with a JSON Pointer fragment, so the caller reads a single closed shape rather than resolving a oneOf."
+    },
+    {
+      "@id": "openagrinet:actionAttributesAt",
+      "@type": "rdfs:Property",
+      "rdfs:label": "action attributes at",
+      "rdfs:comment": "A JSONPath to where the attributes object sits in that call's envelope. The same fact as x-beckn-container-by-action on the pack root, published so a caller needs one fetch rather than two."
+    }
+  ]
+}

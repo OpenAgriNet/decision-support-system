@@ -70,11 +70,50 @@ class TextContent(_WireIn):
     text: str
 
 
+class InputFormContext(_WireIn):
+    scheme: str
+    category: str
+    action: str
+
+
+class InputFormField(_WireIn):
+    """A submitted field, or an offered one echoed back in the history: an
+    offer's fields carry a label and rules and no value, and are not read."""
+
+    name: str
+    value: str | None = None
+
+
+class FormContent(_WireIn):
+    """A form the farmer filled in (#205). In the current user message it is
+    the submission; in the history it is a reference, and its fields are
+    not read."""
+
+    type: Literal["form"]
+    form_id: str
+    context: InputFormContext
+    submission_id: str | None = None
+    fields: list[InputFormField] = []
+
+
+class FormErrorContent(_WireIn):
+    """The DSS's own reply handing a form back, echoed in the history. Only a
+    reference: its fields are not read."""
+
+    type: Literal["form_error"]
+    form_id: str
+    context: InputFormContext
+    submission_id: str | None = None
+
+
+type InputContent = Annotated[
+    TextContent | FormContent | FormErrorContent, Field(discriminator="type")
+]
+
+
 class InputMessage(_WireIn):
     role: Literal["user", "assistant"]
-    content: list[Annotated[TextContent, Field(discriminator="type")]] = Field(
-        min_length=1
-    )
+    content: list[InputContent] = Field(min_length=1)
 
 
 class Geometry(_WireIn):
@@ -240,6 +279,24 @@ class OutputForm(_WireOut):
     fields: list[OutputFormField]
 
 
+class OutputFormErrorField(_WireOut):
+    name: str
+    label: str
+    error: str
+
+
+class OutputFormError(_WireOut):
+    """A submitted form handed back (#205): the form is still the farmer's.
+    `fields` names what to fix, and is empty when the values were fine and
+    the desk could not take them."""
+
+    type: Literal["form_error"] = "form_error"
+    form_id: str
+    context: OutputFormContext
+    submission_id: str
+    fields: list[OutputFormErrorField]
+
+
 class Source(_WireOut):
     id: str
     name: str
@@ -263,7 +320,9 @@ class ResponseMessage(_WireOut):
     result."""
 
     outcome: Outcome | None = None
-    content: list[OutputText | OutputTextDelta | OutputRefusal | OutputForm] = []
+    content: list[
+        OutputText | OutputTextDelta | OutputRefusal | OutputForm | OutputFormError
+    ] = []
     sources: list[Source] = []
     error: TurnError | None = None
 

@@ -45,20 +45,26 @@ def answer_for_unserved_asks(
     """What the farmer reads when the ask is understood but nobody on the
     network serves it. Not `no_match_answer`: that one reads as out of scope.
 
-    The reply names the place, never the schema, so a new schema needs no
-    new text.
+    The reply names the place when the ask has one, never the schema, so a
+    new schema needs no new text.
     """
 
+    # An ask whose place is still in question gets no line: the place question
+    # that follows is its answer.
     lines = [
-        text.no_provider_for.format(place=ask.place.name)
-        if ask.place.name
-        else text.no_provider
+        _no_provider_line(ask, text)
         for ask in asks
-        if isinstance(ask.place, ResolvedPlace)
+        if ask.place is None or isinstance(ask.place, ResolvedPlace)
     ]
     # Two asks on one place are one thing for the farmer to act on.
     unique = dict.fromkeys(lines)
     return ComposedAnswer(content=(TextBlock(text="\n".join(unique)),))
+
+
+def _no_provider_line(ask: Ask, text: ClarificationText) -> str:
+    if isinstance(ask.place, ResolvedPlace) and ask.place.name:
+        return text.no_provider_for.format(place=ask.place.name)
+    return text.no_provider
 
 
 def _standout_part(within: tuple[str, ...], others: list[tuple[str, ...]]) -> str:

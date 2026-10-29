@@ -74,3 +74,32 @@ def test_a_file_with_no_frontmatter_names_the_file(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="forgot-frontmatter.md"):
         load_skills(tmp_path)
+
+
+def test_a_skill_names_the_kind_of_turn_it_binds_on(tmp_path: Path) -> None:
+    """Unset, a skill is a question's: every skill before forms was."""
+
+    (tmp_path / "question.md").write_text(
+        "---\nid: q\ndomain: agriculture\ndescription: A.\ntool_names: [select]\n---\nx\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "form.md").write_text(
+        "---\nid: f\ndomain: agriculture\ndescription: B.\ntool_names: [support]\n"
+        "input_kind: form\n---\ny\n",
+        encoding="utf-8",
+    )
+
+    kinds = {skill.id: skill.input_kind for skill in load_skills(tmp_path)}
+
+    assert kinds == {"q": "text", "f": "form"}
+
+
+def test_an_unknown_input_kind_names_the_file(tmp_path: Path) -> None:
+    (tmp_path / "odd.md").write_text(
+        "---\nid: odd\ndomain: agriculture\ndescription: C.\ntool_names: [support]\n"
+        "input_kind: forms\n---\nz\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="odd.md"):
+        load_skills(tmp_path)

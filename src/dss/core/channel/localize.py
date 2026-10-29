@@ -29,13 +29,16 @@ apply — a streamed call has none.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable, Sequence
 from typing import Protocol
 
+import anyio
 from pydantic import BaseModel, ConfigDict
 
 from dss.core.channel.models import ComposedAnswer
+from dss.core.forms.models import FieldErrorEntry, FormErrorBlock
 from dss.core.shared.language import ENGLISH
-from dss.core.shared.models import UserTurn
+from dss.core.shared.models import OutputBlock, RefusalBlock, TextBlock, UserTurn
 from dss.ports.llm import LLMProvider
 from dss.ports.prompts import PromptIdentifier, PromptProvider
 
@@ -85,12 +88,48 @@ def build_localizer(*, llm: LLMProvider, prompts: PromptProvider) -> LocalizeTex
 async def localize_answer(
     answer: ComposedAnswer, localize: LocalizeText, *, turn: UserTurn
 ) -> ComposedAnswer:
-    """Every block's text through the localizer; the block types, their
+    """Every block's words through the localizer; the block types, their
     ``source_ids`` and the answer's ``sources`` stay as they are — language
     changes the words, never the structure or the provenance."""
 
-    content = [
-        block.model_copy(update={"text": await localize(block.text, turn=turn)})
-        for block in answer.content
-    ]
+    async def localize_block(block: OutputBlock) -> OutputBlock:
+        return await _localize_block(block, localize, turn=turn)
+
+    content = await _each_concurrently(answer.content, localize_block)
     return answer.model_copy(update={"content": tuple(content)})
+
+
+async def _localize_block(
+    block: OutputBlock, localize: LocalizeText, *, turn: UserTurn
+) -> OutputBlock:
+    async def localize_entry(entry: FieldErrorEntry) -> FieldErrorEntry:
+        return entry.model_copy(
+            update={"error": await localize(entry.error, turn=turn)}
+        )
+
+    match block:
+        case TextBlock() | RefusalBlock():
+            return block.model_copy(
+                update={"text": await localize(block.text, turn=turn)}
+            )
+        case FormErrorBlock():
+            fields = await _each_concurrently(block.fields, localize_entry)
+            return block.model_copy(update={"fields": tuple(fields)})
+    return block
+
+
+async def _each_concurrently[T, R](
+    items: Sequence[T], render: Callable[[T], Awaitable[R]]
+) -> list[R]:
+    """Every model call of one answer in flight at once: a reply with five
+    messages waits for one round trip, not five."""
+
+    rendered: dict[int, R] = {}
+
+    async def fill(index: int) -> None:
+        rendered[index] = await render(items[index])
+
+    async with anyio.create_task_group() as task_group:
+        for index in range(len(items)):
+            task_group.start_soon(fill, index)
+    return [rendered[index] for index in range(len(items))]

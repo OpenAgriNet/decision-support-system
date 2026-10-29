@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Literal
 
 import anyio
 from pydantic import BaseModel, ConfigDict
@@ -77,6 +78,10 @@ class Skill(BaseModel):
     description: str
     guidance: str
     tool_names: tuple[str, ...]
+    # Which kind of turn binds the skill: a typed question, or a submitted
+    # form. The planner selects by it, so a form turn never sees `select`
+    # and a question never sees `support`.
+    input_kind: Literal["text", "form"] = "text"
 
 
 class Result(BaseModel):
@@ -111,6 +116,8 @@ class Failure(BaseModel):
     capability: str | None
     reason: str
     retryable: bool
+    # The provider's own `Retry-After`, when it sent one on a failed filing.
+    retry_after_seconds: int | None = None
 
     @property
     def is_provider_failure(self) -> bool:

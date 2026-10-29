@@ -12,17 +12,17 @@ would merge the two components the design deliberately splits.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Protocol
 
 from pydantic_ai.models import Model
 from pydantic_ai.usage import RunUsage
 
 from dss.adapters.observability.metrics import model_that_ran, record_agent_run
-from dss.core.forms.models import FormDefinition
+from dss.core.forms.models import Filing, FormDefinition, FormSubmission
 from dss.core.intent.models import Intent
 from dss.core.planner.evidence import assemble_evidence, place_failures
-from dss.core.planner.models import Evidence, Identity, Verdict
+from dss.core.planner.models import Evidence, Identity, Skill, Verdict
 from dss.core.planner.place import place_optional_asks
 from dss.core.planner.prompt import (
     answers_section,
@@ -33,7 +33,7 @@ from dss.core.planner.prompt import (
 from dss.core.planner.validation import DomainSchema
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
-from dss.core.shared.models import TextQuery, UserTurn
+from dss.core.shared.models import TextQuery, TurnInput, UserTurn
 from dss.observability.stages import Stage
 from dss.observability.trace_log import log_external_response
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
@@ -46,13 +46,14 @@ class Plan(Protocol):
 
     async def __call__(  # noqa: PLR0913
         self,
-        turn: UserTurn[TextQuery],
+        turn: UserTurn[TurnInput],
         *,
         intent: Intent,
         discovery: DiscoveryResult,
         verdict: Verdict,
         visibility: Visibility = NOTHING_HELD,
         awaiting: Mapping[int, FormDefinition] | None = None,
+        filing: Filing | None = None,
     ) -> Evidence: ...
 
 
@@ -85,20 +86,24 @@ def build_plan(  # noqa: PLR0913
     model_settings = {"temperature": temperature, "timeout": timeout_seconds}
 
     async def plan(  # noqa: PLR0913
-        turn: UserTurn[TextQuery],
+        turn: UserTurn[TurnInput],
         *,
         intent: Intent,
         discovery: DiscoveryResult,
         verdict: Verdict,
         visibility: Visibility = NOTHING_HELD,
         awaiting: Mapping[int, FormDefinition] | None = None,
+        filing: Filing | None = None,
     ) -> Evidence:
         awaiting = awaiting or {}
+        # A submission turn has one ask, the form's, at position 0.
+        filing_asks = frozenset({0}) if filing is not None else frozenset()
         # A place failure is known before the run and no tool reads it, so it
         # skips the deps. An ask with no place at all only fails when every
-        # option found for it needs one — the pack decides.
+        # option found for it needs one — the pack decides. A form's ask,
+        # offered or filed, needs none: the form carries what its call needs.
         place_optional = place_optional_asks(
-            intent, discovery, schemas, awaiting=awaiting
+            intent, discovery, schemas, awaiting=frozenset(awaiting) | filing_asks
         )
         unplaced = place_failures(intent, place_optional=place_optional)
         # Nothing left to call when every ask is a form's: a run would only
@@ -113,7 +118,9 @@ def build_plan(  # noqa: PLR0913
                 awaiting=awaiting,
             )
 
-        skills = prompts.get_skills(PromptIdentifier.PLANNER, turn.target_lang)
+        skills = _skills_for(
+            turn, prompts.get_skills(PromptIdentifier.PLANNER, turn.target_lang)
+        )
         agent = build_planner_agent(
             skills=skills,
             model=model,
@@ -127,7 +134,7 @@ def build_plan(  # noqa: PLR0913
                     "identity_boundaries": identity.boundaries,
                     "guidance_section": guidance_section(skills),
                     "asks_section": asks_section(
-                        intent.asks, awaiting=frozenset(awaiting)
+                        intent.asks, awaiting=frozenset(awaiting), filing=filing_asks
                     ),
                     "answers_section": answers_section(discovery.answers),
                 },
@@ -142,6 +149,7 @@ def build_plan(  # noqa: PLR0913
             invocation=invocation,
             verdict=verdict,
             visibility=visibility,
+            filing=filing,
         )
         # Our own counter, so a run that fails after several paid round-trips
         # still reports them.
@@ -152,7 +160,7 @@ def build_plan(  # noqa: PLR0913
             # in markers — the model resolves a subject named in an earlier turn
             # from here (see the provider-invocation skill's guidance).
             result = await agent.run(
-                build_user_message(query=turn.input.text, history=turn.history),
+                build_user_message(query=_query_of(turn), history=turn.history),
                 deps=deps,
                 model_settings=model_settings,
                 usage=usage,
@@ -177,3 +185,24 @@ def build_plan(  # noqa: PLR0913
         )
 
     return plan
+
+
+def _skills_for(turn: UserTurn[TurnInput], skills: Sequence[Skill]) -> list[Skill]:
+    """The skills for this kind of turn: a question's, or a submitted form's.
+    The rest never reach the agent, so their tools are not in its schema."""
+
+    kind = "form" if isinstance(turn.input, FormSubmission) else "text"
+    return [skill for skill in skills if skill.input_kind == kind]
+
+
+def _query_of(turn: UserTurn[TurnInput]) -> str:
+    """What the user message says the farmer did. A form's values never go
+    in it: the tool reads them from the filing, and the model only picks the
+    provider."""
+
+    match turn.input:
+        case TextQuery(text=text):
+            return text
+        case FormSubmission(context=context):
+            return f"The farmer has filled in the {context} form. File it."
+    raise TypeError(f"no planner query for {type(turn.input).__name__}")

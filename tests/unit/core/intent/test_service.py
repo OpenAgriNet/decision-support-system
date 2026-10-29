@@ -16,7 +16,7 @@ from dss.core.intent.models import (
     SchemeEntry,
     SubjectCategory,
 )
-from dss.core.intent.service import classify_intent
+from dss.core.intent.service import classify_intent, scheme_with_code
 from dss.core.shared.language import LanguageTag
 from dss.core.shared.models import ConversationMessage, TextQuery, UserTurn
 from dss.ports.prompts import PromptIdentifier
@@ -219,3 +219,11 @@ async def test_with_no_catalog_no_ask_gets_a_scheme() -> None:
     )
 
     assert classification.asks[0].scheme is None
+
+
+def test_scheme_with_code_reads_the_catalog_by_code() -> None:
+    pmfby = Scheme(code="PMFBY", name="Pradhan Mantri Fasal Bima Yojana")
+    schemes = (SchemeEntry(scheme=pmfby, aliases=("fasal bima",)),)
+
+    assert scheme_with_code(schemes, "PMFBY") == pmfby
+    assert scheme_with_code(schemes, "PM-KISAN") is None

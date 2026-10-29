@@ -30,7 +30,7 @@
 
 अब तक की बातचीत (सबसे पुरानी पहले, केवल संदर्भ के लिए):
 {%- for message in history %}
-  {{ message.role }}: {{ message.text }}
+  {{ message.prompt_line }}
 {%- endfor %}
 {%- endif %}
 

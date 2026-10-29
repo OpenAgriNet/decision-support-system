@@ -83,3 +83,7 @@ def _with_scheme(ask: ClassifiedAsk, by_code: dict[str, Scheme]) -> ClassifiedAs
     return ask.model_copy(
         update={"agriculture_subjects": scheme.name, "scheme": scheme}
     )
+
+
+def scheme_with_code(schemes: Sequence[SchemeEntry], code: str) -> Scheme | None:
+    return next((entry.scheme for entry in schemes if entry.scheme.code == code), None)

@@ -20,7 +20,18 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
-from dss.core.forms.models import FormContext, FormDefinition
+from dss.core.forms.models import (
+    ActionField,
+    ActionReply,
+    ActionSchema,
+    FieldSource,
+    FieldValue,
+    Filing,
+    FormContext,
+    FormDefinition,
+    FormSubmission,
+    ValidSubmission,
+)
 from dss.core.intent.models import (
     Ask,
     Intent,
@@ -533,3 +544,123 @@ async def test_a_planner_run_that_fails_still_records_what_it_spent() -> None:
     assert usage is not None
     assert usage.cost == pytest.approx(0.003)
     assert model_for(Stage.PLANNER) == "function:select_then_fail:"
+
+
+ACTION_SKILL = Skill(
+    id="provider-action",
+    domain="agriculture",
+    description="File a form with a provider.",
+    guidance="Call describe_capability, then support once.",
+    tool_names=("describe_capability", "support"),
+    input_kind="form",
+)
+
+_FILING_ACTION = ActionSchema(
+    context=GRIEVANCE_FORM.context,
+    must_send=(
+        ActionField(path="provider.id", source=FieldSource.PROVIDER),
+        ActionField(path="applicantMobile", source=FieldSource.FARMER),
+    ),
+    jsonld={"@type": "openagrinet:Grievance"},
+)
+_FILING = Filing(
+    submission=ValidSubmission(
+        definition=_FILING_ACTION.form(),
+        submission_id="submission-1",
+        values={"applicantMobile": "9876543210"},
+    ),
+    action=_FILING_ACTION,
+)
+_GRIEVANCE_PROVIDER = replace(
+    CAPABILITY,
+    provider_id="pmfby",
+    provider_name="PMFBY Grievance Portal",
+    capability="openagrinet:Grievance",
+    resource_id="res:pmfby:grievance",
+    observed_categories=("Grievance",),
+)
+
+
+class _FilingInvocation(_FakeInvocation):
+    def __init__(self) -> None:
+        super().__init__()
+        self.filed: list[dict] = []
+
+    async def support(self, capability, attributes, transaction_id, *, visibility=None):
+        self.filed.append(attributes)
+        return ActionReply(attributes={"case": {"ticketNo": "100626000099001"}})
+
+
+def _form_turn() -> UserTurn:
+    return UserTurn(
+        input=FormSubmission(
+            form_id="offer-1",
+            context=GRIEVANCE_FORM.context,
+            submission_id="submission-1",
+            values=(FieldValue(name="applicantMobile", value="9876543210"),),
+        ),
+        session_id="s1",
+        transaction_id="t1",
+        source_lang="en",
+        target_lang="en",
+        channel="web",
+    )
+
+
+def _files_the_form(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+    assert {tool.name for tool in info.function_tools} == {
+        "describe_capability",
+        "support",
+    }
+    if len(messages) == 1:
+        system = messages[0].parts[0]
+        assert isinstance(system, SystemPromptPart)
+        assert "files the farmer's form" in system.content
+        user = messages[0].parts[-1]
+        assert isinstance(user, UserPromptPart)
+        assert "9876543210" not in str(user.content)
+        return ModelResponse(
+            parts=[
+                ToolCallPart(
+                    tool_name="support",
+                    args={
+                        "ask_index": 0,
+                        "resource_id": _GRIEVANCE_PROVIDER.resource_id,
+                    },
+                )
+            ]
+        )
+    return ModelResponse(parts=[TextPart(content="filed")])
+
+
+async def test_a_submission_turn_files_the_form_and_keeps_the_ticket() -> None:
+    """The form skill's tools, not select's; the ask line says the values are
+    the form's; the user message never carries them; the reply is a result."""
+
+    invocation = _FilingInvocation()
+    plan = build_plan(
+        schemas=SCHEMAS,
+        schema_context_index={},
+        invocation=invocation,
+        identity=IDENTITY,
+        prompts=FakePromptProvider(skills=(SKILL, ACTION_SKILL)),
+        model=FunctionModel(_files_the_form),
+    )
+
+    evidence = await plan(
+        _form_turn(),
+        intent=Intent(asks=(GRIEVANCE_ASK,), confidence=1.0),
+        discovery=DiscoveryResult(
+            answers={}, capabilities={0: (_GRIEVANCE_PROVIDER,)}, failures={}, events=()
+        ),
+        verdict=_cleared_verdict(),
+        filing=_FILING,
+    )
+
+    (body,) = invocation.filed
+    assert body["applicantMobile"] == "9876543210"
+    (ask_evidence,) = evidence.ask_evidences
+    (result,) = ask_evidence.results
+    assert result.data["case"]["ticketNo"] == "100626000099001"
+    assert ask_evidence.failures == ()
+    assert evidence.unserved_asks == ()

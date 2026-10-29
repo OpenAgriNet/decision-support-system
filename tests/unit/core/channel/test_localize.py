@@ -7,6 +7,7 @@ localization failure never costs the answer.
 
 from __future__ import annotations
 
+import anyio
 import pytest
 
 from dss.core.channel.localize import (
@@ -15,6 +16,7 @@ from dss.core.channel.localize import (
     localize_answer,
 )
 from dss.core.channel.models import ComposedAnswer
+from dss.core.forms.models import FieldErrorEntry, FormContext, FormErrorBlock
 from dss.core.shared.language import LanguageTag
 from dss.core.shared.models import (
     RefusalBlock,
@@ -147,3 +149,87 @@ async def test_localize_answer_keeps_structure_and_provenance() -> None:
     assert text.text == "localized Which place are you asking about?"
     assert text.source_ids == ("1",)
     assert localized.sources == (source,)
+
+
+async def test_a_form_error_block_has_its_messages_localized() -> None:
+    """The farmer reads the field messages; the names and labels are the
+    form's and stay as they are."""
+
+    localize = build_localizer(llm=_FakeLLM(), prompts=FakePromptProvider())
+    block = FormErrorBlock(
+        form_id="offer-1",
+        context=FormContext(scheme="PMFBY", category="Grievance", action="support"),
+        submission_id="submission-1",
+        fields=(
+            FieldErrorEntry(
+                name="applicantMobile",
+                label="Applicant mobile",
+                error="Applicant mobile is not in the right format.",
+            ),
+        ),
+    )
+
+    localized = await localize_answer(
+        ComposedAnswer(content=(block,)), localize, turn=_turn("hi")
+    )
+
+    (errors,) = localized.content
+    assert isinstance(errors, FormErrorBlock)
+    assert errors.fields == (
+        FieldErrorEntry(
+            name="applicantMobile",
+            label="Applicant mobile",
+            error="localized Applicant mobile is not in the right format.",
+        ),
+    )
+
+
+class _CountsInFlight:
+    """A `LocalizeText` that records how many calls overlap."""
+
+    def __init__(self) -> None:
+        self.in_flight = 0
+        self.peak = 0
+
+    async def __call__(self, text: str, *, turn: UserTurn) -> str:
+        self.in_flight += 1
+        self.peak = max(self.peak, self.in_flight)
+        await anyio.sleep(0.01)
+        self.in_flight -= 1
+        return f"localized {text}"
+
+
+async def test_the_messages_of_one_answer_are_localized_together() -> None:
+    """Five bad fields must not cost five model round trips in a row."""
+
+    localize = _CountsInFlight()
+    entries = tuple(
+        FieldErrorEntry(name=f"field{n}", label=f"Field {n}", error=f"Message {n}")
+        for n in range(3)
+    )
+    answer = ComposedAnswer(
+        content=(
+            TextBlock(text="Please check the fields marked below."),
+            FormErrorBlock(
+                form_id="offer-1",
+                context=FormContext(
+                    scheme="PMFBY", category="Grievance", action="support"
+                ),
+                submission_id="submission-1",
+                fields=entries,
+            ),
+        )
+    )
+
+    localized = await localize_answer(answer, localize, turn=_turn("hi"))
+
+    assert localize.peak == 4
+    text, errors = localized.content
+    assert isinstance(text, TextBlock)
+    assert text.text == "localized Please check the fields marked below."
+    assert isinstance(errors, FormErrorBlock)
+    assert [entry.error for entry in errors.fields] == [
+        "localized Message 0",
+        "localized Message 1",
+        "localized Message 2",
+    ]

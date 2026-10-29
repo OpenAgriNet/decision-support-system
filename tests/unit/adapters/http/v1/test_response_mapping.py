@@ -11,11 +11,13 @@ import pytest
 from dss.adapters.http.v1 import mapping
 from dss.core.forms.models import (
     FieldDefinition,
+    FieldErrorEntry,
     FieldKind,
     FieldRules,
     FormBlock,
     FormContext,
     FormDefinition,
+    FormErrorBlock,
     Option,
 )
 from dss.core.shared.models import (
@@ -370,3 +372,67 @@ def test_a_form_block_is_a_form_item_with_flat_fields(ctx):
         "options": [],
     }
     assert item["fields"][1]["options"] == [{"value": "Kharif", "label": "Kharif"}]
+
+
+def test_a_rejected_filing_is_not_retryable(ctx):
+    """The desk refused the form as sent; sending it again unchanged would
+    not help, and a UI must not offer a plain retry."""
+
+    finished = TurnFinished(
+        outcome=TurnOutcome(
+            status=TurnStatus.UNAVAILABLE, cause=Cause.PROVIDER_REJECTED, confidence=0
+        ),
+        content=(),
+    )
+
+    frame = mapping.to_terminal_frame(
+        finished, ctx, now=NOW, seq=None, response_id=RESPONSE_ID
+    )
+
+    assert frame.message.error is not None
+    assert frame.message.error.code == "provider_rejected"
+    assert frame.message.error.retryable is False
+    assert frame.message.error.retry_after_seconds is None
+
+
+def test_a_form_error_block_is_a_form_error_item_with_names_labels_and_messages(ctx):
+    """What a UI needs to reopen the form with the errors; never a value."""
+
+    block = FormErrorBlock(
+        form_id="8f3c",
+        context=FormContext(scheme="PMFBY", category="Grievance", action="support"),
+        submission_id="sub-1",
+        fields=(
+            FieldErrorEntry(
+                name="applicantMobile",
+                label="Applicant mobile",
+                error="Applicant mobile is not in the right format.",
+            ),
+        ),
+    )
+    finished = TurnFinished(
+        outcome=TurnOutcome(
+            status=TurnStatus.REQUIRES_INPUT, cause=Cause.INVALID_INPUT, confidence=80
+        ),
+        content=(TextBlock(text="Please check the fields marked below."), block),
+    )
+
+    frame = mapping.to_terminal_frame(
+        finished, ctx, now=NOW, seq=None, response_id=RESPONSE_ID
+    )
+    body = json.loads(frame.model_dump_json(by_alias=True, exclude_none=True))
+
+    assert body["message"]["content"][1] == {
+        "type": "form_error",
+        "formId": "8f3c",
+        "context": {"scheme": "PMFBY", "category": "Grievance", "action": "support"},
+        "submissionId": "sub-1",
+        "fields": [
+            {
+                "name": "applicantMobile",
+                "label": "Applicant mobile",
+                "error": "Applicant mobile is not in the right format.",
+            }
+        ],
+    }
+    assert body["message"]["outcome"]["cause"] == "invalid_input"

@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Mapping
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from dss.core.shared.models import OutputBlock
+from dss.core.shared.models import MessageReference, OutputBlock, Role, TurnInput
 
 
 class FormContext(BaseModel):
@@ -53,6 +55,15 @@ class FieldRules(BaseModel):
     options: tuple[Option, ...] = ()
 
 
+class PiiClass(StrEnum):
+    """The classes network-specs marks a field with (`x-oan-pii.class`)."""
+
+    CONTACT = "contact"
+    IDENTIFIER = "identifier"
+    FREETEXT = "freetext"
+    CREDENTIAL = "credential"
+
+
 class FieldDefinition(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -60,6 +71,9 @@ class FieldDefinition(BaseModel):
     label: str
     kind: FieldKind
     rules: FieldRules = FieldRules()
+    # A plain string, not `PiiClass`: a class this code does not know yet must
+    # not make the pack unreadable.
+    pii_class: str | None = None
 
 
 class FormDefinition(BaseModel):
@@ -98,6 +112,7 @@ class ActionField(BaseModel):
     pattern: str | None = None
     min_length: int | None = None
     max_length: int | None = None
+    pii_class: str | None = None
 
 
 class ActionSchema(BaseModel):
@@ -108,6 +123,8 @@ class ActionSchema(BaseModel):
 
     context: FormContext
     must_send: tuple[ActionField, ...]
+    # The pack's `x-jsonld`: the `@context` and `@type` every call carries.
+    jsonld: Mapping[str, str] = {}
 
     def form(self) -> FormDefinition:
         """The fields the farmer fills in; the rest come from the schema or
@@ -144,6 +161,7 @@ def _to_form_field(field: ActionField) -> FieldDefinition:
             max_length=field.max_length,
             options=tuple(_option_for(value) for value in field.allowed_values),
         ),
+        pii_class=field.pii_class,
     )
 
 
@@ -179,3 +197,117 @@ class FormBlock(OutputBlock):
 
     form_id: str
     form: FormDefinition
+
+
+class FieldValue(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    name: str
+    value: str
+
+
+class FormSubmission(TurnInput):
+    form_id: str
+    context: FormContext
+    submission_id: str
+    values: tuple[FieldValue, ...]
+
+
+class FieldErrorCode(StrEnum):
+    REQUIRED = "required"
+    PATTERN = "pattern"
+    MIN_LENGTH = "min_length"
+    MAX_LENGTH = "max_length"
+    NOT_AN_OPTION = "not_an_option"
+    DUPLICATE = "duplicate"
+    UNKNOWN_FIELD = "unknown_field"
+
+
+class FieldError(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    name: str
+    code: FieldErrorCode
+
+
+class FormErrors(BaseModel):
+    """``definition`` is the form the values were checked against; ``None``
+    when nobody serves the context, and then ``field_errors`` is empty."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    form_id: str
+    context: FormContext
+    submission_id: str
+    definition: FormDefinition | None
+    field_errors: tuple[FieldError, ...] = ()
+
+
+class ValidSubmission(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    definition: FormDefinition
+    submission_id: str
+    values: Mapping[str, str]
+
+
+class FieldErrorEntry(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    name: str
+    label: str
+    error: str
+
+
+class FormErrorBlock(OutputBlock):
+    """Tells the UI the form is still the farmer's."""
+
+    form_id: str
+    context: FormContext
+    submission_id: str
+    fields: tuple[FieldErrorEntry, ...] = ()
+
+
+class ActionReply(BaseModel):
+    """What the provider sent back for one call: the attributes the pack
+    lists under `comesBack`, concealed like any provider text."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    attributes: Mapping[str, object]
+
+
+class Filing(BaseModel):
+    """A submission the planner may file, and the call it files it with."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    submission: ValidSubmission
+    action: ActionSchema
+
+
+class FormReference(MessageReference):
+    """A form a prior message carried, by its ids only. Whether it was
+    offered or submitted is the message's role; the fields and values are
+    not kept."""
+
+    form_id: str
+    context: FormContext
+    submission_id: str | None = None
+    # Which wire item carried it: the DSS's own `form_error` reply is not an
+    # offer, and must not read as one.
+    item: FormItem = "form"
+
+    def prompt_note(self, role: Role) -> str:
+        return _FORM_NOTE[(self.item, role)]
+
+
+type FormItem = Literal["form", "form_error"]
+
+# The assistant offers a form or hands one back; the farmer submits one.
+_FORM_NOTE: Mapping[tuple[FormItem, Role], str] = {
+    ("form", "assistant"): "a form was offered",
+    ("form", "user"): "a form was submitted",
+    ("form_error", "assistant"): "a form was handed back with errors",
+    ("form_error", "user"): "a form was handed back with errors",
+}

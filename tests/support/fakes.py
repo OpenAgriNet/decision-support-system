@@ -150,7 +150,7 @@ class FakePromptProvider:
         lines = [f"[{prompt_identifier.value} prompt, lang={lang}]"]
         for key, value in values.items():
             rendered = (
-                "\n".join(f"  {m.role}: {m.text}" for m in value)
+                "\n".join(f"  {m.prompt_line}" for m in value)
                 if key == "history"
                 else str(value)
             )

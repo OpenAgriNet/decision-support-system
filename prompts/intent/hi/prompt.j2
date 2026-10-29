@@ -67,6 +67,6 @@ place_name: वह स्थान जहाँ उपयोगकर्ता �
 
 अब तक की बातचीत (सबसे पुरानी पहले):
 {%- for message in history %}
-  {{ message.role }}: {{ message.text }}
+  {{ message.prompt_line }}
 {%- endfor %}
 {%- endif %}

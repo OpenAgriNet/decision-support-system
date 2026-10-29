@@ -54,6 +54,13 @@ class ModerationContext(BaseModel):
 
     turn: UserTurn[TextQuery]
 
+    @classmethod
+    def for_text(cls, turn: UserTurn, text: str) -> ModerationContext:
+        """A turn of another kind, judged on ``text`` with the turn's own
+        history and language: a form's complaint is moderated like a question."""
+
+        return cls(turn=turn.model_copy(update={"input": TextQuery(text=text)}))
+
 
 class ModerationDecision(BaseModel):
     """The verdict. ``reason_code`` and ``violated_policy_id`` are separate fields

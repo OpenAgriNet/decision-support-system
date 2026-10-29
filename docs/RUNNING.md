@@ -157,7 +157,7 @@ a warning, and offers no forms. A `var/schema-packs/` fetched before
 
 Discovery and invocation leave for the OAN network, which a local build does
 not have. `tools/mock_network/` stands in for it — the same synchronous
-`POST /discover` / `POST /select` contract, no auth:
+`POST /discover` / `POST /select` / `POST /support` contract, no auth:
 
 ```bash
 uv run python -m tools.mock_network --port 8078 --reload
@@ -166,14 +166,16 @@ uv run python -m tools.mock_network --port 8078 --reload
 `--reload` restarts the mock when its code changes. It does not watch
 `benchmarks/questions.toml`, so restart the mock after editing that file.
 
-One mock serves weather, mandi and advisory. It answers only the questions in
-`benchmarks/questions.toml`:
+One mock serves weather, mandi, advisory and a PMFBY grievance desk. The
+first three answer only the questions in `benchmarks/questions.toml`; the desk
+takes any form the DSS files at `/support` and answers a fresh ticket number:
 
 | Type | Answers | Matched on |
 |---|---|---|
 | Mandi | 5 markets, 4 commodities | commodity code and market code |
 | Weather | any point | the turn's coordinates (must be sent) |
 | Advisory | 10 written answers | the crop word in `topics` |
+| Grievance | a ticket, status Registered, filed today | nothing; every filing is accepted |
 
 The same question gets the same answer every run. A request it can't match
 gets a `400`, and is counted at `GET /_bench/misses`. `/docs` on port 8078
@@ -241,9 +243,10 @@ answers either, with no restart:
 | `answered_weather.json` | `openagrinet:WeatherObservation` | a forecast for Nashik's point, all 8 parameters |
 | `answered_advisory.json` | `openagrinet:KnowledgeAdvisory` | the set's cotton answer (weed control), matched on "cotton" |
 
-A grievance question finds the PMFBY and PM-KISAN desks, then fails at
-`/select` with a 400. That is by design: the mock lists the desks but files
-nothing yet.
+A grievance question finds the PMFBY and PM-KISAN desks and comes back with
+the form. The form sent back is filed at `/support`, which answers a fresh
+ticket number; `/select` still refuses a grievance with a 400, because a
+grievance is filed, never selected.
 
 A question intent classifies into a category the mock does not serve comes
 back `no_match` — which is the honest answer, and worth telling apart from a
@@ -483,8 +486,34 @@ referral and then the form, and the turn waits for the farmer:
 On SSE the text streams as `claim.delta` frames and the form arrives whole in
 its own `claim.completed`, after the text's. A field is flat: its rules sit on
 it. `kind` is `text`, `textarea`, `select` or `secret`. Nothing about PII is
-sent. Not reachable yet on a local run: the registry lands with #133, and
-discovery does not index the Grievance pack until its follow-up.
+sent.
+
+## Submitting the form
+
+The farmer's next turn carries the form back as a `form` item, with a
+`submissionId` the client mints and the values by field name. A message holds
+one kind of content: text beside a form is a 422.
+
+```json
+{"role": "user", "content": [
+  {"type": "form", "formId": "8f3c…", "submissionId": "a1b2…",
+   "context": {"scheme": "PMFBY", "category": "Grievance", "action": "support"},
+   "fields": [{"name": "applicantMobile", "value": "9876543210"},
+              {"name": "grievance.description", "value": "Claim not paid."}]}]}
+```
+
+The turn ends one of three ways. A `form_error` item means the form is still
+the farmer's.
+
+| What happened | `outcome` | `content` |
+|---|---|---|
+| a value is wrong | `requires_input`, cause `invalid_input` | text, then `form_error` with the fields to fix, each with a message |
+| the desk could not take it | `unavailable`, cause `provider_unavailable` or `provider_rejected`; `error.retryable` says which, `error.retryAfterSeconds` only when the desk sent `Retry-After` | text, then `form_error` with no fields |
+| filed | `answered` | text: the ticket number and the filing date |
+
+Earlier `form` and `form_error` items in the history are read as references
+only; their fields are ignored. On a local run with the network off, a valid
+submission ends `no_match`: no desk is found to file with.
 
 ## Poking the edges
 

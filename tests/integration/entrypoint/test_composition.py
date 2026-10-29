@@ -62,15 +62,13 @@ def test_build_runner_returns_a_turn_runner(tmp_path: Path) -> None:
 
 
 def test_unwired_network_discovers_nothing(tmp_path: Path) -> None:
-    discover, _invocation, schemas, schema_context_index, client, _prefs = _network(
-        _settings(tmp_path), preferences=_no_preferences()
-    )
+    network = _network(_settings(tmp_path), preferences=_no_preferences())
 
     # the seam is the single unwired function, and the planner's dicts are empty
-    assert discover is _discovers_nothing
-    assert schemas == {} and schema_context_index == {}
+    assert network.discover is _discovers_nothing
+    assert network.schemas == {} and network.schema_context_index == {}
     # nothing was opened, so there is nothing to close
-    assert client is None
+    assert network.client is None
 
 
 def test_wired_network_builds_the_planner_schemas(tmp_path: Path) -> None:
@@ -82,20 +80,19 @@ def test_wired_network_builds_the_planner_schemas(tmp_path: Path) -> None:
     )
     assert settings.network_enabled
 
-    discover, _invocation, schemas, schema_context_index, client, _prefs = _network(
-        settings, preferences=_no_preferences()
-    )
+    network = _network(settings, preferences=_no_preferences())
 
     # the real client replaced the unwired stand-in...
-    assert discover is not _discovers_nothing
-    assert client is not None  # opened for the process; the lifespan closes it
+    assert network.discover is not _discovers_nothing
+    # opened for the process; the lifespan closes it
+    assert network.client is not None
     # ...the schema packs loaded: the context index is keyed by the advertised
     # @type, which differs from the "MandiPrice" pack folder name.
-    assert "openagrinet:MandiPrice" in schema_context_index
+    assert "openagrinet:MandiPrice" in network.schema_context_index
     # ...and the planner's filter schemas are keyed the same way. The fixture is
     # a Direct-answer pack with no `filterable_paths`, so it is (correctly) left
     # out of `schemas` while still resolvable through the context index.
-    assert set(schemas) <= set(schema_context_index)
+    assert set(network.schemas) <= set(network.schema_context_index)
 
 
 def test_the_network_refuses_to_boot_with_no_packs(tmp_path: Path) -> None:
@@ -170,12 +167,12 @@ def test_packs_already_on_disk_are_not_re_fetched(tmp_path: Path) -> None:
     def must_not_be_called(**_kwargs) -> tuple[str, ...]:
         raise AssertionError("fetched with packs already on disk")
 
-    discover, _invocation, _schemas, index, _client, _prefs = _network(
+    network = _network(
         settings, fetch=must_not_be_called, preferences=_no_preferences()
     )
 
-    assert discover is not _discovers_nothing
-    assert "openagrinet:MandiPrice" in index
+    assert network.discover is not _discovers_nothing
+    assert "openagrinet:MandiPrice" in network.schema_context_index
 
 
 def test_build_runner_passes_the_fetch_through(tmp_path: Path) -> None:
@@ -588,9 +585,9 @@ def test_a_registry_url_swaps_the_registry_adapter_in(tmp_path: Path) -> None:
         provider_preferences_base_url="https://registry.example",
     )
 
-    *_rest, preferences = _network(settings, preferences=_no_preferences())
+    network = _network(settings, preferences=_no_preferences())
 
-    assert isinstance(preferences, RegistryProviderPreferences)
+    assert isinstance(network.preferences, RegistryProviderPreferences)
 
 
 _GRIEVANCE_ATTRIBUTES = (
@@ -743,10 +740,8 @@ def test_a_wired_network_indexes_grievance_but_plans_no_filters_for_it(
         schema_pack_dir=pack_root,
     )
 
-    _discover, _invocation, schemas, schema_context_index, _client, _prefs = _network(
-        settings, preferences=_no_preferences()
-    )
+    network = _network(settings, preferences=_no_preferences())
 
-    assert "openagrinet:Grievance" in schema_context_index
-    assert "openagrinet:MandiPrice" in schema_context_index
-    assert "openagrinet:Grievance" not in schemas
+    assert "openagrinet:Grievance" in network.schema_context_index
+    assert "openagrinet:MandiPrice" in network.schema_context_index
+    assert "openagrinet:Grievance" not in network.schemas

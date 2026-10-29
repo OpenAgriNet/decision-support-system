@@ -22,7 +22,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping, Sequence
 
-from dss.core.forms.models import FormDefinition
+from dss.core.forms.models import FormDefinition, FormSubmission
 from dss.core.intent.models import Ask, ResolvedPlace
 from dss.core.planner.markers import (
     CONVERSATION,
@@ -40,7 +40,7 @@ _HISTORY_WINDOW = 3
 
 
 def system_prompt(
-    identity: Identity, *, turn: UserTurn[TextQuery], prompts: PromptProvider
+    identity: Identity, *, turn: UserTurn, prompts: PromptProvider
 ) -> str:
     return prompts.get_prompt(
         PromptIdentifier.COMPOSER,
@@ -54,7 +54,7 @@ def system_prompt(
     )
 
 
-def user_prompt(evidence: Evidence, *, turn: UserTurn[TextQuery]) -> str:
+def user_prompt(evidence: Evidence, *, turn: UserTurn) -> str:
     """The question and the provider's values, wrapped as data.
 
     A provider's text is third-party and must never read as instructions, and
@@ -64,15 +64,27 @@ def user_prompt(evidence: Evidence, *, turn: UserTurn[TextQuery]) -> str:
     """
 
     question = (
-        wrap_as_data(turn.input.text, QUESTION)
+        wrap_as_data(_what_the_farmer_did(turn), QUESTION)
         + "\n\n"
         + wrap_as_data(render_evidence(evidence), RETRIEVED_DATA)
     )
     recent = turn.history[-_HISTORY_WINDOW:]
     if not recent:
         return question
-    lines = "\n".join(f"{message.role}: {message.text}" for message in recent)
+    lines = "\n".join(message.prompt_line for message in recent)
     return wrap_as_data(lines, CONVERSATION) + "\n\n" + question
+
+
+def _what_the_farmer_did(turn: UserTurn) -> str:
+    """The farmer's words for a question. For a form, only which form: the
+    values never reach the composer, so it has nothing to repeat."""
+
+    match turn.input:
+        case TextQuery(text=text):
+            return text
+        case FormSubmission(context=context):
+            return f"The farmer submitted the {context} form."
+    raise TypeError(f"no composer question for {type(turn.input).__name__}")
 
 
 def _place_label(ask: Ask) -> str:
