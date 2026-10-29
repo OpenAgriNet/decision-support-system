@@ -6,13 +6,18 @@ and a catalog of any size costs nothing per turn. Synchronous: memory, not I/O.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Protocol
 
-from dss.core.intent.models import Scheme
+from dss.core.intent.models import Scheme, SchemeEntry
 
 
 class SchemeCatalog(Protocol):
+    def schemes(self) -> Sequence[SchemeEntry]:
+        """Every scheme with the aliases its row lists, in file order — what
+        the intent model is shown (ADR-0021)."""
+        ...
+
     def aliases(self) -> Mapping[str, Scheme]:
         """Every alias, keyed by `core.enrichment.normalize.alias_key`.
 

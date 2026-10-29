@@ -12,11 +12,11 @@ from __future__ import annotations
 
 import csv
 import logging
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from dss.core.enrichment.normalize import alias_key
-from dss.core.intent.models import Scheme
+from dss.core.intent.models import Scheme, SchemeEntry
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +42,14 @@ class CsvSchemeCatalog:
     """A `SchemeCatalog` over a finished index, read once by
     `load_scheme_catalog`."""
 
-    def __init__(self, aliases: Mapping[str, Scheme]) -> None:
+    def __init__(
+        self, aliases: Mapping[str, Scheme], schemes: Sequence[SchemeEntry] = ()
+    ) -> None:
         self._aliases = dict(aliases)
+        self._schemes = tuple(schemes)
+
+    def schemes(self) -> Sequence[SchemeEntry]:
+        return self._schemes
 
     def aliases(self) -> Mapping[str, Scheme]:
         return self._aliases
@@ -62,11 +68,12 @@ def load_scheme_catalog(path: Path | None) -> CsvSchemeCatalog:
         return CsvSchemeCatalog({})
 
     with path.open(encoding="utf-8-sig", newline="") as handle:
-        return CsvSchemeCatalog(_index(csv.DictReader(handle), source=path.name))
+        return _index(csv.DictReader(handle), source=path.name)
 
 
-def _index(rows: csv.DictReader, *, source: str) -> dict[str, Scheme]:
+def _index(rows: csv.DictReader, *, source: str) -> CsvSchemeCatalog:
     aliases: dict[str, Scheme] = {}
+    schemes: list[SchemeEntry] = []
     missing = [column for column in _REQUIRED if column not in (rows.fieldnames or ())]
     if missing:
         raise MalformedSchemeCatalogError(
@@ -76,9 +83,11 @@ def _index(rows: csv.DictReader, *, source: str) -> dict[str, Scheme]:
 
     for number, row in enumerate(rows, start=2):  # 2: row 1 is the header
         scheme = _scheme_from(row, source=source, number=number)
-        for text in _alias_texts(row, scheme):
+        texts = _alias_texts(row, scheme)
+        for text in texts:
             _claim(aliases, alias_key(text), scheme, source=source, number=number)
-    return aliases
+        schemes.append(SchemeEntry(scheme=scheme, aliases=_other_names(texts, scheme)))
+    return CsvSchemeCatalog(aliases, schemes)
 
 
 def _scheme_from(row: dict[str, str], *, source: str, number: int) -> Scheme:
@@ -101,6 +110,20 @@ def _alias_texts(row: dict[str, str], scheme: Scheme) -> list[str]:
 
     listed = (row.get(_ALIASES) or "").split(_ALIAS_SEPARATOR)
     return [text for text in (*listed, scheme.name) if text.strip()]
+
+
+def _other_names(texts: list[str], scheme: Scheme) -> tuple[str, ...]:
+    """The aliases worth showing the intent model: one spelling each, and
+    never the official name again."""
+
+    seen = {alias_key(scheme.name)}
+    names: list[str] = []
+    for text in texts:
+        key = alias_key(text)
+        if key and key not in seen:
+            seen.add(key)
+            names.append(text.strip())
+    return tuple(names)
 
 
 def _claim(

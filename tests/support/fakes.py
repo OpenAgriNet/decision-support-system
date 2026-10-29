@@ -11,7 +11,7 @@ from collections.abc import AsyncIterator, Mapping, Sequence
 from typing import Any, Literal
 
 from dss.core.enrichment.normalize import alias_key
-from dss.core.intent.models import Scheme
+from dss.core.intent.models import Scheme, SchemeEntry
 from dss.core.planner.models import Skill
 from dss.core.provider_preferences.models import PreferenceBook, capability_key
 from dss.core.shared.errors import ProviderUnavailableError, TranslationError
@@ -42,6 +42,12 @@ class FakeSchemeCatalog:
             alias_key(alias): _scheme_for(alias, named)
             for alias, named in (schemes or {}).items()
         }
+
+    def schemes(self):
+        return tuple(
+            SchemeEntry(scheme=scheme)
+            for scheme in dict.fromkeys(self._aliases.values())
+        )
 
     def aliases(self):
         return self._aliases

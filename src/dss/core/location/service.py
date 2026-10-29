@@ -318,6 +318,7 @@ def _build_ask(classified: ClassifiedAsk, place: Place) -> Ask:
         subject_categories=classified.subject_categories,
         interaction_type=classified.interaction_type,
         place=place,
+        scheme=classified.scheme,
     )
 
 

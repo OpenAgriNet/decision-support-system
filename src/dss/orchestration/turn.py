@@ -243,7 +243,12 @@ async def run_turn(  # noqa: PLR0913
     async def classify_then_discover() -> None:
         nonlocal intent, discovery
         with trace_component(Stage.INTENT, turn.transaction_id):
-            classification = await classify_intent(turn, intent_llm, prompts)
+            classification = await classify_intent(
+                turn,
+                intent_llm,
+                prompts,
+                scheme_catalog.schemes() if scheme_catalog is not None else (),
+            )
             set_current_span_content(
                 input=turn.input.text, output=asks_text(classification.asks)
             )

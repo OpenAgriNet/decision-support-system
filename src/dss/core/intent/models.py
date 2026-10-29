@@ -12,6 +12,7 @@ import re
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic.json_schema import SkipJsonSchema
 
 from dss.core.shared.models import Geometry
 from dss.ports.area_lookup import AreaMatch
@@ -122,6 +123,16 @@ class Scheme(BaseModel):
     name: str
 
 
+class SchemeEntry(BaseModel):
+    """One catalog row, as the intent model is shown it: the scheme and every
+    other way a farmer may name it."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    scheme: Scheme
+    aliases: tuple[str, ...] = ()
+
+
 class Ask(BaseModel):
     """One thing the turn wants: a subject on a single interaction type.
 
@@ -134,7 +145,7 @@ class Ask(BaseModel):
     (``AmbiguousPlace``/``UnresolvedPlace``) when a name was actually given
     and the lookup could not turn it into one place.
 
-    ``scheme`` is set by enrichment when the words match a catalog alias.
+    ``scheme`` is set when the intent model named a scheme the catalog holds.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -155,6 +166,9 @@ class ClassifiedAsk(BaseModel):
 
     ``place_name`` is the place the user named or asked about, in English,
     or null when the ask names no place.
+
+    ``scheme_code`` is the code of the listed scheme this ask is about, or
+    null when it names none of them.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -166,6 +180,10 @@ class ClassifiedAsk(BaseModel):
     # True when place_name came from an earlier turn, not the latest query.
     # Only the model can tell: it read both, in whatever language they were.
     place_from_history: bool = False
+    scheme_code: str | None = None
+    # Set by `classify_intent` from the catalog, never by the model: hidden
+    # from the schema it is shown, so a code it invents never becomes a scheme.
+    scheme: SkipJsonSchema[Scheme | None] = None
 
     @field_validator("place_name")
     @classmethod

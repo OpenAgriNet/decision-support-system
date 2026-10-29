@@ -10,6 +10,7 @@ from dss.core.intent.models import (
     InteractionType,
     PlaceSource,
     ResolvedPlace,
+    Scheme,
     SubjectCategory,
     UnresolvedPlace,
 )
@@ -965,3 +966,20 @@ async def test_nothing_named_and_no_location_leaves_place_none() -> None:
     intent = await resolve_places(classification, turn, lookup=lookup)
 
     assert intent.asks[0].place is None
+
+
+async def test_the_scheme_on_a_classified_ask_reaches_the_ask() -> None:
+    pmfby = Scheme(code="PMFBY", name="Pradhan Mantri Fasal Bima Yojana")
+    classified = ClassifiedAsk(
+        agriculture_subjects=pmfby.name,
+        subject_categories=SubjectCategory.GRIEVANCE,
+        interaction_type=InteractionType.ACT,
+        scheme_code="PMFBY",
+        scheme=pmfby,
+    )
+
+    intent = await resolve_places(
+        IntentClassification(asks=(classified,)), _turn(), lookup=_FakeLookup({})
+    )
+
+    assert intent.asks[0].scheme == pmfby
