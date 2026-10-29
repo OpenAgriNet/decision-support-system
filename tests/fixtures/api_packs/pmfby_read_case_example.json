@@ -1,0 +1,13 @@
+{
+  "@context": "https://openagrinet.github.io/network-specs/api-schemas/Grievance/v0.1/context.jsonld",
+  "@type": "openagrinet:Grievance",
+  "informationMode": "OnDemand",
+  "scheme": {
+    "code": "PMFBY",
+    "name": "Pradhan Mantri Fasal Bima Yojana"
+  },
+  "applicantMobile": "9876543210",
+  "case": {
+    "ticketNo": "100626000099001"
+  }
+}

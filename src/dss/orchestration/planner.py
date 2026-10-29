@@ -5,7 +5,7 @@ Pydantic AI.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 
@@ -13,7 +13,7 @@ import anyio
 from pydantic_ai import Agent, ModelRetry, RunContext
 from pydantic_ai.models import Model
 
-from dss.core.forms.models import ActionSchema, Filing
+from dss.core.forms.models import ActionReply, ActionSchema, Filing
 from dss.core.forms.service import build_action_attributes, without_farmer_values
 from dss.core.intent.models import (
     AmbiguousPlace,
@@ -45,8 +45,8 @@ from dss.core.shared.models import UserTurn
 from dss.observability.trace_log import log_event
 from dss.ports.invocation import (
     CapabilityInvocation,
+    ProviderCallFailedError,
     SelectFailedError,
-    SupportFailedError,
 )
 
 
@@ -403,6 +403,18 @@ def _action_schemas(filing: Filing | None) -> dict[str, ActionSchema]:
     return {} if filed_type is None else {filed_type: filing.action}
 
 
+@dataclass(frozen=True)
+class _FormCall:
+    """One API-pack action a submitted form can be sent with, and the words
+    its tool answers the model in. The model reads them, so they say what
+    to do next."""
+
+    action: str
+    send: Callable[..., Awaitable[ActionReply]]
+    done: str
+    not_done: str
+
+
 async def _support(
     ctx: RunContext[PlannerDeps], ask_index: int, resource_id: str
 ) -> str:
@@ -410,14 +422,66 @@ async def _support(
     decision is which provider; the body is built in code from the pack's
     action schema, the provider and the form's values."""
 
+    return await _send_form(
+        ctx,
+        ask_index,
+        resource_id,
+        _FormCall(
+            action="support",
+            send=ctx.deps.invocation.support,
+            done="Filed with {provider}. Do not call support again for ask "
+            "{ask}; report the filing.",
+            not_done="Could not file with {provider}. Do not call support again "
+            "for ask {ask}; report that the form was not filed.",
+        ),
+    )
+
+
+async def _status(
+    ctx: RunContext[PlannerDeps], ask_index: int, resource_id: str
+) -> str:
+    """Check the status of the case the turn's form names, with one chosen
+    provider. The model's only decision is which provider; the body is built
+    in code from the pack's action schema, the provider and the form's
+    values."""
+
+    return await _send_form(
+        ctx,
+        ask_index,
+        resource_id,
+        _FormCall(
+            action="status",
+            send=ctx.deps.invocation.status,
+            done="Read the case from {provider}. Do not call status again for "
+            "ask {ask}; report its status.",
+            not_done="Could not read the case from {provider}. Do not call status "
+            "again for ask {ask}; report that the status was not checked.",
+        ),
+    )
+
+
+async def _send_form(
+    ctx: RunContext[PlannerDeps], ask_index: int, resource_id: str, call: _FormCall
+) -> str:
+    """What `support` and `status` share: the turn cleared moderation, the
+    form is for this action, one call per ask, and the body is built in code.
+    Only the provider is the model's."""
+
     deps = ctx.deps
     decision = await deps.verdict.get()
     if decision.outcome is not Outcome.PROCEED:
         return "This turn was not cleared to call providers. Do not retry."
     if deps.filing is None:
-        return "This turn has no form to file. Do not call support."
+        return f"This turn has no form to send. Do not call {call.action}."
+    if deps.filing.action.context.action != call.action:
+        return (
+            f"This form is not sent with {call.action}. Call "
+            f"{deps.filing.action.context.action} instead."
+        )
     if _already_tried(deps, ask_index):
-        return f"Ask {ask_index} was already sent once. Do not call support again."
+        return (
+            f"Ask {ask_index} was already sent once. Do not call {call.action} again."
+        )
 
     capability = find_capability(
         deps.discovery, ask_index=ask_index, resource_id=resource_id
@@ -431,36 +495,30 @@ async def _support(
         deps.filing.action, capability, deps.filing.submission.values
     )
     try:
-        reply = await deps.invocation.support(
+        reply = await call.send(
             capability,
             attributes,
             deps.turn.transaction_id,
             visibility=deps.visibility,
         )
-    except SupportFailedError as failed:
+    except ProviderCallFailedError as failed:
         # The adapter has already retried and given up. No provider text:
         # the farmer is told in the DSS's own words.
         deps.failures.append(
             Failure(
                 ask_index=ask_index,
                 capability=failed.capability,
-                reason=f"support failed with status {failed.status_code}",
+                reason=f"{call.action} failed with status {failed.status_code}",
                 retryable=failed.failure_class is FailureClass.TRANSIENT,
                 retry_after_seconds=failed.retry_after_seconds,
             )
         )
-        return (
-            f"Could not file with {capability.provider_name}. Do not call support "
-            f"again for ask {ask_index}; report that the form was not filed."
-        )
+        return call.not_done.format(provider=capability.provider_name, ask=ask_index)
 
     deps.raw_answers.append(
-        (ask_index, _filed(capability, reply.attributes, deps.filing.action))
+        (ask_index, _as_answer(capability, reply.attributes, deps.filing.action))
     )
-    return (
-        f"Filed with {capability.provider_name}. Do not call support again for "
-        f"ask {ask_index}; report the filing."
-    )
+    return call.done.format(provider=capability.provider_name, ask=ask_index)
 
 
 def _already_tried(deps: PlannerDeps, ask_index: int) -> bool:
@@ -472,14 +530,15 @@ def _already_tried(deps: PlannerDeps, ask_index: int) -> bool:
     )
 
 
-def _filed(
+def _as_answer(
     capability: ProviderCapability,
     attributes: Mapping[str, object],
     action: ActionSchema,
 ) -> DiscoveredAnswer:
     """The provider's reply as an answer on the ask, so the composer writes
-    the confirmation from it like any other result. Less what the farmer
-    typed: the desk echoes it, and no typed value may reach the composer."""
+    the confirmation or the status from it like any other result. Less what
+    the farmer typed: the desk echoes it, and no typed value may reach the
+    composer."""
 
     return DiscoveredAnswer(
         provider_id=capability.provider_id,
@@ -494,6 +553,7 @@ def _filed(
 _TOOLS = {
     "select": _select,
     "support": _support,
+    "status": _status,
     "describe_capability": _describe_capability,
 }
 

@@ -430,3 +430,24 @@ def test_a_provider_for_a_form_is_described_by_what_it_files() -> None:
         "  resource_id: res:pmfby:grievance\n"
         "  files the form's values"
     )
+
+
+def test_a_provider_for_a_status_form_is_described_as_a_status_check() -> None:
+    desk = ProviderCapability(
+        provider_id="pmfby",
+        provider_name="PMFBY Grievance Portal",
+        capability="openagrinet:Grievance",
+        resource_id="res:pmfby:grievance",
+        observed_categories=("Grievance",),
+    )
+    status = ActionSchema(
+        context=FormContext(scheme="PMFBY", category="Grievance", action="status"),
+        must_send=(),
+        jsonld={"@type": "openagrinet:Grievance"},
+    )
+
+    rendered = render_candidates_as_markdown(
+        (desk,), schemas={}, action_schemas={"openagrinet:Grievance": status}
+    )
+
+    assert rendered.endswith("  checks the status with the form's values")

@@ -542,6 +542,36 @@ def test_the_body_holds_every_must_send_path_from_pack_provider_and_form() -> No
     assert body == expected
 
 
+_READ_CASE_EXAMPLE = json.loads(
+    (
+        Path(__file__).parents[3]
+        / "fixtures"
+        / "api_packs"
+        / "pmfby_read_case_example.json"
+    ).read_text(encoding="utf-8")
+)
+
+
+def test_a_status_body_matches_the_packs_read_case_example() -> None:
+    """The same builder reads a case: the pack's example, less the scheme's
+    name, a `maySend` field this slice does not send."""
+
+    schema = _schema_for(_PMFBY_STATUS)
+    provider = ProviderCapability(
+        provider_id="pmfby",
+        provider_name="PMFBY Grievance Portal",
+        capability="openagrinet:Grievance",
+        resource_id="res:pmfby:grievance",
+    )
+    values = {"applicantMobile": "9876543210", "case.ticketNo": "100626000099001"}
+
+    body = build_action_attributes(schema, provider, values)
+
+    expected = dict(_READ_CASE_EXAMPLE)
+    expected["scheme"] = {"code": "PMFBY"}
+    assert body == expected
+
+
 def test_a_provider_path_nobody_can_fill_is_refused_at_parse() -> None:
     """A pack defect must stop the boot, not the farmer's filing."""
 
