@@ -5,7 +5,7 @@ Pydantic AI.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 
@@ -13,6 +13,8 @@ import anyio
 from pydantic_ai import Agent, ModelRetry, RunContext
 from pydantic_ai.models import Model
 
+from dss.core.forms.models import ActionSchema, Filing
+from dss.core.forms.service import build_action_attributes, without_farmer_values
 from dss.core.intent.models import (
     AmbiguousPlace,
     Intent,
@@ -41,7 +43,11 @@ from dss.core.provider_preferences.service import priority_for_ask
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import UserTurn
 from dss.observability.trace_log import log_event
-from dss.ports.invocation import CapabilityInvocation, SelectFailedError
+from dss.ports.invocation import (
+    CapabilityInvocation,
+    SelectFailedError,
+    SupportFailedError,
+)
 
 
 @dataclass
@@ -69,6 +75,9 @@ class PlannerDeps:
     # exception in `build_resource_attributes` reads this. Injected rather
     # than called inside core so a test can fix the day.
     today: Callable[[], date] = lambda: datetime.now(UTC).date()
+    # The form this turn files, when it is a submission turn. The `support`
+    # tool reads the values from here, never from the model.
+    filing: Filing | None = None
     raw_answers: list[tuple[int, DiscoveredAnswer]] = field(default_factory=list)
     failures: list[Failure] = field(default_factory=list)
 
@@ -380,10 +389,113 @@ async def _describe_capability(ctx: RunContext[PlannerDeps], ask_index: int) -> 
     model knows what it may set before calling ``select``."""
 
     candidates = ctx.deps.discovery.capabilities.get(ask_index, ())
-    return render_candidates_as_markdown(candidates, schemas=ctx.deps.schemas)
+    return render_candidates_as_markdown(
+        candidates,
+        schemas=ctx.deps.schemas,
+        action_schemas=_action_schemas(ctx.deps.filing),
+    )
 
 
-_TOOLS = {"select": _select, "describe_capability": _describe_capability}
+def _action_schemas(filing: Filing | None) -> dict[str, ActionSchema]:
+    if filing is None:
+        return {}
+    filed_type = filing.action.jsonld.get("@type")
+    return {} if filed_type is None else {filed_type: filing.action}
+
+
+async def _support(
+    ctx: RunContext[PlannerDeps], ask_index: int, resource_id: str
+) -> str:
+    """File the turn's form with one chosen provider. The model's only
+    decision is which provider; the body is built in code from the pack's
+    action schema, the provider and the form's values."""
+
+    deps = ctx.deps
+    decision = await deps.verdict.get()
+    if decision.outcome is not Outcome.PROCEED:
+        return "This turn was not cleared to call providers. Do not retry."
+    if deps.filing is None:
+        return "This turn has no form to file. Do not call support."
+    if _already_tried(deps, ask_index):
+        return f"Ask {ask_index} was already sent once. Do not call support again."
+
+    capability = find_capability(
+        deps.discovery, ask_index=ask_index, resource_id=resource_id
+    )
+    if capability is None:
+        raise ModelRetry(
+            f"resource_id {resource_id!r} is not one of ask {ask_index}'s candidates"
+        )
+
+    attributes = build_action_attributes(
+        deps.filing.action, capability, deps.filing.submission.values
+    )
+    try:
+        reply = await deps.invocation.support(
+            capability,
+            attributes,
+            deps.turn.transaction_id,
+            visibility=deps.visibility,
+        )
+    except SupportFailedError as failed:
+        # The adapter has already retried and given up. No provider text:
+        # the farmer is told in the DSS's own words.
+        deps.failures.append(
+            Failure(
+                ask_index=ask_index,
+                capability=failed.capability,
+                reason=f"support failed with status {failed.status_code}",
+                retryable=failed.failure_class is FailureClass.TRANSIENT,
+                retry_after_seconds=failed.retry_after_seconds,
+            )
+        )
+        return (
+            f"Could not file with {capability.provider_name}. Do not call support "
+            f"again for ask {ask_index}; report that the form was not filed."
+        )
+
+    deps.raw_answers.append(
+        (ask_index, _filed(capability, reply.attributes, deps.filing.action))
+    )
+    return (
+        f"Filed with {capability.provider_name}. Do not call support again for "
+        f"ask {ask_index}; report the filing."
+    )
+
+
+def _already_tried(deps: PlannerDeps, ask_index: int) -> bool:
+    """One filing per ask per run, filed or failed: the adapter has already
+    retried a failure, and sending again is how a slow desk gets two tickets."""
+
+    return any(index == ask_index for index, _ in deps.raw_answers) or any(
+        failure.ask_index == ask_index for failure in deps.failures
+    )
+
+
+def _filed(
+    capability: ProviderCapability,
+    attributes: Mapping[str, object],
+    action: ActionSchema,
+) -> DiscoveredAnswer:
+    """The provider's reply as an answer on the ask, so the composer writes
+    the confirmation from it like any other result. Less what the farmer
+    typed: the desk echoes it, and no typed value may reach the composer."""
+
+    return DiscoveredAnswer(
+        provider_id=capability.provider_id,
+        provider_name=capability.provider_name,
+        capability=capability.capability,
+        resource_id=capability.resource_id,
+        attributes=without_farmer_values(attributes, action),
+        validity=None,
+    )
+
+
+_TOOLS = {
+    "select": _select,
+    "support": _support,
+    "describe_capability": _describe_capability,
+}
 
 
 def build_planner_agent(

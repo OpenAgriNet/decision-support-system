@@ -36,6 +36,7 @@ from dss.core.forms.service import (
     parse_api_pack,
     validate_submission,
     withhold_values,
+    without_farmer_values,
 )
 from dss.core.provider_discovery.models import ProviderCapability, SchemaPackFiles
 from tests.support.providers import grievance_provider
@@ -552,3 +553,34 @@ def test_a_provider_path_nobody_can_fill_is_refused_at_parse() -> None:
 
     with pytest.raises(ValueError, match="provider.descriptor.code"):
         parse_api_pack(_pack(yaml.safe_dump(attributes)))
+
+
+def test_a_pack_that_names_no_jsonld_type_is_refused() -> None:
+    """Every call carries `@type`; a pack without it could not be filed."""
+
+    attributes = yaml.safe_load(_GRIEVANCE_YAML)
+    del attributes["components"]["schemas"]["Grievance"]["x-jsonld"]
+
+    with pytest.raises(ValueError, match="x-jsonld"):
+        parse_api_pack(_pack(yaml.safe_dump(attributes)))
+
+
+def test_the_reply_keeps_what_the_provider_added_not_what_the_farmer_typed() -> None:
+    schema = _schema_for(_PMFBY_SUPPORT)
+    reply = {
+        "@type": "openagrinet:Grievance",
+        "scheme": {"code": "PMFBY"},
+        "enrolmentId": "KA2026KH00123456",
+        "applicantMobile": "9876543210",
+        "grievance": {"description": "No payment yet.", "category": {"code": "3"}},
+        "case": {"ticketNo": "100626000099001"},
+    }
+
+    kept = without_farmer_values(reply, schema)
+
+    assert kept == {
+        "@type": "openagrinet:Grievance",
+        "scheme": {"code": "PMFBY"},
+        "grievance": {"category": {"code": "3"}},
+        "case": {"ticketNo": "100626000099001"},
+    }

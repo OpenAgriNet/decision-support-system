@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import re
 from collections import Counter
 from collections.abc import Callable, Container, Mapping, Sequence
@@ -168,14 +169,20 @@ def _read_pack(document: dict) -> tuple[ActionSchema, ...]:
     schemas = document["components"]["schemas"]
     category = _find_category_name(schemas)
     root = schemas[category]
+    served = _served_actions(root)
+    jsonld = root.get(_JSONLD)
+    if not isinstance(jsonld, dict) or "@type" not in jsonld:
+        raise ValueError(
+            f"{category}: {_JSONLD} must name the @type every call carries"
+        )
     return tuple(
         schema
-        for action, per_call_name in _served_actions(root).items()
+        for action, per_call_name in served.items()
         for schema in _read_action(
             schemas[per_call_name],
             action=action,
             category=category,
-            jsonld=root.get(_JSONLD, {}),
+            jsonld=jsonld,
             document=document,
         )
     )
@@ -524,6 +531,35 @@ def _value_for(
             return _PROVIDER_VALUES[field.path](provider)
         case FieldSource.FARMER:
             return values[field.path]
+
+
+def without_farmer_values(
+    attributes: Mapping[str, object], schema: ActionSchema
+) -> dict:
+    """A provider's reply less the paths the farmer filled in. The pack says
+    a desk echoes them back; the ticket and the rest are what the turn keeps,
+    so no typed value reaches the composer or a trace."""
+
+    kept = copy.deepcopy(dict(attributes))
+    for field in schema.must_send:
+        if field.source is FieldSource.FARMER:
+            _delete_at(kept, field.path)
+    return kept
+
+
+def _delete_at(body: dict, path: str) -> None:
+    *parents, leaf = path.split(".")
+    nodes = [body]
+    for segment in parents:
+        child = nodes[-1].get(segment)
+        if not isinstance(child, dict):
+            return
+        nodes.append(child)
+    nodes[-1].pop(leaf, None)
+    # An emptied parent is dropped too: `grievance: {}` would read as a value.
+    for segment, node in zip(reversed(parents), reversed(nodes[:-1]), strict=True):
+        if not nodes[nodes.index(node) + 1]:
+            node.pop(segment, None)
 
 
 def _set_at(body: dict, path: str, value: JsonScalar) -> None:

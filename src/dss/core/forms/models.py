@@ -274,3 +274,12 @@ class ActionReply(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     attributes: Mapping[str, object]
+
+
+class Filing(BaseModel):
+    """A submission the planner may file, and the call it files it with."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    submission: ValidSubmission
+    action: ActionSchema

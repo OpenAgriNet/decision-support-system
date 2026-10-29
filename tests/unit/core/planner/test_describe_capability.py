@@ -7,6 +7,7 @@ KnowledgeAdvisory), so it would have to guess and rely on a retry.
 
 from __future__ import annotations
 
+from dss.core.forms.models import ActionSchema, FormContext
 from dss.core.planner.describe_capability import render_candidates_as_markdown
 from dss.core.planner.validation import DomainSchema
 from dss.core.provider_discovery.models import ProviderCapability
@@ -401,3 +402,31 @@ def test_a_date_field_says_it_takes_a_date() -> None:
     assert "arrivalDate (date)" in markdown
     # A field with no format is named on its own.
     assert "variety (" not in markdown
+
+
+def test_a_provider_for_a_form_is_described_by_what_it_files() -> None:
+    """An API pack has no select schema; the candidate would be skipped as
+    unknown. Its action schema says what the call is: filing the form."""
+
+    desk = ProviderCapability(
+        provider_id="pmfby",
+        provider_name="PMFBY Grievance Portal",
+        capability="openagrinet:Grievance",
+        resource_id="res:pmfby:grievance",
+        observed_categories=("Grievance",),
+    )
+    filing = ActionSchema(
+        context=FormContext(scheme="PMFBY", category="Grievance", action="support"),
+        must_send=(),
+        jsonld={"@type": "openagrinet:Grievance"},
+    )
+
+    rendered = render_candidates_as_markdown(
+        (desk,), schemas={}, action_schemas={"openagrinet:Grievance": filing}
+    )
+
+    assert rendered == (
+        "- PMFBY Grievance Portal\n"
+        "  resource_id: res:pmfby:grievance\n"
+        "  files the form's values"
+    )

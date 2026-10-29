@@ -13,6 +13,8 @@ class FormLookup(Protocol):
 
     def find(self, context: FormContext) -> FormDefinition | None: ...
 
+    def action_schema(self, context: FormContext) -> ActionSchema | None: ...
+
 
 class FormRegistry:
     """The action schemas read from the API packs at boot, and the forms cut

@@ -1,8 +1,7 @@
 """The path for a submitted form (#205): check the values, moderate the
-complaint, find the desk, then file them.
+complaint, find the provider, file the form through the planner.
 
-TODO(#205): file through the planner's `support` tool, compose the ticket
-reply.
+TODO(#205): compose the ticket reply.
 """
 
 from __future__ import annotations
@@ -21,6 +20,7 @@ from dss.core.channel.models import ClarificationText, ComposedAnswer
 from dss.core.channel.service import answer_for_unserved_asks
 from dss.core.enrichment.service import scheme_with_code
 from dss.core.forms.models import (
+    Filing,
     FormContext,
     FormErrors,
     FormSubmission,
@@ -38,9 +38,11 @@ from dss.core.forms.service import (
 from dss.core.intent.models import Intent, Scheme
 from dss.core.moderation.models import ModerationContext, ModerationDecision, Outcome
 from dss.core.moderation.service import moderate
+from dss.core.planner.models import Evidence, Verdict
 from dss.core.policy.models import Policy
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.redaction.turn import surrounding_texts_of, with_surrounding_texts
+from dss.core.redaction.visibility import Visibility
 from dss.core.shared.models import (
     Cause,
     TurnContext,
@@ -61,8 +63,9 @@ from dss.orchestration.orchestrator import (
     refusal_for,
     spoken_text,
 )
+from dss.orchestration.plan import Plan
 from dss.orchestration.redaction import RedactTexts
-from dss.orchestration.stage_content import asks_text, discovery_text
+from dss.orchestration.stage_content import asks_text, discovery_text, evidence_text
 from dss.orchestration.turn import moderation_attributes
 from dss.ports.llm import LLMProvider
 from dss.ports.prompts import PromptProvider
@@ -80,6 +83,8 @@ class _Redacted:
 
     turn: UserTurn[FormSubmission]
     free_text: str
+    # The real values behind the tags, for the provider call only.
+    visibility: Visibility
 
 
 class FormPath:
@@ -93,6 +98,7 @@ class FormPath:
         forms: FormLookup,
         discover: DiscoverProviders,
         scheme_catalog: SchemeCatalog,
+        plan: Plan,
         turns: TurnSink,
         telemetry: TelemetrySink,
         clarification_text: ClarificationText,
@@ -105,6 +111,7 @@ class FormPath:
         self._forms = forms
         self._discover = discover
         self._scheme_catalog = scheme_catalog
+        self._plan = plan
         self._turns = turns
         self._telemetry = telemetry
         self._clarification_text = clarification_text
@@ -136,7 +143,8 @@ class FormPath:
             return
 
         intent = self._intent_for(turn.input.context)
-        if intent is None:
+        action = self._forms.action_schema(checked.definition.context)
+        if intent is None or action is None:
             yield await self._hand_back_unknown(turn, ctx=ctx, recorder=recorder)
             return
         discovery = await self._find_providers(
@@ -154,7 +162,48 @@ class FormPath:
                 recorder=recorder,
             )
             return
-        raise NotImplementedError("TODO(#205): file the form with the provider")
+
+        await self._file(
+            turn,
+            Filing(submission=checked, action=action),
+            intent=intent,
+            discovery=discovery,
+            decision=decision,
+            visibility=redacted.visibility,
+            ctx=ctx,
+        )
+        raise NotImplementedError("TODO(#205): compose the reply from the evidence")
+
+    async def _file(  # noqa: PLR0913
+        self,
+        turn: UserTurn[FormSubmission],
+        filing: Filing,
+        *,
+        intent: Intent,
+        discovery: DiscoveryResult,
+        decision: ModerationDecision,
+        visibility: Visibility,
+        ctx: TurnContext,
+    ) -> Evidence:
+        """Past the barrier: the decision cleared, so the planner's `support`
+        tool may call the provider. The `Verdict` is how that clearance
+        reaches the tool."""
+
+        verdict = Verdict()
+        verdict.set(decision)
+        with trace_component(Stage.PLANNER, ctx.trace_id):
+            evidence = await self._plan(
+                turn,
+                intent=intent,
+                discovery=discovery,
+                verdict=verdict,
+                visibility=visibility,
+                filing=filing,
+            )
+            set_current_span_content(
+                input=asks_text(intent.asks), output=evidence_text(evidence)
+            )
+        return evidence
 
     def _intent_for(self, context: FormContext) -> Intent | None:
         """One ask, as the offer path would have classified it, or ``None``
@@ -228,6 +277,7 @@ class FormPath:
                 with_surrounding_texts(turn, tagged_surroundings)
             ),
             free_text=_FREE_TEXT_SEPARATOR.join(tagged_free_text),
+            visibility=redaction.visibility,
         )
 
     async def _moderate(

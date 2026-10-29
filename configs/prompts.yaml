@@ -59,10 +59,12 @@ planner:
       system_prompt: prompts/planner/en/prompt.j2
       skills:
         - prompts/planner/en/skills/provider-invocation.md
+        - prompts/planner/en/skills/provider-action.md
     hi:
       system_prompt: prompts/planner/hi/prompt.j2
       skills:
         - prompts/planner/hi/skills/provider-invocation.md
+        - prompts/planner/hi/skills/provider-action.md
 
 composer:
   placeholders:

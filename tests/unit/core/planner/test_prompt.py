@@ -145,3 +145,17 @@ def test_user_message_includes_history() -> None:
     message = build_user_message(query="and potato?", history=history)
     assert "what about wheat?" in message
     assert "and potato?" in message
+
+
+def test_an_ask_a_form_files_is_marked() -> None:
+    """The model's one decision on a filing is the provider; the line says
+    the values are not its to author."""
+
+    ask = Ask(
+        subject_categories=SubjectCategory.GRIEVANCE,
+        interaction_type=InteractionType.ACT,
+    )
+
+    section = asks_section((ask,), filing=frozenset({0}))
+
+    assert "ask 0: Grievance (act), files the farmer's form" in section

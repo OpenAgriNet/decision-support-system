@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+from dss.core.forms.models import ActionSchema
 from dss.core.planner.validation import DomainSchema
 from dss.core.provider_discovery.models import ProviderCapability
 
@@ -155,7 +156,12 @@ def render_candidates_as_markdown(
     candidates: tuple[ProviderCapability, ...],
     *,
     schemas: dict[str, DomainSchema],
+    action_schemas: Mapping[str, ActionSchema] | None = None,
 ) -> str:
+    """``action_schemas``, by `@type`: the API-pack calls this turn may make.
+    Their candidates take no fields from the model; the form already holds
+    the values, so the model only picks the provider."""
+
     lines = []
     for candidate in candidates:
         # Skipped rather than raised. Discovery reports what the network
@@ -165,6 +171,9 @@ def render_candidates_as_markdown(
         # candidates, which were usable, and this tool touches nothing
         # external so it must not be able to end a turn. The skipped pack is
         # already reported at refresh time as SchemaPackSkipped.
+        if candidate.capability in (action_schemas or {}):
+            lines.extend(_render_filing(candidate))
+            continue
         schema = schemas.get(candidate.capability)
         if schema is None:
             continue
@@ -177,3 +186,11 @@ def render_candidates_as_markdown(
     if not lines:
         return "No candidates found for this ask."
     return "\n".join(lines)
+
+
+def _render_filing(candidate: ProviderCapability) -> list[str]:
+    return [
+        f"- {candidate.provider_name}",
+        f"  resource_id: {candidate.resource_id}",
+        "  files the form's values",
+    ]

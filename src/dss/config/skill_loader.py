@@ -24,6 +24,10 @@ from dss.core.planner.models import Skill
 _FRONTMATTER_DELIMITER = "---\n"
 
 
+# The kinds `Skill.input_kind` takes; checked here so the error names the file.
+_INPUT_KINDS = ("text", "form")
+
+
 def parse_skill_file(text: str, name: str) -> Skill:
     """Parse one ``---``-delimited skill file.
 
@@ -48,6 +52,12 @@ def parse_skill_file(text: str, name: str) -> Skill:
     ]
     if missing:
         raise ValueError(f"{name} is missing {', '.join(missing)} in its frontmatter")
+    input_kind = metadata.get("input_kind", "text")
+    if input_kind not in _INPUT_KINDS:
+        raise ValueError(
+            f"{name}: input_kind must be one of {', '.join(_INPUT_KINDS)}, "
+            f"got {input_kind!r}"
+        )
 
     return Skill(
         id=metadata["id"],
@@ -55,6 +65,7 @@ def parse_skill_file(text: str, name: str) -> Skill:
         description=metadata["description"],
         tool_names=tuple(metadata["tool_names"]),
         guidance=body,
+        input_kind=input_kind,
     )
 
 

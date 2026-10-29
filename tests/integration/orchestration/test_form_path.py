@@ -22,6 +22,7 @@ from dss.core.forms.models import (
 )
 from dss.core.forms.service import build_form_registry
 from dss.core.intent.models import Intent, InteractionType, Scheme, SubjectCategory
+from dss.core.planner.evidence import assemble_evidence
 from dss.core.policy.models import Policy
 from dss.core.provider_discovery.models import (
     DiscoveredAnswer,
@@ -73,6 +74,34 @@ _VALUES = {
 }
 
 
+class _RecordingPlan:
+    """A `Plan` that keeps what the path handed it and gathers nothing."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    async def __call__(  # noqa: PLR0913
+        self,
+        turn,
+        *,
+        intent,
+        discovery,
+        verdict,
+        visibility=None,
+        awaiting=None,
+        filing=None,
+    ):
+        self.calls.append(
+            {
+                "intent": intent,
+                "discovery": discovery,
+                "filing": filing,
+                "visibility": visibility,
+            }
+        )
+        return assemble_evidence([], intent=intent)
+
+
 def _turn(
     values: Mapping[str, str], *, context: FormContext = _PMFBY_SUPPORT
 ) -> UserTurn:
@@ -103,6 +132,7 @@ def _build(  # noqa: PLR0913
     discovery: DiscoveryResult | None = None,
     discover: _RecordingDiscovery | None = None,
     attributes_yaml: str = _GRIEVANCE_YAML,
+    plan: _RecordingPlan | None = None,
 ) -> tuple[Orchestrator, MemoryTurnSink]:
     pack = SchemaPackFiles(
         pack_name="Grievance",
@@ -123,6 +153,7 @@ def _build(  # noqa: PLR0913
             discovery or _providers_found(grievance_provider("pmfby-desk", "PMFBY"))
         ),
         scheme_catalog=FakeSchemeCatalog({"PMFBY": _PMFBY}),
+        plan=plan or _RecordingPlan(),
         turns=turns,
         telemetry=telemetry or _StageOutcomes(),
         clarification_text=load_clarification_text(),
@@ -397,3 +428,25 @@ async def test_a_direct_answer_does_not_stand_in_for_a_provider() -> None:
     events = await _collect(orch, _turn(_VALUES))
 
     assert events[-1].outcome.status is TurnStatus.NO_MATCH
+
+
+async def test_the_planner_gets_only_the_schemes_provider_and_the_filing() -> None:
+    """The spec's acceptance for the planner step: one provider left after
+    the scheme filter, and the form's values on the filing, never in the
+    intent."""
+
+    plan = _RecordingPlan()
+    found = _providers_found(
+        grievance_provider("kisan-desk", "PM-KISAN"),
+        grievance_provider("pmfby-desk", "PMFBY"),
+    )
+    orch, _ = _build(discovery=found, plan=plan)
+
+    with pytest.raises(NotImplementedError):
+        await _collect(orch, _turn(_VALUES))
+
+    (call,) = plan.calls
+    assert [p.provider_id for p in call["discovery"].capabilities[0]] == ["pmfby-desk"]
+    assert call["filing"].submission.values == _VALUES
+    assert call["filing"].action.context == _PMFBY_SUPPORT
+    assert "9876543210" not in call["intent"].model_dump_json()
