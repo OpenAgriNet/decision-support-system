@@ -1,0 +1,94 @@
+{
+  "id": "https://openagrinet.github.io/network-specs/schema/Grievance/v0.1",
+  "name": "Grievance API Attributes",
+  "version": "0.1.0",
+  "protocol_version": "2.0",
+  "semantic_model": "provider-api",
+  "included_schemas": [
+    "Grievance"
+  ],
+  "discovery_fields": [
+    "informationMode",
+    "scheme",
+    "challenge.methods",
+    "grievanceOptions"
+  ],
+  "result_fields": [
+    "provider",
+    "scheme",
+    "enrolmentId",
+    "grievance",
+    "case"
+  ],
+  "indexable_paths": [
+    "beckn:resourceAttributes.informationMode",
+    "beckn:resourceAttributes.scheme.code",
+    "beckn:resourceAttributes.grievanceOptions.categories[].code",
+    "beckn:resourceAttributes.grievanceOptions.subCategories[].code",
+    "beckn:resourceAttributes.challenge.methods[].method",
+    "beckn:commitmentAttributes.informationMode",
+    "beckn:support.channels[0].informationMode",
+    "beckn:commitmentAttributes.scheme.code",
+    "beckn:support.channels[0].scheme.code",
+    "beckn:commitmentAttributes.enrolmentId",
+    "beckn:support.channels[0].enrolmentId",
+    "beckn:commitmentAttributes.case.ticketNo",
+    "beckn:support.channels[0].case.ticketNo",
+    "beckn:commitmentAttributes.case.status.code",
+    "beckn:support.channels[0].case.status.code",
+    "beckn:commitmentAttributes.grievance.category.code",
+    "beckn:support.channels[0].grievance.category.code",
+    "beckn:commitmentAttributes.grievance.subCategory.code",
+    "beckn:support.channels[0].grievance.subCategory.code",
+    "beckn:commitmentAttributes.case.filedOn",
+    "beckn:support.channels[0].case.filedOn",
+    "beckn:commitmentAttributes.case.repliedOn"
+  ],
+  "filterable_paths": [
+    "beckn:resourceAttributes.informationMode",
+    "beckn:resourceAttributes.scheme.code",
+    "beckn:resourceAttributes.grievanceOptions.categories[].code",
+    "beckn:resourceAttributes.grievanceOptions.subCategories[].code",
+    "beckn:resourceAttributes.challenge.methods[].method",
+    "beckn:commitmentAttributes.informationMode",
+    "beckn:support.channels[0].informationMode",
+    "beckn:commitmentAttributes.scheme.code",
+    "beckn:support.channels[0].scheme.code",
+    "beckn:commitmentAttributes.case.status.code",
+    "beckn:support.channels[0].case.status.code",
+    "beckn:commitmentAttributes.grievance.category.code",
+    "beckn:support.channels[0].grievance.category.code",
+    "beckn:commitmentAttributes.grievance.subCategory.code",
+    "beckn:support.channels[0].grievance.subCategory.code",
+    "beckn:commitmentAttributes.case.filedOn",
+    "beckn:support.channels[0].case.filedOn",
+    "beckn:commitmentAttributes.case.repliedOn"
+  ],
+  "sortable_paths": [
+    "beckn:commitmentAttributes.case.filedOn",
+    "beckn:support.channels[0].case.filedOn",
+    "beckn:commitmentAttributes.case.repliedOn"
+  ],
+  "privacy_notes": [
+    "applicantMobile is personal data. It travels inbound only: the PM-KISAN branch refuses it outright. Nothing proves the caller holds the number -- it is a contact number the portal files on the ticket, not a verified one. complaintDate and receiptSourceId are inbound only for the same reason: they are what the caller said when filing, and the portal keeps its own record of both. cropYear and season are not in that group -- they are sent on a PMFBY case read and come back on the answer.",
+    "challenge.response.value is a one-time code. It is never logged, traced, echoed in a response, or forwarded to the lodge call. No desk in this pack reports where it sent a code, so no destination -- masked or otherwise -- appears in any payload. PMFBY's grievance desk issues no challenge at all: the schema refuses the whole challenge object on that branch, so a payload carrying any part of it is rejected rather than quietly ignored. Filing against PMFBY is therefore unauthenticated -- anyone holding an application number can lodge a grievance against it. That is the portal's posture, not one this network introduces.",
+    "enrolmentId identifies a named farmer's enrolment -- a crop insurance application number for PMFBY, a registration number or exchanged token for PM-KISAN. It is no-log and no-trace without exception, and never appears in an error body. It rides in the attributes object on every call, support included, and on_support echoes it back to the caller who sent it. A PMFBY case read returns it as well -- the portal reports the application number on the ticket. A PM-KISAN case read does not. Support.orderId is not used.",
+    "A bare twelve-digit Aadhaar number is refused as a PM-KISAN enrolmentId. Aadhaar and any token derived from it must never be logged, traced, or returned in any response or error body.",
+    "grievance.description is free text written by a farmer and may contain personal details the schema cannot constrain. It is returned verbatim on a case read.",
+    "The portals' case records carry far more about the farmer than this pack surfaces -- name, father's name, gender, mobile number, email, and the full state / district / sub-district / panchayat / village hierarchy, alongside the insurance policy number and insurer. The response mapping is an allow-list, not a passthrough: an adapter must map only the fields named here and drop the rest. The grievance and case bands are closed objects, so a stray portal field copied into either is rejected rather than carried; the composed root cannot be closed the same way, which is why that one rule still rests on the adapter.",
+    "A portal's own message or body is never returned to the caller -- it may hold a stack trace, an internal hostname, or a quoted-back credential. Log it redacted and return our own message. Every Descriptor slot in this pack refuses longDesc, shortDesc, thumbnailImage, docs and mediaFile, so case.status and the category descriptors have no side door for that phrase either.",
+    "The PM-KISAN portal payload is carried inside an encrypted envelope. A decryption failure must not log the ciphertext."
+  ],
+  "beckn_dependencies": {
+    "Attributes": "2.0",
+    "Catalog": "2.2",
+    "Commitment": "2.0",
+    "Contract": "2.0",
+    "Descriptor": "2.1",
+    "Provider": "2.1",
+    "Resource": "2.0",
+    "Support": "2.0"
+  },
+  "interaction_type": "Transact",
+  "outcome_type": "openagrinet:Grievance"
+}

@@ -125,11 +125,15 @@ def _submission(parts: Sequence[schema.InputContent]) -> FormSubmission:
                 form_id=form.form_id,
                 context=_form_context(form.context),
                 submission_id=submission_id,
-                values=tuple(
-                    FieldValue(name=f.name, value=f.value) for f in form.fields
-                ),
+                values=tuple(_field_value(f) for f in form.fields),
             )
     raise ValueError("a message carries one form")
+
+
+def _field_value(field: schema.InputFormField) -> FieldValue:
+    if field.value is None:
+        raise ValueError(f"the submitted field {field.name!r} needs a value")
+    return FieldValue(name=field.name, value=field.value)
 
 
 def _history_message(message: schema.InputMessage) -> ConversationMessage:

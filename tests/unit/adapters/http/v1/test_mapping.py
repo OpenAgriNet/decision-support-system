@@ -299,3 +299,43 @@ def test_a_submitted_form_needs_a_submission_id(a_body):
 
     with pytest.raises(ValueError, match="submissionId"):
         mapping.to_user_turn(body)
+
+
+def test_an_echoed_form_offer_in_history_is_accepted(a_body):
+    """A UI sends the DSS's own offer back as history; its fields are
+    definitions, not values, and are not read."""
+
+    offer = {
+        "type": "form",
+        "formId": "offer-1",
+        "context": {"scheme": "PMFBY", "category": "Grievance", "action": "support"},
+        "fields": [
+            {
+                "name": "applicantMobile",
+                "label": "Applicant mobile",
+                "kind": "text",
+                "required": True,
+                "pattern": "^[6-9][0-9]{9}$",
+                "options": [],
+            }
+        ],
+    }
+    thread = [
+        {"role": "assistant", "content": [{"type": "text", "text": "Fill in."}, offer]},
+        {"role": "user", "content": [_form_item()]},
+    ]
+    body = schema.TurnRequest.model_validate(a_body(message__input=thread))
+
+    (earlier,) = mapping.to_user_turn(body).history
+
+    assert isinstance(earlier.reference, FormReference)
+    assert earlier.reference.submission_id is None
+
+
+def test_a_submitted_field_without_a_value_is_refused(a_body):
+    item = _form_item(fields=[{"name": "applicantMobile", "label": "Applicant mobile"}])
+    thread = [{"role": "user", "content": [item]}]
+    body = schema.TurnRequest.model_validate(a_body(message__input=thread))
+
+    with pytest.raises(ValueError, match="value"):
+        mapping.to_user_turn(body)

@@ -1,0 +1,93 @@
+{
+  "@context": "https://openagrinet.github.io/network-specs/schema/Grievance/v0.1/context.jsonld",
+  "@type": "openagrinet:Grievance",
+  "informationMode": "OnDemand",
+  "scheme": {
+    "code": "PM-KISAN",
+    "name": "Pradhan Mantri Kisan Samman Nidhi"
+  },
+  "challenge": {
+    "methods": [
+      {
+        "method": "OTP",
+        "channel": "SMS",
+        "length": 4,
+        "valueType": "NUMERIC"
+      }
+    ]
+  },
+  "grievanceOptions": {
+    "categories": [
+      {
+        "code": "G001",
+        "name": "Account number not correct",
+        "help": "The bank account held against your registration is wrong, so money cannot reach you."
+      },
+      {
+        "code": "G002",
+        "name": "Online application pending for approval",
+        "help": "You applied online and the application has not yet been approved."
+      },
+      {
+        "code": "G003",
+        "name": "Installment not received",
+        "help": "Your registration is approved but an instalment has not reached your account."
+      },
+      {
+        "code": "G004",
+        "name": "Transaction failed",
+        "help": "A payment was attempted and the transfer did not go through."
+      },
+      {
+        "code": "G005",
+        "name": "Problem in Aadhaar correction",
+        "help": "A correction to your Aadhaar details has not gone through."
+      },
+      {
+        "code": "G006",
+        "name": "Gender not correct",
+        "help": "The gender recorded against your registration is wrong."
+      },
+      {
+        "code": "G007",
+        "name": "Payment related",
+        "help": "Any other problem with a payment that the options above do not cover."
+      },
+      {
+        "code": "G008",
+        "name": "Problem in OTP-based eKYC",
+        "help": "eKYC by OTP is failing."
+      },
+      {
+        "code": "G009",
+        "name": "Problem in biometric-based eKYC",
+        "help": "eKYC by fingerprint or iris is failing."
+      },
+      {
+        "code": "G010",
+        "name": "Problem in facial-based eKYC",
+        "help": "eKYC by face scan is failing."
+      }
+    ]
+  },
+  "actions": [
+    {
+      "action": "init",
+      "description": "Ask PM-KISAN to send a four-digit OTP to the mobile registered against this enrolment number. Needs only the enrolment number. Call before status or support: both require challenge.response carrying this OTP.",
+      "schema": "https://openagrinet.github.io/network-specs/schema/Grievance/v0.1/attributes.yaml#/components/schemas/PMKISANInit",
+      "attributesAt": "$.message.contract.commitments[0].commitmentAttributes"
+    },
+    {
+      "action": "status",
+      "description": "Read a grievance already filed against this enrolment number: its status code, the officer's reply and when it was given. Needs the OTP from init and case.filedOn, the filing date support returned, which picks one case out of all those on the registration.",
+      "schema": "https://openagrinet.github.io/network-specs/schema/Grievance/v0.1/attributes.yaml#/components/schemas/PMKISANStatus",
+      "attributesAt": "$.message.contract.commitments[0].commitmentAttributes"
+    },
+    {
+      "action": "support",
+      "description": "File a new grievance against this enrolment number, under one of the categories published above. Needs the OTP from init. Returns case.ticketNo and case.filedOn; keep filedOn, because status selects a case by it.",
+      "schema": "https://openagrinet.github.io/network-specs/schema/Grievance/v0.1/attributes.yaml#/components/schemas/PMKISANSupport",
+      "attributesAt": "$.message.support.channels[0]"
+    }
+  ]
+}

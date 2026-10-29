@@ -1,0 +1,19 @@
+{
+  "@context": "https://openagrinet.github.io/network-specs/schema/Grievance/v0.1/context.jsonld",
+  "@type": "openagrinet:Grievance",
+  "informationMode": "OnDemand",
+  "scheme": {
+    "code": "PM-KISAN",
+    "name": "Pradhan Mantri Kisan Samman Nidhi"
+  },
+  "challenge": {
+    "response": {
+      "method": "OTP",
+      "value": "7390"
+    }
+  },
+  "enrolmentId": "UP12345678A",
+  "case": {
+    "filedOn": "2026-09-28"
+  }
+}

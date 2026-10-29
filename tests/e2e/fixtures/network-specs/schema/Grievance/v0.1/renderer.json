@@ -1,0 +1,8 @@
+{
+  "schema": "Grievance",
+  "version": "0.1.0",
+  "card_template": "{{informationMode}} | {{scheme.name}} | {{case.ticketNo}} | {{case.status.code}}",
+  "detail_template": "Mode: {{informationMode}}\nScheme: {{scheme.name}}\nTicket: {{case.ticketNo}}\nStatus: {{case.status.code}}\nFiled on: {{case.filedOn}}\nGrievance: {{grievance.description}}",
+  "html": "<div class=\"oan-grievance\"><strong>{{informationMode}}</strong><span>{{scheme.name}} · {{case.ticketNo}} · {{case.status.code}}</span></div>",
+  "html_detail": "<div class=\"oan-grievance-detail\"><p><strong>Scheme:</strong> {{scheme.name}}</p><p><strong>Ticket:</strong> {{case.ticketNo}}</p><p><strong>Status:</strong> {{case.status.code}}</p><p><strong>Filed on:</strong> {{case.filedOn}}</p><p><strong>Grievance:</strong> {{grievance.description}}</p></div>"
+}

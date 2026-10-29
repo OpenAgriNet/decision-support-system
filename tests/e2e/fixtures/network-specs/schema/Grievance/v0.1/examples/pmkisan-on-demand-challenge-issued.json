@@ -1,0 +1,18 @@
+{
+  "@context": "https://openagrinet.github.io/network-specs/schema/Grievance/v0.1/context.jsonld",
+  "@type": "openagrinet:Grievance",
+  "informationMode": "OnDemand",
+  "scheme": {
+    "code": "PM-KISAN",
+    "name": "Pradhan Mantri Kisan Samman Nidhi"
+  },
+  "challenge": {
+    "issued": {
+      "method": "OTP",
+      "channel": "SMS",
+      "length": 4,
+      "valueType": "NUMERIC",
+      "expiresAt": "2026-09-28T11:08:00Z"
+    }
+  }
+}

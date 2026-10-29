@@ -77,8 +77,11 @@ class InputFormContext(_WireIn):
 
 
 class InputFormField(_WireIn):
+    """A submitted field, or an offered one echoed back in the history: an
+    offer's fields carry a label and rules and no value, and are not read."""
+
     name: str
-    value: str
+    value: str | None = None
 
 
 class FormContent(_WireIn):
