@@ -157,6 +157,8 @@ def test_a_form_in_history_shows_only_as_its_fixed_line(
 
     assert "user: a form was submitted" in prompt
     assert "offer-1" not in prompt
+
+
 def test_intent_prompt_lists_each_scheme_with_its_code() -> None:
     """The model returns a code it read here, so the code must be shown as
     the catalog holds it, beside every name a farmer may use."""
