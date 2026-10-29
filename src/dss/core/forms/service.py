@@ -31,13 +31,14 @@ from dss.core.forms.models import (
     ValidSubmission,
 )
 from dss.core.forms.registry import FormLookup, FormRegistry
+from dss.core.planner.models import Failure
 from dss.core.provider_discovery.index import PACK_DEFECTS, is_api_pack
 from dss.core.provider_discovery.models import (
     ProviderCapability,
     SchemaPackFiles,
     SchemaPackSkipped,
 )
-from dss.core.shared.models import TextBlock
+from dss.core.shared.models import Cause, TextBlock
 from dss.core.shared.schema import resolve_schema
 
 _ACTION_MAP = "x-oan-schema-by-action"
@@ -456,6 +457,39 @@ def answer_for_form_errors(
         content=(
             TextBlock(text=text.form_has_errors),
             form_error_block(errors, errors.definition, text),
+        )
+    )
+
+
+# What the farmer reads for each way a filing can fail. A `form_error` with
+# no fields says the form is still theirs; the values were fine.
+_NOT_FILED_TEXT: Mapping[Cause, Callable[[ClarificationText], str]] = {
+    Cause.PROVIDER_UNAVAILABLE: lambda text: text.not_filed,
+    Cause.PROVIDER_REJECTED: lambda text: text.not_filed_rejected,
+}
+
+
+def cause_for_unfiled(failure: Failure | None) -> Cause:
+    """Why nothing was filed. No failure at all means the planner never
+    called the desk; like a desk that could not be reached, trying again may
+    work. A desk that refused the call would refuse it again unchanged."""
+
+    if failure is None or failure.retryable:
+        return Cause.PROVIDER_UNAVAILABLE
+    return Cause.PROVIDER_REJECTED
+
+
+def answer_for_failed_filing(
+    submission: FormSubmission, cause: Cause, text: ClarificationText
+) -> ComposedAnswer:
+    return ComposedAnswer(
+        content=(
+            TextBlock(text=_NOT_FILED_TEXT[cause](text)),
+            FormErrorBlock(
+                form_id=submission.form_id,
+                context=submission.context,
+                submission_id=submission.submission_id,
+            ),
         )
     )
 

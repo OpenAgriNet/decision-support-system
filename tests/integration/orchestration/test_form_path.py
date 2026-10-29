@@ -8,7 +8,6 @@ from collections.abc import Mapping
 from functools import partial
 from pathlib import Path
 
-import pytest
 import yaml
 
 from dss.adapters.sinks.memory import MemoryTurnSink
@@ -23,6 +22,7 @@ from dss.core.forms.models import (
 from dss.core.forms.service import build_form_registry
 from dss.core.intent.models import Intent, InteractionType, Scheme, SubjectCategory
 from dss.core.planner.evidence import assemble_evidence
+from dss.core.planner.models import Evidence, Failure, Result, Source, SourceKind
 from dss.core.policy.models import Policy
 from dss.core.provider_discovery.models import (
     DiscoveredAnswer,
@@ -32,6 +32,7 @@ from dss.core.provider_discovery.models import (
 )
 from dss.core.shared.models import (
     Cause,
+    ClaimDelta,
     ConversationMessage,
     RefusalBlock,
     TextBlock,
@@ -42,13 +43,19 @@ from dss.core.shared.models import (
     UserTurn,
 )
 from dss.orchestration.form_path import FormPath
-from dss.orchestration.orchestrator import Orchestrator
+from dss.orchestration.orchestrator import Components, Orchestrator
 from dss.orchestration.redaction import RedactTexts, pass_through, redact_texts
+from tests.support.evidence import build_evidence
 from tests.support.fakes import FakeLocalizer, FakePromptProvider, FakeSchemeCatalog
 from tests.support.providers import grievance_provider
 from tests.support.turn_events import assert_well_formed
 
-from .test_orchestrator import DELETE_COMMAND, _FakeDiscovery, _FakeModerationLLM
+from .test_orchestrator import (
+    DELETE_COMMAND,
+    _FakeCompose,
+    _FakeDiscovery,
+    _FakeModerationLLM,
+)
 from .test_orchestrator_redaction import PHONE, POLICY, _FindsValues
 
 _GRIEVANCE_YAML = (
@@ -75,9 +82,11 @@ _VALUES = {
 
 
 class _RecordingPlan:
-    """A `Plan` that keeps what the path handed it and gathers nothing."""
+    """A `Plan` that keeps what the path handed it and answers with the
+    evidence it was given, or none."""
 
-    def __init__(self) -> None:
+    def __init__(self, evidence: Evidence | None = None) -> None:
+        self._evidence = evidence
         self.calls: list[dict] = []
 
     async def __call__(  # noqa: PLR0913
@@ -99,7 +108,7 @@ class _RecordingPlan:
                 "visibility": visibility,
             }
         )
-        return assemble_evidence([], intent=intent)
+        return self._evidence or assemble_evidence([], intent=intent)
 
 
 def _turn(
@@ -133,6 +142,7 @@ def _build(  # noqa: PLR0913
     discover: _RecordingDiscovery | None = None,
     attributes_yaml: str = _GRIEVANCE_YAML,
     plan: _RecordingPlan | None = None,
+    compose: _FakeCompose | None = None,
 ) -> tuple[Orchestrator, MemoryTurnSink]:
     pack = SchemaPackFiles(
         pack_name="Grievance",
@@ -142,22 +152,26 @@ def _build(  # noqa: PLR0913
         examples_json=(),
     )
     turns = MemoryTurnSink()
-    path = FormPath(
+    components = Components(
         redact=redact,
-        moderation_llm=moderation_llm or _FakeModerationLLM(),
-        prompts=FakePromptProvider(),
-        policies=policies or [],
-        forms=build_form_registry([pack]),
         discover=discover
         or _FakeDiscovery(
             discovery or _providers_found(grievance_provider("pmfby-desk", "PMFBY"))
         ),
-        scheme_catalog=FakeSchemeCatalog({"PMFBY": _PMFBY}),
         plan=plan or _RecordingPlan(),
+        compose=compose or _FakeCompose("unused"),
+        localize=localize or FakeLocalizer(),
+    )
+    path = FormPath(
+        moderation_llm=moderation_llm or _FakeModerationLLM(),
+        prompts=FakePromptProvider(),
+        policies=policies or [],
+        forms=build_form_registry([pack]),
+        scheme_catalog=FakeSchemeCatalog({"PMFBY": _PMFBY}),
+        components=components,
         turns=turns,
         telemetry=telemetry or _StageOutcomes(),
         clarification_text=load_clarification_text(),
-        localize=localize or FakeLocalizer(),
     )
     return Orchestrator(paths={FormSubmission: path}), turns
 
@@ -285,8 +299,7 @@ async def test_the_moderation_model_sees_the_complaint_tagged() -> None:
         "grievance.description": f"No payment yet, call me on {PHONE}.",
     }
 
-    with pytest.raises(NotImplementedError):
-        await _collect(orch, _turn(complaint))
+    await _collect(orch, _turn(complaint))
 
     assert moderation_llm.judged == ["No payment yet, call me on «phone_1»."]
 
@@ -314,8 +327,7 @@ async def test_a_form_with_no_free_text_is_not_moderated() -> None:
     orch, _ = _build(moderation_llm=moderation_llm, policies=[DELETE_COMMAND])
     lookup = {"applicantMobile": "9876543210", "case.ticketNo": "123456"}
 
-    with pytest.raises(NotImplementedError):
-        await _collect(orch, _turn(lookup, context=status))
+    await _collect(orch, _turn(lookup, context=status))
 
     assert moderation_llm.judged == []
 
@@ -375,8 +387,7 @@ async def test_discovery_is_asked_for_the_one_ask_the_form_stands_for() -> None:
     )
     orch, _ = _build(discover=discovery)
 
-    with pytest.raises(NotImplementedError):
-        await _collect(orch, _turn(_VALUES))
+    await _collect(orch, _turn(_VALUES))
 
     (intent,) = discovery.intents
     (ask,) = intent.asks
@@ -442,11 +453,130 @@ async def test_the_planner_gets_only_the_schemes_provider_and_the_filing() -> No
     )
     orch, _ = _build(discovery=found, plan=plan)
 
-    with pytest.raises(NotImplementedError):
-        await _collect(orch, _turn(_VALUES))
+    await _collect(orch, _turn(_VALUES))
 
     (call,) = plan.calls
     assert [p.provider_id for p in call["discovery"].capabilities[0]] == ["pmfby-desk"]
     assert call["filing"].submission.values == _VALUES
     assert call["filing"].action.context == _PMFBY_SUPPORT
     assert "9876543210" not in call["intent"].model_dump_json()
+
+
+_PORTAL = Source(
+    id="1", name="PMFBY Grievance Portal", kind=SourceKind.PROVIDER, url=None
+)
+
+
+def _filed_evidence() -> Evidence:
+    ticket = {"case": {"ticketNo": "100626000099001", "filedOn": "2026-10-29"}}
+    return build_evidence(
+        sources=(_PORTAL,), results=(Result(ask_index=0, source_id="1", data=ticket),)
+    )
+
+
+async def test_a_filed_form_is_answered_with_the_composers_text() -> None:
+    compose = _FakeCompose("Your complaint is filed. Ticket 100626000099001.")
+    orch, turns = _build(plan=_RecordingPlan(_filed_evidence()), compose=compose)
+
+    events = await _collect(orch, _turn(_VALUES))
+
+    finished = events[-1]
+    assert finished.outcome.status is TurnStatus.ANSWERED
+    assert finished.outcome.cause is None
+    (text,) = finished.content
+    assert isinstance(text, TextBlock)
+    assert text.text == "Your complaint is filed. Ticket 100626000099001."
+    assert any(isinstance(event, ClaimDelta) for event in events)
+    assert turns.records["t1"].finished == finished
+
+
+def _unfiled_evidence(*, retryable: bool, retry_after_seconds: int | None) -> Evidence:
+    failure = Failure(
+        ask_index=0,
+        capability="openagrinet:Grievance",
+        reason="support failed with status 503",
+        retryable=retryable,
+        retry_after_seconds=retry_after_seconds,
+    )
+    return build_evidence(failures=(failure,))
+
+
+async def test_a_filing_the_desk_could_not_take_keeps_the_form() -> None:
+    """`unavailable`, the desk's own time to wait, a `form_error` with no
+    fields so every UI keeps the form, and no composer call."""
+
+    compose = _FakeCompose("must not be written")
+    unfiled = _unfiled_evidence(retryable=True, retry_after_seconds=120)
+    orch, turns = _build(plan=_RecordingPlan(unfiled), compose=compose)
+
+    events = await _collect(orch, _turn(_VALUES))
+
+    finished = events[-1]
+    assert finished.outcome.status is TurnStatus.UNAVAILABLE
+    assert finished.outcome.cause is Cause.PROVIDER_UNAVAILABLE
+    assert finished.outcome.retry_after_seconds == 120
+    text, kept = finished.content
+    assert isinstance(text, TextBlock)
+    assert text.text == load_clarification_text().not_filed
+    assert kept == FormErrorBlock(
+        form_id="offer-1", context=_PMFBY_SUPPORT, submission_id="submission-1"
+    )
+    assert compose.calls == 0
+    assert turns.records["t1"].finished == finished
+
+
+async def test_a_filing_the_desk_refused_is_not_retryable() -> None:
+    unfiled = _unfiled_evidence(retryable=False, retry_after_seconds=None)
+    orch, _ = _build(plan=_RecordingPlan(unfiled))
+
+    events = await _collect(orch, _turn(_VALUES))
+
+    finished = events[-1]
+    assert finished.outcome.status is TurnStatus.UNAVAILABLE
+    assert finished.outcome.cause is Cause.PROVIDER_REJECTED
+    assert finished.outcome.retry_after_seconds is None
+    text, _kept = finished.content
+    assert isinstance(text, TextBlock)
+    assert text.text == load_clarification_text().not_filed_rejected
+
+
+async def test_the_composer_sees_the_tagged_history_and_no_form_value() -> None:
+    """The text path hands the composer the redacted turn; the form path
+    must too, or a phone in an earlier message reaches the model."""
+
+    redact = partial(
+        redact_texts, identifiers=[_FindsValues(phone=PHONE)], policy=POLICY
+    )
+    compose = _FakeCompose("Your complaint is filed. Ticket 100626000099001.")
+    orch, _ = _build(
+        redact=redact, plan=_RecordingPlan(_filed_evidence()), compose=compose
+    )
+    turn = _turn({**_VALUES, "applicantMobile": "9123456789"}).model_copy(
+        update={
+            "history": [ConversationMessage(role="user", text=f"Call me on {PHONE}")]
+        }
+    )
+
+    await _collect(orch, turn)
+
+    assert compose.turn.history[0].text == "Call me on «phone_1»"
+    assert "9123456789" not in compose.turn.model_dump_json()
+
+
+async def test_a_planner_run_that_never_filed_keeps_the_form() -> None:
+    """No result and no failure: the model ended without calling the desk.
+    Nothing was filed, so the farmer must not be told it was, and the form
+    stays theirs."""
+
+    compose = _FakeCompose("must not be written")
+    orch, _ = _build(plan=_RecordingPlan(), compose=compose)
+
+    events = await _collect(orch, _turn(_VALUES))
+
+    finished = events[-1]
+    assert finished.outcome.status is TurnStatus.UNAVAILABLE
+    assert finished.outcome.cause is Cause.PROVIDER_UNAVAILABLE
+    assert finished.outcome.retry_after_seconds is None
+    _text, kept = finished.content
+    assert isinstance(kept, FormErrorBlock)
+    assert compose.calls == 0

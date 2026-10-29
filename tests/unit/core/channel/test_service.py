@@ -46,6 +46,8 @@ _TEXT = ClarificationText(
     field_not_an_option="{label} must be one of the given choices.",
     field_duplicate="{label} was sent more than once.",
     field_unknown="{label} is not part of this form.",
+    not_filed="Your complaint was not filed. Please try again later.",
+    not_filed_rejected="The desk could not take your complaint as sent.",
 )
 
 

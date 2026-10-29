@@ -9,7 +9,12 @@ what makes "one source per question" a rule it can follow.
 from __future__ import annotations
 
 from dss.core.channel.prompt import render_evidence, system_prompt, user_prompt
-from dss.core.forms.models import FormContext, FormDefinition
+from dss.core.forms.models import (
+    FieldValue,
+    FormContext,
+    FormDefinition,
+    FormSubmission,
+)
 from dss.core.intent.models import (
     Ask,
     InteractionType,
@@ -325,3 +330,27 @@ def test_composer_sees_last_three_messages() -> None:
     assert "What is the weather in Rampur?" in prompt
     assert "Which Rampur? 1. … 2. …" in prompt
     assert "My cotton looks fine." not in prompt
+
+
+def test_a_form_turn_is_described_without_its_values() -> None:
+    """The composer must know what the farmer did; it must never see what
+    they typed, so there is nothing to repeat."""
+
+    turn = UserTurn[FormSubmission](
+        input=FormSubmission(
+            form_id="offer-1",
+            context=FormContext(scheme="PMFBY", category="Grievance", action="support"),
+            submission_id="submission-1",
+            values=(FieldValue(name="applicantMobile", value="9876543210"),),
+        ),
+        session_id="s1",
+        transaction_id="t1",
+        source_lang="en",
+        target_lang="en",
+        channel="web",
+    )
+
+    prompt = user_prompt(build_evidence(), turn=turn)
+
+    assert "PMFBY/Grievance/support" in prompt
+    assert "9876543210" not in prompt

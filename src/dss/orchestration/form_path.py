@@ -1,21 +1,21 @@
 """The path for a submitted form (#205): check the values, moderate the
-complaint, find the provider, file the form through the planner.
-
-TODO(#205): compose the ticket reply.
-"""
+complaint, find the provider, file the form through the planner, and tell
+the farmer the ticket, or that the form is still theirs."""
 
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator, Sequence
+from contextlib import aclosing
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
+from functools import partial
 
 from dss.adapters.observability.tracing import (
     TurnRecorder,
     set_current_span_attributes,
     set_current_span_content,
 )
-from dss.core.channel.localize import LocalizeText, localize_answer
+from dss.core.channel.localize import localize_answer
 from dss.core.channel.models import ClarificationText, ComposedAnswer
 from dss.core.channel.service import answer_for_unserved_asks
 from dss.core.enrichment.service import scheme_with_code
@@ -28,9 +28,11 @@ from dss.core.forms.models import (
 )
 from dss.core.forms.registry import FormLookup
 from dss.core.forms.service import (
+    answer_for_failed_filing,
     answer_for_form_errors,
     answer_for_unknown_form,
     candidates_for_scheme,
+    cause_for_unfiled,
     free_text_of,
     validate_submission,
     withhold_values,
@@ -38,7 +40,7 @@ from dss.core.forms.service import (
 from dss.core.intent.models import Intent, Scheme
 from dss.core.moderation.models import ModerationContext, ModerationDecision, Outcome
 from dss.core.moderation.service import moderate
-from dss.core.planner.models import Evidence, Verdict
+from dss.core.planner.models import Evidence, Failure, Verdict
 from dss.core.policy.models import Policy
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.redaction.turn import surrounding_texts_of, with_surrounding_texts
@@ -54,17 +56,17 @@ from dss.core.shared.models import (
 )
 from dss.observability.stages import Stage
 from dss.observability.trace_log import trace_component
-from dss.orchestration.discovery import DiscoverProviders
 from dss.orchestration.form_offer import ask_for_form
 from dss.orchestration.orchestrator import (
+    Components,
     build_turn_finished,
+    compose_answer,
     note_stage,
     outcome_for,
     refusal_for,
+    reveal_to_farmer,
     spoken_text,
 )
-from dss.orchestration.plan import Plan
-from dss.orchestration.redaction import RedactTexts
 from dss.orchestration.stage_content import asks_text, discovery_text, evidence_text
 from dss.orchestration.turn import moderation_attributes
 from dss.ports.llm import LLMProvider
@@ -91,31 +93,25 @@ class FormPath:
     def __init__(  # noqa: PLR0913
         self,
         *,
-        redact: RedactTexts,
         moderation_llm: LLMProvider,
         prompts: PromptProvider,
         policies: Sequence[Policy],
         forms: FormLookup,
-        discover: DiscoverProviders,
         scheme_catalog: SchemeCatalog,
-        plan: Plan,
+        components: Components,
         turns: TurnSink,
         telemetry: TelemetrySink,
         clarification_text: ClarificationText,
-        localize: LocalizeText,
     ) -> None:
-        self._redact = redact
         self._moderation_llm = moderation_llm
         self._prompts = prompts
         self._policies = policies
         self._forms = forms
-        self._discover = discover
         self._scheme_catalog = scheme_catalog
-        self._plan = plan
+        self._components = components
         self._turns = turns
         self._telemetry = telemetry
         self._clarification_text = clarification_text
-        self._localize = localize
 
     async def run(
         self,
@@ -163,7 +159,7 @@ class FormPath:
             )
             return
 
-        await self._file(
+        evidence = await self._file(
             turn,
             Filing(submission=checked, action=action),
             intent=intent,
@@ -172,7 +168,84 @@ class FormPath:
             visibility=redacted.visibility,
             ctx=ctx,
         )
-        raise NotImplementedError("TODO(#205): compose the reply from the evidence")
+        if not evidence.has_any_result:
+            yield await self._hand_back_unfiled(
+                _filing_failure(evidence), turn=turn, ctx=ctx, recorder=recorder
+            )
+            return
+        async with aclosing(
+            self._confirm_the_filing(
+                evidence,
+                turn=redacted.turn,
+                visibility=redacted.visibility,
+                ctx=ctx,
+                recorder=recorder,
+            )
+        ) as events:
+            async for event in events:
+                yield event
+
+    async def _confirm_the_filing(
+        self,
+        evidence: Evidence,
+        *,
+        turn: UserTurn[FormSubmission],
+        visibility: Visibility,
+        ctx: TurnContext,
+        recorder: TurnRecorder,
+    ) -> AsyncGenerator[TurnEvent]:
+        """The composer's confirmation, streamed as it is written, with the
+        farmer's own values in place of any tag. ``turn`` is the redacted
+        one: the model sees tags and withheld values, never the originals."""
+
+        # `aclosing` each layer: closing an async generator does not reach the
+        # one it reads from, and a closed screen must close the model stream.
+        async with (
+            aclosing(
+                compose_answer(
+                    evidence,
+                    turn=turn,
+                    components=self._components,
+                    question=None,
+                    ctx=ctx,
+                    recorder=recorder,
+                )
+            ) as core_events,
+            aclosing(
+                reveal_to_farmer(
+                    core_events,
+                    visibility=visibility,
+                    recorder=recorder,
+                    on_finished=partial(
+                        self._record, turn=turn, ctx=ctx, recorder=recorder
+                    ),
+                )
+            ) as farmer_events,
+        ):
+            async for event in farmer_events:
+                yield event
+
+    async def _hand_back_unfiled(
+        self,
+        failure: Failure | None,
+        *,
+        turn: UserTurn[FormSubmission],
+        ctx: TurnContext,
+        recorder: TurnRecorder,
+    ) -> TurnFinished:
+        """The form stays the farmer's: `unavailable`, with the provider's own
+        time to wait if it named one. No invented delay, and no provider
+        text."""
+
+        cause = cause_for_unfiled(failure)
+        answer = answer_for_failed_filing(turn.input, cause, self._clarification_text)
+        retry_after = failure.retry_after_seconds if failure is not None else None
+        outcome = outcome_for(TurnStatus.UNAVAILABLE, cause).model_copy(
+            update={"retry_after_seconds": retry_after}
+        )
+        return await self._finish(
+            outcome, answer, turn=turn, ctx=ctx, recorder=recorder
+        )
 
     async def _file(  # noqa: PLR0913
         self,
@@ -192,7 +265,7 @@ class FormPath:
         verdict = Verdict()
         verdict.set(decision)
         with trace_component(Stage.PLANNER, ctx.trace_id):
-            evidence = await self._plan(
+            evidence = await self._components.plan(
                 turn,
                 intent=intent,
                 discovery=discovery,
@@ -232,7 +305,7 @@ class FormPath:
         nothing but this filter keeps a PMFBY complaint off a PM-KISAN desk."""
 
         with trace_component(Stage.DISCOVERY, ctx.trace_id):
-            found = await self._discover(intent, turn, now=datetime.now(UTC))
+            found = await self._components.discover(intent, turn, now=datetime.now(UTC))
             providers = replace(
                 found,
                 capabilities={
@@ -266,7 +339,7 @@ class FormPath:
             free_text_of(checked) if isinstance(checked, ValidSubmission) else ()
         )
         with trace_component(Stage.REDACTION, ctx.trace_id):
-            redaction = await self._redact(
+            redaction = await self._components.redact(
                 [*surroundings, *free_text], request_id=turn.transaction_id
             )
         recorder.redacted(found=redaction.found, failed=redaction.failed)
@@ -336,14 +409,37 @@ class FormPath:
         ctx: TurnContext,
         recorder: TurnRecorder,
     ) -> TurnFinished:
-        answer = await localize_answer(answer, self._localize, turn=turn)
+        answer = await localize_answer(answer, self._components.localize, turn=turn)
         finished = build_turn_finished(outcome, answer)
+        self._record(finished, turn=turn, ctx=ctx, recorder=recorder)
+        return finished
+
+    def _record(
+        self,
+        finished: TurnFinished,
+        *,
+        turn: UserTurn[FormSubmission],
+        ctx: TurnContext,
+        recorder: TurnRecorder,
+    ) -> None:
+        """The turn sink is required, so a failure here is not caught:
+        answering while silently failing to record is no success."""
+
         self._turns.closed(ctx, finished)
         recorder.status(finished.outcome.status.value)
         recorder.content(
             query=_reference_line(turn.input), answer=spoken_text(finished.content)
         )
-        return finished
+
+
+def _filing_failure(evidence: Evidence) -> Failure | None:
+    """The one ask's failure, when the desk was called and said no. ``None``
+    when the planner never called it."""
+
+    return next(
+        (failure for ask in evidence.ask_evidences for failure in ask.failures),
+        None,
+    )
 
 
 def _count(discovery: DiscoveryResult) -> int:

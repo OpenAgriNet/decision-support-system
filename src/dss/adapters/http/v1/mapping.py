@@ -240,7 +240,8 @@ def _error(outcome: TurnOutcome) -> schema.TurnError | None:
     return schema.TurnError(
         code=cause,
         message=UNAVAILABLE_MESSAGE,
-        retryable=True,
+        # A provider that refused a filing would refuse it again unchanged.
+        retryable=outcome.cause is not Cause.PROVIDER_REJECTED,
         retry_after_seconds=outcome.retry_after_seconds,
     )
 

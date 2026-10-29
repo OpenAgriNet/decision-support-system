@@ -370,3 +370,24 @@ def test_a_form_block_is_a_form_item_with_flat_fields(ctx):
         "options": [],
     }
     assert item["fields"][1]["options"] == [{"value": "Kharif", "label": "Kharif"}]
+
+
+def test_a_rejected_filing_is_not_retryable(ctx):
+    """The desk refused the form as sent; sending it again unchanged would
+    not help, and a UI must not offer a plain retry."""
+
+    finished = TurnFinished(
+        outcome=TurnOutcome(
+            status=TurnStatus.UNAVAILABLE, cause=Cause.PROVIDER_REJECTED, confidence=0
+        ),
+        content=(),
+    )
+
+    frame = mapping.to_terminal_frame(
+        finished, ctx, now=NOW, seq=None, response_id=RESPONSE_ID
+    )
+
+    assert frame.message.error is not None
+    assert frame.message.error.code == "provider_rejected"
+    assert frame.message.error.retryable is False
+    assert frame.message.error.retry_after_seconds is None

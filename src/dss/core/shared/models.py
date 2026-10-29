@@ -186,6 +186,8 @@ class Cause(StrEnum):
     # infrastructure
     MODERATION_UNAVAILABLE = "moderation_unavailable"
     PROVIDER_UNAVAILABLE = "provider_unavailable"
+    # the provider refused a filing; sending it again would not help (#205)
+    PROVIDER_REJECTED = "provider_rejected"
     TIMEOUT = "timeout"
     INTERNAL = "internal"
 

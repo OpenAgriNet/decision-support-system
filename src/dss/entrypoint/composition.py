@@ -311,18 +311,15 @@ def _build_text_path(settings: Settings, wiring: _Wiring) -> TextPath:
 def _build_form_path(wiring: _Wiring) -> FormPath:
     boot = wiring.boot
     return FormPath(
-        redact=boot.redact,
         moderation_llm=wiring.moderation_llm,
         prompts=boot.prompts,
         policies=boot.policies,
         forms=wiring.forms,
-        discover=wiring.network.discover,
         scheme_catalog=boot.scheme_catalog,
-        plan=wiring.components.plan,
+        components=wiring.components,
         turns=wiring.turns,
         telemetry=wiring.telemetry,
         clarification_text=boot.clarification_text,
-        localize=wiring.components.localize,
     )
 
 

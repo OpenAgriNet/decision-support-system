@@ -55,6 +55,9 @@ class ClarificationText(BaseModel):
     field_not_an_option: str
     field_duplicate: str
     field_unknown: str
+    # A filing that did not reach the desk, and one the desk refused.
+    not_filed: str
+    not_filed_rejected: str
     # More choices than this are grouped one level up before they are listed.
     max_choices: int = Field(default=5, gt=0)
 

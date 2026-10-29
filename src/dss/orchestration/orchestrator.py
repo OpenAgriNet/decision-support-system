@@ -47,9 +47,17 @@ before it touches a provider.
 
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator, AsyncIterator, Iterable, Mapping, Sequence
+from collections.abc import (
+    AsyncGenerator,
+    AsyncIterator,
+    Callable,
+    Iterable,
+    Mapping,
+    Sequence,
+)
 from contextlib import aclosing, suppress
 from dataclasses import dataclass
+from functools import partial
 from typing import Any, Protocol
 
 from dss.adapters.observability.tracing import (
@@ -308,12 +316,16 @@ class TextPath:
                 translate_out(core_events, translation, trace_id=ctx.trace_id)
             ) as translated_events,
             aclosing(
-                self._reveal_to_farmer(
+                reveal_to_farmer(
                     translated_events,
-                    ctx=ctx,
-                    farmer_turn=farmer_turn,
-                    recorder=recorder,
                     visibility=redaction.visibility,
+                    recorder=recorder,
+                    on_finished=partial(
+                        self._record_finished,
+                        ctx=ctx,
+                        farmer_turn=farmer_turn,
+                        recorder=recorder,
+                    ),
                 )
             ) as farmer_events,
         ):
@@ -370,8 +382,13 @@ class TextPath:
         )
         # `aclosing`: closing this generator does not reach the composer's.
         async with aclosing(
-            self._compose(
-                turn, evidence, question=trailing_question, ctx=ctx, recorder=recorder
+            compose_answer(
+                evidence,
+                turn=turn,
+                components=self._components,
+                question=trailing_question,
+                ctx=ctx,
+                recorder=recorder,
             )
         ) as events:
             async for event in events:
@@ -488,75 +505,6 @@ class TextPath:
             )
         return evidence
 
-    async def _compose(
-        self,
-        turn: UserTurn[TextQuery],
-        evidence: Evidence,
-        *,
-        question: str | None,
-        ctx: TurnContext,
-        recorder: TurnRecorder,
-    ) -> AsyncGenerator[CoreEvent]:
-        """The answer as the composer writes it, then its claim, the forms
-        offered, and the outcome read off the evidence."""
-
-        answer_stream = AnswerStream()
-        numbers = CitationNumbers(source.id for source in evidence.sources)
-        async with aclosing(
-            self._write_answer(
-                turn, evidence, numbers=numbers, ctx=ctx, question=question
-            )
-        ) as pieces:
-            async for piece in pieces:
-                yield answer_stream.add_piece(piece)
-
-        answer = answer_from_evidence(numbers.composed, evidence)
-        recorder.composed()
-        # One block: the composer's prose is never split (`answer_from_evidence`).
-        (block,) = answer.content
-        yield answer_stream.claim(block, answer.sources)
-        for definition in evidence.awaiting_forms:
-            yield answer_stream.add_block(offer_form(definition))
-
-        status, cause = _status_for(evidence)
-        yield answer_stream.finish(outcome_for(status, cause))
-
-    async def _write_answer(
-        self,
-        turn: UserTurn[TextQuery],
-        evidence: Evidence,
-        *,
-        numbers: CitationNumbers,
-        ctx: TurnContext,
-        question: str | None,
-    ) -> AsyncGenerator[str]:
-        """The composer's pieces, renumbered. ``question``, the place question
-        for an ask still missing its place, goes last: one bubble, and the
-        farmer's next reply can finish it.
-
-        A failure mid-stream propagates: the pieces already yielded cannot be
-        recalled, so there is no retry to make and nothing to roll back."""
-
-        # The span stays open across the yields, so it measures the whole
-        # writing rather than closing on the first piece.
-        with trace_component(Stage.COMPOSER, ctx.trace_id):
-            # `aclosing`: a farmer who closes the screen mid-answer must close
-            # the model's stream too, and closing an async generator does not
-            # reach the one it relays from.
-            async with (
-                aclosing(self._components.compose(evidence, turn=turn)) as written,
-                aclosing(numbers.renumber(written)) as pieces,
-            ):
-                async for piece in pieces:
-                    yield piece
-            if question is not None:
-                question = await self._components.localize(question, turn=turn)
-                yield numbers.feed(f"\n\n{question}")
-            set_current_span_content(
-                input=cited_sources_text(evidence, numbers.cited),
-                output=numbers.composed,
-            )
-
     async def _unserved_reply(
         self,
         result: TurnResult,
@@ -578,49 +526,6 @@ class TextPath:
             answer = ComposedAnswer(content=(*answer.content, TextBlock(text=question)))
         answer = await localize_answer(answer, self._components.localize, turn=turn)
         return build_turn_finished(outcome_for(status), answer)
-
-    async def _reveal_to_farmer(
-        self,
-        events: AsyncIterator[CoreEvent],
-        *,
-        ctx: TurnContext,
-        farmer_turn: UserTurn[TextQuery],
-        recorder: TurnRecorder,
-        visibility: Visibility,
-    ) -> AsyncGenerator[TurnEvent]:
-        """The turn's events as the farmer reads them, with their own values
-        in place of the tags. The record and the trace keep the tags."""
-
-        shown = StreamReveal(visibility)
-        answer_stream = AnswerStream()
-        has_first_delta = False
-        async for event in events:
-            match event:
-                case ClaimDelta(text=text):
-                    if not has_first_delta:
-                        recorder.first_delta()
-                        has_first_delta = True
-                    if piece := shown.feed(text):
-                        yield answer_stream.add_piece(piece)
-                case Claim(
-                    content=TextBlock() | RefusalBlock() as block, sources=sources
-                ):
-                    if rest := shown.flush():
-                        yield answer_stream.add_piece(rest)
-                    yield answer_stream.claim(block, sources)
-                case Claim(content=block):
-                    yield answer_stream.add_block(block)
-                case TurnFinished():
-                    self._record_finished(
-                        event, ctx=ctx, farmer_turn=farmer_turn, recorder=recorder
-                    )
-                    # A streamed reply ends on what the farmer was streamed; a
-                    # fixed one reaches the edge whole, with no claims before it.
-                    yield (
-                        answer_stream.finish(event.outcome)
-                        if answer_stream.has_claims
-                        else _reveal_finished(event, visibility)
-                    )
 
     def _record_finished(
         self,
@@ -651,6 +556,120 @@ class TextPath:
 
     def _note(self, stage: str, ctx: TurnContext, outcome: str) -> None:
         note_stage(self._telemetry, stage, ctx, outcome)
+
+
+async def compose_answer(  # noqa: PLR0913
+    evidence: Evidence,
+    *,
+    turn: UserTurn,
+    components: Components,
+    question: str | None,
+    ctx: TurnContext,
+    recorder: TurnRecorder,
+) -> AsyncGenerator[CoreEvent]:
+    """The answer as the composer writes it, then its claim, the forms
+    offered, and the outcome read off the evidence. ``question``, the place
+    question for an ask still missing its place, goes last: one bubble, and
+    the farmer's next reply can finish it."""
+
+    answer_stream = AnswerStream()
+    numbers = CitationNumbers(source.id for source in evidence.sources)
+    async with aclosing(
+        _write_answer(
+            evidence,
+            turn=turn,
+            components=components,
+            numbers=numbers,
+            ctx=ctx,
+            question=question,
+        )
+    ) as pieces:
+        async for piece in pieces:
+            yield answer_stream.add_piece(piece)
+
+    answer = answer_from_evidence(numbers.composed, evidence)
+    recorder.composed()
+    # One block: the composer's prose is never split (`answer_from_evidence`).
+    (block,) = answer.content
+    yield answer_stream.claim(block, answer.sources)
+    for definition in evidence.awaiting_forms:
+        yield answer_stream.add_block(offer_form(definition))
+
+    status, cause = _status_for(evidence)
+    yield answer_stream.finish(outcome_for(status, cause))
+
+
+async def _write_answer(  # noqa: PLR0913
+    evidence: Evidence,
+    *,
+    turn: UserTurn,
+    components: Components,
+    numbers: CitationNumbers,
+    ctx: TurnContext,
+    question: str | None,
+) -> AsyncGenerator[str]:
+    """The composer's pieces, renumbered. A failure mid-stream propagates:
+    the pieces already yielded cannot be recalled, so there is no retry to
+    make and nothing to roll back."""
+
+    # The span stays open across the yields, so it measures the whole
+    # writing rather than closing on the first piece.
+    with trace_component(Stage.COMPOSER, ctx.trace_id):
+        # `aclosing`: a farmer who closes the screen mid-answer must close
+        # the model's stream too, and closing an async generator does not
+        # reach the one it relays from.
+        async with (
+            aclosing(components.compose(evidence, turn=turn)) as written,
+            aclosing(numbers.renumber(written)) as pieces,
+        ):
+            async for piece in pieces:
+                yield piece
+        if question is not None:
+            question = await components.localize(question, turn=turn)
+            yield numbers.feed(f"\n\n{question}")
+        set_current_span_content(
+            input=cited_sources_text(evidence, numbers.cited),
+            output=numbers.composed,
+        )
+
+
+async def reveal_to_farmer(
+    events: AsyncIterator[CoreEvent],
+    *,
+    visibility: Visibility,
+    recorder: TurnRecorder,
+    on_finished: Callable[[TurnFinished], None],
+) -> AsyncGenerator[TurnEvent]:
+    """The turn's events as the farmer reads them, with their own values in
+    place of the tags. ``on_finished`` records the terminal event with its
+    tags, before the farmer's copy is made."""
+
+    shown = StreamReveal(visibility)
+    answer_stream = AnswerStream()
+    has_first_delta = False
+    async for event in events:
+        match event:
+            case ClaimDelta(text=text):
+                if not has_first_delta:
+                    recorder.first_delta()
+                    has_first_delta = True
+                if piece := shown.feed(text):
+                    yield answer_stream.add_piece(piece)
+            case Claim(content=TextBlock() | RefusalBlock() as block, sources=sources):
+                if rest := shown.flush():
+                    yield answer_stream.add_piece(rest)
+                yield answer_stream.claim(block, sources)
+            case Claim(content=block):
+                yield answer_stream.add_block(block)
+            case TurnFinished():
+                on_finished(event)
+                # A streamed reply ends on what the farmer was streamed; a
+                # fixed one reaches the edge whole, with no claims before it.
+                yield (
+                    answer_stream.finish(event.outcome)
+                    if answer_stream.has_claims
+                    else _reveal_finished(event, visibility)
+                )
 
 
 def note_stage(
