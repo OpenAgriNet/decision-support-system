@@ -217,9 +217,10 @@ class Settings(BaseSettings):
             return None
         return value
 
-    # Where the tenant's scheme catalog CSV is mounted (issue #34). The intent
-    # model is shown it (ADR-0021). Nothing ships in the image, so unset → no
-    # catalog, no ask names a scheme, and the loader warns once at boot.
+    # Where the tenant's scheme catalog CSV is (issue #34). The intent model is
+    # shown it (ADR-0021). `configs/schemes.csv` ships as a starting catalog;
+    # compose and run-local.sh point here at it. Unset → no catalog, no ask
+    # names a scheme, and the loader warns once at boot.
     # Set-but-missing raises, as the policy pack does.
     schemes_config_path: Path | None = None
 
