@@ -1,6 +1,6 @@
 # ADR-0008: Resolve Scheme Names Deterministically at Intent Time
 
-- **Status:** ACCEPTED
+- **Status:** SUPERSEDED by [ADR-0021](0021-intent-names-the-scheme.md)
 - **Date:** 2026-09-10
 - **Deciders:** DSS implementation
 
