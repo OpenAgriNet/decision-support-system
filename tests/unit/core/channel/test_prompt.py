@@ -13,6 +13,7 @@ from dss.core.forms.models import (
     FieldValue,
     FormContext,
     FormDefinition,
+    FormReference,
     FormSubmission,
 )
 from dss.core.intent.models import (
@@ -354,3 +355,28 @@ def test_a_form_turn_is_described_without_its_values() -> None:
 
     assert "PMFBY/Grievance/support" in prompt
     assert "9876543210" not in prompt
+
+
+def test_the_composer_sees_a_form_in_history_as_its_fixed_line() -> None:
+    offered = ConversationMessage(
+        role="assistant",
+        text="Please fill in the form below.",
+        reference=FormReference(
+            form_id="offer-1",
+            context=FormContext(scheme="PMFBY", category="Grievance", action="support"),
+        ),
+    )
+    turn = UserTurn[TextQuery](
+        input=TextQuery(text="Was it filed?"),
+        session_id="s1",
+        transaction_id="t1",
+        source_lang="en",
+        target_lang="en",
+        channel="web",
+        history=[offered],
+    )
+
+    prompt = user_prompt(build_evidence(), turn=turn)
+
+    assert "assistant: Please fill in the form below. (a form was offered)" in prompt
+    assert "offer-1" not in prompt

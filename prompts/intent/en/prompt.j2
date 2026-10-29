@@ -50,6 +50,6 @@ place_name: the place the user says they are in or asks about, written in Englis
 
 Conversation so far (oldest first):
 {%- for message in history %}
-  {{ message.role }}: {{ message.text }}
+  {{ message.prompt_line }}
 {%- endfor %}
 {%- endif %}

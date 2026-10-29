@@ -4,10 +4,11 @@ import json
 import re
 from collections.abc import Mapping
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from dss.core.shared.models import MessageReference, OutputBlock, TurnInput
+from dss.core.shared.models import MessageReference, OutputBlock, Role, TurnInput
 
 
 class FormContext(BaseModel):
@@ -293,3 +294,20 @@ class FormReference(MessageReference):
     form_id: str
     context: FormContext
     submission_id: str | None = None
+    # Which wire item carried it: the DSS's own `form_error` reply is not an
+    # offer, and must not read as one.
+    item: FormItem = "form"
+
+    def prompt_note(self, role: Role) -> str:
+        return _FORM_NOTE[(self.item, role)]
+
+
+type FormItem = Literal["form", "form_error"]
+
+# The assistant offers a form or hands one back; the farmer submits one.
+_FORM_NOTE: Mapping[tuple[FormItem, Role], str] = {
+    ("form", "assistant"): "a form was offered",
+    ("form", "user"): "a form was submitted",
+    ("form_error", "assistant"): "a form was handed back with errors",
+    ("form_error", "user"): "a form was handed back with errors",
+}

@@ -143,6 +143,7 @@ def _history_message(message: schema.InputMessage) -> ConversationMessage:
                 form_id=part.form_id,
                 context=_form_context(part.context),
                 submission_id=part.submission_id,
+                item=part.type,
             )
             for part in message.content
             if isinstance(part, schema.FormContent | schema.FormErrorContent)

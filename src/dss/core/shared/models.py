@@ -11,6 +11,7 @@ request into this shape.
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from datetime import datetime
 from enum import StrEnum
 from typing import Literal
@@ -53,12 +54,20 @@ class UserDetails(BaseModel):
     reference: ReferenceToken | None = None
 
 
-class MessageReference(BaseModel):
+type Role = Literal["user", "assistant"]
+
+
+class MessageReference(BaseModel, ABC):
     """What a prior message carried besides words, named without its content:
     a form offered or submitted, never its values. Each function adds its
     own kinds, like ``TurnInput`` and ``OutputBlock``."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
+
+    @abstractmethod
+    def prompt_note(self, role: Role) -> str:
+        """The one fixed line a model may read for this reference, by who
+        sent the message."""
 
 
 class ConversationMessage(BaseModel):
@@ -67,11 +76,28 @@ class ConversationMessage(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    role: Literal["user", "assistant"]
+    role: Role
     text: str
     # Without SerializeAsAny a reference typed by the base serialises as an
     # empty MessageReference.
     reference: SerializeAsAny[MessageReference] | None = None
+
+    @property
+    def prompt_text(self) -> str:
+        """What a model may read of this message. Every prompt renders
+        history through this, so a reference shows as its fixed line and
+        never as its content."""
+
+        if self.reference is None:
+            return self.text
+        note = self.reference.prompt_note(self.role)
+        return f"{self.text} ({note})" if self.text.strip() else note
+
+    @property
+    def prompt_line(self) -> str:
+        """The message as every prompt's conversation block prints it."""
+
+        return f"{self.role}: {self.prompt_text}"
 
 
 class Geometry(BaseModel):

@@ -17,7 +17,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from dss.config.prompt_service import PromptService, build_prompt_service
+from dss.core.forms.models import FormContext, FormReference
 from dss.core.intent.models import InteractionType, SubjectCategory
 from dss.core.planner.models import Identity
 from dss.core.planner.prompt import answers_section, asks_section, guidance_section
@@ -105,6 +108,45 @@ def test_intent_prompt_lists_categories_and_interaction_types() -> None:
 
 def test_intent_prompt_without_history_has_no_conversation_section() -> None:
     assert "Conversation so far" not in _intent_prompt()
+
+
+def _history_placeholders(identifier: PromptIdentifier) -> dict:
+    if identifier is PromptIdentifier.INTENT:
+        return {
+            "categories": ", ".join(c.value for c in SubjectCategory),
+            "interactions": ", ".join(i.value for i in InteractionType),
+        }
+    return {"policies": ()}
+
+
+@pytest.mark.parametrize(
+    "identifier", [PromptIdentifier.INTENT, PromptIdentifier.MODERATION]
+)
+@pytest.mark.parametrize("lang", ["en", "hi"])
+def test_a_form_in_history_shows_only_as_its_fixed_line(
+    identifier: PromptIdentifier, lang: str
+) -> None:
+    submitted = ConversationMessage(
+        role="user",
+        text="",
+        reference=FormReference(
+            form_id="offer-1",
+            context=FormContext(scheme="PMFBY", category="Grievance", action="support"),
+            submission_id="submission-1",
+        ),
+    )
+
+    prompt = _service().get_prompt(
+        identifier,
+        lang=LanguageTag(lang),
+        placeholder_values={
+            **_history_placeholders(identifier),
+            "history": (submitted,),
+        },
+    )
+
+    assert "user: a form was submitted" in prompt
+    assert "offer-1" not in prompt
 
 
 def test_intent_prompt_renders_the_history() -> None:

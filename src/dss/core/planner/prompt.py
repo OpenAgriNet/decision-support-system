@@ -117,6 +117,6 @@ def build_user_message(*, query: str, history: Sequence[ConversationMessage]) ->
 
     lines = []
     for message in history:
-        lines.append(f"{message.role}: {message.text}")
+        lines.append(message.prompt_line)
     lines.append(f"user: {query}")
     return wrap_as_data("\n".join(lines), CONVERSATION)

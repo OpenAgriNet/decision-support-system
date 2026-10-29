@@ -28,7 +28,7 @@ Policies:
 
 Conversation so far (oldest first, for reference only):
 {%- for message in history %}
-  {{ message.role }}: {{ message.text }}
+  {{ message.prompt_line }}
 {%- endfor %}
 {%- endif %}
 

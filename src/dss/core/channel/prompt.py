@@ -71,7 +71,7 @@ def user_prompt(evidence: Evidence, *, turn: UserTurn) -> str:
     recent = turn.history[-_HISTORY_WINDOW:]
     if not recent:
         return question
-    lines = "\n".join(f"{message.role}: {message.text}" for message in recent)
+    lines = "\n".join(message.prompt_line for message in recent)
     return wrap_as_data(lines, CONVERSATION) + "\n\n" + question
 
 

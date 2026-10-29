@@ -17,6 +17,7 @@ those through the ``select`` tool's own ``RunContext.deps``, wired in
 
 from __future__ import annotations
 
+from dss.core.forms.models import FormContext, FormReference
 from dss.core.intent.models import Ask, InteractionType, SubjectCategory
 from dss.core.planner.markers import RETRIEVED_DATA
 from dss.core.planner.models import Skill
@@ -159,3 +160,20 @@ def test_an_ask_a_form_files_is_marked() -> None:
     section = asks_section((ask,), filing=frozenset({0}))
 
     assert "ask 0: Grievance (act), files the farmer's form" in section
+
+
+def test_a_submitted_form_in_history_reads_as_its_fixed_line() -> None:
+    submitted = ConversationMessage(
+        role="user",
+        text="",
+        reference=FormReference(
+            form_id="offer-1",
+            context=FormContext(scheme="PMFBY", category="Grievance", action="support"),
+            submission_id="submission-1",
+        ),
+    )
+
+    message = build_user_message(query="Was it filed?", history=(submitted,))
+
+    assert "user: a form was submitted" in message
+    assert "offer-1" not in message

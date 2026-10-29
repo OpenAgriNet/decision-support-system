@@ -277,6 +277,7 @@ def test_a_form_error_in_history_is_a_reference_too(a_body):
     assert earlier.text == "Check."
     assert isinstance(earlier.reference, FormReference)
     assert earlier.reference.submission_id == "submission-1"
+    assert earlier.reference.item == "form_error"
 
 
 def test_text_and_a_form_in_one_message_is_refused(a_body):
