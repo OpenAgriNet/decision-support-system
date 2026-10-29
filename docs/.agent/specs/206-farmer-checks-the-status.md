@@ -40,11 +40,15 @@ filing date, the crop and the complaint text.
 ## Decisions the pack leaves open
 
 1. **No complaint found.** The pack does not say how a desk reports a ticket
-   it does not know. This slice reads a rejected status call (a 4xx) as "no
-   complaint found for that ticket and phone": `requires_input`, cause
-   `provider_rejected`, the form kept so the farmer can correct it. A desk
-   that cannot be reached (timeout, 5xx) is "the status could not be checked
-   right now": `unavailable`, cause `provider_unavailable`, the form kept.
+   it does not know. This slice reads a refused status call (400, 401 or
+   403, the codes `classify_status_code` treats as a defect) as "no complaint
+   found for that ticket and phone": `unavailable`, cause `provider_rejected`,
+   `retryable` false. A desk that cannot be reached (timeout, 5xx, and any
+   other code) is "the status could not be checked right now": `unavailable`,
+   cause `provider_unavailable`. Both keep the form with a `form_error` item
+   with no fields, the contract's shape for "the values were fine, the
+   provider could not take them". `requires_input` was considered and
+   dropped: the contract keeps it for a `form_error` that names fields.
 2. **Status wording.** The pack sends only a code (`Registered`,
    `UnderReview`, `Resolved`, …) and refuses the portal's phrase. The composer
    says the code in plain words ("under review"). No fixed label table yet.
@@ -62,19 +66,20 @@ filing date, the crop and the complaint text.
   ask line name it.
 - **Form path.** A failed check gets status words, not filing words: two new
   `clarification-text.yaml` messages, `status_not_found` and
-  `status_not_checked`.
+  `status_not_checked`. The turn's status and cause are a filing's.
 - **Composer prompt.** A status answer gives the status in plain words, the
   filing date, the crop and the complaint text, never the phone or the ticket.
-- **Mock network.** `POST /status` answers a PMFBY case for any ticket, and
-  rejects one ticket so the not-found path can be run end to end.
+- **Mock network.** `POST /status` answers the case `/support` filed, for the
+  same ticket and phone, and refuses anything else with a 400, so the
+  not-found path can be run end to end.
 
 ## Tests
 
 - Tier 1: the status request body against the pack's read-case example.
 - Tier 2: the `/status` adapter: request, reply, retries, a 4xx and a 5xx.
 - Tier 3: the planner's `status` tool through a `FunctionModel`; the form path
-  ends `answered` on a case, `requires_input` on not found, `unavailable` on a
-  desk that is down.
+  ends `answered` on a case, `unavailable` with the not-found words on a
+  refused call, and with the could-not-check words on a desk that is down.
 - Tier 7: "what happened to my PMFBY complaint" to the status form, then a
   submission to an answer, over HTTP against the mock network.
 
