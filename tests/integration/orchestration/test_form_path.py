@@ -540,6 +540,78 @@ async def test_a_filing_the_desk_refused_is_not_retryable() -> None:
     assert text.text == load_clarification_text().not_filed_rejected
 
 
+_PMFBY_STATUS = FormContext(scheme="PMFBY", category="Grievance", action="status")
+_LOOKUP = {"applicantMobile": "9876543210", "case.ticketNo": "100626000099001"}
+
+
+async def test_a_status_form_reaches_the_planner_as_a_status_call() -> None:
+    """The same path as a filing; only the call differs, and the planner's
+    `status` tool reads it from here."""
+
+    plan = _RecordingPlan()
+    orch, _ = _build(plan=plan)
+
+    await _collect(orch, _turn(_LOOKUP, context=_PMFBY_STATUS))
+
+    (call,) = plan.calls
+    assert call["filing"].action.context == _PMFBY_STATUS
+    (ask,) = call["intent"].asks
+    assert ask.interaction_type is InteractionType.OBSERVE
+
+
+async def test_a_read_case_is_answered_with_the_composers_text() -> None:
+    case = {"case": {"status": {"code": "UnderReview"}, "filedOn": "2026-09-28"}}
+    read = build_evidence(
+        sources=(_PORTAL,), results=(Result(ask_index=0, source_id="1", data=case),)
+    )
+    compose = _FakeCompose("Your complaint is under review.")
+    orch, _ = _build(plan=_RecordingPlan(read), compose=compose)
+
+    events = await _collect(orch, _turn(_LOOKUP, context=_PMFBY_STATUS))
+
+    finished = events[-1]
+    assert finished.outcome.status is TurnStatus.ANSWERED
+    (text,) = finished.content
+    assert isinstance(text, TextBlock)
+    assert text.text == "Your complaint is under review."
+
+
+async def test_a_status_the_desk_could_not_check_keeps_the_form() -> None:
+    unread = _unfiled_evidence(retryable=True, retry_after_seconds=None)
+    orch, _ = _build(plan=_RecordingPlan(unread))
+
+    events = await _collect(orch, _turn(_LOOKUP, context=_PMFBY_STATUS))
+
+    finished = events[-1]
+    assert finished.outcome.status is TurnStatus.UNAVAILABLE
+    assert finished.outcome.cause is Cause.PROVIDER_UNAVAILABLE
+    text, kept = finished.content
+    assert isinstance(text, TextBlock)
+    assert text.text == load_clarification_text().status_not_checked
+    assert kept == FormErrorBlock(
+        form_id="offer-1", context=_PMFBY_STATUS, submission_id="submission-1"
+    )
+
+
+async def test_a_status_the_desk_refused_reads_as_no_complaint_found() -> None:
+    """How a desk says it has no case for that ticket and phone. The form
+    stays the farmer's, to correct and send again."""
+
+    unread = _unfiled_evidence(retryable=False, retry_after_seconds=None)
+    orch, _ = _build(plan=_RecordingPlan(unread))
+
+    events = await _collect(orch, _turn(_LOOKUP, context=_PMFBY_STATUS))
+
+    finished = events[-1]
+    assert finished.outcome.status is TurnStatus.UNAVAILABLE
+    assert finished.outcome.cause is Cause.PROVIDER_REJECTED
+    text, kept = finished.content
+    assert isinstance(text, TextBlock)
+    assert text.text == load_clarification_text().status_not_found
+    assert isinstance(kept, FormErrorBlock)
+    assert kept.fields == ()
+
+
 async def test_the_composer_sees_the_tagged_history_and_no_form_value() -> None:
     """The text path hands the composer the redacted turn; the form path
     must too, or a phone in an earlier message reaches the model."""

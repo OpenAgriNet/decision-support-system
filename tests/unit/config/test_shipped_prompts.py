@@ -88,6 +88,17 @@ def _composer_prompt() -> str:
     )
 
 
+def test_composer_prompt_says_a_status_in_plain_words_without_the_ticket() -> None:
+    """A status read comes back as a code and with the values the farmer
+    typed stripped; the composer must not echo either back as raw data."""
+
+    prompt = _composer_prompt()
+
+    assert "status of a complaint that was read" in prompt
+    assert '`UnderReview` is "under review"' in prompt
+    assert "Never\nrepeat the phone number or the ticket number" in prompt
+
+
 # --- every component loads, and Hindi ships -------------------------------
 
 

@@ -48,6 +48,8 @@ _TEXT = ClarificationText(
     field_unknown="{label} is not part of this form.",
     not_filed="Your complaint was not filed. Please try again later.",
     not_filed_rejected="The desk could not take your complaint as sent.",
+    status_not_checked="We could not check your complaint's status right now.",
+    status_not_found="No complaint was found for that ticket number and phone.",
 )
 
 
