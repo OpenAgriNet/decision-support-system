@@ -157,7 +157,8 @@ a warning, and offers no forms. A `var/schema-packs/` fetched before
 
 Discovery and invocation leave for the OAN network, which a local build does
 not have. `tools/mock_network/` stands in for it — the same synchronous
-`POST /discover` / `POST /select` / `POST /support` contract, no auth:
+`POST /discover` / `POST /select` / `POST /support` / `POST /status` contract,
+no auth:
 
 ```bash
 uv run python -m tools.mock_network --port 8078 --reload
@@ -168,7 +169,8 @@ uv run python -m tools.mock_network --port 8078 --reload
 
 One mock serves weather, mandi, advisory and a PMFBY grievance desk. The
 first three answer only the questions in `benchmarks/questions.toml`; the desk
-takes any form the DSS files at `/support` and answers a fresh ticket number:
+takes any form the DSS files at `/support` and answers a fresh ticket number,
+and reads that case back at `/status`:
 
 | Type | Answers | Matched on |
 |---|---|---|
@@ -176,6 +178,7 @@ takes any form the DSS files at `/support` and answers a fresh ticket number:
 | Weather | any point | the turn's coordinates (must be sent) |
 | Advisory | 10 written answers | the crop word in `topics` |
 | Grievance | a ticket, status Registered, filed today | nothing; every filing is accepted |
+| Grievance status | the filed case, status UnderReview, crop Paddy | the ticket and the phone it was filed from |
 
 The same question gets the same answer every run. A request it can't match
 gets a `400`, and is counted at `GET /_bench/misses`. `/docs` on port 8078
@@ -247,6 +250,12 @@ A grievance question finds the PMFBY and PM-KISAN desks and comes back with
 the form. The form sent back is filed at `/support`, which answers a fresh
 ticket number; `/select` still refuses a grievance with a 400, because a
 grievance is filed, never selected.
+
+A status question ("What happened to my PMFBY complaint?") comes back with
+the status form. Send back a ticket this mock filed, with the same phone, and
+`/status` answers the case. Any other ticket or phone is a 400, which the DSS
+tells the farmer as no complaint found. The mock remembers its filings only
+while it runs: restart it and it knows no case.
 
 A question intent classifies into a category the mock does not serve comes
 back `no_match` — which is the honest answer, and worth telling apart from a
