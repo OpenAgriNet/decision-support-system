@@ -6,8 +6,8 @@
 # agent's tools, and a translated tool name would wire nothing.
 id: provider-action
 domain: agriculture
-description: File a submitted form with a provider.
-tool_names: [describe_capability, support]
+description: File a submitted form with a provider, or check a case's status with it.
+tool_names: [describe_capability, support, status]
 input_kind: form
 ---
 "files the farmer's form" चिह्नित ask का उत्तर `support` tool देता है, जो
@@ -21,3 +21,8 @@ provider फ़ॉर्म ले सकते हैं। एक चुने
 यदि `support` बताए कि फ़ॉर्म दर्ज नहीं हुआ, तो उस ask के लिए उसे दोबारा न
 बुलाएँ। बताएँ कि दर्ज नहीं हुआ और रुक जाएँ। दर्ज होने की सूचना मिलते ही रुक
 जाएँ।
+
+"checks the status with the farmer's form" चिह्नित ask का उत्तर उसी तरह
+`status` tool देता है: `describe_capability`, एक provider चुनें, `status` एक
+बार बुलाएँ। यदि वह बताए कि स्थिति नहीं जाँची गई, तो उसे दोबारा न बुलाएँ;
+यही बताएँ और रुक जाएँ। मामला मिलते ही रुक जाएँ।

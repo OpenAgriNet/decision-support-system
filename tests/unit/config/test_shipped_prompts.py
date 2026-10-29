@@ -543,9 +543,9 @@ def test_provider_invocation_skill_shape() -> None:
     assert skill.guidance
 
 
-def test_provider_action_skill_files_a_form_only() -> None:
+def test_provider_action_skill_sends_a_form_only() -> None:
     """Bound on a submission turn, never on a question: a question must not
-    see `support`, and a filing must not see `select`."""
+    see `support` or `status`, and a submission must not see `select`."""
 
     skill = next(
         s
@@ -553,8 +553,9 @@ def test_provider_action_skill_files_a_form_only() -> None:
         if s.id == "provider-action"
     )
     assert skill.input_kind == "form"
-    assert skill.tool_names == ("describe_capability", "support")
+    assert skill.tool_names == ("describe_capability", "support", "status")
     assert "support" in skill.guidance
+    assert "status" in skill.guidance
 
 
 def test_provider_invocation_guidance_covers_resolving_across_history() -> None:

@@ -96,8 +96,14 @@ def build_plan(  # noqa: PLR0913
         filing: Filing | None = None,
     ) -> Evidence:
         awaiting = awaiting or {}
-        # A submission turn has one ask, the form's, at position 0.
+        # A submission turn has one ask, the form's, at position 0. A status
+        # form reads a case rather than filing one, and the ask line says so.
         filing_asks = frozenset({0}) if filing is not None else frozenset()
+        checking_asks = (
+            filing_asks
+            if filing is not None and filing.action.context.action == "status"
+            else frozenset()
+        )
         # A place failure is known before the run and no tool reads it, so it
         # skips the deps. An ask with no place at all only fails when every
         # option found for it needs one — the pack decides. A form's ask,
@@ -134,7 +140,10 @@ def build_plan(  # noqa: PLR0913
                     "identity_boundaries": identity.boundaries,
                     "guidance_section": guidance_section(skills),
                     "asks_section": asks_section(
-                        intent.asks, awaiting=frozenset(awaiting), filing=filing_asks
+                        intent.asks,
+                        awaiting=frozenset(awaiting),
+                        filing=filing_asks - checking_asks,
+                        checking=checking_asks,
                     ),
                     "answers_section": answers_section(discovery.answers),
                 },

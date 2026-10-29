@@ -162,6 +162,20 @@ def test_an_ask_a_form_files_is_marked() -> None:
     assert "ask 0: Grievance (act), files the farmer's form" in section
 
 
+def test_an_ask_a_status_form_answers_is_marked() -> None:
+    ask = Ask(
+        subject_categories=SubjectCategory.GRIEVANCE,
+        interaction_type=InteractionType.OBSERVE,
+    )
+
+    section = asks_section((ask,), checking=frozenset({0}))
+
+    assert (
+        "ask 0: Grievance (observe), checks the status with the farmer's form"
+        in section
+    )
+
+
 def test_a_submitted_form_in_history_reads_as_its_fixed_line() -> None:
     submitted = ConversationMessage(
         role="user",
