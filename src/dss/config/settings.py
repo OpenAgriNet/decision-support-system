@@ -217,9 +217,10 @@ class Settings(BaseSettings):
             return None
         return value
 
-    # Where the tenant's scheme catalog CSV is mounted (issue #34). Nothing
-    # ships in the image, so unset → no catalog, enrichment is inert, and the
-    # loader warns once at boot. Set-but-missing raises, as the policy pack does.
+    # Where the tenant's scheme catalog CSV is mounted (issue #34). The intent
+    # model is shown it (ADR-0021). Nothing ships in the image, so unset → no
+    # catalog, no ask names a scheme, and the loader warns once at boot.
+    # Set-but-missing raises, as the policy pack does.
     schemes_config_path: Path | None = None
 
     # Redaction of identity details before anything sees the turn (ADR-0015).
@@ -238,11 +239,6 @@ class Settings(BaseSettings):
     @classmethod
     def _treat_empty_as_off(cls, value: object) -> object:
         return None if value == "" else value
-
-    # How close a farmer's spelling has to be to count as an alias ("makna"
-    # for "makhana"). Tried only after every exact lookup misses. `None` turns
-    # similarity matching off; the floor is above 0, which matches anything.
-    scheme_fuzzy_threshold: float | None = Field(0.85, gt=0.5, le=1.0)
 
     # --- HTTP entrypoint (ADR-0006) ---------------------------------------
     # The concrete build that served the turn, echoed as `context.version`.

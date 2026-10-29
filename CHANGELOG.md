@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Changed
+- The intent model now names the scheme an ask is about. It is shown the
+  scheme catalog and returns each ask's scheme code; a code the catalog does
+  not hold is dropped. The separate enrichment step after intent, its trace
+  stage and `DSS_SCHEME_FUZZY_THRESHOLD` are removed. The model's category is
+  no longer overridden by an alias match (#206, ADR-0021)
+
 ### Added
 - The DSS reads the forms a farmer will fill from the network's API schema
   packs, once at boot. Today that is the PMFBY grievance: filing one and

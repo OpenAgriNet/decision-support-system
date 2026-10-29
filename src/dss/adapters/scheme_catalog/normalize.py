@@ -1,8 +1,8 @@
-"""One normalization rule, shared by the query side and the catalog side.
+"""When two of a catalog's names are the same name.
 
-Two implementations that drift by a character stop matching, so core owns it
-and the adapter imports it. Punctuation separates rather than deletes, so
-``PM-DDKY``, ``PM DDKY`` and ``pm ddky`` are one key.
+The loader uses it to refuse an alias two schemes share and to show each
+name once. Punctuation separates rather than deletes, so ``PM-DDKY``,
+``PM DDKY`` and ``pm ddky`` are one key.
 """
 
 from __future__ import annotations

@@ -122,7 +122,7 @@ def test_a_stage_with_a_model_carries_it(reader) -> None:
 
 
 def test_a_stage_with_no_model_carries_no_model_label(reader) -> None:
-    # Discovery and enrichment run no model. An absent label reads as "not
+    # Location and discovery run no model. An absent label reads as "not
     # applicable"; a "none" value would read as a model name.
     record_stage_duration(stage="discovery", elapsed_ms=300.0, model=None)
 
