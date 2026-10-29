@@ -52,8 +52,9 @@ Chosen option: **2.**
 - The model picks the category itself. Nothing overrides it afterwards.
 - `core/enrichment/`, its trace stage and `DSS_SCHEME_FUZZY_THRESHOLD` are
   removed.
-- For now the catalog is the test fixture,
-  `tests/integration/adapters/scheme_catalog/fixtures/schemes.csv`.
+- For now the catalog is `configs/schemes.csv`, a copy of the test fixture.
+  It ships in the image, and compose and `run-local.sh` point at it by
+  default. A deployment replaces it by setting `DSS_SCHEMES_CONFIG_PATH`.
 
 ## 5. Consequences
 

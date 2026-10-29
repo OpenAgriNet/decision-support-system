@@ -27,8 +27,8 @@ from tests.support.live_model import missing_model_key
 
 _REPO = Path(__file__).parents[3]
 _DOTENV = _REPO / ".env"
-# The catalog ADR-0021 runs on for now.
-_CATALOG = _REPO / "tests/integration/adapters/scheme_catalog/fixtures/schemes.csv"
+# The catalog compose and run-local.sh load (ADR-0021).
+_CATALOG = _REPO / "configs" / "schemes.csv"
 
 
 def _dotenv_values() -> dict[str, str]:

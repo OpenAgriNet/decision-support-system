@@ -335,6 +335,8 @@ fi
 
 export DSS_DISCOVERY_BASE_URL="${DSS_DISCOVERY_BASE_URL:-http://127.0.0.1:${MOCK_PORT}}"
 export DSS_INVOCATION_BASE_URL="${DSS_INVOCATION_BASE_URL:-http://127.0.0.1:${MOCK_PORT}}"
+# The scheme catalog the intent model is shown (ADR-0021).
+export DSS_SCHEMES_CONFIG_PATH="${DSS_SCHEMES_CONFIG_PATH:-configs/schemes.csv}"
 
 echo
 echo "    traces     ${OTEL_EXPORTER_OTLP_ENDPOINT}"

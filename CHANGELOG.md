@@ -8,6 +8,9 @@
   not hold is dropped. The separate enrichment step after intent, its trace
   stage and `DSS_SCHEME_FUZZY_THRESHOLD` are removed. The model's category is
   no longer overridden by an alias match (#206, ADR-0021)
+- A starting scheme catalog ships as `configs/schemes.csv`. Docker compose
+  and `run-local.sh` load it unless `DSS_SCHEMES_CONFIG_PATH` says otherwise
+  (#206)
 
 ### Added
 - The DSS reads the forms a farmer will fill from the network's API schema

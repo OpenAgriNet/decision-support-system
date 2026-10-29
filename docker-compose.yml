@@ -77,6 +77,9 @@ services:
       # Photon, by service name. Set it empty in .env to turn Photon off; the
       # DSS then never asks it. Countries default to those in the area file.
       DSS_PHOTON_BASE_URL: ${DSS_PHOTON_BASE_URL:-http://photon:2322}
+      # The scheme catalog the intent model is shown (ADR-0021). The one in
+      # the image by default; point it at a mounted CSV to use your own.
+      DSS_SCHEMES_CONFIG_PATH: ${DSS_SCHEMES_CONFIG_PATH:-/app/configs/schemes.csv}
     ports:
       - "127.0.0.1:${DSS_HOST_PORT:-8077}:8077"
     healthcheck:
