@@ -31,7 +31,11 @@ from dss.core.forms.models import (
 )
 from dss.core.forms.registry import FormLookup, FormRegistry
 from dss.core.provider_discovery.index import PACK_DEFECTS, is_api_pack
-from dss.core.provider_discovery.models import SchemaPackFiles, SchemaPackSkipped
+from dss.core.provider_discovery.models import (
+    ProviderCapability,
+    SchemaPackFiles,
+    SchemaPackSkipped,
+)
 from dss.core.shared.models import TextBlock
 from dss.core.shared.schema import resolve_schema
 
@@ -428,13 +432,17 @@ def answer_for_form_errors(
     """Text only for a form nobody serves: there is no form to hand back."""
 
     if errors.definition is None:
-        return ComposedAnswer(content=(TextBlock(text=text.unknown_form),))
+        return answer_for_unknown_form(text)
     return ComposedAnswer(
         content=(
             TextBlock(text=text.form_has_errors),
             form_error_block(errors, errors.definition, text),
         )
     )
+
+
+def answer_for_unknown_form(text: ClarificationText) -> ComposedAnswer:
+    return ComposedAnswer(content=(TextBlock(text=text.unknown_form),))
 
 
 def form_error_block(
@@ -472,3 +480,26 @@ def _error_entry(
         label=label or error.name, min=rules.min_length, max=rules.max_length
     )
     return FieldErrorEntry(name=error.name, label=label, error=message)
+
+
+def candidates_for_scheme(
+    candidates: Sequence[ProviderCapability], scheme_code: str
+) -> tuple[ProviderCapability, ...]:
+    """The desks that advertise the form's scheme. Discovery indexes every
+    grievance desk under one `@type`, so the scheme is told apart here, in
+    code, before the model sees any candidate."""
+
+    return tuple(
+        candidate
+        for candidate in candidates
+        if _advertised_at(candidate, _SCHEME_PATH) == scheme_code
+    )
+
+
+def _advertised_at(candidate: ProviderCapability, path: str) -> object:
+    node: object = candidate.advertised
+    for segment in path.split("."):
+        if not isinstance(node, Mapping):
+            return None
+        node = node.get(segment)
+    return node

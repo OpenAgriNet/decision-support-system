@@ -9,6 +9,7 @@ from dss.core.enrichment.service import (
     find_scheme,
     find_similar_scheme,
     resolve_scheme_subjects,
+    scheme_with_code,
 )
 from dss.core.intent.models import Ask, Intent, InteractionType, Scheme, SubjectCategory
 
@@ -394,3 +395,11 @@ def test_find_similar_scheme_reports_the_alias_it_landed_on() -> None:
 
 def test_find_similar_scheme_on_an_empty_catalog_is_none() -> None:
     assert find_similar_scheme("makna scheme", {}, 0.8) is None
+
+
+def test_a_scheme_is_found_by_its_code() -> None:
+    pmfby = Scheme(code="PMFBY", name="Pradhan Mantri Fasal Bima Yojana")
+    aliases = {"pmfby": pmfby, "fasal bima": pmfby}
+
+    assert scheme_with_code(aliases, "PMFBY") == pmfby
+    assert scheme_with_code(aliases, "PM-KISAN") is None

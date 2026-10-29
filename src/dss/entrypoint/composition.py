@@ -316,6 +316,8 @@ def _build_form_path(wiring: _Wiring) -> FormPath:
         prompts=boot.prompts,
         policies=boot.policies,
         forms=wiring.forms,
+        discover=wiring.network.discover,
+        scheme_catalog=boot.scheme_catalog,
         turns=wiring.turns,
         telemetry=wiring.telemetry,
         clarification_text=boot.clarification_text,

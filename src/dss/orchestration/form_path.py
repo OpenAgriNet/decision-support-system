@@ -1,14 +1,15 @@
 """The path for a submitted form (#205): check the values, moderate the
-complaint, then file them.
+complaint, find the desk, then file them.
 
-TODO(#205): discover the desk, file through the planner's `support` tool,
-compose the ticket reply.
+TODO(#205): file through the planner's `support` tool, compose the ticket
+reply.
 """
 
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from datetime import UTC, datetime
 
 from dss.adapters.observability.tracing import (
     TurnRecorder,
@@ -17,17 +18,28 @@ from dss.adapters.observability.tracing import (
 )
 from dss.core.channel.localize import LocalizeText, localize_answer
 from dss.core.channel.models import ClarificationText, ComposedAnswer
-from dss.core.forms.models import FormErrors, FormSubmission, ValidSubmission
+from dss.core.channel.service import answer_for_unserved_asks
+from dss.core.enrichment.service import scheme_with_code
+from dss.core.forms.models import (
+    FormContext,
+    FormErrors,
+    FormSubmission,
+    ValidSubmission,
+)
 from dss.core.forms.registry import FormLookup
 from dss.core.forms.service import (
     answer_for_form_errors,
+    answer_for_unknown_form,
+    candidates_for_scheme,
     free_text_of,
     validate_submission,
     withhold_values,
 )
+from dss.core.intent.models import Intent, Scheme
 from dss.core.moderation.models import ModerationContext, ModerationDecision, Outcome
 from dss.core.moderation.service import moderate
 from dss.core.policy.models import Policy
+from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.redaction.turn import surrounding_texts_of, with_surrounding_texts
 from dss.core.shared.models import (
     Cause,
@@ -40,6 +52,8 @@ from dss.core.shared.models import (
 )
 from dss.observability.stages import Stage
 from dss.observability.trace_log import trace_component
+from dss.orchestration.discovery import DiscoverProviders
+from dss.orchestration.form_offer import ask_for_form
 from dss.orchestration.orchestrator import (
     build_turn_finished,
     note_stage,
@@ -48,9 +62,11 @@ from dss.orchestration.orchestrator import (
     spoken_text,
 )
 from dss.orchestration.redaction import RedactTexts
+from dss.orchestration.stage_content import asks_text, discovery_text
 from dss.orchestration.turn import moderation_attributes
 from dss.ports.llm import LLMProvider
 from dss.ports.prompts import PromptProvider
+from dss.ports.scheme_catalog import SchemeCatalog
 from dss.ports.sinks import TelemetrySink, TurnSink
 
 # Several prose fields are judged as one text, like one question.
@@ -75,6 +91,8 @@ class FormPath:
         prompts: PromptProvider,
         policies: Sequence[Policy],
         forms: FormLookup,
+        discover: DiscoverProviders,
+        scheme_catalog: SchemeCatalog,
         turns: TurnSink,
         telemetry: TelemetrySink,
         clarification_text: ClarificationText,
@@ -85,6 +103,8 @@ class FormPath:
         self._prompts = prompts
         self._policies = policies
         self._forms = forms
+        self._discover = discover
+        self._scheme_catalog = scheme_catalog
         self._turns = turns
         self._telemetry = telemetry
         self._clarification_text = clarification_text
@@ -114,7 +134,71 @@ class FormPath:
                 outcome, refusal, turn=turn, ctx=ctx, recorder=recorder
             )
             return
-        raise NotImplementedError("TODO(#205): file the form with the desk")
+
+        intent = self._intent_for(turn.input.context)
+        if intent is None:
+            yield await self._hand_back_unknown(turn, ctx=ctx, recorder=recorder)
+            return
+        discovery = await self._find_providers(
+            intent, turn, ctx, scheme_code=turn.input.context.scheme
+        )
+        # Not `serves(0)`: a catalog's Direct answer counts there, and filing
+        # needs a provider to call.
+        if not discovery.capabilities.get(0):
+            answer = answer_for_unserved_asks(intent.asks, self._clarification_text)
+            yield await self._finish(
+                outcome_for(TurnStatus.NO_MATCH),
+                answer,
+                turn=turn,
+                ctx=ctx,
+                recorder=recorder,
+            )
+            return
+        raise NotImplementedError("TODO(#205): file the form with the provider")
+
+    def _intent_for(self, context: FormContext) -> Intent | None:
+        """One ask, as the offer path would have classified it, or ``None``
+        for a form no ask maps to. The scheme comes from the catalog by code;
+        a code the catalog does not list is still the code the provider is
+        matched on."""
+
+        scheme = scheme_with_code(self._scheme_catalog.aliases(), context.scheme)
+        if scheme is None:
+            scheme = Scheme(code=context.scheme, name=context.scheme)
+        ask = ask_for_form(context, scheme=scheme)
+        if ask is None:
+            return None
+        return Intent(asks=(ask,), confidence=1.0)
+
+    async def _find_providers(
+        self,
+        intent: Intent,
+        turn: UserTurn[FormSubmission],
+        ctx: TurnContext,
+        *,
+        scheme_code: str,
+    ) -> DiscoveryResult:
+        """Discovery as on any turn, then only the providers advertising the
+        form's scheme: every grievance desk is indexed under one type, and
+        nothing but this filter keeps a PMFBY complaint off a PM-KISAN desk."""
+
+        with trace_component(Stage.DISCOVERY, ctx.trace_id):
+            found = await self._discover(intent, turn, now=datetime.now(UTC))
+            providers = replace(
+                found,
+                capabilities={
+                    position: candidates_for_scheme(candidates, scheme_code)
+                    for position, candidates in found.capabilities.items()
+                },
+            )
+            set_current_span_attributes(
+                providers_found=_count(found),
+                providers_for_scheme=_count(providers),
+            )
+            set_current_span_content(
+                input=asks_text(intent.asks), output=discovery_text(providers)
+            )
+        return providers
 
     async def _redact_for_the_record(
         self,
@@ -166,6 +250,19 @@ class FormPath:
             set_current_span_content(input=redacted.free_text)
         return decision
 
+    async def _hand_back_unknown(
+        self,
+        turn: UserTurn[FormSubmission],
+        *,
+        ctx: TurnContext,
+        recorder: TurnRecorder,
+    ) -> TurnFinished:
+        answer = answer_for_unknown_form(self._clarification_text)
+        outcome = outcome_for(TurnStatus.REQUIRES_INPUT, Cause.INVALID_INPUT)
+        return await self._finish(
+            outcome, answer, turn=turn, ctx=ctx, recorder=recorder
+        )
+
     async def _hand_back(
         self,
         errors: FormErrors,
@@ -197,6 +294,10 @@ class FormPath:
             query=_reference_line(turn.input), answer=spoken_text(finished.content)
         )
         return finished
+
+
+def _count(discovery: DiscoveryResult) -> int:
+    return sum(len(candidates) for candidates in discovery.capabilities.values())
 
 
 def _with_values_withheld(

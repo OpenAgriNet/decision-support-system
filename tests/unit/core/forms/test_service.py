@@ -27,6 +27,7 @@ from dss.core.forms.registry import FormRegistry
 from dss.core.forms.service import (
     WITHHELD,
     build_form_registry,
+    candidates_for_scheme,
     form_error_block,
     free_text_of,
     offer_form,
@@ -34,7 +35,8 @@ from dss.core.forms.service import (
     validate_submission,
     withhold_values,
 )
-from dss.core.provider_discovery.models import SchemaPackFiles
+from dss.core.provider_discovery.models import ProviderCapability, SchemaPackFiles
+from tests.support.providers import grievance_provider
 
 # The Grievance pack, untrimmed, as network-specs first published it. It lives on
 # `schema-packs-v0.1` now; its URLs here still say `api-schemas/`.
@@ -475,3 +477,18 @@ def test_the_free_text_of_a_submission_is_its_freetext_fields_only() -> None:
     assert isinstance(valid, ValidSubmission)
 
     assert free_text_of(valid) == (_PMFBY_VALUES["grievance.description"],)
+
+
+def test_only_the_desks_advertising_the_scheme_are_kept() -> None:
+    pmfby = grievance_provider("pmfby-desk", "PMFBY")
+    kisan = grievance_provider("kisan-desk", "PM-KISAN")
+    unmarked = ProviderCapability(
+        provider_id="plain",
+        provider_name="PLAIN",
+        capability="openagrinet:Grievance",
+        resource_id="res:plain:grievance",
+    )
+
+    kept = candidates_for_scheme((kisan, pmfby, unmarked), "PMFBY")
+
+    assert kept == (pmfby,)

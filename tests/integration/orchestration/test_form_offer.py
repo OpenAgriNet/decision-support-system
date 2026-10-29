@@ -14,7 +14,7 @@ from dss.core.intent.models import (
 )
 from dss.core.provider_discovery.models import DiscoveryResult, ProviderCapability
 from dss.core.shared.models import TurnStatus
-from dss.orchestration.form_offer import find_forms, form_context_for
+from dss.orchestration.form_offer import ask_for_form, find_forms, form_context_for
 from tests.integration.orchestration.test_orchestrator import (
     _build,
     _ctx,
@@ -175,3 +175,22 @@ async def test_the_planner_is_told_which_asks_await_a_form() -> None:
 
     assert plan.awaiting == {0: GRIEVANCE_FORM}
     assert events[-1].outcome.status is TurnStatus.REQUIRES_INPUT
+
+
+def test_a_submission_ask_names_the_form_it_came_from() -> None:
+    """The ask built from a context must map back to that context, or the
+    submission path and the offer path disagree about what a form is."""
+
+    ask = ask_for_form(PMFBY_SUPPORT, scheme=PMFBY)
+
+    assert ask.subject_categories is SubjectCategory.GRIEVANCE
+    assert ask.interaction_type is InteractionType.ACT
+    assert ask.scheme == PMFBY
+    assert ask.place is None
+    assert form_context_for(ask) == PMFBY_SUPPORT
+
+
+def test_an_action_the_path_cannot_file_yields_no_ask() -> None:
+    advice = FormContext(scheme="PMFBY", category="Grievance", action="advice")
+
+    assert ask_for_form(advice, scheme=PMFBY) is None

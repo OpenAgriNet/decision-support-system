@@ -9,6 +9,7 @@ from functools import partial
 from pathlib import Path
 
 import pytest
+import yaml
 
 from dss.adapters.sinks.memory import MemoryTurnSink
 from dss.config.clarification_text_loader import load_clarification_text
@@ -20,8 +21,14 @@ from dss.core.forms.models import (
     FormSubmission,
 )
 from dss.core.forms.service import build_form_registry
+from dss.core.intent.models import Intent, InteractionType, Scheme, SubjectCategory
 from dss.core.policy.models import Policy
-from dss.core.provider_discovery.models import SchemaPackFiles
+from dss.core.provider_discovery.models import (
+    DiscoveredAnswer,
+    DiscoveryResult,
+    ProviderCapability,
+    SchemaPackFiles,
+)
 from dss.core.shared.models import (
     Cause,
     ConversationMessage,
@@ -36,10 +43,11 @@ from dss.core.shared.models import (
 from dss.orchestration.form_path import FormPath
 from dss.orchestration.orchestrator import Orchestrator
 from dss.orchestration.redaction import RedactTexts, pass_through, redact_texts
-from tests.support.fakes import FakeLocalizer, FakePromptProvider
+from tests.support.fakes import FakeLocalizer, FakePromptProvider, FakeSchemeCatalog
+from tests.support.providers import grievance_provider
 from tests.support.turn_events import assert_well_formed
 
-from .test_orchestrator import DELETE_COMMAND, _FakeModerationLLM
+from .test_orchestrator import DELETE_COMMAND, _FakeDiscovery, _FakeModerationLLM
 from .test_orchestrator_redaction import PHONE, POLICY, _FindsValues
 
 _GRIEVANCE_YAML = (
@@ -47,6 +55,14 @@ _GRIEVANCE_YAML = (
 ).read_text(encoding="utf-8")
 
 _PMFBY_SUPPORT = FormContext(scheme="PMFBY", category="Grievance", action="support")
+_PMFBY = Scheme(code="PMFBY", name="Pradhan Mantri Fasal Bima Yojana")
+
+
+def _providers_found(*providers: ProviderCapability) -> DiscoveryResult:
+    return DiscoveryResult(
+        answers={}, capabilities={0: providers}, failures={}, events=()
+    )
+
 
 _VALUES = {
     "enrolmentId": "PMFBY-2024-000123",
@@ -77,19 +93,22 @@ def _turn(
     )
 
 
-def _build(
+def _build(  # noqa: PLR0913
     *,
     localize: FakeLocalizer | None = None,
     redact: RedactTexts = pass_through,
     moderation_llm: _FakeModerationLLM | None = None,
     policies: list[Policy] | None = None,
     telemetry: _StageOutcomes | None = None,
+    discovery: DiscoveryResult | None = None,
+    discover: _RecordingDiscovery | None = None,
+    attributes_yaml: str = _GRIEVANCE_YAML,
 ) -> tuple[Orchestrator, MemoryTurnSink]:
     pack = SchemaPackFiles(
         pack_name="Grievance",
         version="v0.1",
         profile_json='{"semantic_model": "provider-api"}',
-        attributes_yaml=_GRIEVANCE_YAML,
+        attributes_yaml=attributes_yaml,
         examples_json=(),
     )
     turns = MemoryTurnSink()
@@ -99,6 +118,11 @@ def _build(
         prompts=FakePromptProvider(),
         policies=policies or [],
         forms=build_form_registry([pack]),
+        discover=discover
+        or _FakeDiscovery(
+            discovery or _providers_found(grievance_provider("pmfby-desk", "PMFBY"))
+        ),
+        scheme_catalog=FakeSchemeCatalog({"PMFBY": _PMFBY}),
         turns=turns,
         telemetry=telemetry or _StageOutcomes(),
         clarification_text=load_clarification_text(),
@@ -284,3 +308,92 @@ async def test_the_moderation_outcome_reaches_the_stage_telemetry() -> None:
     await _collect(orch, _turn(_VALUES))
 
     assert telemetry.noted == [("moderation", "reject")]
+
+
+async def test_no_desk_for_the_scheme_ends_the_turn_unserved() -> None:
+    """A PM-KISAN desk is found under the same grievance type; it must not
+    receive a PMFBY complaint."""
+
+    orch, turns = _build(
+        discovery=_providers_found(grievance_provider("kisan-desk", "PM-KISAN"))
+    )
+
+    events = await _collect(orch, _turn(_VALUES))
+
+    finished = events[-1]
+    assert finished.outcome.status is TurnStatus.NO_MATCH
+    (text,) = finished.content
+    assert isinstance(text, TextBlock)
+    assert text.text == load_clarification_text().no_provider
+    assert turns.records["t1"].finished == finished
+
+
+class _RecordingDiscovery:
+    def __init__(self, result: DiscoveryResult) -> None:
+        self._result = result
+        self.intents: list[Intent] = []
+
+    async def __call__(self, intent: Intent, turn: UserTurn, *, now) -> DiscoveryResult:
+        self.intents.append(intent)
+        return self._result
+
+
+async def test_discovery_is_asked_for_the_one_ask_the_form_stands_for() -> None:
+    discovery = _RecordingDiscovery(
+        _providers_found(grievance_provider("pmfby-desk", "PMFBY"))
+    )
+    orch, _ = _build(discover=discovery)
+
+    with pytest.raises(NotImplementedError):
+        await _collect(orch, _turn(_VALUES))
+
+    (intent,) = discovery.intents
+    (ask,) = intent.asks
+    assert ask.subject_categories is SubjectCategory.GRIEVANCE
+    assert ask.interaction_type is InteractionType.ACT
+    assert ask.scheme == _PMFBY
+    assert ask.place is None
+
+
+async def test_a_registered_form_the_path_cannot_file_is_unknown() -> None:
+    """The registry serves every action a pack declares; only support and
+    status can be filed. A crafted submission for another must not crash."""
+
+    attributes = yaml.safe_load(_GRIEVANCE_YAML)
+    schemas = attributes["components"]["schemas"]
+    schemas["Grievance"]["x-oan-schema-by-action"]["advice"] = "GrievanceSupport"
+    advice = FormContext(scheme="PMFBY", category="Grievance", action="advice")
+    orch, _ = _build(attributes_yaml=yaml.safe_dump(attributes))
+
+    events = await _collect(orch, _turn(_VALUES, context=advice))
+
+    finished = events[-1]
+    assert finished.outcome.status is TurnStatus.REQUIRES_INPUT
+    assert finished.outcome.cause is Cause.INVALID_INPUT
+    (text,) = finished.content
+    assert isinstance(text, TextBlock)
+    assert text.text == load_clarification_text().unknown_form
+
+
+async def test_a_direct_answer_does_not_stand_in_for_a_provider() -> None:
+    """Filing needs a provider to call; a catalog answer is not one."""
+
+    direct = DiscoveredAnswer(
+        provider_id="leaflet",
+        provider_name="Leaflet",
+        capability="openagrinet:Grievance",
+        resource_id="res:leaflet:how-to-file",
+        attributes={},
+        validity=None,
+    )
+    found = DiscoveryResult(
+        answers={0: (direct,)},
+        capabilities={0: (grievance_provider("kisan-desk", "PM-KISAN"),)},
+        failures={},
+        events=(),
+    )
+    orch, _ = _build(discovery=found)
+
+    events = await _collect(orch, _turn(_VALUES))
+
+    assert events[-1].outcome.status is TurnStatus.NO_MATCH

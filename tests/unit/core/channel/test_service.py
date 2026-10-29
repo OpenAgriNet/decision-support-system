@@ -456,3 +456,12 @@ def test_no_provider_names_each_place_once() -> None:
     assert answer.content[0].text == (
         "I could not find a source that answers this for Pune yet."
     )
+
+
+def test_an_ask_with_no_place_nobody_serves_still_gets_an_answer() -> None:
+    """A form's ask names no place; the farmer must not read an empty bubble."""
+
+    answer = answer_for_unserved_asks([_ask(place=None)], _TEXT)
+
+    (block,) = answer.content
+    assert block.text == _TEXT.no_provider

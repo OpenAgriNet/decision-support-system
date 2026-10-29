@@ -21,6 +21,10 @@ AliasIndex = Mapping[str, Scheme]
 NO_FUZZY_MATCHING = None
 
 
+def scheme_with_code(aliases: AliasIndex, code: str) -> Scheme | None:
+    return next((scheme for scheme in aliases.values() if scheme.code == code), None)
+
+
 def find_scheme(text: str, aliases: AliasIndex) -> SchemeMatch | None:
     """The longest alias occurring in ``text`` as a whole-token span.
 
