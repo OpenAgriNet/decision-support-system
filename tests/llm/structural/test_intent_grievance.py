@@ -1,7 +1,8 @@
-"""Tier 5 — does a real model label a complaint about a scheme `Grievance`?
+"""Tier 5 — does a real model label a complaint about a scheme `Grievance`,
+and name the scheme from the catalog (ADR-0021)?
 
-Structural only: the category and the interaction are asserted, never the
-model's words for the subject. Skipped unless a model key is in `.env` or the
+Structural only: the category, the interaction and the scheme code are
+asserted, never the model's words for the subject. Skipped unless a model key is in `.env` or the
 shell, like `test_intent_place_name.py`.
 """
 
@@ -15,6 +16,7 @@ from dotenv import dotenv_values
 
 from dss.adapters.llm.pydantic_ai_provider import PydanticAILLMProvider
 from dss.config.prompt_service import build_prompt_service
+from dss.adapters.scheme_catalog.csv_file import load_scheme_catalog
 from dss.config.settings import Settings
 from dss.core.intent.models import InteractionType, SubjectCategory
 from dss.core.intent.service import classify_intent
@@ -25,6 +27,8 @@ from tests.support.live_model import missing_model_key
 
 _REPO = Path(__file__).parents[3]
 _DOTENV = _REPO / ".env"
+# The catalog ADR-0021 runs on for now.
+_CATALOG = _REPO / "tests/integration/adapters/scheme_catalog/fixtures/schemes.csv"
 
 
 def _dotenv_values() -> dict[str, str]:
@@ -85,3 +89,46 @@ async def test_filing_a_scheme_complaint_is_a_grievance_act() -> None:
     assert "pmfby" in (ask.agriculture_subjects or "").casefold()
     assert ask.place_name is None
     assert ask.place_from_history is False
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "I want to file a PMFBY grievance",
+        "My fasal bima claim was rejected, I want to complain",
+        "I cannot log in to the PMFBY portal to see my Kharif 2026 enrolment",
+    ],
+)
+async def test_filing_a_pmfby_complaint_is_grievance_pmfby_act(query: str) -> None:
+    prompts = build_prompt_service(_REPO / "configs" / "prompts.yaml")
+    schemes = load_scheme_catalog(_CATALOG).schemes()
+
+    classification = await classify_intent(_turn(query), _live_llm(), prompts, schemes)
+
+    (ask,) = classification.asks
+    assert ask.subject_categories is SubjectCategory.GRIEVANCE
+    assert ask.interaction_type is InteractionType.ACT
+    assert ask.scheme is not None
+    assert ask.scheme.code == "PMFBY"
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "What happened to my PMFBY complaint?",
+        "What is the status of my fasal bima grievance?",
+    ],
+)
+async def test_checking_a_pmfby_complaint_is_grievance_pmfby_observe(
+    query: str,
+) -> None:
+    prompts = build_prompt_service(_REPO / "configs" / "prompts.yaml")
+    schemes = load_scheme_catalog(_CATALOG).schemes()
+
+    classification = await classify_intent(_turn(query), _live_llm(), prompts, schemes)
+
+    (ask,) = classification.asks
+    assert ask.subject_categories is SubjectCategory.GRIEVANCE
+    assert ask.interaction_type is InteractionType.OBSERVE
+    assert ask.scheme is not None
+    assert ask.scheme.code == "PMFBY"

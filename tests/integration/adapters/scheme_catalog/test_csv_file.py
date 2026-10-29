@@ -50,6 +50,23 @@ def test_carries_the_scheme_code_through() -> None:
     assert aliases["pkvy"].code == "pkvy"
 
 
+def test_lists_every_scheme_with_its_other_names_once() -> None:
+    """What the intent model is shown: file order, and neither the official
+    name nor a mere case variant of it repeated as an alias."""
+
+    schemes = load_scheme_catalog(FIXTURES / "schemes.csv").schemes()
+
+    assert [entry.scheme.code for entry in schemes] == [
+        "makhana",
+        "pkvy",
+        "mif",
+        "pm-ddky",
+        "PMFBY",
+    ]
+    pkvy = schemes[1]
+    assert pkvy.aliases == ("PKVY", "organic farming scheme")
+
+
 def test_no_bare_commodity_alias_in_the_fixture() -> None:
     """The correctness of the category override (#36) rests on the catalog
     holding no bare commodity words. The source document shipped `makhana`

@@ -5,6 +5,7 @@
     categories   — the SubjectCategory values, comma-joined, from the code's enum
     interactions — the InteractionType values, comma-joined, from the code's enum
     history      — the recent ConversationMessage window (may be empty)
+    schemes      — the scheme catalog's SchemeEntry rows (may be empty)
 
   The model must still RETURN English tokens (category and interaction values,
   field names, transliterated place names) whatever language this file is in —
@@ -26,6 +27,15 @@ Each ask has:
   advise wants a recommendation the assistant reasons out; observe wants a fact someone already holds; act changes something in the world. Asking *how* to apply is advise; asking to *be* applied is act.
 - agriculture_subjects: the free-text specific named (e.g. 'potato', 'PM-KISAN'); null when the category needs none (e.g. 'will it rain?').
   Copy the user's own words. Do not translate a scheme's name, expand an acronym, or correct a spelling — a later step matches this against what each provider advertises, and needs what was actually said.
+- scheme_code: when the ask is about one of the schemes listed below, its code exactly as listed; otherwise null. Match by meaning, not spelling: a misspelling, an acronym or another listed name all point to the same row. Never return a code that is not listed. A crop named inside a scheme's name is not that scheme: 'makhana price' is a Market ask with no scheme_code.
+{%- if schemes %}
+  Schemes (code: name; other names):
+{%- for entry in schemes %}
+    {{ entry.scheme.code }}: {{ entry.scheme.name }}{% if entry.aliases %}; {{ entry.aliases | join(', ') }}{% endif %}
+{%- endfor %}
+{%- else %}
+  No schemes are listed, so scheme_code is always null.
+{%- endif %}
 
 Examples:
   'what is the onion rate at Lasalgaon' -> one ask: Market / observe / 'onion'.
