@@ -20,6 +20,10 @@ AliasIndex = Mapping[str, Scheme]
 # and no module default can quietly disagree with the configured one.
 NO_FUZZY_MATCHING = None
 
+# A grievance names its scheme in the query, often with no subject at all:
+# "I want to file a PMFBY grievance".
+_ABOUT_A_SCHEME = frozenset({SubjectCategory.SCHEME, SubjectCategory.GRIEVANCE})
+
 
 def find_scheme(text: str, aliases: AliasIndex) -> SchemeMatch | None:
     """The longest alias occurring in ``text`` as a whole-token span.
@@ -69,7 +73,7 @@ def _resolve_ask(
 
     The ask's own subject first — the query is shared, so both asks of "PKVY
     and the makhana scheme" would take the longest match. The query is a
-    fallback only for an already-scheme ask, or one mention would convert
+    fallback only for a scheme or grievance ask, or one mention would convert
     every other ask in the turn.
     """
 
@@ -77,7 +81,7 @@ def _resolve_ask(
         match = find_scheme(ask.agriculture_subjects, aliases)
         if match is not None:
             return match
-    if ask.subject_categories is not SubjectCategory.SCHEME:
+    if ask.subject_categories not in _ABOUT_A_SCHEME:
         return None
     match = find_scheme(query, aliases)
     if match is not None or threshold is None or not ask.agriculture_subjects:

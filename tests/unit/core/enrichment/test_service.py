@@ -255,6 +255,18 @@ def test_a_grievance_ask_keeps_its_category() -> None:
     assert ask.scheme == PKVY
 
 
+def test_a_grievance_ask_with_no_subject_finds_its_scheme_in_the_query() -> None:
+    intent = Intent(
+        asks=(_ask(None, SubjectCategory.GRIEVANCE, InteractionType.ACT),),
+    )
+
+    resolution = resolve_scheme_subjects(intent, "file a PKVY grievance", ALIASES)
+
+    ask = resolution.intent.asks[0]
+    assert ask.subject_categories is SubjectCategory.GRIEVANCE
+    assert ask.scheme == PKVY
+
+
 def test_a_non_scheme_ask_is_not_rescued_by_the_shared_query() -> None:
     """The guard that makes the override safe. The query is shared by every
     ask, so a scheme mentioned anywhere in the turn must not convert the
