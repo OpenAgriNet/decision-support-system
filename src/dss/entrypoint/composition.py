@@ -25,6 +25,7 @@ import threading
 import warnings
 from collections.abc import Awaitable, Callable
 from contextlib import AsyncExitStack
+from dataclasses import dataclass
 from datetime import datetime
 from functools import partial
 from typing import Never
@@ -72,12 +73,14 @@ from dss.config.schema_pack_fetch import (
 )
 from dss.config.settings import Settings
 from dss.core.channel.localize import build_localizer
+from dss.core.channel.models import ClarificationText
 from dss.core.forms.models import FormSubmission
 from dss.core.forms.registry import FormRegistry
 from dss.core.forms.service import build_form_registry
 from dss.core.intent.models import Intent
+from dss.core.planner.models import Identity
 from dss.core.planner.validation import DomainSchema, parse_domain_schema
-from dss.core.policy.models import Checkpoint
+from dss.core.policy.models import Checkpoint, Policy
 from dss.core.provider_discovery.index import (
     PACK_DEFECTS,
     extract_type_const,
@@ -117,6 +120,8 @@ from dss.ports.invocation import CapabilityInvocation
 from dss.ports.llm import LLMProvider
 from dss.ports.prompts import PromptProvider
 from dss.ports.provider_preferences import ProviderPreferences
+from dss.ports.scheme_catalog import SchemeCatalog
+from dss.ports.sinks import TelemetrySink, TurnSink
 from dss.ports.translator import Translator
 from dss.ports.turn import TurnRunner
 
@@ -159,115 +164,170 @@ def build_runner_with_lifecycle(
     `app.create_app` drives this from the FastAPI lifespan so the client is
     closed once, when the server stops, rather than leaked."""
 
+    _warn_if_the_evidence_url_is_set(settings)
+    boot = _load_boot_config(settings)
+    # Before the network, like the rest of the boot config: the area file is
+    # checked in, so an unreadable one is a broken build either way.
+    area_lookup, area_aclose = build_area_lookup(settings)
+    network = _network(settings, fetch=fetch, preferences=boot.preferences)
+    # Forms (#205) work with the network off too. After `_network`, because
+    # its startup fetch is what fills the folder they are read from.
+    forms = _boot_forms(settings)
+    wiring = _Wiring(
+        boot=boot,
+        network=network,
+        components=_build_components(settings, boot, network),
+        area_lookup=area_lookup,
+        forms=forms,
+        turns=FileTurnSink(settings.turns_path),
+        telemetry=FileTelemetrySink(settings.telemetry_path),
+        moderation_llm=_moderation_llm(settings),
+    )
+    paths: TurnPaths = {
+        TextQuery: _build_text_path(settings, wiring),
+        FormSubmission: _build_form_path(wiring),
+    }
+    _refuse_unrouted_kinds(paths)
+    return Orchestrator(paths=paths), _aclose_all(
+        _aclose_for(network.client), area_aclose
+    )
+
+
+def _warn_if_the_evidence_url_is_set(settings: Settings) -> None:
     if settings.evidence_url:
         warnings.warn(
             UNWIRED_URL.format(directory=settings.evidence_dir),
             UserWarning,
-            stacklevel=2,
+            stacklevel=3,
         )
+
+
+@dataclass(frozen=True)
+class _BootConfig:
+    """Everything read from files at boot, before the network is touched."""
+
+    policies: list[Policy]
+    identity: Identity
+    clarification_text: ClarificationText
+    prompts: PromptProvider
+    scheme_catalog: SchemeCatalog
+    redact: RedactTexts
+    translation_routes: dict[str, TranslationRoute]
+    preferences: ProviderPreferences
+
+
+def _load_boot_config(settings: Settings) -> _BootConfig:
+    """Each file is checked here so a bad one stops the boot, never a
+    farmer's turn. All of it loads whether or not the network is wired, so
+    an unwired local run still catches the typo."""
 
     policies = load_policy_pack(settings.policy_config_path).for_checkpoint(
         Checkpoint.MODERATION
     )
-    identity = load_identity()  # bundled default until an adopter mounts one
-    clarification_text = load_clarification_text()  # bundled default, same as identity
-    # Every LLM component's system prompt, per language (configs/prompts.yaml).
-    # Loaded once; a broken registry — a missing template, a placeholder typo,
-    # no English entry — refuses to boot here rather than mid-turn.
+    # Every LLM component's system prompt, per language (configs/prompts.yaml):
+    # a missing template, a placeholder typo or no English entry refuses here.
     prompts = build_prompt_service(settings.prompt_config_path)
-    # Loaded before the network gate, and unconditionally: the file is checked
-    # in, so an unreadable one is a broken build either way, and a boot that
-    # skipped it would only surface the problem as missing spatial filters much
-    # later. Read once here — every turn shares this index.
-    area_lookup, area_aclose = build_area_lookup(settings)
-    # The scheme catalog is the other way round: nothing ships, because which
-    # schemes a deployment serves is the tenant's call.
-    scheme_catalog = load_scheme_catalog(settings.schemes_config_path)
-    # Before the network, like the other boot checks: a bad rule or a missing
-    # name model stops the boot here, never on a farmer's turn.
-    redact = _redaction(settings)
-    # Same: a bad edge translation config stops the boot here (#174).
-    translation_routes = _build_translation_routes(settings, prompts=prompts)
-
-    # Which providers each sender wants (ADR-0019). Loaded with the other boot
-    # config, before the network gate: a malformed ranking must stop the boot
-    # whether or not this deployment talks to providers, so an unwired local
-    # run still catches the typo. Registry mode (ADR-0020) swaps the real
-    # adapter in inside `_network`, where the network's HTTP client exists.
-    preferences = _boot_preferences(settings)
-
-    discover, invocation, schemas, schema_context_index, client, _preferences = (
-        _network(settings, fetch=fetch, preferences=preferences)
+    return _BootConfig(
+        policies=policies,
+        identity=load_identity(),  # bundled default until an adopter mounts one
+        clarification_text=load_clarification_text(),  # bundled default, same
+        prompts=prompts,
+        # Nothing ships: which schemes a deployment serves is the tenant's call.
+        scheme_catalog=load_scheme_catalog(settings.schemes_config_path),
+        redact=_redaction(settings),
+        translation_routes=_build_translation_routes(settings, prompts=prompts),
+        # Which providers each sender wants (ADR-0019). Registry mode
+        # (ADR-0020) swaps the real adapter in inside `_network`, where the
+        # network's HTTP client exists.
+        preferences=_boot_preferences(settings),
     )
-    # Forms (#205) work with the network off too. After `_network`, because
-    # its startup fetch is what fills the folder they are read from.
-    forms = _boot_forms(settings)
 
+
+def _build_components(
+    settings: Settings, boot: _BootConfig, network: _Network
+) -> Components:
     # One binding for everything the farmer reads: the streamed answer and the
     # localized system text ride the same model, temperature and timeout.
     composer_llm = _composer_llm(settings)
-
-    components = Components(
-        redact=redact,
-        discover=discover,
+    return Components(
+        redact=boot.redact,
+        discover=network.discover,
         plan=build_plan(
-            schemas=schemas,
-            schema_context_index=schema_context_index,
-            invocation=invocation,
-            identity=identity,
-            prompts=prompts,
+            schemas=network.schemas,
+            schema_context_index=network.schema_context_index,
+            invocation=network.invocation,
+            identity=boot.identity,
+            prompts=boot.prompts,
             model=_resolve_model(settings.planner_model, settings),
             temperature=settings.planner_temperature,
             timeout_seconds=settings.planner_timeout_seconds,
             retries=settings.planner_retries,
         ),
         compose=build_stream_response(
-            identity=identity, llm=composer_llm, prompts=prompts
+            identity=boot.identity, llm=composer_llm, prompts=boot.prompts
         ),
         # The composer's own binding (the user-facing writer, ADR-0018):
         # rendering a refusal or a clarification in the farmer's language is
         # composition work, not a new component with its own model knob.
-        localize=build_localizer(llm=composer_llm, prompts=prompts),
+        localize=build_localizer(llm=composer_llm, prompts=boot.prompts),
     )
 
-    turns = FileTurnSink(settings.turns_path)
-    telemetry = FileTelemetrySink(settings.telemetry_path)
-    moderation_llm = _moderation_llm(settings)
-    text_path = TextPath(
+
+@dataclass(frozen=True)
+class _Wiring:
+    """What the paths are built from, once everything is loaded and opened."""
+
+    boot: _BootConfig
+    network: _Network
+    components: Components
+    area_lookup: AreaLookup
+    forms: FormRegistry
+    turns: TurnSink
+    telemetry: TelemetrySink
+    moderation_llm: LLMProvider
+
+
+def _build_text_path(settings: Settings, wiring: _Wiring) -> TextPath:
+    boot = wiring.boot
+    return TextPath(
         intent_llm=_intent_llm(settings),
-        moderation_llm=moderation_llm,
-        prompts=prompts,
-        policies=policies,
-        scheme_catalog=scheme_catalog,
+        moderation_llm=wiring.moderation_llm,
+        prompts=boot.prompts,
+        policies=boot.policies,
+        scheme_catalog=boot.scheme_catalog,
         scheme_fuzzy_threshold=settings.scheme_fuzzy_threshold,
         nearest_max_km=settings.nearest_max_km,
-        components=components,
-        turns=turns,
-        telemetry=telemetry,
-        area_lookup=area_lookup,
-        clarification_text=clarification_text,
-        schemas=schemas,
-        edge_translation=EdgeTranslation(routes=translation_routes),
-        forms=forms,
+        components=wiring.components,
+        turns=wiring.turns,
+        telemetry=wiring.telemetry,
+        area_lookup=wiring.area_lookup,
+        clarification_text=boot.clarification_text,
+        schemas=wiring.network.schemas,
+        edge_translation=EdgeTranslation(routes=boot.translation_routes),
+        forms=wiring.forms,
     )
-    form_path = FormPath(
-        redact=redact,
-        moderation_llm=moderation_llm,
-        prompts=prompts,
-        policies=policies,
-        forms=forms,
-        turns=turns,
-        telemetry=telemetry,
-        clarification_text=clarification_text,
-        localize=components.localize,
+
+
+def _build_form_path(wiring: _Wiring) -> FormPath:
+    boot = wiring.boot
+    return FormPath(
+        redact=boot.redact,
+        moderation_llm=wiring.moderation_llm,
+        prompts=boot.prompts,
+        policies=boot.policies,
+        forms=wiring.forms,
+        turns=wiring.turns,
+        telemetry=wiring.telemetry,
+        clarification_text=boot.clarification_text,
+        localize=wiring.components.localize,
     )
-    paths: TurnPaths = {TextQuery: text_path, FormSubmission: form_path}
+
+
+def _refuse_unrouted_kinds(paths: TurnPaths) -> None:
     unrouted = unrouted_kinds(paths, TurnInput.__subclasses__())
     if unrouted:
         names = ", ".join(kind.__name__ for kind in unrouted)
         raise ValueError(f"no path for {names}, refusing to boot")
-    runner = Orchestrator(paths=paths)
-    return runner, _aclose_all(_aclose_for(client), area_aclose)
 
 
 def build_area_lookup(
@@ -464,29 +524,32 @@ async def _discovers_nothing(
     return DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
 
 
+@dataclass(frozen=True)
+class _Network:
+    """Everything that varies with the network: the per-turn `discover`
+    callable, the `invocation` port, the two schema dicts the planner
+    validates and routes against, the shared HTTP client whose lifecycle the
+    caller owns (`None` when unwired), and the ranking source in force."""
+
+    discover: DiscoverProviders
+    invocation: CapabilityInvocation
+    schemas: dict[str, DomainSchema]
+    schema_context_index: dict[str, str]
+    client: httpx.AsyncClient | None
+    preferences: ProviderPreferences
+
+
 def _network(
     settings: Settings,
     *,
     preferences: ProviderPreferences,
     fetch: FetchPacks = fetch_packs,
-) -> tuple[
-    DiscoverProviders,
-    CapabilityInvocation,
-    dict[str, DomainSchema],
-    dict[str, str],
-    httpx.AsyncClient | None,
-    ProviderPreferences,
-]:
-    """Wire discovery + invocation, or return the unwired stand-ins.
-
-    Returns everything the planner needs that varies with the network — the
-    per-turn `discover` callable, the `invocation` port, and the two schema
-    dicts the planner validates and routes against — plus the shared HTTP
-    client whose lifecycle the caller owns (`None` when unwired), and the
-    ranking source actually in force: the registry adapter rides that client
-    (ADR-0020), so registry mode is resolved here. Unwired, the
-    dicts are empty and discovery finds nobody — all harmless, because the
-    planner is never reached."""
+) -> _Network:
+    """Wire discovery + invocation, or return the unwired stand-ins. The
+    registry ranking adapter rides the network's client (ADR-0020), so
+    registry mode is resolved here. Unwired, the dicts are empty and
+    discovery finds nobody — all harmless, because the planner is never
+    reached."""
 
     if not settings.network_enabled:
         if settings.provider_preferences_base_url is not None:
@@ -497,7 +560,14 @@ def _network(
                 "DSS_PROVIDER_PREFERENCES_BASE_URL is set but the network is "
                 "not configured, so no provider ranking will ever apply"
             )
-        return _discovers_nothing, _UnwiredInvocation(), {}, {}, None, preferences
+        return _Network(
+            discover=_discovers_nothing,
+            invocation=_UnwiredInvocation(),
+            schemas={},
+            schema_context_index={},
+            client=None,
+            preferences=preferences,
+        )
 
     _ensure_schema_packs(settings, fetch=fetch)
 
@@ -557,9 +627,14 @@ def _network(
         )
     skipped = {skip.pack_name for skip in cache.skipped_packs()}
     good = tuple(pack for pack in packs if pack.pack_name not in skipped)
-    schemas = _planner_schemas(good)
-    schema_context_index = cache.current_schema_context()
-    return discover, invocation, schemas, schema_context_index, client, preferences
+    return _Network(
+        discover=discover,
+        invocation=invocation,
+        schemas=_planner_schemas(good),
+        schema_context_index=cache.current_schema_context(),
+        client=client,
+        preferences=preferences,
+    )
 
 
 async def _aclose_nothing() -> None:
