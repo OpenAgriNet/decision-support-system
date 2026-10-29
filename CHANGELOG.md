@@ -20,6 +20,9 @@
   catalog packs. API and catalog packs share one folder; each pack's
   `profile.json` says which it is. A `var/schema-packs/` fetched earlier has
   no `Grievance`, so it offers no forms: delete it and fetch again (#205)
+- A grievance finds its scheme in the farmer's words even when the classifier
+  names no subject, so "I want to file a PMFBY grievance" is offered the PMFBY
+  form (#205)
 
 ### Added
 - Provider rankings live in the network registry, never in the DSS. Set
