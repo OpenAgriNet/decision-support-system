@@ -407,7 +407,7 @@ async def test_without_content_the_trace_has_no_input_or_output(
 
 
 # Each stage's own Input and Output in Langfuse, behind the content switch.
-_STAGES_WITH_CONTENT = ("intent", "enrichment", "discovery", "planner", "composer")
+_STAGES_WITH_CONTENT = ("intent", "discovery", "planner", "composer")
 
 
 def _stage(spans: InMemorySpanExporter, name: str):

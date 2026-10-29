@@ -85,7 +85,7 @@ def record_stage_model(stage: Stage, model: str) -> None:
 def model_for(stage: Stage) -> str | None:
     """The model that answered for this stage, if one did.
 
-    ``None`` for enrichment and discovery, which run no model — and for any
+    ``None`` for location and discovery, which run no model — and for any
     stage whose call has not returned yet.
     """
 

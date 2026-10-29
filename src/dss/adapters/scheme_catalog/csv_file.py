@@ -1,4 +1,4 @@
-"""Reads the scheme catalog from a tenant-mounted CSV (issue #34).
+"""Reads the scheme catalog from a tenant-mounted CSV (issue #34, ADR-0021).
 
 Columns: ``scheme_code,scheme_name,scheme_aliases``, aliases ``|``-separated.
 ``scheme_code`` is the network's scheme code, verbatim and case-exact: a scheme
@@ -12,10 +12,10 @@ from __future__ import annotations
 
 import csv
 import logging
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from pathlib import Path
 
-from dss.core.enrichment.normalize import alias_key
+from dss.adapters.scheme_catalog.normalize import alias_key
 from dss.core.intent.models import Scheme, SchemeEntry
 
 logger = logging.getLogger(__name__)
@@ -25,10 +25,9 @@ _REQUIRED = (_CODE, _NAME, _ALIASES)
 _ALIAS_SEPARATOR = "|"
 
 UNSET_CATALOG = (
-    "DSS_SCHEMES_CONFIG_PATH is not set, so no scheme catalog is loaded and "
-    "scheme enrichment is inert: a query naming a scheme reaches the network "
-    "with the farmer's own words rather than the official scheme name. Mount "
-    "a catalog CSV to enable it."
+    "DSS_SCHEMES_CONFIG_PATH is not set, so no scheme catalog is loaded: the "
+    "intent model is shown no schemes, and no ask names one. Mount a catalog "
+    "CSV to enable it."
 )
 
 
@@ -39,20 +38,13 @@ class MalformedSchemeCatalogError(Exception):
 
 
 class CsvSchemeCatalog:
-    """A `SchemeCatalog` over a finished index, read once by
-    `load_scheme_catalog`."""
+    """A `SchemeCatalog` over the rows `load_scheme_catalog` read once."""
 
-    def __init__(
-        self, aliases: Mapping[str, Scheme], schemes: Sequence[SchemeEntry] = ()
-    ) -> None:
-        self._aliases = dict(aliases)
+    def __init__(self, schemes: Sequence[SchemeEntry] = ()) -> None:
         self._schemes = tuple(schemes)
 
     def schemes(self) -> Sequence[SchemeEntry]:
         return self._schemes
-
-    def aliases(self) -> Mapping[str, Scheme]:
-        return self._aliases
 
 
 def load_scheme_catalog(path: Path | None) -> CsvSchemeCatalog:
@@ -65,7 +57,7 @@ def load_scheme_catalog(path: Path | None) -> CsvSchemeCatalog:
 
     if path is None:
         logger.warning(UNSET_CATALOG)
-        return CsvSchemeCatalog({})
+        return CsvSchemeCatalog()
 
     with path.open(encoding="utf-8-sig", newline="") as handle:
         return _index(csv.DictReader(handle), source=path.name)
@@ -87,7 +79,7 @@ def _index(rows: csv.DictReader, *, source: str) -> CsvSchemeCatalog:
         for text in texts:
             _claim(aliases, alias_key(text), scheme, source=source, number=number)
         schemes.append(SchemeEntry(scheme=scheme, aliases=_other_names(texts, scheme)))
-    return CsvSchemeCatalog(aliases, schemes)
+    return CsvSchemeCatalog(schemes)
 
 
 def _scheme_from(row: dict[str, str], *, source: str, number: int) -> Scheme:
@@ -136,8 +128,8 @@ def _claim(
 ) -> None:
     """Record one alias, refusing a key two different schemes both claim.
 
-    A repeat within one scheme is harmless; across schemes it has no correct
-    answer, since `find_scheme` breaks ties by span length.
+    A repeat within one scheme is harmless; across schemes the intent model
+    could not tell which one the farmer meant.
     """
 
     if not key:

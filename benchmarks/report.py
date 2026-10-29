@@ -172,7 +172,6 @@ def save_json(report: dict, directory: Path, *, kind: str = "speed") -> Path:
 _STAGE_ROWS = (
     ("intent", "  intent"),
     ("moderation", "  moderation"),
-    ("enrichment", "  enrichment"),
     ("discovery", "  discovery"),
     ("discover", "    ↳ network /discover"),
     ("planner", "  planner"),

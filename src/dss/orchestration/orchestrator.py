@@ -244,7 +244,6 @@ class TextPath:
         prompts: PromptProvider,
         policies: Sequence[Policy],
         scheme_catalog: SchemeCatalog,
-        scheme_fuzzy_threshold: float | None,
         nearest_max_km: float,
         components: Components,
         turns: TurnSink,
@@ -263,7 +262,6 @@ class TextPath:
         # representable as an empty one, so defaulting here would make a
         # wiring mistake and a missing mount look identical.
         self._scheme_catalog = scheme_catalog
-        self._scheme_fuzzy_threshold = scheme_fuzzy_threshold
         self._nearest_max_km = nearest_max_km
         self._components = components
         self._turns = turns
@@ -343,7 +341,6 @@ class TextPath:
             discover_providers=self._components.discover,
             area_lookup=self._area_lookup,
             scheme_catalog=self._scheme_catalog,
-            scheme_fuzzy_threshold=self._scheme_fuzzy_threshold,
             nearest_max_km=self._nearest_max_km,
         )
         decision = result.decision

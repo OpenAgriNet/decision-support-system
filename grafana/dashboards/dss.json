@@ -523,7 +523,7 @@
       "id": 9,
       "type": "table",
       "title": "Stage duration (mean, by stage and model)",
-      "description": "Same numbers as a table. `model` is absent for enrichment and discovery, which run none \u2014 an empty cell there is correct, not missing data.",
+      "description": "Same numbers as a table. `model` is absent for location and discovery, which run none \u2014 an empty cell there is correct, not missing data.",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
         "uid": "dss-clickhouse-otel"
