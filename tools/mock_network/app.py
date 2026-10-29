@@ -1,6 +1,7 @@
 """The mock network's routes.
 
-`POST /discover`, `POST /select` and `POST /support`, synchronous request/response —
+`POST /discover`, `POST /select`, `POST /support` and `POST /status`, synchronous
+request/response —
 the same contract the real Network Adapter offers. No callbacks, no auth, no signing:
 the DSS never speaks Beckn itself, so there is nothing here to sign.
 
@@ -101,8 +102,6 @@ def build_mock_app(
     # The transaction id of each /select the mock could not answer, so the
     # speed benchmark can leave those turns out of its figures.
     misses: list[str | None] = []
-    # Each filing gets its own ticket, so two filings in one session read apart.
-    ticket_numbers = count(1)
 
     @app.get("/_bench/misses")
     async def bench_misses() -> dict[str, Any]:
@@ -142,13 +141,31 @@ def build_mock_app(
         }
         return _on_select(body, answered)
 
+    _add_grievance_routes(app)
+    return app
+
+
+def _add_grievance_routes(app: FastAPI) -> None:
+    """`/support` files a grievance and `/status` reads it back. The mock
+    remembers what it filed for the life of the process only: a restarted
+    mock knows no case."""
+
+    # Each filing gets its own ticket, so two filings in one session read apart.
+    ticket_numbers = count(1)
+    cases: dict[str, dict[str, Any]] = {}
+
     @app.post("/support")
     async def support(request: Request) -> dict[str, Any]:
         body = await request.json()
         filed = body["message"]["support"]["channels"][0]
-        return _on_support(body, filed, _ticket_no(next(ticket_numbers)))
+        reply = _on_support(body, filed, _ticket_no(next(ticket_numbers)))
+        registered = reply["message"]["support"]["channels"][0]
+        cases[registered["case"]["ticketNo"]] = registered
+        return reply
 
-    return app
+    @app.post("/status")
+    async def status(request: Request) -> dict[str, Any]:
+        return _read_case(await request.json(), cases)
 
 
 def _selected_type(body: dict[str, Any]) -> str | None:
@@ -269,6 +286,54 @@ def _on_support(
     return {
         "context": _echo(body, "on_support"),
         "message": {"support": {"channels": [registered]}},
+    }
+
+
+def _read_case(body: dict[str, Any], cases: dict[str, dict[str, Any]]) -> dict:
+    """The reply to a /status, or a 400 for a case the mock does not hold:
+    the not-found path the DSS tells the farmer about."""
+
+    commitment = body["message"]["contract"]["commitments"][0]
+    case = _case_for(commitment["commitmentAttributes"], cases)
+    if case is None:
+        raise HTTPException(status_code=400, detail="no case for that ticket and phone")
+    return _on_status(body, commitment, case)
+
+
+def _case_for(
+    asked: dict[str, Any], cases: dict[str, dict[str, Any]]
+) -> dict[str, Any] | None:
+    """The case filed under the asked ticket, if it was filed from the asked
+    phone: the portal matches a ticket to the phone it was filed from."""
+
+    case = cases.get(asked.get("case", {}).get("ticketNo", ""))
+    if case is None or case.get("applicantMobile") != asked.get("applicantMobile"):
+        return None
+    return case
+
+
+def _on_status(
+    body: dict[str, Any], commitment: dict[str, Any], filed: dict[str, Any]
+) -> dict[str, Any]:
+    """The desk's read: the case as filed, now with someone looking at it.
+    The crop is fixed; the mock has no enrolment record to read it from."""
+
+    read = {key: value for key, value in filed.items() if key != "provider"}
+    read["case"] = {
+        **filed["case"],
+        "status": {"code": "UnderReview"},
+        "cropName": "Paddy",
+    }
+    return {
+        "context": _echo(body, "on_status"),
+        "message": {
+            "contract": {
+                "id": body["message"]["contract"].get("id"),
+                "commitments": [
+                    {"resources": commitment["resources"], "commitmentAttributes": read}
+                ],
+            }
+        },
     }
 
 
