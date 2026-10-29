@@ -1,0 +1,80 @@
+{
+  "context": {
+    "action": "on_discover",
+    "version": "2.0.0",
+    "transactionId": "3c67dc05-6ba2-4ab4-bb7c-377e16a5ab5b",
+    "messageId": "74ad565e-5abf-4706-8552-0e7be61c0b00",
+    "timestamp": "2026-10-29T06:58:18Z"
+  },
+  "message": {
+    "catalogs": [
+      {
+        "descriptor": {
+          "code": "GRIEVANCE_PMFBY",
+          "name": "PMFBY grievance desk"
+        },
+        "id": "catalog:grievance:pmfby",
+        "isActive": true,
+        "provider": {
+          "id": "pmfby",
+          "descriptor": {
+            "code": "PMFBY",
+            "name": "PMFBY Grievance Portal"
+          }
+        },
+        "resources": [
+          {
+            "id": "resource:grievance:pmfby:desk",
+            "descriptor": {
+              "code": "GRIEVANCE_PMFBY_DESK",
+              "name": "PMFBY grievance desk",
+              "longDesc": "Files a grievance against a PMFBY enrolment and reads a filed case."
+            },
+            "resourceAttributes": {
+              "@context": "https://openagrinet.github.io/network-specs/schema/Grievance/v0.1/context.jsonld",
+              "@type": "openagrinet:Grievance",
+              "informationMode": "OnDemand",
+              "scheme": {
+                "code": "PMFBY",
+                "name": "Pradhan Mantri Fasal Bima Yojana"
+              },
+              "grievanceOptions": {
+                "categories": [
+                  {
+                    "code": "3",
+                    "name": "Enrollment / Portal Issues",
+                    "help": "Something about your enrolment, or about the portal itself, is not working."
+                  }
+                ],
+                "subCategories": [
+                  {
+                    "code": "10",
+                    "name": "Login",
+                    "help": "You cannot sign in to the portal to see your enrolment."
+                  }
+                ]
+              },
+              "actions": [
+                {
+                  "action": "support",
+                  "description": "File a new grievance. Needs the enrolment number, the applicant's mobile, the crop year, the season and a description of the problem. Returns case.ticketNo, which status requires. Needs no OTP, so it can be called without init.",
+                  "schema": "https://openagrinet.github.io/network-specs/schema/Grievance/v0.1/attributes.yaml#/components/schemas/PMFBYSupport",
+                  "attributesAt": "$.message.support.channels[0]"
+                },
+                {
+                  "action": "status",
+                  "description": "Read where a filed grievance stands: its status code, the portal's reply and the crop it concerns. Needs case.ticketNo from an earlier support call, plus the applicant's mobile. Cases cannot be listed by enrolment number, so support must come first.",
+                  "schema": "https://openagrinet.github.io/network-specs/schema/Grievance/v0.1/attributes.yaml#/components/schemas/PMFBYStatus",
+                  "attributesAt": "$.message.contract.commitments[0].commitmentAttributes"
+                }
+              ],
+              "languages": [
+                "en"
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

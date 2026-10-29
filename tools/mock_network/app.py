@@ -1,7 +1,7 @@
 """The mock network's routes.
 
-`POST /discover` and `POST /select`, synchronous request/response — the same
-contract the real Network Adapter offers. No callbacks, no auth, no signing:
+`POST /discover`, `POST /select` and `POST /support`, synchronous request/response —
+the same contract the real Network Adapter offers. No callbacks, no auth, no signing:
 the DSS never speaks Beckn itself, so there is nothing here to sign.
 
 Discover is keyed off the `@type` the DSS asked for, so one running mock
@@ -33,6 +33,8 @@ from __future__ import annotations
 import json
 import os
 import tomllib
+from datetime import UTC, datetime
+from itertools import count
 from pathlib import Path
 from typing import Any
 
@@ -63,6 +65,7 @@ _DISCOVER_BY_TYPE = {
     "openagrinet:WeatherObservation": "weather_discover.json",
     "openagrinet:MandiPrice": "mandi_discover.json",
     "openagrinet:KnowledgeAdvisory": "advisory_discover.json",
+    "openagrinet:Grievance": "grievance_discover.json",
 }
 
 
@@ -96,6 +99,8 @@ def build_mock_app(
     # The transaction id of each /select the mock could not answer, so the
     # speed benchmark can leave those turns out of its figures.
     misses: list[str | None] = []
+    # Each filing gets its own ticket, so two filings in one session read apart.
+    ticket_numbers = count(1)
 
     @app.get("/_bench/misses")
     async def bench_misses() -> dict[str, Any]:
@@ -134,6 +139,12 @@ def build_mock_app(
             "resourceAttributes": _answer(capability, keys, known),
         }
         return _on_select(body, answered)
+
+    @app.post("/support")
+    async def support(request: Request) -> dict[str, Any]:
+        body = await request.json()
+        filed = body["message"]["support"]["channels"][0]
+        return _on_support(body, filed, _ticket_no(next(ticket_numbers)))
 
     return app
 
@@ -238,6 +249,30 @@ def _on_select(body: dict[str, Any], answered: dict[str, Any]) -> dict[str, Any]
             }
         },
     }
+
+
+def _on_support(
+    body: dict[str, Any], filed: dict[str, Any], ticket_no: str
+) -> dict[str, Any]:
+    """The desk's reply: what was filed, plus the case it opened."""
+
+    registered = {
+        **filed,
+        "case": {
+            "ticketNo": ticket_no,
+            "status": {"code": "Registered"},
+            "filedOn": datetime.now(tz=UTC).date().isoformat(),
+        },
+    }
+    return {
+        "context": _echo(body, "on_support"),
+        "message": {"support": {"channels": [registered]}},
+    }
+
+
+def _ticket_no(number: int) -> str:
+    # Fifteen digits, as the PMFBY portal numbers its tickets.
+    return f"{number:015d}"
 
 
 def _load(filename: str) -> dict[str, Any]:

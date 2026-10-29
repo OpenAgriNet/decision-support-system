@@ -157,7 +157,7 @@ a warning, and offers no forms. A `var/schema-packs/` fetched before
 
 Discovery and invocation leave for the OAN network, which a local build does
 not have. `tools/mock_network/` stands in for it — the same synchronous
-`POST /discover` / `POST /select` contract, no auth:
+`POST /discover` / `POST /select` / `POST /support` contract, no auth:
 
 ```bash
 uv run python -m tools.mock_network --port 8078 --reload
@@ -166,14 +166,16 @@ uv run python -m tools.mock_network --port 8078 --reload
 `--reload` restarts the mock when its code changes. It does not watch
 `benchmarks/questions.toml`, so restart the mock after editing that file.
 
-One mock serves weather, mandi and advisory. It answers only the questions in
-`benchmarks/questions.toml`:
+One mock serves weather, mandi, advisory and a PMFBY grievance desk. The
+first three answer only the questions in `benchmarks/questions.toml`; the desk
+takes any form the DSS files at `/support` and answers a fresh ticket number:
 
 | Type | Answers | Matched on |
 |---|---|---|
 | Mandi | 5 markets, 4 commodities | commodity code and market code |
 | Weather | any point | the turn's coordinates (must be sent) |
 | Advisory | 10 written answers | the crop word in `topics` |
+| Grievance | a ticket, status Registered, filed today | nothing; every filing is accepted |
 
 The same question gets the same answer every run. A request it can't match
 gets a `400`, and is counted at `GET /_bench/misses`. `/docs` on port 8078
