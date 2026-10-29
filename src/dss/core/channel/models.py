@@ -58,6 +58,10 @@ class ClarificationText(BaseModel):
     # A filing that did not reach the desk, and one the desk refused.
     not_filed: str
     not_filed_rejected: str
+    # A status check that did not reach the desk, and one the desk refused:
+    # read as no case for that ticket and phone (#206).
+    status_not_checked: str
+    status_not_found: str
     # More choices than this are grouped one level up before they are listed.
     max_choices: int = Field(default=5, gt=0)
 
