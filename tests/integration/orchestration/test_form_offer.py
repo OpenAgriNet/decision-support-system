@@ -149,6 +149,7 @@ def _grievance_classification() -> IntentClassification:
                 agriculture_subjects="PMFBY",
                 subject_categories=SubjectCategory.GRIEVANCE,
                 interaction_type=InteractionType.ACT,
+                scheme_code="PMFBY",
             ),
         ),
         confidence=0.9,
@@ -156,7 +157,7 @@ def _grievance_classification() -> IntentClassification:
 
 
 async def test_the_planner_is_told_which_asks_await_a_form() -> None:
-    """The seam: enrichment puts the scheme on the ask, discovery serves it,
+    """The seam: intent names the scheme on the ask, discovery serves it,
     the registry has the form, and the planner hears about it."""
 
     plan = _FakePlan(_evidence(results=(), awaiting={0: GRIEVANCE_FORM}))
@@ -166,7 +167,7 @@ async def test_the_planner_is_told_which_asks_await_a_form() -> None:
         plan=plan,
         compose=_FakeCompose("Please fill in the form below."),
         forms=_FakeForms({PMFBY_SUPPORT: GRIEVANCE_FORM}),
-        scheme_catalog=FakeSchemeCatalog({"PMFBY": PMFBY}),
+        scheme_catalog=FakeSchemeCatalog(PMFBY),
     )
 
     events = [

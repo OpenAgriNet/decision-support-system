@@ -295,7 +295,6 @@ def _build_text_path(settings: Settings, wiring: _Wiring) -> TextPath:
         prompts=boot.prompts,
         policies=boot.policies,
         scheme_catalog=boot.scheme_catalog,
-        scheme_fuzzy_threshold=settings.scheme_fuzzy_threshold,
         nearest_max_km=settings.nearest_max_km,
         components=wiring.components,
         turns=wiring.turns,

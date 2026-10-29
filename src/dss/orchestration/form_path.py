@@ -18,7 +18,6 @@ from dss.adapters.observability.tracing import (
 from dss.core.channel.localize import localize_answer
 from dss.core.channel.models import ClarificationText, ComposedAnswer
 from dss.core.channel.service import answer_for_unserved_asks
-from dss.core.enrichment.service import scheme_with_code
 from dss.core.forms.models import (
     Filing,
     FormContext,
@@ -38,6 +37,7 @@ from dss.core.forms.service import (
     withhold_values,
 )
 from dss.core.intent.models import Intent, Scheme
+from dss.core.intent.service import scheme_with_code
 from dss.core.moderation.models import ModerationContext, ModerationDecision, Outcome
 from dss.core.moderation.service import moderate
 from dss.core.planner.models import Evidence, Failure, Verdict
@@ -284,7 +284,7 @@ class FormPath:
         a code the catalog does not list is still the code the provider is
         matched on."""
 
-        scheme = scheme_with_code(self._scheme_catalog.aliases(), context.scheme)
+        scheme = scheme_with_code(self._scheme_catalog.schemes(), context.scheme)
         if scheme is None:
             scheme = Scheme(code=context.scheme, name=context.scheme)
         ask = ask_for_form(context, scheme=scheme)

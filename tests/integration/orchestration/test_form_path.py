@@ -167,7 +167,7 @@ def _build(  # noqa: PLR0913
         prompts=FakePromptProvider(),
         policies=policies or [],
         forms=build_form_registry([pack]),
-        scheme_catalog=FakeSchemeCatalog({"PMFBY": _PMFBY}),
+        scheme_catalog=FakeSchemeCatalog(_PMFBY),
         components=components,
         turns=turns,
         telemetry=telemetry or _StageOutcomes(),

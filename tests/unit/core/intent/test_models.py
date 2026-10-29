@@ -315,3 +315,15 @@ def test_non_bcp47_language_raises() -> None:
 
 def test_a_turn_reads_plain_strings_as_language_tags(a_turn) -> None:
     assert a_turn(target_lang="HI-in").target_lang == LanguageTag("hi-IN")
+
+
+def test_the_model_is_never_shown_the_scheme_field() -> None:
+    """Only `classify_intent` sets `scheme`, from the catalog. A model that
+    could fill it would bypass that check."""
+
+    properties = IntentClassification.model_json_schema()["$defs"]["ClassifiedAsk"][
+        "properties"
+    ]
+
+    assert "scheme_code" in properties
+    assert "scheme" not in properties

@@ -232,7 +232,7 @@ curl -s -X POST http://127.0.0.1:8077/v1/turns \
   | python3 -m json.tool --no-ensure-ascii
 ```
 
-The mock serves three capabilities, and which one answers is decided by the
+The mock answers three capabilities, and which one answers is decided by the
 question — intent picks a subject category, discovery resolves that to a
 `@type`, and the mock keys its scenarios off that. So the same running pair
 answers either, with no restart:
@@ -242,6 +242,11 @@ answers either, with no restart:
 | `answered_streaming.json` | `openagrinet:MandiPrice` | potato prices at Mumbai APMC |
 | `answered_weather.json` | `openagrinet:WeatherObservation` | a forecast for Nashik's point, all 8 parameters |
 | `answered_advisory.json` | `openagrinet:KnowledgeAdvisory` | the set's cotton answer (weed control), matched on "cotton" |
+
+A grievance question finds the PMFBY and PM-KISAN desks and comes back with
+the form. The form sent back is filed at `/support`, which answers a fresh
+ticket number; `/select` still refuses a grievance with a 400, because a
+grievance is filed, never selected.
 
 A question intent classifies into a category the mock does not serve comes
 back `no_match` — which is the honest answer, and worth telling apart from a
@@ -995,9 +1000,9 @@ query and the answer they read (a refusal or a question back included). They
 come from `langfuse.observation.input` and `langfuse.observation.output` on the
 `dss.turn` span. Langfuse v4 ignores `langfuse.trace.input`/`output`. A turn
 that crashed has neither. Each `dss.stage.*` span gets the same boxes for its own
-step: the query and the asks for intent, asks before and after for enrichment,
-who was found for discovery, what was served for the planner, and the written
-text for the composer.
+step: the query and the asks (with any scheme code) for intent, who was found
+for discovery, what was served for the planner, and the written text for the
+composer.
 
 **Even with it on, ClickHouse never sees the words.** The ClickHouse branch
 keeps only a named allowlist of attributes (`transform/clickhouse_allowlist` in

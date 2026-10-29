@@ -12,9 +12,11 @@ from dss.core.intent.models import (
     ClassifiedAsk,
     IntentClassification,
     InteractionType,
+    Scheme,
+    SchemeEntry,
     SubjectCategory,
 )
-from dss.core.intent.service import classify_intent
+from dss.core.intent.service import classify_intent, scheme_with_code
 from dss.core.shared.language import LanguageTag
 from dss.core.shared.models import ConversationMessage, TextQuery, UserTurn
 from dss.ports.prompts import PromptIdentifier
@@ -141,3 +143,87 @@ async def test_the_taxonomy_is_supplied_to_the_template() -> None:
         assert category.value in kwargs["categories"]
     for interaction in InteractionType:
         assert interaction.value in kwargs["interactions"]
+
+
+_PMFBY = Scheme(code="PMFBY", name="Pradhan Mantri Fasal Bima Yojana")
+_CATALOG = (SchemeEntry(scheme=_PMFBY, aliases=("fasal bima",)),)
+
+
+def _grievance(scheme_code: str | None) -> IntentClassification:
+    return IntentClassification(
+        asks=(
+            ClassifiedAsk(
+                agriculture_subjects="fasal bima",
+                subject_categories=SubjectCategory.GRIEVANCE,
+                interaction_type=InteractionType.ACT,
+                scheme_code=scheme_code,
+            ),
+        ),
+        confidence=0.9,
+    )
+
+
+async def test_the_catalog_reaches_the_prompt() -> None:
+    prompts = FakePromptProvider()
+
+    await classify_intent(
+        _turn("fasal bima complaint"),
+        _FakeLLM(IntentClassification()),
+        prompts,
+        _CATALOG,
+    )
+
+    [(_, _, kwargs)] = prompts.calls
+    assert kwargs["schemes"] == _CATALOG
+
+
+async def test_a_listed_code_puts_the_catalogs_scheme_on_the_ask() -> None:
+    """The subject becomes the official name, so the planner and the composer
+    use it rather than the farmer's shorthand."""
+
+    classification = await classify_intent(
+        _turn("fasal bima complaint"),
+        _FakeLLM(_grievance("PMFBY")),
+        FakePromptProvider(),
+        _CATALOG,
+    )
+
+    [ask] = classification.asks
+    assert ask.scheme == _PMFBY
+    assert ask.agriculture_subjects == "Pradhan Mantri Fasal Bima Yojana"
+    assert ask.subject_categories is SubjectCategory.GRIEVANCE
+
+
+async def test_a_code_the_catalog_does_not_hold_is_dropped() -> None:
+    """The model may invent a code. It never becomes a scheme, and the
+    farmer's words are kept."""
+
+    classification = await classify_intent(
+        _turn("fasal bima complaint"),
+        _FakeLLM(_grievance("PM-KISAN")),
+        FakePromptProvider(),
+        _CATALOG,
+    )
+
+    [ask] = classification.asks
+    assert ask.scheme is None
+    assert ask.scheme_code is None
+    assert ask.agriculture_subjects == "fasal bima"
+
+
+async def test_with_no_catalog_no_ask_gets_a_scheme() -> None:
+    classification = await classify_intent(
+        _turn("fasal bima complaint"),
+        _FakeLLM(_grievance("PMFBY")),
+        FakePromptProvider(),
+    )
+
+    assert classification.asks[0].scheme is None
+
+
+def test_scheme_with_code_reads_the_catalog_by_code() -> None:
+    pmfby = Scheme(code="PMFBY", name="Pradhan Mantri Fasal Bima Yojana")
+    schemes = (SchemeEntry(scheme=pmfby, aliases=("fasal bima",)),)
+
+    assert scheme_with_code(schemes, "PMFBY") == pmfby
+    assert scheme_with_code(schemes, "PM-KISAN") is None

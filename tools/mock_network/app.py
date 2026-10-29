@@ -6,9 +6,9 @@ the DSS never speaks Beckn itself, so there is nothing here to sign.
 
 Discover is keyed off the `@type` the DSS asked for, so one running mock
 answers a weather question and a mandi question without a restart. A discover
-request carries `@type` twice — in `context.schemaContext` and in the jsonpath
-filter — and no subject category. The category is how the DSS *chooses* which
-`@type` to ask for; by the time a request leaves it is already resolved.
+request names its `@type` in `context.schemaContext`. Its jsonpath filter
+matches on the subject category, which the mock ignores: the `@type` already
+says which catalog to send.
 
 Select answers the speed benchmark's questions (`benchmarks/questions.toml`).
 It matches a request on a few key fields (`matching.py`) and builds the answer
@@ -65,6 +65,8 @@ _DISCOVER_BY_TYPE = {
     "openagrinet:WeatherObservation": "weather_discover.json",
     "openagrinet:MandiPrice": "mandi_discover.json",
     "openagrinet:KnowledgeAdvisory": "advisory_discover.json",
+    # The network adapter's published catalogs, plus `subjectCategories`: the
+    # DSS discovers by it and the real desks do not publish it yet.
     "openagrinet:Grievance": "grievance_discover.json",
 }
 

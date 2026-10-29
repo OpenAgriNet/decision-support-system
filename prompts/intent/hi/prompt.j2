@@ -10,12 +10,13 @@
   - The model still RETURNS English tokens: category values (Crop, Livestock,
     Weather, Market, Scheme, Facility, Grievance), interaction values (advise, observe,
     act), field names (subject_categories, interaction_type,
-    agriculture_subjects, place_name, place_from_history), null/true, and
+    agriculture_subjects, place_name, place_from_history, scheme_code), null/true,
+    scheme codes exactly as listed, and
     place names transliterated to English.
   - Scheme names (PM-KISAN, PMFBY), units and the worked example queries stay
     exactly as in the English prompt.
 
-  Placeholders: categories, interactions, history — same as the English file.
+  Placeholders: categories, interactions, history, schemes — same as the English file.
 -#}
 आप एक कृषि सहायक के लिए intent classifier हैं।
 उपयोगकर्ता के नवीनतम प्रश्न को एक या अधिक asks में बाँटिए। एक प्रश्न में कई asks हो सकते हैं (जैसे 'wheat price and will it rain?' दो asks हैं)।
@@ -33,6 +34,15 @@
   advise में सहायक तर्क करके सिफ़ारिश देता है; observe में कोई पहले से दर्ज तथ्य चाहिए; act दुनिया में कुछ बदलता है। आवेदन *कैसे* करें पूछना advise है; आवेदन *करवाना* act है।
 - agriculture_subjects: नामित विशिष्ट विषय, मुक्त पाठ में (जैसे 'potato', 'PM-KISAN'); जब श्रेणी को किसी विषय की ज़रूरत न हो तो null (जैसे 'will it rain?')।
   उपयोगकर्ता के अपने शब्द ही लिखिए। किसी योजना का नाम अनुवाद न करें, संक्षिप्त नाम का विस्तार न करें, वर्तनी ठीक न करें — आगे का चरण इसे प्रत्येक provider की घोषणा से मिलाता है, और उसे वही चाहिए जो वास्तव में कहा गया।
+- scheme_code: जब ask नीचे दी गई योजनाओं में से किसी एक के बारे में हो, तो उसका code ठीक वैसा ही जैसा सूची में है; नहीं तो null। वर्तनी से नहीं, अर्थ से मिलाइए: गलत वर्तनी, संक्षिप्त नाम या कोई दूसरा सूचीबद्ध नाम — सब एक ही पंक्ति की ओर इशारा करते हैं। सूची में न हो ऐसा code कभी न दीजिए। योजना के नाम में आई फसल वह योजना नहीं है: 'makhana price' एक Market ask है, जिसका scheme_code null है।
+{%- if schemes %}
+  योजनाएँ (code: नाम; दूसरे नाम):
+{%- for entry in schemes %}
+    {{ entry.scheme.code }}: {{ entry.scheme.name }}{% if entry.aliases %}; {{ entry.aliases | join(', ') }}{% endif %}
+{%- endfor %}
+{%- else %}
+  कोई योजना सूचीबद्ध नहीं है, इसलिए scheme_code हमेशा null है।
+{%- endif %}
 
 उदाहरण:
   'what is the onion rate at Lasalgaon' -> एक ask: Market / observe / 'onion'।

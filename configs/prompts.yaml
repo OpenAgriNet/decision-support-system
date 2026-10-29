@@ -30,6 +30,7 @@ intent:
     - categories
     - interactions
     - history
+    - schemes
   language_prompts:
     en:
       system_prompt: prompts/intent/en/prompt.j2

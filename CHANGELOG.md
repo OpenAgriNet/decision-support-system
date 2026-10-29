@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Changed
+- The intent model now names the scheme an ask is about. It is shown the
+  scheme catalog and returns each ask's scheme code; a code the catalog does
+  not hold is dropped. The separate enrichment step after intent, its trace
+  stage and `DSS_SCHEME_FUZZY_THRESHOLD` are removed. The model's category is
+  no longer overridden by an alias match (#206, ADR-0021)
+- A starting scheme catalog ships as `configs/schemes.csv`. Docker compose
+  and `run-local.sh` load it unless `DSS_SCHEMES_CONFIG_PATH` says otherwise
+  (#206)
+
 ### Added
 - The DSS reads the forms a farmer will fill from the network's API schema
   packs, once at boot. Today that is the PMFBY grievance: filing one and
@@ -20,6 +30,9 @@
   catalog packs. API and catalog packs share one folder; each pack's
   `profile.json` says which it is. A `var/schema-packs/` fetched earlier has
   no `Grievance`, so it offers no forms: delete it and fetch again (#205)
+- A grievance finds its scheme in the farmer's words even when the classifier
+  names no subject, so "I want to file a PMFBY grievance" is offered the PMFBY
+  form (#205)
 
 ### Added
 - Provider rankings live in the network registry, never in the DSS. Set

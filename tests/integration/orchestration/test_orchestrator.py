@@ -286,7 +286,6 @@ def _build(
         prompts=FakePromptProvider(),
         policies=list(policies),
         scheme_catalog=scheme_catalog or FakeSchemeCatalog(),
-        scheme_fuzzy_threshold=None,
         nearest_max_km=50.0,
         components=Components(
             redact=redact,

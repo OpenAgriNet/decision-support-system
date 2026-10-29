@@ -1,7 +1,7 @@
 """Tier 2 — the CSV scheme catalog against a fixture file on disk.
 
-No network. Asserts the adapter's contract: the normalized alias index it
-builds, and that a broken file fails loudly and names what is wrong.
+No network. Asserts the adapter's contract: the rows it hands the intent
+model, and that a broken file fails loudly and names what is wrong.
 """
 
 from __future__ import annotations
@@ -25,41 +25,37 @@ def _write(tmp_path: Path, text: str) -> Path:
     return path
 
 
-def test_indexes_every_alias_normalized() -> None:
-    aliases = load_scheme_catalog(FIXTURES / "schemes.csv").aliases()
+def test_carries_the_scheme_code_through_verbatim() -> None:
+    """The code is what a scheme pack selects its form by, so case is kept."""
 
-    assert aliases["makhana scheme"].code == "makhana"
-    assert aliases["horticulture makhana"].code == "makhana"
-    # Punctuation-insensitive: three spellings of one acronym, one key.
-    assert aliases["pm ddky"].code == "pm-ddky"
-    assert aliases["dhan dhaanya"].code == "pm-ddky"
+    schemes = load_scheme_catalog(FIXTURES / "schemes.csv").schemes()
 
-
-def test_indexes_the_scheme_name_itself() -> None:
-    """The official name is matchable even when nobody listed it as an alias."""
-
-    aliases = load_scheme_catalog(FIXTURES / "schemes.csv").aliases()
-
-    assert aliases["micro irrigation fund"].name == "Micro Irrigation Fund"
+    assert schemes[-1].scheme.code == "PMFBY"
+    assert schemes[-1].scheme.name == "Pradhan Mantri Fasal Bima Yojana"
 
 
-def test_carries_the_scheme_code_through() -> None:
-    aliases = load_scheme_catalog(FIXTURES / "schemes.csv").aliases()
+def test_lists_every_scheme_with_its_other_names_once() -> None:
+    """What the intent model is shown: file order, and neither the official
+    name nor a mere case variant of it repeated as an alias."""
 
-    assert aliases["pkvy"] == aliases["organic farming scheme"]
-    assert aliases["pkvy"].code == "pkvy"
+    schemes = load_scheme_catalog(FIXTURES / "schemes.csv").schemes()
+
+    assert [entry.scheme.code for entry in schemes] == [
+        "makhana",
+        "pkvy",
+        "mif",
+        "pm-ddky",
+        "PMFBY",
+    ]
+    pkvy = schemes[1]
+    assert pkvy.aliases == ("PKVY", "organic farming scheme")
 
 
-def test_no_bare_commodity_alias_in_the_fixture() -> None:
-    """The correctness of the category override (#36) rests on the catalog
-    holding no bare commodity words. The source document shipped `makhana`
-    and `foxnut` as aliases; both are wrong and stay out.
-    """
+def test_punctuation_variants_of_one_alias_are_shown_once() -> None:
+    schemes = load_scheme_catalog(FIXTURES / "schemes.csv").schemes()
 
-    aliases = load_scheme_catalog(FIXTURES / "schemes.csv").aliases()
-
-    assert "makhana" not in aliases
-    assert "foxnut" not in aliases
+    pm_ddky = schemes[3]
+    assert pm_ddky.aliases == ("PM-DDKY", "dhan-dhaanya", "dhan dhaanya krishi yojana")
 
 
 def test_unset_path_yields_an_empty_catalog_and_warns(
@@ -72,7 +68,7 @@ def test_unset_path_yields_an_empty_catalog_and_warns(
     with caplog.at_level(logging.WARNING):
         catalog = load_scheme_catalog(None)
 
-    assert catalog.aliases() == {}
+    assert catalog.schemes() == ()
     assert "DSS_SCHEMES_CONFIG_PATH" in caplog.text
 
 
@@ -107,9 +103,8 @@ def test_blank_scheme_name_names_the_row(tmp_path: Path) -> None:
 
 
 def test_an_alias_shared_by_two_schemes_raises(tmp_path: Path) -> None:
-    """Not the same judgement call as a commodity word: `longest span wins`
-    cannot choose between two schemes claiming one alias, so the catalog is
-    ambiguous and unusable rather than merely questionable."""
+    """Two schemes claiming one alias leave no right answer for which the
+    farmer meant, so the catalog is refused rather than shown to the model."""
 
     path = _write(
         tmp_path,
@@ -130,6 +125,6 @@ def test_empty_and_whitespace_aliases_are_skipped(tmp_path: Path) -> None:
         "scheme_code,scheme_name,scheme_aliases\nmif,Micro Irrigation Fund,MIF||  |\n",
     )
 
-    aliases = load_scheme_catalog(path).aliases()
+    (entry,) = load_scheme_catalog(path).schemes()
 
-    assert set(aliases) == {"mif", "micro irrigation fund"}
+    assert entry.aliases == ("MIF",)

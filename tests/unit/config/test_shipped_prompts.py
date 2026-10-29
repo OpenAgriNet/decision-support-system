@@ -21,7 +21,12 @@ import pytest
 
 from dss.config.prompt_service import PromptService, build_prompt_service
 from dss.core.forms.models import FormContext, FormReference
-from dss.core.intent.models import InteractionType, SubjectCategory
+from dss.core.intent.models import (
+    InteractionType,
+    Scheme,
+    SchemeEntry,
+    SubjectCategory,
+)
 from dss.core.planner.models import Identity
 from dss.core.planner.prompt import answers_section, asks_section, guidance_section
 from dss.core.shared.language import ENGLISH, LanguageTag
@@ -35,7 +40,10 @@ def _service() -> PromptService:
     return build_prompt_service(_REPO_ROOT / "configs" / "prompts.yaml")
 
 
-def _intent_prompt(history: tuple[ConversationMessage, ...] = ()) -> str:
+def _intent_prompt(
+    history: tuple[ConversationMessage, ...] = (),
+    schemes: tuple[SchemeEntry, ...] = (),
+) -> str:
     return _service().get_prompt(
         PromptIdentifier.INTENT,
         lang=LanguageTag("en"),
@@ -43,6 +51,7 @@ def _intent_prompt(history: tuple[ConversationMessage, ...] = ()) -> str:
             "categories": ", ".join(c.value for c in SubjectCategory),
             "interactions": ", ".join(i.value for i in InteractionType),
             "history": history,
+            "schemes": schemes,
         },
     )
 
@@ -115,6 +124,7 @@ def _history_placeholders(identifier: PromptIdentifier) -> dict:
         return {
             "categories": ", ".join(c.value for c in SubjectCategory),
             "interactions": ", ".join(i.value for i in InteractionType),
+            "schemes": (),
         }
     return {"policies": ()}
 
@@ -147,6 +157,24 @@ def test_a_form_in_history_shows_only_as_its_fixed_line(
 
     assert "user: a form was submitted" in prompt
     assert "offer-1" not in prompt
+def test_intent_prompt_lists_each_scheme_with_its_code() -> None:
+    """The model returns a code it read here, so the code must be shown as
+    the catalog holds it, beside every name a farmer may use."""
+
+    prompt = _intent_prompt(
+        schemes=(
+            SchemeEntry(
+                scheme=Scheme(code="PMFBY", name="Pradhan Mantri Fasal Bima Yojana"),
+                aliases=("fasal bima",),
+            ),
+        )
+    )
+
+    assert "PMFBY: Pradhan Mantri Fasal Bima Yojana; fasal bima" in prompt
+
+
+def test_intent_prompt_says_no_scheme_applies_without_a_catalog() -> None:
+    assert "scheme_code is always null" in _intent_prompt()
 
 
 def test_intent_prompt_renders_the_history() -> None:
@@ -316,6 +344,7 @@ def test_intent_hindi_demo_keeps_the_output_contract_in_english() -> None:
             "categories": ", ".join(c.value for c in SubjectCategory),
             "interactions": ", ".join(i.value for i in InteractionType),
             "history": (),
+            "schemes": (),
         },
     )
 

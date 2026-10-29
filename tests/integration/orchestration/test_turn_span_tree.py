@@ -1,7 +1,7 @@
 """Tier 3 — the stage spans nest correctly across a whole turn.
 
 Each piece is unit-tested on its own. What only a real turn shows is the
-parenting: intent, enrichment and discovery run in one anyio task, moderation
+parenting: intent, location and discovery run in one anyio task, moderation
 in a sibling task, and both are started from a task group inside `run_turn`.
 Anyio copies the OpenTelemetry context into each child task, so the two
 branches should both land under `dss.turn` — but that is a property of how the
@@ -119,7 +119,6 @@ async def test_every_stage_hangs_off_the_turn(spans) -> None:
     assert finished.keys() >= {
         "dss.stage.redaction",
         "dss.stage.intent",
-        "dss.stage.enrichment",
         "dss.stage.discovery",
         "dss.stage.moderation",
         "dss.stage.planner",

@@ -89,7 +89,6 @@ def test_the_orchestrator_satisfies_the_port(a_turn, a_context):
         prompts=FakePromptProvider(),
         policies=[],
         scheme_catalog=FakeSchemeCatalog(),
-        scheme_fuzzy_threshold=None,
         nearest_max_km=50.0,
         components=Components(
             redact=pass_through,

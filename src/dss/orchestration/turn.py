@@ -4,18 +4,16 @@ objects and returns plain objects.
 
 Order is code, not config. What this function does *is* the sequence.
 
-Five components so far: intent, place resolution, scheme enrichment,
-moderation, provider discovery. ``classify_intent`` returns a
-``IntentClassification`` — words only, no geometry — and place resolution
-(``core.location.resolve_places``) is what turns that into the domain
-``Intent``, filling each ask's ``place``. Enrichment sits after that and
-before discovery — it needs the classified asks, and discovery routes on what
-it leaves behind. Intent and moderation are independent — moderation judges
-harm on the raw query, intent classifies capability need, and neither
-consumes the other's output — so they run concurrently (ADR-0003) and the
-turn's latency is the slower of the two rather than their sum. Discovery
-needs ``Intent.asks``, so it chains off intent, through location resolution
-and enrichment.
+Four components so far: intent, place resolution, moderation, provider
+discovery. ``classify_intent`` returns a ``IntentClassification`` — words
+only, no geometry, plus the scheme each ask names from the catalog
+(ADR-0021) — and place resolution (``core.location.resolve_places``) is what
+turns that into the domain ``Intent``, filling each ask's ``place``. Intent
+and moderation are independent — moderation judges harm on the raw query,
+intent classifies capability need, and neither consumes the other's output —
+so they run concurrently (ADR-0003) and the turn's latency is the slower of
+the two rather than their sum. Discovery
+needs ``Intent.asks``, so it chains off intent, through location resolution.
 
 Still to come, in order: the planner agent (returns ``Evidence``), then the
 composer (turns ``Evidence`` into text). So ``TurnResult`` is a staging shape
@@ -40,7 +38,6 @@ from dss.adapters.observability.tracing import (
     set_current_span_attributes,
     set_current_span_content,
 )
-from dss.core.enrichment.service import resolve_scheme_subjects
 from dss.core.intent.models import (
     AmbiguousPlace,
     Intent,
@@ -60,7 +57,7 @@ from dss.core.policy.models import Policy
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.shared.models import TextQuery, UserTurn
 from dss.observability.stages import Stage
-from dss.observability.trace_log import log_event, trace_component
+from dss.observability.trace_log import trace_component
 from dss.orchestration.discovery import DiscoverProviders
 from dss.orchestration.stage_content import asks_text, discovery_text
 from dss.ports.area_lookup import AreaLookup
@@ -148,42 +145,6 @@ def moderation_attributes(decision: ModerationDecision) -> dict[str, str]:
     return attributes
 
 
-def _enrich(
-    intent: Intent,
-    turn: UserTurn[TextQuery],
-    catalog: SchemeCatalog | None,
-    fuzzy_threshold: float | None,
-) -> Intent:
-    """Resolve any scheme the turn names to its official name.
-
-    Every resolution is logged because the rewrite is otherwise invisible: the
-    ask reaching discovery no longer holds the farmer's words. Only
-    catalog-authored text is logged, so nothing here is PII. ``None`` is a
-    real deployment state — no catalog mounted, farmer's words kept.
-    """
-
-    if catalog is None:
-        return intent
-
-    resolution = resolve_scheme_subjects(
-        intent,
-        turn.input.text,
-        catalog.aliases(),
-        fuzzy_threshold=fuzzy_threshold,
-    )
-    for match in resolution.matches:
-        log_event(
-            "enrichment",
-            turn.transaction_id,
-            event="scheme_resolved",
-            alias=match.matched_alias,
-            scheme_code=match.scheme.code,
-            # A wrong fuzzy hit is the failure this can produce.
-            fuzzy=match.fuzzy,
-        )
-    return resolution.intent
-
-
 class TurnResult(BaseModel):
     """Every finding for a turn. Moderation is the gate: on any non-``PROCEED``
     outcome the ``intent`` is blanked to an empty ``Intent()`` — a turn that will
@@ -216,7 +177,6 @@ async def run_turn(  # noqa: PLR0913
     discover_providers: DiscoverProviders,
     area_lookup: AreaLookup,
     scheme_catalog: SchemeCatalog | None = None,
-    scheme_fuzzy_threshold: float | None = None,
     nearest_max_km: float = DEFAULT_NEAREST_MAX_KM,
     now: datetime | None = None,
 ) -> TurnResult:
@@ -243,7 +203,12 @@ async def run_turn(  # noqa: PLR0913
     async def classify_then_discover() -> None:
         nonlocal intent, discovery
         with trace_component(Stage.INTENT, turn.transaction_id):
-            classification = await classify_intent(turn, intent_llm, prompts)
+            classification = await classify_intent(
+                turn,
+                intent_llm,
+                prompts,
+                scheme_catalog.schemes() if scheme_catalog is not None else (),
+            )
             set_current_span_content(
                 input=turn.input.text, output=asks_text(classification.asks)
             )
@@ -255,10 +220,6 @@ async def run_turn(  # noqa: PLR0913
                 nearest_max_km=nearest_max_km,
             )
             set_current_span_attributes(**place_attributes(classification, intent))
-        with trace_component(Stage.ENRICHMENT, turn.transaction_id):
-            before = asks_text(intent.asks)
-            intent = _enrich(intent, turn, scheme_catalog, scheme_fuzzy_threshold)
-            set_current_span_content(input=before, output=asks_text(intent.asks))
         with trace_component(Stage.DISCOVERY, turn.transaction_id):
             discovery = await discover_providers(
                 intent, turn, now=now or datetime.now(UTC)

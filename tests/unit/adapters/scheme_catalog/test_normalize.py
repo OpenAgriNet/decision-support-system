@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dss.core.enrichment.normalize import alias_key, normalize_tokens
+from dss.adapters.scheme_catalog.normalize import alias_key, normalize_tokens
 
 
 def test_casefolds_and_splits_on_whitespace() -> None:

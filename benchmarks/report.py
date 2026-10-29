@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from collections import Counter, defaultdict
+from collections.abc import Iterable
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
@@ -105,8 +106,10 @@ def render_load_text(report: dict) -> str:
 
     run = report["run"]
     lines = [
-        f"{'N':>4}  {'turns/min':>9}  {'first piece p50/p95/max (s)':>28}"
-        f"  {'total p50/p95/max (s)':>22}  missed  ended",
+        (
+            f"{'N':>4}  {'turns/min':>9}  {'first piece p50/p95/max (s)':>28}"
+            f"  {'total p50/p95/max (s)':>22}  missed  ended"
+        ),
     ]
     for step in report["steps"]:
         mark = "*" if step["truncated"] else " "
@@ -172,7 +175,6 @@ def save_json(report: dict, directory: Path, *, kind: str = "speed") -> Path:
 _STAGE_ROWS = (
     ("intent", "  intent"),
     ("moderation", "  moderation"),
-    ("enrichment", "  enrichment"),
     ("discovery", "  discovery"),
     ("discover", "    ↳ network /discover"),
     ("planner", "  planner"),
@@ -213,8 +215,10 @@ def render_text(report: dict) -> str:
         ]
     lines += [
         "",
-        f"turns: {turns['sent']} sent, {turns['missed']} missed, "
-        f"{turns['no_trace']} without a trace, {turns['flat_traces']} flat",
+        (
+            f"turns: {turns['sent']} sent, {turns['missed']} missed, "
+            f"{turns['no_trace']} without a trace, {turns['flat_traces']} flat"
+        ),
         "ended: " + ", ".join(f"{s} {n}" for s, n in turns["by_status"].items()),
         f"models: {_models_line(run['models'])}",
         f"commit: {_short_commit(run['commit'])}",
@@ -255,7 +259,7 @@ def _machine_line(machine: dict) -> str:
 
 
 def _row(label: str, summary: dict, number: str) -> str:
-    def cell(value) -> str:
+    def cell(value: float | None) -> str:
         return f"{'-' if value is None else number.format(value):>9}"
 
     return (
@@ -264,5 +268,5 @@ def _row(label: str, summary: dict, number: str) -> str:
     )
 
 
-def _summary(values) -> dict:
+def _summary(values: Iterable[float | None]) -> dict:
     return asdict(summarise([v for v in values if v is not None]))

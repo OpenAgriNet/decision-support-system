@@ -52,7 +52,7 @@ REDACTION_FAILED = "dss.redaction.failed"
 
 # Every label every instrument is allowed to carry. Read by the guard test, and
 # the place to look before adding one. `model` is absent from the stage
-# instruments' values for enrichment and discovery, which run no model — an
+# instruments' values for location and discovery, which run no model — an
 # absent label reads as "not applicable", where a "none" value would read as a
 # model name in a dashboard's dropdown.
 LABEL_KEYS: dict[str, frozenset[str]] = {

@@ -2,19 +2,19 @@
   "context": {
     "action": "on_discover",
     "version": "2.0.0",
-    "transactionId": "3c67dc05-6ba2-4ab4-bb7c-377e16a5ab5b",
-    "messageId": "74ad565e-5abf-4706-8552-0e7be61c0b00",
-    "timestamp": "2026-10-29T06:58:18Z"
+    "networkId": "oan-mock"
   },
   "message": {
     "catalogs": [
       {
-        "descriptor": {
-          "code": "GRIEVANCE_PMFBY",
-          "name": "PMFBY grievance desk"
-        },
-        "id": "catalog:grievance:pmfby",
+        "id": "cat-pmfby-grievance",
         "isActive": true,
+        "descriptor": {
+          "code": "PMFBY-GRIEVANCE",
+          "name": "PMFBY Grievance Desk",
+          "shortDesc": "File and track crop-insurance grievances",
+          "longDesc": "Lodge a grievance against a PMFBY enrolment and read the case back. No challenge: the portal's grievance service asks for none."
+        },
         "provider": {
           "id": "pmfby",
           "descriptor": {
@@ -24,16 +24,18 @@
         },
         "resources": [
           {
-            "id": "resource:grievance:pmfby:desk",
+            "id": "res:pmfby:grievance",
             "descriptor": {
-              "code": "GRIEVANCE_PMFBY_DESK",
-              "name": "PMFBY grievance desk",
-              "longDesc": "Files a grievance against a PMFBY enrolment and reads a filed case."
+              "code": "PMFBY-GRV",
+              "name": "PMFBY grievance filing and status"
             },
             "resourceAttributes": {
-              "@context": "https://openagrinet.github.io/network-specs/schema/Grievance/v0.1/context.jsonld",
+              "@context": "https://openagrinet.github.io/network-specs/api-schemas/Grievance/v0.1/context.jsonld",
               "@type": "openagrinet:Grievance",
               "informationMode": "OnDemand",
+              "subjectCategories": [
+                "Grievance"
+              ],
               "scheme": {
                 "code": "PMFBY",
                 "name": "Pradhan Mantri Fasal Bima Yojana"
@@ -43,35 +45,135 @@
                   {
                     "code": "3",
                     "name": "Enrollment / Portal Issues",
-                    "help": "Something about your enrolment, or about the portal itself, is not working."
+                    "help": "The only category this desk sends. PMFBY publishes no category list, so every grievance is filed under this one."
                   }
                 ],
                 "subCategories": [
                   {
                     "code": "10",
                     "name": "Login",
-                    "help": "You cannot sign in to the portal to see your enrolment."
+                    "help": "The only sub-category this desk sends, paired with category 3."
+                  }
+                ]
+              }
+            }
+          }
+        ],
+        "offers": [
+          {
+            "id": "off:pmfby:grievance",
+            "resourceIds": [
+              "res:pmfby:grievance"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "cat-pmkisan-grievance",
+        "isActive": true,
+        "descriptor": {
+          "code": "PMKISAN-GRIEVANCE",
+          "name": "PM-KISAN Grievance Desk",
+          "shortDesc": "File and track PM-KISAN grievances",
+          "longDesc": "Lodge a grievance against a PM-KISAN registration and read the case back. An OTP is required to file and to read."
+        },
+        "provider": {
+          "id": "pmkisan",
+          "descriptor": {
+            "code": "PMKISAN",
+            "name": "PM-KISAN Portal"
+          }
+        },
+        "resources": [
+          {
+            "id": "res:pmkisan:grievance",
+            "descriptor": {
+              "code": "PMKISAN-GRV",
+              "name": "PM-KISAN grievance filing and status"
+            },
+            "resourceAttributes": {
+              "@context": "https://openagrinet.github.io/network-specs/api-schemas/Grievance/v0.1/context.jsonld",
+              "@type": "openagrinet:Grievance",
+              "informationMode": "OnDemand",
+              "subjectCategories": [
+                "Grievance"
+              ],
+              "scheme": {
+                "code": "PM-KISAN",
+                "name": "Pradhan Mantri Kisan Samman Nidhi"
+              },
+              "challenge": {
+                "methods": [
+                  {
+                    "method": "SMS_OTP",
+                    "length": 4,
+                    "valueType": "NUMERIC"
                   }
                 ]
               },
-              "actions": [
-                {
-                  "action": "support",
-                  "description": "File a new grievance. Needs the enrolment number, the applicant's mobile, the crop year, the season and a description of the problem. Returns case.ticketNo, which status requires. Needs no OTP, so it can be called without init.",
-                  "schema": "https://openagrinet.github.io/network-specs/schema/Grievance/v0.1/attributes.yaml#/components/schemas/PMFBYSupport",
-                  "attributesAt": "$.message.support.channels[0]"
-                },
-                {
-                  "action": "status",
-                  "description": "Read where a filed grievance stands: its status code, the portal's reply and the crop it concerns. Needs case.ticketNo from an earlier support call, plus the applicant's mobile. Cases cannot be listed by enrolment number, so support must come first.",
-                  "schema": "https://openagrinet.github.io/network-specs/schema/Grievance/v0.1/attributes.yaml#/components/schemas/PMFBYStatus",
-                  "attributesAt": "$.message.contract.commitments[0].commitmentAttributes"
-                }
-              ],
-              "languages": [
-                "en"
-              ]
+              "grievanceOptions": {
+                "categories": [
+                  {
+                    "code": "G001",
+                    "name": "Account number not correct",
+                    "help": "The bank account held against your registration is wrong, so money cannot reach you."
+                  },
+                  {
+                    "code": "G002",
+                    "name": "Online application pending for approval",
+                    "help": "You applied online and the application has not yet been approved."
+                  },
+                  {
+                    "code": "G003",
+                    "name": "Installment not received",
+                    "help": "Your registration is approved but an instalment has not reached your account."
+                  },
+                  {
+                    "code": "G004",
+                    "name": "Transaction failed",
+                    "help": "A payment was attempted and the transfer did not go through."
+                  },
+                  {
+                    "code": "G005",
+                    "name": "Problem in Aadhaar correction",
+                    "help": "A correction to your Aadhaar details has not gone through."
+                  },
+                  {
+                    "code": "G006",
+                    "name": "Gender not correct",
+                    "help": "The gender recorded against your registration is wrong."
+                  },
+                  {
+                    "code": "G007",
+                    "name": "Payment related",
+                    "help": "Any other problem with a payment that the options above do not cover."
+                  },
+                  {
+                    "code": "G008",
+                    "name": "Problem in OTP-based eKYC",
+                    "help": "eKYC by OTP is failing."
+                  },
+                  {
+                    "code": "G009",
+                    "name": "Problem in biometric-based eKYC",
+                    "help": "eKYC by fingerprint or iris is failing."
+                  },
+                  {
+                    "code": "G010",
+                    "name": "Problem in facial-based eKYC",
+                    "help": "eKYC by face scan is failing."
+                  }
+                ]
+              }
             }
+          }
+        ],
+        "offers": [
+          {
+            "id": "off:pmkisan:grievance",
+            "resourceIds": [
+              "res:pmkisan:grievance"
+            ]
           }
         ]
       }

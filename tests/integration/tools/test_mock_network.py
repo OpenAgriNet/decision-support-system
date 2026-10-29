@@ -26,7 +26,11 @@ from dss.adapters.invocation.client import HttpCapabilityInvocation
 from dss.adapters.schema_packs.filesystem import FilesystemSchemaPackSource
 from dss.core.intent.models import PlaceSource, ResolvedPlace
 from dss.core.planner.resource_attributes import build_resource_attributes
-from dss.core.provider_discovery.models import ProviderCapability, ProviderQuery
+from dss.core.provider_discovery.models import (
+    DiscoveryResult,
+    ProviderCapability,
+    ProviderQuery,
+)
 from dss.core.provider_discovery.schema_pack_cache import SchemaPackCache
 from dss.core.shared.models import Geometry
 from dss.ports.invocation import SelectFailedError
@@ -40,6 +44,7 @@ from tools.mock_network.generators import (
 _WEATHER = "openagrinet:WeatherObservation"
 _MANDI = "openagrinet:MandiPrice"
 _ADVISORY = "openagrinet:KnowledgeAdvisory"
+_GRIEVANCE = "openagrinet:Grievance"
 
 
 def _benchmark_questions() -> list[dict]:
@@ -143,12 +148,13 @@ def _planner_attributes(capability: ProviderCapability, model_filled: dict) -> d
 def pack_dir(tmp_path: Path) -> Path:
     """A pack directory of the shape `DSS_SCHEMA_PACK_DIR` points at.
 
-    Both packs the mock serves, so one running mock can be asked for either —
-    which is the point of keying scenarios off `@type`.
+    The packs these tests discover, so one running mock can be asked for any
+    of them — which is the point of keying scenarios off `@type`.
     """
 
     _write_pack(tmp_path, "WeatherObservation", "Weather")
     _write_pack(tmp_path, "MandiPrice", "Market")
+    _write_pack(tmp_path, "Grievance", "Grievance")
     return tmp_path
 
 
@@ -177,6 +183,21 @@ async def discovery(pack_dir: Path) -> HttpCapabilityDiscovery:
     )
 
 
+async def _discover(
+    discovery: HttpCapabilityDiscovery, *capabilities: str, subject_category: str
+) -> DiscoveryResult:
+    return await discovery.discover(
+        ProviderQuery(
+            capabilities=capabilities,
+            subject_category=subject_category,
+            languages=("en",),
+            coverage=None,
+        ),
+        ask_indices=(0,),
+        transaction_id="9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44",
+    )
+
+
 async def test_discover_returns_a_capability_the_adapter_maps(
     discovery: HttpCapabilityDiscovery,
 ) -> None:
@@ -187,16 +208,7 @@ async def test_discover_returns_a_capability_the_adapter_maps(
     this asserts the mapped result, not the response body.
     """
 
-    result = await discovery.discover(
-        ProviderQuery(
-            capabilities=(_WEATHER,),
-            subject_category="Weather",
-            languages=("en",),
-            coverage=None,
-        ),
-        ask_indices=(0,),
-        transaction_id="9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44",
-    )
+    result = await _discover(discovery, _WEATHER, subject_category="Weather")
 
     assert result.failures == {0: ()}
     capabilities = result.capabilities[0]
@@ -220,16 +232,7 @@ async def test_one_running_mock_answers_either_capability(
     """
 
     async def provider_for(capability: str) -> str:
-        result = await discovery.discover(
-            ProviderQuery(
-                capabilities=(capability,),
-                subject_category="Weather",
-                languages=("en",),
-                coverage=None,
-            ),
-            ask_indices=(0,),
-            transaction_id="9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44",
-        )
+        result = await _discover(discovery, capability, subject_category="Weather")
         return result.capabilities[0][0].provider_id
 
     assert await provider_for(_WEATHER) == "mausamgram-mock"
@@ -244,16 +247,7 @@ async def test_mandi_discover_advertises_each_benchmark_market(
     is what the mock matches on — so they come from the benchmark's own
     question set, and a question can never ask for a market nobody offers."""
 
-    result = await discovery.discover(
-        ProviderQuery(
-            capabilities=(_MANDI,),
-            subject_category="Market",
-            languages=("en",),
-            coverage=None,
-        ),
-        ask_indices=(0,),
-        transaction_id="9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44",
-    )
+    result = await _discover(discovery, _MANDI, subject_category="Market")
 
     by_market = {c.resource_id: c.advertised for c in result.capabilities[0]}
     assert set(by_market) == {
@@ -276,21 +270,39 @@ async def test_a_query_naming_two_capabilities_gets_both(
     answered for no reason a log would explain.
     """
 
-    result = await discovery.discover(
-        ProviderQuery(
-            capabilities=(_WEATHER, _MANDI),
-            subject_category="Weather",
-            languages=("en",),
-            coverage=None,
-        ),
-        ask_indices=(0,),
-        transaction_id="9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44",
-    )
+    result = await _discover(discovery, _WEATHER, _MANDI, subject_category="Weather")
 
     assert {c.provider_id for c in result.capabilities[0]} == {
         "mausamgram-mock",
         "agmarknet-mock",
     }
+
+
+async def test_grievance_discover_finds_the_pmfby_and_pm_kisan_desks(
+    discovery: HttpCapabilityDiscovery,
+) -> None:
+    result = await _discover(discovery, _GRIEVANCE, subject_category="Grievance")
+
+    desks = {desk.provider_id: desk for desk in result.capabilities[0]}
+    assert set(desks) == {"pmfby", "pmkisan"}
+    assert desks["pmfby"].resource_id == "res:pmfby:grievance"
+    assert desks["pmkisan"].resource_id == "res:pmkisan:grievance"
+    assert all(desk.observed_categories == ("Grievance",) for desk in desks.values())
+
+
+async def test_only_the_pm_kisan_desk_advertises_an_otp_challenge(
+    discovery: HttpCapabilityDiscovery,
+) -> None:
+    """The form flow reads `challenge` to know it must ask for an OTP first."""
+
+    result = await _discover(discovery, _GRIEVANCE, subject_category="Grievance")
+
+    challenged = {
+        desk.provider_id
+        for desk in result.capabilities[0]
+        if "challenge" in desk.advertised
+    }
+    assert challenged == {"pmkisan"}
 
 
 async def test_select_returns_the_values_the_composer_will_quote(
@@ -349,16 +361,7 @@ async def test_mandi_select_answers_one_price_for_the_advertised_market(
     it with the commodity the model picked. The planner echoes the advertised
     market, so the mock's answer is for exactly the market it offered."""
 
-    found = await discovery.discover(
-        ProviderQuery(
-            capabilities=(_MANDI,),
-            subject_category="Market",
-            languages=("en",),
-            coverage=None,
-        ),
-        ask_indices=(0,),
-        transaction_id="txn-mandi",
-    )
+    found = await _discover(discovery, _MANDI, subject_category="Market")
     mumbai = next(
         c
         for c in found.capabilities[0]
@@ -494,15 +497,8 @@ async def test_a_type_the_mock_does_not_serve_finds_nobody(
         client=client, base_url="http://mock.test", schema_pack_cache=cache
     )
 
-    result = await discovery.discover(
-        ProviderQuery(
-            capabilities=("openagrinet:AgricultureResource",),
-            subject_category="Weather",
-            languages=("en",),
-            coverage=None,
-        ),
-        ask_indices=(0,),
-        transaction_id="9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44",
+    result = await _discover(
+        discovery, "openagrinet:AgricultureResource", subject_category="Weather"
     )
 
     assert result.capabilities == {0: ()}

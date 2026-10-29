@@ -10,8 +10,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Mapping, Sequence
 from typing import Any, Literal
 
-from dss.core.enrichment.normalize import alias_key
-from dss.core.intent.models import Scheme
+from dss.core.intent.models import Scheme, SchemeEntry
 from dss.core.planner.models import Skill
 from dss.core.provider_preferences.models import PreferenceBook, capability_key
 from dss.core.shared.errors import ProviderUnavailableError, TranslationError
@@ -21,30 +20,15 @@ from dss.ports.area_lookup import AreaMatch
 from dss.ports.prompts import PromptIdentifier
 
 
-def _scheme_for(alias: str, named: str | Scheme) -> Scheme:
-    """A bare name gets the alias as its code; a `Scheme` keeps its own."""
-
-    if isinstance(named, Scheme):
-        return named
-    return Scheme(code=alias_key(alias), name=named)
-
-
 class FakeSchemeCatalog:
-    """A `SchemeCatalog` over an alias-text → scheme-name mapping.
+    """A `SchemeCatalog` over the schemes given, each with no other names.
+    Default-empty is the unmounted-catalog case."""
 
-    Keys are normalized with the real `alias_key`, so a fake cannot pass a
-    lookup the CSV adapter could never serve. Default-empty is the
-    unmounted-catalog case.
-    """
+    def __init__(self, *schemes: Scheme) -> None:
+        self._schemes = tuple(SchemeEntry(scheme=scheme) for scheme in schemes)
 
-    def __init__(self, schemes: dict[str, str | Scheme] | None = None) -> None:
-        self._aliases = {
-            alias_key(alias): _scheme_for(alias, named)
-            for alias, named in (schemes or {}).items()
-        }
-
-    def aliases(self):
-        return self._aliases
+    def schemes(self):
+        return self._schemes
 
 
 class FakeProviderPreferences:
