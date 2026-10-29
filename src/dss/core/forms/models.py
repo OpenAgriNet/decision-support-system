@@ -122,6 +122,8 @@ class ActionSchema(BaseModel):
 
     context: FormContext
     must_send: tuple[ActionField, ...]
+    # The pack's `x-jsonld`: the `@context` and `@type` every call carries.
+    jsonld: Mapping[str, str] = {}
 
     def form(self) -> FormDefinition:
         """The fields the farmer fills in; the rest come from the schema or
@@ -263,3 +265,12 @@ class FormErrorBlock(OutputBlock):
     context: FormContext
     submission_id: str
     fields: tuple[FieldErrorEntry, ...] = ()
+
+
+class ActionReply(BaseModel):
+    """What the provider sent back for one call: the attributes the pack
+    lists under `comesBack`, concealed like any provider text."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    attributes: Mapping[str, object]

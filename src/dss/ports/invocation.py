@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Protocol
 
+from dss.core.forms.models import ActionReply
 from dss.core.provider_discovery.models import (
     DiscoveredAnswer,
     FailureClass,
@@ -18,8 +19,8 @@ from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.network import NetworkTransactionID
 
 
-class SelectFailedError(Exception):
-    """A ``select`` call did not produce an answer.
+class ProviderCallFailedError(Exception):
+    """A provider call did not produce an answer.
 
     Part of the port, not an adapter detail: the contract is "an answer or
     this", and a caller that wants to keep the turn alive has to be able to
@@ -32,16 +33,50 @@ class SelectFailedError(Exception):
 
     def __init__(
         self,
+        action: str,
+        capability: str,
+        status_code: int,
+        failure_class: FailureClass,
+    ) -> None:
+        super().__init__(f"{action} failed for {capability}: {status_code}")
+        self.capability = capability
+        self.status_code = status_code
+        self.failure_class = failure_class
+        # The provider's own `Retry-After`, when it sent one. Set by the
+        # actions that read it.
+        self.retry_after_seconds: int | None = None
+
+
+class SelectFailedError(ProviderCallFailedError):
+    """``detail`` is the provider's response body, concealed; it reaches the
+    planner's prompt."""
+
+    def __init__(
+        self,
         capability: str,
         status_code: int,
         failure_class: FailureClass,
         detail: str | None,
     ) -> None:
-        super().__init__(f"select failed for {capability}: {status_code} ({detail})")
-        self.capability = capability
-        self.status_code = status_code
-        self.failure_class = failure_class
+        super().__init__("select", capability, status_code, failure_class)
         self.detail = detail
+
+
+class SupportFailedError(ProviderCallFailedError):
+    """No provider text, by design: a failed filing is reported to the
+    farmer in the DSS's own words. ``retry_after_seconds`` is the provider's
+    `Retry-After`, when it sent one."""
+
+    def __init__(
+        self,
+        capability: str,
+        status_code: int,
+        failure_class: FailureClass,
+        *,
+        retry_after_seconds: int | None = None,
+    ) -> None:
+        super().__init__("support", capability, status_code, failure_class)
+        self.retry_after_seconds = retry_after_seconds
 
 
 class CapabilityInvocation(Protocol):
@@ -63,5 +98,21 @@ class CapabilityInvocation(Protocol):
         ``resource_attributes`` holds tags («phone_1»). The adapter swaps in
         the real values only on the wire, and swaps any value the provider
         echoes back to its tag, so neither its logs nor the answers hold one.
+        """
+        ...
+
+    async def support(
+        self,
+        capability: ProviderCapability,
+        attributes: dict,
+        transaction_id: NetworkTransactionID,
+        *,
+        visibility: Visibility = NOTHING_HELD,
+    ) -> ActionReply:
+        """File ``attributes`` with the provider, or raise ``SupportFailedError``.
+
+        ``attributes`` is the whole body the pack's action schema calls for,
+        already built. Retried like ``select``: a slow provider may receive
+        the same filing twice until the pack gives a duplicate key.
         """
         ...

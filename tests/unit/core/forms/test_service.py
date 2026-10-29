@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -26,6 +27,7 @@ from dss.core.forms.models import (
 from dss.core.forms.registry import FormRegistry
 from dss.core.forms.service import (
     WITHHELD,
+    build_action_attributes,
     build_form_registry,
     candidates_for_scheme,
     form_error_block,
@@ -492,3 +494,61 @@ def test_only_the_desks_advertising_the_scheme_are_kept() -> None:
     kept = candidates_for_scheme((kisan, pmfby, unmarked), "PMFBY")
 
     assert kept == (pmfby,)
+
+
+_FILE_GRIEVANCE_EXAMPLE = json.loads(
+    (
+        Path(__file__).parents[3]
+        / "fixtures"
+        / "api_packs"
+        / "pmfby_file_grievance_example.json"
+    ).read_text(encoding="utf-8")
+)
+
+
+def test_the_body_holds_every_must_send_path_from_pack_provider_and_form() -> None:
+    """Compared with the pack's published example, less the `maySend` fields
+    this slice does not send."""
+
+    schema = _schema_for(_PMFBY_SUPPORT)
+    provider = ProviderCapability(
+        provider_id="pmfby",
+        provider_name="PMFBY Grievance Portal",
+        capability="openagrinet:Grievance",
+        resource_id="res:pmfby:grievance",
+    )
+    values = {
+        "enrolmentId": "KA2026KH00123456",
+        "applicantMobile": "9876543210",
+        "cropYear": "2026",
+        "season": "Kharif",
+        "grievance.description": (
+            "Cannot log in to the PMFBY portal to view my Kharif 2026 enrolment."
+        ),
+    }
+
+    body = build_action_attributes(schema, provider, values)
+
+    expected = {
+        key: value
+        for key, value in _FILE_GRIEVANCE_EXAMPLE.items()
+        if key not in ("complaintDate", "receiptSourceId")
+    }
+    expected["grievance"] = {
+        "description": _FILE_GRIEVANCE_EXAMPLE["grievance"]["description"]
+    }
+    expected["scheme"] = {"code": "PMFBY"}
+    assert body == expected
+
+
+def test_a_provider_path_nobody_can_fill_is_refused_at_parse() -> None:
+    """A pack defect must stop the boot, not the farmer's filing."""
+
+    attributes = yaml.safe_load(_GRIEVANCE_YAML)
+    leaf = attributes["components"]["schemas"]["PMFBYSupport"]
+    leaf["x-oan-fields"]["mustSend"].append("provider.descriptor.code")
+    provider = leaf["allOf"][1]["properties"]["provider"]
+    provider["allOf"] = [{"properties": {"descriptor": {"properties": {"code": {}}}}}]
+
+    with pytest.raises(ValueError, match="provider.descriptor.code"):
+        parse_api_pack(_pack(yaml.safe_dump(attributes)))

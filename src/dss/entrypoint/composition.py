@@ -510,10 +510,24 @@ class _UnwiredInvocation:
         *,
         visibility: Visibility = NOTHING_HELD,
     ) -> Never:
-        raise RuntimeError(
-            "provider invocation is not configured — set DSS_INVOCATION_BASE_URL, "
-            "DSS_DISCOVERY_BASE_URL and DSS_SCHEMA_PACK_DIR to call providers"
-        )
+        _refuse_unwired_call()
+
+    async def support(
+        self,
+        capability: ProviderCapability,
+        attributes: dict,
+        transaction_id: NetworkTransactionID,
+        *,
+        visibility: Visibility = NOTHING_HELD,
+    ) -> Never:
+        _refuse_unwired_call()
+
+
+def _refuse_unwired_call() -> Never:
+    raise RuntimeError(
+        "provider invocation is not configured — set DSS_INVOCATION_BASE_URL, "
+        "DSS_DISCOVERY_BASE_URL and DSS_SCHEMA_PACK_DIR to call providers"
+    )
 
 
 async def _discovers_nothing(

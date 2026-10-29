@@ -45,6 +45,7 @@ _CATALOG_ACTION = "catalog/publish"
 _SCHEME_PATH = "scheme.code"
 _PROVIDER_PREFIX = "provider."
 _PII_MARK = "x-oan-pii"
+_JSONLD = "x-jsonld"
 # The DSS cannot run this OTP step yet, so a scheme that needs it is not served.
 _OTP_CHALLENGE_ACTION = "init"
 
@@ -166,11 +167,16 @@ def parse_api_pack(pack: SchemaPackFiles) -> tuple[ActionSchema, ...]:
 def _read_pack(document: dict) -> tuple[ActionSchema, ...]:
     schemas = document["components"]["schemas"]
     category = _find_category_name(schemas)
+    root = schemas[category]
     return tuple(
         schema
-        for action, per_call_name in _served_actions(schemas[category]).items()
+        for action, per_call_name in _served_actions(root).items()
         for schema in _read_action(
-            schemas[per_call_name], action=action, category=category, document=document
+            schemas[per_call_name],
+            action=action,
+            category=category,
+            jsonld=root.get(_JSONLD, {}),
+            document=document,
         )
     )
 
@@ -191,16 +197,18 @@ def _served_actions(root: dict) -> dict[str, str]:
 
 
 def _read_action(
-    per_call: dict, *, action: str, category: str, document: dict
+    per_call: dict, *, action: str, category: str, jsonld: dict, document: dict
 ) -> tuple[ActionSchema, ...]:
     return tuple(
-        _read_leaf(leaf_ref, action=action, category=category, document=document)
+        _read_leaf(
+            leaf_ref, action=action, category=category, jsonld=jsonld, document=document
+        )
         for leaf_ref in per_call["oneOf"]
     )
 
 
 def _read_leaf(
-    leaf_ref: dict, *, action: str, category: str, document: dict
+    leaf_ref: dict, *, action: str, category: str, jsonld: dict, document: dict
 ) -> ActionSchema:
     leaf = _resolve(leaf_ref, document)
     must_send = tuple(
@@ -211,7 +219,7 @@ def _read_leaf(
     context = FormContext(
         scheme=_scheme_of(leaf, document), category=category, action=action
     )
-    return ActionSchema(context=context, must_send=must_send)
+    return ActionSchema(context=context, must_send=must_send, jsonld=jsonld)
 
 
 def _must_send_paths(leaf: dict) -> list[str]:
@@ -244,9 +252,13 @@ def _scheme_of(leaf: dict, document: dict) -> str:
 
 def _read_field(path: str, definition: dict) -> ActionField:
     allowed = _allowed_values(definition)
+    source = _source_of(path, allowed)
+    if source is FieldSource.PROVIDER and path not in _PROVIDER_VALUES:
+        # A pack defect, caught here so it stops the boot, not a filing.
+        raise ValueError(f"{path}: no provider value to fill it from")
     return ActionField(
         path=path,
-        source=_source_of(path, allowed),
+        source=source,
         allowed_values=allowed,
         pattern=_python_pattern(path, definition.get("pattern")),
         min_length=definition.get("minLength"),
@@ -480,6 +492,46 @@ def _error_entry(
         label=label or error.name, min=rules.min_length, max=rules.max_length
     )
     return FieldErrorEntry(name=error.name, label=label, error=message)
+
+
+# What a `provider.*` path is filled from: the chosen provider, as discovery
+# returned it.
+_PROVIDER_VALUES: Mapping[str, Callable[[ProviderCapability], str]] = {
+    "provider.id": lambda provider: provider.provider_id,
+    "provider.descriptor.name": lambda provider: provider.provider_name,
+}
+
+
+def build_action_attributes(
+    schema: ActionSchema, provider: ProviderCapability, values: Mapping[str, str]
+) -> dict:
+    """The body of one call, every `mustSend` path filled by its source: the
+    pack's fixed values, the chosen provider, the farmer's form."""
+
+    body: dict = dict(schema.jsonld)
+    for field in schema.must_send:
+        _set_at(body, field.path, _value_for(field, provider, values))
+    return body
+
+
+def _value_for(
+    field: ActionField, provider: ProviderCapability, values: Mapping[str, str]
+) -> JsonScalar:
+    match field.source:
+        case FieldSource.FIXED:
+            return field.allowed_values[0]
+        case FieldSource.PROVIDER:
+            return _PROVIDER_VALUES[field.path](provider)
+        case FieldSource.FARMER:
+            return values[field.path]
+
+
+def _set_at(body: dict, path: str, value: JsonScalar) -> None:
+    *parents, leaf = path.split(".")
+    node = body
+    for segment in parents:
+        node = node.setdefault(segment, {})
+    node[leaf] = value
 
 
 def candidates_for_scheme(
