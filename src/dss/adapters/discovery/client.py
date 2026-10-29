@@ -22,6 +22,7 @@ from dss.adapters.network_common import (
     extract_validity,
 )
 from dss.adapters.observability.tracing import open_span
+from dss.core.intent.models import SubjectCategory
 from dss.core.provider_discovery.models import (
     DiscoveredAnswer,
     DiscoveryFailure,
@@ -102,7 +103,6 @@ class SchemaContextSource(Protocol):
 
 _ON_DEMAND = "OnDemand"
 _DIRECT = "Direct"
-
 
 # Envelope-level fields every resource carries, whatever its pack. What is left
 # after removing them is the pack's own advertised vocabulary — the codes and
@@ -208,6 +208,16 @@ def _jsonpath_filter(subject_category: str) -> dict[str, str]:
     narrowed the match to providers that also publish `@type` on every
     resource, for no gain.
     """
+
+    if subject_category == SubjectCategory.GRIEVANCE:
+        return {
+            "type": "jsonpath",
+            "expression": (
+                "$.catalogs[*].resources[*] "
+                '? (@.resourceAttributes."@type" == "openagrinet:Grievance" && '
+                '@.resourceAttributes.informationMode == "OnDemand")'
+            ),
+        }
 
     return {
         "type": "jsonpath",

@@ -14,7 +14,10 @@ from dss.core.provider_discovery.models import Coverage, ProviderQuery
 SCHEMA_CONTEXT_INDEX = {
     "openagrinet:WeatherObservation": (
         "https://schemas.openagrinet.global/schema/WeatherObservation/v0.1/context.jsonld"
-    )
+    ),
+    "openagrinet:Grievance": (
+        "https://schemas.openagrinet.global/schema/Grievance/v0.1/context.jsonld"
+    ),
 }
 SCHEMA_BASE_URL = "https://schemas.openagrinet.global/schema"
 
@@ -89,6 +92,33 @@ def test_the_jsonpath_filter_matches_the_subject_category() -> None:
     assert filters["expression"] == (
         "$.catalogs[*].resources[*] ? "
         '(@.resourceAttributes.subjectCategories[*] == "Weather")'
+    )
+
+
+def test_the_jsonpath_for_grievance_subject_category() -> None:
+    """The filter matches `subjectCategories`, not `@type` — `schemaContext` is
+    what names the resolved type (see the test above), so repeating it here
+    would only exclude providers that omit `@type` on a resource."""
+
+    query = ProviderQuery(
+        capabilities=("openagrinet:Grievance",),
+        subject_category="Grievance",
+        languages=("en",),
+        coverage=None,
+    )
+
+    request = build_discover_request(
+        query,
+        schema_context_index=SCHEMA_CONTEXT_INDEX,
+        message_id="m",
+        transaction_id="t",
+        timestamp="2026-08-26T06:11:58.004Z",
+    )
+
+    filters = request["message"]["intent"]["filters"]
+    assert filters["type"] == "jsonpath"
+    assert filters["expression"] == (
+        '$.catalogs[*].resources[*] ? (@.resourceAttributes."@type" == "openagrinet:Grievance" && @.resourceAttributes.informationMode == "OnDemand")'
     )
 
 
