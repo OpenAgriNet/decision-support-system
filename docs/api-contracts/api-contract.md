@@ -251,12 +251,13 @@ The same canonical response object is used for non-streaming JSON and the termin
 
 - `message.outcome.status` is the domain result — `answered`, `rejected`, `no_match`, `requires_input`, `unavailable`, or `partially_answered`.
 - `message.outcome.cause` is a machine-readable reason for the status, or `null` when the turn is answered.
+- `message.content[].type` — `text`, `refusal`, `form` (an empty form to fill in; the turn is `requires_input`) or `form_error` (a submitted form handed back; see `openapi.yaml`). A `form` item sent back in a user message is the submission; in the history, `form` and `form_error` items are references only.
 - `message.outcome.confidence` is DSS's confidence in the answer, expressed as a percentage from 0 to 100. A safe rejection, no match, or request for more information is still an HTTP 200 turn; a dependency failure is reported as an `unavailable` outcome, with details in `message.error`.
 
 ### 3.0 Types used in this response
 
 - `message.outcome.status` — closed enum: `answered` | `rejected` | `no_match` | `requires_input` | `unavailable` | `partially_answered`.
-- `message.outcome.cause` — open, additive set. `null` when answered; otherwise a machine-readable string. Known values: `unsafe_illegal`, `provider_unavailable`, `domain_unmapped`. New causes may be added without a major version change — clients must treat an unrecognized value as an opaque string, not fail on it.
+- `message.outcome.cause` — open, additive set. `null` when answered; otherwise a machine-readable string. Known values: `unsafe_illegal`, `provider_unavailable`, `provider_rejected`, `domain_unmapped`, `invalid_input`. New causes may be added without a major version change — clients must treat an unrecognized value as an opaque string, not fail on it.
 
 ### 3.1 Streaming events
 

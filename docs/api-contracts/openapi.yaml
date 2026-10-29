@@ -252,15 +252,78 @@ components:
             $ref: '#/components/schemas/InputContentItem'
 
     InputContentItem:
-      description: Closed set for v1 — `text` or `image`. `file` is not accepted.
+      description: |
+        Closed set for v1 — `text`, `image`, `form` or `form_error`. `file` is
+        not accepted. A message carries one kind of content: text beside a
+        form is a 422.
       oneOf:
         - $ref: '#/components/schemas/InputText'
         - $ref: '#/components/schemas/InputImage'
+        - $ref: '#/components/schemas/InputForm'
+        - $ref: '#/components/schemas/InputFormError'
       discriminator:
         propertyName: type
         mapping:
           text: '#/components/schemas/InputText'
           image: '#/components/schemas/InputImage'
+          form: '#/components/schemas/InputForm'
+          form_error: '#/components/schemas/InputFormError'
+
+    FormContext:
+      type: object
+      required: [scheme, category, action]
+      description: The form's type. Sent with the form, copied back with the submission.
+      properties:
+        scheme:
+          type: string
+        category:
+          type: string
+        action:
+          type: string
+
+    InputForm:
+      type: object
+      required: [type, formId, context]
+      description: |
+        A form the farmer filled in. In the current user message it is the
+        submission, and `submissionId` is required. In the history it is a
+        reference: its ids are read, its `fields` are not.
+      properties:
+        type:
+          type: string
+          const: form
+        formId:
+          type: string
+        context:
+          $ref: '#/components/schemas/FormContext'
+        submissionId:
+          type: string
+          description: Minted by the client per submission; a resubmission gets a new one.
+        fields:
+          type: array
+          items:
+            type: object
+            required: [name, value]
+            properties:
+              name:
+                type: string
+              value:
+                type: string
+
+    InputFormError:
+      type: object
+      required: [type, formId, context]
+      description: The DSS's own `form_error` reply, echoed in the history. A reference only.
+      properties:
+        type:
+          type: string
+          const: form_error
+        formId:
+          type: string
+        context:
+          $ref: '#/components/schemas/FormContext'
+        submissionId:
+          type: string
 
     InputText:
       type: object
@@ -463,7 +526,8 @@ components:
             Machine-readable reason for the status, `null` when answered. Open,
             additive set — an unrecognized value must be treated as an opaque
             string, not an error. Known values include `unsafe_illegal`,
-            `provider_unavailable`, `domain_unmapped`.
+            `provider_unavailable`, `provider_rejected`, `domain_unmapped`,
+            `invalid_input`.
           example: null
         confidence:
           type: integer
@@ -476,12 +540,96 @@ components:
         - $ref: '#/components/schemas/OutputText'
         - $ref: '#/components/schemas/OutputTextDelta'
         - $ref: '#/components/schemas/OutputRefusal'
+        - $ref: '#/components/schemas/OutputForm'
+        - $ref: '#/components/schemas/OutputFormError'
       discriminator:
         propertyName: type
         mapping:
           text: '#/components/schemas/OutputText'
           output_text_delta: '#/components/schemas/OutputTextDelta'
           refusal: '#/components/schemas/OutputRefusal'
+          form: '#/components/schemas/OutputForm'
+          form_error: '#/components/schemas/OutputFormError'
+
+    OutputForm:
+      type: object
+      required: [type, formId, context, fields]
+      description: |
+        An empty form for the farmer to fill in. The turn ends `requires_input`;
+        the next turn carries the form back as an `InputForm`. A field is flat:
+        its rules sit on it. Nothing about PII is sent.
+      properties:
+        type:
+          type: string
+          const: form
+        formId:
+          type: string
+        context:
+          $ref: '#/components/schemas/FormContext'
+        fields:
+          type: array
+          items:
+            type: object
+            required: [name, label, kind, required, options]
+            properties:
+              name:
+                type: string
+              label:
+                type: string
+              kind:
+                type: string
+                enum: [text, textarea, select, secret]
+              required:
+                type: boolean
+              pattern:
+                type: string
+              minLength:
+                type: integer
+              maxLength:
+                type: integer
+              options:
+                type: array
+                items:
+                  type: object
+                  required: [value, label]
+                  properties:
+                    value:
+                      type: string
+                    label:
+                      type: string
+
+    OutputFormError:
+      type: object
+      required: [type, formId, context, submissionId, fields]
+      description: |
+        A submitted form handed back: the form is still the farmer's. With the
+        fields to fix the turn is `requires_input` and `cause` is
+        `invalid_input`; with no fields the values were fine and the provider
+        could not take them, the turn is `unavailable`, and `message.error`
+        says whether to try again.
+      properties:
+        type:
+          type: string
+          const: form_error
+        formId:
+          type: string
+        context:
+          $ref: '#/components/schemas/FormContext'
+        submissionId:
+          type: string
+        fields:
+          type: array
+          items:
+            type: object
+            required: [name, label, error]
+            properties:
+              name:
+                type: string
+              label:
+                type: string
+              error:
+                type: string
+                description: What to fix, in the turn's target language.
 
     OutputText:
       type: object

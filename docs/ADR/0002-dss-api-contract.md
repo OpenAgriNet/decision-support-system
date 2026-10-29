@@ -156,8 +156,8 @@ data: {"text": "Potato grows best in well-drained sandy loam soil.", "source_id"
 | Group | Codes |
 |---|---|
 | harm | `unsafe_illegal`, `role_obfuscation`, `political_controversial`, `external_reference`, `adopter_policy` |
-| scope | `domain_unmapped`, `intent_low_confidence`, `unsupported_action_type` |
-| infrastructure | `unavailable`, `provider_unavailable`, `timeout`, `internal` |
+| scope | `domain_unmapped`, `intent_low_confidence`, `unsupported_action_type`, `invalid_input` |
+| infrastructure | `unavailable`, `provider_unavailable`, `provider_rejected`, `timeout`, `internal` |
 
 The non-streaming endpoint (`POST /v1/turns`) returns the same object with no claim events and the full answer in `text`. On a fault mid-stream the DSS sends a final event with `status: "error"` before closing; if the connection drops, none arrives and the caller recovers by re-issuing with the same `X-Session-Id`.
 

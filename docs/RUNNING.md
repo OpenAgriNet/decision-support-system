@@ -479,8 +479,34 @@ referral and then the form, and the turn waits for the farmer:
 On SSE the text streams as `claim.delta` frames and the form arrives whole in
 its own `claim.completed`, after the text's. A field is flat: its rules sit on
 it. `kind` is `text`, `textarea`, `select` or `secret`. Nothing about PII is
-sent. Not reachable yet on a local run: the registry lands with #133, and
-discovery does not index the Grievance pack until its follow-up.
+sent.
+
+## Submitting the form
+
+The farmer's next turn carries the form back as a `form` item, with a
+`submissionId` the client mints and the values by field name. A message holds
+one kind of content: text beside a form is a 422.
+
+```json
+{"role": "user", "content": [
+  {"type": "form", "formId": "8f3c…", "submissionId": "a1b2…",
+   "context": {"scheme": "PMFBY", "category": "Grievance", "action": "support"},
+   "fields": [{"name": "applicantMobile", "value": "9876543210"},
+              {"name": "grievance.description", "value": "Claim not paid."}]}]}
+```
+
+The turn ends one of three ways. A `form_error` item means the form is still
+the farmer's.
+
+| What happened | `outcome` | `content` |
+|---|---|---|
+| a value is wrong | `requires_input`, cause `invalid_input` | text, then `form_error` with the fields to fix, each with a message |
+| the desk could not take it | `unavailable`, cause `provider_unavailable` or `provider_rejected`; `error.retryable` says which, `error.retryAfterSeconds` only when the desk sent `Retry-After` | text, then `form_error` with no fields |
+| filed | `answered` | text: the ticket number and the filing date |
+
+Earlier `form` and `form_error` items in the history are read as references
+only; their fields are ignored. On a local run with the network off, a valid
+submission ends `no_match`: no desk is found to file with.
 
 ## Poking the edges
 

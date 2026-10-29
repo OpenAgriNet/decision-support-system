@@ -108,32 +108,32 @@ No invented retry delay: only the desk knows when it is back, and the DSS has al
 ## Implementation tasks
 
 1. **Models, validation, the registry keeps the ActionSchema**
-   - [ ] Given a submission with a phone that is not ten digits starting 6 to 9, when validated, then the phone field carries `PATTERN` and nothing else is reported.
-   - [ ] Given a repeated field name, when validated, then it is reported as `DUPLICATE` with no value.
-   - [ ] Given an unknown context, when validated, then `FormErrors.unknown_form` is true.
-   - [ ] Given the PMFBY pack, when the registry is built, then `action_schema(PMFBY support)` returns the leaf's `mustSend` with its sources.
+   - [x] Given a submission with a phone that is not ten digits starting 6 to 9, when validated, then the phone field carries `PATTERN` and nothing else is reported.
+   - [x] Given a repeated field name, when validated, then it is reported as `DUPLICATE` with no value.
+   - [x] Given an unknown context, when validated, then `FormErrors.unknown_form` is true.
+   - [x] Given the PMFBY pack, when the registry is built, then `action_schema(PMFBY support)` returns the leaf's `mustSend` with its sources.
 2. **Wire in: the submission and the history references**
-   - [ ] Given a `form` item in the current message, when mapped, then the turn's input is a `FormSubmission` with its values.
-   - [ ] Given a `form` item in history carrying `fields`, when mapped, then the message's reference holds `formId`, `context`, `submissionId` only.
-   - [ ] Given a current message with a `text` and a `form` item, when posted, then 422.
+   - [x] Given a `form` item in the current message, when mapped, then the turn's input is a `FormSubmission` with its values.
+   - [x] Given a `form` item in history carrying `fields`, when mapped, then the message's reference holds `formId`, `context`, `submissionId` only.
+   - [x] Given a current message with a `text` and a `form` item, when posted, then 422.
 3. **FormPath: validation exit and references in the record**
-   - [ ] Given invalid values, when the turn runs, then it ends `requires_input`, `invalid_input`, with text and a `form_error` block, and no model or provider call.
-   - [ ] Given any submission, when recorded, then the audit record and the trace hold names and references, never a value.
+   - [x] Given invalid values, when the turn runs, then it ends `requires_input`, `invalid_input`, with text and a `form_error` block, and no model or provider call.
+   - [x] Given any submission, when recorded, then the audit record and the trace hold names and references, never a value.
 4. **Moderation of the free text**
-   - [ ] Given a complaint the policy pack rejects, when the turn runs, then it is `rejected` and nothing is filed.
+   - [x] Given a complaint the policy pack rejects, when the turn runs, then it is `rejected` and nothing is filed.
 5. **The ask, discovery and the scheme filter**
-   - [ ] Given two grievance desks advertising different scheme codes, when the submission is for PMFBY, then only the PMFBY desk reaches the planner.
+   - [x] Given two grievance desks advertising different scheme codes, when the submission is for PMFBY, then only the PMFBY desk reaches the planner.
 6. **The `support` tool, port and adapter**
-   - [ ] Given a valid submission and a desk, when the planner runs, then `describe_capability` lists the desk and the `support` tool sends a body with every `mustSend` path filled from the pack, the desk and the form, and the real phone appears in the request body only.
-   - [ ] Given a transient failure that persists, when the tool runs, then the attempts and backoff match `select` and a `Failure` lands on the ask with the desk's `Retry-After`, if any.
+   - [x] Given a valid submission and a desk, when the planner runs, then `describe_capability` lists the desk and the `support` tool sends a body with every `mustSend` path filled from the pack, the desk and the form, and the real phone appears in the request body only.
+   - [x] Given a transient failure that persists, when the tool runs, then the attempts and backoff match `select` and a `Failure` lands on the ask with the desk's `Retry-After`, if any.
 7. **Reply and status**
-   - [ ] Given the desk returns a ticket, when the turn ends, then the composer's text names the ticket number and the filing date and never the phone, status `answered`, text only.
-   - [ ] Given a failed filing, when the turn ends, then the text says not filed, try again later, status `unavailable` with the right cause, `retryable` set, a `form_error` with no fields, and `retryAfterSeconds` only if the desk sent one.
+   - [x] Given the desk returns a ticket, when the turn ends, then the composer's text names the ticket number and the filing date and never the phone, status `answered`, text only.
+   - [x] Given a failed filing, when the turn ends, then the text says not filed, try again later, status `unavailable` with the right cause, `retryable` set, a `form_error` with no fields, and `retryAfterSeconds` only if the desk sent one.
 8. **Prompts skip references**
-   - [ ] Given history with a form reference, when intent, moderation or the composer build a prompt, then the message shows as one fixed line.
+   - [x] Given history with a form reference, when intent, moderation or the composer build a prompt, then the message shows as one fixed line.
 9. **Wire out, docs**
-   - [ ] Given a `form_error` block, when the reply is JSON or SSE, then it is a `form_error` item with names, labels and messages only.
-   - [ ] Spec boxes, `DSS_ARCHITECTURE.md`, ADR-0004 amendment for `form_error`, `RUNNING.md`. #135 drops `NoForms` on rebase.
+   - [x] Given a `form_error` block, when the reply is JSON or SSE, then it is a `form_error` item with names, labels and messages only.
+   - [x] Spec boxes, `DSS_ARCHITECTURE.md`, ADR-0004 amendment for `form_error`, `RUNNING.md`. #135 drops `NoForms` on rebase.
 
 ## Test strategy
 

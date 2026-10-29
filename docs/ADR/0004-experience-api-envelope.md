@@ -135,3 +135,11 @@ components.
   It is one more kind in the list the envelope already defined; the shape of
   the envelope is unchanged. Spec:
   `docs/.agent/specs/205-farmer-asks-form-offered.md`.
+- **2026-10-29.** Two inbound item types, `form` and `form_error`. A `form`
+  in the current user message is the submission, with `submissionId` and its
+  `fields`; a message carries one kind of content, so text beside a form is a
+  422. In the history, `form` and `form_error` are references: their ids are
+  kept, their fields are not read. One outbound item, `form_error`, hands a
+  form back: with the fields to fix, or with none when the provider could not
+  take it. One cause, `provider_rejected`, the first on which `error.retryable`
+  is false. Spec: `docs/.agent/specs/205-farmer-submits-the-form.md`.
