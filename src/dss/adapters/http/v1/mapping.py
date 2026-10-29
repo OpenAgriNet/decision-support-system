@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime
 from uuid import uuid4
 
 from dss.adapters.http.v1 import schema
-from dss.core.forms.models import FieldDefinition, FormBlock
+from dss.core.forms.models import (
+    FieldDefinition,
+    FieldValue,
+    FormBlock,
+    FormContext,
+    FormErrorBlock,
+    FormReference,
+    FormSubmission,
+)
 from dss.core.shared.language import LanguageTag
 from dss.core.shared.models import (
     Cause,
@@ -23,6 +31,7 @@ from dss.core.shared.models import (
     TextQuery,
     TurnContext,
     TurnFinished,
+    TurnInput,
     TurnOutcome,
     TurnStatus,
     UserDetails,
@@ -34,7 +43,7 @@ from dss.core.shared.models import (
 DSS_RELEASE = "v1.0.0"
 
 
-def to_user_turn(body: schema.TurnRequest) -> UserTurn[TextQuery]:
+def to_user_turn(body: schema.TurnRequest) -> UserTurn:
     """Normalize a validated request body into the turn the core works with.
 
     `senderId` rides on the request context (ADR-0020): it names the
@@ -48,10 +57,9 @@ def to_user_turn(body: schema.TurnRequest) -> UserTurn[TextQuery]:
     current = _current_index(thread)
     attributes = body.message.attributes
     response = attributes.response
-    query = _text(thread[current])
 
-    return UserTurn[TextQuery](
-        input=TextQuery(text=query),
+    return UserTurn(
+        input=_input_of(thread[current]),
         session_id=body.context.session_id,
         transaction_id=(
             body.context.transaction_id
@@ -62,9 +70,7 @@ def to_user_turn(body: schema.TurnRequest) -> UserTurn[TextQuery]:
         target_lang=LanguageTag(attributes.target_language),
         channel=attributes.channel,
         user=_user(body.message.user_context),
-        history=[
-            ConversationMessage(role=m.role, text=_text(m)) for m in thread[:current]
-        ],
+        history=[_history_message(m) for m in thread[:current]],
         location=_location(attributes.location),
         response_max_chars=response.max_characters if response else None,
         sender_id=(body.context.sender_id or "").strip() or None,
@@ -92,8 +98,78 @@ def _current_index(thread: list[schema.InputMessage]) -> int:
     raise ValueError("message.input carries no user message to act on")
 
 
-def _text(message: schema.InputMessage) -> str:
-    return " ".join(part.text for part in message.content).strip()
+def _input_of(message: schema.InputMessage) -> TurnInput:
+    """What the farmer sent: their words, or one filled-in form. One kind per
+    message, so a turn runs on one path."""
+
+    kinds = {type(part) for part in message.content}
+    if len(kinds) > 1:
+        raise ValueError("a message carries one kind of content: text, or one form")
+    first = message.content[0]
+    to_input = _INPUT_FOR.get(type(first))
+    if to_input is None:
+        raise ValueError(f"a {first.type} item is not something the farmer sends")
+    return to_input(message.content)
+
+
+def _text_query(parts: Sequence[schema.InputContent]) -> TextQuery:
+    return TextQuery(text=_joined_text(parts))
+
+
+def _submission(parts: Sequence[schema.InputContent]) -> FormSubmission:
+    match parts:
+        case [schema.FormContent(submission_id=None)]:
+            raise ValueError("a submitted form needs a submissionId")
+        case [schema.FormContent(submission_id=str() as submission_id) as form]:
+            return FormSubmission(
+                form_id=form.form_id,
+                context=_form_context(form.context),
+                submission_id=submission_id,
+                values=tuple(
+                    FieldValue(name=f.name, value=f.value) for f in form.fields
+                ),
+            )
+    raise ValueError("a message carries one form")
+
+
+def _history_message(message: schema.InputMessage) -> ConversationMessage:
+    """A prior message's words, and a reference to the form it carried, if
+    any. The form's fields are never read from history: the DSS holds no
+    values between turns."""
+
+    reference = next(
+        (
+            FormReference(
+                form_id=part.form_id,
+                context=_form_context(part.context),
+                submission_id=part.submission_id,
+            )
+            for part in message.content
+            if isinstance(part, schema.FormContent | schema.FormErrorContent)
+        ),
+        None,
+    )
+    return ConversationMessage(
+        role=message.role, text=_joined_text(message.content), reference=reference
+    )
+
+
+# How each kind of item becomes the turn's input. A kind absent here is not
+# something the farmer sends, such as the DSS's own form_error reply.
+_INPUT_FOR: Mapping[type, Callable[[Sequence[schema.InputContent]], TurnInput]] = {
+    schema.TextContent: _text_query,
+    schema.FormContent: _submission,
+}
+
+
+def _form_context(wire: schema.InputFormContext) -> FormContext:
+    return FormContext(scheme=wire.scheme, category=wire.category, action=wire.action)
+
+
+def _joined_text(parts: Sequence[schema.InputContent]) -> str:
+    return " ".join(
+        part.text for part in parts if isinstance(part, schema.TextContent)
+    ).strip()
 
 
 def _location(wire: schema.Location | None) -> Location | None:
@@ -248,7 +324,12 @@ def _error(outcome: TurnOutcome) -> schema.TurnError | None:
 
 def _block(
     content: OutputBlock, sources: Sequence[Source]
-) -> schema.OutputText | schema.OutputRefusal | schema.OutputForm:
+) -> (
+    schema.OutputText
+    | schema.OutputRefusal
+    | schema.OutputForm
+    | schema.OutputFormError
+):
     match content:
         case RefusalBlock():
             return schema.OutputRefusal(text=content.text)
@@ -258,6 +339,8 @@ def _block(
             )
         case FormBlock():
             return _form(content)
+        case FormErrorBlock():
+            return _form_error(content)
     raise TypeError(f"no wire shape for a {type(content).__name__}")
 
 
@@ -269,6 +352,22 @@ def _form(block: FormBlock) -> schema.OutputForm:
             scheme=context.scheme, category=context.category, action=context.action
         ),
         fields=[_form_field(field) for field in block.form.fields],
+    )
+
+
+def _form_error(block: FormErrorBlock) -> schema.OutputFormError:
+    return schema.OutputFormError(
+        form_id=block.form_id,
+        context=schema.OutputFormContext(
+            scheme=block.context.scheme,
+            category=block.context.category,
+            action=block.context.action,
+        ),
+        submission_id=block.submission_id,
+        fields=[
+            schema.OutputFormErrorField(name=f.name, label=f.label, error=f.error)
+            for f in block.fields
+        ],
     )
 
 

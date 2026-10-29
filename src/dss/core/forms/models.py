@@ -7,7 +7,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict
 
-from dss.core.shared.models import OutputBlock, TurnInput
+from dss.core.shared.models import MessageReference, OutputBlock, TurnInput
 
 
 class FormContext(BaseModel):
@@ -283,3 +283,13 @@ class Filing(BaseModel):
 
     submission: ValidSubmission
     action: ActionSchema
+
+
+class FormReference(MessageReference):
+    """A form a prior message carried, by its ids only. Whether it was
+    offered or submitted is the message's role; the fields and values are
+    not kept."""
+
+    form_id: str
+    context: FormContext
+    submission_id: str | None = None

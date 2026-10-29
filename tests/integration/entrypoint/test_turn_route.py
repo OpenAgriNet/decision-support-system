@@ -399,3 +399,21 @@ def test_a_json_turn_carries_the_text_then_the_form(a_body):
     assert [b["type"] for b in body["content"]] == ["text", "form"]
     assert body["content"][1]["formId"] == "8f3c"
     assert frames(stream.text)[-1][1]["message"] == body
+
+
+def test_text_and_a_form_in_one_message_is_unprocessable(a_body):
+    """One kind of content per message, so a turn runs on one path."""
+    app, runner = client()
+    form = {
+        "type": "form",
+        "formId": "offer-1",
+        "context": {"scheme": "PMFBY", "category": "Grievance", "action": "support"},
+        "submissionId": "submission-1",
+        "fields": [],
+    }
+    thread = [{"role": "user", "content": [{"type": "text", "text": "hi"}, form]}]
+
+    response = app.post("/v1/turns", json=a_body(message__input=thread))
+
+    assert response.status_code == 422
+    assert runner.calls == []

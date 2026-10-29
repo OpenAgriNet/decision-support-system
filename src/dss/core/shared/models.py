@@ -53,6 +53,14 @@ class UserDetails(BaseModel):
     reference: ReferenceToken | None = None
 
 
+class MessageReference(BaseModel):
+    """What a prior message carried besides words, named without its content:
+    a form offered or submitted, never its values. Each function adds its
+    own kinds, like ``TurnInput`` and ``OutputBlock``."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
 class ConversationMessage(BaseModel):
     """One prior turn in the thread. Moderation and intent read the recent history
     so a follow-up ("And potato?") resolves against what came before."""
@@ -61,6 +69,9 @@ class ConversationMessage(BaseModel):
 
     role: Literal["user", "assistant"]
     text: str
+    # Without SerializeAsAny a reference typed by the base serialises as an
+    # empty MessageReference.
+    reference: SerializeAsAny[MessageReference] | None = None
 
 
 class Geometry(BaseModel):
