@@ -19,6 +19,7 @@ from dss.core.intent.models import (
 )
 from dss.core.provider_discovery.models import (
     AskDiscoveryFailed,
+    AsksToBeDiscovered,
     AskUnservable,
     CapabilityUnresolved,
     CategoryMappingDiverged,
@@ -180,46 +181,42 @@ def _diverged_categories(
     ]
 
 
-def _build_queries(
+def _find_asks_to_discover(
     intent: Intent,
     languages: tuple[str, ...],
     radius_m: int,
     index: Mapping[tuple[str, str], tuple[str, ...]],
-) -> tuple[
-    dict[ProviderQuery, list[int]],
-    dict[int, tuple[str, ...]],
-    set[int],
-    list[DiscoveryEvent],
-]:
+) -> AsksToBeDiscovered:
     """Coverage is computed per ask: each ask carries its own resolved place
     (or none), so a turn asking about two places issues two spatially
     different discover calls rather than one shared coordinate."""
 
-    queries_to_asks: dict[ProviderQuery, list[int]] = {}
-    ask_capabilities: dict[int, tuple[str, ...]] = {}
-    unresolved_asks: set[int] = set()
-    events: list[DiscoveryEvent] = []
+    queries_by_ask: dict[int, ProviderQuery] = {}
+    unsearchable_asks: set[int] = set()
+    events: list[CapabilityUnresolved] = []
     for ask_index, ask in enumerate(intent.asks):
         # Nowhere to search: an unfiltered discover would bring back answers
         # for some other place. The place failure is reported downstream.
         if isinstance(ask.place, AmbiguousPlace | UnresolvedPlace):
-            unresolved_asks.add(ask_index)
+            unsearchable_asks.add(ask_index)
             continue
         coverage = coverage_for_ask(ask, radius_m=radius_m)
         query, event = _query_for_ask(ask, languages, coverage, index)
         if query is None:
             assert event is not None  # noqa: S101 - type narrowing only
             events.append(event)
-            unresolved_asks.add(ask_index)
+            unsearchable_asks.add(ask_index)
             continue
-        queries_to_asks.setdefault(query, []).append(ask_index)
-        ask_capabilities[ask_index] = query.capabilities
-    return queries_to_asks, ask_capabilities, unresolved_asks, events
+        queries_by_ask[ask_index] = query
+    return AsksToBeDiscovered(
+        queries_by_ask=queries_by_ask,
+        unsearchable_asks=frozenset(unsearchable_asks),
+        events=tuple(events),
+    )
 
 
 async def _run_queries(
-    queries_to_asks: dict[ProviderQuery, list[int]],
-    unresolved_asks: set[int],
+    to_discover: AsksToBeDiscovered,
     discovery: CapabilityDiscovery,
     transaction_id: str,
 ) -> tuple[
@@ -228,19 +225,20 @@ async def _run_queries(
     dict[int, tuple[DiscoveryFailure, ...]],
 ]:
     answers: dict[int, tuple[DiscoveredAnswer, ...]] = dict.fromkeys(
-        unresolved_asks, ()
+        to_discover.unsearchable_asks, ()
     )
     capabilities: dict[int, tuple[ProviderCapability, ...]] = dict.fromkeys(
-        unresolved_asks, ()
+        to_discover.unsearchable_asks, ()
     )
     failures: dict[int, tuple[DiscoveryFailure, ...]] = dict.fromkeys(
-        unresolved_asks, ()
+        to_discover.unsearchable_asks, ()
     )
+    unique_queries = to_discover.find_unique_queries()
 
     # discover() never raises (failures are data), so every
     # query's results land independently: one query hitting a defect never
     # cancels or delays a sibling still in flight.
-    query_results: list[ProviderQueryResult | None] = [None] * len(queries_to_asks)
+    query_results: list[ProviderQueryResult | None] = [None] * len(unique_queries)
 
     async def _run(slot: int, query: ProviderQuery) -> None:
         query_results[slot] = await discovery.discover(
@@ -248,14 +246,12 @@ async def _run_queries(
         )
 
     async with anyio.create_task_group() as task_group:
-        for slot, query in enumerate(queries_to_asks):
+        for slot, query in enumerate(unique_queries):
             task_group.start_soon(_run, slot, query)
 
-    for query_result, ask_indices in zip(
-        query_results, queries_to_asks.values(), strict=True
-    ):
+    for query, query_result in zip(unique_queries, query_results, strict=True):
         assert query_result is not None  # noqa: S101 - type narrowing only
-        for ask_index in ask_indices:
+        for ask_index in to_discover.find_asks_sharing(query):
             answers[ask_index] = query_result.answers
             capabilities[ask_index] = query_result.capabilities
             failures[ask_index] = query_result.failures
@@ -328,20 +324,20 @@ def _ask_events(
 
 
 def _build_ask_events(
-    ask_capabilities: dict[int, tuple[str, ...]],
+    queries_by_ask: Mapping[int, ProviderQuery],
     answers: dict[int, tuple[DiscoveredAnswer, ...]],
     capabilities: dict[int, tuple[ProviderCapability, ...]],
     failures: dict[int, tuple[DiscoveryFailure, ...]],
 ) -> list[AskDiscoveryFailed | AskUnservable]:
     return [
         event
-        for ask_index, ask_types in ask_capabilities.items()
+        for ask_index, query in queries_by_ask.items()
         for event in _ask_events(
             ask_index,
             failures.get(ask_index, ()),
             bool(answers.get(ask_index)),
             bool(capabilities.get(ask_index)),
-            ask_types,
+            query.capabilities,
         )
     ]
 
@@ -358,7 +354,7 @@ async def discover_providers(  # noqa: PLR0913
     """Find who can serve each of ``intent``'s asks.
 
     Coverage is per ask (``ask.place``, resolved before this runs) rather than
-    one shared coordinate for the turn — see ``_build_queries``.
+    one shared coordinate for the turn — see ``_find_asks_to_discover``.
 
     Everything past ``turn`` is keyword-only on purpose. ``build_discover_providers``
     binds ``discovery``/``schema_pack_cache``/``radius_m`` by keyword and leaves
@@ -370,17 +366,18 @@ async def discover_providers(  # noqa: PLR0913
     languages = (str(turn.target_lang),)
     index = schema_pack_cache.current()
 
-    queries_to_asks, ask_capabilities, unresolved_asks, events = _build_queries(
-        intent, languages, radius_m, index
-    )
+    to_discover = _find_asks_to_discover(intent, languages, radius_m, index)
+    events: list[DiscoveryEvent] = [*to_discover.events]
 
     answers, capabilities, failures = await _run_queries(
-        queries_to_asks, unresolved_asks, discovery, turn.transaction_id
+        to_discover, discovery, turn.transaction_id
     )
 
     events.extend(_apply_expiry_filter(answers, capabilities, now))
     events.extend(_detect_divergence(answers, capabilities, index))
-    events.extend(_build_ask_events(ask_capabilities, answers, capabilities, failures))
+    events.extend(
+        _build_ask_events(to_discover.queries_by_ask, answers, capabilities, failures)
+    )
 
     return DiscoveryResult(
         answers=answers,
