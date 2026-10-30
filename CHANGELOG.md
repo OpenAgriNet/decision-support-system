@@ -13,6 +13,12 @@
   (#206)
 
 ### Added
+- A farmer can check a PMFBY grievance's status. The status form they send
+  back is read at the desk's `/status` through the planner's new `status`
+  tool, and the reply says where the case stands, when it was filed and for
+  which crop, never the phone or the ticket. A desk that is down, or knows
+  no such case, keeps the form (#206)
+- The mock network answers `/status` for a grievance it filed (#206)
 - The DSS reads the forms a farmer will fill from the network's API schema
   packs, once at boot. Today that is the PMFBY grievance: filing one and
   checking its status. A scheme that needs an OTP step first (PM-KISAN) is

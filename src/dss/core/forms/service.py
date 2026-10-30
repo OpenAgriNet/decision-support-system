@@ -461,11 +461,14 @@ def answer_for_form_errors(
     )
 
 
-# What the farmer reads for each way a filing can fail. A `form_error` with
-# no fields says the form is still theirs; the values were fine.
-_NOT_FILED_TEXT: Mapping[Cause, Callable[[ClarificationText], str]] = {
-    Cause.PROVIDER_UNAVAILABLE: lambda text: text.not_filed,
-    Cause.PROVIDER_REJECTED: lambda text: text.not_filed_rejected,
+# What the farmer reads for each way a form's call can fail, by the call. A
+# `form_error` with no fields says the form is still theirs; the values were
+# fine. A status check the desk refused is read as no such case (#206).
+_NOT_SENT_TEXT: Mapping[tuple[str, Cause], Callable[[ClarificationText], str]] = {
+    ("support", Cause.PROVIDER_UNAVAILABLE): lambda text: text.not_filed,
+    ("support", Cause.PROVIDER_REJECTED): lambda text: text.not_filed_rejected,
+    ("status", Cause.PROVIDER_UNAVAILABLE): lambda text: text.status_not_checked,
+    ("status", Cause.PROVIDER_REJECTED): lambda text: text.status_not_found,
 }
 
 
@@ -479,12 +482,18 @@ def cause_for_unfiled(failure: Failure | None) -> Cause:
     return Cause.PROVIDER_REJECTED
 
 
+def _not_sent_text(action: str, cause: Cause) -> Callable[[ClarificationText], str]:
+    # An action with no words of its own reads as a filing: the form is
+    # still the farmer's either way.
+    return _NOT_SENT_TEXT.get((action, cause), _NOT_SENT_TEXT["support", cause])
+
+
 def answer_for_failed_filing(
     submission: FormSubmission, cause: Cause, text: ClarificationText
 ) -> ComposedAnswer:
     return ComposedAnswer(
         content=(
-            TextBlock(text=_NOT_FILED_TEXT[cause](text)),
+            TextBlock(text=_not_sent_text(submission.context.action, cause)(text)),
             FormErrorBlock(
                 form_id=submission.form_id,
                 context=submission.context,

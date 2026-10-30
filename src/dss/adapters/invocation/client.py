@@ -1,4 +1,4 @@
-"""Builds /select and /support requests and maps their responses.
+"""Builds /select, /support and /status requests and maps their responses.
 
 Pure translation only — no business logic. The attributes are already fully
 assembled by the caller; this module only wraps them in the network envelope.
@@ -16,7 +16,7 @@ import anyio
 import httpx
 
 from dss.adapters.network import SelectContext
-from dss.adapters.network.models import SupportContext
+from dss.adapters.network.models import StatusContext, SupportContext
 from dss.adapters.network_common import (
     NO_STATUS_CODE,
     classify_status_code,
@@ -42,14 +42,17 @@ from dss.observability.trace_log import (
 from dss.ports.invocation import (
     ProviderCallFailedError,
     SelectFailedError,
+    StatusFailedError,
     SupportFailedError,
 )
 
 __all__ = [
     "HttpCapabilityInvocation",
     "SelectFailedError",
+    "StatusFailedError",
     "SupportFailedError",
     "build_select_request",
+    "build_status_request",
     "build_support_request",
 ]
 
@@ -144,6 +147,56 @@ def map_support_response(response: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(attributes, dict):
         raise TypeError(
             f"support channel is {type(attributes).__name__}, not an object"
+        )
+    return attributes
+
+
+def build_status_request(  # noqa: PLR0913
+    attributes: dict,
+    *,
+    resource_id: str,
+    contract_id: str,
+    sender_id: str,
+    receiver_id: str,
+    message_id: str,
+    transaction_id: NetworkTransactionID,
+    timestamp: str,
+) -> dict[str, Any]:
+    """On `status` the case rides on a commitment: the pack names
+    `commitmentAttributes` as its container. The one resource is the desk's
+    thin pointer, the same id on every call; only the attributes differ."""
+
+    context = StatusContext(
+        sender_id=sender_id,
+        receiver_id=receiver_id,
+        message_id=message_id,
+        transaction_id=transaction_id,
+        timestamp=timestamp,
+    )
+    return {
+        "context": context.to_wire(),
+        "message": {
+            "contract": {
+                "id": contract_id,
+                "commitments": [
+                    {
+                        "resources": [{"id": resource_id, "quantity": {"count": 1}}],
+                        "commitmentAttributes": attributes,
+                    }
+                ],
+            }
+        },
+    }
+
+
+def map_status_response(response: dict[str, Any]) -> dict[str, Any]:
+    """The case comes back where it was asked for: the first commitment."""
+
+    commitment = response["message"]["contract"]["commitments"][0]
+    attributes = commitment["commitmentAttributes"]
+    if not isinstance(attributes, dict):
+        raise TypeError(
+            f"commitmentAttributes is {type(attributes).__name__}, not an object"
         )
     return attributes
 
@@ -298,6 +351,36 @@ class HttpCapabilityInvocation:
             outcome_attributes=_no_outcome_attributes,
         )
 
+    async def status(
+        self,
+        capability: ProviderCapability,
+        attributes: dict,
+        transaction_id: str,
+        *,
+        visibility: Visibility = NOTHING_HELD,
+    ) -> ActionReply:
+        """Call /status, retrying a transient failure exactly as `select`
+        does. The path is the Beckn convention, as `/support` is."""
+
+        # One message and one contract for the whole read, kept across the
+        # retries, as a filing keeps its message id.
+        message_id = str(uuid4())
+        contract_id = str(uuid4())
+        return await self._call_with_retries(
+            "dss.status",
+            capability,
+            partial(
+                self._status_once,
+                capability,
+                attributes,
+                transaction_id,
+                visibility,
+                message_id=message_id,
+                contract_id=contract_id,
+            ),
+            outcome_attributes=_no_outcome_attributes,
+        )
+
     async def _call_with_retries[T](
         self,
         span_name: str,
@@ -438,6 +521,44 @@ class HttpCapabilityInvocation:
             ) from exc
         return ActionReply(attributes=attributes_back)
 
+    async def _status_once(  # noqa: PLR0913
+        self,
+        capability: ProviderCapability,
+        attributes: dict,
+        transaction_id: str,
+        visibility: Visibility,
+        *,
+        message_id: str,
+        contract_id: str,
+    ) -> ActionReply:
+        request_body = build_status_request(
+            attributes,
+            resource_id=capability.resource_id,
+            contract_id=contract_id,
+            sender_id=self._sender_id,
+            receiver_id=self._receiver_id,
+            message_id=message_id,
+            transaction_id=transaction_id,
+            timestamp=datetime.now(UTC).isoformat(),
+        )
+        response = await self._post_once(
+            "status",
+            request_body,
+            capability=capability,
+            visibility=visibility,
+            failed=_status_failed,
+        )
+        try:
+            attributes_back = map_status_response(
+                visibility.conceal_body(response.json())
+            )
+        except _MALFORMED_RESPONSE as exc:
+            # A defect, never transient: the same body reads the same way.
+            raise StatusFailedError(
+                capability.capability, NO_STATUS_CODE, FailureClass.DEFECT
+            ) from exc
+        return ActionReply(attributes=attributes_back)
+
     async def _post_once(
         self,
         action: str,
@@ -524,6 +645,19 @@ def _support_failed(
     capability: str, status_code: int, response: httpx.Response | None, detail: str
 ) -> SupportFailedError:
     return SupportFailedError(
+        capability,
+        status_code,
+        classify_status_code(status_code),
+        retry_after_seconds=(
+            _retry_after_seconds(response) if response is not None else None
+        ),
+    )
+
+
+def _status_failed(
+    capability: str, status_code: int, response: httpx.Response | None, detail: str
+) -> StatusFailedError:
+    return StatusFailedError(
         capability,
         status_code,
         classify_status_code(status_code),

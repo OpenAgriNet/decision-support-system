@@ -79,6 +79,23 @@ class SupportFailedError(ProviderCallFailedError):
         self.retry_after_seconds = retry_after_seconds
 
 
+class StatusFailedError(ProviderCallFailedError):
+    """No provider text, as for a filing: the farmer is told in the DSS's own
+    words. ``retry_after_seconds`` is the provider's `Retry-After`, when it
+    sent one."""
+
+    def __init__(
+        self,
+        capability: str,
+        status_code: int,
+        failure_class: FailureClass,
+        *,
+        retry_after_seconds: int | None = None,
+    ) -> None:
+        super().__init__("status", capability, status_code, failure_class)
+        self.retry_after_seconds = retry_after_seconds
+
+
 class CapabilityInvocation(Protocol):
     async def select(
         self,
@@ -114,5 +131,20 @@ class CapabilityInvocation(Protocol):
         ``attributes`` is the whole body the pack's action schema calls for,
         already built. Retried like ``select``: a slow provider may receive
         the same filing twice until the pack gives a duplicate key.
+        """
+        ...
+
+    async def status(
+        self,
+        capability: ProviderCapability,
+        attributes: dict,
+        transaction_id: NetworkTransactionID,
+        *,
+        visibility: Visibility = NOTHING_HELD,
+    ) -> ActionReply:
+        """Read the case ``attributes`` name, or raise ``StatusFailedError``.
+
+        ``attributes`` is the whole body the pack's action schema calls for,
+        already built. Retried like ``select``: a read is safe to send twice.
         """
         ...

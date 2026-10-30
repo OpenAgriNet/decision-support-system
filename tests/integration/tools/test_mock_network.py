@@ -33,7 +33,7 @@ from dss.core.provider_discovery.models import (
 )
 from dss.core.provider_discovery.schema_pack_cache import SchemaPackCache
 from dss.core.shared.models import Geometry
-from dss.ports.invocation import SelectFailedError
+from dss.ports.invocation import SelectFailedError, StatusFailedError
 from tools.mock_network.app import DEFAULT_QUESTIONS, build_mock_app
 from tools.mock_network.generators import (
     advisory_answer,
@@ -504,3 +504,76 @@ async def test_a_type_the_mock_does_not_serve_finds_nobody(
     assert result.capabilities == {0: ()}
     assert result.answers == {0: ()}
     assert result.failures == {0: ()}
+
+
+_DESK = ProviderCapability(
+    provider_id="pmfby-grievance",
+    provider_name="PMFBY Grievance Portal",
+    capability="openagrinet:Grievance",
+    resource_id="res:pmfby:grievance",
+)
+_FILING = {
+    "@type": "openagrinet:Grievance",
+    "scheme": {"code": "PMFBY"},
+    "provider": {"id": "pmfby-grievance"},
+    "applicantMobile": "9876543210",
+    "grievance": {"description": "Claim for the Kharif crop loss is not paid."},
+}
+
+
+def _grievance_invocation(pack_dir: Path) -> HttpCapabilityInvocation:
+    """One app for both calls: the mock reads back only what it filed."""
+
+    client = httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=build_mock_app(pack_dir=pack_dir)),
+        base_url="http://mock.test",
+    )
+    return HttpCapabilityInvocation(
+        client=client,
+        base_url="http://mock.test",
+        sender_id="dss",
+        receiver_id="oan-mock",
+        backoff_seconds=0.0,
+    )
+
+
+async def test_status_reads_back_the_case_the_mock_filed(pack_dir: Path) -> None:
+    invocation = _grievance_invocation(pack_dir)
+    filed = await invocation.support(_DESK, _FILING, "txn-file")
+    ticket = filed.attributes["case"]["ticketNo"]
+
+    read = await invocation.status(
+        _DESK,
+        {"applicantMobile": "9876543210", "case": {"ticketNo": ticket}},
+        "txn-check",
+    )
+
+    case = read.attributes["case"]
+    assert case["ticketNo"] == ticket
+    assert case["status"] == {"code": "UnderReview"}
+    assert case["cropName"] == "Paddy"
+    assert read.attributes["grievance"] == _FILING["grievance"]
+
+
+@pytest.mark.parametrize(
+    ("mobile", "ticket"),
+    [
+        ("9123456780", "000000000000001"),  # filed, but from another phone
+        ("9876543210", "999999999999999"),  # never filed
+    ],
+)
+async def test_status_refuses_a_case_it_does_not_hold(
+    pack_dir: Path, mobile: str, ticket: str
+) -> None:
+    """The not-found path: a 400, which the DSS tells the farmer as no
+    complaint for that ticket and phone."""
+
+    invocation = _grievance_invocation(pack_dir)
+    await invocation.support(_DESK, _FILING, "txn-file")
+
+    with pytest.raises(StatusFailedError) as failed:
+        await invocation.status(
+            _DESK, {"applicantMobile": mobile, "case": {"ticketNo": ticket}}, "txn"
+        )
+
+    assert failed.value.status_code == 400

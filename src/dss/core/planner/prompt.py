@@ -50,6 +50,7 @@ def asks_section(
     *,
     awaiting: Collection[int] = frozenset(),
     filing: Collection[int] = frozenset(),
+    checking: Collection[int] = frozenset(),
 ) -> str:
     """Which asks exist, by the index the tools take. Without it the model
     has to guess that ask 0 exists, and a weaker model gives up instead.
@@ -57,25 +58,34 @@ def asks_section(
     The category and interaction type are DSS enums, not the farmer's words,
     so they are safe here. The place is left out: whether a capability needs
     one is ``describe_capability``'s to say. ``awaiting`` marks the asks a
-    form answers, so the model calls no provider for them; ``filing`` marks
-    the asks a submitted form answers, whose values are not the model's."""
+    form answers, so the model calls no provider for them; ``filing`` and
+    ``checking`` mark the asks a submitted form answers, filed or a status
+    read, whose values are not the model's."""
 
     if not asks:
         return ""
 
     lines = [
         f"- ask {index}: {ask.subject_categories.value} ({ask.interaction_type.value})"
-        + _ask_note(index, awaiting=awaiting, filing=filing)
+        + _ask_note(index, awaiting=awaiting, filing=filing, checking=checking)
         for index, ask in enumerate(asks)
     ]
     return "# Asks\n\n" + "\n".join(lines) + "\n\n"
 
 
-def _ask_note(index: int, *, awaiting: Collection[int], filing: Collection[int]) -> str:
+def _ask_note(
+    index: int,
+    *,
+    awaiting: Collection[int],
+    filing: Collection[int],
+    checking: Collection[int],
+) -> str:
     if index in awaiting:
         return ", awaits a form"
     if index in filing:
         return ", files the farmer's form"
+    if index in checking:
+        return ", checks the status with the farmer's form"
     return ""
 
 
