@@ -27,9 +27,9 @@ from dss.adapters.schema_packs.filesystem import FilesystemSchemaPackSource
 from dss.core.intent.models import PlaceSource, ResolvedPlace
 from dss.core.planner.resource_attributes import build_resource_attributes
 from dss.core.provider_discovery.models import (
-    DiscoveryResult,
     ProviderCapability,
     ProviderQuery,
+    ProviderQueryResult,
 )
 from dss.core.provider_discovery.schema_pack_cache import SchemaPackCache
 from dss.core.shared.models import Geometry
@@ -185,7 +185,7 @@ async def discovery(pack_dir: Path) -> HttpCapabilityDiscovery:
 
 async def _discover(
     discovery: HttpCapabilityDiscovery, *capabilities: str, subject_category: str
-) -> DiscoveryResult:
+) -> ProviderQueryResult:
     return await discovery.discover(
         ProviderQuery(
             capabilities=capabilities,
@@ -193,7 +193,6 @@ async def _discover(
             languages=("en",),
             coverage=None,
         ),
-        ask_indices=(0,),
         transaction_id="9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44",
     )
 
@@ -210,8 +209,8 @@ async def test_discover_returns_a_capability_the_adapter_maps(
 
     result = await _discover(discovery, _WEATHER, subject_category="Weather")
 
-    assert result.failures == {0: ()}
-    capabilities = result.capabilities[0]
+    assert result.failures == ()
+    capabilities = result.capabilities
     assert len(capabilities) == 1
     capability = capabilities[0]
     assert capability.capability == _WEATHER
@@ -233,7 +232,7 @@ async def test_one_running_mock_answers_either_capability(
 
     async def provider_for(capability: str) -> str:
         result = await _discover(discovery, capability, subject_category="Weather")
-        return result.capabilities[0][0].provider_id
+        return result.capabilities[0].provider_id
 
     assert await provider_for(_WEATHER) == "mausamgram-mock"
     assert await provider_for(_MANDI) == "agmarknet-mock"
@@ -249,7 +248,7 @@ async def test_mandi_discover_advertises_each_benchmark_market(
 
     result = await _discover(discovery, _MANDI, subject_category="Market")
 
-    by_market = {c.resource_id: c.advertised for c in result.capabilities[0]}
+    by_market = {c.resource_id: c.advertised for c in result.capabilities}
     assert set(by_market) == {
         f"resource:mandi-price:market:{code}"
         for code in ("9001", "9002", "9003", "9004", "9005")
@@ -272,7 +271,7 @@ async def test_a_query_naming_two_capabilities_gets_both(
 
     result = await _discover(discovery, _WEATHER, _MANDI, subject_category="Weather")
 
-    assert {c.provider_id for c in result.capabilities[0]} == {
+    assert {c.provider_id for c in result.capabilities} == {
         "mausamgram-mock",
         "agmarknet-mock",
     }
@@ -283,7 +282,7 @@ async def test_grievance_discover_finds_the_pmfby_and_pm_kisan_desks(
 ) -> None:
     result = await _discover(discovery, _GRIEVANCE, subject_category="Grievance")
 
-    desks = {desk.provider_id: desk for desk in result.capabilities[0]}
+    desks = {desk.provider_id: desk for desk in result.capabilities}
     assert set(desks) == {"pmfby", "pmkisan"}
     assert desks["pmfby"].resource_id == "res:pmfby:grievance"
     assert desks["pmkisan"].resource_id == "res:pmkisan:grievance"
@@ -299,7 +298,7 @@ async def test_only_the_pm_kisan_desk_advertises_an_otp_challenge(
 
     challenged = {
         desk.provider_id
-        for desk in result.capabilities[0]
+        for desk in result.capabilities
         if "challenge" in desk.advertised
     }
     assert challenged == {"pmkisan"}
@@ -364,7 +363,7 @@ async def test_mandi_select_answers_one_price_for_the_advertised_market(
     found = await _discover(discovery, _MANDI, subject_category="Market")
     mumbai = next(
         c
-        for c in found.capabilities[0]
+        for c in found.capabilities
         if c.resource_id == "resource:mandi-price:market:9001"
     )
     attrs = build_resource_attributes(
@@ -501,9 +500,9 @@ async def test_a_type_the_mock_does_not_serve_finds_nobody(
         discovery, "openagrinet:AgricultureResource", subject_category="Weather"
     )
 
-    assert result.capabilities == {0: ()}
-    assert result.answers == {0: ()}
-    assert result.failures == {0: ()}
+    assert result.capabilities == ()
+    assert result.answers == ()
+    assert result.failures == ()
 
 
 _DESK = ProviderCapability(

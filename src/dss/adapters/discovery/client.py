@@ -26,10 +26,10 @@ from dss.core.intent.models import SubjectCategory
 from dss.core.provider_discovery.models import (
     DiscoveredAnswer,
     DiscoveryFailure,
-    DiscoveryResult,
     FailureClass,
     ProviderCapability,
     ProviderQuery,
+    ProviderQueryResult,
 )
 from dss.core.shared.network import NetworkTransactionID
 from dss.observability.trace_log import (
@@ -50,11 +50,8 @@ def _failed_labels(query: ProviderQuery) -> tuple[str, ...]:
 
 
 def _failure_result(
-    query: ProviderQuery,
-    ask_indices: tuple[int, ...],
-    status_code: int,
-    detail: str | None,
-) -> DiscoveryResult:
+    query: ProviderQuery, status_code: int, detail: str | None
+) -> ProviderQueryResult:
     failure_class = classify_status_code(status_code)
     failures = tuple(
         DiscoveryFailure(
@@ -65,17 +62,10 @@ def _failure_result(
         )
         for capability in _failed_labels(query)
     )
-    return DiscoveryResult(
-        answers=dict.fromkeys(ask_indices, ()),
-        capabilities=dict.fromkeys(ask_indices, ()),
-        failures=dict.fromkeys(ask_indices, failures),
-        events=(),
-    )
+    return ProviderQueryResult(answers=(), capabilities=(), failures=failures)
 
 
-def _malformed_result(
-    query: ProviderQuery, ask_indices: tuple[int, ...], detail: str
-) -> DiscoveryResult:
+def _malformed_result(query: ProviderQuery, detail: str) -> ProviderQueryResult:
     """A response we can't map is a defect on one side or the other — never
     retry-worthy — and it must not escape: discover() failing by exception
     would cancel every sibling query in the caller's task group.
@@ -89,12 +79,7 @@ def _malformed_result(
         )
         for capability in _failed_labels(query)
     )
-    return DiscoveryResult(
-        answers=dict.fromkeys(ask_indices, ()),
-        capabilities=dict.fromkeys(ask_indices, ()),
-        failures=dict.fromkeys(ask_indices, failures),
-        events=(),
-    )
+    return ProviderQueryResult(answers=(), capabilities=(), failures=failures)
 
 
 class SchemaContextSource(Protocol):
@@ -183,20 +168,15 @@ def _answers_from_catalog(catalog: dict[str, Any]) -> list[DiscoveredAnswer]:
     return answers
 
 
-def map_discover_response(
-    response: dict[str, Any], ask_indices: tuple[int, ...]
-) -> DiscoveryResult:
+def map_discover_response(response: dict[str, Any]) -> ProviderQueryResult:
     capabilities: list[ProviderCapability] = []
     answers: list[DiscoveredAnswer] = []
     for catalog in response["message"]["catalogs"]:
         capabilities.extend(_capabilities_from_catalog(catalog))
         answers.extend(_answers_from_catalog(catalog))
 
-    return DiscoveryResult(
-        answers={index: tuple(answers) for index in ask_indices},
-        capabilities={index: tuple(capabilities) for index in ask_indices},
-        failures=dict.fromkeys(ask_indices, ()),
-        events=(),
+    return ProviderQueryResult(
+        answers=tuple(answers), capabilities=tuple(capabilities), failures=()
     )
 
 
@@ -294,8 +274,8 @@ class HttpCapabilityDiscovery:
         self._schema_pack_cache = schema_pack_cache
 
     async def discover(
-        self, query: ProviderQuery, ask_indices: tuple[int, ...], transaction_id: str
-    ) -> DiscoveryResult:
+        self, query: ProviderQuery, transaction_id: NetworkTransactionID
+    ) -> ProviderQueryResult:
         """One query to one provider. Never raises — see `_malformed_result`.
 
         The span covers building the request as well as sending it. Building it
@@ -336,9 +316,7 @@ class HttpCapabilityDiscovery:
                 )
             except (KeyError, TypeError, ValueError) as exc:
                 span.set_status(Status(StatusCode.ERROR, f"unbuildable: {exc!r}"))
-                return _malformed_result(
-                    query, ask_indices, f"unbuildable request: {exc!r}"
-                )
+                return _malformed_result(query, f"unbuildable request: {exc!r}")
             log_external_request(
                 "discovery",
                 transaction_id,
@@ -363,7 +341,7 @@ class HttpCapabilityDiscovery:
                     Status(StatusCode.ERROR, f"HTTP {exc.response.status_code}")
                 )
                 return _failure_result(
-                    query, ask_indices, exc.response.status_code, exc.response.text
+                    query, exc.response.status_code, exc.response.text
                 )
             except httpx.HTTPError as exc:
                 log_external_response(
@@ -373,29 +351,26 @@ class HttpCapabilityDiscovery:
                     error=str(exc),
                 )
                 span.set_status(Status(StatusCode.ERROR, f"transport: {exc}"))
-                return _failure_result(query, ask_indices, NO_STATUS_CODE, str(exc))
+                return _failure_result(query, NO_STATUS_CODE, str(exc))
             try:
-                result = map_discover_response(response.json(), ask_indices)
+                query_result = map_discover_response(response.json())
             except (KeyError, TypeError, ValueError) as exc:
                 # The only signal on this path: it writes no log line of its own.
                 span.set_status(Status(StatusCode.ERROR, f"malformed: {exc!r}"))
-                return _malformed_result(
-                    query, ask_indices, f"malformed response: {exc!r}"
-                )
+                return _malformed_result(query, f"malformed response: {exc!r}")
             # A green span that found nobody and one that found three providers
             # are otherwise identical. The catalogs themselves stay off the
             # span — they carry the provider's own data.
-            first = ask_indices[0]
-            span.set_attribute("capability_count", len(result.capabilities[first]))
-            span.set_attribute("answer_count", len(result.answers[first]))
+            span.set_attribute("capability_count", len(query_result.capabilities))
+            span.set_attribute("answer_count", len(query_result.answers))
             # Ids only, never content. Catalog answers get no /select span,
             # so this is the only place they show up.
             span.set_attribute(
                 "offered_provider_ids",
-                sorted({c.provider_id for c in result.capabilities[first]}),
+                sorted({c.provider_id for c in query_result.capabilities}),
             )
             span.set_attribute(
                 "answered_provider_ids",
-                sorted({a.provider_id for a in result.answers[first]}),
+                sorted({a.provider_id for a in query_result.answers}),
             )
-            return result
+            return query_result

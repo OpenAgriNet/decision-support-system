@@ -105,6 +105,13 @@ class DiscoveredAnswer:
 
 
 @dataclass(frozen=True)
+class ProviderQueryResult:
+    answers: tuple[DiscoveredAnswer, ...]
+    capabilities: tuple[ProviderCapability, ...]
+    failures: tuple[DiscoveryFailure, ...]
+
+
+@dataclass(frozen=True)
 class CapabilityUnresolved:
     """The (subject_category, action_type) pair resolves to zero @type values.
 

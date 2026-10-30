@@ -44,9 +44,9 @@ _WEATHER = DomainSchema(
 
 def _rendered() -> str:
     response = json.loads((FIXTURES / "discover_response.json").read_text())
-    result = map_discover_response(response, ask_indices=(0,))
+    result = map_discover_response(response)
     return render_candidates_as_markdown(
-        result.capabilities[0],
+        result.capabilities,
         schemas={"openagrinet:WeatherObservation": _WEATHER},
     )
 
@@ -119,9 +119,9 @@ _ADVISORY = DomainSchema(
 
 def _rendered_advisory() -> str:
     response = json.loads((FIXTURES / "discover_response_advisory.json").read_text())
-    result = map_discover_response(response, ask_indices=(0,))
+    result = map_discover_response(response)
     return render_candidates_as_markdown(
-        result.capabilities[0],
+        result.capabilities,
         schemas={"openagrinet:KnowledgeAdvisory": _ADVISORY},
     )
 

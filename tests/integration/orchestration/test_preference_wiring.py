@@ -25,8 +25,9 @@ from dss.core.intent.models import (
 )
 from dss.core.provider_discovery.models import (
     DiscoveredAnswer,
-    DiscoveryResult,
     ProviderCapability,
+    ProviderQuery,
+    ProviderQueryResult,
 )
 from dss.core.shared.models import Geometry, TextQuery, UserTurn
 from dss.orchestration.discovery import build_discover_providers
@@ -64,19 +65,17 @@ def _answer(provider: str) -> DiscoveredAnswer:
 class _FakeDiscovery:
     """Every ask finds the same three providers, in the network's own order."""
 
-    async def discover(self, query, ask_indices, transaction_id) -> DiscoveryResult:
-        index = ask_indices[0]
-        return DiscoveryResult(
-            answers={index: (_answer("unvetted"),)},
-            capabilities={
-                index: (
-                    _capability("unvetted"),
-                    _capability("mausamgram"),
-                    _capability("maharashtra-vistaar"),
-                )
-            },
-            failures={index: ()},
-            events=(),
+    async def discover(
+        self, query: ProviderQuery, transaction_id: str
+    ) -> ProviderQueryResult:
+        return ProviderQueryResult(
+            answers=(_answer("unvetted"),),
+            capabilities=(
+                _capability("unvetted"),
+                _capability("mausamgram"),
+                _capability("maharashtra-vistaar"),
+            ),
+            failures=(),
         )
 
 
