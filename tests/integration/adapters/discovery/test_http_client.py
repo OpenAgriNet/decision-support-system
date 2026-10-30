@@ -61,11 +61,9 @@ async def test_discover_posts_to_the_discover_endpoint_and_maps_the_response() -
         coverage=None,
     )
 
-    result = await discovery.discover(
-        query, ask_indices=(0,), transaction_id="txn-from-experience-layer"
-    )
+    result = await discovery.discover(query, transaction_id="txn-from-experience-layer")
 
-    assert result.capabilities[0][0].provider_id == "mausamgram"
+    assert result.capabilities[0].provider_id == "mausamgram"
 
 
 async def test_discover_sends_the_given_transaction_id() -> None:
@@ -87,9 +85,7 @@ async def test_discover_sends_the_given_transaction_id() -> None:
         coverage=None,
     )
 
-    await discovery.discover(
-        query, ask_indices=(0,), transaction_id="txn-from-experience-layer"
-    )
+    await discovery.discover(query, transaction_id="txn-from-experience-layer")
 
     assert sent_bodies[0]["context"]["transactionId"] == "txn-from-experience-layer"
 
@@ -110,11 +106,9 @@ async def test_a_refreshed_cache_is_reflected_without_rewiring() -> None:
     )
 
     index["openagrinet:WeatherObservation"] = ("WeatherObservation", "v0.1")
-    result = await discovery.discover(
-        query, ask_indices=(0,), transaction_id="txn-test"
-    )
+    result = await discovery.discover(query, transaction_id="txn-test")
 
-    assert result.capabilities[0][0].provider_id == "mausamgram"
+    assert result.capabilities[0].provider_id == "mausamgram"
 
 
 async def test_a_non_2xx_response_is_returned_as_a_failure() -> None:
@@ -131,12 +125,10 @@ async def test_a_non_2xx_response_is_returned_as_a_failure() -> None:
         coverage=None,
     )
 
-    result = await discovery.discover(
-        query, ask_indices=(0,), transaction_id="txn-test"
-    )
+    result = await discovery.discover(query, transaction_id="txn-test")
 
-    assert result.failures[0][0].status_code == 429
-    assert result.capabilities[0] == ()
+    assert result.failures[0].status_code == 429
+    assert result.capabilities == ()
 
 
 async def test_a_response_that_cannot_be_mapped_is_returned_as_a_defect() -> None:
@@ -152,15 +144,13 @@ async def test_a_response_that_cannot_be_mapped_is_returned_as_a_defect() -> Non
         coverage=None,
     )
 
-    result = await discovery.discover(
-        query, ask_indices=(0,), transaction_id="txn-test"
-    )
+    result = await discovery.discover(query, transaction_id="txn-test")
 
-    failure = result.failures[0][0]
+    failure = result.failures[0]
     assert failure.failure_class == FailureClass.DEFECT
     assert failure.capability == "openagrinet:WeatherObservation"
-    assert result.answers[0] == ()
-    assert result.capabilities[0] == ()
+    assert result.answers == ()
+    assert result.capabilities == ()
 
 
 async def test_a_body_that_is_not_json_is_returned_as_a_defect() -> None:
@@ -175,11 +165,9 @@ async def test_a_body_that_is_not_json_is_returned_as_a_defect() -> None:
         coverage=None,
     )
 
-    result = await discovery.discover(
-        query, ask_indices=(0,), transaction_id="txn-test"
-    )
+    result = await discovery.discover(query, transaction_id="txn-test")
 
-    assert result.failures[0][0].failure_class == FailureClass.DEFECT
+    assert result.failures[0].failure_class == FailureClass.DEFECT
 
 
 async def test_a_connection_error_is_returned_as_a_failure() -> None:
@@ -199,8 +187,6 @@ async def test_a_connection_error_is_returned_as_a_failure() -> None:
         coverage=None,
     )
 
-    result = await discovery.discover(
-        query, ask_indices=(0,), transaction_id="txn-test"
-    )
+    result = await discovery.discover(query, transaction_id="txn-test")
 
-    assert result.failures[0][0].status_code == 0
+    assert result.failures[0].status_code == 0

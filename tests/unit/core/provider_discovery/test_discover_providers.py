@@ -5,7 +5,6 @@ CapabilityDiscovery together.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -29,6 +28,7 @@ from dss.core.provider_discovery.models import (
     FailureClass,
     ProviderCapability,
     ProviderQuery,
+    ProviderQueryResult,
     Validity,
 )
 from dss.core.provider_discovery.service import discover_providers
@@ -58,14 +58,27 @@ class _FakeSchemaPackCache:
         return self._index
 
 
-class _FakeDiscovery:
-    def __init__(self, result: DiscoveryResult) -> None:
-        self._result = result
-        self.calls: list[tuple] = []
+def _query_result(
+    *,
+    answers: tuple[DiscoveredAnswer, ...] = (),
+    capabilities: tuple[ProviderCapability, ...] = (),
+    failures: tuple[DiscoveryFailure, ...] = (),
+) -> ProviderQueryResult:
+    return ProviderQueryResult(
+        answers=answers, capabilities=capabilities, failures=failures
+    )
 
-    async def discover(self, query, ask_indices, transaction_id):
-        self.calls.append((query, ask_indices, transaction_id))
-        return self._result
+
+class _FakeDiscovery:
+    def __init__(self, query_result: ProviderQueryResult) -> None:
+        self._query_result = query_result
+        self.calls: list[tuple[ProviderQuery, str]] = []
+
+    async def discover(
+        self, query: ProviderQuery, transaction_id: str
+    ) -> ProviderQueryResult:
+        self.calls.append((query, transaction_id))
+        return self._query_result
 
 
 async def test_a_single_ask_resolves_and_returns_the_discovery_result() -> None:
@@ -88,7 +101,9 @@ async def test_a_single_ask_resolves_and_returns_the_discovery_result() -> None:
         failures={0: ()},
         events=(),
     )
-    discovery = _FakeDiscovery(expected_result)
+    discovery = _FakeDiscovery(
+        _query_result(capabilities=expected_result.capabilities[0])
+    )
 
     result = await discover_providers(
         intent,
@@ -101,9 +116,8 @@ async def test_a_single_ask_resolves_and_returns_the_discovery_result() -> None:
 
     assert result == expected_result
     assert len(discovery.calls) == 1
-    query, ask_indices, transaction_id = discovery.calls[0]
+    query, transaction_id = discovery.calls[0]
     assert query.capabilities == ("openagrinet:MandiPrice",)
-    assert ask_indices == (0,)
     assert transaction_id == "t1"
 
 
@@ -115,9 +129,7 @@ async def test_an_unresolved_ask_never_calls_discover() -> None:
     intent = Intent(asks=(ask,), confidence=0.7)
     turn = _turn()
     schema_pack_cache = _FakeSchemaPackCache({})
-    discovery = _FakeDiscovery(
-        DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
-    )
+    discovery = _FakeDiscovery(_query_result())
 
     result = await discover_providers(
         intent,
@@ -145,9 +157,7 @@ async def test_an_ask_whose_place_failed_is_never_discovered() -> None:
         interaction_type=InteractionType.OBSERVE,
         place=UnresolvedPlace(unresolved_name="Xyzzy"),
     )
-    discovery = _FakeDiscovery(
-        DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
-    )
+    discovery = _FakeDiscovery(_query_result())
 
     result = await discover_providers(
         Intent(asks=(ask,), confidence=0.9),
@@ -175,36 +185,24 @@ class _PartiallyFailingDiscovery:
         self._fails_for = fails_for
         self.calls: list[tuple] = []
 
-    async def discover(self, query, ask_indices, transaction_id):
-        self.calls.append((query, ask_indices, transaction_id))
+    async def discover(
+        self, query: ProviderQuery, transaction_id: str
+    ) -> ProviderQueryResult:
+        self.calls.append((query, transaction_id))
         if self._fails_for in query.capabilities:
-            return DiscoveryResult(
-                answers={i: () for i in ask_indices},
-                capabilities={i: () for i in ask_indices},
-                failures={
-                    i: (
-                        DiscoveryFailure(
-                            capability=self._fails_for,
-                            status_code=500,
-                            failure_class=FailureClass.TRANSIENT,
-                        ),
-                    )
-                    for i in ask_indices
-                },
-                events=(),
-            )
-        return DiscoveryResult(
-            answers={i: () for i in ask_indices},
-            capabilities={
-                i: (
-                    ProviderCapability(
-                        "mausamgram", "IMD", query.capabilities[0], "r1"
+            return _query_result(
+                failures=(
+                    DiscoveryFailure(
+                        capability=self._fails_for,
+                        status_code=500,
+                        failure_class=FailureClass.TRANSIENT,
                     ),
                 )
-                for i in ask_indices
-            },
-            failures={i: () for i in ask_indices},
-            events=(),
+            )
+        return _query_result(
+            capabilities=(
+                ProviderCapability("mausamgram", "IMD", query.capabilities[0], "r1"),
+            )
         )
 
 
@@ -262,16 +260,13 @@ class _RaisingDiscovery:
         self._raises_for = raises_for
         self.calls: list[tuple] = []
 
-    async def discover(self, query, ask_indices, transaction_id):
-        self.calls.append((query, ask_indices, transaction_id))
+    async def discover(
+        self, query: ProviderQuery, transaction_id: str
+    ) -> ProviderQueryResult:
+        self.calls.append((query, transaction_id))
         if self._raises_for in query.capabilities:
             raise KeyError("resources")
-        return DiscoveryResult(
-            answers={i: () for i in ask_indices},
-            capabilities={i: () for i in ask_indices},
-            failures={i: () for i in ask_indices},
-            events=(),
-        )
+        return _query_result()
 
 
 async def test_an_adapter_that_raises_takes_the_whole_turn_down() -> None:
@@ -321,14 +316,7 @@ async def test_two_asks_sharing_a_pair_dedupe_to_one_query() -> None:
     schema_pack_cache = _FakeSchemaPackCache(
         {("Market", "Service"): ("openagrinet:MandiPrice",)}
     )
-    discovery = _FakeDiscovery(
-        DiscoveryResult(
-            answers={0: (), 1: ()},
-            capabilities={0: (), 1: ()},
-            failures={0: (), 1: ()},
-            events=(),
-        )
-    )
+    discovery = _FakeDiscovery(_query_result())
 
     await discover_providers(
         intent,
@@ -340,8 +328,6 @@ async def test_two_asks_sharing_a_pair_dedupe_to_one_query() -> None:
     )
 
     assert len(discovery.calls) == 1
-    _, ask_indices, _ = discovery.calls[0]
-    assert set(ask_indices) == {0, 1}
 
 
 def _expired_answer() -> DiscoveredAnswer:
@@ -368,14 +354,7 @@ async def test_an_expired_answer_with_no_fallback_is_dropped() -> None:
     schema_pack_cache = _FakeSchemaPackCache(
         {("Market", "Service"): ("openagrinet:MandiPrice",)}
     )
-    discovery = _FakeDiscovery(
-        DiscoveryResult(
-            answers={0: (_expired_answer(),)},
-            capabilities={0: ()},
-            failures={0: ()},
-            events=(),
-        )
-    )
+    discovery = _FakeDiscovery(_query_result(answers=(_expired_answer(),)))
 
     result = await discover_providers(
         intent,
@@ -412,12 +391,7 @@ async def test_an_expired_answer_with_an_on_demand_sibling_records_a_fallback() 
         "agmarknet", "AGMARKNET", "openagrinet:MandiPrice", "r2"
     )
     discovery = _FakeDiscovery(
-        DiscoveryResult(
-            answers={0: (_expired_answer(),)},
-            capabilities={0: (fallback_capability,)},
-            failures={0: ()},
-            events=(),
-        )
+        _query_result(answers=(_expired_answer(),), capabilities=(fallback_capability,))
     )
 
     result = await discover_providers(
@@ -461,14 +435,7 @@ async def test_a_non_expired_answer_is_kept() -> None:
             starts_at=NOW - timedelta(hours=1), ends_at=NOW + timedelta(hours=1)
         ),
     )
-    discovery = _FakeDiscovery(
-        DiscoveryResult(
-            answers={0: (fresh_answer,)},
-            capabilities={0: ()},
-            failures={0: ()},
-            events=(),
-        )
-    )
+    discovery = _FakeDiscovery(_query_result(answers=(fresh_answer,)))
 
     result = await discover_providers(
         intent,
@@ -507,14 +474,7 @@ async def test_an_answer_whose_window_has_not_opened_is_dropped() -> None:
             starts_at=NOW + timedelta(hours=6), ends_at=NOW + timedelta(days=1)
         ),
     )
-    discovery = _FakeDiscovery(
-        DiscoveryResult(
-            answers={0: (tomorrows_price,)},
-            capabilities={0: ()},
-            failures={0: ()},
-            events=(),
-        )
-    )
+    discovery = _FakeDiscovery(_query_result(answers=(tomorrows_price,)))
 
     result = await discover_providers(
         intent,
@@ -549,14 +509,7 @@ async def test_an_answer_with_no_validity_is_kept() -> None:
         attributes={},
         validity=None,
     )
-    discovery = _FakeDiscovery(
-        DiscoveryResult(
-            answers={0: (answer_without_validity,)},
-            capabilities={0: ()},
-            failures={0: ()},
-            events=(),
-        )
-    )
+    discovery = _FakeDiscovery(_query_result(answers=(answer_without_validity,)))
 
     result = await discover_providers(
         intent,
@@ -587,14 +540,7 @@ async def test_a_capability_matching_the_index_has_no_divergence_event() -> None
         "r1",
         observed_categories=("Market",),
     )
-    discovery = _FakeDiscovery(
-        DiscoveryResult(
-            answers={0: ()},
-            capabilities={0: (matching_capability,)},
-            failures={0: ()},
-            events=(),
-        )
-    )
+    discovery = _FakeDiscovery(_query_result(capabilities=(matching_capability,)))
 
     result = await discover_providers(
         intent,
@@ -625,14 +571,7 @@ async def test_a_capability_with_a_category_outside_the_index_diverges() -> None
         "r1",
         observed_categories=("Scheme",),
     )
-    discovery = _FakeDiscovery(
-        DiscoveryResult(
-            answers={0: ()},
-            capabilities={0: (diverging_capability,)},
-            failures={0: ()},
-            events=(),
-        )
-    )
+    discovery = _FakeDiscovery(_query_result(capabilities=(diverging_capability,)))
 
     result = await discover_providers(
         intent,
@@ -668,14 +607,7 @@ async def test_a_direct_answer_with_a_diverging_category_is_flagged() -> None:
         attributes={"subjectCategories": ["Weather"]},
         validity=None,
     )
-    discovery = _FakeDiscovery(
-        DiscoveryResult(
-            answers={0: (diverging_answer,)},
-            capabilities={0: ()},
-            failures={0: ()},
-            events=(),
-        )
-    )
+    discovery = _FakeDiscovery(_query_result(answers=(diverging_answer,)))
 
     result = await discover_providers(
         intent,
@@ -716,14 +648,7 @@ async def test_an_expired_answer_is_not_also_reported_as_diverging() -> None:
             starts_at=NOW - timedelta(days=2), ends_at=NOW - timedelta(days=1)
         ),
     )
-    discovery = _FakeDiscovery(
-        DiscoveryResult(
-            answers={0: (expired_and_diverging,)},
-            capabilities={0: ()},
-            failures={0: ()},
-            events=(),
-        )
-    )
+    discovery = _FakeDiscovery(_query_result(answers=(expired_and_diverging,)))
 
     result = await discover_providers(
         intent,
@@ -758,14 +683,7 @@ async def test_a_live_answer_that_diverges_is_still_reported() -> None:
             starts_at=NOW - timedelta(days=1), ends_at=NOW + timedelta(days=1)
         ),
     )
-    discovery = _FakeDiscovery(
-        DiscoveryResult(
-            answers={0: (live_and_diverging,)},
-            capabilities={0: ()},
-            failures={0: ()},
-            events=(),
-        )
-    )
+    discovery = _FakeDiscovery(_query_result(answers=(live_and_diverging,)))
 
     result = await discover_providers(
         intent,
@@ -793,11 +711,7 @@ async def test_an_empty_catalog_result_emits_ask_unservable() -> None:
     schema_pack_cache = _FakeSchemaPackCache(
         {("Market", "Service"): ("openagrinet:MandiPrice",)}
     )
-    discovery = _FakeDiscovery(
-        DiscoveryResult(
-            answers={0: ()}, capabilities={0: ()}, failures={0: ()}, events=()
-        )
-    )
+    discovery = _FakeDiscovery(_query_result())
 
     result = await discover_providers(
         intent,
@@ -824,19 +738,14 @@ async def test_a_failed_ask_emits_ask_discovery_failed_not_unservable() -> None:
         {("Market", "Service"): ("openagrinet:MandiPrice",)}
     )
     discovery = _FakeDiscovery(
-        DiscoveryResult(
-            answers={0: ()},
-            capabilities={0: ()},
-            failures={
-                0: (
-                    DiscoveryFailure(
-                        capability="openagrinet:MandiPrice",
-                        status_code=500,
-                        failure_class=FailureClass.TRANSIENT,
-                    ),
-                )
-            },
-            events=(),
+        _query_result(
+            failures=(
+                DiscoveryFailure(
+                    capability="openagrinet:MandiPrice",
+                    status_code=500,
+                    failure_class=FailureClass.TRANSIENT,
+                ),
+            )
         )
     )
 
@@ -867,9 +776,7 @@ async def test_an_unresolved_ask_does_not_also_emit_ask_unservable() -> None:
     intent = Intent(asks=(ask,), confidence=0.7)
     turn = _turn()
     schema_pack_cache = _FakeSchemaPackCache({})
-    discovery = _FakeDiscovery(
-        DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
-    )
+    discovery = _FakeDiscovery(_query_result())
 
     result = await discover_providers(
         intent,
@@ -894,14 +801,7 @@ async def test_a_resolved_answer_does_not_emit_ask_unservable() -> None:
         {("Market", "Service"): ("openagrinet:MandiPrice",)}
     )
     capability = ProviderCapability("mausamgram", "IMD", "openagrinet:MandiPrice", "r1")
-    discovery = _FakeDiscovery(
-        DiscoveryResult(
-            answers={0: ()},
-            capabilities={0: (capability,)},
-            failures={0: ()},
-            events=(),
-        )
-    )
+    discovery = _FakeDiscovery(_query_result(capabilities=(capability,)))
 
     result = await discover_providers(
         intent,
@@ -924,11 +824,7 @@ async def test_a_scheme_ask_is_discovered_on_its_category_alone() -> None:
         subject_categories=SubjectCategory.SCHEME,
         interaction_type=InteractionType.ADVISE,
     )
-    discovery = _FakeDiscovery(
-        DiscoveryResult(
-            answers={0: ()}, capabilities={0: ()}, failures={0: ()}, events=()
-        )
-    )
+    discovery = _FakeDiscovery(_query_result())
 
     await discover_providers(
         Intent(asks=(ask,), confidence=0.9),
@@ -940,10 +836,9 @@ async def test_a_scheme_ask_is_discovered_on_its_category_alone() -> None:
     )
 
     assert len(discovery.calls) == 1
-    query, ask_indices, _ = discovery.calls[0]
+    query, _ = discovery.calls[0]
     assert query.subject_category == "Scheme"
     assert query.capabilities == ()
-    assert ask_indices == (0,)
 
 
 async def test_an_unresolvable_non_scheme_ask_is_still_never_discovered() -> None:
@@ -955,9 +850,7 @@ async def test_an_unresolvable_non_scheme_ask_is_still_never_discovered() -> Non
         subject_categories=SubjectCategory.MARKET,
         interaction_type=InteractionType.OBSERVE,
     )
-    discovery = _FakeDiscovery(
-        DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
-    )
+    discovery = _FakeDiscovery(_query_result())
 
     result = await discover_providers(
         Intent(asks=(ask,), confidence=0.9),
@@ -980,11 +873,7 @@ async def test_a_scheme_ask_uses_resolved_types_once_a_pack_declares_them() -> N
         subject_categories=SubjectCategory.SCHEME,
         interaction_type=InteractionType.ADVISE,
     )
-    discovery = _FakeDiscovery(
-        DiscoveryResult(
-            answers={0: ()}, capabilities={0: ()}, failures={0: ()}, events=()
-        )
-    )
+    discovery = _FakeDiscovery(_query_result())
 
     await discover_providers(
         Intent(asks=(ask,), confidence=0.9),
@@ -997,33 +886,22 @@ async def test_a_scheme_ask_uses_resolved_types_once_a_pack_declares_them() -> N
         now=NOW,
     )
 
-    query, _, _ = discovery.calls[0]
+    query, _ = discovery.calls[0]
     assert query.capabilities == ("openagrinet:SchemeAdvisory",)
 
 
-@dataclass(frozen=True)
-class _Catalog:
-    answers: tuple[DiscoveredAnswer, ...] = ()
-    capabilities: tuple[ProviderCapability, ...] = ()
-    failures: tuple[DiscoveryFailure, ...] = ()
-
-
 class _NetworkDiscovery:
-    """Answers from the first capability's catalog, copied to every ask index."""
+    """Answers each query from the catalog of its first capability."""
 
-    def __init__(self, catalogs: Mapping[str, _Catalog]) -> None:
+    def __init__(self, catalogs: Mapping[str, ProviderQueryResult]) -> None:
         self._catalogs = catalogs
         self.calls: list[ProviderQuery] = []
 
-    async def discover(self, query, ask_indices, transaction_id) -> DiscoveryResult:
+    async def discover(
+        self, query: ProviderQuery, transaction_id: str
+    ) -> ProviderQueryResult:
         self.calls.append(query)
-        catalog = self._catalogs.get(next(iter(query.capabilities), ""), _Catalog())
-        return DiscoveryResult(
-            answers=dict.fromkeys(ask_indices, catalog.answers),
-            capabilities=dict.fromkeys(ask_indices, catalog.capabilities),
-            failures=dict.fromkeys(ask_indices, catalog.failures),
-            events=(),
-        )
+        return self._catalogs.get(next(iter(query.capabilities), ""), _query_result())
 
 
 _MARKET_AND_WEATHER_INDEX = _FakeSchemaPackCache(
@@ -1071,7 +949,7 @@ async def test_asks_sharing_a_query_each_get_the_whole_reply() -> None:
     )
     discovery = _NetworkDiscovery(
         {
-            "openagrinet:MandiPrice": _Catalog(
+            "openagrinet:MandiPrice": _query_result(
                 answers=(answer,), capabilities=(capability,)
             )
         }
@@ -1092,7 +970,7 @@ async def test_a_failing_shared_query_fails_every_ask_that_shared_it() -> None:
         failure_class=FailureClass.TRANSIENT,
     )
     discovery = _NetworkDiscovery(
-        {"openagrinet:MandiPrice": _Catalog(failures=(failure,))}
+        {"openagrinet:MandiPrice": _query_result(failures=(failure,))}
     )
 
     result = await _discover_with(discovery, _MARKET_ASK, _MARKET_ASK)
@@ -1111,8 +989,8 @@ async def test_asks_get_only_their_own_query_reply() -> None:
     )
     discovery = _NetworkDiscovery(
         {
-            "openagrinet:MandiPrice": _Catalog(answers=(market_answer,)),
-            "openagrinet:WeatherObservation": _Catalog(
+            "openagrinet:MandiPrice": _query_result(answers=(market_answer,)),
+            "openagrinet:WeatherObservation": _query_result(
                 capabilities=(weather_capability,)
             ),
         }
@@ -1130,7 +1008,7 @@ async def test_an_unplaced_ask_gets_an_empty_entry_beside_a_searched_one() -> No
         "mausamgram", "IMD", "openagrinet:WeatherObservation", "r1"
     )
     discovery = _NetworkDiscovery(
-        {"openagrinet:WeatherObservation": _Catalog(capabilities=(capability,))}
+        {"openagrinet:WeatherObservation": _query_result(capabilities=(capability,))}
     )
     unplaced_market_ask = _MARKET_ASK.model_copy(
         update={"place": UnresolvedPlace(unresolved_name="Kanha")}

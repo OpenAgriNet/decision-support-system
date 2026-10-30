@@ -815,7 +815,7 @@ deployed service; the DSS holds a client for it, behind two ports:
 
 ```python
 class CapabilityDiscovery(Protocol):     # read-only — may cross the barrier
-    async def discover(self, query: ProviderQuery) -> DiscoveryResult: ...
+    async def discover(self, query: ProviderQuery, transaction_id: NetworkTransactionID) -> ProviderQueryResult: ...
 
 
 class CapabilityInvocation(Protocol):    # side-effecting — executioner only

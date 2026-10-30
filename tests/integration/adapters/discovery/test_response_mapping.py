@@ -20,12 +20,11 @@ FIXTURES = Path(__file__).parent / "fixtures"
 def test_an_on_demand_resource_maps_to_a_provider_capability() -> None:
     response = json.loads((FIXTURES / "discover_response.json").read_text())
 
-    result = map_discover_response(response, ask_indices=(0,))
+    result = map_discover_response(response)
 
-    assert result.answers == {0: ()}
-    assert result.failures == {0: ()}
-    assert result.events == ()
-    capabilities = result.capabilities[0]
+    assert result.answers == ()
+    assert result.failures == ()
+    capabilities = result.capabilities
     assert len(capabilities) == 1
     capability = capabilities[0]
     assert capability.provider_id == "mausamgram"
@@ -42,9 +41,9 @@ def test_the_providers_descriptor_code_is_kept() -> None:
 
     response = json.loads((FIXTURES / "discover_response.json").read_text())
 
-    result = map_discover_response(response, ask_indices=(0,))
+    result = map_discover_response(response)
 
-    assert result.capabilities[0][0].provider_code == "IMD-NWP-01"
+    assert result.capabilities[0].provider_code == "IMD-NWP-01"
 
 
 def test_a_provider_with_no_descriptor_code_maps_to_none() -> None:
@@ -54,9 +53,9 @@ def test_a_provider_with_no_descriptor_code_maps_to_none() -> None:
     provider = response["message"]["catalogs"][0]["provider"]
     del provider["descriptor"]["code"]
 
-    result = map_discover_response(response, ask_indices=(0,))
+    result = map_discover_response(response)
 
-    assert result.capabilities[0][0].provider_code is None
+    assert result.capabilities[0].provider_code is None
 
 
 def test_a_resources_advertised_attributes_are_kept() -> None:
@@ -92,30 +91,21 @@ def test_a_resources_advertised_attributes_are_kept() -> None:
         }
     }
 
-    result = map_discover_response(response, ask_indices=(0,))
+    result = map_discover_response(response)
 
-    assert result.capabilities[0][0].advertised == {
+    assert result.capabilities[0].advertised == {
         "supportedCommodities": [{"code": "78", "name": "Tomato"}]
     }
-
-
-def test_the_same_result_is_keyed_under_every_ask_index() -> None:
-    response = json.loads((FIXTURES / "discover_response.json").read_text())
-
-    result = map_discover_response(response, ask_indices=(0, 2))
-
-    assert result.capabilities[0] == result.capabilities[2]
 
 
 def test_a_direct_resource_maps_to_a_discovered_answer() -> None:
     response = json.loads((FIXTURES / "discover_response_direct.json").read_text())
 
-    result = map_discover_response(response, ask_indices=(0,))
+    result = map_discover_response(response)
 
-    assert result.capabilities == {0: ()}
-    assert result.failures == {0: ()}
-    assert result.events == ()
-    answers = result.answers[0]
+    assert result.capabilities == ()
+    assert result.failures == ()
+    answers = result.answers
     assert len(answers) == 1
     answer = answers[0]
     assert answer.provider_id == "agmarknet"
@@ -154,9 +144,9 @@ def test_a_direct_resource_with_validity_parses_it() -> None:
         }
     }
 
-    result = map_discover_response(response, ask_indices=(0,))
+    result = map_discover_response(response)
 
-    validity = result.answers[0][0].validity
+    validity = result.answers[0].validity
     assert validity is not None
     assert validity.starts_at == datetime.fromisoformat("2026-08-24T00:00:00+00:00")
     assert validity.ends_at == datetime.fromisoformat("2026-08-25T00:00:00+00:00")
@@ -190,9 +180,9 @@ def test_a_bare_end_date_stretches_to_the_end_of_that_day() -> None:
     """
     response = _direct_response_with_validity({"endsAt": "2026-08-26"})
 
-    result = map_discover_response(response, ask_indices=(0,))
+    result = map_discover_response(response)
 
-    validity = result.answers[0][0].validity
+    validity = result.answers[0].validity
     assert validity is not None
     assert validity.ends_at == datetime(2026, 8, 26, 23, 59, 59, 999999, tzinfo=UTC)
 
@@ -200,9 +190,9 @@ def test_a_bare_end_date_stretches_to_the_end_of_that_day() -> None:
 def test_a_bare_start_date_stays_at_the_start_of_that_day() -> None:
     response = _direct_response_with_validity({"startsAt": "2026-08-26"})
 
-    result = map_discover_response(response, ask_indices=(0,))
+    result = map_discover_response(response)
 
-    validity = result.answers[0][0].validity
+    validity = result.answers[0].validity
     assert validity is not None
     assert validity.starts_at == datetime(2026, 8, 26, 0, 0, tzinfo=UTC)
 
@@ -231,9 +221,9 @@ def test_a_resource_without_subject_categories_still_maps() -> None:
         }
     }
 
-    result = map_discover_response(response, ask_indices=(0,))
+    result = map_discover_response(response)
 
-    assert result.capabilities[0][0].observed_categories == ()
+    assert result.capabilities[0].observed_categories == ()
 
 
 def test_a_catalog_without_resources_maps_to_nothing() -> None:
@@ -243,10 +233,10 @@ def test_a_catalog_without_resources_maps_to_nothing() -> None:
         }
     }
 
-    result = map_discover_response(response, ask_indices=(0,))
+    result = map_discover_response(response)
 
-    assert result.capabilities == {0: ()}
-    assert result.answers == {0: ()}
+    assert result.capabilities == ()
+    assert result.answers == ()
 
 
 def test_a_resource_without_an_information_mode_is_skipped() -> None:
@@ -273,10 +263,10 @@ def test_a_resource_without_an_information_mode_is_skipped() -> None:
         }
     }
 
-    result = map_discover_response(response, ask_indices=(0,))
+    result = map_discover_response(response)
 
-    assert len(result.capabilities[0]) == 1
-    assert result.capabilities[0][0].resource_id == "r2"
+    assert len(result.capabilities) == 1
+    assert result.capabilities[0].resource_id == "r2"
 
 
 def test_a_naive_timestamp_is_read_as_utc_with_its_time_untouched() -> None:
@@ -287,9 +277,9 @@ def test_a_naive_timestamp_is_read_as_utc_with_its_time_untouched() -> None:
         {"startsAt": "2026-08-26T06:30:00", "endsAt": "2026-08-26T18:45:00"}
     )
 
-    result = map_discover_response(response, ask_indices=(0,))
+    result = map_discover_response(response)
 
-    validity = result.answers[0][0].validity
+    validity = result.answers[0].validity
     assert validity is not None
     assert validity.starts_at == datetime(2026, 8, 26, 6, 30, tzinfo=UTC)
     assert validity.ends_at == datetime(2026, 8, 26, 18, 45, tzinfo=UTC)
@@ -301,7 +291,7 @@ def test_a_direct_resources_source_block_is_promoted() -> None:
 
     response = json.loads((FIXTURES / "discover_response_direct.json").read_text())
 
-    answer = map_discover_response(response, ask_indices=(0,)).answers[0][0]
+    answer = map_discover_response(response).answers[0]
 
     assert answer.source_id == "source:agmarknet"
     assert answer.source_name == "AGMARKNET"
@@ -321,7 +311,7 @@ def test_a_direct_resource_relaying_another_source_keeps_both_names() -> None:
         "sourceUri": "https://agmarknet.gov.in",
     }
 
-    answer = map_discover_response(response, ask_indices=(0,)).answers[0][0]
+    answer = map_discover_response(response).answers[0]
 
     assert answer.provider_name == "Krishi Knowledge Base"
     assert answer.source_name == "AGMARKNET"
@@ -334,7 +324,7 @@ def test_a_direct_resource_without_a_source_block_maps_to_none() -> None:
         "source"
     ]
 
-    answer = map_discover_response(response, ask_indices=(0,)).answers[0][0]
+    answer = map_discover_response(response).answers[0]
 
     assert (answer.source_id, answer.source_name, answer.source_url) == (
         None,

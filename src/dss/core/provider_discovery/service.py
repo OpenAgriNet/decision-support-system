@@ -30,6 +30,7 @@ from dss.core.provider_discovery.models import (
     ExpiredAnswerDropped,
     ProviderCapability,
     ProviderQuery,
+    ProviderQueryResult,
 )
 from dss.core.shared.models import UserTurn
 from dss.ports.discovery import CapabilityDiscovery
@@ -225,7 +226,6 @@ async def _run_queries(
     dict[int, tuple[DiscoveredAnswer, ...]],
     dict[int, tuple[ProviderCapability, ...]],
     dict[int, tuple[DiscoveryFailure, ...]],
-    list[DiscoveryEvent],
 ]:
     answers: dict[int, tuple[DiscoveredAnswer, ...]] = dict.fromkeys(
         unresolved_asks, ()
@@ -236,32 +236,31 @@ async def _run_queries(
     failures: dict[int, tuple[DiscoveryFailure, ...]] = dict.fromkeys(
         unresolved_asks, ()
     )
-    events: list[DiscoveryEvent] = []
 
     # discover() never raises (failures are data), so every
     # query's results land independently: one query hitting a defect never
     # cancels or delays a sibling still in flight.
-    query_results: list[DiscoveryResult | None] = [None] * len(queries_to_asks)
+    query_results: list[ProviderQueryResult | None] = [None] * len(queries_to_asks)
 
-    async def _run(
-        slot: int, query: ProviderQuery, ask_indices: tuple[int, ...]
-    ) -> None:
+    async def _run(slot: int, query: ProviderQuery) -> None:
         query_results[slot] = await discovery.discover(
-            query, ask_indices, transaction_id=transaction_id
+            query, transaction_id=transaction_id
         )
 
     async with anyio.create_task_group() as task_group:
-        for slot, (query, ask_indices) in enumerate(queries_to_asks.items()):
-            task_group.start_soon(_run, slot, query, tuple(ask_indices))
+        for slot, query in enumerate(queries_to_asks):
+            task_group.start_soon(_run, slot, query)
 
-    for result in query_results:
-        assert result is not None  # noqa: S101 - type narrowing only
-        answers.update(result.answers)
-        capabilities.update(result.capabilities)
-        failures.update(result.failures)
-        events.extend(result.events)
+    for query_result, ask_indices in zip(
+        query_results, queries_to_asks.values(), strict=True
+    ):
+        assert query_result is not None  # noqa: S101 - type narrowing only
+        for ask_index in ask_indices:
+            answers[ask_index] = query_result.answers
+            capabilities[ask_index] = query_result.capabilities
+            failures[ask_index] = query_result.failures
 
-    return answers, capabilities, failures, events
+    return answers, capabilities, failures
 
 
 def _apply_expiry_filter(
@@ -375,10 +374,9 @@ async def discover_providers(  # noqa: PLR0913
         intent, languages, radius_m, index
     )
 
-    answers, capabilities, failures, run_events = await _run_queries(
+    answers, capabilities, failures = await _run_queries(
         queries_to_asks, unresolved_asks, discovery, turn.transaction_id
     )
-    events.extend(run_events)
 
     events.extend(_apply_expiry_filter(answers, capabilities, now))
     events.extend(_detect_divergence(answers, capabilities, index))

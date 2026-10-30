@@ -2,7 +2,7 @@
 
 Discovery never raises. An exception here would cancel every sibling query in
 the caller's task group, so failures come back as data inside a
-`DiscoveryResult` — which means a span around this call succeeds by default. A
+`ProviderQueryResult` — which means a span around this call succeeds by default. A
 provider that timed out would leave a green span indistinguishable from one
 that answered. The span has to read the result and mark itself.
 """
@@ -77,7 +77,7 @@ async def test_both_log_lines_for_one_call_carry_the_same_span(spans, caplog) ->
         return httpx.Response(503, json={"error": "simulated"})
 
     with caplog.at_level(logging.INFO, logger="dss.trace"):
-        await _discovery(unavailable).discover(QUERY, (0,), "txn-1")
+        await _discovery(unavailable).discover(QUERY, "txn-1")
 
     lines = [ln for ln in caplog.text.splitlines() if "external=discovery" in ln]
     span_ids = {
@@ -116,9 +116,9 @@ async def test_a_capability_with_no_schema_context_does_not_raise(spans) -> None
         schema_pack_cache=_EmptySchemaPackCache(),
     )
 
-    result = await discovery.discover(QUERY, (0,), "txn-1")
+    result = await discovery.discover(QUERY, "txn-1")
 
-    assert result.failures[0]
+    assert result.failures
     (span,) = spans.get_finished_spans()
     assert span.status.status_code is StatusCode.ERROR
 
@@ -131,9 +131,9 @@ async def test_a_returned_failure_marks_the_span_failed(spans) -> None:
     def unavailable(request: httpx.Request) -> httpx.Response:
         return httpx.Response(503, json={"error": "simulated"})
 
-    result = await _discovery(unavailable).discover(QUERY, (0,), "txn-1")
+    result = await _discovery(unavailable).discover(QUERY, "txn-1")
 
-    assert result.failures[0]  # the call did fail, as data
+    assert result.failures  # the call did fail, as data
     (span,) = spans.get_finished_spans()
     assert span.name == "dss.discover"
     assert span.status.status_code is StatusCode.ERROR
@@ -148,7 +148,7 @@ async def test_the_span_says_what_was_asked_and_what_came_back(spans) -> None:
     def answers(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"message": {"catalogs": []}})
 
-    await _discovery(answers).discover(QUERY, (0,), "txn-1")
+    await _discovery(answers).discover(QUERY, "txn-1")
 
     (span,) = spans.get_finished_spans()
     assert span.attributes["capabilities"] == "openagrinet:MandiPrice"
@@ -178,7 +178,7 @@ async def test_the_span_counts_what_the_provider_returned(spans) -> None:
     def answers(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"message": {"catalogs": [catalog]}})
 
-    await _discovery(answers).discover(QUERY, (0,), "txn-1")
+    await _discovery(answers).discover(QUERY, "txn-1")
 
     (span,) = spans.get_finished_spans()
     assert span.attributes["capability_count"] == 1
@@ -204,7 +204,7 @@ async def test_the_span_names_the_providers_offered(spans) -> None:
     def answers(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"message": {"catalogs": [catalog]}})
 
-    await _discovery(answers).discover(QUERY, (0,), "txn-1")
+    await _discovery(answers).discover(QUERY, "txn-1")
 
     (span,) = spans.get_finished_spans()
     assert span.attributes["offered_provider_ids"] == ("agmarknet",)
@@ -219,7 +219,7 @@ async def test_the_span_names_the_providers_that_answered_directly(spans) -> Non
     def answers(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=body)
 
-    await _discovery(answers).discover(QUERY, (0,), "txn-1")
+    await _discovery(answers).discover(QUERY, "txn-1")
 
     (span,) = spans.get_finished_spans()
     assert span.attributes["answered_provider_ids"] == ("agmarknet",)
