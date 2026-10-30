@@ -194,6 +194,7 @@ model access. With Azure:
 ```bash
 DSS_DISCOVERY_BASE_URL=http://127.0.0.1:8078 \
 DSS_INVOCATION_BASE_URL=http://127.0.0.1:8078 \
+DSS_SCHEMES_CONFIG_PATH=configs/schemes.csv \
 DSS_INTENT_MODEL=azure:<deployment id> \
 DSS_MODERATION_MODEL=azure:<deployment id> \
 DSS_PLANNER_MODEL=azure:<deployment id> \
@@ -209,11 +210,12 @@ finds the key itself:
 ```bash
 DSS_DISCOVERY_BASE_URL=http://127.0.0.1:8078 \
 DSS_INVOCATION_BASE_URL=http://127.0.0.1:8078 \
+DSS_SCHEMES_CONFIG_PATH=configs/schemes.csv \
 OPENAI_API_KEY=sk-... \
 uv run uvicorn --factory dss.entrypoint.app:create_app --port 8077
 ```
 
-Two things that will bite:
+Three things that will bite:
 
 - **Keep `uv run uvicorn` on the end of the same command.** Environment
   assignments with nothing after them set shell variables for a command that
@@ -222,6 +224,9 @@ Two things that will bite:
 - **`DSS_STUB_LLM=true` is left off on purpose.** It stubs intent and
   moderation only; the planner and composer always build a real model, so a
   stubbed run still needs credentials once discovery finds a provider.
+- **Set `DSS_SCHEMES_CONFIG_PATH`.** `run-local.sh` and compose set it for
+  you; a hand-run start does not. Without it no question names a scheme, so a
+  grievance never gets its form.
 
 Then send the example request:
 
