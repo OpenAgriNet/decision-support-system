@@ -18,18 +18,13 @@ from dss.core.intent.models import (
     UnresolvedPlace,
 )
 from dss.core.provider_discovery.models import (
-    AskDiscoveryFailed,
     AsksToBeDiscovered,
-    AskUnservable,
     CapabilityUnresolved,
     CategoryMappingDiverged,
     Coverage,
-    DiscoveredAnswer,
-    DiscoveryEvent,
-    DiscoveryFailure,
+    DiscoveredAsk,
+    DiscoveredAsks,
     DiscoveryResult,
-    ExpiredAnswerDropped,
-    ProviderCapability,
     ProviderQuery,
     ProviderQueryResult,
 )
@@ -110,54 +105,6 @@ def _query_for_ask(
     ), None
 
 
-def _is_outside_validity(answer: DiscoveredAnswer, now: datetime) -> bool:
-    """Whether ``now`` falls outside the answer's validity window.
-
-    Both bounds, not just ``ends_at``. A provider publishing tomorrow's mandi
-    price with ``startsAt`` in the future was otherwise served as today's
-    answer — the worse half of the two, since a stale price at least was true
-    once. Either bound may be absent, which means unbounded on that side.
-    """
-
-    validity = answer.validity
-    if validity is None:
-        return False
-    if validity.starts_at is not None and now < validity.starts_at:
-        return True
-    return validity.ends_at is not None and now > validity.ends_at
-
-
-def _had_fallback(
-    answer: DiscoveredAnswer, capabilities: tuple[ProviderCapability, ...]
-) -> bool:
-    return any(
-        capability.provider_id == answer.provider_id
-        and capability.capability == answer.capability
-        for capability in capabilities
-    )
-
-
-def _drop_expired_answers(
-    answers: tuple[DiscoveredAnswer, ...],
-    capabilities: tuple[ProviderCapability, ...],
-    now: datetime,
-) -> tuple[tuple[DiscoveredAnswer, ...], list[ExpiredAnswerDropped]]:
-    expired, kept = (
-        tuple(a for a in answers if _is_outside_validity(a, now)),
-        tuple(a for a in answers if not _is_outside_validity(a, now)),
-    )
-    events = [
-        ExpiredAnswerDropped(
-            provider_id=answer.provider_id,
-            capability=answer.capability,
-            resource_id=answer.resource_id,
-            had_fallback=_had_fallback(answer, capabilities),
-        )
-        for answer in expired
-    ]
-    return kept, events
-
-
 def _expected_categories(
     capability: str, index: Mapping[tuple[str, str], tuple[str, ...]]
 ) -> set[str]:
@@ -215,78 +162,52 @@ def _find_asks_to_discover(
     )
 
 
-async def _run_queries(
+_NOTHING_FOUND = ProviderQueryResult(answers=(), capabilities=(), failures=())
+
+
+async def _send_queries(
     to_discover: AsksToBeDiscovered,
     discovery: CapabilityDiscovery,
     transaction_id: str,
-) -> tuple[
-    dict[int, tuple[DiscoveredAnswer, ...]],
-    dict[int, tuple[ProviderCapability, ...]],
-    dict[int, tuple[DiscoveryFailure, ...]],
-]:
-    answers: dict[int, tuple[DiscoveredAnswer, ...]] = dict.fromkeys(
-        to_discover.unsearchable_asks, ()
-    )
-    capabilities: dict[int, tuple[ProviderCapability, ...]] = dict.fromkeys(
-        to_discover.unsearchable_asks, ()
-    )
-    failures: dict[int, tuple[DiscoveryFailure, ...]] = dict.fromkeys(
-        to_discover.unsearchable_asks, ()
-    )
+) -> DiscoveredAsks:
     unique_queries = to_discover.find_unique_queries()
+    replies: dict[ProviderQuery, ProviderQueryResult] = {}
+
+    async def _send(query: ProviderQuery) -> None:
+        replies[query] = await discovery.discover(query, transaction_id=transaction_id)
 
     # discover() never raises (failures are data), so every
     # query's results land independently: one query hitting a defect never
     # cancels or delays a sibling still in flight.
-    query_results: list[ProviderQueryResult | None] = [None] * len(unique_queries)
-
-    async def _run(slot: int, query: ProviderQuery) -> None:
-        query_results[slot] = await discovery.discover(
-            query, transaction_id=transaction_id
-        )
-
     async with anyio.create_task_group() as task_group:
-        for slot, query in enumerate(unique_queries):
-            task_group.start_soon(_run, slot, query)
+        for query in unique_queries:
+            task_group.start_soon(_send, query)
 
-    for query, query_result in zip(unique_queries, query_results, strict=True):
-        assert query_result is not None  # noqa: S101 - type narrowing only
-        for ask_index in to_discover.find_asks_sharing(query):
-            answers[ask_index] = query_result.answers
-            capabilities[ask_index] = query_result.capabilities
-            failures[ask_index] = query_result.failures
-
-    return answers, capabilities, failures
-
-
-def _apply_expiry_filter(
-    answers: dict[int, tuple[DiscoveredAnswer, ...]],
-    capabilities: dict[int, tuple[ProviderCapability, ...]],
-    now: datetime,
-) -> list[ExpiredAnswerDropped]:
-    events: list[ExpiredAnswerDropped] = []
-    for ask_index in answers:
-        kept_answers, expiry_events = _drop_expired_answers(
-            answers[ask_index], capabilities.get(ask_index, ()), now
-        )
-        answers[ask_index] = kept_answers
-        events.extend(expiry_events)
-    return events
+    searched = [
+        DiscoveredAsk(index=index, query=query, query_result=replies[query])
+        for query in unique_queries
+        for index in to_discover.find_asks_sharing(query)
+    ]
+    never_searched = [
+        DiscoveredAsk(index=index, query=None, query_result=_NOTHING_FOUND)
+        for index in to_discover.unsearchable_asks
+    ]
+    return DiscoveredAsks(
+        asks=tuple(sorted([*searched, *never_searched], key=lambda ask: ask.index))
+    )
 
 
 def _detect_divergence(
-    answers: dict[int, tuple[DiscoveredAnswer, ...]],
-    capabilities: dict[int, tuple[ProviderCapability, ...]],
-    index: Mapping[tuple[str, str], tuple[str, ...]],
+    discovered: DiscoveredAsks, index: Mapping[tuple[str, str], tuple[str, ...]]
 ) -> list[CategoryMappingDiverged]:
     # Runs after the expiry filter: divergence is an alert to go fix a
     # provider's data, so raising it for an answer dropped in the same turn
     # would point an operator at a resource that never reached the user.
-    all_answers = [answer for tup in answers.values() for answer in tup]
-    all_capabilities = [cap for tup in capabilities.values() for cap in tup]
+    query_results = [ask.query_result for ask in discovered.asks]
     return [
         event
-        for answer in all_answers
+        for query_result in query_results
+        for answer in query_result.answers
         for event in _diverged_categories(
             answer.capability,
             tuple(answer.attributes.get("subjectCategories", ())),
@@ -294,50 +215,10 @@ def _detect_divergence(
         )
     ] + [
         event
-        for capability in all_capabilities
+        for query_result in query_results
+        for capability in query_result.capabilities
         for event in _diverged_categories(
             capability.capability, capability.observed_categories, index
-        )
-    ]
-
-
-def _ask_events(
-    ask_index: int,
-    ask_failures: tuple[DiscoveryFailure, ...],
-    has_answer: bool,
-    has_capability: bool,
-    capabilities: tuple[str, ...],
-) -> list[AskDiscoveryFailed | AskUnservable]:
-    if ask_failures:
-        return [
-            AskDiscoveryFailed(
-                ask_index=ask_index,
-                capability=failure.capability,
-                failure_class=failure.failure_class,
-                status_code=failure.status_code,
-            )
-            for failure in ask_failures
-        ]
-    if not has_answer and not has_capability:
-        return [AskUnservable(ask_index=ask_index, capabilities=capabilities)]
-    return []
-
-
-def _build_ask_events(
-    queries_by_ask: Mapping[int, ProviderQuery],
-    answers: dict[int, tuple[DiscoveredAnswer, ...]],
-    capabilities: dict[int, tuple[ProviderCapability, ...]],
-    failures: dict[int, tuple[DiscoveryFailure, ...]],
-) -> list[AskDiscoveryFailed | AskUnservable]:
-    return [
-        event
-        for ask_index, query in queries_by_ask.items()
-        for event in _ask_events(
-            ask_index,
-            failures.get(ask_index, ()),
-            bool(answers.get(ask_index)),
-            bool(capabilities.get(ask_index)),
-            query.capabilities,
         )
     ]
 
@@ -365,23 +246,13 @@ async def discover_providers(  # noqa: PLR0913
 
     languages = (str(turn.target_lang),)
     index = schema_pack_cache.current()
-
     to_discover = _find_asks_to_discover(intent, languages, radius_m, index)
-    events: list[DiscoveryEvent] = [*to_discover.events]
-
-    answers, capabilities, failures = await _run_queries(
-        to_discover, discovery, turn.transaction_id
-    )
-
-    events.extend(_apply_expiry_filter(answers, capabilities, now))
-    events.extend(_detect_divergence(answers, capabilities, index))
-    events.extend(
-        _build_ask_events(to_discover.queries_by_ask, answers, capabilities, failures)
-    )
-
-    return DiscoveryResult(
-        answers=answers,
-        capabilities=capabilities,
-        failures=failures,
-        events=tuple(events),
-    )
+    discovered = await _send_queries(to_discover, discovery, turn.transaction_id)
+    fresh = discovered.drop_expired(now)
+    events = [
+        *to_discover.events,
+        *discovered.build_expired_answer_events(now),
+        *_detect_divergence(fresh, index),
+        *fresh.build_outcome_events(),
+    ]
+    return fresh.build_result(events)

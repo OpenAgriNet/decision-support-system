@@ -5,8 +5,8 @@ A type answers questions about its own data; service.py runs the flow.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, replace
 from dataclasses import field as dataclass_field
 from datetime import datetime
 from enum import Enum
@@ -103,12 +103,28 @@ class DiscoveredAnswer:
     source_name: str | None = None
     source_url: str | None = None
 
+    def is_outside_validity(self, now: datetime) -> bool:
+        """Both bounds: an answer not yet valid is as wrong as an expired one."""
+
+        if self.validity is None:
+            return False
+        if self.validity.starts_at is not None and now < self.validity.starts_at:
+            return True
+        return self.validity.ends_at is not None and now > self.validity.ends_at
+
 
 @dataclass(frozen=True)
 class ProviderQueryResult:
     answers: tuple[DiscoveredAnswer, ...]
     capabilities: tuple[ProviderCapability, ...]
     failures: tuple[DiscoveryFailure, ...]
+
+    def has_on_demand_fallback_for(self, answer: DiscoveredAnswer) -> bool:
+        return any(
+            capability.provider_id == answer.provider_id
+            and capability.capability == answer.capability
+            for capability in self.capabilities
+        )
 
 
 @dataclass(frozen=True)
@@ -241,6 +257,84 @@ class DiscoveryResult:
     @property
     def serves_any_ask(self) -> bool:
         return any(self.answers.values()) or any(self.capabilities.values())
+
+
+@dataclass(frozen=True)
+class DiscoveredAsk:
+    index: int
+    query: ProviderQuery | None  # None: the ask was never searched
+    query_result: ProviderQueryResult  # empty when never searched
+
+    def drop_expired(self, now: datetime) -> DiscoveredAsk:
+        fresh = tuple(
+            answer
+            for answer in self.query_result.answers
+            if not answer.is_outside_validity(now)
+        )
+        return replace(self, query_result=replace(self.query_result, answers=fresh))
+
+    def build_expired_answer_events(
+        self, now: datetime
+    ) -> tuple[ExpiredAnswerDropped, ...]:
+        return tuple(
+            ExpiredAnswerDropped(
+                provider_id=answer.provider_id,
+                capability=answer.capability,
+                resource_id=answer.resource_id,
+                had_fallback=self.query_result.has_on_demand_fallback_for(answer),
+            )
+            for answer in self.query_result.answers
+            if answer.is_outside_validity(now)
+        )
+
+    def build_outcome_events(self) -> tuple[AskDiscoveryFailed | AskUnservable, ...]:
+        if self.query is None:
+            return ()
+        if self.query_result.failures:
+            return tuple(
+                AskDiscoveryFailed(
+                    ask_index=self.index,
+                    capability=failure.capability,
+                    failure_class=failure.failure_class,
+                    status_code=failure.status_code,
+                )
+                for failure in self.query_result.failures
+            )
+        if not self.query_result.answers and not self.query_result.capabilities:
+            return (
+                AskUnservable(
+                    ask_index=self.index, capabilities=self.query.capabilities
+                ),
+            )
+        return ()
+
+
+@dataclass(frozen=True)
+class DiscoveredAsks:
+    asks: tuple[DiscoveredAsk, ...]  # one per Intent.ask, in ask order
+
+    def drop_expired(self, now: datetime) -> DiscoveredAsks:
+        return DiscoveredAsks(asks=tuple(ask.drop_expired(now) for ask in self.asks))
+
+    def build_expired_answer_events(
+        self, now: datetime
+    ) -> tuple[ExpiredAnswerDropped, ...]:
+        return tuple(
+            event for ask in self.asks for event in ask.build_expired_answer_events(now)
+        )
+
+    def build_outcome_events(self) -> tuple[AskDiscoveryFailed | AskUnservable, ...]:
+        return tuple(event for ask in self.asks for event in ask.build_outcome_events())
+
+    def build_result(self, events: Sequence[DiscoveryEvent]) -> DiscoveryResult:
+        return DiscoveryResult(
+            answers={ask.index: ask.query_result.answers for ask in self.asks},
+            capabilities={
+                ask.index: ask.query_result.capabilities for ask in self.asks
+            },
+            failures={ask.index: ask.query_result.failures for ask in self.asks},
+            events=tuple(events),
+        )
 
 
 @dataclass(frozen=True)
