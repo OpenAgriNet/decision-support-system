@@ -4,6 +4,8 @@ CapabilityDiscovery together.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -26,6 +28,7 @@ from dss.core.provider_discovery.models import (
     ExpiredAnswerDropped,
     FailureClass,
     ProviderCapability,
+    ProviderQuery,
     Validity,
 )
 from dss.core.provider_discovery.service import discover_providers
@@ -996,3 +999,158 @@ async def test_a_scheme_ask_uses_resolved_types_once_a_pack_declares_them() -> N
 
     query, _, _ = discovery.calls[0]
     assert query.capabilities == ("openagrinet:SchemeAdvisory",)
+
+
+@dataclass(frozen=True)
+class _Catalog:
+    answers: tuple[DiscoveredAnswer, ...] = ()
+    capabilities: tuple[ProviderCapability, ...] = ()
+    failures: tuple[DiscoveryFailure, ...] = ()
+
+
+class _NetworkDiscovery:
+    """Answers from the first capability's catalog, copied to every ask index."""
+
+    def __init__(self, catalogs: Mapping[str, _Catalog]) -> None:
+        self._catalogs = catalogs
+        self.calls: list[ProviderQuery] = []
+
+    async def discover(self, query, ask_indices, transaction_id) -> DiscoveryResult:
+        self.calls.append(query)
+        catalog = self._catalogs.get(next(iter(query.capabilities), ""), _Catalog())
+        return DiscoveryResult(
+            answers=dict.fromkeys(ask_indices, catalog.answers),
+            capabilities=dict.fromkeys(ask_indices, catalog.capabilities),
+            failures=dict.fromkeys(ask_indices, catalog.failures),
+            events=(),
+        )
+
+
+_MARKET_AND_WEATHER_INDEX = _FakeSchemaPackCache(
+    {
+        ("Market", "Service"): ("openagrinet:MandiPrice",),
+        ("Weather", "Service"): ("openagrinet:WeatherObservation",),
+    }
+)
+_MARKET_ASK = Ask(
+    subject_categories=SubjectCategory.MARKET,
+    interaction_type=InteractionType.OBSERVE,
+)
+_WEATHER_ASK = Ask(
+    subject_categories=SubjectCategory.WEATHER,
+    interaction_type=InteractionType.OBSERVE,
+)
+
+
+async def _discover_with(discovery: _NetworkDiscovery, *asks: Ask) -> DiscoveryResult:
+    return await discover_providers(
+        Intent(asks=asks, confidence=0.9),
+        _turn(),
+        discovery=discovery,
+        schema_pack_cache=_MARKET_AND_WEATHER_INDEX,
+        radius_m=25000,
+        now=NOW,
+    )
+
+
+def _answer(provider_id: str, capability: str) -> DiscoveredAnswer:
+    return DiscoveredAnswer(
+        provider_id=provider_id,
+        provider_name=provider_id.upper(),
+        capability=capability,
+        resource_id="r1",
+        attributes={},
+        validity=None,
+    )
+
+
+async def test_asks_sharing_a_query_each_get_the_whole_reply() -> None:
+    answer = _answer("agmarknet", "openagrinet:MandiPrice")
+    capability = ProviderCapability(
+        "agmarknet", "AGMARKNET", "openagrinet:MandiPrice", "r2"
+    )
+    discovery = _NetworkDiscovery(
+        {
+            "openagrinet:MandiPrice": _Catalog(
+                answers=(answer,), capabilities=(capability,)
+            )
+        }
+    )
+
+    result = await _discover_with(discovery, _MARKET_ASK, _MARKET_ASK)
+
+    assert len(discovery.calls) == 1
+    assert result.answers == {0: (answer,), 1: (answer,)}
+    assert result.capabilities == {0: (capability,), 1: (capability,)}
+    assert result.failures == {0: (), 1: ()}
+
+
+async def test_a_failing_shared_query_fails_every_ask_that_shared_it() -> None:
+    failure = DiscoveryFailure(
+        capability="openagrinet:MandiPrice",
+        status_code=500,
+        failure_class=FailureClass.TRANSIENT,
+    )
+    discovery = _NetworkDiscovery(
+        {"openagrinet:MandiPrice": _Catalog(failures=(failure,))}
+    )
+
+    result = await _discover_with(discovery, _MARKET_ASK, _MARKET_ASK)
+
+    assert result.failures == {0: (failure,), 1: (failure,)}
+    assert result.events == (
+        AskDiscoveryFailed(0, "openagrinet:MandiPrice", FailureClass.TRANSIENT, 500),
+        AskDiscoveryFailed(1, "openagrinet:MandiPrice", FailureClass.TRANSIENT, 500),
+    )
+
+
+async def test_asks_get_only_their_own_query_reply() -> None:
+    market_answer = _answer("agmarknet", "openagrinet:MandiPrice")
+    weather_capability = ProviderCapability(
+        "mausamgram", "IMD", "openagrinet:WeatherObservation", "r1"
+    )
+    discovery = _NetworkDiscovery(
+        {
+            "openagrinet:MandiPrice": _Catalog(answers=(market_answer,)),
+            "openagrinet:WeatherObservation": _Catalog(
+                capabilities=(weather_capability,)
+            ),
+        }
+    )
+
+    result = await _discover_with(discovery, _MARKET_ASK, _WEATHER_ASK, _MARKET_ASK)
+
+    assert len(discovery.calls) == 2
+    assert result.answers == {0: (market_answer,), 1: (), 2: (market_answer,)}
+    assert result.capabilities == {0: (), 1: (weather_capability,), 2: ()}
+
+
+async def test_an_unplaced_ask_gets_an_empty_entry_beside_a_searched_one() -> None:
+    capability = ProviderCapability(
+        "mausamgram", "IMD", "openagrinet:WeatherObservation", "r1"
+    )
+    discovery = _NetworkDiscovery(
+        {"openagrinet:WeatherObservation": _Catalog(capabilities=(capability,))}
+    )
+    unplaced_market_ask = _MARKET_ASK.model_copy(
+        update={"place": UnresolvedPlace(unresolved_name="Kanha")}
+    )
+
+    result = await _discover_with(discovery, unplaced_market_ask, _WEATHER_ASK)
+
+    assert len(discovery.calls) == 1
+    assert set(result.answers) == set(result.capabilities) == set(result.failures)
+    assert set(result.answers) == {0, 1}
+    assert result.answers[0] == result.capabilities[0] == result.failures[0] == ()
+    assert result.capabilities[1] == (capability,)
+
+
+async def test_a_turn_with_no_asks_sends_nothing() -> None:
+    discovery = _NetworkDiscovery({})
+
+    result = await _discover_with(discovery)
+
+    assert discovery.calls == []
+    assert result == DiscoveryResult(
+        answers={}, capabilities={}, failures={}, events=()
+    )
