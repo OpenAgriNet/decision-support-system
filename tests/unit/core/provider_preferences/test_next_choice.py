@@ -1,6 +1,6 @@
-"""Tier 3 — the providers `select` held back for an ask, and the offer to
-switch to them. Plain values in and out; the planner wiring is covered in
-`test_planner_preferred_providers.py`."""
+"""Tier 1 — the providers `select` held back for an ask, and the offer to
+switch to them. The planner wiring is covered in
+`tests/integration/orchestration/test_planner_preferred_providers.py`."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from dss.core.provider_discovery.models import (
     FailureClass,
     ProviderCapability,
 )
-from dss.orchestration.next_choice import (
+from dss.core.provider_preferences.next_choice import (
     Consulted,
     NextChoices,
     render_with_next_choice_offer,

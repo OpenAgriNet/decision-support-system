@@ -12,7 +12,6 @@ from dataclasses import dataclass, field
 
 from dss.core.planner.markdown import render_answers_as_markdown
 from dss.core.provider_discovery.models import DiscoveredAnswer, ProviderCapability
-from dss.observability.trace_log import log_event
 from dss.ports.invocation import SelectFailedError
 
 
@@ -77,18 +76,4 @@ def no_next_choice(ask_index: int) -> str:
     return (
         f"No other preferred provider has data for ask {ask_index}. Do not "
         f"call select_next for it again; report what you found."
-    )
-
-
-def log_next_provider_used(
-    transaction_id: str, *, ask_index: int, used: Consulted
-) -> None:
-    log_event(
-        "provider_preferences",
-        transaction_id,
-        event="next_provider_used",
-        ask_index=ask_index,
-        provider_id=used.capability.provider_id,
-        resource_id=used.capability.resource_id,
-        results=len(used.answers),
     )
