@@ -452,3 +452,221 @@ async def test_a_spent_ranking_tells_the_model_to_stop() -> None:
 
     assert sorted(invocation.called) == ["maharashtra-vistaar", "mausamgram"]
     assert "Do not call select for this ask again" in replies[0]
+
+
+def _asks_for_then_next(replies: list[str]):
+    """A model that calls select, judges the first answer useless, calls
+    select_next once, then stops. `replies` collects both tool replies."""
+
+    def model(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        replies.extend(
+            str(part.content)
+            for part in messages[-1].parts
+            if isinstance(part, ToolReturnPart)
+        )
+        calls = {
+            1: ToolCallPart(
+                tool_name="select",
+                args={
+                    "ask_index": 0,
+                    "resource_id": "res:maharashtra-vistaar:forecast",
+                    "resource_attributes": {},
+                },
+            ),
+            3: ToolCallPart(tool_name="select_next", args={"ask_index": 0}),
+        }
+        call = calls.get(len(messages))
+        if call is None:
+            return ModelResponse(parts=[TextPart(content="done")])
+        return ModelResponse(parts=[call])
+
+    return model
+
+
+async def _run_then_next(deps: PlannerDeps, replies: list[str]) -> PlannerDeps:
+    skill = Skill(
+        id="provider-invocation",
+        domain="agriculture",
+        description="Call providers to answer an ask.",
+        guidance="call the tools",
+        tool_names=("select", "select_next"),
+    )
+    agent = build_planner_agent(skills=(skill,))
+    with agent.override(model=FunctionModel(_asks_for_then_next(replies))):
+        await agent.run("will it rain", deps=deps)
+    return deps
+
+
+async def test_select_offers_the_next_choice_when_it_also_answered() -> None:
+    replies: list[str] = []
+    invocation = _FakeInvocation(
+        {
+            "maharashtra-vistaar": (_answer("maharashtra-vistaar", 29),),
+            "mausamgram": (_answer("mausamgram", 31),),
+        }
+    )
+    await _run(
+        _deps(
+            invocation,
+            candidates=(VISTAAR, MAUSAMGRAM),
+            priorities=_ranked("maharashtra-vistaar", "mausamgram"),
+        ),
+        replies=replies,
+    )
+
+    assert "select_next" in replies[0]
+
+
+async def test_select_offers_nothing_more_when_only_the_first_answered() -> None:
+    replies: list[str] = []
+    invocation = _FakeInvocation(
+        {"maharashtra-vistaar": (_answer("maharashtra-vistaar", 29),)}
+    )
+    await _run(
+        _deps(
+            invocation,
+            candidates=(VISTAAR, MAUSAMGRAM),
+            priorities=_ranked("maharashtra-vistaar", "mausamgram"),
+        ),
+        replies=replies,
+    )
+
+    assert "select_next" not in replies[0]
+
+
+async def test_select_next_answers_the_ask_from_the_next_choice_instead() -> None:
+    """The first choice's chunks could not answer the ask, so the next
+    choice's replace them. One ask is still answered by one provider."""
+
+    replies: list[str] = []
+    invocation = _FakeInvocation(
+        {
+            "maharashtra-vistaar": (_answer("maharashtra-vistaar", 29),),
+            "mausamgram": (_answer("mausamgram", 31),),
+        }
+    )
+    deps = await _run_then_next(
+        _deps(
+            invocation,
+            candidates=(VISTAAR, MAUSAMGRAM),
+            priorities=_ranked("maharashtra-vistaar", "mausamgram"),
+        ),
+        replies,
+    )
+
+    used = [answer.provider_id for _index, answer in deps.raw_answers]
+    assert used == ["mausamgram"]
+    assert "31" in replies[1]
+
+
+async def test_select_next_calls_no_provider_again() -> None:
+    """Every ranked provider was already consulted by select."""
+
+    replies: list[str] = []
+    invocation = _FakeInvocation(
+        {
+            "maharashtra-vistaar": (_answer("maharashtra-vistaar", 29),),
+            "mausamgram": (_answer("mausamgram", 31),),
+        }
+    )
+    await _run_then_next(
+        _deps(
+            invocation,
+            candidates=(VISTAAR, MAUSAMGRAM),
+            priorities=_ranked("maharashtra-vistaar", "mausamgram"),
+        ),
+        replies,
+    )
+
+    assert sorted(invocation.called) == ["maharashtra-vistaar", "mausamgram"]
+
+
+async def test_select_next_with_no_next_choice_keeps_the_first_answer() -> None:
+    replies: list[str] = []
+    invocation = _FakeInvocation(
+        {"maharashtra-vistaar": (_answer("maharashtra-vistaar", 29),)}
+    )
+    deps = await _run_then_next(
+        _deps(
+            invocation,
+            candidates=(VISTAAR, MAUSAMGRAM),
+            priorities=_ranked("maharashtra-vistaar", "mausamgram"),
+        ),
+        replies,
+    )
+
+    used = [answer.provider_id for _index, answer in deps.raw_answers]
+    assert used == ["maharashtra-vistaar"]
+    assert "No other preferred provider" in replies[1]
+
+
+async def test_select_next_on_an_unranked_ask_has_nothing_to_offer() -> None:
+    """Without a ranking only the named candidate was called, so there is no
+    next choice held back."""
+
+    replies: list[str] = []
+    invocation = _FakeInvocation(
+        {
+            "maharashtra-vistaar": (_answer("maharashtra-vistaar", 29),),
+            "mausamgram": (_answer("mausamgram", 31),),
+        }
+    )
+    deps = await _run_then_next(
+        _deps(invocation, candidates=(VISTAAR, MAUSAMGRAM), priorities={}),
+        replies,
+    )
+
+    used = [answer.provider_id for _index, answer in deps.raw_answers]
+    assert used == ["maharashtra-vistaar"]
+    assert "No other preferred provider" in replies[1]
+
+
+async def test_select_next_on_one_ask_leaves_the_other_ask_alone() -> None:
+    invocation = _FakeInvocation(
+        {
+            "maharashtra-vistaar": (_answer("maharashtra-vistaar", 29),),
+            "mausamgram": (_answer("mausamgram", 31),),
+        }
+    )
+    deps = _deps(
+        invocation,
+        candidates=(VISTAAR, MAUSAMGRAM),
+        priorities=_ranked("maharashtra-vistaar", "mausamgram"),
+    )
+    two_asks = (*deps.intent.asks, *deps.intent.asks)
+    deps.intent = Intent(asks=two_asks, confidence=1.0)
+    deps.discovery.capabilities[1] = (VISTAAR, MAUSAMGRAM)
+    deps.discovery.priorities[1] = _ranked("maharashtra-vistaar", "mausamgram")[0]
+
+    def select(ask_index: int) -> ToolCallPart:
+        return ToolCallPart(
+            tool_name="select",
+            args={
+                "ask_index": ask_index,
+                "resource_id": "res:maharashtra-vistaar:forecast",
+                "resource_attributes": {},
+            },
+        )
+
+    calls = {
+        1: [select(0), select(1)],
+        3: [ToolCallPart(tool_name="select_next", args={"ask_index": 0})],
+    }
+
+    def model(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        parts = calls.get(len(messages))
+        return ModelResponse(parts=parts or [TextPart(content="done")])
+
+    skill = Skill(
+        id="provider-invocation",
+        domain="agriculture",
+        description="Call providers to answer an ask.",
+        guidance="call the tools",
+        tool_names=("select", "select_next"),
+    )
+    agent = build_planner_agent(skills=(skill,))
+    with agent.override(model=FunctionModel(model)):
+        await agent.run("will it rain", deps=deps)
+
+    used = sorted((index, answer.provider_id) for index, answer in deps.raw_answers)
+    assert used == [(0, "mausamgram"), (1, "maharashtra-vistaar")]

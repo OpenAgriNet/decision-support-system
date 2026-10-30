@@ -24,7 +24,6 @@ from dss.core.intent.models import (
 from dss.core.moderation.models import Outcome
 from dss.core.planner.describe_capability import render_candidates_as_markdown
 from dss.core.planner.lookup import find_capability
-from dss.core.planner.markdown import render_answers_as_markdown
 from dss.core.planner.models import Failure, Skill, Verdict
 from dss.core.planner.resource_attributes import build_resource_attributes
 from dss.core.planner.skills import tool_names_for
@@ -38,6 +37,12 @@ from dss.core.provider_discovery.models import (
     DiscoveryResult,
     FailureClass,
     ProviderCapability,
+)
+from dss.core.provider_preferences.next_choice import (
+    Consulted,
+    NextChoices,
+    no_next_choice,
+    render_with_next_choice_offer,
 )
 from dss.core.provider_preferences.service import priority_for_ask
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
@@ -80,6 +85,7 @@ class PlannerDeps:
     filing: Filing | None = None
     raw_answers: list[tuple[int, DiscoveredAnswer]] = field(default_factory=list)
     failures: list[Failure] = field(default_factory=list)
+    next_choices: NextChoices = field(default_factory=NextChoices)
 
 
 async def _select(
@@ -97,8 +103,9 @@ async def _select(
     rather than per candidate: the chosen candidate names the @type whose
     fields the model authored, and every ranked provider serving that @type
     is consulted with them. The answer is built from the first ranked
-    provider that returned anything; the rest are logged and dropped. Which
-    provider answers is therefore the configuration's decision, not the
+    provider that returned anything; the others that answered are held for
+    `select_next`, in case that data cannot answer the ask. Which providers
+    may answer, and in what order, is the configuration's decision, not the
     model's — the model is picking a capability, not a vendor."""
 
     deps = ctx.deps
@@ -187,22 +194,54 @@ async def _select(
     if chosen is None:
         return _nothing_came_back(deps, ask_index=ask_index, consulted=consulted)
 
+    deps.next_choices.hold_after(ask_index, consulted=consulted, chosen=chosen)
     deps.raw_answers.extend((ask_index, answer) for answer in chosen.answers)
-    return render_answers_as_markdown(chosen.answers)
+    return render_with_next_choice_offer(
+        deps.next_choices, ask_index=ask_index, answers=chosen.answers
+    )
 
 
-@dataclass
-class _Consulted:
-    """One provider's outcome for one ask, kept whether or not it was used.
+async def _select_next(ctx: RunContext[PlannerDeps], ask_index: int) -> str:
+    """Answer an ask from the next preferred provider instead, when the data
+    `select` returned cannot answer it. Calls nobody: `select` already
+    consulted every ranked provider."""
 
-    The unused ones are the point: the team compares them later to judge
-    whether the ranking is ordered the way it should be (ADR-0019). They never
-    reach the model or the farmer — one ask is answered by one provider.
-    """
+    deps = ctx.deps
+    chosen = deps.next_choices.take(ask_index)
+    if chosen is None:
+        return no_next_choice(ask_index)
 
-    capability: ProviderCapability
-    answers: tuple[DiscoveredAnswer, ...] = ()
-    failure: SelectFailedError | None = None
+    _replace_answers(deps, ask_index=ask_index, answers=chosen.answers)
+    _log_next_provider_used(deps, ask_index=ask_index, used=chosen)
+    return render_with_next_choice_offer(
+        deps.next_choices, ask_index=ask_index, answers=chosen.answers
+    )
+
+
+def _log_next_provider_used(
+    deps: PlannerDeps, *, ask_index: int, used: Consulted
+) -> None:
+    log_event(
+        "provider_preferences",
+        deps.turn.transaction_id,
+        event="next_provider_used",
+        ask_index=ask_index,
+        provider_id=used.capability.provider_id,
+        resource_id=used.capability.resource_id,
+        results=len(used.answers),
+    )
+
+
+def _replace_answers(
+    deps: PlannerDeps, *, ask_index: int, answers: tuple[DiscoveredAnswer, ...]
+) -> None:
+    """One ask is still answered by one provider: the next choice's data
+    replaces the first's, never joins it."""
+
+    deps.raw_answers[:] = [
+        (index, answer) for index, answer in deps.raw_answers if index != ask_index
+    ]
+    deps.raw_answers.extend((ask_index, answer) for answer in answers)
 
 
 def _consulting(
@@ -236,7 +275,7 @@ async def _consult_all(
     consulting: tuple[ProviderCapability, ...],
     *,
     attributes_for: Callable[[ProviderCapability], dict],
-) -> tuple[_Consulted, ...]:
+) -> tuple[Consulted, ...]:
     """Call every candidate, concurrently, and bring back what each said.
 
     Concurrent rather than one-at-a-time-until-one-answers: the farmer waits
@@ -244,7 +283,7 @@ async def _consult_all(
     and asking them together keeps that cost to one provider's latency rather
     than the sum. Each call is already bounded by `DSS_SELECT_TIMEOUT_SECONDS`.
 
-    A provider that fails its call comes back as a `_Consulted` carrying the
+    A provider that fails its call comes back as a `Consulted` carrying the
     failure, because one unreachable provider must not cost the farmer the
     answer another one had. Only `SelectFailedError` is caught — the adapter's
     "reached the end of retrying" signal. Anything else is a defect or a
@@ -253,7 +292,7 @@ async def _consult_all(
     broken deployment as a provider with no data.
     """
 
-    outcomes = [_Consulted(capability=candidate) for candidate in consulting]
+    outcomes = [Consulted(capability=candidate) for candidate in consulting]
 
     async def consult(slot: int) -> None:
         outcome = outcomes[slot]
@@ -284,8 +323,8 @@ def _log_consultation(
     deps: PlannerDeps,
     *,
     ask_index: int,
-    consulted: tuple[_Consulted, ...],
-    chosen: _Consulted | None,
+    consulted: tuple[Consulted, ...],
+    chosen: Consulted | None,
 ) -> None:
     """Record what every consulted provider gave back, used or not.
 
@@ -322,7 +361,7 @@ def _detail(failure: SelectFailedError | None) -> str:
 
 
 def _nothing_came_back(
-    deps: PlannerDeps, *, ask_index: int, consulted: tuple[_Consulted, ...]
+    deps: PlannerDeps, *, ask_index: int, consulted: tuple[Consulted, ...]
 ) -> str:
     """What the model is told when no consulted provider had an answer.
 
@@ -373,7 +412,7 @@ def _nothing_came_back(
 
 
 def _unconsulted(
-    deps: PlannerDeps, *, ask_index: int, consulted: tuple[_Consulted, ...]
+    deps: PlannerDeps, *, ask_index: int, consulted: tuple[Consulted, ...]
 ) -> bool:
     """Whether the ask still has candidates this call did not reach."""
 
@@ -552,6 +591,7 @@ def _as_answer(
 
 _TOOLS = {
     "select": _select,
+    "select_next": _select_next,
     "support": _support,
     "status": _status,
     "describe_capability": _describe_capability,
