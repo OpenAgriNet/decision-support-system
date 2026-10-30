@@ -10,6 +10,10 @@ Amended by [ADR-0020](0020-provider-preferences-from-the-registry.md): the
 caller now names itself in the request body (`senderId`, not an `X-Client-Id`
 header) and the rankings live in the network registry, not a mounted file.
 
+Amended by [ADR-0022](0022-next-provider-when-the-first-cannot-answer.md):
+when the first provider's data cannot answer the ask, the planner switches to
+the next ranked provider's data with `select_next`.
+
 ## Context
 
 Several providers now serve the same capability in the same place — two
