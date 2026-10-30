@@ -1,5 +1,5 @@
 """Falling back down a sender's ranking when the first answer cannot serve
-the ask (ADR-0019).
+the ask.
 
 `select` consults every ranked provider at once and answers from the first
 that returned data. The others that returned data wait here, so
