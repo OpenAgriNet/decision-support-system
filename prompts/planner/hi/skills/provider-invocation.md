@@ -7,7 +7,7 @@
 id: provider-invocation
 domain: agriculture
 description: Call providers to answer an ask.
-tool_names: [describe_capability, select]
+tool_names: [describe_capability, select, select_next]
 ---
 जिस ask के लिए provider चाहिए, उसके लिए पहले `describe_capability` call कीजिए —
 उससे पता चलता है कि उम्मीदवार कौन हैं, कौन-से fields आप भर सकते हैं, और कोई
@@ -53,5 +53,12 @@ field की ऐसी कोई सूची होती ही नहीं �
 बुलाइए जब वह खुद दूसरा candidate आज़माने को कहे। यदि वह यह कहकर लौटे कि किसी
 provider के पास उत्तर नहीं था, तो उस ask का कोई उत्तर नहीं है — यह बताइए और
 आगे बढ़िए।
+
+`select` ने जो लौटाया, उसे किसान के प्रश्न से मिलाकर पढ़िए। यदि वह ask का
+उत्तर नहीं दे सकता — दूसरी फसलों या दूसरे विषयों के बारे में है, या बहुत
+सामान्य है — और उत्तर में `select_next` की पेशकश है, तो उस ask के लिए उसे एक
+बार call कीजिए। वह अगले पसंदीदा provider का data ले आता है; किसी नए को call
+नहीं करता। उस data को भी इसी तरह परखिए। जब data ask का उत्तर दे दे या कोई अगला
+provider न बचे, तब रुकिए।
 
 जिस-जिस ask का उत्तर आप दे सकते हैं, सबका उत्तर मिल जाने पर रुक जाइए।

@@ -2,7 +2,7 @@
 id: provider-invocation
 domain: agriculture
 description: Call providers to answer an ask.
-tool_names: [describe_capability, select]
+tool_names: [describe_capability, select, select_next]
 ---
 For each ask that needs a provider, call `describe_capability` first to see
 the candidates, which fields you may set, and which values a candidate
@@ -46,5 +46,11 @@ answer from the most preferred one that returned anything. So pick the
 candidate whose fields fit the ask, and do not call `select` again for the
 same ask unless it invites you to try another candidate. If it says no
 provider had an answer, that ask has no answer — report it and move on.
+
+Read what `select` returned against the farmer's question. If it cannot
+answer the ask — it is about other crops, other topics, or too general — and
+the reply offers `select_next`, call it once for that ask. It swaps in the
+next preferred provider's data; it calls nobody new. Judge that data the same
+way. Stop when the data answers the ask or no next provider is left.
 
 Stop once every ask you can answer has been answered.

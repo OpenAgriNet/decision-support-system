@@ -80,6 +80,9 @@ class PlannerDeps:
     filing: Filing | None = None
     raw_answers: list[tuple[int, DiscoveredAnswer]] = field(default_factory=list)
     failures: list[Failure] = field(default_factory=list)
+    # Per ask, the lower-ranked providers that also answered `select`, best
+    # first. `select_next` takes from here instead of calling anyone again.
+    next_choices: dict[int, tuple[_Consulted, ...]] = field(default_factory=dict)
 
 
 async def _select(
@@ -97,8 +100,9 @@ async def _select(
     rather than per candidate: the chosen candidate names the @type whose
     fields the model authored, and every ranked provider serving that @type
     is consulted with them. The answer is built from the first ranked
-    provider that returned anything; the rest are logged and dropped. Which
-    provider answers is therefore the configuration's decision, not the
+    provider that returned anything; the others that answered are held for
+    `select_next`, in case that data cannot answer the ask. Which providers
+    may answer, and in what order, is the configuration's decision, not the
     model's — the model is picking a capability, not a vendor."""
 
     deps = ctx.deps
@@ -187,8 +191,72 @@ async def _select(
     if chosen is None:
         return _nothing_came_back(deps, ask_index=ask_index, consulted=consulted)
 
+    deps.next_choices[ask_index] = _answered_after(consulted, chosen)
     deps.raw_answers.extend((ask_index, answer) for answer in chosen.answers)
-    return render_answers_as_markdown(chosen.answers)
+    return _offer_next_choice(deps, ask_index=ask_index, answers=chosen.answers)
+
+
+async def _select_next(ctx: RunContext[PlannerDeps], ask_index: int) -> str:
+    """Answer an ask from the next preferred provider instead, when the data
+    `select` returned cannot answer it. Calls nobody: `select` already
+    consulted every ranked provider."""
+
+    deps = ctx.deps
+    waiting = deps.next_choices.get(ask_index, ())
+    if not waiting:
+        return (
+            f"No other preferred provider has data for ask {ask_index}. Do not "
+            f"call select_next for it again; report what you found."
+        )
+
+    chosen, *rest = waiting
+    deps.next_choices[ask_index] = tuple(rest)
+    _replace_answers(deps, ask_index=ask_index, answers=chosen.answers)
+    log_event(
+        "provider_preferences",
+        deps.turn.transaction_id,
+        event="next_provider_used",
+        ask_index=ask_index,
+        provider_id=chosen.capability.provider_id,
+        resource_id=chosen.capability.resource_id,
+        results=len(chosen.answers),
+    )
+    return _offer_next_choice(deps, ask_index=ask_index, answers=chosen.answers)
+
+
+def _answered_after(
+    consulted: tuple[_Consulted, ...], chosen: _Consulted
+) -> tuple[_Consulted, ...]:
+    position = consulted.index(chosen)
+    return tuple(one for one in consulted[position + 1 :] if one.answers)
+
+
+def _replace_answers(
+    deps: PlannerDeps, *, ask_index: int, answers: tuple[DiscoveredAnswer, ...]
+) -> None:
+    """One ask is still answered by one provider: the next choice's data
+    replaces the first's, never joins it."""
+
+    deps.raw_answers[:] = [
+        (index, answer) for index, answer in deps.raw_answers if index != ask_index
+    ]
+    deps.raw_answers.extend((ask_index, answer) for answer in answers)
+
+
+def _offer_next_choice(
+    deps: PlannerDeps, *, ask_index: int, answers: tuple[DiscoveredAnswer, ...]
+) -> str:
+    """The data, and — when a lower-ranked provider also answered — how to
+    switch to it. Outside the retrieved-data markers, so it reads as ours."""
+
+    data = render_answers_as_markdown(answers)
+    if not deps.next_choices.get(ask_index):
+        return data
+    return (
+        f"{data}\n\nIf this data cannot answer ask {ask_index}, call "
+        f"select_next with ask_index={ask_index} to use the next preferred "
+        f"provider's data instead. If it answers the ask, do not."
+    )
 
 
 @dataclass
@@ -196,8 +264,8 @@ class _Consulted:
     """One provider's outcome for one ask, kept whether or not it was used.
 
     The unused ones are the point: the team compares them later to judge
-    whether the ranking is ordered the way it should be (ADR-0019). They never
-    reach the model or the farmer — one ask is answered by one provider.
+    whether the ranking is ordered the way it should be (ADR-0019), and
+    `select_next` falls back to them. One ask is answered by one provider.
     """
 
     capability: ProviderCapability
@@ -552,6 +620,7 @@ def _as_answer(
 
 _TOOLS = {
     "select": _select,
+    "select_next": _select_next,
     "support": _support,
     "status": _status,
     "describe_capability": _describe_capability,
