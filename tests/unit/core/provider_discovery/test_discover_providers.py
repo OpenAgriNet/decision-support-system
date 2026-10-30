@@ -13,6 +13,8 @@ from dss.core.intent.models import (
     Ask,
     Intent,
     InteractionType,
+    PlaceSource,
+    ResolvedPlace,
     SubjectCategory,
     UnresolvedPlace,
 )
@@ -21,6 +23,7 @@ from dss.core.provider_discovery.models import (
     AskUnservable,
     CapabilityUnresolved,
     CategoryMappingDiverged,
+    Coverage,
     DiscoveredAnswer,
     DiscoveryFailure,
     DiscoveryResult,
@@ -32,7 +35,7 @@ from dss.core.provider_discovery.models import (
     Validity,
 )
 from dss.core.provider_discovery.service import discover_providers
-from dss.core.shared.models import TextQuery, UserTurn
+from dss.core.shared.models import Geometry, TextQuery, UserTurn
 
 NOW = datetime(2026, 8, 26, 12, 0, 0, tzinfo=UTC)
 
@@ -918,6 +921,15 @@ _WEATHER_ASK = Ask(
     subject_categories=SubjectCategory.WEATHER,
     interaction_type=InteractionType.OBSERVE,
 )
+_PUNE = ResolvedPlace(
+    name="Pune",
+    within=("IN-MH",),
+    geometry=Geometry(coordinates=[74.067998, 18.571118]),
+    source=PlaceSource.NAMED,
+)
+_NASHIK = _PUNE.model_copy(
+    update={"name": "Nashik", "geometry": Geometry(coordinates=[73.789802, 19.997454])}
+)
 
 
 async def _discover_with(discovery: _NetworkDiscovery, *asks: Ask) -> DiscoveryResult:
@@ -1031,4 +1043,128 @@ async def test_a_turn_with_no_asks_sends_nothing() -> None:
     assert discovery.calls == []
     assert result == DiscoveryResult(
         answers={}, capabilities={}, failures={}, events=()
+    )
+
+
+async def test_an_expired_answer_on_a_shared_query_is_reported_once_per_ask() -> None:
+    discovery = _NetworkDiscovery(
+        {"openagrinet:MandiPrice": _query_result(answers=(_expired_answer(),))}
+    )
+
+    result = await _discover_with(discovery, _MARKET_ASK, _MARKET_ASK)
+
+    assert result.answers == {0: (), 1: ()}
+    assert [e for e in result.events if isinstance(e, ExpiredAnswerDropped)] == [
+        ExpiredAnswerDropped(
+            "agmarknet", "openagrinet:MandiPrice", "r1", had_fallback=False
+        )
+    ] * 2
+
+
+async def test_a_diverging_capability_on_a_shared_query_is_reported_once_per_ask() -> (
+    None
+):
+    diverging_capability = ProviderCapability(
+        "agmarknet",
+        "AGMARKNET",
+        "openagrinet:MandiPrice",
+        "r2",
+        observed_categories=("Weather",),
+    )
+    discovery = _NetworkDiscovery(
+        {"openagrinet:MandiPrice": _query_result(capabilities=(diverging_capability,))}
+    )
+
+    result = await _discover_with(discovery, _MARKET_ASK, _MARKET_ASK)
+
+    assert [e for e in result.events if isinstance(e, CategoryMappingDiverged)] == [
+        CategoryMappingDiverged("openagrinet:MandiPrice", "Weather")
+    ] * 2
+
+
+async def test_a_query_carries_the_turn_language_the_category_and_the_coverage() -> (
+    None
+):
+    discovery = _NetworkDiscovery({})
+
+    await discover_providers(
+        Intent(asks=(_MARKET_ASK.model_copy(update={"place": _PUNE}),)),
+        _turn(source_lang="en", target_lang="hi"),
+        discovery=discovery,
+        schema_pack_cache=_MARKET_AND_WEATHER_INDEX,
+        radius_m=25000,
+        now=NOW,
+    )
+
+    assert discovery.calls[0] == ProviderQuery(
+        capabilities=("openagrinet:MandiPrice",),
+        subject_category="Market",
+        languages=("hi",),
+        coverage=Coverage(lat=18.571118, lon=74.067998, radius_m=25000),
+    )
+
+
+async def test_asks_at_different_places_send_separate_queries() -> None:
+    discovery = _NetworkDiscovery({})
+
+    await _discover_with(
+        discovery,
+        _MARKET_ASK.model_copy(update={"place": _PUNE}),
+        _MARKET_ASK.model_copy(update={"place": _NASHIK}),
+    )
+
+    assert len(discovery.calls) == 2
+    assert discovery.calls[0].coverage != discovery.calls[1].coverage
+
+
+async def test_an_advise_ask_searches_knowledge_resources() -> None:
+    discovery = _NetworkDiscovery({})
+    advise_ask = Ask(
+        subject_categories=SubjectCategory.CROP,
+        interaction_type=InteractionType.ADVISE,
+    )
+
+    await discover_providers(
+        Intent(asks=(advise_ask,), confidence=0.9),
+        _turn(),
+        discovery=discovery,
+        schema_pack_cache=_FakeSchemaPackCache(
+            {("Crop", "Knowledge"): ("openagrinet:CropAdvisory",)}
+        ),
+        radius_m=25000,
+        now=NOW,
+    )
+
+    assert discovery.calls[0].capabilities == ("openagrinet:CropAdvisory",)
+
+
+async def test_events_come_unresolved_then_expired_then_diverged_then_per_ask() -> None:
+    facility_ask = Ask(
+        subject_categories=SubjectCategory.FACILITY,
+        interaction_type=InteractionType.ACT,
+    )
+    diverging_fallback = ProviderCapability(
+        "agmarknet",
+        "AGMARKNET",
+        "openagrinet:MandiPrice",
+        "r2",
+        observed_categories=("Weather",),
+    )
+    discovery = _NetworkDiscovery(
+        {
+            "openagrinet:MandiPrice": _query_result(
+                answers=(_expired_answer(),), capabilities=(diverging_fallback,)
+            )
+        }
+    )
+
+    result = await _discover_with(discovery, _WEATHER_ASK, _MARKET_ASK, facility_ask)
+
+    assert result.events == (
+        CapabilityUnresolved("Facility", "Service"),
+        ExpiredAnswerDropped(
+            "agmarknet", "openagrinet:MandiPrice", "r1", had_fallback=True
+        ),
+        CategoryMappingDiverged("openagrinet:MandiPrice", "Weather"),
+        AskUnservable(0, ("openagrinet:WeatherObservation",)),
     )
