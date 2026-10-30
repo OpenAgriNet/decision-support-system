@@ -18,7 +18,7 @@ def _settings_ignore_dotenv(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep a developer's `.env` out of the suite.
 
     `Settings` reads `.env` from the working directory, so anyone with one —
-    and `docs/RUNNING.md` tells you to make one — turns eight tests red for
+    and `docs/PLAYBOOK.md` tells you to make one — turns eight tests red for
     reasons unrelated to their change. Every one of them constructs
     `Settings()` expecting the network unset, which is only true on a machine
     with no local config.

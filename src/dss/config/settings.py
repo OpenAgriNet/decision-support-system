@@ -252,7 +252,7 @@ class Settings(BaseSettings):
     # Stands in for a real readiness probe until there is a dependency to probe.
     ready: bool = True
     # Wire StubLLM instead of a real provider, so the endpoint can be exercised
-    # with no API key and no network (docs/RUNNING.md). Never true in a
+    # with no API key and no network (docs/PLAYBOOK.md). Never true in a
     # deployment — the answers are canned.
     stub_llm: bool = False
 

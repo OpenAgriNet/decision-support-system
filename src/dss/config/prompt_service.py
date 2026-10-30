@@ -51,7 +51,7 @@ from dss.ports.prompts import PromptIdentifier
 logger = logging.getLogger(__name__)
 
 # Relative to the working directory, like `evidence_dir`: the repo is run from
-# its root (docs/RUNNING.md), and the image sets WORKDIR /app and copies both
+# its root (docs/PLAYBOOK.md), and the image sets WORKDIR /app and copies both
 # directories there. A different layout sets DSS_PROMPT_CONFIG_PATH.
 DEFAULT_CONFIG = Path("configs/prompts.yaml")
 

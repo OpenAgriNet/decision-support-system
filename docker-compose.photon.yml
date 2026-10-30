@@ -6,7 +6,7 @@
 # volume, then exits. `photon` starts only after that succeeds and serves on
 # http://localhost:2322. The first start takes 15 to 20 minutes, and the
 # download shows in the `photon-index` logs. Later starts skip it and take
-# about a minute. See docs/RUNNING.md, "Place names the file lacks".
+# about a minute. See docs/PLAYBOOK.md, "Place names the file lacks".
 #
 # There is no Kenya-only index on GraphHopper's download site, only planet and
 # continent ones. The DSS limits answers to the countries in

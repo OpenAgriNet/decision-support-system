@@ -22,7 +22,7 @@ dist/
 coverage.xml
 htmlcov/
 # tests/
-# Written by a local run, not source: evidence JSONL (docs/RUNNING.md) and the
+# Written by a local run, not source: evidence JSONL (docs/PLAYBOOK.md) and the
 # schema packs `scripts/fetch_schema_packs.py` downloads. The packs come from
 # the network-specs repo — fetched, never committed here.
 var/

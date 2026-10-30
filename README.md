@@ -16,7 +16,7 @@ uv run uvicorn --factory dss.entrypoint.app:create_app --port 8077
 `text/event-stream`. The reasoning is stubbed today; the transport, the port,
 and the turn flow are real.
 
-See [`docs/RUNNING.md`](./docs/RUNNING.md) for curl recipes, the error paths,
+See [`docs/PLAYBOOK.md`](./docs/PLAYBOOK.md) for curl recipes, the error paths,
 the runtime knobs, and which parts are still fake. Two pieces of configuration
 are worth knowing before a first run: the **schema packs**, which nothing
 clones, and the **area index** (`src/dss/config/areas.csv`), which the
@@ -27,5 +27,4 @@ clones, and the **area index** (`src/dss/config/areas.csv`), which the
 - [`CLAUDE.md`](./CLAUDE.md) — layout, tech stack, testing tiers
 - [`CONVENTIONS.md`](./CONVENTIONS.md) — naming, commits, git workflow
 - [`docs/DSS_ARCHITECTURE.md`](./docs/DSS_ARCHITECTURE.md) — boundary and open items
-- [`docs/HEXAGONAL_ARCHITECTURE.md`](./docs/HEXAGONAL_ARCHITECTURE.md) — ports and adapters
 - [`docs/ADR/`](./docs/ADR) — accepted decisions

@@ -285,7 +285,7 @@
   can.** `pydantic-settings` reads `.env` into the `Settings` object, never into
   `os.environ`, and the SDK reads only `os.environ` — so an `OPENAI_API_KEY`
   line in `.env` reaches neither the SDK nor the test's own `skipif`.
-  `docs/RUNNING.md` says this for the Azure pair; `.env.example` lists
+  `docs/PLAYBOOK.md` says this for the Azure pair; `.env.example` lists
   `OPENAI_API_KEY` / `OPENAI_ENDPOINT` under "For e2e tests" without the
   caveat, so anyone copying it gets a silently skipped test. Also
   `OPENAI_ENDPOINT` is not a name any SDK reads — the OpenAI SDK reads
