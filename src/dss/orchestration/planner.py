@@ -38,17 +38,16 @@ from dss.core.provider_discovery.models import (
     FailureClass,
     ProviderCapability,
 )
+from dss.core.provider_preferences.next_choice import (
+    Consulted,
+    NextChoices,
+    no_next_choice,
+    render_with_next_choice_offer,
+)
 from dss.core.provider_preferences.service import priority_for_ask
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import UserTurn
 from dss.observability.trace_log import log_event
-from dss.orchestration.next_choice import (
-    Consulted,
-    NextChoices,
-    log_next_provider_used,
-    no_next_choice,
-    render_with_next_choice_offer,
-)
 from dss.ports.invocation import (
     CapabilityInvocation,
     ProviderCallFailedError,
@@ -213,9 +212,23 @@ async def _select_next(ctx: RunContext[PlannerDeps], ask_index: int) -> str:
         return no_next_choice(ask_index)
 
     _replace_answers(deps, ask_index=ask_index, answers=chosen.answers)
-    log_next_provider_used(deps.turn.transaction_id, ask_index=ask_index, used=chosen)
+    _log_next_provider_used(deps, ask_index=ask_index, used=chosen)
     return render_with_next_choice_offer(
         deps.next_choices, ask_index=ask_index, answers=chosen.answers
+    )
+
+
+def _log_next_provider_used(
+    deps: PlannerDeps, *, ask_index: int, used: Consulted
+) -> None:
+    log_event(
+        "provider_preferences",
+        deps.turn.transaction_id,
+        event="next_provider_used",
+        ask_index=ask_index,
+        provider_id=used.capability.provider_id,
+        resource_id=used.capability.resource_id,
+        results=len(used.answers),
     )
 
 
