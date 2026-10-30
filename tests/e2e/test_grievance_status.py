@@ -201,7 +201,6 @@ def test_a_status_is_offered_as_a_form_and_then_read(
     assert read["outcome"]["status"] == "answered", read
     (text,) = read["content"]
     assert text["type"] == "text"
-    print(f"\n  model wrote: {text['text']!r}")
     assert "under review" in text["text"].casefold(), text
     assert "paddy" in text["text"].casefold(), text
     assert PHONE not in text["text"], text
