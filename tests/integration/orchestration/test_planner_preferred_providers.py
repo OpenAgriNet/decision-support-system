@@ -619,3 +619,54 @@ async def test_select_next_on_an_unranked_ask_has_nothing_to_offer() -> None:
     used = [answer.provider_id for _index, answer in deps.raw_answers]
     assert used == ["maharashtra-vistaar"]
     assert "No other preferred provider" in replies[1]
+
+
+async def test_select_next_on_one_ask_leaves_the_other_ask_alone() -> None:
+    invocation = _FakeInvocation(
+        {
+            "maharashtra-vistaar": (_answer("maharashtra-vistaar", 29),),
+            "mausamgram": (_answer("mausamgram", 31),),
+        }
+    )
+    deps = _deps(
+        invocation,
+        candidates=(VISTAAR, MAUSAMGRAM),
+        priorities=_ranked("maharashtra-vistaar", "mausamgram"),
+    )
+    two_asks = (*deps.intent.asks, *deps.intent.asks)
+    deps.intent = Intent(asks=two_asks, confidence=1.0)
+    deps.discovery.capabilities[1] = (VISTAAR, MAUSAMGRAM)
+    deps.discovery.priorities[1] = _ranked("maharashtra-vistaar", "mausamgram")[0]
+
+    def select(ask_index: int) -> ToolCallPart:
+        return ToolCallPart(
+            tool_name="select",
+            args={
+                "ask_index": ask_index,
+                "resource_id": "res:maharashtra-vistaar:forecast",
+                "resource_attributes": {},
+            },
+        )
+
+    calls = {
+        1: [select(0), select(1)],
+        3: [ToolCallPart(tool_name="select_next", args={"ask_index": 0})],
+    }
+
+    def model(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        parts = calls.get(len(messages))
+        return ModelResponse(parts=parts or [TextPart(content="done")])
+
+    skill = Skill(
+        id="provider-invocation",
+        domain="agriculture",
+        description="Call providers to answer an ask.",
+        guidance="call the tools",
+        tool_names=("select", "select_next"),
+    )
+    agent = build_planner_agent(skills=(skill,))
+    with agent.override(model=FunctionModel(model)):
+        await agent.run("will it rain", deps=deps)
+
+    used = sorted((index, answer.provider_id) for index, answer in deps.raw_answers)
+    assert used == [(0, "mausamgram"), (1, "maharashtra-vistaar")]
