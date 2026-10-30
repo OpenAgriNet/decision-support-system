@@ -1,6 +1,6 @@
 """Types produced and consumed by provider_discovery.
 
-Data shapes only. Behaviour lives in service.py.
+A type answers questions about its own data; service.py runs the flow.
 """
 
 from __future__ import annotations
@@ -121,6 +121,26 @@ class CapabilityUnresolved:
 
     subject_category: str
     action_type: str
+
+
+@dataclass(frozen=True)
+class AsksToBeDiscovered:
+    queries_by_ask: Mapping[int, ProviderQuery]  # only asks that can be searched
+    unsearchable_asks: frozenset[int]  # a failed place, or no @type for the ask
+    events: tuple[CapabilityUnresolved, ...]
+
+    def find_unique_queries(self) -> tuple[ProviderQuery, ...]:
+        """Each query once, in the order of the first ask that needs it."""
+
+        return tuple(dict.fromkeys(query for _, query in self._in_ask_order()))
+
+    def find_asks_sharing(self, query: ProviderQuery) -> tuple[int, ...]:
+        """In ask order."""
+
+        return tuple(index for index, shared in self._in_ask_order() if shared == query)
+
+    def _in_ask_order(self) -> list[tuple[int, ProviderQuery]]:
+        return sorted(self.queries_by_ask.items(), key=lambda item: item[0])
 
 
 class FailureClass(Enum):
