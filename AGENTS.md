@@ -67,7 +67,7 @@ Do not duplicate architecture, domain model, or design-decision detail here — 
   refused. One `select` consults every ranked provider for the ask and answers
   from the first that returned anything; the rest are logged. When that
   data cannot answer the ask, the planner calls `select_next` to use the
-  next ranked provider's data instead (ADR-0022). The rankings
+  next ranked provider's data instead (ADR-0019). The rankings
   live in the network registry, never in the DSS: when
   `DSS_PROVIDER_PREFERENCES_BASE_URL` is set, the async `ProviderPreferences`
   port is served per turn with one search fetching the sender's row and
