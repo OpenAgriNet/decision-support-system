@@ -1,6 +1,6 @@
 # Languages the DSS translates, and the language the pipeline runs in for each
 # (`to`). Read only when DSS_EDGE_TRANSLATION_CONFIG_PATH points here; see
-# docs/RUNNING.md.
+# docs/PLAYBOOK.md.
 languages:
   gu:
     to: en
