@@ -246,9 +246,13 @@ async def discover_providers(  # noqa: PLR0913
 
     languages = (str(turn.target_lang),)
     index = schema_pack_cache.current()
-    to_discover = _find_asks_to_discover(intent, languages, radius_m, index)
-    discovered = await _send_queries(to_discover, discovery, turn.transaction_id)
-    fresh = discovered.drop_expired(now)
+    to_discover: AsksToBeDiscovered = _find_asks_to_discover(
+        intent, languages, radius_m, index
+    )
+    discovered: DiscoveredAsks = await _send_queries(
+        to_discover, discovery, turn.transaction_id
+    )
+    fresh: DiscoveredAsks = discovered.not_expired(now)
     events = [
         *to_discover.events,
         *discovered.build_expired_answer_events(now),
