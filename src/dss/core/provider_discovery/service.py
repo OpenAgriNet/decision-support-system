@@ -162,9 +162,6 @@ def _find_asks_to_discover(
     )
 
 
-_NOTHING_FOUND = ProviderQueryResult(answers=(), capabilities=(), failures=())
-
-
 async def _send_queries(
     to_discover: AsksToBeDiscovered,
     discovery: CapabilityDiscovery,
@@ -183,17 +180,14 @@ async def _send_queries(
         for query in unique_queries:
             task_group.start_soon(_send, query)
 
-    searched = [
+    searched = (
         DiscoveredAsk(index=index, query=query, query_result=replies[query])
         for query in unique_queries
         for index in to_discover.find_asks_sharing(query)
-    ]
-    never_searched = [
-        DiscoveredAsk(index=index, query=None, query_result=_NOTHING_FOUND)
-        for index in to_discover.unsearchable_asks
-    ]
+    )
     return DiscoveredAsks(
-        asks=tuple(sorted([*searched, *never_searched], key=lambda ask: ask.index))
+        asks=tuple(sorted(searched, key=lambda ask: ask.index)),
+        unsearchable_asks=to_discover.unsearchable_asks,
     )
 
 

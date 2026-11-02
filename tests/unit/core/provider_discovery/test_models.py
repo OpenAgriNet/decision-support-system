@@ -62,7 +62,6 @@ def test_a_result_has_an_entry_per_ask_in_ask_order() -> None:
     answer = _answer(None)
     discovered = DiscoveredAsks(
         asks=(
-            DiscoveredAsk(index=0, query=None, query_result=_NOTHING_FOUND),
             DiscoveredAsk(
                 index=1,
                 query=_MARKET_QUERY,
@@ -70,7 +69,8 @@ def test_a_result_has_an_entry_per_ask_in_ask_order() -> None:
                     answers=(answer,), capabilities=(), failures=()
                 ),
             ),
-        )
+        ),
+        unsearchable_asks=frozenset({0}),
     )
 
     result = discovered.build_result(())
@@ -78,12 +78,6 @@ def test_a_result_has_an_entry_per_ask_in_ask_order() -> None:
     assert list(result.answers) == [0, 1]
     assert result.answers == {0: (), 1: (answer,)}
     assert result.failures == {0: (), 1: ()}
-
-
-def test_an_ask_never_searched_reports_no_outcome() -> None:
-    never_searched = DiscoveredAsk(index=0, query=None, query_result=_NOTHING_FOUND)
-
-    assert never_searched.build_outcome_events() == ()
 
 
 def test_a_searched_ask_with_nothing_found_is_unservable() -> None:
