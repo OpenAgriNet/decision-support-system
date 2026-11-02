@@ -127,7 +127,6 @@ def _invocation(handler: _Replies, **kwargs) -> HttpCapabilityInvocation:
     return HttpCapabilityInvocation(
         client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
         base_url="https://provider-network-vistaar.da.gov.in/oan",
-        sender_id=SENDER_ID,
         backoff_seconds=0.0,
         **kwargs,
     )
@@ -136,7 +135,9 @@ def _invocation(handler: _Replies, **kwargs) -> HttpCapabilityInvocation:
 async def test_a_filed_grievance_comes_back_with_its_ticket() -> None:
     handler = _Replies(200, fail_times=0)
 
-    reply = await _invocation(handler).support(PROVIDER, ATTRIBUTES, "txn-1")
+    reply = await _invocation(handler).support(
+        PROVIDER, ATTRIBUTES, "txn-1", sender_id=SENDER_ID
+    )
 
     assert reply.attributes["case"]["ticketNo"] == "100626000099001"
     assert handler.calls == 1
@@ -145,7 +146,9 @@ async def test_a_filed_grievance_comes_back_with_its_ticket() -> None:
 async def test_the_wire_names_the_provider_as_receiver() -> None:
     handler = _Replies(200, fail_times=0)
 
-    await _invocation(handler).support(PROVIDER, ATTRIBUTES, "txn-1")
+    await _invocation(handler).support(
+        PROVIDER, ATTRIBUTES, "txn-1", sender_id=SENDER_ID
+    )
 
     assert handler.receiver_ids == ["pmfby"]
 
@@ -153,7 +156,9 @@ async def test_the_wire_names_the_provider_as_receiver() -> None:
 async def test_a_transient_failure_is_retried_as_a_select_is() -> None:
     handler = _Replies(429, fail_times=2)
 
-    reply = await _invocation(handler).support(PROVIDER, ATTRIBUTES, "txn-1")
+    reply = await _invocation(handler).support(
+        PROVIDER, ATTRIBUTES, "txn-1", sender_id=SENDER_ID
+    )
 
     assert handler.calls == 3
     assert reply.attributes["case"]["ticketNo"] == "100626000099001"
@@ -163,7 +168,9 @@ async def test_a_rejected_filing_is_a_defect_with_no_retry_hint() -> None:
     handler = _Replies(400, fail_times=99)
 
     with pytest.raises(SupportFailedError) as failed:
-        await _invocation(handler).support(PROVIDER, ATTRIBUTES, "txn-1")
+        await _invocation(handler).support(
+            PROVIDER, ATTRIBUTES, "txn-1", sender_id=SENDER_ID
+        )
 
     assert handler.calls == 1
     assert failed.value.failure_class is FailureClass.DEFECT
@@ -178,7 +185,9 @@ async def test_a_provider_naming_its_own_time_is_not_retried() -> None:
     handler = _Replies(503, fail_times=99, headers={"Retry-After": "120"})
 
     with pytest.raises(SupportFailedError) as failed:
-        await _invocation(handler).support(PROVIDER, ATTRIBUTES, "txn-1")
+        await _invocation(handler).support(
+            PROVIDER, ATTRIBUTES, "txn-1", sender_id=SENDER_ID
+        )
 
     assert handler.calls == 1
     assert failed.value.failure_class is FailureClass.TRANSIENT
@@ -191,7 +200,9 @@ async def test_a_retried_filing_keeps_its_message_id() -> None:
 
     handler = _Replies(429, fail_times=2)
 
-    await _invocation(handler).support(PROVIDER, ATTRIBUTES, "txn-1")
+    await _invocation(handler).support(
+        PROVIDER, ATTRIBUTES, "txn-1", sender_id=SENDER_ID
+    )
 
     assert len(handler.message_ids) == 3
     assert len(set(handler.message_ids)) == 1

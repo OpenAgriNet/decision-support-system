@@ -326,7 +326,6 @@ async def test_select_returns_the_values_the_composer_will_quote(
     invocation = HttpCapabilityInvocation(
         client=client,
         base_url="http://mock.test",
-        sender_id="dss",
     )
     capability = ProviderCapability(
         provider_id="mausamgram-mock",
@@ -341,6 +340,7 @@ async def test_select_returns_the_values_the_composer_will_quote(
         capability,
         _planner_attributes(capability, {"observationType": "Forecast"}),
         "9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44",
+        sender_id="dss",
     )
 
     # provenance the answer must carry, from the request side not the response
@@ -381,11 +381,9 @@ async def test_mandi_select_answers_one_price_for_the_advertised_market(
         transport=httpx.ASGITransport(app=build_mock_app(pack_dir=pack_dir)),
         base_url="http://mock.test",
     )
-    invocation = HttpCapabilityInvocation(
-        client=client, base_url="http://mock.test", sender_id="dss"
-    )
+    invocation = HttpCapabilityInvocation(client=client, base_url="http://mock.test")
 
-    [answer] = await invocation.select(mumbai, attrs, "txn-mandi")
+    [answer] = await invocation.select(mumbai, attrs, "txn-mandi", sender_id="dss")
 
     assert answer.attributes["resources"] == [
         {
@@ -423,11 +421,11 @@ async def test_advisory_select_answers_with_the_questions_written_answer(
         transport=httpx.ASGITransport(app=build_mock_app(pack_dir=pack_dir)),
         base_url="http://mock.test",
     )
-    invocation = HttpCapabilityInvocation(
-        client=client, base_url="http://mock.test", sender_id="dss"
-    )
+    invocation = HttpCapabilityInvocation(client=client, base_url="http://mock.test")
 
-    [answer] = await invocation.select(capability, attrs, "txn-advisory")
+    [answer] = await invocation.select(
+        capability, attrs, "txn-advisory", sender_id="dss"
+    )
 
     ginger = next(q for q in _benchmark_questions() if q["id"] == "7-1")
     assert answer.attributes["resources"] == [
@@ -449,7 +447,6 @@ async def test_a_select_the_mock_cannot_answer_is_refused_and_counted(
     invocation = HttpCapabilityInvocation(
         client=client,
         base_url="http://mock.test",
-        sender_id="dss",
     )
     capability = ProviderCapability(
         provider_id="mausamgram-mock",
@@ -461,7 +458,7 @@ async def test_a_select_the_mock_cannot_answer_is_refused_and_counted(
     no_location = {k: v for k, v in attrs.items() if k != "location"}
 
     with pytest.raises(SelectFailedError) as failed:
-        await invocation.select(capability, no_location, "txn-miss")
+        await invocation.select(capability, no_location, "txn-miss", sender_id="dss")
 
     assert failed.value.status_code == 400
     misses = (await client.get("/_bench/misses")).json()
@@ -535,20 +532,20 @@ def _grievance_invocation(pack_dir: Path) -> HttpCapabilityInvocation:
     return HttpCapabilityInvocation(
         client=client,
         base_url="http://mock.test",
-        sender_id="dss",
         backoff_seconds=0.0,
     )
 
 
 async def test_status_reads_back_the_case_the_mock_filed(pack_dir: Path) -> None:
     invocation = _grievance_invocation(pack_dir)
-    filed = await invocation.support(_DESK, _FILING, "txn-file")
+    filed = await invocation.support(_DESK, _FILING, "txn-file", sender_id="dss")
     ticket = filed.attributes["case"]["ticketNo"]
 
     read = await invocation.status(
         _DESK,
         {"applicantMobile": "9876543210", "case": {"ticketNo": ticket}},
         "txn-check",
+        sender_id="dss",
     )
 
     case = read.attributes["case"]
@@ -572,11 +569,14 @@ async def test_status_refuses_a_case_it_does_not_hold(
     complaint for that ticket and phone."""
 
     invocation = _grievance_invocation(pack_dir)
-    await invocation.support(_DESK, _FILING, "txn-file")
+    await invocation.support(_DESK, _FILING, "txn-file", sender_id="dss")
 
     with pytest.raises(StatusFailedError) as failed:
         await invocation.status(
-            _DESK, {"applicantMobile": mobile, "case": {"ticketNo": ticket}}, "txn"
+            _DESK,
+            {"applicantMobile": mobile, "case": {"ticketNo": ticket}},
+            "txn",
+            sender_id="dss",
         )
 
     assert failed.value.status_code == 400

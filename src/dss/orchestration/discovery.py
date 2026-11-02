@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from datetime import datetime
 from functools import partial
 from typing import Protocol
@@ -20,6 +19,7 @@ from dss.core.provider_discovery.service import (
 from dss.core.provider_preferences.service import prioritise
 from dss.core.shared.models import UserTurn
 from dss.observability.trace_log import log_event
+from dss.orchestration.network_sender import NetworkSenderFor
 from dss.ports.discovery import CapabilityDiscovery
 from dss.ports.provider_preferences import ProviderPreferences
 
@@ -37,10 +37,6 @@ def build_capability_discovery(
         schema_pack_cache=schema_pack_cache,
         network_host_id=network_host_id,
     )
-
-
-# Who the DSS says it is on the network for this turn.
-type NetworkSenderFor = Callable[[UserTurn], str]
 
 
 class DiscoverProviders(Protocol):

@@ -29,7 +29,6 @@ def _invocation_returning_status(status_code: int) -> HttpCapabilityInvocation:
     return HttpCapabilityInvocation(
         client=client,
         base_url="https://provider-network-vistaar.da.gov.in/oan",
-        sender_id="seeker-network-vistaar.da.gov.in",
         attempts=1,  # classification, not retry — see test_retry.py
     )
 
@@ -42,7 +41,6 @@ def _invocation_raising_connection_error() -> HttpCapabilityInvocation:
     return HttpCapabilityInvocation(
         client=client,
         base_url="https://provider-network-vistaar.da.gov.in/oan",
-        sender_id="seeker-network-vistaar.da.gov.in",
         attempts=1,  # classification, not retry — see test_retry.py
     )
 
@@ -54,7 +52,9 @@ async def test_transient_status_codes_raise_selectfailed_transient(
     invocation = _invocation_returning_status(status_code)
 
     with pytest.raises(SelectFailedError) as exc_info:
-        await invocation.select(CAPABILITY, {}, transaction_id="txn-test")
+        await invocation.select(
+            CAPABILITY, {}, transaction_id="txn-test", sender_id="consumer.oan.dev"
+        )
 
     assert exc_info.value.status_code == status_code
     assert exc_info.value.failure_class == FailureClass.TRANSIENT
@@ -67,7 +67,9 @@ async def test_defect_status_codes_raise_selectfailed_defect(status_code: int) -
     invocation = _invocation_returning_status(status_code)
 
     with pytest.raises(SelectFailedError) as exc_info:
-        await invocation.select(CAPABILITY, {}, transaction_id="txn-test")
+        await invocation.select(
+            CAPABILITY, {}, transaction_id="txn-test", sender_id="consumer.oan.dev"
+        )
 
     assert exc_info.value.status_code == status_code
     assert exc_info.value.failure_class == FailureClass.DEFECT
@@ -77,7 +79,9 @@ async def test_a_connection_error_raises_selectfailed_transient() -> None:
     invocation = _invocation_raising_connection_error()
 
     with pytest.raises(SelectFailedError) as exc_info:
-        await invocation.select(CAPABILITY, {}, transaction_id="txn-test")
+        await invocation.select(
+            CAPABILITY, {}, transaction_id="txn-test", sender_id="consumer.oan.dev"
+        )
 
     assert exc_info.value.failure_class == FailureClass.TRANSIENT
     assert exc_info.value.status_code == 0
@@ -91,7 +95,6 @@ def _invocation_returning_body(body: dict) -> HttpCapabilityInvocation:
     return HttpCapabilityInvocation(
         client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
         base_url="https://provider-network-vistaar.da.gov.in/oan",
-        sender_id="seeker-network-vistaar.da.gov.in",
         attempts=1,
     )
 
@@ -123,7 +126,9 @@ async def test_a_malformed_200_raises_selectfailed_not_a_bare_keyerror(
     invocation = _invocation_returning_body(body)
 
     with pytest.raises(SelectFailedError) as exc_info:
-        await invocation.select(CAPABILITY, {}, transaction_id="txn-test")
+        await invocation.select(
+            CAPABILITY, {}, transaction_id="txn-test", sender_id="consumer.oan.dev"
+        )
 
     # a defect, not transient: the same body will fail the same way
     assert exc_info.value.failure_class == FailureClass.DEFECT
@@ -139,7 +144,12 @@ async def test_a_200_that_committed_to_nothing_is_empty_not_malformed() -> None:
         {"message": {"contract": {"commitments": []}}}
     )
 
-    assert await invocation.select(CAPABILITY, {}, transaction_id="txn-test") == []
+    assert (
+        await invocation.select(
+            CAPABILITY, {}, transaction_id="txn-test", sender_id="consumer.oan.dev"
+        )
+        == []
+    )
 
 
 async def test_a_malformed_200_is_not_retried() -> None:
@@ -156,11 +166,12 @@ async def test_a_malformed_200_is_not_retried() -> None:
     invocation = HttpCapabilityInvocation(
         client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
         base_url="https://provider-network-vistaar.da.gov.in/oan",
-        sender_id="seeker-network-vistaar.da.gov.in",
         backoff_seconds=0.0,
     )
 
     with pytest.raises(SelectFailedError):
-        await invocation.select(CAPABILITY, {}, transaction_id="txn-test")
+        await invocation.select(
+            CAPABILITY, {}, transaction_id="txn-test", sender_id="consumer.oan.dev"
+        )
 
     assert calls == 1

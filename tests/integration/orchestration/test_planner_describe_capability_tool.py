@@ -45,7 +45,13 @@ class _UnusedInvocation:
     the tool cannot work without one, so the type says so."""
 
     async def select(
-        self, capability, resource_attributes, transaction_id, *, visibility=None
+        self,
+        capability,
+        resource_attributes,
+        transaction_id,
+        *,
+        sender_id,
+        visibility=None,
     ):
         raise AssertionError("select must not be called in this test")
 
@@ -88,6 +94,7 @@ def _deps() -> PlannerDeps:
         # already in memory, so it does not wait for moderation. A tool that
         # awaited this Verdict would hang here.
         verdict=Verdict(),
+        network_sender_id="consumer.oan.dev",
     )
 
 

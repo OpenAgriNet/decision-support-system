@@ -57,6 +57,7 @@ SCHEMAS = {
 class _FakeInvocation:
     def __init__(self) -> None:
         self.calls: list[dict] = []
+        self.sender_ids: list[str] = []
 
     async def select(
         self,
@@ -64,9 +65,11 @@ class _FakeInvocation:
         resource_attributes: dict,
         _transaction_id: str,
         *,
+        sender_id: str,
         visibility: Visibility = NOTHING_HELD,
     ) -> list[DiscoveredAnswer]:
         self.calls.append(resource_attributes)
+        self.sender_ids.append(sender_id)
         return [
             DiscoveredAnswer(
                 provider_id=capability.provider_id,
@@ -138,6 +141,7 @@ def _deps(invocation: _FakeInvocation) -> PlannerDeps:
         },
         invocation=invocation,
         verdict=_cleared_verdict(),
+        network_sender_id="consumer.oan.dev",
     )
 
 
@@ -171,6 +175,16 @@ async def test_the_loop_calls_select_and_stops() -> None:
     assert len(invocation.calls) == 1
     assert invocation.calls[0]["commodity"] == {"code": "PADDY"}
     assert invocation.calls[0]["@type"] == "openagrinet:MandiPrice"
+
+
+async def test_select_is_sent_as_the_turns_sender() -> None:
+    invocation = _FakeInvocation()
+    agent = build_planner_agent(skills=(_skill_with("select"),))
+
+    with agent.override(model=FunctionModel(_calls_select_then_answers)):
+        await agent.run("price of paddy", deps=_deps(invocation))
+
+    assert invocation.sender_ids == ["consumer.oan.dev"]
 
 
 async def test_the_raw_answer_is_accumulated_on_deps() -> None:

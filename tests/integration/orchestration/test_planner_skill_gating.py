@@ -34,7 +34,13 @@ class _UnusedInvocation:
     the tool cannot work without one, so the type says so."""
 
     async def select(
-        self, capability, resource_attributes, transaction_id, *, visibility=None
+        self,
+        capability,
+        resource_attributes,
+        transaction_id,
+        *,
+        sender_id,
+        visibility=None,
     ):
         raise AssertionError("select must not be called in this test")
 
@@ -76,6 +82,7 @@ def _deps() -> PlannerDeps:
         schema_context_index={},
         invocation=_UnusedInvocation(),
         verdict=verdict,
+        network_sender_id="consumer.oan.dev",
     )
 
 

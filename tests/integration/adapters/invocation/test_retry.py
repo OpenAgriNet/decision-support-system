@@ -70,7 +70,6 @@ def _invocation(handler: _CountingHandler, **kwargs) -> HttpCapabilityInvocation
     return HttpCapabilityInvocation(
         client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
         base_url="https://provider-network-vistaar.da.gov.in/oan",
-        sender_id="seeker-network-vistaar.da.gov.in",
         backoff_seconds=0.0,  # keep the test fast; spacing is tested separately
         **kwargs,
     )
@@ -79,7 +78,9 @@ def _invocation(handler: _CountingHandler, **kwargs) -> HttpCapabilityInvocation
 async def test_a_transient_failure_is_retried_until_it_succeeds() -> None:
     handler = _CountingHandler(429, fail_times=2)
 
-    [answer] = await _invocation(handler).select(CAPABILITY, {}, "txn-1")
+    [answer] = await _invocation(handler).select(
+        CAPABILITY, {}, "txn-1", sender_id="consumer.oan.dev"
+    )
 
     assert handler.calls == 3
     assert answer.provider_id == CAPABILITY.provider_id
@@ -89,7 +90,9 @@ async def test_a_transient_failure_gives_up_after_the_configured_attempts() -> N
     handler = _CountingHandler(429, fail_times=99)
 
     with pytest.raises(SelectFailedError):
-        await _invocation(handler).select(CAPABILITY, {}, "txn-1")
+        await _invocation(handler).select(
+            CAPABILITY, {}, "txn-1", sender_id="consumer.oan.dev"
+        )
 
     assert handler.calls == 3  # the default
 
@@ -98,7 +101,9 @@ async def test_the_attempt_count_is_configurable() -> None:
     handler = _CountingHandler(429, fail_times=99)
 
     with pytest.raises(SelectFailedError):
-        await _invocation(handler, attempts=2).select(CAPABILITY, {}, "txn-1")
+        await _invocation(handler, attempts=2).select(
+            CAPABILITY, {}, "txn-1", sender_id="consumer.oan.dev"
+        )
 
     assert handler.calls == 2
 
@@ -110,6 +115,8 @@ async def test_a_defect_is_not_retried() -> None:
     handler = _CountingHandler(400, fail_times=99)
 
     with pytest.raises(SelectFailedError):
-        await _invocation(handler).select(CAPABILITY, {}, "txn-1")
+        await _invocation(handler).select(
+            CAPABILITY, {}, "txn-1", sender_id="consumer.oan.dev"
+        )
 
     assert handler.calls == 1

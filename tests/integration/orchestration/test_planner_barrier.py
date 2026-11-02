@@ -63,6 +63,7 @@ class _RecordingInvocation:
         resource_attributes: dict,
         transaction_id: str,
         *,
+        sender_id: str,
         visibility: Visibility = NOTHING_HELD,
     ) -> list[DiscoveredAnswer]:
         self.calls.append(resource_attributes)
@@ -127,6 +128,7 @@ def _deps(invocation: _RecordingInvocation, verdict: Verdict) -> PlannerDeps:
         },
         invocation=invocation,
         verdict=verdict,
+        network_sender_id="consumer.oan.dev",
     )
 
 

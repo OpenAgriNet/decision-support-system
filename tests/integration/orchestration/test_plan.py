@@ -106,6 +106,7 @@ class _FakeInvocation:
         resource_attributes: dict,
         transaction_id: str,
         *,
+        sender_id: str,
         visibility: Visibility = NOTHING_HELD,
     ) -> list[DiscoveredAnswer]:
         self.calls.append(resource_attributes)
@@ -167,6 +168,7 @@ async def test_plan_returns_evidence_from_what_the_tools_returned() -> None:
             "openagrinet:MandiPrice": "https://schemas.openagrinet.global/schema/MandiPrice/0.1/context.jsonld"
         },
         invocation=invocation,
+        network_sender_for=lambda _turn: "consumer.oan.dev",
         identity=IDENTITY,
         prompts=FakePromptProvider(skills=(SKILL,)),
         model=FunctionModel(_calls_select_then_answers),
@@ -209,6 +211,7 @@ async def test_the_prompt_carries_the_identity_and_the_marked_history() -> None:
             "openagrinet:MandiPrice": "https://schemas.openagrinet.global/schema/MandiPrice/0.1/context.jsonld"
         },
         invocation=_FakeInvocation(),
+        network_sender_for=lambda _turn: "consumer.oan.dev",
         identity=IDENTITY,
         prompts=FakePromptProvider(skills=(SKILL,)),
         model=FunctionModel(record),
@@ -275,6 +278,7 @@ async def test_a_direct_answer_reaches_the_evidence_through_plan() -> None:
             )
         },
         invocation=invocation,
+        network_sender_for=lambda _turn: "consumer.oan.dev",
         identity=IDENTITY,
         prompts=FakePromptProvider(skills=(SKILL,)),
         model=FunctionModel(_answers_without_calling),
@@ -307,6 +311,7 @@ async def test_a_turn_with_only_form_asks_never_runs_the_agent() -> None:
         schemas=SCHEMAS,
         schema_context_index={},
         invocation=_FakeInvocation(),
+        network_sender_for=lambda _turn: "consumer.oan.dev",
         identity=IDENTITY,
         prompts=FakePromptProvider(skills=(SKILL,)),
         model=FunctionModel(_must_not_run),
@@ -358,6 +363,7 @@ async def test_a_model_that_still_selects_for_a_form_ask_reaches_no_provider() -
         schemas=SCHEMAS,
         schema_context_index={},
         invocation=invocation,
+        network_sender_for=lambda _turn: "consumer.oan.dev",
         identity=IDENTITY,
         prompts=FakePromptProvider(skills=(SKILL,)),
         model=FunctionModel(_calls_select_for_ask_0_then_answers),
@@ -392,6 +398,7 @@ async def test_an_ask_whose_place_failed_is_a_failure_even_if_never_called() -> 
         schemas=SCHEMAS,
         schema_context_index={},
         invocation=_FakeInvocation(),
+        network_sender_for=lambda _turn: "consumer.oan.dev",
         identity=IDENTITY,
         prompts=FakePromptProvider(skills=(SKILL,)),
         model=FunctionModel(_answers_without_calling),
@@ -436,6 +443,7 @@ async def test_the_planner_binds_its_own_model_settings() -> None:
             "openagrinet:MandiPrice": "https://schemas.openagrinet.global/schema/MandiPrice/0.1/context.jsonld"
         },
         invocation=_FakeInvocation(),
+        network_sender_for=lambda _turn: "consumer.oan.dev",
         identity=IDENTITY,
         prompts=FakePromptProvider(skills=(SKILL,)),
         model=FunctionModel(record_settings),
@@ -467,6 +475,7 @@ async def test_a_rejected_turn_yields_empty_evidence() -> None:
             "openagrinet:MandiPrice": "https://schemas.openagrinet.global/schema/MandiPrice/0.1/context.jsonld"
         },
         invocation=invocation,
+        network_sender_for=lambda _turn: "consumer.oan.dev",
         identity=IDENTITY,
         prompts=FakePromptProvider(skills=(SKILL,)),
         model=FunctionModel(_calls_select_then_answers),
@@ -525,6 +534,7 @@ async def test_a_planner_run_that_fails_still_records_what_it_spent() -> None:
             "openagrinet:MandiPrice": "https://schemas.openagrinet.global/schema/MandiPrice/0.1/context.jsonld"
         },
         invocation=_FakeInvocation(),
+        network_sender_for=lambda _turn: "consumer.oan.dev",
         identity=IDENTITY,
         prompts=FakePromptProvider(skills=(SKILL,)),
         model=FunctionModel(select_then_fail),
@@ -586,7 +596,9 @@ class _FilingInvocation(_FakeInvocation):
         super().__init__()
         self.filed: list[dict] = []
 
-    async def support(self, capability, attributes, transaction_id, *, visibility=None):
+    async def support(
+        self, capability, attributes, transaction_id, *, sender_id, visibility=None
+    ):
         self.filed.append(attributes)
         return ActionReply(attributes={"case": {"ticketNo": "100626000099001"}})
 
@@ -642,6 +654,7 @@ async def test_a_submission_turn_files_the_form_and_keeps_the_ticket() -> None:
         schemas=SCHEMAS,
         schema_context_index={},
         invocation=invocation,
+        network_sender_for=lambda _turn: "consumer.oan.dev",
         identity=IDENTITY,
         prompts=FakePromptProvider(skills=(SKILL, ACTION_SKILL)),
         model=FunctionModel(_files_the_form),

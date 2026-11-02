@@ -36,6 +36,7 @@ from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import TextQuery, TurnInput, UserTurn
 from dss.observability.stages import Stage
 from dss.observability.trace_log import log_external_response
+from dss.orchestration.network_sender import NetworkSenderFor
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
 from dss.ports.invocation import CapabilityInvocation
 from dss.ports.prompts import PromptIdentifier, PromptProvider
@@ -62,6 +63,7 @@ def build_plan(  # noqa: PLR0913
     schemas: dict[str, DomainSchema],
     schema_context_index: dict[str, str],
     invocation: CapabilityInvocation,
+    network_sender_for: NetworkSenderFor,
     identity: Identity,
     prompts: PromptProvider,
     model: Model | str,
@@ -157,6 +159,7 @@ def build_plan(  # noqa: PLR0913
             schema_context_index=schema_context_index,
             invocation=invocation,
             verdict=verdict,
+            network_sender_id=network_sender_for(turn),
             visibility=visibility,
             filing=filing,
         )

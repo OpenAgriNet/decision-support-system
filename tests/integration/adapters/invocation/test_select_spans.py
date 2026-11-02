@@ -41,7 +41,6 @@ def _invocation(handler, **kwargs) -> HttpCapabilityInvocation:
     return HttpCapabilityInvocation(
         client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
         base_url="https://provider-network-vistaar.da.gov.in/oan",
-        sender_id="seeker-network-vistaar.da.gov.in",
         backoff_seconds=0.0,
         **kwargs,
     )
@@ -56,7 +55,9 @@ async def test_every_attempt_gets_its_own_span_under_the_call(spans) -> None:
         return httpx.Response(429, json={"error": "simulated"})
 
     with pytest.raises(SelectFailedError):
-        await _invocation(always_429).select(CAPABILITY, {}, "txn-1")
+        await _invocation(always_429).select(
+            CAPABILITY, {}, "txn-1", sender_id="consumer.oan.dev"
+        )
 
     finished = spans.get_finished_spans()
     attempts = [s for s in finished if s.name == "dss.select.attempt"]
@@ -96,7 +97,9 @@ async def test_the_call_span_names_the_provider_it_reached(spans) -> None:
             },
         )
 
-    await _invocation(answers).select(CAPABILITY, {"commodity": "onion"}, "txn-1")
+    await _invocation(answers).select(
+        CAPABILITY, {"commodity": "onion"}, "txn-1", sender_id="consumer.oan.dev"
+    )
 
     call = next(s for s in spans.get_finished_spans() if s.name == "dss.select")
     assert call.attributes["provider_id"] == "mausamgram"
@@ -117,7 +120,9 @@ async def test_each_attempt_says_why_it_failed(spans) -> None:
         return httpx.Response(next(codes), json={"error": "secret-query-echo"})
 
     with pytest.raises(SelectFailedError):
-        await _invocation(failing).select(CAPABILITY, {}, "txn-1")
+        await _invocation(failing).select(
+            CAPABILITY, {}, "txn-1", sender_id="consumer.oan.dev"
+        )
 
     attempts = [s for s in spans.get_finished_spans() if s.name == "dss.select.attempt"]
     assert [s.attributes["http.status_code"] for s in attempts] == [503, 429, 500]
@@ -131,7 +136,9 @@ async def test_the_call_span_counts_its_attempts(spans) -> None:
         return httpx.Response(429, json={"error": "simulated"})
 
     with pytest.raises(SelectFailedError):
-        await _invocation(always_429).select(CAPABILITY, {}, "txn-1")
+        await _invocation(always_429).select(
+            CAPABILITY, {}, "txn-1", sender_id="consumer.oan.dev"
+        )
 
     call = next(s for s in spans.get_finished_spans() if s.name == "dss.select")
     assert call.attributes["attempts"] == 3
@@ -168,7 +175,7 @@ async def test_the_call_span_says_what_was_asked_and_whether_data_came_back(
     """An empty 200 would otherwise look like a healthy provider."""
 
     await _invocation(lambda _: _answer({"parameters": [{"name": "rain"}]})).select(
-        CAPABILITY, {}, "txn-1"
+        CAPABILITY, {}, "txn-1", sender_id="consumer.oan.dev"
     )
 
     call = next(s for s in spans.get_finished_spans() if s.name == "dss.select")
@@ -178,7 +185,7 @@ async def test_the_call_span_says_what_was_asked_and_whether_data_came_back(
 
 async def test_an_empty_answer_is_marked_as_one(spans) -> None:
     await _invocation(lambda _: _answer({"parameters": []})).select(
-        CAPABILITY, {}, "txn-1"
+        CAPABILITY, {}, "txn-1", sender_id="consumer.oan.dev"
     )
 
     call = next(s for s in spans.get_finished_spans() if s.name == "dss.select")
@@ -192,7 +199,9 @@ async def test_a_failed_call_says_how_it_failed_by_class(spans) -> None:
         return httpx.Response(403, json={"error": "secret-query-echo"})
 
     with pytest.raises(SelectFailedError):
-        await _invocation(forbidden).select(CAPABILITY, {}, "txn-1")
+        await _invocation(forbidden).select(
+            CAPABILITY, {}, "txn-1", sender_id="consumer.oan.dev"
+        )
 
     call = next(s for s in spans.get_finished_spans() if s.name == "dss.select")
     assert call.attributes["failure_class"] == "defect"

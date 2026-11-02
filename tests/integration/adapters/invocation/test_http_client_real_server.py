@@ -43,13 +43,13 @@ async def test_select_against_a_real_local_server(httpserver: HTTPServer) -> Non
         invocation = HttpCapabilityInvocation(
             client=client,
             base_url=_base_url(httpserver),
-            sender_id="seeker-network-vistaar.da.gov.in",
         )
 
         [answer] = await invocation.select(
             CAPABILITY,
             {"@type": "openagrinet:WeatherObservation"},
             transaction_id="txn-test",
+            sender_id="consumer.oan.dev",
         )
 
     assert answer.provider_id == "mausamgram"
@@ -65,12 +65,13 @@ async def test_a_real_429_response_raises_selectfailed(httpserver: HTTPServer) -
         invocation = HttpCapabilityInvocation(
             client=client,
             base_url=_base_url(httpserver),
-            sender_id="seeker-network-vistaar.da.gov.in",
             attempts=1,  # classification, not retry — see test_retry.py
         )
 
         with pytest.raises(SelectFailedError) as exc_info:
-            await invocation.select(CAPABILITY, {}, transaction_id="txn-test")
+            await invocation.select(
+                CAPABILITY, {}, transaction_id="txn-test", sender_id="consumer.oan.dev"
+            )
 
     assert exc_info.value.status_code == 429
 
@@ -88,13 +89,13 @@ async def test_the_outbound_request_is_logged(httpserver: HTTPServer, caplog) ->
             invocation = HttpCapabilityInvocation(
                 client=client,
                 base_url=_base_url(httpserver),
-                sender_id="seeker-network-vistaar.da.gov.in",
             )
 
             await invocation.select(
                 CAPABILITY,
                 {"@type": "openagrinet:WeatherObservation"},
                 transaction_id="txn-test",
+                sender_id="consumer.oan.dev",
             )
 
     assert "external=invocation event=request" in caplog.text
@@ -119,13 +120,13 @@ async def test_select_names_the_discovered_resource_id(httpserver: HTTPServer) -
         invocation = HttpCapabilityInvocation(
             client=client,
             base_url=_base_url(httpserver),
-            sender_id="seeker-network-vistaar.da.gov.in",
         )
 
         await invocation.select(
             CAPABILITY,
             {"@type": "openagrinet:WeatherObservation"},
             transaction_id="txn-test",
+            sender_id="consumer.oan.dev",
         )
 
     sent = json.loads(httpserver.log[0][0].get_data())

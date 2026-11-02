@@ -57,6 +57,7 @@ class _FailingInvocation:
         resource_attributes: dict,
         transaction_id: str,
         *,
+        sender_id: str,
         visibility: Visibility = NOTHING_HELD,
     ) -> DiscoveredAnswer:
         self.calls += 1
@@ -119,6 +120,7 @@ def _deps(invocation: _FailingInvocation) -> PlannerDeps:
         },
         invocation=invocation,
         verdict=_cleared_verdict(),
+        network_sender_id="consumer.oan.dev",
     )
 
 

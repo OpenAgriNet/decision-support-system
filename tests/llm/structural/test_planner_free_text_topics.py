@@ -117,6 +117,7 @@ class _RecordingInvocation:
         resource_attributes: dict,
         transaction_id: str,
         *,
+        sender_id: str,
         visibility: Visibility = NOTHING_HELD,
     ) -> list[DiscoveredAnswer]:
         self.calls.append(resource_attributes)
@@ -172,6 +173,7 @@ async def sent_topics() -> list[str]:
             )
         },
         invocation=invocation,
+        network_sender_for=lambda _turn: "consumer.oan.dev",
         # The shipped identity and prompt registry, not doubles: the guidance
         # under test is exactly what a deployment loads.
         identity=load_identity(),

@@ -279,13 +279,11 @@ class HttpCapabilityInvocation:
         self,
         client: httpx.AsyncClient,
         base_url: str,
-        sender_id: str,
         attempts: int = 3,
         backoff_seconds: float = 0.5,
     ) -> None:
         self._client = client
         self._base_url = base_url
-        self._sender_id = sender_id
         self._attempts = attempts
         self._backoff_seconds = backoff_seconds
 
@@ -295,6 +293,7 @@ class HttpCapabilityInvocation:
         resource_attributes: dict,
         transaction_id: str,
         *,
+        sender_id: str,
         visibility: Visibility = NOTHING_HELD,
     ) -> list[DiscoveredAnswer]:
         """Call /select, retrying a transient failure.
@@ -313,6 +312,7 @@ class HttpCapabilityInvocation:
                 resource_attributes,
                 transaction_id,
                 visibility,
+                sender_id=sender_id,
             ),
             outcome_attributes=_select_outcome,
         )
@@ -323,6 +323,7 @@ class HttpCapabilityInvocation:
         attributes: dict,
         transaction_id: str,
         *,
+        sender_id: str,
         visibility: Visibility = NOTHING_HELD,
     ) -> ActionReply:
         """Call /support, retrying a transient failure exactly as `select`
@@ -342,6 +343,7 @@ class HttpCapabilityInvocation:
                 attributes,
                 transaction_id,
                 visibility,
+                sender_id=sender_id,
                 message_id=message_id,
             ),
             outcome_attributes=_no_outcome_attributes,
@@ -353,6 +355,7 @@ class HttpCapabilityInvocation:
         attributes: dict,
         transaction_id: str,
         *,
+        sender_id: str,
         visibility: Visibility = NOTHING_HELD,
     ) -> ActionReply:
         """Call /status, retrying a transient failure exactly as `select`
@@ -371,6 +374,7 @@ class HttpCapabilityInvocation:
                 attributes,
                 transaction_id,
                 visibility,
+                sender_id=sender_id,
                 message_id=message_id,
                 contract_id=contract_id,
             ),
@@ -443,12 +447,14 @@ class HttpCapabilityInvocation:
         resource_attributes: dict,
         transaction_id: str,
         visibility: Visibility,
+        *,
+        sender_id: str,
     ) -> list[DiscoveredAnswer]:
         request_body = build_select_request(
             capability,
             resource_attributes,
             resource_id=capability.resource_id,
-            sender_id=self._sender_id,
+            sender_id=sender_id,
             message_id=str(uuid4()),
             transaction_id=transaction_id,
             timestamp=datetime.now(UTC).isoformat(),
@@ -481,19 +487,20 @@ class HttpCapabilityInvocation:
                 f"malformed response: {exc!r}",
             ) from exc
 
-    async def _support_once(
+    async def _support_once(  # noqa: PLR0913
         self,
         capability: ProviderCapability,
         attributes: dict,
         transaction_id: str,
         visibility: Visibility,
         *,
+        sender_id: str,
         message_id: str,
     ) -> ActionReply:
         request_body = build_support_request(
             capability,
             attributes,
-            sender_id=self._sender_id,
+            sender_id=sender_id,
             message_id=message_id,
             transaction_id=transaction_id,
             timestamp=datetime.now(UTC).isoformat(),
@@ -523,6 +530,7 @@ class HttpCapabilityInvocation:
         transaction_id: str,
         visibility: Visibility,
         *,
+        sender_id: str,
         message_id: str,
         contract_id: str,
     ) -> ActionReply:
@@ -531,7 +539,7 @@ class HttpCapabilityInvocation:
             attributes,
             resource_id=capability.resource_id,
             contract_id=contract_id,
-            sender_id=self._sender_id,
+            sender_id=sender_id,
             message_id=message_id,
             transaction_id=transaction_id,
             timestamp=datetime.now(UTC).isoformat(),

@@ -87,6 +87,7 @@ class _FakeInvocation:
         resource_attributes: dict,
         _transaction_id: str,
         *,
+        sender_id: str,
         visibility: Visibility = NOTHING_HELD,
     ):
         self.called.append(capability.provider_id)
@@ -176,6 +177,7 @@ def _deps(
         schema_context_index=CONTEXT_INDEX,
         invocation=invocation,
         verdict=verdict,
+        network_sender_id="consumer.oan.dev",
     )
 
 

@@ -103,6 +103,7 @@ class CapabilityInvocation(Protocol):
         resource_attributes: dict,
         transaction_id: NetworkTransactionID,
         *,
+        sender_id: str,
         visibility: Visibility = NOTHING_HELD,
     ) -> Sequence[DiscoveredAnswer]:
         """Return every answer the provider gave, or raise ``SelectFailedError``.
@@ -124,6 +125,7 @@ class CapabilityInvocation(Protocol):
         attributes: dict,
         transaction_id: NetworkTransactionID,
         *,
+        sender_id: str,
         visibility: Visibility = NOTHING_HELD,
     ) -> ActionReply:
         """File ``attributes`` with the provider, or raise ``SupportFailedError``.
@@ -140,6 +142,7 @@ class CapabilityInvocation(Protocol):
         attributes: dict,
         transaction_id: NetworkTransactionID,
         *,
+        sender_id: str,
         visibility: Visibility = NOTHING_HELD,
     ) -> ActionReply:
         """Read the case ``attributes`` name, or raise ``StatusFailedError``.

@@ -106,6 +106,7 @@ from dss.orchestration.discovery import (
     build_discover_providers,
 )
 from dss.orchestration.form_path import FormPath
+from dss.orchestration.network_sender import NetworkSenderFor
 from dss.orchestration.orchestrator import (
     Components,
     Orchestrator,
@@ -243,6 +244,11 @@ def _load_boot_config(settings: Settings) -> _BootConfig:
     )
 
 
+def _network_sender_for(settings: Settings) -> NetworkSenderFor:
+    sender_id = settings.network_sender_id
+    return lambda _turn: sender_id
+
+
 def _build_components(
     settings: Settings, boot: _BootConfig, network: _Network
 ) -> Components:
@@ -256,6 +262,7 @@ def _build_components(
             schemas=network.schemas,
             schema_context_index=network.schema_context_index,
             invocation=network.invocation,
+            network_sender_for=network.network_sender_for,
             identity=boot.identity,
             prompts=boot.prompts,
             model=_resolve_model(settings.planner_model, settings),
@@ -505,6 +512,7 @@ class _UnwiredInvocation:
         resource_attributes: dict,
         transaction_id: NetworkTransactionID,
         *,
+        sender_id: str,
         visibility: Visibility = NOTHING_HELD,
     ) -> Never:
         _refuse_unwired_call()
@@ -515,6 +523,7 @@ class _UnwiredInvocation:
         attributes: dict,
         transaction_id: NetworkTransactionID,
         *,
+        sender_id: str,
         visibility: Visibility = NOTHING_HELD,
     ) -> Never:
         _refuse_unwired_call()
@@ -525,6 +534,7 @@ class _UnwiredInvocation:
         attributes: dict,
         transaction_id: NetworkTransactionID,
         *,
+        sender_id: str,
         visibility: Visibility = NOTHING_HELD,
     ) -> Never:
         _refuse_unwired_call()
@@ -552,10 +562,12 @@ class _Network:
     """Everything that varies with the network: the per-turn `discover`
     callable, the `invocation` port, the two schema dicts the planner
     validates and routes against, the shared HTTP client whose lifecycle the
-    caller owns (`None` when unwired), and the ranking source in force."""
+    caller owns (`None` when unwired), the ranking source in force, and the
+    one sender rule that discovery and the planner both use."""
 
     discover: DiscoverProviders
     invocation: CapabilityInvocation
+    network_sender_for: NetworkSenderFor
     schemas: dict[str, DomainSchema]
     schema_context_index: dict[str, str]
     client: httpx.AsyncClient | None
@@ -574,6 +586,7 @@ def _network(
     discovery finds nobody — all harmless, because the planner is never
     reached."""
 
+    network_sender_for = _network_sender_for(settings)
     if not settings.network_enabled:
         if settings.provider_preferences_base_url is not None:
             # Harmless — an unwired run calls no provider for a ranking to
@@ -586,6 +599,7 @@ def _network(
         return _Network(
             discover=_discovers_nothing,
             invocation=_UnwiredInvocation(),
+            network_sender_for=network_sender_for,
             schemas={},
             schema_context_index={},
             client=None,
@@ -633,12 +647,11 @@ def _network(
         schema_pack_cache=cache,
         radius_m=settings.discovery_radius_m,
         preferences=preferences,
-        network_sender_for=lambda _turn: settings.network_sender_id,
+        network_sender_for=network_sender_for,
     )
     invocation = HttpCapabilityInvocation(
         client=client,
         base_url=settings.invocation_base_url,
-        sender_id=settings.network_sender_id,
         attempts=settings.select_attempts,
         backoff_seconds=settings.select_backoff_seconds,
     )
@@ -654,6 +667,7 @@ def _network(
     return _Network(
         discover=discover,
         invocation=invocation,
+        network_sender_for=network_sender_for,
         schemas=_planner_schemas(good),
         schema_context_index=cache.current_schema_context(),
         client=client,

@@ -67,6 +67,8 @@ class PlannerDeps:
     # mistake into an AttributeError from inside a tool body.
     invocation: CapabilityInvocation
     verdict: Verdict
+    # Who this turn's provider calls say they are from.
+    network_sender_id: str
     # This turn's real values, for the provider call only. Handed straight to
     # `select`; nothing in a tool reads it. Holds nothing unless handed one, so
     # a caller that forgets it sends tags, not values.
@@ -262,6 +264,7 @@ async def _consult_all(
                 outcome.capability,
                 attributes_for(outcome.capability),
                 deps.turn.transaction_id,
+                sender_id=deps.network_sender_id,
                 visibility=deps.visibility,
             )
         except SelectFailedError as exc:
@@ -499,6 +502,7 @@ async def _send_form(
             capability,
             attributes,
             deps.turn.transaction_id,
+            sender_id=deps.network_sender_id,
             visibility=deps.visibility,
         )
     except ProviderCallFailedError as failed:

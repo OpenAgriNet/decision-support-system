@@ -79,9 +79,13 @@ FILED = {
 class _FakeInvocation:
     def __init__(self) -> None:
         self.filed: list[dict] = []
+        self.sender_ids: list[str] = []
 
-    async def support(self, capability, attributes, transaction_id, *, visibility=None):
+    async def support(
+        self, capability, attributes, transaction_id, *, sender_id, visibility=None
+    ):
         self.filed.append(attributes)
+        self.sender_ids.append(sender_id)
         return ActionReply(attributes=FILED)
 
     async def select(self, *args, **kwargs):
@@ -123,6 +127,7 @@ def _deps(invocation: _FakeInvocation) -> PlannerDeps:
         schema_context_index={},
         invocation=invocation,
         verdict=verdict,
+        network_sender_id="consumer.oan.dev",
         filing=Filing(
             submission=ValidSubmission(
                 definition=ACTION.form(), submission_id="submission-1", values=VALUES
@@ -166,8 +171,22 @@ async def test_support_files_the_form_with_the_chosen_provider() -> None:
     assert deps.failures == []
 
 
+async def test_support_is_sent_as_the_turns_sender() -> None:
+    """Support and status share one send path, so this covers both."""
+
+    invocation = _FakeInvocation()
+    agent = build_planner_agent(skills=[_skill()])
+
+    with agent.override(model=FunctionModel(_files_then_answers)):
+        await agent.run("file it", deps=_deps(invocation))
+
+    assert invocation.sender_ids == ["consumer.oan.dev"]
+
+
 class _RefusingInvocation(_FakeInvocation):
-    async def support(self, capability, attributes, transaction_id, *, visibility=None):
+    async def support(
+        self, capability, attributes, transaction_id, *, sender_id, visibility=None
+    ):
         self.filed.append(attributes)
         raise SupportFailedError(
             capability.capability, 503, FailureClass.TRANSIENT, retry_after_seconds=120

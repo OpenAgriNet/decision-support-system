@@ -84,7 +84,9 @@ class _FakeInvocation:
     def __init__(self) -> None:
         self.read: list[dict] = []
 
-    async def status(self, capability, attributes, transaction_id, *, visibility=None):
+    async def status(
+        self, capability, attributes, transaction_id, *, sender_id, visibility=None
+    ):
         self.read.append(attributes)
         return ActionReply(attributes=READ)
 
@@ -130,6 +132,7 @@ def _deps(invocation: _FakeInvocation, action: ActionSchema = STATUS) -> Planner
         schema_context_index={},
         invocation=invocation,
         verdict=verdict,
+        network_sender_id="consumer.oan.dev",
         filing=Filing(
             submission=ValidSubmission(
                 definition=action.form(), submission_id="submission-1", values=VALUES
@@ -191,7 +194,9 @@ async def test_the_values_the_farmer_typed_do_not_reach_the_answer() -> None:
 
 
 class _RefusingInvocation(_FakeInvocation):
-    async def status(self, capability, attributes, transaction_id, *, visibility=None):
+    async def status(
+        self, capability, attributes, transaction_id, *, sender_id, visibility=None
+    ):
         self.read.append(attributes)
         raise StatusFailedError(capability.capability, 400, FailureClass.DEFECT)
 

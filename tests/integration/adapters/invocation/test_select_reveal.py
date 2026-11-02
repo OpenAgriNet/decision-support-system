@@ -67,7 +67,6 @@ def _invocation(provider: _Provider) -> HttpCapabilityInvocation:
     return HttpCapabilityInvocation(
         client=httpx.AsyncClient(transport=httpx.MockTransport(provider)),
         base_url="https://provider-network-vistaar.da.gov.in/oan",
-        sender_id="seeker-network-vistaar.da.gov.in",
         backoff_seconds=0.0,
     )
 
@@ -78,10 +77,22 @@ def _attributes(body: dict) -> dict:
     ]
 
 
+async def test_the_wire_names_the_given_sender() -> None:
+    provider = _Provider(_answer("approved"))
+
+    await _invocation(provider).select(
+        CAPABILITY, {}, "txn-1", sender_id="kisan-mitra-web"
+    )
+
+    assert provider.bodies[0]["context"]["senderId"] == "kisan-mitra-web"
+
+
 async def test_the_wire_names_the_provider_as_receiver() -> None:
     provider = _Provider(_answer("approved"))
 
-    await _invocation(provider).select(CAPABILITY, {}, "txn-1")
+    await _invocation(provider).select(
+        CAPABILITY, {}, "txn-1", sender_id="consumer.oan.dev"
+    )
 
     assert provider.bodies[0]["context"]["receiverId"] == CAPABILITY.provider_id
 
@@ -90,7 +101,11 @@ async def test_the_wire_carries_the_real_value() -> None:
     provider = _Provider(_answer("approved"))
 
     await _invocation(provider).select(
-        CAPABILITY, {"applicant": {"phone": "«phone_1»"}}, "txn-1", visibility=REVEAL
+        CAPABILITY,
+        {"applicant": {"phone": "«phone_1»"}},
+        "txn-1",
+        sender_id="consumer.oan.dev",
+        visibility=REVEAL,
     )
 
     assert _attributes(provider.bodies[0])["applicant"] == {"phone": PHONE}
@@ -101,7 +116,11 @@ async def test_a_tag_the_map_does_not_hold_goes_out_as_the_tag() -> None:
     provider = _Provider(_answer("approved"))
 
     await _invocation(provider).select(
-        CAPABILITY, {"id": "«aadhaar_1»"}, "txn-1", visibility=REVEAL
+        CAPABILITY,
+        {"id": "«aadhaar_1»"},
+        "txn-1",
+        sender_id="consumer.oan.dev",
+        visibility=REVEAL,
     )
 
     assert _attributes(provider.bodies[0])["id"] == "«aadhaar_1»"
@@ -111,7 +130,10 @@ async def test_without_a_map_nothing_is_revealed() -> None:
     provider = _Provider(_answer("approved"))
 
     await _invocation(provider).select(
-        CAPABILITY, {"applicant": {"phone": "«phone_1»"}}, "txn-1"
+        CAPABILITY,
+        {"applicant": {"phone": "«phone_1»"}},
+        "txn-1",
+        sender_id="consumer.oan.dev",
     )
 
     assert _attributes(provider.bodies[0])["applicant"] == {"phone": "«phone_1»"}
@@ -121,7 +143,11 @@ async def test_an_echoed_value_is_a_tag_again_in_the_answer() -> None:
     provider = _Provider(_answer(f"application for {PHONE} is approved"))
 
     [answer] = await _invocation(provider).select(
-        CAPABILITY, {"applicant": {"phone": "«phone_1»"}}, "txn-1", visibility=REVEAL
+        CAPABILITY,
+        {"applicant": {"phone": "«phone_1»"}},
+        "txn-1",
+        sender_id="consumer.oan.dev",
+        visibility=REVEAL,
     )
 
     [resource] = answer.attributes["resources"]
@@ -136,6 +162,7 @@ async def test_the_logs_show_tags_never_the_value(caplog) -> None:
             CAPABILITY,
             {"applicant": {"phone": "«phone_1»"}},
             "txn-1",
+            sender_id="consumer.oan.dev",
             visibility=REVEAL,
         )
 
@@ -151,6 +178,7 @@ async def test_a_failed_call_does_not_carry_the_value_in_its_detail() -> None:
             CAPABILITY,
             {"applicant": {"phone": "«phone_1»"}},
             "txn-1",
+            sender_id="consumer.oan.dev",
             visibility=REVEAL,
         )
 

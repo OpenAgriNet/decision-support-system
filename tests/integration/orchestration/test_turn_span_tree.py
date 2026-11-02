@@ -85,9 +85,8 @@ class _PlanThatCallsSelect:
             invocation = HttpCapabilityInvocation(
                 client=client,
                 base_url="https://provider-network.example",
-                sender_id="seeker.example",
             )
-            await invocation.select(_CAPABILITY, {}, "t1")
+            await invocation.select(_CAPABILITY, {}, "t1", sender_id="seeker.example")
         return self._evidence
 
 
