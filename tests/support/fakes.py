@@ -7,12 +7,16 @@ fails, which is the point of having a contract at all.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Mapping, Sequence
+from collections.abc import AsyncIterator, Callable, Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any, Literal
 
+from dss.core.forms.models import ActionReply
 from dss.core.intent.models import Scheme, SchemeEntry
 from dss.core.planner.models import Skill
+from dss.core.provider_discovery.models import DiscoveredAnswer, ProviderCapability
 from dss.core.provider_preferences.models import PreferenceBook, capability_key
+from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.errors import ProviderUnavailableError, TranslationError
 from dss.core.shared.language import LanguageTag
 from dss.core.shared.models import Geometry, TurnContext, TurnEvent, UserTurn
@@ -67,6 +71,103 @@ def _ranked(rankings: dict[str, list[str]]) -> dict[str, tuple[str, ...]]:
 
 
 NO_PREFERENCES = FakeProviderPreferences()
+
+
+@dataclass(frozen=True)
+class InvocationCall:
+    action: Literal["select", "support", "status"]
+    capability: ProviderCapability
+    attributes: dict
+    transaction_id: str
+    sender_id: str
+
+
+_NOT_EXPECTED = object()
+
+
+class FakeInvocation:
+    """A `CapabilityInvocation` that records every call and replies with what
+    it was given for that action: a value, an exception to raise, or a function
+    of the provider. An action given nothing must not be called."""
+
+    def __init__(
+        self,
+        *,
+        select: Any = _NOT_EXPECTED,
+        support: Any = _NOT_EXPECTED,
+        status: Any = _NOT_EXPECTED,
+    ) -> None:
+        self._replies = {"select": select, "support": support, "status": status}
+        self.calls: list[InvocationCall] = []
+
+    async def select(
+        self,
+        capability: ProviderCapability,
+        resource_attributes: dict,
+        transaction_id: str,
+        *,
+        sender_id: str,
+        visibility: Visibility = NOTHING_HELD,
+    ) -> Sequence[DiscoveredAnswer]:
+        return self._reply(
+            InvocationCall(
+                "select", capability, resource_attributes, transaction_id, sender_id
+            )
+        )
+
+    async def support(
+        self,
+        capability: ProviderCapability,
+        attributes: dict,
+        transaction_id: str,
+        *,
+        sender_id: str,
+        visibility: Visibility = NOTHING_HELD,
+    ) -> ActionReply:
+        return self._reply(
+            InvocationCall("support", capability, attributes, transaction_id, sender_id)
+        )
+
+    async def status(
+        self,
+        capability: ProviderCapability,
+        attributes: dict,
+        transaction_id: str,
+        *,
+        sender_id: str,
+        visibility: Visibility = NOTHING_HELD,
+    ) -> ActionReply:
+        return self._reply(
+            InvocationCall("status", capability, attributes, transaction_id, sender_id)
+        )
+
+    def _reply(self, call: InvocationCall) -> Any:
+        self.calls.append(call)
+        reply = self._replies[call.action]
+        if reply is _NOT_EXPECTED:
+            raise AssertionError(f"{call.action} must not be called in this test")
+        if isinstance(reply, type) and issubclass(reply, BaseException):
+            raise TypeError(f"{call.action}: pass an exception instance, not a class")
+        if isinstance(reply, Exception):
+            raise reply
+        return reply(call.capability) if callable(reply) else reply
+
+
+def answers_with(
+    attributes: dict, *, resource_id: str
+) -> Callable[[ProviderCapability], list[DiscoveredAnswer]]:
+    """A `select` reply: one answer from whichever provider was called."""
+
+    return lambda capability: [
+        DiscoveredAnswer(
+            provider_id=capability.provider_id,
+            provider_name=capability.provider_name,
+            capability=capability.capability,
+            resource_id=resource_id,
+            attributes=attributes,
+            validity=None,
+        )
+    ]
 
 
 class FakeRunner:

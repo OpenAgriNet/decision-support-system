@@ -7,6 +7,8 @@ providers, and one unreachable mandi is not a reason to answer nothing.
 
 from __future__ import annotations
 
+from typing import Never
+
 from pydantic_ai.messages import (
     ModelMessage,
     ModelResponse,
@@ -21,14 +23,13 @@ from dss.core.moderation.models import ModerationDecision, Outcome
 from dss.core.planner.models import Skill, Verdict
 from dss.core.planner.validation import DomainSchema
 from dss.core.provider_discovery.models import (
-    DiscoveredAnswer,
     DiscoveryResult,
     FailureClass,
     ProviderCapability,
 )
-from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import TextQuery, UserTurn
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
+from tests.support.fakes import FakeInvocation
 
 CAPABILITY = ProviderCapability(
     provider_id="agmarknet",
@@ -45,28 +46,19 @@ SCHEMAS = {
 }
 
 
-class _FailingInvocation:
+def _too_many_requests(capability: ProviderCapability) -> Never:
     """Fails the way the adapter does once its retries are exhausted."""
 
-    def __init__(self) -> None:
-        self.calls = 0
+    raise SelectFailedError(
+        capability.capability,
+        429,
+        FailureClass.TRANSIENT,
+        "too many requests",
+    )
 
-    async def select(
-        self,
-        capability: ProviderCapability,
-        resource_attributes: dict,
-        transaction_id: str,
-        *,
-        sender_id: str,
-        visibility: Visibility = NOTHING_HELD,
-    ) -> DiscoveredAnswer:
-        self.calls += 1
-        raise SelectFailedError(
-            capability.capability,
-            429,
-            FailureClass.TRANSIENT,
-            "too many requests",
-        )
+
+def _failing_invocation() -> FakeInvocation:
+    return FakeInvocation(select=_too_many_requests)
 
 
 def _skill_with(*tool_names: str) -> Skill:
@@ -100,7 +92,7 @@ def _intent(category: SubjectCategory = SubjectCategory.MARKET) -> Intent:
     )
 
 
-def _deps(invocation: _FailingInvocation) -> PlannerDeps:
+def _deps(invocation: FakeInvocation) -> PlannerDeps:
     return PlannerDeps(
         turn=UserTurn(
             input=TextQuery(text="price of paddy"),
@@ -144,7 +136,7 @@ def _calls_select_then_answers(
 
 
 async def test_a_failed_provider_call_does_not_fail_the_turn() -> None:
-    invocation = _FailingInvocation()
+    invocation = _failing_invocation()
     agent = build_planner_agent(skills=(_skill_with("select"),))
     deps = _deps(invocation)
 
@@ -152,7 +144,7 @@ async def test_a_failed_provider_call_does_not_fail_the_turn() -> None:
         result = await agent.run("price of paddy", deps=deps)
 
     assert result.output == "Could not reach the provider."
-    assert invocation.calls == 1
+    assert len(invocation.calls) == 1
     assert deps.raw_answers == []
 
 
@@ -161,7 +153,7 @@ async def test_the_failure_is_recorded_for_the_evidence() -> None:
     Agmarknet" rather than "nobody serves this" — the same empty result, two
     different statements."""
 
-    invocation = _FailingInvocation()
+    invocation = _failing_invocation()
     agent = build_planner_agent(skills=(_skill_with("select"),))
     deps = _deps(invocation)
 
@@ -207,7 +199,7 @@ async def test_a_capability_with_no_indexed_schema_gets_a_retry() -> None:
         resource_id="res:gj-agri:facility",
         observed_categories=("Service",),
     )
-    invocation = _FailingInvocation()
+    invocation = _failing_invocation()
     deps = _deps(invocation)
     deps.discovery = DiscoveryResult(
         answers={}, capabilities={0: (unindexed,)}, failures={}, events=()
@@ -220,7 +212,7 @@ async def test_a_capability_with_no_indexed_schema_gets_a_retry() -> None:
     # the turn survived, and no provider was called for a capability we
     # cannot even build a request for
     assert result.output == "picked another"
-    assert invocation.calls == 0
+    assert invocation.calls == []
 
 
 async def test_the_model_is_told_the_call_failed() -> None:
@@ -244,6 +236,6 @@ async def test_the_model_is_told_the_call_failed() -> None:
     agent = build_planner_agent(skills=(_skill_with("select"),))
 
     with agent.override(model=FunctionModel(record_tool_result)):
-        await agent.run("price of paddy", deps=_deps(_FailingInvocation()))
+        await agent.run("price of paddy", deps=_deps(_failing_invocation()))
 
     assert any("could not" in text.lower() for text in captured)

@@ -35,14 +35,13 @@ from dss.core.moderation.models import ModerationDecision, Outcome
 from dss.core.planner.models import Verdict
 from dss.core.planner.validation import DomainSchema
 from dss.core.provider_discovery.models import (
-    DiscoveredAnswer,
     DiscoveryResult,
     ProviderCapability,
 )
-from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import ConversationMessage, TextQuery, UserTurn
 from dss.entrypoint.composition import _resolve_model
 from dss.orchestration.plan import build_plan
+from tests.support.fakes import FakeInvocation, answers_with
 from tests.support.live_model import missing_model_key
 
 _DOTENV = Path(__file__).parents[3] / ".env"
@@ -105,36 +104,19 @@ ADVICE_ASK = Ask(
 )
 
 
-class _RecordingInvocation:
+def _recording_invocation() -> FakeInvocation:
     """Records what the model asked to send, and answers so the loop ends."""
 
-    def __init__(self) -> None:
-        self.calls: list[dict] = []
-
-    async def select(
-        self,
-        capability: ProviderCapability,
-        resource_attributes: dict,
-        transaction_id: str,
-        *,
-        sender_id: str,
-        visibility: Visibility = NOTHING_HELD,
-    ) -> list[DiscoveredAnswer]:
-        self.calls.append(resource_attributes)
-        return [
-            DiscoveredAnswer(
-                provider_id=capability.provider_id,
-                provider_name=capability.provider_name,
-                capability=capability.capability,
-                resource_id="res:krishi-kb:crop-advisory:2026-09-11",
-                attributes={
-                    "recommendations": [
-                        {"message": "Plant certified seed tubers in well-drained soil."}
-                    ]
-                },
-                validity=None,
-            )
-        ]
+    return FakeInvocation(
+        select=answers_with(
+            {
+                "recommendations": [
+                    {"message": "Plant certified seed tubers in well-drained soil."}
+                ]
+            },
+            resource_id="res:krishi-kb:crop-advisory:2026-09-11",
+        )
+    )
 
 
 def _turn() -> UserTurn:
@@ -163,7 +145,7 @@ async def sent_topics() -> list[str]:
     """Run the real planner against a live model; return the `topics` it sent."""
 
     settings = Settings()
-    invocation = _RecordingInvocation()
+    invocation = _recording_invocation()
     plan = build_plan(
         schemas=SCHEMAS,
         schema_context_index={
@@ -199,8 +181,9 @@ async def sent_topics() -> list[str]:
     )
 
     assert invocation.calls, "the model called no provider"
-    topics = invocation.calls[0].get("topics")
-    assert isinstance(topics, list) and topics, f"no topics sent: {invocation.calls[0]}"
+    sent = invocation.calls[0].attributes
+    topics = sent.get("topics")
+    assert isinstance(topics, list) and topics, f"no topics sent: {sent}"
     assert all(isinstance(entry, str) for entry in topics), topics
     return topics
 

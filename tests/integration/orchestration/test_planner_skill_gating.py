@@ -19,6 +19,7 @@ from dss.core.planner.validation import DomainSchema
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.shared.models import TextQuery, UserTurn
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
+from tests.support.fakes import FakeInvocation
 
 INVOCATION_SKILL = Skill(
     id="provider-invocation",
@@ -27,22 +28,6 @@ INVOCATION_SKILL = Skill(
     guidance="call describe_capability, then select",
     tool_names=("describe_capability", "select"),
 )
-
-
-class _UnusedInvocation:
-    """These tests never reach ``select``, but ``invocation`` is required —
-    the tool cannot work without one, so the type says so."""
-
-    async def select(
-        self,
-        capability,
-        resource_attributes,
-        transaction_id,
-        *,
-        sender_id,
-        visibility=None,
-    ):
-        raise AssertionError("select must not be called in this test")
 
 
 def _intent(category: SubjectCategory = SubjectCategory.MARKET) -> Intent:
@@ -80,7 +65,7 @@ def _deps() -> PlannerDeps:
             )
         },
         schema_context_index={},
-        invocation=_UnusedInvocation(),
+        invocation=FakeInvocation(),
         verdict=verdict,
         network_sender_id="consumer.oan.dev",
     )

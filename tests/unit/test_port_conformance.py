@@ -12,7 +12,9 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Sequence
 
+from dss.core.forms.models import ActionReply
 from dss.core.forms.registry import FormRegistry
+from dss.core.redaction.visibility import NOTHING_HELD
 from dss.core.shared.language import ENGLISH, LanguageTag
 from dss.core.shared.models import (
     TextQuery,
@@ -22,16 +24,19 @@ from dss.core.shared.models import (
     UserTurn,
 )
 from dss.orchestration.stub_runner import StubRunner
+from dss.ports.invocation import CapabilityInvocation
 from dss.ports.translator import Translator
 from dss.ports.turn import TurnRunner
 from tests.support.fakes import (
     FakeAreaLookup,
+    FakeInvocation,
     FakeLocalizer,
     FakePromptProvider,
     FakeRunner,
     FakeSchemeCatalog,
     FakeTranslator,
 )
+from tests.support.providers import grievance_provider
 
 
 def drive(runner: TurnRunner, turn: UserTurn, ctx: TurnContext) -> list[TurnEvent]:
@@ -172,6 +177,28 @@ def test_the_stub_translator_satisfies_the_port():
     assert isinstance(translator, Translator)
     assert translated == (CANNED_QUESTION, CANNED_QUESTION)
     assert "".join(pieces) == "[gu] c"
+
+
+async def _call_every_action(invocation: CapabilityInvocation) -> None:
+    """Deliberately typed as the port, not as the implementation."""
+
+    desk = grievance_provider("pmfby", "PMFBY")
+    await invocation.select(desk, {}, "txn", sender_id="dss", visibility=NOTHING_HELD)
+    await invocation.support(desk, {}, "txn", sender_id="dss", visibility=NOTHING_HELD)
+    await invocation.status(desk, {}, "txn", sender_id="dss", visibility=NOTHING_HELD)
+
+
+def test_the_fake_invocation_satisfies_the_port():
+    reply = ActionReply(attributes={})
+    invocation = FakeInvocation(select=(), support=reply, status=reply)
+
+    asyncio.run(_call_every_action(invocation))
+
+    assert [call.action for call in invocation.calls] == [
+        "select",
+        "support",
+        "status",
+    ]
 
 
 def test_the_llm_translator_satisfies_the_port():

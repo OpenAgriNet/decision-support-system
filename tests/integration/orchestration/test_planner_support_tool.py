@@ -7,6 +7,8 @@ loop runs it against real tool-calling machinery with the network
 
 from __future__ import annotations
 
+from typing import Never
+
 from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart, ToolCallPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
@@ -30,6 +32,7 @@ from dss.core.provider_discovery.models import (
 from dss.core.shared.models import TextQuery, UserTurn
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
 from dss.ports.invocation import SupportFailedError
+from tests.support.fakes import FakeInvocation
 
 PROVIDER = ProviderCapability(
     provider_id="pmfby",
@@ -76,20 +79,14 @@ FILED = {
 }
 
 
-class _FakeInvocation:
-    def __init__(self) -> None:
-        self.filed: list[dict] = []
-        self.sender_ids: list[str] = []
+def _invocation() -> FakeInvocation:
+    return FakeInvocation(support=ActionReply(attributes=FILED))
 
-    async def support(
-        self, capability, attributes, transaction_id, *, sender_id, visibility=None
-    ):
-        self.filed.append(attributes)
-        self.sender_ids.append(sender_id)
-        return ActionReply(attributes=FILED)
 
-    async def select(self, *args, **kwargs):
-        raise AssertionError("select must not be called for a filing")
+def _refuses(capability: ProviderCapability) -> Never:
+    raise SupportFailedError(
+        capability.capability, 503, FailureClass.TRANSIENT, retry_after_seconds=120
+    )
 
 
 def _skill() -> Skill:
@@ -102,7 +99,7 @@ def _skill() -> Skill:
     )
 
 
-def _deps(invocation: _FakeInvocation) -> PlannerDeps:
+def _deps(invocation: FakeInvocation) -> PlannerDeps:
     verdict = Verdict()
     verdict.set(ModerationDecision(outcome=Outcome.PROCEED))
     ask = Ask(
@@ -151,14 +148,15 @@ def _files_then_answers(messages: list[ModelMessage], info: AgentInfo) -> ModelR
 
 
 async def test_support_files_the_form_with_the_chosen_provider() -> None:
-    invocation = _FakeInvocation()
+    invocation = _invocation()
     deps = _deps(invocation)
     agent = build_planner_agent(skills=[_skill()])
 
     with agent.override(model=FunctionModel(_files_then_answers)):
         await agent.run("file it", deps=deps)
 
-    (body,) = invocation.filed
+    (call,) = invocation.calls
+    body = call.attributes
     assert body["applicantMobile"] == PHONE
     assert body["provider"] == {
         "id": "pmfby",
@@ -174,27 +172,17 @@ async def test_support_files_the_form_with_the_chosen_provider() -> None:
 async def test_support_is_sent_as_the_turns_sender() -> None:
     """Support and status share one send path, so this covers both."""
 
-    invocation = _FakeInvocation()
+    invocation = _invocation()
     agent = build_planner_agent(skills=[_skill()])
 
     with agent.override(model=FunctionModel(_files_then_answers)):
         await agent.run("file it", deps=_deps(invocation))
 
-    assert invocation.sender_ids == ["consumer.oan.dev"]
-
-
-class _RefusingInvocation(_FakeInvocation):
-    async def support(
-        self, capability, attributes, transaction_id, *, sender_id, visibility=None
-    ):
-        self.filed.append(attributes)
-        raise SupportFailedError(
-            capability.capability, 503, FailureClass.TRANSIENT, retry_after_seconds=120
-        )
+    assert [call.sender_id for call in invocation.calls] == ["consumer.oan.dev"]
 
 
 async def test_a_failed_filing_is_a_retryable_failure_with_the_providers_time() -> None:
-    invocation = _RefusingInvocation()
+    invocation = FakeInvocation(support=_refuses)
     deps = _deps(invocation)
     agent = build_planner_agent(skills=[_skill()])
 
@@ -227,24 +215,24 @@ def _files_twice_then_answers(
 
 
 async def test_a_form_is_filed_once_however_often_the_model_asks() -> None:
-    invocation = _FakeInvocation()
+    invocation = _invocation()
     deps = _deps(invocation)
     agent = build_planner_agent(skills=[_skill()])
 
     with agent.override(model=FunctionModel(_files_twice_then_answers)):
         await agent.run("file it", deps=deps)
 
-    assert len(invocation.filed) == 1
+    assert len(invocation.calls) == 1
     assert len(deps.raw_answers) == 1
 
 
 async def test_a_failed_filing_is_not_sent_again_however_often_the_model_asks() -> None:
-    invocation = _RefusingInvocation()
+    invocation = FakeInvocation(support=_refuses)
     deps = _deps(invocation)
     agent = build_planner_agent(skills=[_skill()])
 
     with agent.override(model=FunctionModel(_files_twice_then_answers)):
         await agent.run("file it", deps=deps)
 
-    assert len(invocation.filed) == 1
+    assert len(invocation.calls) == 1
     assert len(deps.failures) == 1

@@ -11,6 +11,7 @@ from dss.core.planner.validation import DomainSchema
 from dss.core.provider_discovery.models import DiscoveryResult, ProviderCapability
 from dss.core.shared.models import TextQuery, UserTurn
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
+from tests.support.fakes import FakeInvocation
 
 CAPABILITY = ProviderCapability(
     provider_id="agmarknet",
@@ -38,22 +39,6 @@ def _skill_with(*tool_names: str) -> Skill:
         guidance="call the tools",
         tool_names=tool_names,
     )
-
-
-class _UnusedInvocation:
-    """These tests never reach ``select``, but ``invocation`` is required —
-    the tool cannot work without one, so the type says so."""
-
-    async def select(
-        self,
-        capability,
-        resource_attributes,
-        transaction_id,
-        *,
-        sender_id,
-        visibility=None,
-    ):
-        raise AssertionError("select must not be called in this test")
 
 
 def _intent(category: SubjectCategory = SubjectCategory.MARKET) -> Intent:
@@ -89,7 +74,7 @@ def _deps() -> PlannerDeps:
         schema_context_index={
             "openagrinet:MandiPrice": "https://schemas.openagrinet.global/schema/MandiPrice/0.1/context.jsonld"
         },
-        invocation=_UnusedInvocation(),
+        invocation=FakeInvocation(),
         # Left unset on purpose: describe_capability reads discovery data
         # already in memory, so it does not wait for moderation. A tool that
         # awaited this Verdict would hang here.

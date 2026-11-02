@@ -47,10 +47,9 @@ from dss.core.provider_discovery.models import (
     DiscoveryResult,
     ProviderCapability,
 )
-from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import ConversationMessage, TextQuery, UserTurn
 from dss.orchestration.plan import build_plan
-from tests.support.fakes import FakePromptProvider
+from tests.support.fakes import FakeInvocation, FakePromptProvider, answers_with
 
 CAPABILITY = ProviderCapability(
     provider_id="agmarknet",
@@ -96,30 +95,13 @@ GRIEVANCE_FORM = FormDefinition(
 )
 
 
-class _FakeInvocation:
-    def __init__(self) -> None:
-        self.calls: list[dict] = []
+_PRICE_ANSWER = answers_with(
+    {"prices": {"modal": 2200}}, resource_id="res:agmarknet:daily-price:2026-08-25"
+)
 
-    async def select(
-        self,
-        capability: ProviderCapability,
-        resource_attributes: dict,
-        transaction_id: str,
-        *,
-        sender_id: str,
-        visibility: Visibility = NOTHING_HELD,
-    ) -> list[DiscoveredAnswer]:
-        self.calls.append(resource_attributes)
-        return [
-            DiscoveredAnswer(
-                provider_id=capability.provider_id,
-                provider_name=capability.provider_name,
-                capability=capability.capability,
-                resource_id="res:agmarknet:daily-price:2026-08-25",
-                attributes={"prices": {"modal": 2200}},
-                validity=None,
-            )
-        ]
+
+def _invocation() -> FakeInvocation:
+    return FakeInvocation(select=_PRICE_ANSWER)
 
 
 def _turn() -> UserTurn:
@@ -161,7 +143,7 @@ def _calls_select_then_answers(
 
 
 async def test_plan_returns_evidence_from_what_the_tools_returned() -> None:
-    invocation = _FakeInvocation()
+    invocation = _invocation()
     plan = build_plan(
         schemas=SCHEMAS,
         schema_context_index={
@@ -210,7 +192,7 @@ async def test_the_prompt_carries_the_identity_and_the_marked_history() -> None:
         schema_context_index={
             "openagrinet:MandiPrice": "https://schemas.openagrinet.global/schema/MandiPrice/0.1/context.jsonld"
         },
-        invocation=_FakeInvocation(),
+        invocation=_invocation(),
         network_sender_for=lambda _turn: "consumer.oan.dev",
         identity=IDENTITY,
         prompts=FakePromptProvider(skills=(SKILL,)),
@@ -269,7 +251,7 @@ async def test_a_direct_answer_reaches_the_evidence_through_plan() -> None:
     planner is told not to answer, and the composer never saw it, so the
     farmer got nothing while the answer sat in the prompt."""
 
-    invocation = _FakeInvocation()
+    invocation = _invocation()
     plan = build_plan(
         schemas=SCHEMAS,
         schema_context_index={
@@ -310,7 +292,7 @@ async def test_a_turn_with_only_form_asks_never_runs_the_agent() -> None:
     plan = build_plan(
         schemas=SCHEMAS,
         schema_context_index={},
-        invocation=_FakeInvocation(),
+        invocation=_invocation(),
         network_sender_for=lambda _turn: "consumer.oan.dev",
         identity=IDENTITY,
         prompts=FakePromptProvider(skills=(SKILL,)),
@@ -355,7 +337,7 @@ async def test_a_model_that_still_selects_for_a_form_ask_reaches_no_provider() -
     schema it may call, because the Grievance pack is not one select serves.
     The farmer's form is not lost over it."""
 
-    invocation = _FakeInvocation()
+    invocation = _invocation()
     grievance_desk = replace(
         CAPABILITY, capability="openagrinet:Grievance", observed_categories=()
     )
@@ -397,7 +379,7 @@ async def test_an_ask_whose_place_failed_is_a_failure_even_if_never_called() -> 
     plan = build_plan(
         schemas=SCHEMAS,
         schema_context_index={},
-        invocation=_FakeInvocation(),
+        invocation=_invocation(),
         network_sender_for=lambda _turn: "consumer.oan.dev",
         identity=IDENTITY,
         prompts=FakePromptProvider(skills=(SKILL,)),
@@ -442,7 +424,7 @@ async def test_the_planner_binds_its_own_model_settings() -> None:
         schema_context_index={
             "openagrinet:MandiPrice": "https://schemas.openagrinet.global/schema/MandiPrice/0.1/context.jsonld"
         },
-        invocation=_FakeInvocation(),
+        invocation=_invocation(),
         network_sender_for=lambda _turn: "consumer.oan.dev",
         identity=IDENTITY,
         prompts=FakePromptProvider(skills=(SKILL,)),
@@ -468,7 +450,7 @@ async def test_a_rejected_turn_yields_empty_evidence() -> None:
     and ``plan`` still returns. What it must not return is evidence: no
     provider was called, so there is nothing to answer from."""
 
-    invocation = _FakeInvocation()
+    invocation = _invocation()
     plan = build_plan(
         schemas=SCHEMAS,
         schema_context_index={
@@ -533,7 +515,7 @@ async def test_a_planner_run_that_fails_still_records_what_it_spent() -> None:
         schema_context_index={
             "openagrinet:MandiPrice": "https://schemas.openagrinet.global/schema/MandiPrice/0.1/context.jsonld"
         },
-        invocation=_FakeInvocation(),
+        invocation=_invocation(),
         network_sender_for=lambda _turn: "consumer.oan.dev",
         identity=IDENTITY,
         prompts=FakePromptProvider(skills=(SKILL,)),
@@ -591,16 +573,11 @@ _GRIEVANCE_PROVIDER = replace(
 )
 
 
-class _FilingInvocation(_FakeInvocation):
-    def __init__(self) -> None:
-        super().__init__()
-        self.filed: list[dict] = []
-
-    async def support(
-        self, capability, attributes, transaction_id, *, sender_id, visibility=None
-    ):
-        self.filed.append(attributes)
-        return ActionReply(attributes={"case": {"ticketNo": "100626000099001"}})
+def _filing_invocation() -> FakeInvocation:
+    return FakeInvocation(
+        select=_PRICE_ANSWER,
+        support=ActionReply(attributes={"case": {"ticketNo": "100626000099001"}}),
+    )
 
 
 def _form_turn() -> UserTurn:
@@ -649,7 +626,7 @@ async def test_a_submission_turn_files_the_form_and_keeps_the_ticket() -> None:
     """The form skill's tools, not select's; the ask line says the values are
     the form's; the user message never carries them; the reply is a result."""
 
-    invocation = _FilingInvocation()
+    invocation = _filing_invocation()
     plan = build_plan(
         schemas=SCHEMAS,
         schema_context_index={},
@@ -670,7 +647,8 @@ async def test_a_submission_turn_files_the_form_and_keeps_the_ticket() -> None:
         filing=_FILING,
     )
 
-    (body,) = invocation.filed
+    (call,) = invocation.calls
+    body = call.attributes
     assert body["applicantMobile"] == "9876543210"
     (ask_evidence,) = evidence.ask_evidences
     (result,) = ask_evidence.results

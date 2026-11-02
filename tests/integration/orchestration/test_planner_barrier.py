@@ -27,9 +27,9 @@ from dss.core.provider_discovery.models import (
     DiscoveryResult,
     ProviderCapability,
 )
-from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import TextQuery, UserTurn
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
+from tests.support.fakes import FakeInvocation, answers_with
 
 CAPABILITY = ProviderCapability(
     provider_id="agmarknet",
@@ -49,35 +49,19 @@ SCHEMAS = {
 PROCEED = ModerationDecision(outcome=Outcome.PROCEED)
 
 
-class _RecordingInvocation:
-    """Records whether the verdict had been set when the provider was called."""
+_PRICE_ANSWER = answers_with(
+    {"prices": {"modal": 2200}}, resource_id="res:agmarknet:daily-price:2026-08-25"
+)
 
-    def __init__(self, verdict: Verdict) -> None:
-        self._verdict = verdict
-        self.calls: list[dict] = []
-        self.verdict_was_set: list[bool] = []
 
-    async def select(
-        self,
-        capability: ProviderCapability,
-        resource_attributes: dict,
-        transaction_id: str,
-        *,
-        sender_id: str,
-        visibility: Visibility = NOTHING_HELD,
-    ) -> list[DiscoveredAnswer]:
-        self.calls.append(resource_attributes)
-        self.verdict_was_set.append(self._verdict.is_set())
-        return [
-            DiscoveredAnswer(
-                provider_id=capability.provider_id,
-                provider_name=capability.provider_name,
-                capability=capability.capability,
-                resource_id="res:agmarknet:daily-price:2026-08-25",
-                attributes={"prices": {"modal": 2200}},
-                validity=None,
-            )
-        ]
+def _invocation(verdict: Verdict) -> FakeInvocation:
+    """Fails the test if a provider is called before the verdict is set."""
+
+    def reply(capability: ProviderCapability) -> list[DiscoveredAnswer]:
+        assert verdict.is_set(), "select ran before the verdict was set"
+        return _PRICE_ANSWER(capability)
+
+    return FakeInvocation(select=reply)
 
 
 def _skill_with(*tool_names: str) -> Skill:
@@ -108,7 +92,7 @@ def _intent(category: SubjectCategory = SubjectCategory.MARKET) -> Intent:
     )
 
 
-def _deps(invocation: _RecordingInvocation, verdict: Verdict) -> PlannerDeps:
+def _deps(invocation: FakeInvocation, verdict: Verdict) -> PlannerDeps:
     return PlannerDeps(
         turn=UserTurn(
             input=TextQuery(text="price of paddy"),
@@ -162,7 +146,7 @@ async def test_a_turn_that_does_not_proceed_never_reaches_the_provider(
     verdict.set(
         ModerationDecision(outcome=outcome, reason_code=ReasonCode.UNSAFE_ILLEGAL)
     )
-    invocation = _RecordingInvocation(verdict)
+    invocation = _invocation(verdict)
     agent = build_planner_agent(skills=(_skill_with("select"),))
 
     with agent.override(model=FunctionModel(_calls_select_then_answers)):
@@ -173,7 +157,7 @@ async def test_a_turn_that_does_not_proceed_never_reaches_the_provider(
 
 async def test_select_waits_for_a_late_verdict() -> None:
     verdict = Verdict()
-    invocation = _RecordingInvocation(verdict)
+    invocation = _invocation(verdict)
     agent = build_planner_agent(skills=(_skill_with("select"),))
     deps = _deps(invocation, verdict)
 
@@ -187,7 +171,6 @@ async def test_select_waits_for_a_late_verdict() -> None:
             await agent.run("price of paddy", deps=deps)
 
     assert len(invocation.calls) == 1
-    assert invocation.verdict_was_set == [True]
 
 
 def _calls_select_twice_then_answers(
@@ -216,7 +199,7 @@ async def test_the_barrier_lets_several_select_calls_through() -> None:
     once."""
 
     verdict = Verdict()
-    invocation = _RecordingInvocation(verdict)
+    invocation = _invocation(verdict)
     agent = build_planner_agent(skills=(_skill_with("select"),))
     deps = _deps(invocation, verdict)
 
@@ -230,7 +213,6 @@ async def test_the_barrier_lets_several_select_calls_through() -> None:
             await agent.run("price of paddy and wheat", deps=deps)
 
     assert len(invocation.calls) == 2
-    assert invocation.verdict_was_set == [True, True]
 
 
 def _calls_describe_then_answers(
@@ -249,7 +231,7 @@ async def test_describe_capability_does_not_wait_for_the_verdict() -> None:
     verdict is never set here: a tool that awaited it would hang."""
 
     verdict = Verdict()
-    invocation = _RecordingInvocation(verdict)
+    invocation = _invocation(verdict)
     agent = build_planner_agent(skills=(_skill_with("describe_capability"),))
 
     deps = _deps(invocation, verdict)

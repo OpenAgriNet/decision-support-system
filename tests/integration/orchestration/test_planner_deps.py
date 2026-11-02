@@ -7,6 +7,7 @@ from dss.core.planner.models import Verdict
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.shared.models import TextQuery, UserTurn
 from dss.orchestration.planner import PlannerDeps
+from tests.support.fakes import FakeInvocation
 
 
 def _turn() -> UserTurn:
@@ -22,22 +23,6 @@ def _turn() -> UserTurn:
 
 def _discovery_result() -> DiscoveryResult:
     return DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
-
-
-class _UnusedInvocation:
-    """These tests never reach ``select``, but ``invocation`` is required —
-    the tool cannot work without one, so the type says so."""
-
-    async def select(
-        self,
-        capability,
-        resource_attributes,
-        transaction_id,
-        *,
-        sender_id,
-        visibility=None,
-    ):
-        raise AssertionError("select must not be called in this test")
 
 
 def _intent(category: SubjectCategory = SubjectCategory.MARKET) -> Intent:
@@ -62,7 +47,7 @@ def test_planner_deps_starts_with_an_empty_accumulator() -> None:
         discovery=_discovery_result(),
         schemas={},
         schema_context_index={},
-        invocation=_UnusedInvocation(),
+        invocation=FakeInvocation(),
         verdict=Verdict(),
         network_sender_id="consumer.oan.dev",
     )

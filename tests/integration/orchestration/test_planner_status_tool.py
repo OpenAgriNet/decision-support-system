@@ -7,6 +7,8 @@ loop runs it against real tool-calling machinery with the network
 
 from __future__ import annotations
 
+from typing import Never
+
 from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart, ToolCallPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
@@ -30,6 +32,7 @@ from dss.core.provider_discovery.models import (
 from dss.core.shared.models import TextQuery, UserTurn
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
 from dss.ports.invocation import StatusFailedError
+from tests.support.fakes import FakeInvocation
 
 PROVIDER = ProviderCapability(
     provider_id="pmfby",
@@ -80,21 +83,12 @@ READ = {
 }
 
 
-class _FakeInvocation:
-    def __init__(self) -> None:
-        self.read: list[dict] = []
+def _invocation() -> FakeInvocation:
+    return FakeInvocation(status=ActionReply(attributes=READ))
 
-    async def status(
-        self, capability, attributes, transaction_id, *, sender_id, visibility=None
-    ):
-        self.read.append(attributes)
-        return ActionReply(attributes=READ)
 
-    async def support(self, *args, **kwargs):
-        raise AssertionError("support must not be called for a status check")
-
-    async def select(self, *args, **kwargs):
-        raise AssertionError("select must not be called for a status check")
+def _refuses(capability: ProviderCapability) -> Never:
+    raise StatusFailedError(capability.capability, 400, FailureClass.DEFECT)
 
 
 def _skill() -> Skill:
@@ -107,7 +101,7 @@ def _skill() -> Skill:
     )
 
 
-def _deps(invocation: _FakeInvocation, action: ActionSchema = STATUS) -> PlannerDeps:
+def _deps(invocation: FakeInvocation, action: ActionSchema = STATUS) -> PlannerDeps:
     verdict = Verdict()
     verdict.set(ModerationDecision(outcome=Outcome.PROCEED))
     ask = Ask(
@@ -159,14 +153,15 @@ def _calls_then_answers(tool_name: str):
 
 
 async def test_status_reads_the_case_with_the_chosen_provider() -> None:
-    invocation = _FakeInvocation()
+    invocation = _invocation()
     deps = _deps(invocation)
     agent = build_planner_agent(skills=[_skill()])
 
     with agent.override(model=FunctionModel(_calls_then_answers("status"))):
         await agent.run("check it", deps=deps)
 
-    (body,) = invocation.read
+    (call,) = invocation.calls
+    body = call.attributes
     assert body["applicantMobile"] == PHONE
     assert body["case"] == {"ticketNo": TICKET}
     assert body["informationMode"] == "OnDemand"
@@ -180,7 +175,7 @@ async def test_the_values_the_farmer_typed_do_not_reach_the_answer() -> None:
     """The desk echoes the phone and the ticket; neither may reach the
     composer, which writes the reply."""
 
-    invocation = _FakeInvocation()
+    invocation = _invocation()
     deps = _deps(invocation)
     agent = build_planner_agent(skills=[_skill()])
 
@@ -193,19 +188,11 @@ async def test_the_values_the_farmer_typed_do_not_reach_the_answer() -> None:
     assert answer.attributes["case"]["cropName"] == "Paddy"
 
 
-class _RefusingInvocation(_FakeInvocation):
-    async def status(
-        self, capability, attributes, transaction_id, *, sender_id, visibility=None
-    ):
-        self.read.append(attributes)
-        raise StatusFailedError(capability.capability, 400, FailureClass.DEFECT)
-
-
 async def test_a_refused_read_is_a_failure_that_is_not_retryable() -> None:
     """How a desk says it knows no such case; the form path tells the farmer
     no complaint was found."""
 
-    invocation = _RefusingInvocation()
+    invocation = FakeInvocation(status=_refuses)
     deps = _deps(invocation)
     agent = build_planner_agent(skills=[_skill()])
 
@@ -224,25 +211,25 @@ async def test_a_status_form_is_not_filed_through_support() -> None:
     """The tool must match the form's action: a status form sent through
     `support` would file a blank grievance."""
 
-    invocation = _FakeInvocation()
+    invocation = _invocation()
     deps = _deps(invocation)
     agent = build_planner_agent(skills=[_skill()])
 
     with agent.override(model=FunctionModel(_calls_then_answers("support"))):
         await agent.run("check it", deps=deps)
 
-    assert invocation.read == []
+    assert invocation.calls == []
     assert deps.raw_answers == []
     assert deps.failures == []
 
 
 async def test_a_filing_form_is_not_sent_through_status() -> None:
-    invocation = _FakeInvocation()
+    invocation = _invocation()
     deps = _deps(invocation, action=_action("support"))
     agent = build_planner_agent(skills=[_skill()])
 
     with agent.override(model=FunctionModel(_calls_then_answers("status"))):
         await agent.run("file it", deps=deps)
 
-    assert invocation.read == []
+    assert invocation.calls == []
     assert deps.raw_answers == []

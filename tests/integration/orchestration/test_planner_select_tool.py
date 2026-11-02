@@ -29,14 +29,10 @@ from dss.core.intent.models import (
 from dss.core.moderation.models import ModerationDecision, Outcome
 from dss.core.planner.models import Skill, Verdict
 from dss.core.planner.validation import DomainSchema
-from dss.core.provider_discovery.models import (
-    DiscoveredAnswer,
-    DiscoveryResult,
-    ProviderCapability,
-)
-from dss.core.redaction.visibility import NOTHING_HELD, Visibility
+from dss.core.provider_discovery.models import DiscoveryResult, ProviderCapability
 from dss.core.shared.models import Geometry, TextQuery, UserTurn
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
+from tests.support.fakes import FakeInvocation, answers_with
 
 CAPABILITY = ProviderCapability(
     provider_id="agmarknet",
@@ -54,32 +50,13 @@ SCHEMAS = {
 }
 
 
-class _FakeInvocation:
-    def __init__(self) -> None:
-        self.calls: list[dict] = []
-        self.sender_ids: list[str] = []
-
-    async def select(
-        self,
-        capability: ProviderCapability,
-        resource_attributes: dict,
-        _transaction_id: str,
-        *,
-        sender_id: str,
-        visibility: Visibility = NOTHING_HELD,
-    ) -> list[DiscoveredAnswer]:
-        self.calls.append(resource_attributes)
-        self.sender_ids.append(sender_id)
-        return [
-            DiscoveredAnswer(
-                provider_id=capability.provider_id,
-                provider_name=capability.provider_name,
-                capability=capability.capability,
-                resource_id="res:agmarknet:daily-price:2026-08-25",
-                attributes={"prices": {"modal": 2200}},
-                validity=None,
-            )
-        ]
+def _invocation() -> FakeInvocation:
+    return FakeInvocation(
+        select=answers_with(
+            {"prices": {"modal": 2200}},
+            resource_id="res:agmarknet:daily-price:2026-08-25",
+        )
+    )
 
 
 def _cleared_verdict() -> Verdict:
@@ -119,7 +96,7 @@ def _intent(category: SubjectCategory = SubjectCategory.MARKET) -> Intent:
     )
 
 
-def _deps(invocation: _FakeInvocation) -> PlannerDeps:
+def _deps(invocation: FakeInvocation) -> PlannerDeps:
     from dss.core.provider_discovery.models import DiscoveryResult
 
     return PlannerDeps(
@@ -165,7 +142,7 @@ def _calls_select_then_answers(
 
 
 async def test_the_loop_calls_select_and_stops() -> None:
-    invocation = _FakeInvocation()
+    invocation = _invocation()
     agent = build_planner_agent(skills=(_skill_with("select"),))
 
     with agent.override(model=FunctionModel(_calls_select_then_answers)):
@@ -173,22 +150,22 @@ async def test_the_loop_calls_select_and_stops() -> None:
 
     assert result.output == "Paddy is 2200."
     assert len(invocation.calls) == 1
-    assert invocation.calls[0]["commodity"] == {"code": "PADDY"}
-    assert invocation.calls[0]["@type"] == "openagrinet:MandiPrice"
+    assert invocation.calls[0].attributes["commodity"] == {"code": "PADDY"}
+    assert invocation.calls[0].attributes["@type"] == "openagrinet:MandiPrice"
 
 
 async def test_select_is_sent_as_the_turns_sender() -> None:
-    invocation = _FakeInvocation()
+    invocation = _invocation()
     agent = build_planner_agent(skills=(_skill_with("select"),))
 
     with agent.override(model=FunctionModel(_calls_select_then_answers)):
         await agent.run("price of paddy", deps=_deps(invocation))
 
-    assert invocation.sender_ids == ["consumer.oan.dev"]
+    assert [call.sender_id for call in invocation.calls] == ["consumer.oan.dev"]
 
 
 async def test_the_raw_answer_is_accumulated_on_deps() -> None:
-    invocation = _FakeInvocation()
+    invocation = _invocation()
     agent = build_planner_agent(skills=(_skill_with("select"),))
     deps = _deps(invocation)
 
@@ -239,7 +216,7 @@ def _calls_select_with_invented_field(
 
 
 async def test_an_invalid_argument_gets_a_retry() -> None:
-    invocation = _FakeInvocation()
+    invocation = _invocation()
     agent = build_planner_agent(skills=(_skill_with("select"),))
 
     with agent.override(model=FunctionModel(_calls_select_with_invented_field)):
@@ -247,7 +224,7 @@ async def test_an_invalid_argument_gets_a_retry() -> None:
 
     assert result.output == "corrected"
     assert len(invocation.calls) == 1
-    assert invocation.calls[0]["commodity"] == {"code": "PADDY"}
+    assert invocation.calls[0].attributes["commodity"] == {"code": "PADDY"}
 
 
 async def test_a_facility_select_carries_the_search_origin() -> None:
@@ -285,7 +262,7 @@ async def test_a_facility_select_carries_the_search_origin() -> None:
         )
     }
 
-    invocation = _FakeInvocation()
+    invocation = _invocation()
     deps = _deps(invocation)
     deps.discovery = DiscoveryResult(
         answers={}, capabilities={0: (facility,)}, failures={}, events=()
@@ -336,7 +313,7 @@ async def test_a_facility_select_carries_the_search_origin() -> None:
         await agent.run("find a krishi kendra", deps=deps)
 
     assert invocation.calls, "select was never called"
-    assert invocation.calls[0]["location"] == {
+    assert invocation.calls[0].attributes["location"] == {
         "geo": {"type": "Point", "coordinates": [73.7898, 19.9975]}
     }
 
@@ -371,7 +348,7 @@ async def test_each_select_carries_its_own_asks_place() -> None:
             ),
         )
 
-    invocation = _FakeInvocation()
+    invocation = _invocation()
     deps = _deps(invocation)
     deps.discovery = DiscoveryResult(
         answers={}, capabilities={0: (weather,), 1: (weather,)}, failures={}, events=()
@@ -410,7 +387,9 @@ async def test_each_select_carries_its_own_asks_place() -> None:
     with agent.override(model=FunctionModel(select_both)):
         await agent.run("weather in Pune and Mumbai", deps=deps)
 
-    points = [call["location"]["geo"]["coordinates"] for call in invocation.calls]
+    points = [
+        call.attributes["location"]["geo"]["coordinates"] for call in invocation.calls
+    ]
     assert points == [pune.coordinates, mumbai.coordinates]
 
 
@@ -418,7 +397,7 @@ async def test_select_makes_no_call_for_an_ask_whose_place_failed() -> None:
     """Xyzzy has nowhere to search. Calling anyway would send no location,
     and the provider could answer for some other place."""
 
-    invocation = _FakeInvocation()
+    invocation = _invocation()
     deps = _deps(invocation)
     deps.intent = Intent(
         asks=(
@@ -446,7 +425,7 @@ async def test_no_call_without_needed_place() -> None:
     for nowhere. The same guard as a failed place, so `plan()`'s up-front
     failure stays the only record."""
 
-    invocation = _FakeInvocation()
+    invocation = _invocation()
     deps = _deps(invocation)
     deps.schemas = {
         "openagrinet:MandiPrice": SCHEMAS["openagrinet:MandiPrice"].model_copy(
@@ -471,7 +450,7 @@ async def test_select_states_the_ask_category_not_the_advertised_one() -> None:
     a scheme ask reached a provider labelled as a crop question.
     """
 
-    invocation = _FakeInvocation()
+    invocation = _invocation()
     agent = build_planner_agent(skills=(_skill_with("select"),))
     deps = _deps(invocation)
     # The capability advertises Market; the ask is about a scheme.
@@ -481,7 +460,7 @@ async def test_select_states_the_ask_category_not_the_advertised_one() -> None:
         await agent.run("am I eligible for PM-KISAN", deps=deps)
 
     assert CAPABILITY.observed_categories == ("Market",)
-    assert invocation.calls[0]["subjectCategories"] == ["Scheme"]
+    assert invocation.calls[0].attributes["subjectCategories"] == ["Scheme"]
 
 
 async def test_a_mandi_select_carries_a_validity_window() -> None:
@@ -497,7 +476,7 @@ async def test_a_mandi_select_carries_a_validity_window() -> None:
     the same way the code does and agreeing with itself.
     """
 
-    invocation = _FakeInvocation()
+    invocation = _invocation()
     agent = build_planner_agent(skills=(_skill_with("select"),))
     deps = _deps(invocation)
     deps.today = lambda: date(2026, 9, 17)
@@ -506,7 +485,7 @@ async def test_a_mandi_select_carries_a_validity_window() -> None:
         await agent.run("price of paddy", deps=deps)
 
     assert invocation.calls, "select was never called"
-    assert invocation.calls[0]["validity"] == {
+    assert invocation.calls[0].attributes["validity"] == {
         "startsAt": "2026-09-17T00:00:00+05:30",
         "endsAt": "2026-09-17T23:59:59+05:30",
     }
