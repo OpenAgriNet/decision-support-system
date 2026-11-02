@@ -259,11 +259,14 @@ class DiscoveryResult:
         return any(self.answers.values()) or any(self.capabilities.values())
 
 
+_NOTHING_FOUND = ProviderQueryResult(answers=(), capabilities=(), failures=())
+
+
 @dataclass(frozen=True)
 class DiscoveredAsk:
     index: int
-    query: ProviderQuery | None  # None: the ask was never searched
-    query_result: ProviderQueryResult  # empty when never searched
+    query: ProviderQuery
+    query_result: ProviderQueryResult
 
     def within_validity(self, now: datetime) -> DiscoveredAsk:
         fresh = tuple(
@@ -288,8 +291,6 @@ class DiscoveredAsk:
         )
 
     def build_outcome_events(self) -> tuple[AskDiscoveryFailed | AskUnservable, ...]:
-        if self.query is None:
-            return ()
         if self.query_result.failures:
             return tuple(
                 AskDiscoveryFailed(
@@ -311,10 +312,11 @@ class DiscoveredAsk:
 
 @dataclass(frozen=True)
 class DiscoveredAsks:
-    asks: tuple[DiscoveredAsk, ...]  # one per Intent.ask, in ask order
+    asks: tuple[DiscoveredAsk, ...]  # the searched asks, in ask order
+    unsearchable_asks: frozenset[int]  # never searched
 
     def within_validity(self, now: datetime) -> DiscoveredAsks:
-        return DiscoveredAsks(asks=tuple(ask.within_validity(now) for ask in self.asks))
+        return replace(self, asks=tuple(ask.within_validity(now) for ask in self.asks))
 
     def build_expired_answer_events(
         self, now: datetime
@@ -327,14 +329,22 @@ class DiscoveredAsks:
         return tuple(event for ask in self.asks for event in ask.build_outcome_events())
 
     def build_result(self, events: Sequence[DiscoveryEvent]) -> DiscoveryResult:
+        """An entry for every ask, searched or not, in ask order."""
+
+        results = self._find_query_results_by_ask()
         return DiscoveryResult(
-            answers={ask.index: ask.query_result.answers for ask in self.asks},
+            answers={index: result.answers for index, result in results.items()},
             capabilities={
-                ask.index: ask.query_result.capabilities for ask in self.asks
+                index: result.capabilities for index, result in results.items()
             },
-            failures={ask.index: ask.query_result.failures for ask in self.asks},
+            failures={index: result.failures for index, result in results.items()},
             events=tuple(events),
         )
+
+    def _find_query_results_by_ask(self) -> dict[int, ProviderQueryResult]:
+        searched = {ask.index: ask.query_result for ask in self.asks}
+        never_searched = dict.fromkeys(self.unsearchable_asks, _NOTHING_FOUND)
+        return dict(sorted((searched | never_searched).items()))
 
 
 @dataclass(frozen=True)
