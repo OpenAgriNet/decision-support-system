@@ -639,7 +639,6 @@ def _network(
         client=client,
         base_url=settings.invocation_base_url,
         sender_id=settings.network_sender_id,
-        receiver_id=settings.network_receiver_id,
         attempts=settings.select_attempts,
         backoff_seconds=settings.select_backoff_seconds,
     )

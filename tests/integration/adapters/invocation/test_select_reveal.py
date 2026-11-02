@@ -68,7 +68,6 @@ def _invocation(provider: _Provider) -> HttpCapabilityInvocation:
         client=httpx.AsyncClient(transport=httpx.MockTransport(provider)),
         base_url="https://provider-network-vistaar.da.gov.in/oan",
         sender_id="seeker-network-vistaar.da.gov.in",
-        receiver_id="provider-network-vistaar.da.gov.in",
         backoff_seconds=0.0,
     )
 
@@ -77,6 +76,14 @@ def _attributes(body: dict) -> dict:
     return body["message"]["contract"]["commitments"][0]["resources"][0][
         "resourceAttributes"
     ]
+
+
+async def test_the_wire_names_the_provider_as_receiver() -> None:
+    provider = _Provider(_answer("approved"))
+
+    await _invocation(provider).select(CAPABILITY, {}, "txn-1")
+
+    assert provider.bodies[0]["context"]["receiverId"] == CAPABILITY.provider_id
 
 
 async def test_the_wire_carries_the_real_value() -> None:

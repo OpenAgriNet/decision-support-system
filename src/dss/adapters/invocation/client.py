@@ -71,7 +71,6 @@ def build_select_request(  # noqa: PLR0913
     *,
     resource_id: str,
     sender_id: str,
-    receiver_id: str,
     message_id: str,
     transaction_id: NetworkTransactionID,
     timestamp: str,
@@ -80,7 +79,7 @@ def build_select_request(  # noqa: PLR0913
 ) -> dict[str, Any]:
     context = SelectContext(
         sender_id=sender_id,
-        receiver_id=receiver_id,
+        receiver_id=capability.provider_id,
         message_id=message_id,
         transaction_id=transaction_id,
         timestamp=timestamp,
@@ -115,21 +114,20 @@ def build_select_request(  # noqa: PLR0913
 
 
 def build_support_request(  # noqa: PLR0913
+    capability: ProviderCapability,
     attributes: dict,
     *,
     sender_id: str,
-    receiver_id: str,
     message_id: str,
     transaction_id: NetworkTransactionID,
     timestamp: str,
 ) -> dict[str, Any]:
     """On `support` there is no contract to hang the payload from: the pack
-    names `channels` as its container, and the provider is inside the
-    attributes, where the adapter routes by it."""
+    names `channels` as its container."""
 
     context = SupportContext(
         sender_id=sender_id,
-        receiver_id=receiver_id,
+        receiver_id=capability.provider_id,
         message_id=message_id,
         transaction_id=transaction_id,
         timestamp=timestamp,
@@ -152,12 +150,12 @@ def map_support_response(response: dict[str, Any]) -> dict[str, Any]:
 
 
 def build_status_request(  # noqa: PLR0913
+    capability: ProviderCapability,
     attributes: dict,
     *,
     resource_id: str,
     contract_id: str,
     sender_id: str,
-    receiver_id: str,
     message_id: str,
     transaction_id: NetworkTransactionID,
     timestamp: str,
@@ -168,7 +166,7 @@ def build_status_request(  # noqa: PLR0913
 
     context = StatusContext(
         sender_id=sender_id,
-        receiver_id=receiver_id,
+        receiver_id=capability.provider_id,
         message_id=message_id,
         transaction_id=transaction_id,
         timestamp=timestamp,
@@ -277,19 +275,17 @@ class HttpCapabilityInvocation:
     the pure functions above so they're testable without a client at all.
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         client: httpx.AsyncClient,
         base_url: str,
         sender_id: str,
-        receiver_id: str,
         attempts: int = 3,
         backoff_seconds: float = 0.5,
     ) -> None:
         self._client = client
         self._base_url = base_url
         self._sender_id = sender_id
-        self._receiver_id = receiver_id
         self._attempts = attempts
         self._backoff_seconds = backoff_seconds
 
@@ -453,7 +449,6 @@ class HttpCapabilityInvocation:
             resource_attributes,
             resource_id=capability.resource_id,
             sender_id=self._sender_id,
-            receiver_id=self._receiver_id,
             message_id=str(uuid4()),
             transaction_id=transaction_id,
             timestamp=datetime.now(UTC).isoformat(),
@@ -496,9 +491,9 @@ class HttpCapabilityInvocation:
         message_id: str,
     ) -> ActionReply:
         request_body = build_support_request(
+            capability,
             attributes,
             sender_id=self._sender_id,
-            receiver_id=self._receiver_id,
             message_id=message_id,
             transaction_id=transaction_id,
             timestamp=datetime.now(UTC).isoformat(),
@@ -532,11 +527,11 @@ class HttpCapabilityInvocation:
         contract_id: str,
     ) -> ActionReply:
         request_body = build_status_request(
+            capability,
             attributes,
             resource_id=capability.resource_id,
             contract_id=contract_id,
             sender_id=self._sender_id,
-            receiver_id=self._receiver_id,
             message_id=message_id,
             transaction_id=transaction_id,
             timestamp=datetime.now(UTC).isoformat(),

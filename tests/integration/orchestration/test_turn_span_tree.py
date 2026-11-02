@@ -86,7 +86,6 @@ class _PlanThatCallsSelect:
                 client=client,
                 base_url="https://provider-network.example",
                 sender_id="seeker.example",
-                receiver_id="provider.example",
             )
             await invocation.select(_CAPABILITY, {}, "t1")
         return self._evidence

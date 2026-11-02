@@ -327,7 +327,6 @@ async def test_select_returns_the_values_the_composer_will_quote(
         client=client,
         base_url="http://mock.test",
         sender_id="dss",
-        receiver_id="oan-mock",
     )
     capability = ProviderCapability(
         provider_id="mausamgram-mock",
@@ -383,7 +382,7 @@ async def test_mandi_select_answers_one_price_for_the_advertised_market(
         base_url="http://mock.test",
     )
     invocation = HttpCapabilityInvocation(
-        client=client, base_url="http://mock.test", sender_id="dss", receiver_id="x"
+        client=client, base_url="http://mock.test", sender_id="dss"
     )
 
     [answer] = await invocation.select(mumbai, attrs, "txn-mandi")
@@ -425,7 +424,7 @@ async def test_advisory_select_answers_with_the_questions_written_answer(
         base_url="http://mock.test",
     )
     invocation = HttpCapabilityInvocation(
-        client=client, base_url="http://mock.test", sender_id="dss", receiver_id="x"
+        client=client, base_url="http://mock.test", sender_id="dss"
     )
 
     [answer] = await invocation.select(capability, attrs, "txn-advisory")
@@ -451,7 +450,6 @@ async def test_a_select_the_mock_cannot_answer_is_refused_and_counted(
         client=client,
         base_url="http://mock.test",
         sender_id="dss",
-        receiver_id="oan-mock",
     )
     capability = ProviderCapability(
         provider_id="mausamgram-mock",
@@ -538,7 +536,6 @@ def _grievance_invocation(pack_dir: Path) -> HttpCapabilityInvocation:
         client=client,
         base_url="http://mock.test",
         sender_id="dss",
-        receiver_id="oan-mock",
         backoff_seconds=0.0,
     )
 

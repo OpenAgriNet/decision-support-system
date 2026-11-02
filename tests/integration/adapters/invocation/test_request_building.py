@@ -10,7 +10,6 @@ from dss.adapters.invocation.client import build_select_request
 from dss.core.provider_discovery.models import ProviderCapability
 
 SENDER_ID = "seeker-network-vistaar.da.gov.in"
-RECEIVER_ID = "provider-network-vistaar.da.gov.in"
 
 
 def _capability() -> ProviderCapability:
@@ -38,7 +37,6 @@ def test_builds_the_envelope_from_given_ids_and_timestamp() -> None:
         _resource_attributes(),
         resource_id="3f6a9d2e-8c41-4b0a-9e77-1d2f5c8a6b90",
         sender_id=SENDER_ID,
-        receiver_id=RECEIVER_ID,
         message_id="7d41b9e0-52a6-4c18-8b73-1e9f0a4c6d22",
         transaction_id="9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44",
         timestamp="2026-08-26T06:12:01.330Z",
@@ -47,10 +45,26 @@ def test_builds_the_envelope_from_given_ids_and_timestamp() -> None:
     assert request["context"]["action"] == "select"
     assert request["context"]["version"] == "2.0.0"
     assert request["context"]["senderId"] == SENDER_ID
-    assert request["context"]["receiverId"] == RECEIVER_ID
     assert request["context"]["messageId"] == "7d41b9e0-52a6-4c18-8b73-1e9f0a4c6d22"
     assert request["context"]["transactionId"] == "9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44"
     assert request["context"]["timestamp"] == "2026-08-26T06:12:01.330Z"
+
+
+def test_receiver_is_the_provider() -> None:
+    """The network adapter swaps the provider id for the provider's URL."""
+
+    request = build_select_request(
+        _capability(),
+        _resource_attributes(),
+        resource_id="3f6a9d2e-8c41-4b0a-9e77-1d2f5c8a6b90",
+        sender_id=SENDER_ID,
+        message_id="m",
+        transaction_id="t",
+        timestamp="2026-08-26T06:12:01.330Z",
+    )
+
+    assert request["context"]["receiverId"] == "mausamgram"
+    assert "networkId" not in request["context"]
 
 
 def test_status_descriptor_defaults_to_draft() -> None:
@@ -59,7 +73,6 @@ def test_status_descriptor_defaults_to_draft() -> None:
         _resource_attributes(),
         resource_id="3f6a9d2e-8c41-4b0a-9e77-1d2f5c8a6b90",
         sender_id=SENDER_ID,
-        receiver_id=RECEIVER_ID,
         message_id="m",
         transaction_id="t",
         timestamp="2026-08-26T06:12:01.330Z",
@@ -75,7 +88,6 @@ def test_resource_carries_the_fresh_id_and_attributes() -> None:
         _resource_attributes(),
         resource_id="3f6a9d2e-8c41-4b0a-9e77-1d2f5c8a6b90",
         sender_id=SENDER_ID,
-        receiver_id=RECEIVER_ID,
         message_id="m",
         transaction_id="t",
         timestamp="2026-08-26T06:12:01.330Z",
@@ -93,7 +105,6 @@ def test_offer_references_the_fresh_resource_id_not_discoverys() -> None:
         _resource_attributes(),
         resource_id="3f6a9d2e-8c41-4b0a-9e77-1d2f5c8a6b90",
         sender_id=SENDER_ID,
-        receiver_id=RECEIVER_ID,
         message_id="m",
         transaction_id="t",
         timestamp="2026-08-26T06:12:01.330Z",
@@ -113,7 +124,6 @@ def test_offer_id_defaults_to_a_configured_constant() -> None:
         _resource_attributes(),
         resource_id="3f6a9d2e-8c41-4b0a-9e77-1d2f5c8a6b90",
         sender_id=SENDER_ID,
-        receiver_id=RECEIVER_ID,
         message_id="m",
         transaction_id="t",
         timestamp="2026-08-26T06:12:01.330Z",
@@ -129,7 +139,6 @@ def test_offer_id_is_configurable() -> None:
         _resource_attributes(),
         resource_id="3f6a9d2e-8c41-4b0a-9e77-1d2f5c8a6b90",
         sender_id=SENDER_ID,
-        receiver_id=RECEIVER_ID,
         message_id="m",
         transaction_id="t",
         timestamp="2026-08-26T06:12:01.330Z",
