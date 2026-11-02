@@ -265,7 +265,7 @@ class DiscoveredAsk:
     query: ProviderQuery | None  # None: the ask was never searched
     query_result: ProviderQueryResult  # empty when never searched
 
-    def not_expired(self, now: datetime) -> DiscoveredAsk:
+    def within_validity(self, now: datetime) -> DiscoveredAsk:
         fresh = tuple(
             answer
             for answer in self.query_result.answers
@@ -313,8 +313,8 @@ class DiscoveredAsk:
 class DiscoveredAsks:
     asks: tuple[DiscoveredAsk, ...]  # one per Intent.ask, in ask order
 
-    def not_expired(self, now: datetime) -> DiscoveredAsks:
-        return DiscoveredAsks(asks=tuple(ask.not_expired(now) for ask in self.asks))
+    def within_validity(self, now: datetime) -> DiscoveredAsks:
+        return DiscoveredAsks(asks=tuple(ask.within_validity(now) for ask in self.asks))
 
     def build_expired_answer_events(
         self, now: datetime

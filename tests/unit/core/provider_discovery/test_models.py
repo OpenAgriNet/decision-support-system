@@ -94,7 +94,7 @@ def test_a_searched_ask_with_nothing_found_is_unservable() -> None:
     )
 
 
-def test_not_expired_returns_a_new_ask_without_the_expired_answers() -> None:
+def test_within_validity_returns_a_new_ask_without_the_answers_outside_it() -> None:
     stale = _answer(
         Validity(starts_at=NOW - timedelta(days=2), ends_at=NOW - timedelta(days=1))
     )
@@ -106,5 +106,5 @@ def test_not_expired_returns_a_new_ask_without_the_expired_answers() -> None:
         ),
     )
 
-    assert ask.not_expired(NOW).query_result.answers == ()
+    assert ask.within_validity(NOW).query_result.answers == ()
     assert ask.query_result.answers == (stale,)
