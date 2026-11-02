@@ -252,7 +252,7 @@ async def discover_providers(  # noqa: PLR0913
     discovered: DiscoveredAsks = await _send_queries(
         to_discover, discovery, turn.transaction_id
     )
-    fresh: DiscoveredAsks = discovered.not_expired(now)
+    fresh: DiscoveredAsks = discovered.within_validity(now)
     events = [
         *to_discover.events,
         *discovered.build_expired_answer_events(now),
