@@ -66,6 +66,7 @@ async def test_the_wired_adapter_resolves_a_query() -> None:
             client=client,
             base_url="https://discovery-network-vistaar.da.gov.in/oan",
             schema_pack_cache=schema_pack_cache,
+            network_host_id="host.oan",
         )
         query = ProviderQuery(
             capabilities=("openagrinet:MandiPrice",),
@@ -74,7 +75,9 @@ async def test_the_wired_adapter_resolves_a_query() -> None:
             coverage=None,
         )
 
-        result = await discovery.discover(query, transaction_id="t1")
+        result = await discovery.discover(
+            query, transaction_id="t1", sender_id="consumer.oan.dev"
+        )
 
     assert result.answers[0].provider_id == "agmarknet"
 
@@ -93,12 +96,14 @@ async def test_the_wired_discover_providers_bakes_in_radius() -> None:
             client=client,
             base_url="https://discovery-network-vistaar.da.gov.in/oan",
             schema_pack_cache=schema_pack_cache,
+            network_host_id="host.oan",
         )
         discover_providers = build_discover_providers(
             discovery=discovery,
             schema_pack_cache=schema_pack_cache,
             radius_m=25000,
             preferences=NO_PREFERENCES,
+            network_sender_for=lambda _turn: "consumer.oan.dev",
         )
         ask = Ask(
             subject_categories=SubjectCategory.MARKET,
@@ -147,10 +152,12 @@ async def test_the_fan_out_runs_inside_a_span(monkeypatch) -> None:
                 client=client,
                 base_url="https://network-adapter.example",
                 schema_pack_cache=cache,
+                network_host_id="host.oan",
             ),
             cache,
             50_000,
             NO_PREFERENCES,
+            lambda _turn: "consumer.oan.dev",
         )
         ask = Ask(
             subject_categories=SubjectCategory.MARKET,
@@ -215,10 +222,12 @@ async def test_the_fan_out_span_counts_how_many_asks_went_unanswered(
                 client=client,
                 base_url="https://network-adapter.example",
                 schema_pack_cache=cache,
+                network_host_id="host.oan",
             ),
             cache,
             50_000,
             NO_PREFERENCES,
+            lambda _turn: "consumer.oan.dev",
         )
         ask = Ask(
             subject_categories=SubjectCategory.MARKET,
@@ -287,10 +296,12 @@ async def test_run_turn_can_call_the_composed_discover_providers() -> None:
                 client=client,
                 base_url="https://network-adapter.example",
                 schema_pack_cache=cache,
+                network_host_id="host.oan",
             ),
             cache,
             50_000,
             NO_PREFERENCES,
+            lambda _turn: "consumer.oan.dev",
         )
 
         result = await run_turn(

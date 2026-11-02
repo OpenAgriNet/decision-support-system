@@ -166,12 +166,16 @@ async def _send_queries(
     to_discover: AsksToBeDiscovered,
     discovery: CapabilityDiscovery,
     transaction_id: str,
+    *,
+    sender_id: str,
 ) -> DiscoveredAsks:
     unique_queries = to_discover.find_unique_queries()
     replies: dict[ProviderQuery, ProviderQueryResult] = {}
 
     async def _send(query: ProviderQuery) -> None:
-        replies[query] = await discovery.discover(query, transaction_id=transaction_id)
+        replies[query] = await discovery.discover(
+            query, transaction_id=transaction_id, sender_id=sender_id
+        )
 
     # discover() never raises (failures are data), so every
     # query's results land independently: one query hitting a defect never
@@ -225,6 +229,7 @@ async def discover_providers(  # noqa: PLR0913
     schema_pack_cache: CapabilityIndexSource,
     radius_m: int,
     now: datetime,
+    sender_id: str,
 ) -> DiscoveryResult:
     """Find who can serve each of ``intent``'s asks.
 
@@ -244,7 +249,7 @@ async def discover_providers(  # noqa: PLR0913
         intent, languages, radius_m, index
     )
     discovered: DiscoveredAsks = await _send_queries(
-        to_discover, discovery, turn.transaction_id
+        to_discover, discovery, turn.transaction_id, sender_id=sender_id
     )
     fresh: DiscoveredAsks = discovered.within_validity(now)
     events = [

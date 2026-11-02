@@ -613,6 +613,7 @@ def _network(
         client=client,
         base_url=settings.discovery_base_url,
         schema_pack_cache=cache,
+        network_host_id=settings.network_receiver_id,
     )
     if settings.provider_preferences_base_url is not None:
         # The registry, asked on every turn over the same client the network
@@ -632,6 +633,7 @@ def _network(
         schema_pack_cache=cache,
         radius_m=settings.discovery_radius_m,
         preferences=preferences,
+        network_sender_for=lambda _turn: settings.network_sender_id,
     )
     invocation = HttpCapabilityInvocation(
         client=client,

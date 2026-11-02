@@ -35,6 +35,8 @@ def _real_request(*capabilities: str, subject_category: str = "Weather") -> dict
         message_id="7d41b9e0-52a6-4c18-8b73-1e9f0a4c6d22",
         transaction_id="9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44",
         timestamp="2026-09-09T10:42:21Z",
+        sender_id="consumer.oan.dev",
+        network_host_id="host.oan",
     )
 
 

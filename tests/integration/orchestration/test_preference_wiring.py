@@ -66,7 +66,7 @@ class _FakeDiscovery:
     """Every ask finds the same three providers, in the network's own order."""
 
     async def discover(
-        self, query: ProviderQuery, transaction_id: str
+        self, query: ProviderQuery, transaction_id: str, *, sender_id: str
     ) -> ProviderQueryResult:
         return ProviderQueryResult(
             answers=(_answer("unvetted"),),
@@ -110,7 +110,13 @@ def _intent() -> Intent:
 
 
 def _discover(preferences: FakeProviderPreferences):
-    return build_discover_providers(_FakeDiscovery(), _FakeIndex(), 25_000, preferences)
+    return build_discover_providers(
+        _FakeDiscovery(),
+        _FakeIndex(),
+        25_000,
+        preferences,
+        lambda _turn: "consumer.oan.dev",
+    )
 
 
 async def test_the_turns_own_client_is_the_one_looked_up() -> None:

@@ -179,7 +179,10 @@ async def discovery(pack_dir: Path) -> HttpCapabilityDiscovery:
         base_url="http://mock.test",
     )
     return HttpCapabilityDiscovery(
-        client=client, base_url="http://mock.test", schema_pack_cache=cache
+        client=client,
+        base_url="http://mock.test",
+        schema_pack_cache=cache,
+        network_host_id="host.oan",
     )
 
 
@@ -194,6 +197,7 @@ async def _discover(
             coverage=None,
         ),
         transaction_id="9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44",
+        sender_id="consumer.oan.dev",
     )
 
 
@@ -493,7 +497,10 @@ async def test_a_type_the_mock_does_not_serve_finds_nobody(
         base_url="http://mock.test",
     )
     discovery = HttpCapabilityDiscovery(
-        client=client, base_url="http://mock.test", schema_pack_cache=cache
+        client=client,
+        base_url="http://mock.test",
+        schema_pack_cache=cache,
+        network_host_id="host.oan",
     )
 
     result = await _discover(

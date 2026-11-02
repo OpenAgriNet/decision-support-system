@@ -16,6 +16,8 @@ from dss.core.provider_discovery.models import FailureClass, ProviderQuery
 
 FIXTURES = Path(__file__).parent / "fixtures"
 BASE_URL = "https://discovery-network-vistaar.da.gov.in/oan"
+SENDER_ID = "consumer.oan.dev"
+NETWORK_HOST_ID = "host.oan"
 
 
 class _FakeSchemaPackCache:
@@ -48,6 +50,7 @@ def _discovery(
         client=client,
         base_url=BASE_URL,
         schema_pack_cache=schema_pack_cache,
+        network_host_id=NETWORK_HOST_ID,
     )
 
 
@@ -61,7 +64,9 @@ async def test_discover_posts_to_the_discover_endpoint_and_maps_the_response() -
         coverage=None,
     )
 
-    result = await discovery.discover(query, transaction_id="txn-from-experience-layer")
+    result = await discovery.discover(
+        query, transaction_id="txn-from-experience-layer", sender_id=SENDER_ID
+    )
 
     assert result.capabilities[0].provider_id == "mausamgram"
 
@@ -85,9 +90,35 @@ async def test_discover_sends_the_given_transaction_id() -> None:
         coverage=None,
     )
 
-    await discovery.discover(query, transaction_id="txn-from-experience-layer")
+    await discovery.discover(
+        query, transaction_id="txn-from-experience-layer", sender_id=SENDER_ID
+    )
 
     assert sent_bodies[0]["context"]["transactionId"] == "txn-from-experience-layer"
+
+
+async def test_discover_names_the_sender_and_network_host() -> None:
+    sent_bodies = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent_bodies.append(json.loads(request.content))
+        on_discover = json.loads((FIXTURES / "discover_response.json").read_text())
+        return httpx.Response(200, json=on_discover)
+
+    discovery = _discovery(httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    query = ProviderQuery(
+        capabilities=("openagrinet:WeatherObservation",),
+        subject_category="Weather",
+        languages=("hi",),
+        coverage=None,
+    )
+
+    await discovery.discover(query, transaction_id="txn-test", sender_id=SENDER_ID)
+
+    context = sent_bodies[0]["context"]
+    assert context["senderId"] == SENDER_ID
+    assert context["receiverId"] == NETWORK_HOST_ID
+    assert context["networkId"] == NETWORK_HOST_ID
 
 
 async def test_a_refreshed_cache_is_reflected_without_rewiring() -> None:
@@ -106,7 +137,9 @@ async def test_a_refreshed_cache_is_reflected_without_rewiring() -> None:
     )
 
     index["openagrinet:WeatherObservation"] = ("WeatherObservation", "v0.1")
-    result = await discovery.discover(query, transaction_id="txn-test")
+    result = await discovery.discover(
+        query, transaction_id="txn-test", sender_id=SENDER_ID
+    )
 
     assert result.capabilities[0].provider_id == "mausamgram"
 
@@ -125,7 +158,9 @@ async def test_a_non_2xx_response_is_returned_as_a_failure() -> None:
         coverage=None,
     )
 
-    result = await discovery.discover(query, transaction_id="txn-test")
+    result = await discovery.discover(
+        query, transaction_id="txn-test", sender_id=SENDER_ID
+    )
 
     assert result.failures[0].status_code == 429
     assert result.capabilities == ()
@@ -144,7 +179,9 @@ async def test_a_response_that_cannot_be_mapped_is_returned_as_a_defect() -> Non
         coverage=None,
     )
 
-    result = await discovery.discover(query, transaction_id="txn-test")
+    result = await discovery.discover(
+        query, transaction_id="txn-test", sender_id=SENDER_ID
+    )
 
     failure = result.failures[0]
     assert failure.failure_class == FailureClass.DEFECT
@@ -165,7 +202,9 @@ async def test_a_body_that_is_not_json_is_returned_as_a_defect() -> None:
         coverage=None,
     )
 
-    result = await discovery.discover(query, transaction_id="txn-test")
+    result = await discovery.discover(
+        query, transaction_id="txn-test", sender_id=SENDER_ID
+    )
 
     assert result.failures[0].failure_class == FailureClass.DEFECT
 
@@ -187,6 +226,8 @@ async def test_a_connection_error_is_returned_as_a_failure() -> None:
         coverage=None,
     )
 
-    result = await discovery.discover(query, transaction_id="txn-test")
+    result = await discovery.discover(
+        query, transaction_id="txn-test", sender_id=SENDER_ID
+    )
 
     assert result.failures[0].status_code == 0

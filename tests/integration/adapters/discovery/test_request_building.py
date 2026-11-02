@@ -20,6 +20,8 @@ SCHEMA_CONTEXT_INDEX = {
     ),
 }
 SCHEMA_BASE_URL = "https://schemas.openagrinet.global/schema"
+SENDER_ID = "consumer.oan.dev"
+NETWORK_HOST_ID = "host.oan"
 
 
 def test_builds_the_envelope_from_given_ids_and_timestamp() -> None:
@@ -36,6 +38,8 @@ def test_builds_the_envelope_from_given_ids_and_timestamp() -> None:
         message_id="1c0a55d7-8e64-4b19-9a2f-33b7c6e1d905",
         transaction_id="9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44",
         timestamp="2026-08-26T06:11:58.004Z",
+        sender_id=SENDER_ID,
+        network_host_id=NETWORK_HOST_ID,
     )
 
     assert request["context"]["action"] == "discover"
@@ -43,6 +47,32 @@ def test_builds_the_envelope_from_given_ids_and_timestamp() -> None:
     assert request["context"]["messageId"] == "1c0a55d7-8e64-4b19-9a2f-33b7c6e1d905"
     assert request["context"]["transactionId"] == "9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44"
     assert request["context"]["timestamp"] == "2026-08-26T06:11:58.004Z"
+
+
+def test_names_the_sender_and_network_host() -> None:
+    """A discover goes to the network host, so the host is both the receiver
+    and the network."""
+
+    query = ProviderQuery(
+        capabilities=("openagrinet:WeatherObservation",),
+        subject_category="Weather",
+        languages=("hi",),
+        coverage=None,
+    )
+
+    request = build_discover_request(
+        query,
+        schema_context_index=SCHEMA_CONTEXT_INDEX,
+        message_id="m",
+        transaction_id="t",
+        timestamp="2026-08-26T06:11:58.004Z",
+        sender_id=SENDER_ID,
+        network_host_id=NETWORK_HOST_ID,
+    )
+
+    assert request["context"]["senderId"] == SENDER_ID
+    assert request["context"]["receiverId"] == NETWORK_HOST_ID
+    assert request["context"]["networkId"] == NETWORK_HOST_ID
 
 
 def test_schema_context_is_built_from_the_capability_index() -> None:
@@ -59,6 +89,8 @@ def test_schema_context_is_built_from_the_capability_index() -> None:
         message_id="m",
         transaction_id="t",
         timestamp="2026-08-26T06:11:58.004Z",
+        sender_id=SENDER_ID,
+        network_host_id=NETWORK_HOST_ID,
     )
 
     assert request["context"]["schemaContext"] == [
@@ -85,6 +117,8 @@ def test_the_jsonpath_filter_matches_the_subject_category() -> None:
         message_id="m",
         transaction_id="t",
         timestamp="2026-08-26T06:11:58.004Z",
+        sender_id=SENDER_ID,
+        network_host_id=NETWORK_HOST_ID,
     )
 
     filters = request["message"]["intent"]["filters"]
@@ -113,6 +147,8 @@ def test_the_jsonpath_for_grievance_subject_category() -> None:
         message_id="m",
         transaction_id="t",
         timestamp="2026-08-26T06:11:58.004Z",
+        sender_id=SENDER_ID,
+        network_host_id=NETWORK_HOST_ID,
     )
 
     filters = request["message"]["intent"]["filters"]
@@ -136,6 +172,8 @@ def test_no_coverage_means_no_spatial_filter() -> None:
         message_id="m",
         transaction_id="t",
         timestamp="2026-08-26T06:11:58.004Z",
+        sender_id=SENDER_ID,
+        network_host_id=NETWORK_HOST_ID,
     )
 
     assert "spatial" not in request["message"]["intent"]
@@ -155,6 +193,8 @@ def test_coverage_becomes_an_s_dwithin_spatial_filter() -> None:
         message_id="m",
         transaction_id="t",
         timestamp="2026-08-26T06:11:58.004Z",
+        sender_id=SENDER_ID,
+        network_host_id=NETWORK_HOST_ID,
     )
 
     spatial = request["message"]["intent"]["spatial"][0]
@@ -178,6 +218,8 @@ def test_textsearch_is_never_included() -> None:
         message_id="m",
         transaction_id="t",
         timestamp="2026-08-26T06:11:58.004Z",
+        sender_id=SENDER_ID,
+        network_host_id=NETWORK_HOST_ID,
     )
 
     assert "textSearch" not in request["message"]["intent"]
@@ -201,6 +243,8 @@ def test_a_query_with_no_resolved_type_filters_on_the_category_alone() -> None:
         message_id="m",
         transaction_id="t",
         timestamp="2026-09-14T06:11:58.004Z",
+        sender_id=SENDER_ID,
+        network_host_id=NETWORK_HOST_ID,
     )
 
     assert "schemaContext" not in request["context"]

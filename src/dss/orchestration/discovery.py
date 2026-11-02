@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime
 from functools import partial
 from typing import Protocol
@@ -27,12 +28,19 @@ def build_capability_discovery(
     client: httpx.AsyncClient,
     base_url: str,
     schema_pack_cache: SchemaContextSource,
+    *,
+    network_host_id: str,
 ) -> HttpCapabilityDiscovery:
     return HttpCapabilityDiscovery(
         client=client,
         base_url=base_url,
         schema_pack_cache=schema_pack_cache,
+        network_host_id=network_host_id,
     )
+
+
+# Who the DSS says it is on the network for this turn.
+type NetworkSenderFor = Callable[[UserTurn], str]
 
 
 class DiscoverProviders(Protocol):
@@ -46,10 +54,11 @@ def build_discover_providers(
     schema_pack_cache: CapabilityIndexSource,
     radius_m: int,
     preferences: ProviderPreferences,
+    network_sender_for: NetworkSenderFor,
 ) -> DiscoverProviders:
-    """Bakes in the built adapter, cache, configured radius, and the sender
-    ranking source, so callers only ever supply what changes per turn: intent,
-    turn, and now.
+    """Bakes in the built adapter, cache, configured radius, the sender
+    ranking source, and how the turn's network sender is chosen, so callers
+    only ever supply what changes per turn: intent, turn, and now.
 
     Discovery only reads ``ask.place``; ``core.location.resolve_places`` fills
     it before discovery runs.
@@ -85,7 +94,7 @@ def build_discover_providers(
     async def discover(
         intent: Intent, turn: UserTurn, *, now: datetime
     ) -> DiscoveryResult:
-        result = await bound(intent, turn, now=now)
+        result = await bound(intent, turn, now=now, sender_id=network_sender_for(turn))
         preference = await preferences.for_sender(
             turn.sender_id, transaction_id=turn.transaction_id
         )

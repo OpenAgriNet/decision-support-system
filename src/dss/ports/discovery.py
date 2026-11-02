@@ -13,4 +13,6 @@ class CapabilityDiscovery(Protocol):
         self,
         query: ProviderQuery,
         transaction_id: NetworkTransactionID,
+        *,
+        sender_id: str,
     ) -> ProviderQueryResult: ...
