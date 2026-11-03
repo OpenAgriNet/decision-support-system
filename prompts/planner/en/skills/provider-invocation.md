@@ -48,9 +48,10 @@ same ask unless it invites you to try another candidate. If it says no
 provider had an answer, that ask has no answer — report it and move on.
 
 Read what `select` returned against the farmer's question. If it cannot
-answer the ask — it is about other crops, other topics, or too general — and
-the reply offers `select_next`, call it once for that ask. It swaps in the
+answer the ask — it is about other crops, other topics, or too general —
+call `select_next` once for that ask. It swaps in the
 next preferred provider's data; it calls nobody new. Judge that data the same
-way. Stop when the data answers the ask or no next provider is left.
+way. Stop when the data answers the ask or `select_next` says no provider is
+left.
 
 Stop once every ask you can answer has been answered.

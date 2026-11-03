@@ -1,5 +1,5 @@
-"""Tier 1 — the providers `select` held back for an ask, and the offer to
-switch to them. The planner wiring is covered in
+"""Tier 1 — the providers `select` held back for an ask. The planner wiring
+is covered in
 `tests/integration/orchestration/test_planner_preferred_providers.py`."""
 
 from __future__ import annotations
@@ -12,7 +12,6 @@ from dss.core.provider_discovery.models import (
 from dss.core.provider_preferences.next_choice import (
     Consulted,
     NextChoices,
-    render_with_next_choice_offer,
 )
 from dss.ports.invocation import SelectFailedError
 
@@ -88,7 +87,7 @@ def test_providers_ranked_above_the_chosen_one_are_not_held() -> None:
     choices = NextChoices()
     choices.hold_after(0, consulted=(_empty("mh"), chosen), chosen=chosen)
 
-    assert not choices.has_any(0)
+    assert choices.take(0) is None
 
 
 def test_holding_again_for_an_ask_replaces_what_was_held() -> None:
@@ -97,7 +96,7 @@ def test_holding_again_for_an_ask_replaces_what_was_held() -> None:
     choices.hold_after(0, consulted=(first, second), chosen=first)
     choices.hold_after(0, consulted=(second,), chosen=second)
 
-    assert not choices.has_any(0)
+    assert choices.take(0) is None
 
 
 def test_asks_are_held_apart() -> None:
@@ -107,37 +106,3 @@ def test_asks_are_held_apart() -> None:
 
     assert choices.take(1) is None
     assert _provider(choices.take(0)) == "bv"
-
-
-def test_the_offer_is_made_while_a_next_choice_is_left() -> None:
-    first, second = _answered("mh"), _answered("bv")
-    choices = NextChoices()
-    choices.hold_after(0, consulted=(first, second), chosen=first)
-
-    assert "select_next" in render_with_next_choice_offer(
-        choices, ask_index=0, answers=first.answers
-    )
-
-
-def test_the_offer_goes_once_the_ranking_is_spent() -> None:
-    first, second = _answered("mh"), _answered("bv")
-    choices = NextChoices()
-    choices.hold_after(0, consulted=(first, second), chosen=first)
-    choices.take(0)
-
-    reply = render_with_next_choice_offer(choices, ask_index=0, answers=second.answers)
-
-    assert "select_next" not in reply
-    assert "advice from bv" in reply
-
-
-def test_the_offer_sits_outside_the_retrieved_data() -> None:
-    """Inside the markers it would read as provider text, not ours."""
-
-    first, second = _answered("mh"), _answered("bv")
-    choices = NextChoices()
-    choices.hold_after(0, consulted=(first, second), chosen=first)
-
-    reply = render_with_next_choice_offer(choices, ask_index=0, answers=first.answers)
-
-    assert reply.index("<END RETRIEVED DATA>") < reply.index("select_next")

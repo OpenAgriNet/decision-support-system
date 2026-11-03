@@ -62,14 +62,16 @@ Maharashtra provider came first with a passage on custard apple; Bharat
 Vistaar came second with three on bananas in hill areas. The farmer was told
 there was no answer.
 
-- When a lower-ranked provider also returned data, `select` tells the
-  planner it may call `select_next`.
+- `select_next` is always one of the planner's tools. `select` returns
+  only the data; the planner's guidance says when to fall back.
 - `select_next` replaces the ask's data with the next provider's. It calls
   nobody: `select` already fetched it. One ask is still answered by one
   provider.
 - The planner can go on down the list until the data answers the ask or no
   provider is left. An unranked ask has no next provider.
 - Each switch is logged as `next_provider_used`.
+- Cost: the planner cannot see whether a next provider has data. A call
+  when none does returns "no other provider" and costs one model round-trip.
 
 Other options weighed:
 

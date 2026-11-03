@@ -24,6 +24,7 @@ from dss.core.intent.models import (
 from dss.core.moderation.models import Outcome
 from dss.core.planner.describe_capability import render_candidates_as_markdown
 from dss.core.planner.lookup import find_capability
+from dss.core.planner.markdown import render_answers_as_markdown
 from dss.core.planner.models import Failure, Skill, Verdict
 from dss.core.planner.resource_attributes import build_resource_attributes
 from dss.core.planner.skills import tool_names_for
@@ -42,7 +43,6 @@ from dss.core.provider_preferences.next_choice import (
     Consulted,
     NextChoices,
     no_next_choice,
-    render_with_next_choice_offer,
 )
 from dss.core.provider_preferences.service import priority_for_ask
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
@@ -196,9 +196,7 @@ async def _select(
 
     deps.next_choices.hold_after(ask_index, consulted=consulted, chosen=chosen)
     deps.raw_answers.extend((ask_index, answer) for answer in chosen.answers)
-    return render_with_next_choice_offer(
-        deps.next_choices, ask_index=ask_index, answers=chosen.answers
-    )
+    return render_answers_as_markdown(chosen.answers)
 
 
 async def _select_next(ctx: RunContext[PlannerDeps], ask_index: int) -> str:
@@ -213,9 +211,7 @@ async def _select_next(ctx: RunContext[PlannerDeps], ask_index: int) -> str:
 
     _replace_answers(deps, ask_index=ask_index, answers=chosen.answers)
     _log_next_provider_used(deps, ask_index=ask_index, used=chosen)
-    return render_with_next_choice_offer(
-        deps.next_choices, ask_index=ask_index, answers=chosen.answers
-    )
+    return render_answers_as_markdown(chosen.answers)
 
 
 def _log_next_provider_used(

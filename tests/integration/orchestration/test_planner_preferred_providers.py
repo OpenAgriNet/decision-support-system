@@ -497,43 +497,6 @@ async def _run_then_next(deps: PlannerDeps, replies: list[str]) -> PlannerDeps:
     return deps
 
 
-async def test_select_offers_the_next_choice_when_it_also_answered() -> None:
-    replies: list[str] = []
-    invocation = _FakeInvocation(
-        {
-            "maharashtra-vistaar": (_answer("maharashtra-vistaar", 29),),
-            "mausamgram": (_answer("mausamgram", 31),),
-        }
-    )
-    await _run(
-        _deps(
-            invocation,
-            candidates=(VISTAAR, MAUSAMGRAM),
-            priorities=_ranked("maharashtra-vistaar", "mausamgram"),
-        ),
-        replies=replies,
-    )
-
-    assert "select_next" in replies[0]
-
-
-async def test_select_offers_nothing_more_when_only_the_first_answered() -> None:
-    replies: list[str] = []
-    invocation = _FakeInvocation(
-        {"maharashtra-vistaar": (_answer("maharashtra-vistaar", 29),)}
-    )
-    await _run(
-        _deps(
-            invocation,
-            candidates=(VISTAAR, MAUSAMGRAM),
-            priorities=_ranked("maharashtra-vistaar", "mausamgram"),
-        ),
-        replies=replies,
-    )
-
-    assert "select_next" not in replies[0]
-
-
 async def test_select_next_answers_the_ask_from_the_next_choice_instead() -> None:
     """The first choice's chunks could not answer the ask, so the next
     choice's replace them. One ask is still answered by one provider."""
