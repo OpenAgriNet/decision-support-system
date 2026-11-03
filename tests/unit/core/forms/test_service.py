@@ -38,7 +38,8 @@ from dss.core.forms.service import (
     withhold_values,
     without_farmer_values,
 )
-from dss.core.provider_discovery.models import ProviderCapability, SchemaPackFiles
+from dss.core.provider_discovery.models import ProviderCapability
+from dss.core.schema_packs.models import SchemaPackFiles
 from tests.support.providers import grievance_provider
 
 # The Grievance pack, untrimmed, as network-specs first published it. It lives on

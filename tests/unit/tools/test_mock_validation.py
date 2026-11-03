@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import pytest
 
-from dss.core.provider_discovery.schema_fields import FieldSpec
+from dss.core.schema_packs.models import FieldSpec
 from tools.mock_network.validation import InvalidMockBody, check_against_pack
 
 _FIELDS = {

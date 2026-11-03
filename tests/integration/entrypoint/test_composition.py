@@ -20,7 +20,7 @@ from dss.adapters.provider_preferences.registry import RegistryProviderPreferenc
 from dss.config.settings import Settings
 from dss.core.forms.models import FormContext
 from dss.core.forms.registry import FormLookup
-from dss.core.provider_discovery.models import SchemaPackFiles
+from dss.core.schema_packs.models import SchemaPackFiles
 from dss.core.shared.models import TextQuery
 from dss.entrypoint.composition import (
     _aclose_for,

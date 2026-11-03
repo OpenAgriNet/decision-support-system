@@ -32,12 +32,9 @@ from dss.core.forms.models import (
 )
 from dss.core.forms.registry import FormLookup, FormRegistry
 from dss.core.planner.models import Failure
-from dss.core.provider_discovery.index import PACK_DEFECTS, is_api_pack
-from dss.core.provider_discovery.models import (
-    ProviderCapability,
-    SchemaPackFiles,
-    SchemaPackSkipped,
-)
+from dss.core.provider_discovery.models import ProviderCapability
+from dss.core.schema_packs.models import SchemaPackFiles, SchemaPackSkipped
+from dss.core.schema_packs.service import PACK_DEFECTS, is_api_pack
 from dss.core.shared.models import Cause, TextBlock
 from dss.core.shared.schema import resolve_schema
 

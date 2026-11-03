@@ -1,4 +1,5 @@
-"""Tier 1 — one flat list of a pack's fields.
+"""Tier 1 — what a pack says about itself: its kind, whether it serves a
+place, and one flat list of its fields.
 
 A pack does not list its fields in one place. It says "my fields are whatever
 `AgricultureResource` has, plus mine", using `allOf` and a `$ref`. So knowing
@@ -16,9 +17,82 @@ result. A partial assertion passes while the merge quietly drops a field.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
-from dss.core.provider_discovery.schema_fields import FieldSpec, flatten_fields
+import pytest
+
+from dss.core.schema_packs.models import FieldSpec, SchemaPackFiles
+from dss.core.schema_packs.service import (
+    PACK_DEFECTS,
+    flatten_fields,
+    is_api_pack,
+    pack_needs_place,
+)
+
+_SAMPLE_ATTRIBUTES = """
+components:
+  schemas:
+    Sample:
+      type: object
+      x-jsonld:
+        "@context": "https://example.test/Sample/context.jsonld"
+        "@type": openagrinet:Sample
+"""
+
+
+def _pack_with_profile(profile_json: str) -> SchemaPackFiles:
+    return SchemaPackFiles(
+        pack_name="Sample",
+        version="v0.1",
+        profile_json=profile_json,
+        attributes_yaml=_SAMPLE_ATTRIBUTES,
+        examples_json=(),
+    )
+
+
+@pytest.mark.parametrize(
+    ("profile_json", "expected"),
+    [
+        pytest.param('{"semantic_model": "provider-api"}', True, id="provider-api"),
+        pytest.param('{"semantic_model": "generalised"}', False, id="generalised"),
+        pytest.param("{}", False, id="no semantic_model"),
+    ],
+)
+def test_only_a_provider_api_profile_marks_an_api_pack(
+    profile_json: str, expected: bool
+) -> None:
+    assert is_api_pack(_pack_with_profile(profile_json)) is expected
+
+
+@pytest.mark.parametrize(
+    "profile_json",
+    [
+        pytest.param("{not json", id="unreadable profile"),
+        pytest.param("[]", id="not an object"),
+    ],
+)
+def test_a_profile_that_cannot_be_read_is_a_pack_defect(profile_json: str) -> None:
+    with pytest.raises(PACK_DEFECTS):
+        is_api_pack(_pack_with_profile(profile_json))
+
+
+@pytest.mark.parametrize(
+    ("indexable_paths", "expected"),
+    [
+        pytest.param(["beckn:resourceAttributes.location.geo"], True, id="own"),
+        pytest.param(
+            ["beckn:resourceAttributes.market.location.geo"], True, id="nested"
+        ),
+        pytest.param(["beckn:resourceAttributes.scheme.code"], False, id="none"),
+    ],
+)
+def test_a_pack_needs_a_place_when_it_indexes_a_location(
+    indexable_paths: list[str], expected: bool
+) -> None:
+    profile_json = json.dumps({"indexable_paths": indexable_paths})
+    assert pack_needs_place(_pack_with_profile(profile_json)) is expected
+
 
 # Untrimmed copies of two real packs. The hand-written fixtures below prove the
 # merge rules; this proves those rules survive contact with a pack nobody here

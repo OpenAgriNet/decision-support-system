@@ -1,43 +1,90 @@
-"""One flat list of a schema pack's fields.
+"""Reads what a pack says about itself: its kind, its @type, whether it serves
+a place, and its fields.
 
 A pack does not declare its fields in one place. It says "my fields are
 whatever ``AgricultureResource`` has, plus mine" — an ``allOf`` with a
 ``$ref`` to another file. Knowing every field therefore means opening two
-files and merging them, at every read.
+files and merging them, at every read. ``flatten_fields`` does that once, into
+a map of field path to what the field is. ``profile.json`` stays the source of
+truth for *which* fields matter (``filterable_paths``, ``result_fields``).
 
-This flattens the merged schema once, into a map of field path to what the
-field is. Two callers need it:
-
-- ``/discover`` builds a filter over a field's allowed values.
-- ``/select`` builds a body, so it needs field names and types.
-
-``profile.json`` stays the source of truth for *which* fields matter
-(``filterable_paths``, ``result_fields``). This says *what they are*.
-
-Pure: yaml text in, plain dict out. The adapter reads the files, because only
-it has paths.
+Pure: file text in, plain values out. The adapter reads the files, because
+only it has paths.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import json
 
 import yaml
 
+from dss.core.schema_packs.models import FieldSpec, SchemaPackFiles
 from dss.core.shared.schema import follow_ref, resolve_schema
 
+# Catalog and API packs share one folder; `profile.json` names the kind.
+_API_PACK_MODEL = "provider-api"
+# The path segment that says a pack indexes a point.
+_LOCATION_SEGMENT = "location"
 
-@dataclass(frozen=True)
-class FieldSpec:
-    """What one field is, merged across everything that declares it."""
+# The pack is read as data, so any shape defect surfaces as one of these.
+PACK_DEFECTS = (KeyError, TypeError, ValueError, yaml.YAMLError)
 
-    type: str
-    required: bool
-    enum: tuple[str, ...] = field(default=())
-    # JSON Schema's `format`, when the pack declares one. `type` alone does not
-    # say enough: `arrivalDate` is a `string` like 85 other fields, and
-    # `format: date` is the half that says an ISO date rather than free text.
-    format: str | None = None
+
+def is_api_pack(pack: SchemaPackFiles) -> bool:
+    """A profile with no ``semantic_model`` is a catalog pack.
+
+    Raises one of ``PACK_DEFECTS`` when ``profile.json`` can't be read.
+    """
+    profile = json.loads(pack.profile_json)
+    if not isinstance(profile, dict):
+        raise TypeError(f"profile.json of pack {pack.pack_name} is not an object")
+    return profile.get("semantic_model") == _API_PACK_MODEL
+
+
+def pack_needs_place(pack: SchemaPackFiles) -> bool:
+    """True when the pack indexes a location, its own (`location.geo`) or a
+    nested one (`market.location.geo`). Such a pack serves a place, so an ask
+    must name one to be served and its discover call is filtered by it."""
+
+    profile = json.loads(pack.profile_json)
+    return any(
+        _LOCATION_SEGMENT in path.split(".")
+        for path in profile.get("indexable_paths", ())
+    )
+
+
+def extract_type_const(attributes_yaml: str, pack_name: str) -> str:
+    """The pack's canonical ``@type``, read from ``x-jsonld``.
+
+    A pack declares its type twice. ``x-jsonld."@type"`` is a plain scalar;
+    ``properties["@type"]`` is a ``oneOf`` because the schema also permits an
+    array containing the canonical type alongside provider-defined ones.
+
+    This reads ``x-jsonld``: one scalar with nothing to unwrap, and
+    ``@context`` sits beside it so both come from the same place. Reading
+    ``properties["@type"]["const"]`` raised ``KeyError('const')`` on every
+    real pack — the ``const`` is nested inside the ``oneOf``.
+
+    Every reader of a pack's @type uses this and fails the same way — one bad
+    pack skipped, not the whole boot.
+    """
+
+    return _x_jsonld(attributes_yaml, pack_name)["@type"]
+
+
+def extract_schema_context(attributes_yaml: str, pack_name: str) -> str:
+    """The ``@context`` URL the pack declares beside its ``@type``."""
+
+    return _x_jsonld(attributes_yaml, pack_name)["@context"]
+
+
+def _x_jsonld(attributes_yaml: str, pack_name: str) -> dict:
+    parsed = yaml.safe_load(attributes_yaml)
+    schema = parsed["components"]["schemas"][pack_name]
+    x_jsonld = schema.get("x-jsonld")
+    if not x_jsonld:
+        raise ValueError(f"no x-jsonld block for pack {pack_name}")
+    return x_jsonld
 
 
 def flatten_fields(

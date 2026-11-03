@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from dss.core.provider_discovery.models import SchemaPackFiles, SchemaPackSkipped
+from dss.core.schema_packs.models import SchemaPackFiles, SchemaPackSkipped
 
 
 class SchemaPackSource(Protocol):

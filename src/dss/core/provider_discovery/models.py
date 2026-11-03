@@ -11,7 +11,6 @@ from dataclasses import field as dataclass_field
 from datetime import datetime
 from enum import Enum
 
-from dss.core.provider_discovery.schema_fields import FieldSpec
 from dss.core.provider_preferences.models import AskPriority
 
 # A resource's `@type`, as a prefixed CURIE: `openagrinet:MandiPrice`. An open
@@ -345,37 +344,3 @@ class DiscoveredAsks:
         searched = {ask.index: ask.query_result for ask in self.asks}
         never_searched = dict.fromkeys(self.unsearchable_asks, _NOTHING_FOUND)
         return dict(sorted((searched | never_searched).items()))
-
-
-@dataclass(frozen=True)
-class SchemaPackSkipped:
-    """A pack was malformed and left out of the index.
-
-    network-specs is an external checkout, so one third-party commit must not
-    blind every other capability. Skipping keeps the system serving — but a
-    skipped pack looks exactly like a capability nobody offers, so this has to
-    reach an operator rather than pass silently.
-    """
-
-    pack_name: str
-    reason: str
-
-
-@dataclass(frozen=True)
-class SchemaPackFiles:
-    """Raw file content for one schema pack — before any parsing.
-
-    Only the three files the index needs. ``vocab.jsonld``, ``renderer.json``,
-    and ``context.jsonld`` are never fetched.
-    """
-
-    pack_name: str
-    version: str
-    profile_json: str
-    attributes_yaml: str
-    examples_json: tuple[str, ...]
-    # The one derived value here, and it is derived by the reading layer on
-    # purpose: a pack's fields are split across its own `attributes.yaml` and
-    # `AgricultureResource`'s, and resolving that `$ref` needs a path, which
-    # this model does not carry. Empty when the shared file was not readable.
-    flattened_fields: dict[str, FieldSpec] = dataclass_field(default_factory=dict)

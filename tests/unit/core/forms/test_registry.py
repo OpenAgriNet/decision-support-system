@@ -8,7 +8,7 @@ import yaml
 from dss.core.forms.models import ActionSchema, FormContext, FormDefinition
 from dss.core.forms.registry import FormLookup, FormRegistry
 from dss.core.forms.service import build_form_registry
-from dss.core.provider_discovery.models import SchemaPackFiles, SchemaPackSkipped
+from dss.core.schema_packs.models import SchemaPackFiles, SchemaPackSkipped
 
 _GRIEVANCE_YAML = (
     Path(__file__).parents[3] / "fixtures" / "api_packs" / "grievance_attributes.yaml"

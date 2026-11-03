@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from dss.adapters.schema_packs.filesystem import FilesystemSchemaPackSource
-from dss.core.provider_discovery.schema_fields import FieldSpec
+from dss.core.schema_packs.models import FieldSpec
 
 FIXTURE_ROOT = Path(__file__).parent / "fixtures" / "network-specs" / "schema"
 

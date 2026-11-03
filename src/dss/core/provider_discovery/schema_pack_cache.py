@@ -11,7 +11,7 @@ from dss.core.provider_discovery.index import (
     build_place_bound_types,
     build_schema_context_index,
 )
-from dss.core.provider_discovery.models import SchemaPackFiles, SchemaPackSkipped
+from dss.core.schema_packs.models import SchemaPackFiles, SchemaPackSkipped
 from dss.ports.schema_packs import SchemaPackSource
 
 

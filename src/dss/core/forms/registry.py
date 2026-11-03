@@ -4,7 +4,7 @@ from collections.abc import Iterable
 from typing import Protocol
 
 from dss.core.forms.models import ActionSchema, FormContext, FormDefinition
-from dss.core.provider_discovery.models import SchemaPackSkipped
+from dss.core.schema_packs.models import SchemaPackSkipped
 
 
 class FormLookup(Protocol):

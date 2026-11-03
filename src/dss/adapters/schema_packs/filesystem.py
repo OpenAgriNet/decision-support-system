@@ -20,9 +20,8 @@ from pathlib import Path
 
 import anyio.to_thread
 
-from dss.core.provider_discovery.index import PACK_DEFECTS
-from dss.core.provider_discovery.models import SchemaPackFiles, SchemaPackSkipped
-from dss.core.provider_discovery.schema_fields import flatten_fields
+from dss.core.schema_packs.models import SchemaPackFiles, SchemaPackSkipped
+from dss.core.schema_packs.service import PACK_DEFECTS, flatten_fields
 
 # The one pack every other pack's cross-file `$ref` points at. Read once per
 # load and passed to the flattener, because a pack's fields are split between

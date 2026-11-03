@@ -20,8 +20,8 @@ from collections.abc import Mapping
 import yaml
 from pydantic import BaseModel, ConfigDict
 
-from dss.core.provider_discovery.index import pack_needs_place
-from dss.core.provider_discovery.models import SchemaPackFiles
+from dss.core.schema_packs.models import SchemaPackFiles
+from dss.core.schema_packs.service import pack_needs_place
 
 _BECKN_RESOURCE_ATTRIBUTES_PREFIX = "beckn:resourceAttributes."
 

@@ -15,36 +15,22 @@ from collections import defaultdict
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
 
-import yaml
-
-from dss.core.provider_discovery.models import SchemaPackFiles, SchemaPackSkipped
+from dss.core.schema_packs.models import SchemaPackFiles, SchemaPackSkipped
+from dss.core.schema_packs.service import (
+    PACK_DEFECTS,
+    extract_schema_context,
+    extract_type_const,
+    is_api_pack,
+    pack_needs_place,
+)
 
 _ACTION_TYPES = ("Knowledge", "Service")
-# Catalog and API packs share one folder; `profile.json` names the kind.
-_API_PACK_MODEL = "provider-api"
 # Asking how to file a grievance is advice; filing one is a service.
 _ACTION_TYPES_BY_PACK_INTERACTION: Mapping[str, tuple[str, ...]] = {
     "Advise": ("Knowledge",),
     "Observe": ("Service",),
     "Transact": ("Service",),
 }
-
-# The pack is read as data, so any shape defect surfaces as one of these.
-PACK_DEFECTS = (KeyError, TypeError, ValueError, yaml.YAMLError)
-# The path segment that says a pack indexes a point.
-_LOCATION_SEGMENT = "location"
-
-
-def pack_needs_place(pack: SchemaPackFiles) -> bool:
-    """True when the pack indexes a location, its own (`location.geo`) or a
-    nested one (`market.location.geo`). Such a pack serves a place, so an ask
-    must name one to be served and its discover call is filtered by it."""
-
-    profile = json.loads(pack.profile_json)
-    return any(
-        _LOCATION_SEGMENT in path.split(".")
-        for path in profile.get("indexable_paths", ())
-    )
 
 
 def build_place_bound_types(packs: tuple[SchemaPackFiles, ...]) -> frozenset[str]:
@@ -53,46 +39,6 @@ def build_place_bound_types(packs: tuple[SchemaPackFiles, ...]) -> frozenset[str
         for pack in packs
         if pack_needs_place(pack)
     )
-
-
-def is_api_pack(pack: SchemaPackFiles) -> bool:
-    """A profile with no ``semantic_model`` is a catalog pack.
-
-    Raises one of ``PACK_DEFECTS`` when ``profile.json`` can't be read.
-    """
-    profile = json.loads(pack.profile_json)
-    if not isinstance(profile, dict):
-        raise TypeError(f"profile.json of pack {pack.pack_name} is not an object")
-    return profile.get("semantic_model") == _API_PACK_MODEL
-
-
-def extract_type_const(attributes_yaml: str, pack_name: str) -> str:
-    """The pack's canonical ``@type``, read from ``x-jsonld``.
-
-    A pack declares its type twice. ``x-jsonld."@type"`` is a plain scalar;
-    ``properties["@type"]`` is a ``oneOf`` because the schema also permits an
-    array containing the canonical type alongside provider-defined ones.
-
-    This reads ``x-jsonld``: one scalar with nothing to unwrap, and
-    ``@context`` sits beside it so both come from the same place. Reading
-    ``properties["@type"]["const"]`` raised ``KeyError('const')`` on every
-    real pack — the ``const`` is nested inside the ``oneOf``.
-
-    Public: ``entrypoint/composition.py`` reads the same block for the
-    planner's schema dict and must fail the same way — one bad pack skipped,
-    not the whole boot.
-    """
-
-    return _x_jsonld(attributes_yaml, pack_name)["@type"]
-
-
-def _x_jsonld(attributes_yaml: str, pack_name: str) -> dict:
-    parsed = yaml.safe_load(attributes_yaml)
-    schema = parsed["components"]["schemas"][pack_name]
-    x_jsonld = schema.get("x-jsonld")
-    if not x_jsonld:
-        raise ValueError(f"no x-jsonld block for pack {pack_name}")
-    return x_jsonld
 
 
 @dataclass(frozen=True)
@@ -210,8 +156,10 @@ def build_schema_context_index(
     skipped: list[SchemaPackSkipped] = []
     for pack in packs:
         try:
-            x_jsonld = _x_jsonld(pack.attributes_yaml, pack.pack_name)
-            index[x_jsonld["@type"]] = x_jsonld["@context"]
+            type_const = extract_type_const(pack.attributes_yaml, pack.pack_name)
+            index[type_const] = extract_schema_context(
+                pack.attributes_yaml, pack.pack_name
+            )
         except PACK_DEFECTS as exc:
             skipped.append(SchemaPackSkipped(pack.pack_name, repr(exc)))
             continue
