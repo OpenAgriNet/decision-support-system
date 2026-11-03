@@ -10,7 +10,12 @@ import pytest
 
 from dss.adapters.area_lookup.cache import CachedAreaLookup
 from dss.config.settings import Settings
-from dss.entrypoint.composition import _aclose_all, build_area_lookup, build_runner
+from dss.entrypoint.composition import (
+    _aclose_all,
+    _network_sender_for,
+    build_area_lookup,
+    build_runner,
+)
 
 
 def _photon_settings(url: str | None = "http://photon.test") -> Settings:
@@ -18,6 +23,20 @@ def _photon_settings(url: str | None = "http://photon.test") -> Settings:
     something use `monkeypatch.setenv`, which this still reads."""
 
     return Settings(photon_base_url=url, _env_file=None)
+
+
+def test_by_default_the_dss_sends_as_itself(a_turn):
+    sender_for = _network_sender_for(Settings(_env_file=None))
+
+    assert sender_for(a_turn(sender_id="kisan-mitra-web")) == "consumer.oan.dev"
+
+
+def test_the_sender_toggle_sends_the_callers_id(a_turn):
+    settings = Settings(network_sender_from_turn=True, _env_file=None)
+
+    sender_for = _network_sender_for(settings)
+
+    assert sender_for(a_turn(sender_id="kisan-mitra-web")) == "kisan-mitra-web"
 
 
 def test_evidence_paths_sit_under_the_configured_directory(tmp_path):

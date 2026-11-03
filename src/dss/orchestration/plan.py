@@ -12,7 +12,7 @@ would merge the two components the design deliberately splits.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Protocol
 
 from pydantic_ai.models import Model
@@ -57,11 +57,16 @@ class Plan(Protocol):
     ) -> Evidence: ...
 
 
+# The invocation adapter for one turn. Built per turn because who the DSS
+# says it is on the network can depend on the turn's caller.
+type InvocationFor = Callable[[UserTurn], CapabilityInvocation]
+
+
 def build_plan(  # noqa: PLR0913
     *,
     schemas: dict[str, DomainSchema],
     schema_context_index: dict[str, str],
-    invocation: CapabilityInvocation,
+    invocation_for: InvocationFor,
     identity: Identity,
     prompts: PromptProvider,
     model: Model | str,
@@ -155,7 +160,7 @@ def build_plan(  # noqa: PLR0913
             discovery=discovery,
             schemas=schemas,
             schema_context_index=schema_context_index,
-            invocation=invocation,
+            invocation=invocation_for(turn),
             verdict=verdict,
             visibility=visibility,
             filing=filing,

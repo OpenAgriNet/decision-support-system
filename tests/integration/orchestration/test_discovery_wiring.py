@@ -99,7 +99,7 @@ async def test_the_wired_discover_providers_bakes_in_radius() -> None:
             network_host_id="host.oan",
         )
         discover_providers = build_discover_providers(
-            discovery=discovery,
+            discovery_for=lambda _turn: discovery,
             schema_pack_cache=schema_pack_cache,
             radius_m=25000,
             preferences=NO_PREFERENCES,
@@ -154,7 +154,7 @@ async def test_the_fan_out_runs_inside_a_span(monkeypatch) -> None:
             network_host_id="host.oan",
         )
         discover_providers = build_discover_providers(
-            discovery,
+            lambda _turn: discovery,
             cache,
             50_000,
             NO_PREFERENCES,
@@ -225,7 +225,7 @@ async def test_the_fan_out_span_counts_how_many_asks_went_unanswered(
             network_host_id="host.oan",
         )
         discover_providers = build_discover_providers(
-            discovery,
+            lambda _turn: discovery,
             cache,
             50_000,
             NO_PREFERENCES,
@@ -300,7 +300,7 @@ async def test_run_turn_can_call_the_composed_discover_providers() -> None:
             network_host_id="host.oan",
         )
         discover_providers = build_discover_providers(
-            discovery,
+            lambda _turn: discovery,
             cache,
             50_000,
             NO_PREFERENCES,

@@ -171,7 +171,7 @@ async def sent_topics() -> list[str]:
                 "KnowledgeAdvisory/v0.1/context.jsonld"
             )
         },
-        invocation=invocation,
+        invocation_for=lambda _turn: invocation,
         # The shipped identity and prompt registry, not doubles: the guidance
         # under test is exactly what a deployment loads.
         identity=load_identity(),

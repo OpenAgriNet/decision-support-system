@@ -106,6 +106,11 @@ from dss.orchestration.discovery import (
     build_discover_providers,
 )
 from dss.orchestration.form_path import FormPath
+from dss.orchestration.network_sender import (
+    NetworkSenderFor,
+    caller_or_configured_sender,
+    configured_sender,
+)
 from dss.orchestration.orchestrator import (
     Components,
     Orchestrator,
@@ -113,9 +118,10 @@ from dss.orchestration.orchestrator import (
     TurnPaths,
     unrouted_kinds,
 )
-from dss.orchestration.plan import build_plan
+from dss.orchestration.plan import InvocationFor, build_plan
 from dss.orchestration.redaction import RedactTexts, pass_through, redact_texts
 from dss.ports.area_lookup import AreaLookup
+from dss.ports.discovery import CapabilityDiscovery
 from dss.ports.invocation import CapabilityInvocation
 from dss.ports.llm import LLMProvider
 from dss.ports.prompts import PromptProvider
@@ -243,6 +249,12 @@ def _load_boot_config(settings: Settings) -> _BootConfig:
     )
 
 
+def _network_sender_for(settings: Settings) -> NetworkSenderFor:
+    if settings.network_sender_from_turn:
+        return caller_or_configured_sender(settings.network_sender_id)
+    return configured_sender(settings.network_sender_id)
+
+
 def _build_components(
     settings: Settings, boot: _BootConfig, network: _Network
 ) -> Components:
@@ -255,7 +267,7 @@ def _build_components(
         plan=build_plan(
             schemas=network.schemas,
             schema_context_index=network.schema_context_index,
-            invocation=network.invocation,
+            invocation_for=network.invocation_for,
             identity=boot.identity,
             prompts=boot.prompts,
             model=_resolve_model(settings.planner_model, settings),
@@ -555,7 +567,7 @@ class _Network:
     caller owns (`None` when unwired), and the ranking source in force."""
 
     discover: DiscoverProviders
-    invocation: CapabilityInvocation
+    invocation_for: InvocationFor
     schemas: dict[str, DomainSchema]
     schema_context_index: dict[str, str]
     client: httpx.AsyncClient | None
@@ -585,7 +597,7 @@ def _network(
             )
         return _Network(
             discover=_discovers_nothing,
-            invocation=_UnwiredInvocation(),
+            invocation_for=lambda _turn: _UnwiredInvocation(),
             schemas={},
             schema_context_index={},
             client=None,
@@ -609,13 +621,26 @@ def _network(
             f"--ref {PUBLISHED_REF}"
         )
 
-    discovery = build_capability_discovery(
-        client=client,
-        base_url=settings.discovery_base_url,
-        schema_pack_cache=cache,
-        sender_id=settings.network_sender_id,
-        network_host_id=settings.network_host_id,
-    )
+    sender_for = _network_sender_for(settings)
+
+    def discovery_for(turn: UserTurn) -> CapabilityDiscovery:
+        return build_capability_discovery(
+            client=client,
+            base_url=settings.discovery_base_url,
+            schema_pack_cache=cache,
+            sender_id=sender_for(turn),
+            network_host_id=settings.network_host_id,
+        )
+
+    def invocation_for(turn: UserTurn) -> CapabilityInvocation:
+        return HttpCapabilityInvocation(
+            client=client,
+            base_url=settings.invocation_base_url,
+            sender_id=sender_for(turn),
+            attempts=settings.select_attempts,
+            backoff_seconds=settings.select_backoff_seconds,
+        )
+
     if settings.provider_preferences_base_url is not None:
         # The registry, asked on every turn over the same client the network
         # calls ride (ADR-0020). Swapped in here rather than at boot because
@@ -630,17 +655,10 @@ def _network(
             settings.provider_preferences_base_url,
         )
     discover = build_discover_providers(
-        discovery=discovery,
+        discovery_for=discovery_for,
         schema_pack_cache=cache,
         radius_m=settings.discovery_radius_m,
         preferences=preferences,
-    )
-    invocation = HttpCapabilityInvocation(
-        client=client,
-        base_url=settings.invocation_base_url,
-        sender_id=settings.network_sender_id,
-        attempts=settings.select_attempts,
-        backoff_seconds=settings.select_backoff_seconds,
     )
 
     for skip in cache.skipped_packs():
@@ -653,7 +671,7 @@ def _network(
     good = tuple(pack for pack in packs if pack.pack_name not in skipped)
     return _Network(
         discover=discover,
-        invocation=invocation,
+        invocation_for=invocation_for,
         schemas=_planner_schemas(good),
         schema_context_index=cache.current_schema_context(),
         client=client,

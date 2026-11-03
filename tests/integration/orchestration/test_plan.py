@@ -166,7 +166,7 @@ async def test_plan_returns_evidence_from_what_the_tools_returned() -> None:
         schema_context_index={
             "openagrinet:MandiPrice": "https://schemas.openagrinet.global/schema/MandiPrice/0.1/context.jsonld"
         },
-        invocation=invocation,
+        invocation_for=lambda _turn: invocation,
         identity=IDENTITY,
         prompts=FakePromptProvider(skills=(SKILL,)),
         model=FunctionModel(_calls_select_then_answers),
@@ -185,6 +185,42 @@ async def test_plan_returns_evidence_from_what_the_tools_returned() -> None:
     assert [source.name for source in evidence.sources] == ["Agmarknet"]
     [served] = evidence.ask_evidences
     assert served.results[0].data == {"prices": {"modal": 2200}}
+
+
+async def test_the_invocation_is_built_for_the_turn() -> None:
+    """Who the DSS says it is on the network can depend on the turn's caller,
+    so the adapter is built per turn, not once at boot."""
+
+    built_for: list[UserTurn] = []
+    invocation = _FakeInvocation()
+
+    def invocation_for(turn: UserTurn) -> _FakeInvocation:
+        built_for.append(turn)
+        return invocation
+
+    plan = build_plan(
+        schemas=SCHEMAS,
+        schema_context_index={
+            "openagrinet:MandiPrice": "https://schemas.openagrinet.global/schema/MandiPrice/0.1/context.jsonld"
+        },
+        invocation_for=invocation_for,
+        identity=IDENTITY,
+        prompts=FakePromptProvider(skills=(SKILL,)),
+        model=FunctionModel(_calls_select_then_answers),
+    )
+    turn = _turn()
+
+    await plan(
+        turn,
+        intent=Intent(asks=(PRICE_ASK,), confidence=0.9),
+        discovery=DiscoveryResult(
+            answers={}, capabilities={0: (CAPABILITY,)}, failures={}, events=()
+        ),
+        verdict=_cleared_verdict(),
+    )
+
+    assert built_for == [turn]
+    assert len(invocation.calls) == 1
 
 
 async def test_the_prompt_carries_the_identity_and_the_marked_history() -> None:
@@ -208,7 +244,7 @@ async def test_the_prompt_carries_the_identity_and_the_marked_history() -> None:
         schema_context_index={
             "openagrinet:MandiPrice": "https://schemas.openagrinet.global/schema/MandiPrice/0.1/context.jsonld"
         },
-        invocation=_FakeInvocation(),
+        invocation_for=lambda _turn: _FakeInvocation(),
         identity=IDENTITY,
         prompts=FakePromptProvider(skills=(SKILL,)),
         model=FunctionModel(record),
@@ -274,7 +310,7 @@ async def test_a_direct_answer_reaches_the_evidence_through_plan() -> None:
                 "https://schemas.openagrinet.global/schema/MandiPrice/v0.1/context.jsonld"
             )
         },
-        invocation=invocation,
+        invocation_for=lambda _turn: invocation,
         identity=IDENTITY,
         prompts=FakePromptProvider(skills=(SKILL,)),
         model=FunctionModel(_answers_without_calling),
@@ -306,7 +342,7 @@ async def test_a_turn_with_only_form_asks_never_runs_the_agent() -> None:
     plan = build_plan(
         schemas=SCHEMAS,
         schema_context_index={},
-        invocation=_FakeInvocation(),
+        invocation_for=lambda _turn: _FakeInvocation(),
         identity=IDENTITY,
         prompts=FakePromptProvider(skills=(SKILL,)),
         model=FunctionModel(_must_not_run),
@@ -357,7 +393,7 @@ async def test_a_model_that_still_selects_for_a_form_ask_reaches_no_provider() -
     plan = build_plan(
         schemas=SCHEMAS,
         schema_context_index={},
-        invocation=invocation,
+        invocation_for=lambda _turn: invocation,
         identity=IDENTITY,
         prompts=FakePromptProvider(skills=(SKILL,)),
         model=FunctionModel(_calls_select_for_ask_0_then_answers),
@@ -391,7 +427,7 @@ async def test_an_ask_whose_place_failed_is_a_failure_even_if_never_called() -> 
     plan = build_plan(
         schemas=SCHEMAS,
         schema_context_index={},
-        invocation=_FakeInvocation(),
+        invocation_for=lambda _turn: _FakeInvocation(),
         identity=IDENTITY,
         prompts=FakePromptProvider(skills=(SKILL,)),
         model=FunctionModel(_answers_without_calling),
@@ -435,7 +471,7 @@ async def test_the_planner_binds_its_own_model_settings() -> None:
         schema_context_index={
             "openagrinet:MandiPrice": "https://schemas.openagrinet.global/schema/MandiPrice/0.1/context.jsonld"
         },
-        invocation=_FakeInvocation(),
+        invocation_for=lambda _turn: _FakeInvocation(),
         identity=IDENTITY,
         prompts=FakePromptProvider(skills=(SKILL,)),
         model=FunctionModel(record_settings),
@@ -466,7 +502,7 @@ async def test_a_rejected_turn_yields_empty_evidence() -> None:
         schema_context_index={
             "openagrinet:MandiPrice": "https://schemas.openagrinet.global/schema/MandiPrice/0.1/context.jsonld"
         },
-        invocation=invocation,
+        invocation_for=lambda _turn: invocation,
         identity=IDENTITY,
         prompts=FakePromptProvider(skills=(SKILL,)),
         model=FunctionModel(_calls_select_then_answers),
@@ -524,7 +560,7 @@ async def test_a_planner_run_that_fails_still_records_what_it_spent() -> None:
         schema_context_index={
             "openagrinet:MandiPrice": "https://schemas.openagrinet.global/schema/MandiPrice/0.1/context.jsonld"
         },
-        invocation=_FakeInvocation(),
+        invocation_for=lambda _turn: _FakeInvocation(),
         identity=IDENTITY,
         prompts=FakePromptProvider(skills=(SKILL,)),
         model=FunctionModel(select_then_fail),
@@ -641,7 +677,7 @@ async def test_a_submission_turn_files_the_form_and_keeps_the_ticket() -> None:
     plan = build_plan(
         schemas=SCHEMAS,
         schema_context_index={},
-        invocation=invocation,
+        invocation_for=lambda _turn: invocation,
         identity=IDENTITY,
         prompts=FakePromptProvider(skills=(SKILL, ACTION_SKILL)),
         model=FunctionModel(_files_the_form),

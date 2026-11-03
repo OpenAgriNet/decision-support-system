@@ -161,6 +161,9 @@ class Settings(BaseSettings):
     network_sender_id: str = "consumer.oan.dev"
     # The network host: receiver and network of every discover.
     network_host_id: str = "oan"
+    # On: network calls name the turn's caller (`context.senderId`) as sender,
+    # or `network_sender_id` when the caller sent none. Off: always the DSS.
+    network_sender_from_turn: bool = False
 
     @property
     def network_enabled(self) -> bool:
