@@ -161,7 +161,6 @@ class Settings(BaseSettings):
     network_sender_id: str = "consumer.oan.dev"
     # The network host: receiver and network of every discover.
     network_host_id: str = "oan"
-    network_receiver_id: str = "oan"
 
     @property
     def network_enabled(self) -> bool:

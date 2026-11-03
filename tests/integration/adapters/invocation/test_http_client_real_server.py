@@ -44,7 +44,6 @@ async def test_select_against_a_real_local_server(httpserver: HTTPServer) -> Non
             client=client,
             base_url=_base_url(httpserver),
             sender_id="seeker-network-vistaar.da.gov.in",
-            receiver_id="provider-network-vistaar.da.gov.in",
         )
 
         [answer] = await invocation.select(
@@ -67,7 +66,6 @@ async def test_a_real_429_response_raises_selectfailed(httpserver: HTTPServer) -
             client=client,
             base_url=_base_url(httpserver),
             sender_id="seeker-network-vistaar.da.gov.in",
-            receiver_id="provider-network-vistaar.da.gov.in",
             attempts=1,  # classification, not retry — see test_retry.py
         )
 
@@ -91,7 +89,6 @@ async def test_the_outbound_request_is_logged(httpserver: HTTPServer, caplog) ->
                 client=client,
                 base_url=_base_url(httpserver),
                 sender_id="seeker-network-vistaar.da.gov.in",
-                receiver_id="provider-network-vistaar.da.gov.in",
             )
 
             await invocation.select(
@@ -123,7 +120,6 @@ async def test_select_names_the_discovered_resource_id(httpserver: HTTPServer) -
             client=client,
             base_url=_base_url(httpserver),
             sender_id="seeker-network-vistaar.da.gov.in",
-            receiver_id="provider-network-vistaar.da.gov.in",
         )
 
         await invocation.select(
