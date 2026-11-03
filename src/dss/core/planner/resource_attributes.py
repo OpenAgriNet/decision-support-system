@@ -61,6 +61,17 @@ def _validity_window(day: date) -> dict[str, str]:
     }
 
 
+# Fields that also say where the question is about. Once the resolved place
+# is sent as `location`, the model's value here can only be a guess — it wrote
+# `{"areaCode": "Sangli"}`, which is neither an area reference nor a geometry,
+# and the provider refused the select for it.
+_PLACE_FIELDS = ("coverageAreas",)
+
+# A requested field, and the advertised list of values the provider serves.
+# Mausamgram only forecasts; the model asked it for `Observation`.
+_SUPPORTED_VALUES_FIELD = {"observationType": "supportedObservationTypes"}
+
+
 def _location_field(place: ResolvedPlace | None) -> dict | None:
     """A network ``Location``, which carries the geometry under ``geo``.
 
@@ -133,6 +144,33 @@ def _narrowed(model_value: object, advertised_value: object) -> object:
     return narrowed
 
 
+def _without_place_fields(model_filled: dict) -> dict:
+    return {
+        field: value
+        for field, value in model_filled.items()
+        if field not in _PLACE_FIELDS
+    }
+
+
+def _supported_value(requested: object, supported: object) -> object | None:
+    """The requested value if the provider serves it, else its only served
+    value, else ``None`` — there is no telling which of several was meant."""
+
+    if not isinstance(supported, list) or requested in supported:
+        return requested
+    return supported[0] if len(supported) == 1 else None
+
+
+def _within_supported(model_filled: dict, advertised: dict) -> dict:
+    corrected = {
+        field: _supported_value(value, advertised.get(_SUPPORTED_VALUES_FIELD[field]))
+        if field in _SUPPORTED_VALUES_FIELD
+        else value
+        for field, value in model_filled.items()
+    }
+    return {field: value for field, value in corrected.items() if value is not None}
+
+
 def build_resource_attributes(  # noqa: PLR0913
     *,
     capability: ProviderCapability,
@@ -194,6 +232,8 @@ def build_resource_attributes(  # noqa: PLR0913
     # the network as `/discover`'s spatial filter instead.
     if location is not None and "location" in declared:
         resolved_location["location"] = location
+        model_filled = _without_place_fields(model_filled)
+    model_filled = _within_supported(model_filled, capability.advertised)
 
     # Three layers, each overriding the one before.
     #
