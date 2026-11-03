@@ -22,6 +22,7 @@ from dss.core.forms.models import (
     FormErrors,
     FormSubmission,
     PiiClass,
+    UnknownForm,
     ValidSubmission,
 )
 from dss.core.forms.registry import FormRegistry
@@ -301,12 +302,7 @@ def test_a_context_nobody_serves_is_an_unknown_form() -> None:
 
     outcome = validate_submission(_submission(_PMFBY_VALUES, context=kisan), _forms())
 
-    assert outcome == FormErrors(
-        form_id="offer-1",
-        context=kisan,
-        submission_id="submission-1",
-        definition=None,
-    )
+    assert outcome == UnknownForm(context=kisan)
 
 
 def test_a_missing_required_field_is_reported_as_required() -> None:
@@ -378,7 +374,7 @@ def test_an_error_block_names_each_bad_field_with_its_label_and_message() -> Non
         ),
     )
 
-    block = form_error_block(errors, definition, load_clarification_text())
+    block = form_error_block(errors, load_clarification_text())
 
     assert block == FormErrorBlock(
         form_id="offer-1",
@@ -410,7 +406,7 @@ def test_a_field_off_the_form_has_no_label_and_is_named_in_the_message() -> None
         field_errors=(FieldError(name="village", code=FieldErrorCode.UNKNOWN_FIELD),),
     )
 
-    block = form_error_block(errors, definition, load_clarification_text())
+    block = form_error_block(errors, load_clarification_text())
 
     assert block.fields == (
         FieldErrorEntry(
