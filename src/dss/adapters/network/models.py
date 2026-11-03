@@ -79,7 +79,7 @@ class NetworkContext(BaseModel):
 
     Field names are snake_case here and camelCase on the wire, which is the
     same split the DSS's own HTTP surface uses. `extra="forbid"` is what makes
-    the two subclasses actually separate rather than merely differently named.
+    the subclasses actually separate rather than merely differently named.
     """
 
     model_config = ConfigDict(
@@ -87,6 +87,8 @@ class NetworkContext(BaseModel):
     )
 
     version: NetworkVersion = NetworkVersion.V2_0_0
+    sender_id: str
+    receiver_id: str
     message_id: str
     transaction_id: str
     timestamp: str
@@ -110,8 +112,6 @@ class DiscoverContext(NetworkContext):
     """
 
     action: Literal[NetworkAction.DISCOVER] = NetworkAction.DISCOVER
-    sender_id: str
-    receiver_id: str
     network_id: str
     schema_context: NetworkSchemaContext | None = None
 
@@ -123,24 +123,18 @@ class DiscoverContext(NetworkContext):
 
 
 class SelectContext(NetworkContext):
-    """A select: who is asking whom, and no schema."""
+    """A select: to one provider, with no schema and no network."""
 
     action: Literal[NetworkAction.SELECT] = NetworkAction.SELECT
-    sender_id: str
-    receiver_id: str
 
 
 class SupportContext(NetworkContext):
     """A support call, the same envelope as a select."""
 
     action: Literal[NetworkAction.SUPPORT] = NetworkAction.SUPPORT
-    sender_id: str
-    receiver_id: str
 
 
 class StatusContext(NetworkContext):
     """A status call, the same envelope as a select."""
 
     action: Literal[NetworkAction.STATUS] = NetworkAction.STATUS
-    sender_id: str
-    receiver_id: str
