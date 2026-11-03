@@ -129,7 +129,10 @@ class FormPath:
         if isinstance(checked, FormErrors):
             yield await self._hand_back(checked, turn=turn, ctx=ctx, recorder=recorder)
             return
-        if isinstance(checked, UnknownForm):
+        # Before moderation: a form that cannot be filed is not worth a model call.
+        intent = self._intent_for(turn.input.context)
+        action = self._forms.action_schema(turn.input.context)
+        if isinstance(checked, UnknownForm) or intent is None or action is None:
             yield await self._hand_back_unknown(turn, ctx=ctx, recorder=recorder)
             return
 
@@ -142,11 +145,6 @@ class FormPath:
             )
             return
 
-        intent = self._intent_for(turn.input.context)
-        action = self._forms.action_schema(checked.definition.context)
-        if intent is None or action is None:
-            yield await self._hand_back_unknown(turn, ctx=ctx, recorder=recorder)
-            return
         discovery = await self._find_providers(
             intent, turn, ctx, scheme_code=turn.input.context.scheme
         )
