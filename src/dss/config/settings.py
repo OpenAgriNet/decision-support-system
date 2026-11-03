@@ -157,9 +157,13 @@ class Settings(BaseSettings):
     # gateway and never reach this process.
     gateway_api_key: str = ""
 
-    # Envelope routing ids the /select adapter stamps on each provider call.
+    # The DSS's own id as sender on every network call, and the fallback when
+    # a caller sends no `senderId`.
     network_sender_id: str = "consumer.oan.dev"
     network_receiver_id: str = "oan"
+    # On: network calls name the turn's caller (`context.senderId`) as sender,
+    # or `network_sender_id` when the caller sent none. Off: always the DSS.
+    network_sender_from_turn: bool = False
 
     @property
     def network_enabled(self) -> bool:

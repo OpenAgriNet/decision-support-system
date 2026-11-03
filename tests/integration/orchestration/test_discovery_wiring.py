@@ -258,6 +258,7 @@ async def test_the_fan_out_span_counts_how_many_asks_went_unanswered(
     ]
     assert stage.attributes["asks_total"] == 1
     assert stage.attributes["asks_failed"] == 1
+    assert stage.attributes["network_sender_id"] == "consumer.oan.dev"
     assert stage.status.status_code is not StatusCode.ERROR
 
 

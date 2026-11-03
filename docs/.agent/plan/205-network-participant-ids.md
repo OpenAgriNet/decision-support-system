@@ -66,7 +66,10 @@ No ADR (agreed). Work in a new worktree off `origin/main`; copy this plan to
   (support and status) pass it.
 
 **8. Docs**
-- `docs/DSS_ARCHITECTURE.md`: envelope ids table above.
+- `docs/DSS_ARCHITECTURE.md`: envelope ids table above. Record that the toggle
+  forwards the caller's `senderId` unchecked: off by default, and safe only
+  because the DSS is reachable from the Experience API alone. This reverses the
+  spec 192 rule that select must not forward the caller's id.
 - `docs/PLAYBOOK.md`: the three settings (`DSS_NETWORK_HOST_ID`,
   `DSS_NETWORK_SENDER_FROM_TURN`, `DSS_NETWORK_SENDER_ID`).
 - Test fakes of the ports gain the `sender_id` argument.

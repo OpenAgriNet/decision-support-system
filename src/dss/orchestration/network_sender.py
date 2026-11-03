@@ -11,3 +11,11 @@ from collections.abc import Callable
 from dss.core.shared.models import UserTurn
 
 type NetworkSenderFor = Callable[[UserTurn], str]
+
+
+def configured_sender(configured_id: str) -> NetworkSenderFor:
+    return lambda _turn: configured_id
+
+
+def caller_or_configured_sender(configured_id: str) -> NetworkSenderFor:
+    return lambda turn: turn.sender_id or configured_id

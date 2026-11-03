@@ -90,7 +90,8 @@ def build_discover_providers(
     async def discover(
         intent: Intent, turn: UserTurn, *, now: datetime
     ) -> DiscoveryResult:
-        result = await bound(intent, turn, now=now, sender_id=network_sender_for(turn))
+        network_sender_id = network_sender_for(turn)
+        result = await bound(intent, turn, now=now, sender_id=network_sender_id)
         preference = await preferences.for_sender(
             turn.sender_id, transaction_id=turn.transaction_id
         )
@@ -105,6 +106,9 @@ def build_discover_providers(
             asks_total=len(result.failures),
             asks_failed=sum(1 for failures in result.failures.values() if failures),
             sender_id=turn.sender_id or "",
+            # Who the discover messages named as sender; differs from
+            # `sender_id` only when the DSS sends as itself.
+            network_sender_id=network_sender_id,
             asks_ranked=sum(1 for p in result.priorities.values() if p.applied),
             providers_dropped=sum(len(p.dropped) for p in result.priorities.values()),
         )

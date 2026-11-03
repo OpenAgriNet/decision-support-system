@@ -106,7 +106,11 @@ from dss.orchestration.discovery import (
     build_discover_providers,
 )
 from dss.orchestration.form_path import FormPath
-from dss.orchestration.network_sender import NetworkSenderFor
+from dss.orchestration.network_sender import (
+    NetworkSenderFor,
+    caller_or_configured_sender,
+    configured_sender,
+)
 from dss.orchestration.orchestrator import (
     Components,
     Orchestrator,
@@ -245,8 +249,9 @@ def _load_boot_config(settings: Settings) -> _BootConfig:
 
 
 def _network_sender_for(settings: Settings) -> NetworkSenderFor:
-    sender_id = settings.network_sender_id
-    return lambda _turn: sender_id
+    if settings.network_sender_from_turn:
+        return caller_or_configured_sender(settings.network_sender_id)
+    return configured_sender(settings.network_sender_id)
 
 
 def _build_components(
