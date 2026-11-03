@@ -144,14 +144,6 @@ def _narrowed(model_value: object, advertised_value: object) -> object:
     return narrowed
 
 
-def _without_place_fields(model_filled: dict) -> dict:
-    return {
-        field: value
-        for field, value in model_filled.items()
-        if field not in _PLACE_FIELDS
-    }
-
-
 def _supported_value(requested: object, supported: object) -> object | None:
     """The requested value if the provider serves it, else its only served
     value, else ``None`` — there is no telling which of several was meant."""
@@ -161,14 +153,32 @@ def _supported_value(requested: object, supported: object) -> object | None:
     return supported[0] if len(supported) == 1 else None
 
 
-def _within_supported(model_filled: dict, advertised: dict) -> dict:
-    corrected = {
-        field: _supported_value(value, advertised.get(_SUPPORTED_VALUES_FIELD[field]))
-        if field in _SUPPORTED_VALUES_FIELD
-        else value
+def _reconciled_value(
+    field: str, value: object, *, echoed: dict, advertised: dict
+) -> object | None:
+    if field in _SUPPORTED_VALUES_FIELD:
+        return _supported_value(value, advertised.get(_SUPPORTED_VALUES_FIELD[field]))
+    if field in echoed:
+        return _narrowed(value, echoed[field])
+    return value
+
+
+def _reconcile_model_values(
+    model_filled: dict,
+    *,
+    echoed: dict,
+    advertised: dict,
+    excluded_fields: tuple[str, ...],
+) -> dict:
+    """The model's values, checked against what the provider advertised.
+    A value the provider cannot serve is left out."""
+
+    reconciled = {
+        field: _reconciled_value(field, value, echoed=echoed, advertised=advertised)
         for field, value in model_filled.items()
+        if field not in excluded_fields
     }
-    return {field: value for field, value in corrected.items() if value is not None}
+    return {field: value for field, value in reconciled.items() if value is not None}
 
 
 def build_resource_attributes(  # noqa: PLR0913
@@ -230,10 +240,9 @@ def build_resource_attributes(  # noqa: PLR0913
     # MandiPrice declares none — it names `market.location`, the market's own
     # coordinates — so nothing is added there and the resolved place reaches
     # the network as `/discover`'s spatial filter instead.
-    if location is not None and "location" in declared:
+    is_place_sent = location is not None and "location" in declared
+    if is_place_sent:
         resolved_location["location"] = location
-        model_filled = _without_place_fields(model_filled)
-    model_filled = _within_supported(model_filled, capability.advertised)
 
     # Three layers, each overriding the one before.
     #
@@ -260,10 +269,12 @@ def build_resource_attributes(  # noqa: PLR0913
         for field, value in capability.advertised.items()
         if field in allowed
     }
-    narrowed = {
-        field: _narrowed(value, echoed[field]) if field in echoed else value
-        for field, value in model_filled.items()
-    }
+    reconciled = _reconcile_model_values(
+        model_filled,
+        echoed=echoed,
+        advertised=capability.advertised,
+        excluded_fields=_PLACE_FIELDS if is_place_sent else (),
+    )
     # The resolved place last, after the model's own values. It wrote
     # `{"geo": "Nashik"}` — the place name where the schema requires a GeoJSON
     # geometry — over the point the district lookup had already resolved from
@@ -293,4 +304,4 @@ def build_resource_attributes(  # noqa: PLR0913
     ):
         validity["validity"] = _validity_window(priced_on)
 
-    return {**echoed, **narrowed, **structural, **resolved_location, **validity}
+    return {**echoed, **reconciled, **structural, **resolved_location, **validity}
