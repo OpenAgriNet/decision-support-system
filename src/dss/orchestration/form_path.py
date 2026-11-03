@@ -23,6 +23,7 @@ from dss.core.forms.models import (
     FormContext,
     FormErrors,
     FormSubmission,
+    UnknownForm,
     ValidSubmission,
 )
 from dss.core.forms.registry import FormLookup
@@ -127,6 +128,9 @@ class FormPath:
 
         if isinstance(checked, FormErrors):
             yield await self._hand_back(checked, turn=turn, ctx=ctx, recorder=recorder)
+            return
+        if isinstance(checked, UnknownForm):
+            yield await self._hand_back_unknown(turn, ctx=ctx, recorder=recorder)
             return
 
         decision = await self._moderate(redacted, ctx)
@@ -325,7 +329,7 @@ class FormPath:
     async def _redact_for_the_record(
         self,
         turn: UserTurn[FormSubmission],
-        checked: ValidSubmission | FormErrors,
+        checked: ValidSubmission | FormErrors | UnknownForm,
         ctx: TurnContext,
         recorder: TurnRecorder,
     ) -> _Redacted:

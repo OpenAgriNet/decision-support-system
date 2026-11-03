@@ -231,16 +231,21 @@ class FieldError(BaseModel):
 
 
 class FormErrors(BaseModel):
-    """``definition`` is the form the values were checked against; ``None``
-    when nobody serves the context, and then ``field_errors`` is empty."""
-
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     form_id: str
     context: FormContext
     submission_id: str
-    definition: FormDefinition | None
+    definition: FormDefinition
     field_errors: tuple[FieldError, ...] = ()
+
+
+class UnknownForm(BaseModel):
+    """A submission for a context nobody serves: there is no form to hand back."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    context: FormContext
 
 
 class ValidSubmission(BaseModel):
