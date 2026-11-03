@@ -250,7 +250,7 @@ def _load_boot_config(settings: Settings) -> _BootConfig:
 
 
 def _network_sender_for(settings: Settings) -> NetworkSenderFor:
-    if settings.network_sender_from_turn:
+    if settings.network_sender_from_turn_enabled:
         return caller_or_configured_sender(settings.network_sender_id)
     return configured_sender(settings.network_sender_id)
 

@@ -56,7 +56,7 @@ services:
       # is repeated here because an empty string would overwrite it.
       DSS_NETWORK_HOST_ID: ${DSS_NETWORK_HOST_ID:-oan}
       # true → network calls name the caller's senderId instead of the DSS.
-      DSS_NETWORK_SENDER_FROM_TURN: ${DSS_NETWORK_SENDER_FROM_TURN:-false}
+      DSS_NETWORK_SENDER_FROM_TURN_ENABLED: ${DSS_NETWORK_SENDER_FROM_TURN_ENABLED:-false}
       # Every pack, catalog and API, is on this ref of network-specs.
       DSS_SCHEMA_PACK_REF: ${DSS_SCHEMA_PACK_REF:-schema-packs-v0.1}
       # Read straight from os.environ by app.py, not through Settings, so it

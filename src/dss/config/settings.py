@@ -163,7 +163,7 @@ class Settings(BaseSettings):
     network_host_id: str = "oan"
     # On: network calls name the turn's caller (`context.senderId`) as sender,
     # or `network_sender_id` when the caller sent none. Off: always the DSS.
-    network_sender_from_turn: bool = False
+    network_sender_from_turn_enabled: bool = False
 
     @field_validator("network_sender_id", "network_host_id", mode="before")
     @classmethod

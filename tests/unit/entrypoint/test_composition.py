@@ -32,7 +32,7 @@ def test_by_default_the_dss_sends_as_itself(a_turn):
 
 
 def test_the_sender_toggle_sends_the_callers_id(a_turn):
-    settings = Settings(network_sender_from_turn=True, _env_file=None)
+    settings = Settings(network_sender_from_turn_enabled=True, _env_file=None)
 
     sender_for = _network_sender_for(settings)
 
