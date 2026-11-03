@@ -187,6 +187,16 @@ def test_an_empty_translation_path_turns_translation_off(monkeypatch) -> None:
     assert Settings(_env_file=None).edge_translation_config_path is None
 
 
+def test_the_network_host_id_is_read_without_spaces(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """It goes on the wire as is, and the boot check reads the same value."""
+
+    monkeypatch.setenv("DSS_NETWORK_HOST_ID", "  oan-mock ")
+
+    assert Settings(_env_file=None).network_host_id == "oan-mock"
+
+
 def test_a_blank_provider_preferences_url_counts_as_unset(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

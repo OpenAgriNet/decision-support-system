@@ -89,6 +89,7 @@ def test_the_container_gets_the_dss_settings_with_host_urls_rewritten():
         "OTEL_EXPORTER_OTLP_ENDPOINT": "http://host.test:3000/api/public/otel",
         "DSS_DISCOVERY_BASE_URL": "http://host.test:8078",
         "DSS_INVOCATION_BASE_URL": "http://host.test:8078",
+        "DSS_NETWORK_HOST_ID": "oan-mock",
     }
 
 

@@ -168,6 +168,7 @@ def live_app(
         composer_model=model,
         discovery_base_url=base_url,
         invocation_base_url=base_url,
+        network_host_id="oan-mock",
         schema_pack_dir=SCHEMA_PACKS,
         evidence_dir=tmp_path,
     )

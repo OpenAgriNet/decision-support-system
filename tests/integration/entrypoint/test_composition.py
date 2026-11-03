@@ -44,7 +44,8 @@ SCHEMA_PACKS_FIXTURE_ROOT = (
 
 
 def _settings(tmp_path: Path, **overrides) -> Settings:
-    return Settings(stub_llm=True, evidence_dir=tmp_path, **overrides)
+    fields = {"stub_llm": True, "evidence_dir": tmp_path, "network_host_id": "host"}
+    return Settings(**(fields | overrides))
 
 
 def _no_preferences():
@@ -173,6 +174,23 @@ def test_packs_already_on_disk_are_not_re_fetched(tmp_path: Path) -> None:
 
     assert network.discover is not _discovers_nothing
     assert "openagrinet:MandiPrice" in network.schema_context_index
+
+
+def test_the_network_without_a_host_id_refuses_to_boot(tmp_path: Path) -> None:
+    """Every discover names the host as receiver and network. A blank id would
+    fail at the network, far from its cause. Blank, not unset: compose passes
+    an unset variable through as an empty string."""
+
+    settings = _settings(
+        tmp_path,
+        discovery_base_url="https://discovery.example/oan",
+        invocation_base_url="https://select.example/oan",
+        schema_pack_dir=SCHEMA_PACKS_FIXTURE_ROOT,
+        network_host_id="",
+    )
+
+    with pytest.raises(ValueError, match="DSS_NETWORK_HOST_ID"):
+        build_runner(settings)
 
 
 def test_build_runner_passes_the_fetch_through(tmp_path: Path) -> None:

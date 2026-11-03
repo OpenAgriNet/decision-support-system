@@ -611,6 +611,12 @@ def _network(
             preferences=preferences,
         )
 
+    if not settings.network_host_id:
+        raise ValueError(
+            "the network is configured but DSS_NETWORK_HOST_ID is not set — "
+            "refusing to boot, because every discover names the host as its "
+            "receiver and network"
+        )
     _ensure_schema_packs(settings, fetch=fetch)
 
     # The client is constructed here, not in the loop below: it is used later
@@ -632,7 +638,7 @@ def _network(
         client=client,
         base_url=settings.discovery_base_url,
         schema_pack_cache=cache,
-        network_host_id=settings.network_receiver_id,
+        network_host_id=settings.network_host_id,
     )
     if settings.provider_preferences_base_url is not None:
         # The registry, asked on every turn over the same client the network

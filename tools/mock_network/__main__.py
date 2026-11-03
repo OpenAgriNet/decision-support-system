@@ -6,6 +6,7 @@ Then point the DSS at it:
 
     DSS_DISCOVERY_BASE_URL=http://127.0.0.1:8078 \
     DSS_INVOCATION_BASE_URL=http://127.0.0.1:8078 \
+    DSS_NETWORK_HOST_ID=oan-mock \
     uv run uvicorn --factory dss.entrypoint.app:create_app --port 8077
 
 A separate process on purpose: real sockets, its own log, and `/docs` to poke

@@ -69,6 +69,8 @@ def container_env(
     mock = f"http://{host}:{mock_port}"
     set_env["DSS_DISCOVERY_BASE_URL"] = mock
     set_env["DSS_INVOCATION_BASE_URL"] = mock
+    # The mock's own name for itself, which its `on_discover` replies carry.
+    set_env["DSS_NETWORK_HOST_ID"] = "oan-mock"
     return pass_env, set_env
 
 

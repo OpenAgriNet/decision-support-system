@@ -130,6 +130,7 @@ def _app(httpserver: HTTPServer, tmp_path: Path):
         composer_model=MODEL,
         discovery_base_url=base_url,
         invocation_base_url=base_url,
+        network_host_id="oan-mock",
         schema_pack_dir=SCHEMA_PACKS,
         schemes_config_path=FIXTURES / "schemes.csv",
         evidence_dir=tmp_path,

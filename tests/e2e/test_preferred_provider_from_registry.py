@@ -174,6 +174,7 @@ def live_app(httpserver: HTTPServer, live_network: _Network, tmp_path: Path):
         composer_model=MODEL,
         discovery_base_url=base_url,
         invocation_base_url=base_url,
+        network_host_id="oan-mock",
         provider_preferences_base_url=base_url,
         schema_pack_dir=SCHEMA_PACKS,
         evidence_dir=tmp_path,

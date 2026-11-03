@@ -197,6 +197,7 @@ model access. With Azure:
 ```bash
 DSS_DISCOVERY_BASE_URL=http://127.0.0.1:8078 \
 DSS_INVOCATION_BASE_URL=http://127.0.0.1:8078 \
+DSS_NETWORK_HOST_ID=oan-mock \
 DSS_SCHEMES_CONFIG_PATH=configs/schemes.csv \
 DSS_INTENT_MODEL=azure:<deployment id> \
 DSS_MODERATION_MODEL=azure:<deployment id> \
@@ -213,6 +214,7 @@ finds the key itself:
 ```bash
 DSS_DISCOVERY_BASE_URL=http://127.0.0.1:8078 \
 DSS_INVOCATION_BASE_URL=http://127.0.0.1:8078 \
+DSS_NETWORK_HOST_ID=oan-mock \
 DSS_SCHEMES_CONFIG_PATH=configs/schemes.csv \
 OPENAI_API_KEY=sk-... \
 uv run uvicorn --factory dss.entrypoint.app:create_app --port 8077

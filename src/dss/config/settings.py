@@ -14,7 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Annotated
 
-from pydantic import Field, field_validator
+from pydantic import Field, StringConstraints, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from dss.config.schema_pack_fetch import DEFAULT_PACK_DIR, PUBLISHED_REF
@@ -160,7 +160,10 @@ class Settings(BaseSettings):
     # The DSS's own id as sender on every network call, and the fallback when
     # a caller sends no `senderId`.
     network_sender_id: str = "consumer.oan.dev"
-    network_receiver_id: str = "oan"
+    # The network host: receiver and network of every discover. Blank by
+    # default so a run without the network needs none; with the network on,
+    # boot refuses until it is set.
+    network_host_id: Annotated[str, StringConstraints(strip_whitespace=True)] = ""
     # On: network calls name the turn's caller (`context.senderId`) as sender,
     # or `network_sender_id` when the caller sent none. Off: always the DSS.
     network_sender_from_turn: bool = False
