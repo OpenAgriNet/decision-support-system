@@ -66,6 +66,8 @@ async def test_the_wired_adapter_resolves_a_query() -> None:
             client=client,
             base_url="https://discovery-network-vistaar.da.gov.in/oan",
             schema_pack_cache=schema_pack_cache,
+            sender_id="consumer.oan.dev",
+            network_host_id="host.oan",
         )
         query = ProviderQuery(
             capabilities=("openagrinet:MandiPrice",),
@@ -93,9 +95,11 @@ async def test_the_wired_discover_providers_bakes_in_radius() -> None:
             client=client,
             base_url="https://discovery-network-vistaar.da.gov.in/oan",
             schema_pack_cache=schema_pack_cache,
+            sender_id="consumer.oan.dev",
+            network_host_id="host.oan",
         )
         discover_providers = build_discover_providers(
-            discovery=discovery,
+            discovery_for=lambda _turn: discovery,
             schema_pack_cache=schema_pack_cache,
             radius_m=25000,
             preferences=NO_PREFERENCES,
@@ -142,12 +146,15 @@ async def test_the_fan_out_runs_inside_a_span(monkeypatch) -> None:
     await cache.refresh()
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        discovery = build_capability_discovery(
+            client=client,
+            base_url="https://network-adapter.example",
+            schema_pack_cache=cache,
+            sender_id="consumer.oan.dev",
+            network_host_id="host.oan",
+        )
         discover_providers = build_discover_providers(
-            build_capability_discovery(
-                client=client,
-                base_url="https://network-adapter.example",
-                schema_pack_cache=cache,
-            ),
+            lambda _turn: discovery,
             cache,
             50_000,
             NO_PREFERENCES,
@@ -210,12 +217,15 @@ async def test_the_fan_out_span_counts_how_many_asks_went_unanswered(
     await cache.refresh()
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(unavailable)) as client:
+        discovery = build_capability_discovery(
+            client=client,
+            base_url="https://network-adapter.example",
+            schema_pack_cache=cache,
+            sender_id="consumer.oan.dev",
+            network_host_id="host.oan",
+        )
         discover_providers = build_discover_providers(
-            build_capability_discovery(
-                client=client,
-                base_url="https://network-adapter.example",
-                schema_pack_cache=cache,
-            ),
+            lambda _turn: discovery,
             cache,
             50_000,
             NO_PREFERENCES,
@@ -282,12 +292,15 @@ async def test_run_turn_can_call_the_composed_discover_providers() -> None:
     await cache.refresh()
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        discovery = build_capability_discovery(
+            client=client,
+            base_url="https://network-adapter.example",
+            schema_pack_cache=cache,
+            sender_id="consumer.oan.dev",
+            network_host_id="host.oan",
+        )
         discover_providers = build_discover_providers(
-            build_capability_discovery(
-                client=client,
-                base_url="https://network-adapter.example",
-                schema_pack_cache=cache,
-            ),
+            lambda _turn: discovery,
             cache,
             50_000,
             NO_PREFERENCES,

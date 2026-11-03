@@ -196,3 +196,16 @@ def test_a_blank_provider_preferences_url_counts_as_unset(
     monkeypatch.setenv("DSS_PROVIDER_PREFERENCES_BASE_URL", "")
 
     assert Settings().provider_preferences_base_url is None
+
+
+def test_blank_network_ids_keep_their_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A blank id would go on the wire and fail at the network, far from its
+    cause. `DSS_NETWORK_HOST_ID=` in an env template means "not set"."""
+
+    monkeypatch.setenv("DSS_NETWORK_HOST_ID", "")
+    monkeypatch.setenv("DSS_NETWORK_SENDER_ID", "  ")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.network_host_id == "oan"
+    assert settings.network_sender_id == "consumer.oan.dev"

@@ -14,7 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Annotated
 
-from pydantic import Field, field_validator
+from pydantic import Field, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from dss.config.schema_pack_fetch import DEFAULT_PACK_DIR, PUBLISHED_REF
@@ -157,9 +157,26 @@ class Settings(BaseSettings):
     # gateway and never reach this process.
     gateway_api_key: str = ""
 
-    # Envelope routing ids the /select adapter stamps on each provider call.
+    # The DSS's own id as sender on every network call.
     network_sender_id: str = "consumer.oan.dev"
-    network_receiver_id: str = "oan"
+    # The network host: receiver and network of every discover.
+    network_host_id: str = "oan"
+    # On: network calls name the turn's caller (`context.senderId`) as sender,
+    # or `network_sender_id` when the caller sent none. Off: always the DSS.
+    network_sender_from_turn_enabled: bool = False
+
+    @field_validator("network_sender_id", "network_host_id", mode="before")
+    @classmethod
+    def _default_when_blank(cls, value: object, info: ValidationInfo) -> object:
+        """An empty variable is an operator leaving it off, not an id.
+
+        A blank id would go on the wire and fail at the network, far from its
+        cause. `DSS_NETWORK_HOST_ID=` in an env template means "not set".
+        """
+
+        if isinstance(value, str) and not value.strip():
+            return cls.model_fields[info.field_name].default
+        return value
 
     @property
     def network_enabled(self) -> bool:

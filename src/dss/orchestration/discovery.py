@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime
 from functools import partial
 from typing import Protocol
@@ -27,11 +28,16 @@ def build_capability_discovery(
     client: httpx.AsyncClient,
     base_url: str,
     schema_pack_cache: SchemaContextSource,
+    *,
+    sender_id: str,
+    network_host_id: str,
 ) -> HttpCapabilityDiscovery:
     return HttpCapabilityDiscovery(
         client=client,
         base_url=base_url,
         schema_pack_cache=schema_pack_cache,
+        sender_id=sender_id,
+        network_host_id=network_host_id,
     )
 
 
@@ -41,15 +47,20 @@ class DiscoverProviders(Protocol):
     ) -> DiscoveryResult: ...
 
 
+# The discovery adapter for one turn. Built per turn because who the DSS
+# says it is on the network can depend on the turn's caller.
+type DiscoveryFor = Callable[[UserTurn], CapabilityDiscovery]
+
+
 def build_discover_providers(
-    discovery: CapabilityDiscovery,
+    discovery_for: DiscoveryFor,
     schema_pack_cache: CapabilityIndexSource,
     radius_m: int,
     preferences: ProviderPreferences,
 ) -> DiscoverProviders:
-    """Bakes in the built adapter, cache, configured radius, and the sender
-    ranking source, so callers only ever supply what changes per turn: intent,
-    turn, and now.
+    """Bakes in how the adapter is built, the cache, the configured radius, and
+    the sender ranking source, so callers only ever supply what changes per
+    turn: intent, turn, and now.
 
     Discovery only reads ``ask.place``; ``core.location.resolve_places`` fills
     it before discovery runs.
@@ -77,7 +88,6 @@ def build_discover_providers(
 
     bound = partial(
         discover_providers,
-        discovery=discovery,
         schema_pack_cache=schema_pack_cache,
         radius_m=radius_m,
     )
@@ -85,7 +95,7 @@ def build_discover_providers(
     async def discover(
         intent: Intent, turn: UserTurn, *, now: datetime
     ) -> DiscoveryResult:
-        result = await bound(intent, turn, now=now)
+        result = await bound(intent, turn, now=now, discovery=discovery_for(turn))
         preference = await preferences.for_sender(
             turn.sender_id, transaction_id=turn.transaction_id
         )

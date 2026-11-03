@@ -4,13 +4,10 @@ The OpenAgriNet v2.0 resource-discovery profile. Two actions — `discover` and
 `select` — and participants named by `senderId` and `receiverId`. Written down
 because other networks use similar words for different things.
 
-Before this, the envelope was a dict literal in each of the two adapters, and
-the protocol version was two private constants that happened to agree. The wire
-is unchanged — the tests assert the exact dicts those literals produced.
-
-**Two shapes, not one nullable one.** A discover names the schema it asks about
-and no participants; a select names the participants and never a schema. One
-model with everything optional would let a select ask about a schema, which the
+**Separate shapes, not one nullable one.** Every message names its sender and
+receiver. Only a discover names the schema it asks about and the network it
+goes to; a select goes to one provider and names neither. One model with
+everything optional would let a select carry a schema or a network, which the
 network has no meaning for.
 """
 
@@ -82,7 +79,7 @@ class NetworkContext(BaseModel):
 
     Field names are snake_case here and camelCase on the wire, which is the
     same split the DSS's own HTTP surface uses. `extra="forbid"` is what makes
-    the two subclasses actually separate rather than merely differently named.
+    the subclasses actually separate rather than merely differently named.
     """
 
     model_config = ConfigDict(
@@ -90,6 +87,8 @@ class NetworkContext(BaseModel):
     )
 
     version: NetworkVersion = NetworkVersion.V2_0_0
+    sender_id: str
+    receiver_id: str
     message_id: str
     transaction_id: str
     timestamp: str
@@ -105,7 +104,7 @@ class NetworkContext(BaseModel):
 
 
 class DiscoverContext(NetworkContext):
-    """A discover: which schema, and no participants.
+    """A discover: which schema, sent to the network host.
 
     `action` is `Literal`, so it cannot be set to anything else — an envelope
     whose action disagreed with the endpoint it was posted to would be rejected
@@ -113,6 +112,7 @@ class DiscoverContext(NetworkContext):
     """
 
     action: Literal[NetworkAction.DISCOVER] = NetworkAction.DISCOVER
+    network_id: str
     schema_context: NetworkSchemaContext | None = None
 
     @field_serializer("schema_context")
@@ -123,24 +123,18 @@ class DiscoverContext(NetworkContext):
 
 
 class SelectContext(NetworkContext):
-    """A select: who is asking whom, and no schema."""
+    """A select: to one provider, with no schema and no network."""
 
     action: Literal[NetworkAction.SELECT] = NetworkAction.SELECT
-    sender_id: str
-    receiver_id: str
 
 
 class SupportContext(NetworkContext):
     """A support call, the same envelope as a select."""
 
     action: Literal[NetworkAction.SUPPORT] = NetworkAction.SUPPORT
-    sender_id: str
-    receiver_id: str
 
 
 class StatusContext(NetworkContext):
     """A status call, the same envelope as a select."""
 
     action: Literal[NetworkAction.STATUS] = NetworkAction.STATUS
-    sender_id: str
-    receiver_id: str

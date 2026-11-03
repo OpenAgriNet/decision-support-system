@@ -30,7 +30,6 @@ def _invocation_returning_status(status_code: int) -> HttpCapabilityInvocation:
         client=client,
         base_url="https://provider-network-vistaar.da.gov.in/oan",
         sender_id="seeker-network-vistaar.da.gov.in",
-        receiver_id="provider-network-vistaar.da.gov.in",
         attempts=1,  # classification, not retry — see test_retry.py
     )
 
@@ -44,7 +43,6 @@ def _invocation_raising_connection_error() -> HttpCapabilityInvocation:
         client=client,
         base_url="https://provider-network-vistaar.da.gov.in/oan",
         sender_id="seeker-network-vistaar.da.gov.in",
-        receiver_id="provider-network-vistaar.da.gov.in",
         attempts=1,  # classification, not retry — see test_retry.py
     )
 
@@ -94,7 +92,6 @@ def _invocation_returning_body(body: dict) -> HttpCapabilityInvocation:
         client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
         base_url="https://provider-network-vistaar.da.gov.in/oan",
         sender_id="seeker-network-vistaar.da.gov.in",
-        receiver_id="provider-network-vistaar.da.gov.in",
         attempts=1,
     )
 
@@ -160,7 +157,6 @@ async def test_a_malformed_200_is_not_retried() -> None:
         client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
         base_url="https://provider-network-vistaar.da.gov.in/oan",
         sender_id="seeker-network-vistaar.da.gov.in",
-        receiver_id="provider-network-vistaar.da.gov.in",
         backoff_seconds=0.0,
     )
 

@@ -29,6 +29,8 @@ def _discovery_returning_status(status_code: int) -> HttpCapabilityDiscovery:
         client=client,
         base_url="https://discovery-network-vistaar.da.gov.in/oan",
         schema_pack_cache=_FakeSchemaPackCache(),
+        sender_id="consumer.oan.dev",
+        network_host_id="host.oan",
     )
 
 
@@ -41,6 +43,8 @@ def _discovery_raising_connection_error() -> HttpCapabilityDiscovery:
         client=client,
         base_url="https://discovery-network-vistaar.da.gov.in/oan",
         schema_pack_cache=_FakeSchemaPackCache(),
+        sender_id="consumer.oan.dev",
+        network_host_id="host.oan",
     )
 
 
@@ -135,6 +139,8 @@ async def test_a_failed_category_only_query_is_still_reported() -> None:
             client=client,
             base_url="http://network.test",
             schema_pack_cache=_FakeSchemaPackCache(),
+            sender_id="consumer.oan.dev",
+            network_host_id="host.oan",
         )
         result = await discovery.discover(query, transaction_id="t")
 

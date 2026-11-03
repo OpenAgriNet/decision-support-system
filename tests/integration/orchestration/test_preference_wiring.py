@@ -110,7 +110,29 @@ def _intent() -> Intent:
 
 
 def _discover(preferences: FakeProviderPreferences):
-    return build_discover_providers(_FakeDiscovery(), _FakeIndex(), 25_000, preferences)
+    return build_discover_providers(
+        lambda _turn: _FakeDiscovery(), _FakeIndex(), 25_000, preferences
+    )
+
+
+async def test_the_discovery_is_built_for_the_turn() -> None:
+    """Who the DSS says it is on the network can depend on the turn's caller,
+    so the adapter is built per turn, not once at boot."""
+
+    built_for: list[UserTurn] = []
+
+    def discovery_for(turn: UserTurn) -> _FakeDiscovery:
+        built_for.append(turn)
+        return _FakeDiscovery()
+
+    discover = build_discover_providers(
+        discovery_for, _FakeIndex(), 25_000, FakeProviderPreferences()
+    )
+    turn = _turn("kisan-mitra-web")
+
+    await discover(_intent(), turn, now=datetime.now(UTC))
+
+    assert built_for == [turn]
 
 
 async def test_the_turns_own_client_is_the_one_looked_up() -> None:

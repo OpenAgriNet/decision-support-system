@@ -17,7 +17,6 @@ from dss.adapters.invocation.client import (
 from dss.core.provider_discovery.models import FailureClass, ProviderCapability
 
 SENDER_ID = "seeker-network-vistaar.da.gov.in"
-RECEIVER_ID = "provider-network-vistaar.da.gov.in"
 
 PROVIDER = ProviderCapability(
     provider_id="pmfby",
@@ -42,11 +41,11 @@ def test_the_attributes_ride_on_the_first_commitment() -> None:
     beside the desk's one thin resource."""
 
     request = build_status_request(
+        PROVIDER,
         ATTRIBUTES,
         resource_id="res:pmfby:grievance",
         contract_id="c0ffee00-0000-4000-8000-000000000001",
         sender_id=SENDER_ID,
-        receiver_id=RECEIVER_ID,
         message_id="7d41b9e0-52a6-4c18-8b73-1e9f0a4c6d22",
         transaction_id="9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44",
         timestamp="2026-10-29T06:12:01.330Z",
@@ -54,7 +53,6 @@ def test_the_attributes_ride_on_the_first_commitment() -> None:
 
     assert request["context"]["action"] == "status"
     assert request["context"]["senderId"] == SENDER_ID
-    assert request["context"]["receiverId"] == RECEIVER_ID
     assert request["context"]["transactionId"] == "9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44"
     assert request["message"] == {
         "contract": {
@@ -69,6 +67,22 @@ def test_the_attributes_ride_on_the_first_commitment() -> None:
             ],
         }
     }
+
+
+def test_receiver_is_the_provider() -> None:
+    request = build_status_request(
+        PROVIDER,
+        ATTRIBUTES,
+        resource_id="res:pmfby:grievance",
+        contract_id="c",
+        sender_id=SENDER_ID,
+        message_id="m",
+        transaction_id="t",
+        timestamp="2026-10-29T06:12:01.330Z",
+    )
+
+    assert request["context"]["receiverId"] == "pmfby"
+    assert "networkId" not in request["context"]
 
 
 _CASE = {
@@ -128,12 +142,14 @@ class _Replies:
         self.paths: list[str] = []
         self.message_ids: list[str] = []
         self.contract_ids: list[str] = []
+        self.receiver_ids: list[str] = []
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         self.calls += 1
         body = json.loads(request.content)
         self.paths.append(request.url.path)
         self.message_ids.append(body["context"]["messageId"])
+        self.receiver_ids.append(body["context"]["receiverId"])
         self.contract_ids.append(body["message"]["contract"]["id"])
         if self.calls <= self._fail_times:
             return httpx.Response(self._status_code, headers=self._headers, json={})
@@ -145,7 +161,6 @@ def _invocation(handler: _Replies) -> HttpCapabilityInvocation:
         client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
         base_url="https://provider-network-vistaar.da.gov.in/oan",
         sender_id=SENDER_ID,
-        receiver_id=RECEIVER_ID,
         backoff_seconds=0.0,
     )
 
@@ -157,6 +172,14 @@ async def test_a_read_case_comes_back_from_status() -> None:
 
     assert reply.attributes["case"]["status"] == {"code": "UnderReview"}
     assert handler.paths == ["/oan/status"]
+
+
+async def test_the_wire_names_the_provider_as_receiver() -> None:
+    handler = _Replies(200, fail_times=0)
+
+    await _invocation(handler).status(PROVIDER, ATTRIBUTES, "txn-1")
+
+    assert handler.receiver_ids == ["pmfby"]
 
 
 async def test_a_transient_failure_is_retried_as_a_select_is() -> None:
