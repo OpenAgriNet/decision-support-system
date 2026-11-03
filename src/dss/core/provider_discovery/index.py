@@ -31,6 +31,28 @@ _ACTION_TYPES_BY_PACK_INTERACTION: Mapping[str, tuple[str, ...]] = {
 
 # The pack is read as data, so any shape defect surfaces as one of these.
 PACK_DEFECTS = (KeyError, TypeError, ValueError, yaml.YAMLError)
+# The path segment that says a pack indexes a point.
+_LOCATION_SEGMENT = "location"
+
+
+def pack_needs_place(pack: SchemaPackFiles) -> bool:
+    """True when the pack indexes a location, its own (`location.geo`) or a
+    nested one (`market.location.geo`). Such a pack serves a place, so an ask
+    must name one to be served and its discover call is filtered by it."""
+
+    profile = json.loads(pack.profile_json)
+    return any(
+        _LOCATION_SEGMENT in path.split(".")
+        for path in profile.get("indexable_paths", ())
+    )
+
+
+def build_place_bound_types(packs: tuple[SchemaPackFiles, ...]) -> frozenset[str]:
+    return frozenset(
+        extract_type_const(pack.attributes_yaml, pack.pack_name)
+        for pack in packs
+        if pack_needs_place(pack)
+    )
 
 
 def is_api_pack(pack: SchemaPackFiles) -> bool:

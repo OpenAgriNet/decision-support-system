@@ -45,6 +45,8 @@ _ACTION_TYPE_BY_INTERACTION = {
 class CapabilityIndexSource(Protocol):
     def current(self) -> Mapping[tuple[str, str], tuple[str, ...]]: ...
 
+    def place_bound_types(self) -> frozenset[str]: ...
+
 
 def resolve_capability_type(
     subject_category: str,
@@ -82,11 +84,22 @@ def coverage_for_ask(ask: Ask, *, radius_m: int) -> Coverage | None:
 _DISCOVERABLE_WITHOUT_CAPABILITY_TYPE = frozenset({SubjectCategory.SCHEME})
 
 
+def _is_searched_by_place(
+    types: tuple[str, ...], place_bound_types: frozenset[str]
+) -> bool:
+    """A spatial filter drops every resource with no coverage area, so one
+    placeless @type in the query is enough to send none. A query with no @type
+    (a scheme ask) has no pack to say, and keeps the filter."""
+
+    return all(capability in place_bound_types for capability in types)
+
+
 def _query_for_ask(
     ask: Ask,
     languages: tuple[str, ...],
     coverage: Coverage | None,
     index: Mapping[tuple[str, str], tuple[str, ...]],
+    place_bound_types: frozenset[str],
 ) -> tuple[ProviderQuery | None, CapabilityUnresolved | None]:
     action_type = _ACTION_TYPE_BY_INTERACTION[ask.interaction_type]
     types, event = resolve_capability_type(
@@ -101,7 +114,7 @@ def _query_for_ask(
         capabilities=types,
         subject_category=ask.subject_categories.value,
         languages=languages,
-        coverage=coverage,
+        coverage=coverage if _is_searched_by_place(types, place_bound_types) else None,
     ), None
 
 
@@ -133,6 +146,7 @@ def _find_asks_to_discover(
     languages: tuple[str, ...],
     radius_m: int,
     index: Mapping[tuple[str, str], tuple[str, ...]],
+    place_bound_types: frozenset[str],
 ) -> AsksToBeDiscovered:
     """Coverage is computed per ask: each ask carries its own resolved place
     (or none), so a turn asking about two places issues two spatially
@@ -148,7 +162,9 @@ def _find_asks_to_discover(
             unsearchable_asks.add(ask_index)
             continue
         coverage = coverage_for_ask(ask, radius_m=radius_m)
-        query, event = _query_for_ask(ask, languages, coverage, index)
+        query, event = _query_for_ask(
+            ask, languages, coverage, index, place_bound_types
+        )
         if query is None:
             assert event is not None  # noqa: S101 - type narrowing only
             events.append(event)
@@ -241,7 +257,7 @@ async def discover_providers(  # noqa: PLR0913
     languages = (str(turn.target_lang),)
     index = schema_pack_cache.current()
     to_discover: AsksToBeDiscovered = _find_asks_to_discover(
-        intent, languages, radius_m, index
+        intent, languages, radius_m, index, schema_pack_cache.place_bound_types()
     )
     discovered: DiscoveredAsks = await _send_queries(
         to_discover, discovery, turn.transaction_id

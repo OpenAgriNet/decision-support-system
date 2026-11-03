@@ -40,6 +40,9 @@ class _FakeIndex:
     def current(self):
         return {("Weather", "Service"): (WEATHER,)}
 
+    def place_bound_types(self):
+        return frozenset({WEATHER})
+
 
 def _capability(provider: str) -> ProviderCapability:
     return ProviderCapability(

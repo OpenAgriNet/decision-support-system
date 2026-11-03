@@ -54,11 +54,20 @@ def _turn(**overrides) -> UserTurn:
 
 
 class _FakeSchemaPackCache:
-    def __init__(self, index: dict[tuple[str, str], tuple[str, ...]]) -> None:
+    def __init__(
+        self,
+        index: dict[tuple[str, str], tuple[str, ...]],
+        *,
+        place_bound_types: frozenset[str] = frozenset(),
+    ) -> None:
         self._index = index
+        self._place_bound_types = place_bound_types
 
     def current(self) -> dict[tuple[str, str], tuple[str, ...]]:
         return self._index
+
+    def place_bound_types(self) -> frozenset[str]:
+        return self._place_bound_types
 
 
 def _query_result(
@@ -911,7 +920,10 @@ _MARKET_AND_WEATHER_INDEX = _FakeSchemaPackCache(
     {
         ("Market", "Service"): ("openagrinet:MandiPrice",),
         ("Weather", "Service"): ("openagrinet:WeatherObservation",),
-    }
+    },
+    place_bound_types=frozenset(
+        {"openagrinet:MandiPrice", "openagrinet:WeatherObservation"}
+    ),
 )
 _MARKET_ASK = Ask(
     subject_categories=SubjectCategory.MARKET,
@@ -1115,6 +1127,31 @@ async def test_asks_at_different_places_send_separate_queries() -> None:
 
     assert len(discovery.calls) == 2
     assert discovery.calls[0].coverage != discovery.calls[1].coverage
+
+
+async def test_a_placeless_pack_is_searched_everywhere() -> None:
+    """Grievance resources carry no coverage area, so a spatial filter on the
+    user's own place matched nothing and the catalog came back empty."""
+
+    discovery = _NetworkDiscovery({})
+    grievance_ask = Ask(
+        subject_categories=SubjectCategory.GRIEVANCE,
+        interaction_type=InteractionType.ACT,
+        place=_PUNE,
+    )
+
+    await discover_providers(
+        Intent(asks=(grievance_ask,), confidence=0.9),
+        _turn(),
+        discovery=discovery,
+        schema_pack_cache=_FakeSchemaPackCache(
+            {("Grievance", "Service"): ("openagrinet:Grievance",)}
+        ),
+        radius_m=25000,
+        now=NOW,
+    )
+
+    assert discovery.calls[0].coverage is None
 
 
 async def test_an_advise_ask_searches_knowledge_resources() -> None:

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dss.core.provider_discovery.index import (
     build_capability_index,
+    build_place_bound_types,
     build_schema_context_index,
 )
 from dss.core.provider_discovery.models import SchemaPackFiles, SchemaPackSkipped
@@ -19,6 +20,7 @@ class SchemaPackCache:
         self._source = source
         self._index: dict[tuple[str, str], tuple[str, ...]] = {}
         self._schema_context_index: dict[str, str] = {}
+        self._place_bound_types: frozenset[str] = frozenset()
         self._skipped: tuple[SchemaPackSkipped, ...] = ()
 
     def current(self) -> dict[tuple[str, str], tuple[str, ...]]:
@@ -26,6 +28,9 @@ class SchemaPackCache:
 
     def current_schema_context(self) -> dict[str, str]:
         return self._schema_context_index
+
+    def place_bound_types(self) -> frozenset[str]:
+        return self._place_bound_types
 
     def skipped_packs(self) -> tuple[SchemaPackSkipped, ...]:
         """Packs left out of the current index because they were malformed.
@@ -58,9 +63,11 @@ class SchemaPackCache:
 
         index, _ = build_capability_index(good)
         context_index, _ = build_schema_context_index(good)
+        place_bound_types = build_place_bound_types(good)
 
-        # Assigned together, after both builds succeed, so a raise leaves the
-        # last good pair in place rather than a new index against a stale one.
+        # Assigned together, after every build succeeds, so a raise leaves the
+        # last good set in place rather than a new index against a stale one.
         self._index = index
         self._schema_context_index = context_index
+        self._place_bound_types = place_bound_types
         self._skipped = tuple(skipped.values())
