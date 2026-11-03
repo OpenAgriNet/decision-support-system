@@ -157,14 +157,6 @@
   and only `subject_categories` selects a capability. Explains why an OBSERVE
   ask can resolve an advisory pack.
 
-- **Spatial filter targets a field the sample catalogs lack.** The DSS sends
-  `targets: "$.catalogs[*].provider.availableAt[*].geo"`, but the real
-  `on_discover` samples put coverage on
-  `resources[*].resourceAttributes.coverageAreas[*]` and carry no
-  `provider.availableAt`. If the network filters spatially on what the DSS
-  names, such a provider would never match a located query. Found while
-  building the mock network (#21).
-
 - **`schemas.openagrinet.global` does not resolve.** DNS fails. It appears in
   test fixtures (`test_planner_select_tool.py`) and in `taxonomy.` form inside
   `subjectId` values; the real packs declare

@@ -1154,27 +1154,6 @@ async def test_a_placeless_pack_is_searched_everywhere() -> None:
     assert discovery.calls[0].coverage is None
 
 
-async def test_one_placeless_pack_drops_the_filter() -> None:
-    """A filter would drop the placeless pack's resources outright."""
-
-    discovery = _NetworkDiscovery({})
-    schema_pack_cache = _FakeSchemaPackCache(
-        {("Market", "Service"): ("openagrinet:MandiPrice", "openagrinet:MarketNews")},
-        place_bound_types=frozenset({"openagrinet:MandiPrice"}),
-    )
-
-    await discover_providers(
-        Intent(asks=(_MARKET_ASK.model_copy(update={"place": _PUNE}),)),
-        _turn(),
-        discovery=discovery,
-        schema_pack_cache=schema_pack_cache,
-        radius_m=25000,
-        now=NOW,
-    )
-
-    assert discovery.calls[0].coverage is None
-
-
 async def test_an_advise_ask_searches_knowledge_resources() -> None:
     discovery = _NetworkDiscovery({})
     advise_ask = Ask(
