@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,7 @@ import pytest
 from dss.core.provider_discovery.index import (
     PACK_DEFECTS,
     build_capability_index,
+    build_place_bound_types,
     build_schema_context_index,
     is_api_pack,
 )
@@ -259,7 +261,7 @@ _GRIEVANCE_ATTRIBUTES = (
 ).read_text(encoding="utf-8")
 
 
-def _grievance_pack(profile: dict[str, str]) -> SchemaPackFiles:
+def _grievance_pack(profile: Mapping[str, object]) -> SchemaPackFiles:
     """Its examples carry no subjectCategories, like the real pack's."""
     return SchemaPackFiles(
         pack_name="Grievance",
@@ -281,6 +283,28 @@ def test_an_api_pack_is_indexed_under_its_type_name_for_service_asks_only() -> N
 
     assert index == {("Grievance", "Service"): ("openagrinet:Grievance",)}
     assert skipped == ()
+
+
+def test_only_a_pack_indexing_a_location_is_place_bound() -> None:
+    mandi_price = SchemaPackFiles(
+        pack_name="MandiPrice",
+        version="v0.1",
+        profile_json=json.dumps(
+            {"indexable_paths": ["beckn:resourceAttributes.market.location.geo"]}
+        ),
+        attributes_yaml=MANDI_PRICE_ATTRIBUTES,
+        examples_json=(MANDI_PRICE_EXAMPLE,),
+    )
+    grievance = _grievance_pack(
+        {
+            **_TRANSACT_API_PROFILE,
+            "indexable_paths": ["beckn:resourceAttributes.scheme.code"],
+        }
+    )
+
+    assert build_place_bound_types((mandi_price, grievance)) == frozenset(
+        {"openagrinet:MandiPrice"}
+    )
 
 
 def test_an_advise_api_pack_is_indexed_for_knowledge_asks_only() -> None:

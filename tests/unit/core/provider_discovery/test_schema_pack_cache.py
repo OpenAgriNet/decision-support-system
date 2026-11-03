@@ -57,6 +57,23 @@ async def test_refresh_populates_an_empty_cache() -> None:
     assert cache.current()[("Market", "Knowledge")] == ("openagrinet:MandiPrice",)
 
 
+async def test_refresh_records_place_bound_types() -> None:
+    place_bound_pack = SchemaPackFiles(
+        pack_name="MandiPrice",
+        version="v0.1",
+        profile_json=json.dumps(
+            {"indexable_paths": ["beckn:resourceAttributes.market.location.geo"]}
+        ),
+        attributes_yaml=MANDI_PRICE_ATTRIBUTES,
+        examples_json=(MANDI_PRICE_EXAMPLE,),
+    )
+    cache = SchemaPackCache(_FakeSource(packs=(place_bound_pack,)))
+
+    await cache.refresh()
+
+    assert cache.place_bound_types() == frozenset({"openagrinet:MandiPrice"})
+
+
 async def test_a_failed_refresh_keeps_the_last_good_index() -> None:
     source = _FakeSource(packs=(MANDI_PRICE_PACK,))
     cache = SchemaPackCache(source)
