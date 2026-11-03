@@ -678,3 +678,111 @@ def test_no_other_capability_gets_a_validity_window() -> None:
     )
 
     assert "validity" not in resource_attributes
+
+
+# Mausamgram's own advertisement, as the dev network returned it.
+_MAUSAMGRAM_ADVERTISED = {
+    "coverageAreas": [
+        {
+            "areaCode": "IN",
+            "areaName": "India",
+            "areaLevel": "Country",
+            "codeScheme": "ISO-3166-1",
+        },
+        {
+            "type": "Polygon",
+            "coordinates": [
+                [[68, 6.5], [97.5, 6.5], [97.5, 37.5], [68, 37.5], [68, 6.5]]
+            ],
+        },
+    ],
+    "supportedObservationTypes": ["Forecast"],
+}
+_WEATHER_FILTERABLE = (
+    "coverageAreas[].areaCode",
+    "supportedObservationTypes",
+    "observationType",
+    "location.geo",
+)
+
+
+def test_the_resolved_place_replaces_a_coverage_area_the_model_named() -> None:
+    """The model wrote `{"areaCode": "Sangli"}` — a place name, not an area
+    reference or a geometry — and the provider refused the select for it. The
+    resolved point already says where, so the model's guess is not sent."""
+
+    resource_attributes = build_resource_attributes(
+        subject_category="Weather",
+        capability=_capability(advertised=_MAUSAMGRAM_ADVERTISED),
+        place=_place([74.767913, 17.113762]),
+        model_filled={"coverageAreas": [{"areaCode": "Sangli"}]},
+        schema_context_index=_SCHEMA_CONTEXT_INDEX,
+        filterable=_WEATHER_FILTERABLE,
+        declared=("coverageAreas", "location"),
+    )
+
+    assert (
+        resource_attributes["coverageAreas"] == _MAUSAMGRAM_ADVERTISED["coverageAreas"]
+    )
+    assert resource_attributes["location"] == {
+        "geo": {"type": "Point", "coordinates": [74.767913, 17.113762]}
+    }
+
+
+def test_a_coverage_area_the_model_named_stands_without_a_resolved_place() -> None:
+    resource_attributes = build_resource_attributes(
+        subject_category="Weather",
+        capability=_capability(advertised=_MAUSAMGRAM_ADVERTISED),
+        place=None,
+        model_filled={"coverageAreas": [{"areaCode": "Sangli"}]},
+        schema_context_index=_SCHEMA_CONTEXT_INDEX,
+        filterable=_WEATHER_FILTERABLE,
+        declared=("coverageAreas", "location"),
+    )
+
+    assert resource_attributes["coverageAreas"] == [{"areaCode": "Sangli"}]
+
+
+def test_an_unsupported_observation_type_becomes_the_only_supported_one() -> None:
+    """Mausamgram only forecasts. The model asked it for an `Observation`."""
+
+    resource_attributes = build_resource_attributes(
+        subject_category="Weather",
+        capability=_capability(advertised=_MAUSAMGRAM_ADVERTISED),
+        place=None,
+        model_filled={"observationType": "Observation"},
+        schema_context_index=_SCHEMA_CONTEXT_INDEX,
+        filterable=_WEATHER_FILTERABLE,
+    )
+
+    assert resource_attributes["observationType"] == "Forecast"
+
+
+def test_an_unsupported_observation_type_is_dropped_among_several() -> None:
+    resource_attributes = build_resource_attributes(
+        subject_category="Weather",
+        capability=_capability(
+            advertised={"supportedObservationTypes": ["Observation", "Forecast"]}
+        ),
+        place=None,
+        model_filled={"observationType": "Nowcast"},
+        schema_context_index=_SCHEMA_CONTEXT_INDEX,
+        filterable=_WEATHER_FILTERABLE,
+    )
+
+    assert "observationType" not in resource_attributes
+
+
+def test_a_supported_observation_type_stands() -> None:
+    resource_attributes = build_resource_attributes(
+        subject_category="Weather",
+        capability=_capability(
+            advertised={"supportedObservationTypes": ["Observation", "Forecast"]}
+        ),
+        place=None,
+        model_filled={"observationType": "Observation"},
+        schema_context_index=_SCHEMA_CONTEXT_INDEX,
+        filterable=_WEATHER_FILTERABLE,
+    )
+
+    assert resource_attributes["observationType"] == "Observation"
