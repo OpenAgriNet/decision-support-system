@@ -16,6 +16,8 @@ from dss.core.provider_discovery.models import FailureClass, ProviderQuery
 
 FIXTURES = Path(__file__).parent / "fixtures"
 BASE_URL = "https://discovery-network-vistaar.da.gov.in/oan"
+SENDER_ID = "consumer.oan.dev"
+NETWORK_HOST_ID = "host.oan"
 
 
 class _FakeSchemaPackCache:
@@ -48,6 +50,8 @@ def _discovery(
         client=client,
         base_url=BASE_URL,
         schema_pack_cache=schema_pack_cache,
+        sender_id=SENDER_ID,
+        network_host_id=NETWORK_HOST_ID,
     )
 
 
@@ -88,6 +92,30 @@ async def test_discover_sends_the_given_transaction_id() -> None:
     await discovery.discover(query, transaction_id="txn-from-experience-layer")
 
     assert sent_bodies[0]["context"]["transactionId"] == "txn-from-experience-layer"
+
+
+async def test_discover_names_the_sender_and_network_host() -> None:
+    sent_bodies = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent_bodies.append(json.loads(request.content))
+        on_discover = json.loads((FIXTURES / "discover_response.json").read_text())
+        return httpx.Response(200, json=on_discover)
+
+    discovery = _discovery(httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    query = ProviderQuery(
+        capabilities=("openagrinet:WeatherObservation",),
+        subject_category="Weather",
+        languages=("hi",),
+        coverage=None,
+    )
+
+    await discovery.discover(query, transaction_id="txn-test")
+
+    context = sent_bodies[0]["context"]
+    assert context["senderId"] == SENDER_ID
+    assert context["receiverId"] == NETWORK_HOST_ID
+    assert context["networkId"] == NETWORK_HOST_ID
 
 
 async def test_a_refreshed_cache_is_reflected_without_rewiring() -> None:

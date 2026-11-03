@@ -230,12 +230,15 @@ def _spatial_filter(query: ProviderQuery) -> list[dict[str, Any]]:
     ]
 
 
-def build_discover_request(
+def build_discover_request(  # noqa: PLR0913
     query: ProviderQuery,
     schema_context_index: dict[str, str],
     message_id: str,
     transaction_id: NetworkTransactionID,
     timestamp: str,
+    *,
+    sender_id: str,
+    network_host_id: str,
 ) -> dict[str, Any]:
     intent: dict[str, Any] = {"filters": _jsonpath_filter(query.subject_category)}
     spatial = _spatial_filter(query)
@@ -246,6 +249,9 @@ def build_discover_request(
         message_id=message_id,
         transaction_id=transaction_id,
         timestamp=timestamp,
+        sender_id=sender_id,
+        receiver_id=network_host_id,
+        network_id=network_host_id,
         # `None` when no @type resolved, which the envelope then omits rather
         # than sending empty (#52).
         schema_context=NetworkSchemaContext.for_types(
@@ -268,10 +274,15 @@ class HttpCapabilityDiscovery:
         client: httpx.AsyncClient,
         base_url: str,
         schema_pack_cache: SchemaContextSource,
+        *,
+        sender_id: str,
+        network_host_id: str,
     ) -> None:
         self._client = client
         self._base_url = base_url
         self._schema_pack_cache = schema_pack_cache
+        self._sender_id = sender_id
+        self._network_host_id = network_host_id
 
     async def discover(
         self, query: ProviderQuery, transaction_id: NetworkTransactionID
@@ -313,6 +324,8 @@ class HttpCapabilityDiscovery:
                     message_id=str(uuid4()),
                     transaction_id=transaction_id,
                     timestamp=datetime.now(UTC).isoformat(),
+                    sender_id=self._sender_id,
+                    network_host_id=self._network_host_id,
                 )
             except (KeyError, TypeError, ValueError) as exc:
                 span.set_status(Status(StatusCode.ERROR, f"unbuildable: {exc!r}"))

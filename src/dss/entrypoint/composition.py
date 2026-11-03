@@ -613,6 +613,8 @@ def _network(
         client=client,
         base_url=settings.discovery_base_url,
         schema_pack_cache=cache,
+        sender_id=settings.network_sender_id,
+        network_host_id=settings.network_host_id,
     )
     if settings.provider_preferences_base_url is not None:
         # The registry, asked on every turn over the same client the network

@@ -157,8 +157,10 @@ class Settings(BaseSettings):
     # gateway and never reach this process.
     gateway_api_key: str = ""
 
-    # Envelope routing ids the /select adapter stamps on each provider call.
+    # The DSS's own id as sender on every network call.
     network_sender_id: str = "consumer.oan.dev"
+    # The network host: receiver and network of every discover.
+    network_host_id: str = "oan"
     network_receiver_id: str = "oan"
 
     @property

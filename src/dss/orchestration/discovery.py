@@ -27,11 +27,16 @@ def build_capability_discovery(
     client: httpx.AsyncClient,
     base_url: str,
     schema_pack_cache: SchemaContextSource,
+    *,
+    sender_id: str,
+    network_host_id: str,
 ) -> HttpCapabilityDiscovery:
     return HttpCapabilityDiscovery(
         client=client,
         base_url=base_url,
         schema_pack_cache=schema_pack_cache,
+        sender_id=sender_id,
+        network_host_id=network_host_id,
     )
 
 

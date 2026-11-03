@@ -64,6 +64,8 @@ def _discovery(handler) -> HttpCapabilityDiscovery:
         client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
         base_url="https://discovery-network-vistaar.da.gov.in/oan",
         schema_pack_cache=_FakeSchemaPackCache(),
+        sender_id="consumer.oan.dev",
+        network_host_id="host.oan",
     )
 
 
@@ -114,6 +116,8 @@ async def test_a_capability_with_no_schema_context_does_not_raise(spans) -> None
         client=httpx.AsyncClient(transport=httpx.MockTransport(never_called)),
         base_url="https://discovery-network-vistaar.da.gov.in/oan",
         schema_pack_cache=_EmptySchemaPackCache(),
+        sender_id="consumer.oan.dev",
+        network_host_id="host.oan",
     )
 
     result = await discovery.discover(QUERY, "txn-1")

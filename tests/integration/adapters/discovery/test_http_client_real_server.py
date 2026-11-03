@@ -51,6 +51,8 @@ async def test_discover_against_a_real_local_server(httpserver: HTTPServer) -> N
             client=client,
             base_url=_base_url(httpserver),
             schema_pack_cache=SCHEMA_PACK_CACHE,
+            sender_id="consumer.oan.dev",
+            network_host_id="host.oan",
         )
         query = ProviderQuery(
             capabilities=("openagrinet:WeatherObservation",),
@@ -76,6 +78,8 @@ async def test_a_real_429_response_is_returned_as_a_failure(
             client=client,
             base_url=_base_url(httpserver),
             schema_pack_cache=SCHEMA_PACK_CACHE,
+            sender_id="consumer.oan.dev",
+            network_host_id="host.oan",
         )
         query = ProviderQuery(
             capabilities=("openagrinet:WeatherObservation",),
@@ -102,6 +106,8 @@ async def test_the_outbound_request_is_logged(httpserver: HTTPServer, caplog) ->
                 client=client,
                 base_url=_base_url(httpserver),
                 schema_pack_cache=SCHEMA_PACK_CACHE,
+                sender_id="consumer.oan.dev",
+                network_host_id="host.oan",
             )
             query = ProviderQuery(
                 capabilities=("openagrinet:WeatherObservation",),
