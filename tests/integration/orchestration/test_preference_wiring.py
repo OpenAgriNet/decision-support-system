@@ -32,6 +32,7 @@ from dss.core.provider_discovery.models import (
 from dss.core.shared.models import Geometry, TextQuery, UserTurn
 from dss.orchestration.discovery import build_discover_providers
 from tests.support.fakes import FakeProviderPreferences
+from tests.support.providers import build_capability
 
 WEATHER = "openagrinet:WeatherObservation"
 
@@ -45,7 +46,7 @@ class _FakeIndex:
 
 
 def _capability(provider: str) -> ProviderCapability:
-    return ProviderCapability(
+    return build_capability(
         provider_id=provider,
         provider_name=provider.title(),
         capability=WEATHER,

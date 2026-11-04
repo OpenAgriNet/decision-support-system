@@ -28,6 +28,7 @@ from dss.core.forms.models import (
     FormSubmission,
     JsonScalar,
     PiiClass,
+    UnknownForm,
     ValidSubmission,
 )
 from dss.core.forms.registry import FormLookup, FormRegistry
@@ -310,15 +311,10 @@ def _resolve(node: dict, document: dict) -> dict:
 
 def validate_submission(
     submission: FormSubmission, forms: FormLookup
-) -> ValidSubmission | FormErrors:
+) -> ValidSubmission | FormErrors | UnknownForm:
     definition = forms.find(submission.context)
     if definition is None:
-        return FormErrors(
-            form_id=submission.form_id,
-            context=submission.context,
-            submission_id=submission.submission_id,
-            definition=None,
-        )
+        return UnknownForm(context=submission.context)
     sent_twice = _names_sent_twice(submission.values)
     values = {value.name: value.value for value in submission.values}
     field_errors = (
@@ -446,14 +442,10 @@ def withhold_values(submission: FormSubmission) -> FormSubmission:
 def answer_for_form_errors(
     errors: FormErrors, text: ClarificationText
 ) -> ComposedAnswer:
-    """Text only for a form nobody serves: there is no form to hand back."""
-
-    if errors.definition is None:
-        return answer_for_unknown_form(text)
     return ComposedAnswer(
         content=(
             TextBlock(text=text.form_has_errors),
-            form_error_block(errors, errors.definition, text),
+            form_error_block(errors, text),
         )
     )
 
@@ -504,15 +496,13 @@ def answer_for_unknown_form(text: ClarificationText) -> ComposedAnswer:
     return ComposedAnswer(content=(TextBlock(text=text.unknown_form),))
 
 
-def form_error_block(
-    errors: FormErrors, definition: FormDefinition, text: ClarificationText
-) -> FormErrorBlock:
+def form_error_block(errors: FormErrors, text: ClarificationText) -> FormErrorBlock:
     return FormErrorBlock(
         form_id=errors.form_id,
         context=errors.context,
         submission_id=errors.submission_id,
         fields=tuple(
-            _error_entry(error, definition.field(error.name), text)
+            _error_entry(error, errors.definition.field(error.name), text)
             for error in errors.field_errors
         ),
     )

@@ -405,7 +405,12 @@ async def test_a_registered_form_the_path_cannot_file_is_unknown() -> None:
     schemas = attributes["components"]["schemas"]
     schemas["Grievance"]["x-oan-schema-by-action"]["advice"] = "GrievanceSupport"
     advice = FormContext(scheme="PMFBY", category="Grievance", action="advice")
-    orch, _ = _build(attributes_yaml=yaml.safe_dump(attributes))
+    moderation_llm = _RecordingModerationLLM()
+    orch, _ = _build(
+        attributes_yaml=yaml.safe_dump(attributes),
+        moderation_llm=moderation_llm,
+        policies=[DELETE_COMMAND],
+    )
 
     events = await _collect(orch, _turn(_VALUES, context=advice))
 
@@ -415,6 +420,7 @@ async def test_a_registered_form_the_path_cannot_file_is_unknown() -> None:
     (text,) = finished.content
     assert isinstance(text, TextBlock)
     assert text.text == load_clarification_text().unknown_form
+    assert moderation_llm.judged == []
 
 
 async def test_a_direct_answer_does_not_stand_in_for_a_provider() -> None:

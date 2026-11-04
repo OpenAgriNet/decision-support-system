@@ -21,8 +21,8 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 
 from dss.adapters.invocation.client import HttpCapabilityInvocation
 from dss.adapters.observability.tracing import open_span
-from dss.core.provider_discovery.models import ProviderCapability
 from dss.observability.trace_log import set_stage_span_opener
+from tests.support.providers import build_capability
 
 from .test_orchestrator import (
     _ANSWERED_EVIDENCE,
@@ -33,7 +33,7 @@ from .test_orchestrator import (
     _served_discovery,
 )
 
-_CAPABILITY = ProviderCapability(
+_CAPABILITY = build_capability(
     provider_id="agmarknet",
     provider_name="Agmarknet",
     capability="openagrinet:MandiPrice",

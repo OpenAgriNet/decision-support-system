@@ -23,6 +23,7 @@ from dss.core.forms.models import (
     FormContext,
     FormErrors,
     FormSubmission,
+    UnknownForm,
     ValidSubmission,
 )
 from dss.core.forms.registry import FormLookup
@@ -113,7 +114,7 @@ class FormPath:
         self._telemetry = telemetry
         self._clarification_text = clarification_text
 
-    async def run(
+    async def run(  # noqa: PLR0911 - one exit per way a form is not filed
         self,
         turn: UserTurn[FormSubmission],
         *,
@@ -128,9 +129,25 @@ class FormPath:
         if isinstance(checked, FormErrors):
             yield await self._hand_back(checked, turn=turn, ctx=ctx, recorder=recorder)
             return
+        if isinstance(checked, UnknownForm):
+            yield await self._hand_back_unknown(turn, ctx=ctx, recorder=recorder)
+            return
+        # Before moderation: a form that cannot be filed is not worth a model call.
+        intent = self._intent_for(turn.input.context)
+        if intent is None:  # a known form, but not an action the DSS can file
+            yield await self._hand_back_unknown(turn, ctx=ctx, recorder=recorder)
+            return
+
+        action = self._forms.action_schema(turn.input.context)
+        # shortcut: the registry builds each form from its schema, so this should
+        # not happen; link the two so it cannot, then drop this branch.
+        if action is None:
+            yield await self._hand_back_unknown(turn, ctx=ctx, recorder=recorder)
+            return
 
         decision = await self._moderate(redacted, ctx)
         note_stage(self._telemetry, "moderation", ctx, decision.outcome.value)
+
         if decision.outcome is not Outcome.PROCEED:
             outcome, refusal = refusal_for(decision)
             yield await self._finish(
@@ -138,11 +155,6 @@ class FormPath:
             )
             return
 
-        intent = self._intent_for(turn.input.context)
-        action = self._forms.action_schema(checked.definition.context)
-        if intent is None or action is None:
-            yield await self._hand_back_unknown(turn, ctx=ctx, recorder=recorder)
-            return
         discovery = await self._find_providers(
             intent, turn, ctx, scheme_code=turn.input.context.scheme
         )
@@ -325,7 +337,7 @@ class FormPath:
     async def _redact_for_the_record(
         self,
         turn: UserTurn[FormSubmission],
-        checked: ValidSubmission | FormErrors,
+        checked: ValidSubmission | FormErrors | UnknownForm,
         ctx: TurnContext,
         recorder: TurnRecorder,
     ) -> _Redacted:

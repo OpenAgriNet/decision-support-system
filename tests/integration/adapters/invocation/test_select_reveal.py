@@ -14,10 +14,10 @@ import httpx
 import pytest
 
 from dss.adapters.invocation.client import HttpCapabilityInvocation, SelectFailedError
-from dss.core.provider_discovery.models import ProviderCapability
 from dss.core.redaction.visibility import Visibility
+from tests.support.providers import build_capability
 
-CAPABILITY = ProviderCapability(
+CAPABILITY = build_capability(
     provider_id="scheme-desk",
     provider_name="Scheme Desk",
     capability="openagrinet:AgricultureResource",
@@ -78,12 +78,13 @@ def _attributes(body: dict) -> dict:
     ]
 
 
-async def test_the_wire_names_the_provider_as_receiver() -> None:
+async def test_the_wire_names_the_bpp_as_receiver() -> None:
     provider = _Provider(_answer("approved"))
 
     await _invocation(provider).select(CAPABILITY, {}, "txn-1")
 
-    assert provider.bodies[0]["context"]["receiverId"] == CAPABILITY.provider_id
+    assert provider.bodies[0]["context"]["receiverId"] == CAPABILITY.bpp_id
+    assert provider.bodies[0]["context"]["bppUri"] == CAPABILITY.bpp_uri
 
 
 async def test_the_wire_carries_the_real_value() -> None:

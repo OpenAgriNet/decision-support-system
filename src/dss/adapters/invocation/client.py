@@ -79,7 +79,8 @@ def build_select_request(  # noqa: PLR0913
 ) -> dict[str, Any]:
     context = SelectContext(
         sender_id=sender_id,
-        receiver_id=capability.provider_id,
+        receiver_id=capability.bpp_id,
+        bpp_uri=capability.bpp_uri,
         message_id=message_id,
         transaction_id=transaction_id,
         timestamp=timestamp,
@@ -127,7 +128,8 @@ def build_support_request(  # noqa: PLR0913
 
     context = SupportContext(
         sender_id=sender_id,
-        receiver_id=capability.provider_id,
+        receiver_id=capability.bpp_id,
+        bpp_uri=capability.bpp_uri,
         message_id=message_id,
         transaction_id=transaction_id,
         timestamp=timestamp,
@@ -166,7 +168,8 @@ def build_status_request(  # noqa: PLR0913
 
     context = StatusContext(
         sender_id=sender_id,
-        receiver_id=capability.provider_id,
+        receiver_id=capability.bpp_id,
+        bpp_uri=capability.bpp_uri,
         message_id=message_id,
         transaction_id=transaction_id,
         timestamp=timestamp,

@@ -25,13 +25,13 @@ from dss.core.planner.models import Skill, Verdict
 from dss.core.provider_discovery.models import (
     DiscoveryResult,
     FailureClass,
-    ProviderCapability,
 )
 from dss.core.shared.models import TextQuery, UserTurn
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
 from dss.ports.invocation import StatusFailedError
+from tests.support.providers import build_capability
 
-PROVIDER = ProviderCapability(
+PROVIDER = build_capability(
     provider_id="pmfby",
     provider_name="PMFBY Grievance Portal",
     capability="openagrinet:Grievance",

@@ -9,6 +9,8 @@
   "message": {
     "catalogs": [
       {
+        "bppId": "provider-network-vistaar.da.gov.in",
+        "bppUri": "https://provider-network-vistaar.da.gov.in/oan",
         "descriptor": {
           "code": "WEATHER_MAUSAMGRAM",
           "name": "IMD Mausamgram daily weather forecast",

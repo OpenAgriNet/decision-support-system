@@ -55,6 +55,8 @@ class ProviderCapability:
     provider_name: str
     capability: NetworkSchemaType
     resource_id: str  # names which resource `select` commits to
+    bpp_id: str
+    bpp_uri: str
     observed_categories: tuple[str, ...] = ()  # the resource's own subjectCategories
     # The provider's own code from on_discover ("AGMARKNET-01"). Kept rather
     # than sent: the real select request names a provider by id and name only.
@@ -167,10 +169,10 @@ class FailureClass(Enum):
 class DiscoveryFailure:
     """A discovery call failed for one capability.
 
-    ``provider_id`` is None for a whole-call failure — the only kind seen in
-    a real response so far. A federated discovery service could plausibly
-    report a per-provider partial failure inside one response; this field is
-    ready for that but unverified against real data.
+    ``provider_id`` is None for a whole-call failure. It is set when one
+    catalog in an otherwise good response was dropped (no BPP to address);
+    the ask then counts as failed in the discovery span even when a sibling
+    catalog serves it.
     """
 
     capability: NetworkSchemaType

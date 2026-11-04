@@ -102,7 +102,8 @@ def test_no_types_named_means_no_schema_context_at_all():
 def test_a_select_context_is_the_dict_the_adapter_used_to_build():
     context = SelectContext(
         sender_id="consumer.oan.dev",
-        receiver_id="mausamgram",
+        receiver_id="bpp.oan.dev",
+        bpp_uri="https://bpp.oan.dev",
         message_id="m-2",
         transaction_id="t-1",
         timestamp="2026-01-01T00:00:00Z",
@@ -112,7 +113,8 @@ def test_a_select_context_is_the_dict_the_adapter_used_to_build():
         "action": "select",
         "version": "2.0.0",
         "senderId": "consumer.oan.dev",
-        "receiverId": "mausamgram",
+        "receiverId": "bpp.oan.dev",
+        "bppUri": "https://bpp.oan.dev",
         "messageId": "m-2",
         "transactionId": "t-1",
         "timestamp": "2026-01-01T00:00:00Z",
