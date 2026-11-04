@@ -119,6 +119,36 @@ def test_a_catalog_without_a_bpp_is_rejected_and_logged(caplog) -> None:
     assert "cat-no-bpp" in caplog.text
 
 
+def test_a_rejected_catalog_reports_only_typed_resources() -> None:
+    """A resource with no `@type` is skipped on the normal path, so it must
+    not turn the rejection into a malformed response either."""
+
+    response = {
+        "message": {
+            "catalogs": [
+                {
+                    "id": "cat-no-bpp",
+                    "provider": {"id": "p", "descriptor": {"name": "P"}},
+                    "resources": [
+                        {"id": "r", "resourceAttributes": {}},
+                        {
+                            "id": "r2",
+                            "resourceAttributes": {
+                                "@type": "openagrinet:X",
+                                "informationMode": "OnDemand",
+                            },
+                        },
+                    ],
+                }
+            ]
+        }
+    }
+
+    result = map_discover_response(response)
+
+    assert [failure.capability for failure in result.failures] == ["openagrinet:X"]
+
+
 def test_a_provider_with_no_descriptor_code_maps_to_none() -> None:
     """``code`` is not guaranteed — only ``name`` appears in every fixture."""
 

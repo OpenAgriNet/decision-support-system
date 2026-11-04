@@ -183,7 +183,7 @@ def map_discover_response(response: dict[str, Any]) -> ProviderQueryResult:
     answers: list[DiscoveredAnswer] = []
     failures: list[DiscoveryFailure] = []
     for catalog in response["message"]["catalogs"]:
-        missing = _missing_bpp_field(catalog)
+        missing = _find_missing_bpp_field(catalog)
         if missing:
             failures.extend(_reject_catalog(catalog, missing))
             continue
@@ -197,7 +197,7 @@ def map_discover_response(response: dict[str, Any]) -> ProviderQueryResult:
     )
 
 
-def _missing_bpp_field(catalog: dict[str, Any]) -> str | None:
+def _find_missing_bpp_field(catalog: dict[str, Any]) -> str | None:
     return next((field for field in _BPP_FIELDS if not catalog.get(field)), None)
 
 
@@ -208,10 +208,6 @@ def _reject_catalog(catalog: dict[str, Any], missing: str) -> list[DiscoveryFail
     provider_id = catalog["provider"]["id"]
     detail = f"catalog {catalog.get('id')} has no {missing}"
     logger.error("discover: %s (provider %s); catalog dropped", detail, provider_id)
-    types = dict.fromkeys(
-        resource["resourceAttributes"]["@type"]
-        for resource in catalog.get("resources", ())
-    )
     return [
         DiscoveryFailure(
             capability=capability,
@@ -220,8 +216,18 @@ def _reject_catalog(catalog: dict[str, Any], missing: str) -> list[DiscoveryFail
             provider_id=provider_id,
             detail=detail,
         )
-        for capability in types
+        for capability in _offered_types(catalog)
     ]
+
+
+def _offered_types(catalog: dict[str, Any]) -> tuple[str, ...]:
+    """The distinct @types the catalog's resources carry, in catalog order."""
+
+    types = (
+        resource["resourceAttributes"].get("@type")
+        for resource in catalog.get("resources", ())
+    )
+    return tuple(dict.fromkeys(t for t in types if t))
 
 
 def _jsonpath_filter(subject_category: str) -> dict[str, str]:
