@@ -17,6 +17,7 @@ from dss.core.intent.models import PlaceSource, ResolvedPlace
 from dss.core.planner.resource_attributes import build_resource_attributes
 from dss.core.provider_discovery.models import ProviderCapability
 from dss.core.shared.models import Geometry
+from tests.support.providers import build_capability
 
 _SCHEMA_CONTEXT_INDEX = {
     "openagrinet:MandiPrice": "https://schemas.openagrinet.global/schema/MandiPrice/v0.1/context.jsonld",
@@ -38,13 +39,11 @@ _MANDI_FILTERABLE = (
 
 
 def _capability(advertised: dict | None = None) -> ProviderCapability:
-    return ProviderCapability(
+    return build_capability(
         provider_id="agmarknet",
         provider_name="Agmarknet",
         capability="openagrinet:MandiPrice",
         resource_id="res:agmarknet:daily-price",
-        bpp_id="bpp",
-        bpp_uri="https://bpp.example",
         observed_categories=("Market",),
         advertised=advertised or {},
     )
@@ -588,13 +587,11 @@ def test_the_subject_category_comes_from_the_ask_not_the_advertisement() -> None
     `Crop` as a crop question.
     """
 
-    capability = ProviderCapability(
+    capability = build_capability(
         provider_id="kvk",
         provider_name="KVK",
         capability="openagrinet:MandiPrice",
         resource_id="res:kvk:advisory",
-        bpp_id="bpp",
-        bpp_uri="https://bpp.example",
         observed_categories=("Crop", "Practice"),
     )
 
@@ -656,13 +653,11 @@ def test_no_other_capability_gets_a_validity_window() -> None:
     non-filterable field in a working call and earn a fresh NACK.
     """
 
-    weather = ProviderCapability(
+    weather = build_capability(
         provider_id="mausamgram",
         provider_name="IMD Mausamgram",
         capability="openagrinet:WeatherObservation",
         resource_id="resource:weather-observation:mausamgram:daily-forecast",
-        bpp_id="bpp",
-        bpp_uri="https://bpp.example",
         observed_categories=("Weather",),
         advertised={},
     )

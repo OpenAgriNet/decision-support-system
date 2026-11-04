@@ -15,8 +15,8 @@ import pytest
 from dotenv import dotenv_values
 
 from dss.adapters.llm.pydantic_ai_provider import PydanticAILLMProvider
-from dss.config.prompt_service import build_prompt_service
 from dss.adapters.scheme_catalog.csv_file import load_scheme_catalog
+from dss.config.prompt_service import build_prompt_service
 from dss.config.settings import Settings
 from dss.core.intent.models import InteractionType, SubjectCategory
 from dss.core.intent.service import classify_intent

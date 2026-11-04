@@ -8,17 +8,16 @@ from pydantic_ai.models.function import AgentInfo, FunctionModel
 from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
 from dss.core.planner.models import Skill, Verdict
 from dss.core.planner.validation import DomainSchema
-from dss.core.provider_discovery.models import DiscoveryResult, ProviderCapability
+from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.shared.models import TextQuery, UserTurn
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
+from tests.support.providers import build_capability
 
-CAPABILITY = ProviderCapability(
+CAPABILITY = build_capability(
     provider_id="agmarknet",
     provider_name="Agmarknet",
     capability="openagrinet:MandiPrice",
     resource_id="res:agmarknet:daily-price",
-    bpp_id="bpp",
-    bpp_uri="https://bpp.example",
     observed_categories=("Market",),
 )
 

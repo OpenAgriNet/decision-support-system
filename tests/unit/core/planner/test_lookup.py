@@ -4,16 +4,15 @@ from __future__ import annotations
 
 from dss.core.planner.lookup import find_capability
 from dss.core.provider_discovery.models import DiscoveryResult, ProviderCapability
+from tests.support.providers import build_capability
 
 
 def _capability(resource_id: str) -> ProviderCapability:
-    return ProviderCapability(
+    return build_capability(
         provider_id="agmarknet",
         provider_name="Agmarknet",
         capability="openagrinet:MandiPrice",
         resource_id=resource_id,
-        bpp_id="bpp",
-        bpp_uri="https://bpp.example",
         observed_categories=("Market",),
     )
 

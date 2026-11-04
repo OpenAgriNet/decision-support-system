@@ -14,11 +14,12 @@ from dss.adapters.invocation.client import (
     build_status_request,
     map_status_response,
 )
-from dss.core.provider_discovery.models import FailureClass, ProviderCapability
+from dss.core.provider_discovery.models import FailureClass
+from tests.support.providers import build_capability
 
 SENDER_ID = "seeker-network-vistaar.da.gov.in"
 
-PROVIDER = ProviderCapability(
+PROVIDER = build_capability(
     provider_id="pmfby",
     provider_name="PMFBY Grievance Portal",
     capability="openagrinet:Grievance",

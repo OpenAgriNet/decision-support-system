@@ -43,6 +43,7 @@ from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import Geometry, TextQuery, UserTurn
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
 from dss.ports.invocation import SelectFailedError
+from tests.support.providers import build_capability
 
 WEATHER = "openagrinet:WeatherObservation"
 SCHEMAS = {
@@ -58,13 +59,11 @@ CONTEXT_INDEX = {
 
 
 def _capability(provider: str, capability: str = WEATHER) -> ProviderCapability:
-    return ProviderCapability(
+    return build_capability(
         provider_id=provider,
         provider_name=provider.title(),
         capability=capability,
         resource_id=f"res:{provider}:forecast",
-        bpp_id="bpp",
-        bpp_uri="https://bpp.example",
     )
 
 

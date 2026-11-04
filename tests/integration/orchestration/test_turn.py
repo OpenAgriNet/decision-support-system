@@ -32,12 +32,12 @@ from dss.core.policy.models import (
 )
 from dss.core.provider_discovery.models import (
     DiscoveryResult,
-    ProviderCapability,
 )
 from dss.core.shared.models import Geometry, Location, TextQuery, UserTurn
 from dss.orchestration.turn import run_turn
 from dss.ports.area_lookup import AreaMatch
 from tests.support.fakes import FakeAreaLookup, FakePromptProvider
+from tests.support.providers import build_capability
 
 PROFANITY = WordCheckPolicy(
     id="profanity-filter",
@@ -118,13 +118,11 @@ class _FakeDiscovery:
         return self._result
 
 
-CAPABILITY = ProviderCapability(
+CAPABILITY = build_capability(
     provider_id="agmarknet",
     provider_name="Agmarknet",
     capability="openagrinet:MandiPrice",
     resource_id="res:agmarknet:daily-price",
-    bpp_id="bpp",
-    bpp_uri="https://bpp.example",
     observed_categories=("Market",),
 )
 

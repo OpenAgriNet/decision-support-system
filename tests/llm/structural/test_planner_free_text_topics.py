@@ -44,6 +44,7 @@ from dss.core.shared.models import ConversationMessage, TextQuery, UserTurn
 from dss.entrypoint.composition import _resolve_model
 from dss.orchestration.plan import build_plan
 from tests.support.live_model import missing_model_key
+from tests.support.providers import build_capability
 
 _DOTENV = Path(__file__).parents[3] / ".env"
 
@@ -77,13 +78,11 @@ def _live_env(monkeypatch: pytest.MonkeyPatch) -> None:
 # model used to send back verbatim.
 PUBLISHED_TOPICS = ("Crop establishment", "Nutrient management", "Pest management")
 
-CAPABILITY = ProviderCapability(
+CAPABILITY = build_capability(
     provider_id="krishi-kb",
     provider_name="Krishi Knowledge Base",
     capability="openagrinet:KnowledgeAdvisory",
     resource_id="res:krishi-kb:crop-advisory",
-    bpp_id="bpp",
-    bpp_uri="https://bpp.example",
     observed_categories=("Crop",),
     advertised={
         "topics": list(PUBLISHED_TOPICS),

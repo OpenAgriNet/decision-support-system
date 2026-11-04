@@ -8,18 +8,17 @@ from __future__ import annotations
 
 from dss.adapters.invocation.client import build_select_request
 from dss.core.provider_discovery.models import ProviderCapability
+from tests.support.providers import build_capability
 
 SENDER_ID = "seeker-network-vistaar.da.gov.in"
 
 
 def _capability() -> ProviderCapability:
-    return ProviderCapability(
+    return build_capability(
         provider_id="mausamgram",
         provider_name="IMD Mausamgram NWP",
         capability="openagrinet:WeatherObservation",
         resource_id="res:mausamgram:point-forecast",
-        bpp_id="bpp",
-        bpp_uri="https://bpp.example",
         observed_categories=("Weather",),
     )
 

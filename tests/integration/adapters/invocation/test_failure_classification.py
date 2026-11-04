@@ -10,15 +10,14 @@ import httpx
 import pytest
 
 from dss.adapters.invocation.client import HttpCapabilityInvocation, SelectFailedError
-from dss.core.provider_discovery.models import FailureClass, ProviderCapability
+from dss.core.provider_discovery.models import FailureClass
+from tests.support.providers import build_capability
 
-CAPABILITY = ProviderCapability(
+CAPABILITY = build_capability(
     provider_id="mausamgram",
     provider_name="IMD Mausamgram NWP",
     capability="openagrinet:WeatherObservation",
     resource_id="res:mausamgram:point-forecast",
-    bpp_id="bpp",
-    bpp_uri="https://bpp.example",
     observed_categories=("Weather",),
 )
 

@@ -10,24 +10,20 @@ from __future__ import annotations
 from dss.core.forms.models import ActionSchema, FormContext
 from dss.core.planner.describe_capability import render_candidates_as_markdown
 from dss.core.planner.validation import DomainSchema
-from dss.core.provider_discovery.models import ProviderCapability
+from tests.support.providers import build_capability
 
-_MANDI = ProviderCapability(
+_MANDI = build_capability(
     provider_id="agmarknet",
     provider_name="Agmarknet",
     capability="openagrinet:MandiPrice",
     resource_id="res:agmarknet:daily-price",
-    bpp_id="bpp",
-    bpp_uri="https://bpp.example",
     observed_categories=("Market",),
 )
-_KNOWLEDGE = ProviderCapability(
+_KNOWLEDGE = build_capability(
     provider_id="krishi-kb",
     provider_name="Krishi Knowledge Base",
     capability="openagrinet:KnowledgeAdvisory",
     resource_id="res:krishi-kb:crop-advisory",
-    bpp_id="bpp",
-    bpp_uri="https://bpp.example",
     observed_categories=("Crop", "Knowledge"),
 )
 _SCHEMAS = {
@@ -61,13 +57,11 @@ def test_renders_what_a_candidate_advertises() -> None:
     is what the model already had from the farmer.
     """
 
-    mandi = ProviderCapability(
+    mandi = build_capability(
         provider_id="agmarknet",
         provider_name="Agmarknet",
         capability="openagrinet:MandiPrice",
         resource_id="res:agmarknet:daily-price",
-        bpp_id="bpp",
-        bpp_uri="https://bpp.example",
         observed_categories=("Market",),
         advertised={
             "supportedCommodities": [
@@ -99,13 +93,11 @@ def test_a_scalar_advertised_field_is_left_out() -> None:
     MandiPrice's own naming, and no other pack is bound by it.
     """
 
-    mandi = ProviderCapability(
+    mandi = build_capability(
         provider_id="agmarknet",
         provider_name="Agmarknet",
         capability="openagrinet:MandiPrice",
         resource_id="res:agmarknet:daily-price",
-        bpp_id="bpp",
-        bpp_uri="https://bpp.example",
         observed_categories=("Market",),
         advertised={
             "supportedCommodities": [{"code": "78", "name": "Tomato"}],
@@ -141,13 +133,11 @@ def test_a_candidate_with_no_indexed_schema_is_left_out() -> None:
     the same ask, which were usable. This tool touches nothing external and
     must not be able to end a turn."""
 
-    unindexed = ProviderCapability(
+    unindexed = build_capability(
         provider_id="gj-agri",
         provider_name="Gujarat Agriculture Dept",
         capability="openagrinet:AgricultureFacility",
         resource_id="res:gj-agri:facility",
-        bpp_id="bpp",
-        bpp_uri="https://bpp.example",
         observed_categories=("Service",),
     )
 
@@ -160,13 +150,11 @@ def test_a_candidate_with_no_indexed_schema_is_left_out() -> None:
 def test_every_candidate_being_unindexed_says_so() -> None:
     """Otherwise the model gets an empty string and no idea why."""
 
-    unindexed = ProviderCapability(
+    unindexed = build_capability(
         provider_id="gj-agri",
         provider_name="Gujarat Agriculture Dept",
         capability="openagrinet:AgricultureFacility",
         resource_id="res:gj-agri:facility",
-        bpp_id="bpp",
-        bpp_uri="https://bpp.example",
         observed_categories=("Service",),
     )
 
@@ -191,13 +179,11 @@ def test_a_field_advertised_under_a_filterable_path_is_left_out() -> None:
     not an enum.
     """
 
-    knowledge = ProviderCapability(
+    knowledge = build_capability(
         provider_id="krishi-kb",
         provider_name="Krishi Knowledge Base",
         capability="openagrinet:KnowledgeAdvisory",
         resource_id="res:krishi-kb:crop-advisory",
-        bpp_id="bpp",
-        bpp_uri="https://bpp.example",
         observed_categories=("Crop",),
         advertised={"topics": ["Crop establishment", "Package of practices"]},
     )
@@ -221,13 +207,11 @@ def test_a_vocabulary_of_plain_strings_is_still_rendered() -> None:
     assertion that says so.
     """
 
-    weather = ProviderCapability(
+    weather = build_capability(
         provider_id="imd",
         provider_name="IMD",
         capability="openagrinet:WeatherObservation",
         resource_id="res:imd:forecast",
-        bpp_id="bpp",
-        bpp_uri="https://bpp.example",
         observed_categories=("Weather",),
         advertised={"supportedParameters": ["Rainfall", "Temperature"]},
     )
@@ -253,13 +237,11 @@ def test_a_vocabulary_under_a_compound_filterable_path_is_still_rendered() -> No
     being present is.
     """
 
-    knowledge = ProviderCapability(
+    knowledge = build_capability(
         provider_id="krishi-kb",
         provider_name="Krishi Knowledge Base",
         capability="openagrinet:KnowledgeAdvisory",
         resource_id="res:krishi-kb:crop-advisory",
-        bpp_id="bpp",
-        bpp_uri="https://bpp.example",
         observed_categories=("Crop",),
         advertised={
             "agricultureSubjects": [
@@ -287,13 +269,11 @@ def test_a_vocabulary_is_kept_while_self_described_content_is_dropped() -> None:
     """Both on one candidate — the real KnowledgeAdvisory catalog carries
     exactly this pair."""
 
-    knowledge = ProviderCapability(
+    knowledge = build_capability(
         provider_id="krishi-kb",
         provider_name="Krishi Knowledge Base",
         capability="openagrinet:KnowledgeAdvisory",
         resource_id="res:krishi-kb:crop-advisory",
-        bpp_id="bpp",
-        bpp_uri="https://bpp.example",
         observed_categories=("Crop",),
         advertised={
             "supportedCrops": [{"code": "COTTON", "name": "Cotton"}],
@@ -316,13 +296,11 @@ def test_a_fields_allowed_values_are_rendered() -> None:
     the wire — the same DSS-controlled source as the field names beside them.
     """
 
-    facility = ProviderCapability(
+    facility = build_capability(
         provider_id="pocra",
         provider_name="PoCRA",
         capability="openagrinet:AgricultureFacility",
         resource_id="res:pocra:facility-search",
-        bpp_id="bpp",
-        bpp_uri="https://bpp.example",
         observed_categories=("Facility",),
     )
     schemas = {
@@ -352,13 +330,11 @@ def test_allowed_values_are_listed_only_for_filterable_fields() -> None:
     """A pack fixes the values of fields the model cannot send either. Listing
     those invites it to try a field that is not on offer."""
 
-    facility = ProviderCapability(
+    facility = build_capability(
         provider_id="pocra",
         provider_name="PoCRA",
         capability="openagrinet:AgricultureFacility",
         resource_id="res:pocra:facility-search",
-        bpp_id="bpp",
-        bpp_uri="https://bpp.example",
         observed_categories=("Facility",),
     )
     schemas = {
@@ -432,13 +408,11 @@ def test_a_provider_for_a_form_is_described_by_what_it_files() -> None:
     """An API pack has no select schema; the candidate would be skipped as
     unknown. Its action schema says what the call is: filing the form."""
 
-    desk = ProviderCapability(
+    desk = build_capability(
         provider_id="pmfby",
         provider_name="PMFBY Grievance Portal",
         capability="openagrinet:Grievance",
         resource_id="res:pmfby:grievance",
-        bpp_id="bpp",
-        bpp_uri="https://bpp.example",
         observed_categories=("Grievance",),
     )
     filing = ActionSchema(
@@ -459,13 +433,11 @@ def test_a_provider_for_a_form_is_described_by_what_it_files() -> None:
 
 
 def test_a_provider_for_a_status_form_is_described_as_a_status_check() -> None:
-    desk = ProviderCapability(
+    desk = build_capability(
         provider_id="pmfby",
         provider_name="PMFBY Grievance Portal",
         capability="openagrinet:Grievance",
         resource_id="res:pmfby:grievance",
-        bpp_id="bpp",
-        bpp_uri="https://bpp.example",
         observed_categories=("Grievance",),
     )
     status = ActionSchema(

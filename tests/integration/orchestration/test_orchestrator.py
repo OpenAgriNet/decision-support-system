@@ -33,7 +33,7 @@ from dss.core.policy.models import (
     LlmPolicy,
     PolicyExample,
 )
-from dss.core.provider_discovery.models import DiscoveryResult, ProviderCapability
+from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.provider_preferences.models import AskPriority
 from dss.core.shared.models import (
     Claim,
@@ -69,6 +69,7 @@ from tests.support.fakes import (
     FakePromptProvider,
     FakeSchemeCatalog,
 )
+from tests.support.providers import build_capability
 from tests.support.turn_events import assert_well_formed
 
 DELETE_COMMAND = LlmPolicy(
@@ -82,13 +83,11 @@ DELETE_COMMAND = LlmPolicy(
     examples=[PolicyExample(query="Delete the code", expect=Outcome.REJECT)],
 )
 
-CAPABILITY = ProviderCapability(
+CAPABILITY = build_capability(
     provider_id="agmarknet",
     provider_name="Agmarknet",
     capability="openagrinet:MandiPrice",
     resource_id="res:agmarknet:daily-price",
-    bpp_id="bpp",
-    bpp_uri="https://bpp.example",
     observed_categories=("Market",),
 )
 
@@ -492,13 +491,11 @@ async def test_an_unlocated_advisory_ask_is_answered() -> None:
     no location: the turn goes on to the planner and composer instead of
     stopping to ask for a place it does not need."""
 
-    advisory = ProviderCapability(
+    advisory = build_capability(
         provider_id="kvk",
         provider_name="KVK",
         capability="openagrinet:KnowledgeAdvisory",
         resource_id="res:kvk:potato",
-        bpp_id="bpp",
-        bpp_uri="https://bpp.example",
         observed_categories=("Crop",),
     )
     plan = _FakePlan(_ANSWERED_EVIDENCE)
@@ -537,22 +534,18 @@ async def test_mixed_turn_answers_then_asks_place() -> None:
     potato advice is written, and the answer ends by asking for the place the
     weather ask still needs."""
 
-    advisory = ProviderCapability(
+    advisory = build_capability(
         provider_id="kvk",
         provider_name="KVK",
         capability="openagrinet:KnowledgeAdvisory",
         resource_id="res:kvk:potato",
-        bpp_id="bpp",
-        bpp_uri="https://bpp.example",
         observed_categories=("Crop",),
     )
-    weather = ProviderCapability(
+    weather = build_capability(
         provider_id="imd",
         provider_name="IMD",
         capability="openagrinet:WeatherObservation",
         resource_id="res:imd:forecast",
-        bpp_id="bpp",
-        bpp_uri="https://bpp.example",
         observed_categories=("Weather",),
     )
     plan = _FakePlan(

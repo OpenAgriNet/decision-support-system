@@ -38,8 +38,8 @@ from dss.core.forms.service import (
     withhold_values,
     without_farmer_values,
 )
-from dss.core.provider_discovery.models import ProviderCapability, SchemaPackFiles
-from tests.support.providers import grievance_provider
+from dss.core.provider_discovery.models import SchemaPackFiles
+from tests.support.providers import build_capability, grievance_provider
 
 # The Grievance pack, untrimmed, as network-specs first published it. It lives on
 # `schema-packs-v0.1` now; its URLs here still say `api-schemas/`.
@@ -485,13 +485,11 @@ def test_the_free_text_of_a_submission_is_its_freetext_fields_only() -> None:
 def test_only_the_desks_advertising_the_scheme_are_kept() -> None:
     pmfby = grievance_provider("pmfby-desk", "PMFBY")
     kisan = grievance_provider("kisan-desk", "PM-KISAN")
-    unmarked = ProviderCapability(
+    unmarked = build_capability(
         provider_id="plain",
         provider_name="PLAIN",
         capability="openagrinet:Grievance",
         resource_id="res:plain:grievance",
-        bpp_id="bpp",
-        bpp_uri="https://bpp.example",
     )
 
     kept = candidates_for_scheme((kisan, pmfby, unmarked), "PMFBY")
@@ -514,13 +512,11 @@ def test_the_body_holds_every_must_send_path_from_pack_provider_and_form() -> No
     this slice does not send."""
 
     schema = _schema_for(_PMFBY_SUPPORT)
-    provider = ProviderCapability(
+    provider = build_capability(
         provider_id="pmfby",
         provider_name="PMFBY Grievance Portal",
         capability="openagrinet:Grievance",
         resource_id="res:pmfby:grievance",
-        bpp_id="bpp",
-        bpp_uri="https://bpp.example",
     )
     values = {
         "enrolmentId": "KA2026KH00123456",
@@ -561,13 +557,11 @@ def test_a_status_body_matches_the_packs_read_case_example() -> None:
     name, a `maySend` field this slice does not send."""
 
     schema = _schema_for(_PMFBY_STATUS)
-    provider = ProviderCapability(
+    provider = build_capability(
         provider_id="pmfby",
         provider_name="PMFBY Grievance Portal",
         capability="openagrinet:Grievance",
         resource_id="res:pmfby:grievance",
-        bpp_id="bpp",
-        bpp_uri="https://bpp.example",
     )
     values = {"applicantMobile": "9876543210", "case.ticketNo": "100626000099001"}
 

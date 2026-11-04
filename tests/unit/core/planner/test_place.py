@@ -15,6 +15,7 @@ from dss.core.provider_discovery.models import (
     DiscoveryResult,
     ProviderCapability,
 )
+from tests.support.providers import build_capability
 
 _ADVISORY = "openagrinet:KnowledgeAdvisory"
 _WEATHER = "openagrinet:WeatherObservation"
@@ -34,13 +35,11 @@ def _ask(place=None) -> Ask:  # noqa: ANN001
 
 
 def _capability(schema_type: str) -> ProviderCapability:
-    return ProviderCapability(
+    return build_capability(
         provider_id="p",
         provider_name="Provider",
         capability=schema_type,
         resource_id=f"res:{schema_type}",
-        bpp_id="bpp",
-        bpp_uri="https://bpp.example",
     )
 
 

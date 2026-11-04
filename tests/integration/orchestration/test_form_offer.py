@@ -24,29 +24,26 @@ from tests.integration.orchestration.test_orchestrator import (
     _turn,
 )
 from tests.support.fakes import FakeSchemeCatalog
+from tests.support.providers import build_capability
 
 PMFBY = Scheme(code="PMFBY", name="Pradhan Mantri Fasal Bima Yojana")
 PMFBY_SUPPORT = FormContext(scheme="PMFBY", category="Grievance", action="support")
 WEATHER_ASK = Ask(
     subject_categories=SubjectCategory.WEATHER, interaction_type=InteractionType.OBSERVE
 )
-WEATHER_DESK = ProviderCapability(
+WEATHER_DESK = build_capability(
     provider_id="imd",
     provider_name="IMD",
     capability="openagrinet:WeatherObservation",
     resource_id="res:imd:forecast",
-    bpp_id="bpp",
-    bpp_uri="https://bpp.example",
     observed_categories=("Weather",),
 )
 GRIEVANCE_FORM = FormDefinition(context=PMFBY_SUPPORT, fields=())
-GRIEVANCE_DESK = ProviderCapability(
+GRIEVANCE_DESK = build_capability(
     provider_id="pmfby",
     provider_name="PMFBY desk",
     capability="openagrinet:Grievance",
     resource_id="res:pmfby:grievance",
-    bpp_id="bpp",
-    bpp_uri="https://bpp.example",
     observed_categories=("Grievance",),
 )
 

@@ -14,18 +14,17 @@ from dss.core.provider_preferences.next_choice import (
     NextChoices,
 )
 from dss.ports.invocation import SelectFailedError
+from tests.support.providers import build_capability
 
 ADVISORY = "openagrinet:KnowledgeAdvisory"
 
 
 def _capability(provider: str) -> ProviderCapability:
-    return ProviderCapability(
+    return build_capability(
         provider_id=provider,
         provider_name=provider.title(),
         capability=ADVISORY,
         resource_id=f"res:{provider}",
-        bpp_id="bpp",
-        bpp_uri="https://bpp.example",
     )
 
 

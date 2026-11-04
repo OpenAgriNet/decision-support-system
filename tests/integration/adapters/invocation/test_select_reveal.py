@@ -14,16 +14,14 @@ import httpx
 import pytest
 
 from dss.adapters.invocation.client import HttpCapabilityInvocation, SelectFailedError
-from dss.core.provider_discovery.models import ProviderCapability
 from dss.core.redaction.visibility import Visibility
+from tests.support.providers import build_capability
 
-CAPABILITY = ProviderCapability(
+CAPABILITY = build_capability(
     provider_id="scheme-desk",
     provider_name="Scheme Desk",
     capability="openagrinet:AgricultureResource",
     resource_id="res:scheme-desk:application-status",
-    bpp_id="bpp",
-    bpp_uri="https://bpp.example",
     observed_categories=("Scheme",),
 )
 PHONE = "9876543210"
