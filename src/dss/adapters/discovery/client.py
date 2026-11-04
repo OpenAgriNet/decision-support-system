@@ -123,54 +123,64 @@ def _advertised(attributes: dict[str, Any]) -> dict[str, Any]:
 
 
 def _capabilities_from_catalog(catalog: dict[str, Any]) -> list[ProviderCapability]:
-    provider = catalog["provider"]
-    capabilities = []
-    for resource in catalog.get("resources", ()):
-        attributes = resource["resourceAttributes"]
-        if attributes.get("informationMode") != _ON_DEMAND:
-            continue
-        capabilities.append(
-            ProviderCapability(
-                provider_id=provider["id"],
-                provider_name=provider["descriptor"]["name"],
-                capability=attributes["@type"],
-                resource_id=resource["id"],
-                bpp_id=catalog["bppId"],
-                bpp_uri=catalog["bppUri"],
-                observed_categories=tuple(attributes.get("subjectCategories", ())),
-                provider_code=provider["descriptor"].get("code"),
-                advertised=_advertised(attributes),
-            )
-        )
-    return capabilities
+    return [
+        _to_capability(catalog, resource)
+        for resource in _resources_in_mode(catalog, _ON_DEMAND)
+    ]
 
 
 def _answers_from_catalog(catalog: dict[str, Any]) -> list[DiscoveredAnswer]:
+    return [
+        _to_answer(catalog, resource)
+        for resource in _resources_in_mode(catalog, _DIRECT)
+    ]
+
+
+def _resources_in_mode(catalog: dict[str, Any], mode: str) -> list[dict[str, Any]]:
+    return [
+        resource
+        for resource in catalog.get("resources", ())
+        if resource["resourceAttributes"].get("informationMode") == mode
+    ]
+
+
+def _to_capability(
+    catalog: dict[str, Any], resource: dict[str, Any]
+) -> ProviderCapability:
     provider = catalog["provider"]
-    answers = []
-    for resource in catalog.get("resources", ()):
-        attributes = resource["resourceAttributes"]
-        if attributes.get("informationMode") != _DIRECT:
-            continue
-        source_id, source_name, source_url = extract_source_reference(attributes) or (
-            None,
-            None,
-            None,
-        )
-        answers.append(
-            DiscoveredAnswer(
-                provider_id=provider["id"],
-                provider_name=provider["descriptor"]["name"],
-                capability=attributes["@type"],
-                resource_id=resource["id"],
-                attributes=attributes,
-                validity=extract_validity(attributes),
-                source_id=source_id,
-                source_name=source_name,
-                source_url=source_url,
-            )
-        )
-    return answers
+    attributes = resource["resourceAttributes"]
+    return ProviderCapability(
+        provider_id=provider["id"],
+        provider_name=provider["descriptor"]["name"],
+        capability=attributes["@type"],
+        resource_id=resource["id"],
+        bpp_id=catalog["bppId"],
+        bpp_uri=catalog["bppUri"],
+        observed_categories=tuple(attributes.get("subjectCategories", ())),
+        provider_code=provider["descriptor"].get("code"),
+        advertised=_advertised(attributes),
+    )
+
+
+def _to_answer(catalog: dict[str, Any], resource: dict[str, Any]) -> DiscoveredAnswer:
+    provider = catalog["provider"]
+    attributes = resource["resourceAttributes"]
+    source_id, source_name, source_url = extract_source_reference(attributes) or (
+        None,
+        None,
+        None,
+    )
+    return DiscoveredAnswer(
+        provider_id=provider["id"],
+        provider_name=provider["descriptor"]["name"],
+        capability=attributes["@type"],
+        resource_id=resource["id"],
+        attributes=attributes,
+        validity=extract_validity(attributes),
+        source_id=source_id,
+        source_name=source_name,
+        source_url=source_url,
+    )
 
 
 # A transaction is addressed to the catalog's BPP (`receiverId`, `bppUri`), so
@@ -179,33 +189,28 @@ _BPP_FIELDS = ("bppId", "bppUri")
 
 
 def map_discover_response(response: dict[str, Any]) -> ProviderQueryResult:
-    capabilities: list[ProviderCapability] = []
-    answers: list[DiscoveredAnswer] = []
-    failures: list[DiscoveryFailure] = []
-    for catalog in response["message"]["catalogs"]:
-        missing = _find_missing_bpp_field(catalog)
-        if missing:
-            failures.extend(_reject_catalog(catalog, missing))
-            continue
-        capabilities.extend(_capabilities_from_catalog(catalog))
-        answers.extend(_answers_from_catalog(catalog))
-
+    catalogs = response["message"]["catalogs"]
+    addressable = [c for c in catalogs if _has_bpp(c)]
+    unaddressable = [c for c in catalogs if not _has_bpp(c)]
     return ProviderQueryResult(
-        answers=tuple(answers),
-        capabilities=tuple(capabilities),
-        failures=tuple(failures),
+        answers=tuple(a for c in addressable for a in _answers_from_catalog(c)),
+        capabilities=tuple(
+            cap for c in addressable for cap in _capabilities_from_catalog(c)
+        ),
+        failures=tuple(f for c in unaddressable for f in _reject_catalog(c)),
     )
 
 
-def _find_missing_bpp_field(catalog: dict[str, Any]) -> str | None:
-    return next((field for field in _BPP_FIELDS if not catalog.get(field)), None)
+def _has_bpp(catalog: dict[str, Any]) -> bool:
+    return all(catalog.get(field) for field in _BPP_FIELDS)
 
 
-def _reject_catalog(catalog: dict[str, Any], missing: str) -> list[DiscoveryFailure]:
+def _reject_catalog(catalog: dict[str, Any]) -> list[DiscoveryFailure]:
     """One failure per @type the catalog offered, so the gap is reported
     against what the ask will now go without."""
 
     provider_id = catalog["provider"]["id"]
+    missing = next(field for field in _BPP_FIELDS if not catalog.get(field))
     detail = f"catalog {catalog.get('id')} has no {missing}"
     logger.error("discover: %s (provider %s); catalog dropped", detail, provider_id)
     return [
