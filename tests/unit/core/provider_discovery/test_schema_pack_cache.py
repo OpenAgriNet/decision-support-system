@@ -8,9 +8,9 @@ from pathlib import Path
 import pytest
 
 from dss.core.provider_discovery import schema_pack_cache
-from dss.core.provider_discovery.models import SchemaPackFiles, SchemaPackSkipped
 from dss.core.provider_discovery.schema_pack_cache import SchemaPackCache
 from dss.core.provider_discovery.service import resolve_capability_type
+from dss.core.schema_packs.models import SchemaPackFiles, SchemaPackSkipped
 
 MANDI_PRICE_ATTRIBUTES = """
 components:

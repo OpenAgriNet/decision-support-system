@@ -81,19 +81,16 @@ from dss.core.intent.models import Intent
 from dss.core.planner.models import Identity
 from dss.core.planner.validation import DomainSchema, parse_domain_schema
 from dss.core.policy.models import Checkpoint, Policy
-from dss.core.provider_discovery.index import (
+from dss.core.provider_discovery.models import DiscoveryResult, ProviderCapability
+from dss.core.provider_discovery.schema_pack_cache import SchemaPackCache
+from dss.core.provider_preferences.models import NO_PREFERENCE, SenderPreference
+from dss.core.redaction.visibility import NOTHING_HELD, Visibility
+from dss.core.schema_packs.models import SchemaPackFiles
+from dss.core.schema_packs.service import (
     PACK_DEFECTS,
     extract_type_const,
     is_api_pack,
 )
-from dss.core.provider_discovery.models import (
-    DiscoveryResult,
-    ProviderCapability,
-    SchemaPackFiles,
-)
-from dss.core.provider_discovery.schema_pack_cache import SchemaPackCache
-from dss.core.provider_preferences.models import NO_PREFERENCE, SenderPreference
-from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import TextQuery, TurnInput, UserTurn
 from dss.core.shared.network import NetworkTransactionID
 from dss.core.stream_response.service import build_stream_response

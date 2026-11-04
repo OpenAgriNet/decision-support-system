@@ -28,8 +28,8 @@ from dss.core.provider_discovery.models import (
     DiscoveredAnswer,
     DiscoveryResult,
     ProviderCapability,
-    SchemaPackFiles,
 )
+from dss.core.schema_packs.models import SchemaPackFiles
 from dss.core.shared.models import (
     Cause,
     ClaimDelta,

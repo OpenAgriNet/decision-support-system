@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from dss.core.provider_discovery.schema_fields import FieldSpec
+from dss.core.schema_packs.models import FieldSpec
 
 # JSON-LD framing, in every body and in no pack's `properties`. Refusing it
 # would refuse every real payload.

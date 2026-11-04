@@ -39,8 +39,10 @@ from dss.core.forms.service import (
     withhold_values,
     without_farmer_values,
 )
-from dss.core.provider_discovery.models import SchemaPackFiles
+from dss.core.provider_discovery.models import ProviderCapability
+from dss.core.schema_packs.models import SchemaPackFiles
 from tests.support.providers import build_capability, grievance_provider
+
 
 # The Grievance pack, untrimmed, as network-specs first published it. It lives on
 # `schema-packs-v0.1` now; its URLs here still say `api-schemas/`.

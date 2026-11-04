@@ -21,8 +21,7 @@ from dss.core.planner.validation import (
     parse_domain_schema,
     validate_arguments,
 )
-from dss.core.provider_discovery.models import SchemaPackFiles
-from dss.core.provider_discovery.schema_fields import FieldSpec
+from dss.core.schema_packs.models import FieldSpec, SchemaPackFiles
 
 _MANDI_PROFILE = json.dumps(
     {
