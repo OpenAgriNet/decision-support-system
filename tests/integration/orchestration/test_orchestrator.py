@@ -232,6 +232,7 @@ class _FakeCompose:
 
     async def __call__(self, evidence, *, turn):
         self.calls += 1
+        self.evidence = evidence
         self.turn = turn
         try:
             for index, chunk in enumerate(self._chunks):

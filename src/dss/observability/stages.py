@@ -25,6 +25,7 @@ class Stage(StrEnum):
     MODERATION = "moderation"
     DISCOVERY = "discovery"
     PLANNER = "planner"
+    PROVIDER_ACTION = "provider_action"
     COMPOSER = "composer"
 
 
