@@ -34,6 +34,7 @@ from dss.core.shared.models import TextQuery, UserTurn
 from dss.entrypoint.composition import _resolve_model
 from dss.orchestration.plan import build_plan
 from tests.support.live_model import missing_model_key
+from tests.support.providers import build_capability
 
 _REPO_ROOT = Path(__file__).parents[3]
 
@@ -99,7 +100,7 @@ BLIGHT_ASK = Ask(
 
 
 def _capability(provider_id: str) -> ProviderCapability:
-    return ProviderCapability(
+    return build_capability(
         provider_id=provider_id,
         provider_name=provider_id,
         capability=ADVISORY,

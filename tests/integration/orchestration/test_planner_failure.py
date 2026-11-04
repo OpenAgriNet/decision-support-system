@@ -29,8 +29,9 @@ from dss.core.provider_discovery.models import (
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import TextQuery, UserTurn
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
+from tests.support.providers import build_capability
 
-CAPABILITY = ProviderCapability(
+CAPABILITY = build_capability(
     provider_id="agmarknet",
     provider_name="Agmarknet",
     capability="openagrinet:MandiPrice",
@@ -198,7 +199,7 @@ async def test_a_capability_with_no_indexed_schema_gets_a_retry() -> None:
     ending the turn — while its two neighbouring guards (unknown resource_id,
     invented field) both hand the model a ``ModelRetry`` it can act on."""
 
-    unindexed = ProviderCapability(
+    unindexed = build_capability(
         provider_id="gj-agri",
         provider_name="Gujarat Agriculture Dept",
         capability="openagrinet:AgricultureFacility",

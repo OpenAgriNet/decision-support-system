@@ -36,6 +36,7 @@ from dss.core.provider_discovery.models import (
 )
 from dss.core.provider_discovery.service import discover_providers
 from dss.core.shared.models import Geometry, TextQuery, UserTurn
+from tests.support.providers import build_capability
 
 NOW = datetime(2026, 8, 26, 12, 0, 0, tzinfo=UTC)
 
@@ -107,7 +108,12 @@ async def test_a_single_ask_resolves_and_returns_the_discovery_result() -> None:
         answers={0: ()},
         capabilities={
             0: (
-                ProviderCapability("mausamgram", "IMD", "openagrinet:MandiPrice", "r1"),
+                build_capability(
+                    provider_id="mausamgram",
+                    provider_name="IMD",
+                    capability="openagrinet:MandiPrice",
+                    resource_id="r1",
+                ),
             )
         },
         failures={0: ()},
@@ -213,7 +219,12 @@ class _PartiallyFailingDiscovery:
             )
         return _query_result(
             capabilities=(
-                ProviderCapability("mausamgram", "IMD", query.capabilities[0], "r1"),
+                build_capability(
+                    provider_id="mausamgram",
+                    provider_name="IMD",
+                    capability=query.capabilities[0],
+                    resource_id="r1",
+                ),
             )
         )
 
@@ -399,8 +410,11 @@ async def test_an_expired_answer_with_an_on_demand_sibling_records_a_fallback() 
     schema_pack_cache = _FakeSchemaPackCache(
         {("Market", "Service"): ("openagrinet:MandiPrice",)}
     )
-    fallback_capability = ProviderCapability(
-        "agmarknet", "AGMARKNET", "openagrinet:MandiPrice", "r2"
+    fallback_capability = build_capability(
+        provider_id="agmarknet",
+        provider_name="AGMARKNET",
+        capability="openagrinet:MandiPrice",
+        resource_id="r2",
     )
     discovery = _FakeDiscovery(
         _query_result(answers=(_expired_answer(),), capabilities=(fallback_capability,))
@@ -545,11 +559,11 @@ async def test_a_capability_matching_the_index_has_no_divergence_event() -> None
     schema_pack_cache = _FakeSchemaPackCache(
         {("Market", "Service"): ("openagrinet:MandiPrice",)}
     )
-    matching_capability = ProviderCapability(
-        "mausamgram",
-        "IMD",
-        "openagrinet:MandiPrice",
-        "r1",
+    matching_capability = build_capability(
+        provider_id="mausamgram",
+        provider_name="IMD",
+        capability="openagrinet:MandiPrice",
+        resource_id="r1",
         observed_categories=("Market",),
     )
     discovery = _FakeDiscovery(_query_result(capabilities=(matching_capability,)))
@@ -576,11 +590,11 @@ async def test_a_capability_with_a_category_outside_the_index_diverges() -> None
     schema_pack_cache = _FakeSchemaPackCache(
         {("Market", "Service"): ("openagrinet:MandiPrice",)}
     )
-    diverging_capability = ProviderCapability(
-        "mausamgram",
-        "IMD",
-        "openagrinet:MandiPrice",
-        "r1",
+    diverging_capability = build_capability(
+        provider_id="mausamgram",
+        provider_name="IMD",
+        capability="openagrinet:MandiPrice",
+        resource_id="r1",
         observed_categories=("Scheme",),
     )
     discovery = _FakeDiscovery(_query_result(capabilities=(diverging_capability,)))
@@ -812,7 +826,12 @@ async def test_a_resolved_answer_does_not_emit_ask_unservable() -> None:
     schema_pack_cache = _FakeSchemaPackCache(
         {("Market", "Service"): ("openagrinet:MandiPrice",)}
     )
-    capability = ProviderCapability("mausamgram", "IMD", "openagrinet:MandiPrice", "r1")
+    capability = build_capability(
+        provider_id="mausamgram",
+        provider_name="IMD",
+        capability="openagrinet:MandiPrice",
+        resource_id="r1",
+    )
     discovery = _FakeDiscovery(_query_result(capabilities=(capability,)))
 
     result = await discover_providers(
@@ -968,8 +987,11 @@ def _answer(provider_id: str, capability: str) -> DiscoveredAnswer:
 
 async def test_asks_sharing_a_query_each_get_the_whole_reply() -> None:
     answer = _answer("agmarknet", "openagrinet:MandiPrice")
-    capability = ProviderCapability(
-        "agmarknet", "AGMARKNET", "openagrinet:MandiPrice", "r2"
+    capability = build_capability(
+        provider_id="agmarknet",
+        provider_name="AGMARKNET",
+        capability="openagrinet:MandiPrice",
+        resource_id="r2",
     )
     discovery = _NetworkDiscovery(
         {
@@ -1008,8 +1030,11 @@ async def test_a_failing_shared_query_fails_every_ask_that_shared_it() -> None:
 
 async def test_asks_get_only_their_own_query_reply() -> None:
     market_answer = _answer("agmarknet", "openagrinet:MandiPrice")
-    weather_capability = ProviderCapability(
-        "mausamgram", "IMD", "openagrinet:WeatherObservation", "r1"
+    weather_capability = build_capability(
+        provider_id="mausamgram",
+        provider_name="IMD",
+        capability="openagrinet:WeatherObservation",
+        resource_id="r1",
     )
     discovery = _NetworkDiscovery(
         {
@@ -1028,8 +1053,11 @@ async def test_asks_get_only_their_own_query_reply() -> None:
 
 
 async def test_an_unplaced_ask_gets_an_empty_entry_beside_a_searched_one() -> None:
-    capability = ProviderCapability(
-        "mausamgram", "IMD", "openagrinet:WeatherObservation", "r1"
+    capability = build_capability(
+        provider_id="mausamgram",
+        provider_name="IMD",
+        capability="openagrinet:WeatherObservation",
+        resource_id="r1",
     )
     discovery = _NetworkDiscovery(
         {"openagrinet:WeatherObservation": _query_result(capabilities=(capability,))}
@@ -1076,11 +1104,11 @@ async def test_an_expired_answer_on_a_shared_query_is_reported_once_per_ask() ->
 async def test_a_diverging_capability_on_a_shared_query_is_reported_once_per_ask() -> (
     None
 ):
-    diverging_capability = ProviderCapability(
-        "agmarknet",
-        "AGMARKNET",
-        "openagrinet:MandiPrice",
-        "r2",
+    diverging_capability = build_capability(
+        provider_id="agmarknet",
+        provider_name="AGMARKNET",
+        capability="openagrinet:MandiPrice",
+        resource_id="r2",
         observed_categories=("Weather",),
     )
     discovery = _NetworkDiscovery(
@@ -1180,11 +1208,11 @@ async def test_events_come_unresolved_then_expired_then_diverged_then_per_ask() 
         subject_categories=SubjectCategory.FACILITY,
         interaction_type=InteractionType.ACT,
     )
-    diverging_fallback = ProviderCapability(
-        "agmarknet",
-        "AGMARKNET",
-        "openagrinet:MandiPrice",
-        "r2",
+    diverging_fallback = build_capability(
+        provider_id="agmarknet",
+        provider_name="AGMARKNET",
+        capability="openagrinet:MandiPrice",
+        resource_id="r2",
         observed_categories=("Weather",),
     )
     discovery = _NetworkDiscovery(

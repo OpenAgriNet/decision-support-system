@@ -167,6 +167,8 @@ async def test_the_span_counts_what_the_provider_returned(spans) -> None:
     resources carry the provider's own data, and a span is not the place."""
 
     catalog = {
+        "bppId": "bpp",
+        "bppUri": "https://bpp.example",
         "provider": {"id": "agmarknet", "descriptor": {"name": "Agmarknet"}},
         "resources": [
             {
@@ -193,6 +195,8 @@ async def test_the_span_names_the_providers_offered(spans) -> None:
     """Finds providers offered often but rarely answering. Ids aren't PII."""
 
     catalog = {
+        "bppId": "bpp",
+        "bppUri": "https://bpp.example",
         "provider": {"id": "agmarknet", "descriptor": {"name": "Agmarknet"}},
         "resources": [
             {

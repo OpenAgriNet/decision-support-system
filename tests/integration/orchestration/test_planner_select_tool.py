@@ -37,8 +37,9 @@ from dss.core.provider_discovery.models import (
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import Geometry, TextQuery, UserTurn
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
+from tests.support.providers import build_capability
 
-CAPABILITY = ProviderCapability(
+CAPABILITY = build_capability(
     provider_id="agmarknet",
     provider_name="Agmarknet",
     capability="openagrinet:MandiPrice",
@@ -250,7 +251,7 @@ async def test_a_facility_select_carries_the_search_origin() -> None:
     point to search around.
     """
 
-    facility = ProviderCapability(
+    facility = build_capability(
         provider_id="pocra",
         provider_name="PoCRA, Government of Maharashtra",
         capability="openagrinet:AgricultureFacility",
@@ -335,7 +336,7 @@ async def test_each_select_carries_its_own_asks_place() -> None:
     answer for Mumbai with Pune's weather.
     """
 
-    weather = ProviderCapability(
+    weather = build_capability(
         provider_id="imd",
         provider_name="IMD",
         capability="openagrinet:WeatherForecast",

@@ -3,6 +3,10 @@
 ## [Unreleased]
 
 ### Changed
+- A select, support or status call is addressed to the catalog's BPP:
+  `receiverId` is the catalog's `bppId` and the context carries its `bppUri`. A catalog
+  that names neither is dropped from discovery, logged, and reported as a
+  defect for each @type it offered
 - The intent model now names the scheme an ask is about. It is shown the
   scheme catalog and returns each ask's scheme code; a code the catalog does
   not hold is dropped. The separate enrichment step after intent, its trace
