@@ -20,6 +20,7 @@ def test_values_are_the_names_the_spans_already_use():
         "moderation",
         "discovery",
         "planner",
+        "provider_action",
         "composer",
     }
 

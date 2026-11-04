@@ -1,7 +1,3 @@
-"""The path for a submitted form (#205): check the values, moderate the
-complaint, find the provider, file the form through the planner, and tell
-the farmer the ticket, or that the form is still theirs."""
-
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator, Sequence
@@ -19,7 +15,7 @@ from dss.core.channel.localize import localize_answer
 from dss.core.channel.models import ClarificationText, ComposedAnswer
 from dss.core.channel.service import answer_for_unserved_asks
 from dss.core.forms.models import (
-    Filing,
+    ActionSchema,
     FormContext,
     FormErrors,
     FormSubmission,
@@ -28,11 +24,11 @@ from dss.core.forms.models import (
 )
 from dss.core.forms.registry import FormLookup
 from dss.core.forms.service import (
-    answer_for_failed_filing,
+    answer_for_failed_call,
     answer_for_form_errors,
     answer_for_unknown_form,
     candidates_for_scheme,
-    cause_for_unfiled,
+    cause_for_failed_call,
     free_text_of,
     validate_submission,
     withhold_values,
@@ -41,9 +37,14 @@ from dss.core.intent.models import Intent, Scheme
 from dss.core.intent.service import scheme_with_code
 from dss.core.moderation.models import ModerationContext, ModerationDecision, Outcome
 from dss.core.moderation.service import moderate
-from dss.core.planner.models import Evidence, Failure, Verdict
+from dss.core.planner.evidence import assemble_evidence
+from dss.core.planner.models import Evidence, Failure
 from dss.core.policy.models import Policy
-from dss.core.provider_discovery.models import DiscoveryResult
+from dss.core.provider_discovery.models import (
+    DiscoveredAnswer,
+    DiscoveryResult,
+    ProviderCapability,
+)
 from dss.core.redaction.turn import surrounding_texts_of, with_surrounding_texts
 from dss.core.redaction.visibility import Visibility
 from dss.core.shared.models import (
@@ -68,7 +69,9 @@ from dss.orchestration.orchestrator import (
     reveal_to_farmer,
     spoken_text,
 )
-from dss.orchestration.stage_content import asks_text, discovery_text, evidence_text
+from dss.orchestration.plan import InvocationFor
+from dss.orchestration.provider_action import FORM_ASK_INDEX, call_provider_action
+from dss.orchestration.stage_content import asks_text, discovery_text
 from dss.orchestration.turn import moderation_attributes
 from dss.ports.llm import LLMProvider
 from dss.ports.prompts import PromptProvider
@@ -81,9 +84,6 @@ _FREE_TEXT_SEPARATOR = "\n\n"
 
 @dataclass(frozen=True)
 class _Redacted:
-    """The turn as the record and the models may see it: history and phone
-    tagged, form values withheld, and the complaint tagged on its own."""
-
     turn: UserTurn[FormSubmission]
     free_text: str
     # The real values behind the tags, for the provider call only.
@@ -100,6 +100,7 @@ class FormPath:
         forms: FormLookup,
         scheme_catalog: SchemeCatalog,
         components: Components,
+        invocation_for: InvocationFor,
         turns: TurnSink,
         telemetry: TelemetrySink,
         clarification_text: ClarificationText,
@@ -110,11 +111,12 @@ class FormPath:
         self._forms = forms
         self._scheme_catalog = scheme_catalog
         self._components = components
+        self._invocation_for = invocation_for
         self._turns = turns
         self._telemetry = telemetry
         self._clarification_text = clarification_text
 
-    async def run(  # noqa: PLR0911 - one exit per way a form is not filed
+    async def run(  # noqa: PLR0911 - one exit per way a form is not sent
         self,
         turn: UserTurn[FormSubmission],
         *,
@@ -122,7 +124,9 @@ class FormPath:
         recorder: TurnRecorder,
     ) -> AsyncGenerator[TurnEvent]:
         # Raw values are checked first: a tagged phone fails its own pattern.
-        checked = validate_submission(turn.input, self._forms)
+        checked: ValidSubmission | FormErrors | UnknownForm = validate_submission(
+            turn.input, self._forms
+        )
         redacted = await self._redact_for_the_record(turn, checked, ctx, recorder)
         self._turns.opened(ctx, redacted.turn)
 
@@ -132,7 +136,8 @@ class FormPath:
         if isinstance(checked, UnknownForm):
             yield await self._hand_back_unknown(turn, ctx=ctx, recorder=recorder)
             return
-        # Before moderation: a form that cannot be filed is not worth a model call.
+
+        # Before moderation: a form that cannot be sent is not worth a model call.
         intent = self._intent_for(turn.input.context)
         if intent is None:  # a known form, but not an action the DSS can file
             yield await self._hand_back_unknown(turn, ctx=ctx, recorder=recorder)
@@ -158,36 +163,35 @@ class FormPath:
         discovery = await self._find_providers(
             intent, turn, ctx, scheme_code=turn.input.context.scheme
         )
-        # Not `serves(0)`: a catalog's Direct answer counts there, and filing
-        # needs a provider to call.
-        if not discovery.capabilities.get(0):
-            answer = answer_for_unserved_asks(intent.asks, self._clarification_text)
+
+        # form's action needs a provider to call and not a direct answer
+        providers = discovery.capabilities.get(FORM_ASK_INDEX)
+        if not providers:
             yield await self._finish(
                 outcome_for(TurnStatus.NO_MATCH),
-                answer,
+                answer_for_unserved_asks(intent.asks, self._clarification_text),
                 turn=turn,
                 ctx=ctx,
                 recorder=recorder,
             )
             return
 
-        evidence = await self._file(
+        response = await self._call_provider_action(
             turn,
-            Filing(submission=checked, action=action),
-            intent=intent,
-            discovery=discovery,
-            decision=decision,
+            checked,
+            action,
+            provider=providers[0],
             visibility=redacted.visibility,
             ctx=ctx,
         )
-        if not evidence.has_any_result:
-            yield await self._hand_back_unfiled(
-                _filing_failure(evidence), turn=turn, ctx=ctx, recorder=recorder
+        if isinstance(response, Failure):
+            yield await self._hand_back_failed_call(
+                response, turn=turn, ctx=ctx, recorder=recorder
             )
             return
         async with aclosing(
-            self._confirm_the_filing(
-                evidence,
+            self._stream_answer(
+                assemble_evidence([(FORM_ASK_INDEX, response)], intent=intent),
                 turn=redacted.turn,
                 visibility=redacted.visibility,
                 ctx=ctx,
@@ -197,7 +201,7 @@ class FormPath:
             async for event in events:
                 yield event
 
-    async def _confirm_the_filing(
+    async def _stream_answer(
         self,
         evidence: Evidence,
         *,
@@ -206,10 +210,6 @@ class FormPath:
         ctx: TurnContext,
         recorder: TurnRecorder,
     ) -> AsyncGenerator[TurnEvent]:
-        """The composer's confirmation, streamed as it is written, with the
-        farmer's own values in place of any tag. ``turn`` is the redacted
-        one: the model sees tags and withheld values, never the originals."""
-
         # `aclosing` each layer: closing an async generator does not reach the
         # one it reads from, and a closed screen must close the model stream.
         async with (
@@ -237,65 +237,50 @@ class FormPath:
             async for event in farmer_events:
                 yield event
 
-    async def _hand_back_unfiled(
+    async def _hand_back_failed_call(
         self,
-        failure: Failure | None,
+        failure: Failure,
         *,
         turn: UserTurn[FormSubmission],
         ctx: TurnContext,
         recorder: TurnRecorder,
     ) -> TurnFinished:
-        """The form stays the farmer's: `unavailable`, with the provider's own
-        time to wait if it named one. No invented delay, and no provider
-        text."""
-
-        cause = cause_for_unfiled(failure)
-        answer = answer_for_failed_filing(turn.input, cause, self._clarification_text)
-        retry_after = failure.retry_after_seconds if failure is not None else None
+        cause = cause_for_failed_call(failure)
+        answer = answer_for_failed_call(turn.input, cause, self._clarification_text)
         outcome = outcome_for(TurnStatus.UNAVAILABLE, cause).model_copy(
-            update={"retry_after_seconds": retry_after}
+            update={"retry_after_seconds": failure.retry_after_seconds}
         )
         return await self._finish(
             outcome, answer, turn=turn, ctx=ctx, recorder=recorder
         )
 
-    async def _file(  # noqa: PLR0913
+    async def _call_provider_action(  # noqa: PLR0913
         self,
         turn: UserTurn[FormSubmission],
-        filing: Filing,
+        submission: ValidSubmission,
+        action: ActionSchema,
         *,
-        intent: Intent,
-        discovery: DiscoveryResult,
-        decision: ModerationDecision,
+        provider: ProviderCapability,
         visibility: Visibility,
         ctx: TurnContext,
-    ) -> Evidence:
-        """Past the barrier: the decision cleared, so the planner's `support`
-        tool may call the provider. The `Verdict` is how that clearance
-        reaches the tool."""
-
-        verdict = Verdict()
-        verdict.set(decision)
-        with trace_component(Stage.PLANNER, ctx.trace_id):
-            evidence = await self._components.plan(
-                turn,
-                intent=intent,
-                discovery=discovery,
-                verdict=verdict,
+    ) -> DiscoveredAnswer | Failure:
+        with trace_component(Stage.PROVIDER_ACTION, ctx.trace_id):
+            response = await call_provider_action(
+                provider,
+                action,
+                submission.values,
+                invocation=self._invocation_for(turn),
+                transaction_id=turn.transaction_id,
                 visibility=visibility,
-                filing=filing,
             )
-            set_current_span_content(
-                input=asks_text(intent.asks), output=evidence_text(evidence)
+            set_current_span_attributes(
+                action=action.context.action,
+                provider_id=provider.provider_id,
+                is_failure=isinstance(response, Failure),
             )
-        return evidence
+        return response
 
     def _intent_for(self, context: FormContext) -> Intent | None:
-        """One ask, as the offer path would have classified it, or ``None``
-        for a form no ask maps to. The scheme comes from the catalog by code;
-        a code the catalog does not list is still the code the provider is
-        matched on."""
-
         scheme = scheme_with_code(self._scheme_catalog.schemes(), context.scheme)
         if scheme is None:
             scheme = Scheme(code=context.scheme, name=context.scheme)
@@ -312,10 +297,6 @@ class FormPath:
         *,
         scheme_code: str,
     ) -> DiscoveryResult:
-        """Discovery as on any turn, then only the providers advertising the
-        form's scheme: every grievance desk is indexed under one type, and
-        nothing but this filter keeps a PMFBY complaint off a PM-KISAN desk."""
-
         with trace_component(Stage.DISCOVERY, ctx.trace_id):
             found = await self._components.discover(intent, turn, now=datetime.now(UTC))
             providers = replace(
@@ -341,11 +322,6 @@ class FormPath:
         ctx: TurnContext,
         recorder: TurnRecorder,
     ) -> _Redacted:
-        """One redaction call over everything a model or a sink may see. The
-        history and the phone are tagged as on the text path; the form's
-        values are withheld, except the complaint, which is tagged so it can
-        be moderated. A value leaves the turn only inside the provider call."""
-
         surroundings = surrounding_texts_of(turn)
         free_text = (
             free_text_of(checked) if isinstance(checked, ValidSubmission) else ()
@@ -368,10 +344,6 @@ class FormPath:
     async def _moderate(
         self, redacted: _Redacted, ctx: TurnContext
     ) -> ModerationDecision:
-        """The complaint through the same policies as a question. Scope is
-        not checked: that is intent's, which this path never runs. A form
-        with nothing written in prose has nothing to judge."""
-
         if not redacted.free_text:
             return ModerationDecision(outcome=Outcome.PROCEED)
         with trace_component(Stage.MODERATION, ctx.trace_id):
@@ -434,24 +406,11 @@ class FormPath:
         ctx: TurnContext,
         recorder: TurnRecorder,
     ) -> None:
-        """The turn sink is required, so a failure here is not caught:
-        answering while silently failing to record is no success."""
-
         self._turns.closed(ctx, finished)
         recorder.status(finished.outcome.status.value)
         recorder.content(
             query=_reference_line(turn.input), answer=spoken_text(finished.content)
         )
-
-
-def _filing_failure(evidence: Evidence) -> Failure | None:
-    """The one ask's failure, when the desk was called and said no. ``None``
-    when the planner never called it."""
-
-    return next(
-        (failure for ask in evidence.ask_evidences for failure in ask.failures),
-        None,
-    )
 
 
 def _count(discovery: DiscoveryResult) -> int:

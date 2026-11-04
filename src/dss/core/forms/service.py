@@ -28,6 +28,7 @@ from dss.core.forms.models import (
     FormSubmission,
     JsonScalar,
     PiiClass,
+    ProviderAction,
     UnknownForm,
     ValidSubmission,
 )
@@ -450,34 +451,37 @@ def answer_for_form_errors(
     )
 
 
+type NotSentText = Callable[[ClarificationText], str]
+
 # What the farmer reads for each way a form's call can fail, by the call. A
 # `form_error` with no fields says the form is still theirs; the values were
-# fine. A status check the desk refused is read as no such case (#206).
-_NOT_SENT_TEXT: Mapping[tuple[str, Cause], Callable[[ClarificationText], str]] = {
-    ("support", Cause.PROVIDER_UNAVAILABLE): lambda text: text.not_filed,
-    ("support", Cause.PROVIDER_REJECTED): lambda text: text.not_filed_rejected,
-    ("status", Cause.PROVIDER_UNAVAILABLE): lambda text: text.status_not_checked,
-    ("status", Cause.PROVIDER_REJECTED): lambda text: text.status_not_found,
+# fine. A status check the provider refused is read as no such case (#206).
+_NOT_SENT_TEXT: Mapping[ProviderAction, Mapping[Cause, NotSentText]] = {
+    ProviderAction.SUPPORT: {
+        Cause.PROVIDER_UNAVAILABLE: lambda text: text.not_filed,
+        Cause.PROVIDER_REJECTED: lambda text: text.not_filed_rejected,
+    },
+    ProviderAction.STATUS: {
+        Cause.PROVIDER_UNAVAILABLE: lambda text: text.status_not_checked,
+        Cause.PROVIDER_REJECTED: lambda text: text.status_not_found,
+    },
 }
 
 
-def cause_for_unfiled(failure: Failure | None) -> Cause:
-    """Why nothing was filed. No failure at all means the planner never
-    called the desk; like a desk that could not be reached, trying again may
-    work. A desk that refused the call would refuse it again unchanged."""
-
-    if failure is None or failure.retryable:
+def cause_for_failed_call(failure: Failure) -> Cause:
+    if failure.retryable:
         return Cause.PROVIDER_UNAVAILABLE
     return Cause.PROVIDER_REJECTED
 
 
-def _not_sent_text(action: str, cause: Cause) -> Callable[[ClarificationText], str]:
+def _not_sent_text(action: str, cause: Cause) -> NotSentText:
     # An action with no words of its own reads as a filing: the form is
     # still the farmer's either way.
-    return _NOT_SENT_TEXT.get((action, cause), _NOT_SENT_TEXT["support", cause])
+    texts = _NOT_SENT_TEXT.get(action, _NOT_SENT_TEXT[ProviderAction.SUPPORT])
+    return texts[cause]
 
 
-def answer_for_failed_filing(
+def answer_for_failed_call(
     submission: FormSubmission, cause: Cause, text: ClarificationText
 ) -> ComposedAnswer:
     return ComposedAnswer(

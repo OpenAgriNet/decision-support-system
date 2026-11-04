@@ -31,6 +31,7 @@ from dss.core.forms.service import (
     build_action_attributes,
     build_form_registry,
     candidates_for_scheme,
+    cause_for_failed_call,
     form_error_block,
     free_text_of,
     offer_form,
@@ -39,8 +40,10 @@ from dss.core.forms.service import (
     withhold_values,
     without_farmer_values,
 )
+from dss.core.planner.models import Failure
 from dss.core.provider_discovery.models import ProviderCapability
 from dss.core.schema_packs.models import SchemaPackFiles
+from dss.core.shared.models import Cause
 from tests.support.providers import build_capability, grievance_provider
 
 
@@ -612,3 +615,20 @@ def test_the_reply_keeps_what_the_provider_added_not_what_the_farmer_typed() -> 
         "grievance": {"category": {"code": "3"}},
         "case": {"ticketNo": "100626000099001"},
     }
+
+
+@pytest.mark.parametrize(
+    ("is_retryable", "cause"),
+    [(True, Cause.PROVIDER_UNAVAILABLE), (False, Cause.PROVIDER_REJECTED)],
+)
+def test_a_failed_call_is_unavailable_only_if_trying_again_may_work(
+    is_retryable: bool, cause: Cause
+) -> None:
+    failure = Failure(
+        ask_index=0,
+        capability="openagrinet:Grievance",
+        reason="-",
+        retryable=is_retryable,
+    )
+
+    assert cause_for_failed_call(failure) is cause
