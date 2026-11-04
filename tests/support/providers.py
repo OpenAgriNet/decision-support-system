@@ -13,6 +13,8 @@ def grievance_provider(provider_id: str, scheme_code: str) -> ProviderCapability
         provider_name=provider_id.upper(),
         capability="openagrinet:Grievance",
         resource_id=f"res:{provider_id}:grievance",
+        bpp_id="bpp",
+        bpp_uri="https://bpp.example",
         observed_categories=("Grievance",),
         advertised={"scheme": {"code": scheme_code, "name": scheme_code}},
     )

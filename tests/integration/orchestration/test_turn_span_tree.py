@@ -38,6 +38,8 @@ _CAPABILITY = ProviderCapability(
     provider_name="Agmarknet",
     capability="openagrinet:MandiPrice",
     resource_id="res:agmarknet:mandi-price",
+    bpp_id="bpp",
+    bpp_uri="https://bpp.example",
     observed_categories=("Market",),
 )
 

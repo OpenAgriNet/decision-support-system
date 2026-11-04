@@ -7,6 +7,7 @@ core's job. This module never decides anything; it only reshapes data.
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from typing import Any, Protocol
 from uuid import uuid4
@@ -36,6 +37,8 @@ from dss.observability.trace_log import (
     log_external_request,
     log_external_response,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _failed_labels(query: ProviderQuery) -> tuple[str, ...]:
@@ -132,6 +135,8 @@ def _capabilities_from_catalog(catalog: dict[str, Any]) -> list[ProviderCapabili
                 provider_name=provider["descriptor"]["name"],
                 capability=attributes["@type"],
                 resource_id=resource["id"],
+                bpp_id=catalog["bppId"],
+                bpp_uri=catalog["bppUri"],
                 observed_categories=tuple(attributes.get("subjectCategories", ())),
                 provider_code=provider["descriptor"].get("code"),
                 advertised=_advertised(attributes),
@@ -168,16 +173,55 @@ def _answers_from_catalog(catalog: dict[str, Any]) -> list[DiscoveredAnswer]:
     return answers
 
 
+# A transaction is addressed to the catalog's BPP (`receiverId`, `bppUri`), so
+# a catalog that names none cannot be called and is dropped whole.
+_BPP_FIELDS = ("bppId", "bppUri")
+
+
 def map_discover_response(response: dict[str, Any]) -> ProviderQueryResult:
     capabilities: list[ProviderCapability] = []
     answers: list[DiscoveredAnswer] = []
+    failures: list[DiscoveryFailure] = []
     for catalog in response["message"]["catalogs"]:
+        missing = _missing_bpp_field(catalog)
+        if missing:
+            failures.extend(_reject_catalog(catalog, missing))
+            continue
         capabilities.extend(_capabilities_from_catalog(catalog))
         answers.extend(_answers_from_catalog(catalog))
 
     return ProviderQueryResult(
-        answers=tuple(answers), capabilities=tuple(capabilities), failures=()
+        answers=tuple(answers),
+        capabilities=tuple(capabilities),
+        failures=tuple(failures),
     )
+
+
+def _missing_bpp_field(catalog: dict[str, Any]) -> str | None:
+    return next((field for field in _BPP_FIELDS if not catalog.get(field)), None)
+
+
+def _reject_catalog(catalog: dict[str, Any], missing: str) -> list[DiscoveryFailure]:
+    """One failure per @type the catalog offered, so the gap is reported
+    against what the ask will now go without."""
+
+    provider_id = catalog["provider"]["id"]
+    detail = f"catalog {catalog.get('id')} has no {missing}"
+    logger.error("discover: %s (provider %s); catalog dropped", detail, provider_id)
+    types = dict.fromkeys(
+        resource["resourceAttributes"]["@type"]
+        for resource in catalog.get("resources", ())
+    )
+    return [
+        DiscoveryFailure(
+            capability=capability,
+            status_code=NO_STATUS_CODE,
+            failure_class=FailureClass.DEFECT,
+            provider_id=provider_id,
+            detail=detail,
+        )
+        for capability in types
+    ]
 
 
 def _jsonpath_filter(subject_category: str) -> dict[str, str]:

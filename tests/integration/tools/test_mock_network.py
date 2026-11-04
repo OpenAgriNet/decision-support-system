@@ -333,6 +333,8 @@ async def test_select_returns_the_values_the_composer_will_quote(
         provider_name="IMD Mausamgram NWP",
         capability=_WEATHER,
         resource_id="res:mausamgram:point-forecast",
+        bpp_id="bpp",
+        bpp_uri="https://bpp.example",
         observed_categories=("Weather",),
         provider_code="IMD-NWP-01",
     )
@@ -410,6 +412,8 @@ async def test_advisory_select_answers_with_the_questions_written_answer(
         provider_name="Krishi Vigyan Kendra Advisory Service",
         capability=_ADVISORY,
         resource_id="res:kvk:crop-advisory",
+        bpp_id="bpp",
+        bpp_uri="https://bpp.example",
     )
     attrs = build_resource_attributes(
         capability=capability,
@@ -456,6 +460,8 @@ async def test_a_select_the_mock_cannot_answer_is_refused_and_counted(
         provider_name="IMD Mausamgram NWP",
         capability=_WEATHER,
         resource_id="res:mausamgram:point-forecast",
+        bpp_id="bpp",
+        bpp_uri="https://bpp.example",
     )
     attrs = _planner_attributes(capability, {})
     no_location = {k: v for k, v in attrs.items() if k != "location"}
@@ -516,6 +522,8 @@ _DESK = ProviderCapability(
     provider_name="PMFBY Grievance Portal",
     capability="openagrinet:Grievance",
     resource_id="res:pmfby:grievance",
+    bpp_id="bpp",
+    bpp_uri="https://bpp.example",
 )
 _FILING = {
     "@type": "openagrinet:Grievance",

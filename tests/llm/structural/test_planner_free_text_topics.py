@@ -82,6 +82,8 @@ CAPABILITY = ProviderCapability(
     provider_name="Krishi Knowledge Base",
     capability="openagrinet:KnowledgeAdvisory",
     resource_id="res:krishi-kb:crop-advisory",
+    bpp_id="bpp",
+    bpp_uri="https://bpp.example",
     observed_categories=("Crop",),
     advertised={
         "topics": list(PUBLISHED_TOPICS),

@@ -23,6 +23,8 @@ PROVIDER = ProviderCapability(
     provider_name="PMFBY Grievance Portal",
     capability="openagrinet:Grievance",
     resource_id="res:pmfby:grievance",
+    bpp_id="provider-network-vistaar.da.gov.in",
+    bpp_uri="https://provider-network-vistaar.da.gov.in/oan",
     observed_categories=("Grievance",),
 )
 
@@ -69,7 +71,7 @@ def test_the_attributes_ride_on_the_first_commitment() -> None:
     }
 
 
-def test_receiver_is_the_provider() -> None:
+def test_receiver_is_the_catalogs_bpp() -> None:
     request = build_status_request(
         PROVIDER,
         ATTRIBUTES,
@@ -81,7 +83,10 @@ def test_receiver_is_the_provider() -> None:
         timestamp="2026-10-29T06:12:01.330Z",
     )
 
-    assert request["context"]["receiverId"] == "pmfby"
+    assert request["context"]["receiverId"] == "provider-network-vistaar.da.gov.in"
+    assert (
+        request["context"]["bppUri"] == "https://provider-network-vistaar.da.gov.in/oan"
+    )
     assert "networkId" not in request["context"]
 
 
@@ -174,12 +179,12 @@ async def test_a_read_case_comes_back_from_status() -> None:
     assert handler.paths == ["/oan/status"]
 
 
-async def test_the_wire_names_the_provider_as_receiver() -> None:
+async def test_the_wire_names_the_bpp_as_receiver() -> None:
     handler = _Replies(200, fail_times=0)
 
     await _invocation(handler).status(PROVIDER, ATTRIBUTES, "txn-1")
 
-    assert handler.receiver_ids == ["pmfby"]
+    assert handler.receiver_ids == ["provider-network-vistaar.da.gov.in"]
 
 
 async def test_a_transient_failure_is_retried_as_a_select_is() -> None:

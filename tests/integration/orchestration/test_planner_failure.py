@@ -35,6 +35,8 @@ CAPABILITY = ProviderCapability(
     provider_name="Agmarknet",
     capability="openagrinet:MandiPrice",
     resource_id="res:agmarknet:daily-price",
+    bpp_id="bpp",
+    bpp_uri="https://bpp.example",
     observed_categories=("Market",),
 )
 
@@ -203,6 +205,8 @@ async def test_a_capability_with_no_indexed_schema_gets_a_retry() -> None:
         provider_name="Gujarat Agriculture Dept",
         capability="openagrinet:AgricultureFacility",
         resource_id="res:gj-agri:facility",
+        bpp_id="bpp",
+        bpp_uri="https://bpp.example",
         observed_categories=("Service",),
     )
     invocation = _FailingInvocation()

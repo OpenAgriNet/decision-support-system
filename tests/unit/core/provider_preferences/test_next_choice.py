@@ -24,6 +24,8 @@ def _capability(provider: str) -> ProviderCapability:
         provider_name=provider.title(),
         capability=ADVISORY,
         resource_id=f"res:{provider}",
+        bpp_id="bpp",
+        bpp_uri="https://bpp.example",
     )
 
 

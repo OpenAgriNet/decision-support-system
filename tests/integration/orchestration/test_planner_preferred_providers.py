@@ -63,6 +63,8 @@ def _capability(provider: str, capability: str = WEATHER) -> ProviderCapability:
         provider_name=provider.title(),
         capability=capability,
         resource_id=f"res:{provider}:forecast",
+        bpp_id="bpp",
+        bpp_uri="https://bpp.example",
     )
 
 

@@ -36,6 +36,8 @@ PROVIDER = ProviderCapability(
     provider_name="PMFBY Grievance Portal",
     capability="openagrinet:Grievance",
     resource_id="res:pmfby:grievance",
+    bpp_id="bpp",
+    bpp_uri="https://bpp.example",
     observed_categories=("Grievance",),
 )
 

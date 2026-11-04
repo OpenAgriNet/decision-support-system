@@ -490,6 +490,8 @@ def test_only_the_desks_advertising_the_scheme_are_kept() -> None:
         provider_name="PLAIN",
         capability="openagrinet:Grievance",
         resource_id="res:plain:grievance",
+        bpp_id="bpp",
+        bpp_uri="https://bpp.example",
     )
 
     kept = candidates_for_scheme((kisan, pmfby, unmarked), "PMFBY")
@@ -517,6 +519,8 @@ def test_the_body_holds_every_must_send_path_from_pack_provider_and_form() -> No
         provider_name="PMFBY Grievance Portal",
         capability="openagrinet:Grievance",
         resource_id="res:pmfby:grievance",
+        bpp_id="bpp",
+        bpp_uri="https://bpp.example",
     )
     values = {
         "enrolmentId": "KA2026KH00123456",
@@ -562,6 +566,8 @@ def test_a_status_body_matches_the_packs_read_case_example() -> None:
         provider_name="PMFBY Grievance Portal",
         capability="openagrinet:Grievance",
         resource_id="res:pmfby:grievance",
+        bpp_id="bpp",
+        bpp_uri="https://bpp.example",
     )
     values = {"applicantMobile": "9876543210", "case.ticketNo": "100626000099001"}
 

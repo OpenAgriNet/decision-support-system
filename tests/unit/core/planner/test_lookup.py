@@ -12,6 +12,8 @@ def _capability(resource_id: str) -> ProviderCapability:
         provider_name="Agmarknet",
         capability="openagrinet:MandiPrice",
         resource_id=resource_id,
+        bpp_id="bpp",
+        bpp_uri="https://bpp.example",
         observed_categories=("Market",),
     )
 

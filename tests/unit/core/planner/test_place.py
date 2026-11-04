@@ -39,6 +39,8 @@ def _capability(schema_type: str) -> ProviderCapability:
         provider_name="Provider",
         capability=schema_type,
         resource_id=f"res:{schema_type}",
+        bpp_id="bpp",
+        bpp_uri="https://bpp.example",
     )
 
 

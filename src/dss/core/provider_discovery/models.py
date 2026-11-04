@@ -56,6 +56,8 @@ class ProviderCapability:
     provider_name: str
     capability: NetworkSchemaType
     resource_id: str  # names which resource `select` commits to
+    bpp_id: str
+    bpp_uri: str
     observed_categories: tuple[str, ...] = ()  # the resource's own subjectCategories
     # The provider's own code from on_discover ("AGMARKNET-01"). Kept rather
     # than sent: the real select request names a provider by id and name only.

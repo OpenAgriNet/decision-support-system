@@ -104,6 +104,8 @@ def _capability(provider_id: str) -> ProviderCapability:
         provider_name=provider_id,
         capability=ADVISORY,
         resource_id=f"res:{provider_id}:crop-advisory",
+        bpp_id="bpp",
+        bpp_uri="https://bpp.example",
         observed_categories=("Crop",),
     )
 

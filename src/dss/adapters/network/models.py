@@ -122,19 +122,20 @@ class DiscoverContext(NetworkContext):
         return None if value is None else list(value.urls)
 
 
-class SelectContext(NetworkContext):
-    """A select: to one provider, with no schema and no network."""
+class ProviderContext(NetworkContext):
+    """A call to one provider. `receiverId` is the catalog's BPP id and
+    `bppUri` is its address."""
 
+    bpp_uri: str
+
+
+class SelectContext(ProviderContext):
     action: Literal[NetworkAction.SELECT] = NetworkAction.SELECT
 
 
-class SupportContext(NetworkContext):
-    """A support call, the same envelope as a select."""
-
+class SupportContext(ProviderContext):
     action: Literal[NetworkAction.SUPPORT] = NetworkAction.SUPPORT
 
 
-class StatusContext(NetworkContext):
-    """A status call, the same envelope as a select."""
-
+class StatusContext(ProviderContext):
     action: Literal[NetworkAction.STATUS] = NetworkAction.STATUS

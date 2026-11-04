@@ -18,6 +18,8 @@ def _capability() -> ProviderCapability:
         provider_name="IMD Mausamgram NWP",
         capability="openagrinet:WeatherObservation",
         resource_id="res:mausamgram:point-forecast",
+        bpp_id="bpp",
+        bpp_uri="https://bpp.example",
         observed_categories=("Weather",),
     )
 
@@ -50,8 +52,9 @@ def test_builds_the_envelope_from_given_ids_and_timestamp() -> None:
     assert request["context"]["timestamp"] == "2026-08-26T06:12:01.330Z"
 
 
-def test_receiver_is_the_provider() -> None:
-    """The network adapter swaps the provider id for the provider's URL."""
+def test_receiver_is_the_catalogs_bpp() -> None:
+    """A select is addressed to the participant that published the catalog,
+    as a support or status is."""
 
     request = build_select_request(
         _capability(),
@@ -63,7 +66,8 @@ def test_receiver_is_the_provider() -> None:
         timestamp="2026-08-26T06:12:01.330Z",
     )
 
-    assert request["context"]["receiverId"] == "mausamgram"
+    assert request["context"]["receiverId"] == "bpp"
+    assert request["context"]["bppUri"] == "https://bpp.example"
     assert "networkId" not in request["context"]
 
 

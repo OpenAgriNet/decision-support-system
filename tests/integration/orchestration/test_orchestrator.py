@@ -87,6 +87,8 @@ CAPABILITY = ProviderCapability(
     provider_name="Agmarknet",
     capability="openagrinet:MandiPrice",
     resource_id="res:agmarknet:daily-price",
+    bpp_id="bpp",
+    bpp_uri="https://bpp.example",
     observed_categories=("Market",),
 )
 
@@ -495,6 +497,8 @@ async def test_an_unlocated_advisory_ask_is_answered() -> None:
         provider_name="KVK",
         capability="openagrinet:KnowledgeAdvisory",
         resource_id="res:kvk:potato",
+        bpp_id="bpp",
+        bpp_uri="https://bpp.example",
         observed_categories=("Crop",),
     )
     plan = _FakePlan(_ANSWERED_EVIDENCE)
@@ -538,6 +542,8 @@ async def test_mixed_turn_answers_then_asks_place() -> None:
         provider_name="KVK",
         capability="openagrinet:KnowledgeAdvisory",
         resource_id="res:kvk:potato",
+        bpp_id="bpp",
+        bpp_uri="https://bpp.example",
         observed_categories=("Crop",),
     )
     weather = ProviderCapability(
@@ -545,6 +551,8 @@ async def test_mixed_turn_answers_then_asks_place() -> None:
         provider_name="IMD",
         capability="openagrinet:WeatherObservation",
         resource_id="res:imd:forecast",
+        bpp_id="bpp",
+        bpp_uri="https://bpp.example",
         observed_categories=("Weather",),
     )
     plan = _FakePlan(

@@ -35,6 +35,8 @@ WEATHER_DESK = ProviderCapability(
     provider_name="IMD",
     capability="openagrinet:WeatherObservation",
     resource_id="res:imd:forecast",
+    bpp_id="bpp",
+    bpp_uri="https://bpp.example",
     observed_categories=("Weather",),
 )
 GRIEVANCE_FORM = FormDefinition(context=PMFBY_SUPPORT, fields=())
@@ -43,6 +45,8 @@ GRIEVANCE_DESK = ProviderCapability(
     provider_name="PMFBY desk",
     capability="openagrinet:Grievance",
     resource_id="res:pmfby:grievance",
+    bpp_id="bpp",
+    bpp_uri="https://bpp.example",
     observed_categories=("Grievance",),
 )
 

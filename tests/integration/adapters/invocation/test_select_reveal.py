@@ -22,6 +22,8 @@ CAPABILITY = ProviderCapability(
     provider_name="Scheme Desk",
     capability="openagrinet:AgricultureResource",
     resource_id="res:scheme-desk:application-status",
+    bpp_id="bpp",
+    bpp_uri="https://bpp.example",
     observed_categories=("Scheme",),
 )
 PHONE = "9876543210"
@@ -78,12 +80,13 @@ def _attributes(body: dict) -> dict:
     ]
 
 
-async def test_the_wire_names_the_provider_as_receiver() -> None:
+async def test_the_wire_names_the_bpp_as_receiver() -> None:
     provider = _Provider(_answer("approved"))
 
     await _invocation(provider).select(CAPABILITY, {}, "txn-1")
 
-    assert provider.bodies[0]["context"]["receiverId"] == CAPABILITY.provider_id
+    assert provider.bodies[0]["context"]["receiverId"] == CAPABILITY.bpp_id
+    assert provider.bodies[0]["context"]["bppUri"] == CAPABILITY.bpp_uri
 
 
 async def test_the_wire_carries_the_real_value() -> None:

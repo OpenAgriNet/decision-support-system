@@ -8,11 +8,14 @@ not the adapter's.
 from __future__ import annotations
 
 import json
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from dss.adapters.discovery.client import map_discover_response
+from dss.adapters.network_common import NO_STATUS_CODE
+from dss.core.provider_discovery.models import DiscoveryFailure, FailureClass
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -46,6 +49,76 @@ def test_the_providers_descriptor_code_is_kept() -> None:
     assert result.capabilities[0].provider_code == "IMD-NWP-01"
 
 
+def test_the_catalogs_bpp_is_kept() -> None:
+    """A transaction (support, status) is addressed to the catalog's BPP, not
+    to its provider."""
+
+    response = json.loads((FIXTURES / "discover_response.json").read_text())
+
+    result = map_discover_response(response)
+
+    assert result.capabilities[0].bpp_id == "provider-network-vistaar.da.gov.in"
+    assert (
+        result.capabilities[0].bpp_uri
+        == "https://provider-network-vistaar.da.gov.in/oan"
+    )
+
+
+def test_a_catalog_without_a_bpp_is_rejected_and_logged(caplog) -> None:
+    """A transaction cannot be addressed without the BPP, so the catalog is
+    dropped whole and the gap is reported. Its siblings still load."""
+
+    response = {
+        "message": {
+            "catalogs": [
+                {
+                    "id": "cat-no-bpp",
+                    "provider": {"id": "p", "descriptor": {"name": "P"}},
+                    "resources": [
+                        {
+                            "id": "r",
+                            "resourceAttributes": {
+                                "@type": "openagrinet:X",
+                                "informationMode": "OnDemand",
+                            },
+                        }
+                    ],
+                },
+                {
+                    "id": "cat-ok",
+                    "bppId": "bpp",
+                    "bppUri": "https://bpp.example",
+                    "provider": {"id": "q", "descriptor": {"name": "Q"}},
+                    "resources": [
+                        {
+                            "id": "r2",
+                            "resourceAttributes": {
+                                "@type": "openagrinet:X",
+                                "informationMode": "OnDemand",
+                            },
+                        }
+                    ],
+                },
+            ]
+        }
+    }
+
+    with caplog.at_level(logging.ERROR, logger="dss"):
+        result = map_discover_response(response)
+
+    assert [c.provider_id for c in result.capabilities] == ["q"]
+    assert result.failures == (
+        DiscoveryFailure(
+            capability="openagrinet:X",
+            status_code=NO_STATUS_CODE,
+            failure_class=FailureClass.DEFECT,
+            provider_id="p",
+            detail="catalog cat-no-bpp has no bppId",
+        ),
+    )
+    assert "cat-no-bpp" in caplog.text
+
+
 def test_a_provider_with_no_descriptor_code_maps_to_none() -> None:
     """``code`` is not guaranteed — only ``name`` appears in every fixture."""
 
@@ -73,6 +146,8 @@ def test_a_resources_advertised_attributes_are_kept() -> None:
         "message": {
             "catalogs": [
                 {
+                    "bppId": "bpp",
+                    "bppUri": "https://bpp.example",
                     "provider": {"id": "p", "descriptor": {"name": "P"}},
                     "resources": [
                         {
@@ -125,6 +200,8 @@ def test_a_direct_resource_with_validity_parses_it() -> None:
         "message": {
             "catalogs": [
                 {
+                    "bppId": "bpp",
+                    "bppUri": "https://bpp.example",
                     "provider": {"id": "p", "descriptor": {"name": "P"}},
                     "resources": [
                         {
@@ -157,6 +234,8 @@ def _direct_response_with_validity(validity: dict[str, Any]) -> dict[str, Any]:
         "message": {
             "catalogs": [
                 {
+                    "bppId": "bpp",
+                    "bppUri": "https://bpp.example",
                     "provider": {"id": "p", "descriptor": {"name": "P"}},
                     "resources": [
                         {
@@ -206,6 +285,8 @@ def test_a_resource_without_subject_categories_still_maps() -> None:
         "message": {
             "catalogs": [
                 {
+                    "bppId": "bpp",
+                    "bppUri": "https://bpp.example",
                     "provider": {"id": "p", "descriptor": {"name": "P"}},
                     "resources": [
                         {
@@ -229,7 +310,13 @@ def test_a_resource_without_subject_categories_still_maps() -> None:
 def test_a_catalog_without_resources_maps_to_nothing() -> None:
     response = {
         "message": {
-            "catalogs": [{"provider": {"id": "p", "descriptor": {"name": "P"}}}]
+            "catalogs": [
+                {
+                    "bppId": "bpp",
+                    "bppUri": "https://bpp.example",
+                    "provider": {"id": "p", "descriptor": {"name": "P"}},
+                }
+            ]
         }
     }
 
@@ -247,6 +334,8 @@ def test_a_resource_without_an_information_mode_is_skipped() -> None:
         "message": {
             "catalogs": [
                 {
+                    "bppId": "bpp",
+                    "bppUri": "https://bpp.example",
                     "provider": {"id": "p", "descriptor": {"name": "P"}},
                     "resources": [
                         {"id": "r", "resourceAttributes": {"@type": "openagrinet:X"}},

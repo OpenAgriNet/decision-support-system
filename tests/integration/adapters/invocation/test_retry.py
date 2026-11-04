@@ -22,6 +22,8 @@ CAPABILITY = ProviderCapability(
     provider_name="IMD Mausamgram NWP",
     capability="openagrinet:WeatherObservation",
     resource_id="res:mausamgram:point-forecast",
+    bpp_id="bpp",
+    bpp_uri="https://bpp.example",
     observed_categories=("Weather",),
 )
 
