@@ -148,34 +148,6 @@ def test_user_message_includes_history() -> None:
     assert "and potato?" in message
 
 
-def test_an_ask_a_form_files_is_marked() -> None:
-    """The model's one decision on a filing is the provider; the line says
-    the values are not its to author."""
-
-    ask = Ask(
-        subject_categories=SubjectCategory.GRIEVANCE,
-        interaction_type=InteractionType.ACT,
-    )
-
-    section = asks_section((ask,), filing=frozenset({0}))
-
-    assert "ask 0: Grievance (act), files the farmer's form" in section
-
-
-def test_an_ask_a_status_form_answers_is_marked() -> None:
-    ask = Ask(
-        subject_categories=SubjectCategory.GRIEVANCE,
-        interaction_type=InteractionType.OBSERVE,
-    )
-
-    section = asks_section((ask,), checking=frozenset({0}))
-
-    assert (
-        "ask 0: Grievance (observe), checks the status with the farmer's form"
-        in section
-    )
-
-
 def test_a_submitted_form_in_history_reads_as_its_fixed_line() -> None:
     submitted = ConversationMessage(
         role="user",

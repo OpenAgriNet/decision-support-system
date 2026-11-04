@@ -5,7 +5,7 @@ Pydantic AI.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 
@@ -13,8 +13,6 @@ import anyio
 from pydantic_ai import Agent, ModelRetry, RunContext
 from pydantic_ai.models import Model
 
-from dss.core.forms.models import ActionReply, ActionSchema, Filing
-from dss.core.forms.service import build_action_attributes, without_farmer_values
 from dss.core.intent.models import (
     AmbiguousPlace,
     Intent,
@@ -50,7 +48,6 @@ from dss.core.shared.models import UserTurn
 from dss.observability.trace_log import log_event
 from dss.ports.invocation import (
     CapabilityInvocation,
-    ProviderCallFailedError,
     SelectFailedError,
 )
 
@@ -80,9 +77,6 @@ class PlannerDeps:
     # exception in `build_resource_attributes` reads this. Injected rather
     # than called inside core so a test can fix the day.
     today: Callable[[], date] = lambda: datetime.now(UTC).date()
-    # The form this turn files, when it is a submission turn. The `support`
-    # tool reads the values from here, never from the model.
-    filing: Filing | None = None
     raw_answers: list[tuple[int, DiscoveredAnswer]] = field(default_factory=list)
     failures: list[Failure] = field(default_factory=list)
     next_choices: NextChoices = field(default_factory=NextChoices)
@@ -424,172 +418,12 @@ async def _describe_capability(ctx: RunContext[PlannerDeps], ask_index: int) -> 
     model knows what it may set before calling ``select``."""
 
     candidates = ctx.deps.discovery.capabilities.get(ask_index, ())
-    return render_candidates_as_markdown(
-        candidates,
-        schemas=ctx.deps.schemas,
-        action_schemas=_action_schemas(ctx.deps.filing),
-    )
-
-
-def _action_schemas(filing: Filing | None) -> dict[str, ActionSchema]:
-    if filing is None:
-        return {}
-    filed_type = filing.action.jsonld.get("@type")
-    return {} if filed_type is None else {filed_type: filing.action}
-
-
-@dataclass(frozen=True)
-class _FormCall:
-    """One API-pack action a submitted form can be sent with, and the words
-    its tool answers the model in. The model reads them, so they say what
-    to do next."""
-
-    action: str
-    send: Callable[..., Awaitable[ActionReply]]
-    done: str
-    not_done: str
-
-
-async def _support(
-    ctx: RunContext[PlannerDeps], ask_index: int, resource_id: str
-) -> str:
-    """File the turn's form with one chosen provider. The model's only
-    decision is which provider; the body is built in code from the pack's
-    action schema, the provider and the form's values."""
-
-    return await _send_form(
-        ctx,
-        ask_index,
-        resource_id,
-        _FormCall(
-            action="support",
-            send=ctx.deps.invocation.support,
-            done="Filed with {provider}. Do not call support again for ask "
-            "{ask}; report the filing.",
-            not_done="Could not file with {provider}. Do not call support again "
-            "for ask {ask}; report that the form was not filed.",
-        ),
-    )
-
-
-async def _status(
-    ctx: RunContext[PlannerDeps], ask_index: int, resource_id: str
-) -> str:
-    """Check the status of the case the turn's form names, with one chosen
-    provider. The model's only decision is which provider; the body is built
-    in code from the pack's action schema, the provider and the form's
-    values."""
-
-    return await _send_form(
-        ctx,
-        ask_index,
-        resource_id,
-        _FormCall(
-            action="status",
-            send=ctx.deps.invocation.status,
-            done="Read the case from {provider}. Do not call status again for "
-            "ask {ask}; report its status.",
-            not_done="Could not read the case from {provider}. Do not call status "
-            "again for ask {ask}; report that the status was not checked.",
-        ),
-    )
-
-
-async def _send_form(
-    ctx: RunContext[PlannerDeps], ask_index: int, resource_id: str, call: _FormCall
-) -> str:
-    """What `support` and `status` share: the turn cleared moderation, the
-    form is for this action, one call per ask, and the body is built in code.
-    Only the provider is the model's."""
-
-    deps = ctx.deps
-    decision = await deps.verdict.get()
-    if decision.outcome is not Outcome.PROCEED:
-        return "This turn was not cleared to call providers. Do not retry."
-    if deps.filing is None:
-        return f"This turn has no form to send. Do not call {call.action}."
-    if deps.filing.action.context.action != call.action:
-        return (
-            f"This form is not sent with {call.action}. Call "
-            f"{deps.filing.action.context.action} instead."
-        )
-    if _already_tried(deps, ask_index):
-        return (
-            f"Ask {ask_index} was already sent once. Do not call {call.action} again."
-        )
-
-    capability = find_capability(
-        deps.discovery, ask_index=ask_index, resource_id=resource_id
-    )
-    if capability is None:
-        raise ModelRetry(
-            f"resource_id {resource_id!r} is not one of ask {ask_index}'s candidates"
-        )
-
-    attributes = build_action_attributes(
-        deps.filing.action, capability, deps.filing.submission.values
-    )
-    try:
-        reply = await call.send(
-            capability,
-            attributes,
-            deps.turn.transaction_id,
-            visibility=deps.visibility,
-        )
-    except ProviderCallFailedError as failed:
-        # The adapter has already retried and given up. No provider text:
-        # the farmer is told in the DSS's own words.
-        deps.failures.append(
-            Failure(
-                ask_index=ask_index,
-                capability=failed.capability,
-                reason=f"{call.action} failed with status {failed.status_code}",
-                retryable=failed.failure_class is FailureClass.TRANSIENT,
-                retry_after_seconds=failed.retry_after_seconds,
-            )
-        )
-        return call.not_done.format(provider=capability.provider_name, ask=ask_index)
-
-    deps.raw_answers.append(
-        (ask_index, _as_answer(capability, reply.attributes, deps.filing.action))
-    )
-    return call.done.format(provider=capability.provider_name, ask=ask_index)
-
-
-def _already_tried(deps: PlannerDeps, ask_index: int) -> bool:
-    """One filing per ask per run, filed or failed: the adapter has already
-    retried a failure, and sending again is how a slow desk gets two tickets."""
-
-    return any(index == ask_index for index, _ in deps.raw_answers) or any(
-        failure.ask_index == ask_index for failure in deps.failures
-    )
-
-
-def _as_answer(
-    capability: ProviderCapability,
-    attributes: Mapping[str, object],
-    action: ActionSchema,
-) -> DiscoveredAnswer:
-    """The provider's reply as an answer on the ask, so the composer writes
-    the confirmation or the status from it like any other result. Less what
-    the farmer typed: the desk echoes it, and no typed value may reach the
-    composer."""
-
-    return DiscoveredAnswer(
-        provider_id=capability.provider_id,
-        provider_name=capability.provider_name,
-        capability=capability.capability,
-        resource_id=capability.resource_id,
-        attributes=without_farmer_values(attributes, action),
-        validity=None,
-    )
+    return render_candidates_as_markdown(candidates, schemas=ctx.deps.schemas)
 
 
 _TOOLS = {
     "select": _select,
     "select_next": _select_next,
-    "support": _support,
-    "status": _status,
     "describe_capability": _describe_capability,
 }
 

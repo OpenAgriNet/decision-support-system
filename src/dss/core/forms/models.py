@@ -287,15 +287,6 @@ class ActionReply(BaseModel):
     attributes: Mapping[str, object]
 
 
-class Filing(BaseModel):
-    """A submission the planner may file, and the call it files it with."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    submission: ValidSubmission
-    action: ActionSchema
-
-
 class FormReference(MessageReference):
     """A form a prior message carried, by its ids only. Whether it was
     offered or submitted is the message's role; the fields and values are

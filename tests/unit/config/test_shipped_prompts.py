@@ -539,7 +539,7 @@ def test_localizer_hindi_demo_keeps_the_verbatim_rules() -> None:
 
 def test_shipped_skills_load_and_validate() -> None:
     skills = _service().get_skills(PromptIdentifier.PLANNER, LanguageTag("en"))
-    assert {s.id for s in skills} == {"provider-invocation", "provider-action"}
+    assert {s.id for s in skills} == {"provider-invocation"}
 
 
 def test_provider_invocation_skill_shape() -> None:
@@ -552,21 +552,6 @@ def test_provider_invocation_skill_shape() -> None:
     assert skill.tool_names == ("describe_capability", "select", "select_next")
     assert skill.description
     assert skill.guidance
-
-
-def test_provider_action_skill_sends_a_form_only() -> None:
-    """Bound on a submission turn, never on a question: a question must not
-    see `support` or `status`, and a submission must not see `select`."""
-
-    skill = next(
-        s
-        for s in _service().get_skills(PromptIdentifier.PLANNER, LanguageTag("en"))
-        if s.id == "provider-action"
-    )
-    assert skill.input_kind == "form"
-    assert skill.tool_names == ("describe_capability", "support", "status")
-    assert "support" in skill.guidance
-    assert "status" in skill.guidance
 
 
 def test_provider_invocation_guidance_covers_resolving_across_history() -> None:
