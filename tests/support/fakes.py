@@ -16,9 +16,11 @@ from dss.core.intent.models import Scheme, SchemeEntry
 from dss.core.planner.models import Skill
 from dss.core.provider_discovery.models import ProviderCapability
 from dss.core.provider_preferences.models import PreferenceBook, capability_key
+from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.errors import ProviderUnavailableError, TranslationError
 from dss.core.shared.language import LanguageTag
 from dss.core.shared.models import Geometry, TurnContext, TurnEvent, UserTurn
+from dss.core.shared.network import NetworkTransactionID
 from dss.ports.area_lookup import AreaMatch
 from dss.ports.invocation import ProviderCallFailedError
 from dss.ports.prompts import PromptIdentifier
@@ -275,6 +277,8 @@ class ActionCall:
     action: ProviderAction
     provider: ProviderCapability
     attributes: dict
+    transaction_id: NetworkTransactionID
+    visibility: Visibility
 
 
 class RecordingActionInvocation:
@@ -288,16 +292,44 @@ class RecordingActionInvocation:
         self._failure = failure
         self.calls: list[ActionCall] = []
 
-    async def support(self, capability, attributes, transaction_id, *, visibility):
-        return self._answer(ProviderAction.SUPPORT, capability, attributes)
-
-    async def status(self, capability, attributes, transaction_id, *, visibility):
-        return self._answer(ProviderAction.STATUS, capability, attributes)
-
-    def _answer(
-        self, action: ProviderAction, provider: ProviderCapability, attributes: dict
+    async def support(
+        self,
+        capability: ProviderCapability,
+        attributes: dict,
+        transaction_id: NetworkTransactionID,
+        *,
+        visibility: Visibility = NOTHING_HELD,
     ) -> ActionReply:
-        self.calls.append(ActionCall(action, provider, attributes))
+        return self._answer(
+            ActionCall(
+                ProviderAction.SUPPORT,
+                capability,
+                attributes,
+                transaction_id,
+                visibility,
+            )
+        )
+
+    async def status(
+        self,
+        capability: ProviderCapability,
+        attributes: dict,
+        transaction_id: NetworkTransactionID,
+        *,
+        visibility: Visibility = NOTHING_HELD,
+    ) -> ActionReply:
+        return self._answer(
+            ActionCall(
+                ProviderAction.STATUS,
+                capability,
+                attributes,
+                transaction_id,
+                visibility,
+            )
+        )
+
+    def _answer(self, call: ActionCall) -> ActionReply:
+        self.calls.append(call)
         if self._failure is not None:
             raise self._failure
         return ActionReply(attributes=self._reply)

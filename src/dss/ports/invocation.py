@@ -96,28 +96,7 @@ class StatusFailedError(ProviderCallFailedError):
         self.retry_after_seconds = retry_after_seconds
 
 
-class CapabilityInvocation(Protocol):
-    async def select(
-        self,
-        capability: ProviderCapability,
-        resource_attributes: dict,
-        transaction_id: NetworkTransactionID,
-        *,
-        visibility: Visibility = NOTHING_HELD,
-    ) -> Sequence[DiscoveredAnswer]:
-        """Return every answer the provider gave, or raise ``SelectFailedError``.
-
-        A sequence, not one answer: one call's resources are grouped by the
-        document they came from, and a search provider can draw on several.
-        It may be empty — a provider that committed to nothing succeeded at
-        saying so.
-
-        ``resource_attributes`` holds tags («phone_1»). The adapter swaps in
-        the real values only on the wire, and swaps any value the provider
-        echoes back to its tag, so neither its logs nor the answers hold one.
-        """
-        ...
-
+class ProviderActionInvocation(Protocol):
     async def support(
         self,
         capability: ProviderCapability,
@@ -146,5 +125,28 @@ class CapabilityInvocation(Protocol):
 
         ``attributes`` is the whole body the pack's action schema calls for,
         already built. Retried like ``select``: a read is safe to send twice.
+        """
+        ...
+
+
+class CapabilityInvocation(ProviderActionInvocation, Protocol):
+    async def select(
+        self,
+        capability: ProviderCapability,
+        resource_attributes: dict,
+        transaction_id: NetworkTransactionID,
+        *,
+        visibility: Visibility = NOTHING_HELD,
+    ) -> Sequence[DiscoveredAnswer]:
+        """Return every answer the provider gave, or raise ``SelectFailedError``.
+
+        A sequence, not one answer: one call's resources are grouped by the
+        document they came from, and a search provider can draw on several.
+        It may be empty — a provider that committed to nothing succeeded at
+        saying so.
+
+        ``resource_attributes`` holds tags («phone_1»). The adapter swaps in
+        the real values only on the wire, and swaps any value the provider
+        echoes back to its tag, so neither its logs nor the answers hold one.
         """
         ...
