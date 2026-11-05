@@ -102,7 +102,7 @@ from dss.orchestration.discovery import (
     build_capability_discovery,
     build_discover_providers,
 )
-from dss.orchestration.form_path import FormPath
+from dss.orchestration.form_path import FormPath, FormPathComponents
 from dss.orchestration.network_sender import (
     NetworkSenderFor,
     caller_or_configured_sender,
@@ -324,8 +324,13 @@ def _build_form_path(wiring: _Wiring) -> FormPath:
         policies=boot.policies,
         forms=wiring.forms,
         scheme_catalog=boot.scheme_catalog,
-        components=wiring.components,
-        invocation_for=wiring.network.invocation_for,
+        components=FormPathComponents(
+            redact=wiring.components.redact,
+            discover=wiring.components.discover,
+            compose=wiring.components.compose,
+            localize=wiring.components.localize,
+            invocation_for=wiring.network.invocation_for,
+        ),
         turns=wiring.turns,
         telemetry=wiring.telemetry,
         clarification_text=boot.clarification_text,

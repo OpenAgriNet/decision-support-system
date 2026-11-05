@@ -38,8 +38,8 @@ from dss.core.shared.models import (
     UserDetails,
     UserTurn,
 )
-from dss.orchestration.form_path import FormPath
-from dss.orchestration.orchestrator import Components, Orchestrator
+from dss.orchestration.form_path import FormPath, FormPathComponents
+from dss.orchestration.orchestrator import Orchestrator
 from dss.orchestration.redaction import RedactTexts, pass_through, redact_texts
 from dss.ports.invocation import (
     SupportFailedError,
@@ -103,10 +103,6 @@ def _support_refused() -> RecordingActionInvocation:
     return RecordingActionInvocation(
         failure=SupportFailedError("openagrinet:Grievance", 400, FailureClass.DEFECT)
     )
-
-
-async def _no_plan(*args, **kwargs):
-    raise AssertionError("a form turn never runs the planner")
 
 
 class _RecordingModerationLLM:
@@ -182,15 +178,15 @@ def _build_orchestrator_and_turn_sink(  # noqa: PLR0913
         examples_json=(),
     )
     turns = MemoryTurnSink()
-    components = Components(
+    components = FormPathComponents(
         redact=redact,
         discover=discover
         or _FakeDiscovery(
             discovery or _providers_found(grievance_provider("pmfby-provider", "PMFBY"))
         ),
-        plan=_no_plan,
         compose=compose or _FakeCompose("unused"),
         localize=localize or FakeLocalizer(),
+        invocation_for=lambda _turn: invocation or RecordingActionInvocation(),
     )
     path = FormPath(
         moderation_llm=moderation_llm or _FakeModerationLLM(),
@@ -199,7 +195,6 @@ def _build_orchestrator_and_turn_sink(  # noqa: PLR0913
         forms=build_form_registry([pack]),
         scheme_catalog=FakeSchemeCatalog(_PMFBY),
         components=components,
-        invocation_for=lambda _turn: invocation or RecordingActionInvocation(),
         turns=turns,
         telemetry=telemetry or _StageOutcomes(),
         clarification_text=load_clarification_text(),
