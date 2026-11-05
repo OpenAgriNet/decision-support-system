@@ -2,8 +2,8 @@
 
 Story: https://github.com/OpenAgriNet/engineering-tracker/issues/243
 Epic: #204
-ADRs to write: ADR-0022 (settle each ask before serving it), ADR-0023 (the
-composer writes questions; partly supersedes ADR-0018).
+ADR: [ADR-0022](../../ADR/0022-settle-each-ask-before-serving-it.md), settle
+each ask before serving it.
 
 ## Approach
 
@@ -247,7 +247,7 @@ plus any exact block code adds.
 5. Intent examples config: loader, boot checks, cap, template.
 6. Composer writes the question; fallback to fixed text; exact parts after
    the prose.
-7. Docs: ADR-0022, ADR-0023, `DSS_ARCHITECTURE.md`, `AGENTS.md` tech
+7. Docs: `DSS_ARCHITECTURE.md`, `AGENTS.md` tech
    stack, changelog. Update #243's criteria: no scheme list, a confirm
    when unsure, and the action asked when unclear (criteria 1, 2 and 4,
    assumption 1).
