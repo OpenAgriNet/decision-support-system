@@ -184,13 +184,14 @@ async def _find_answering_providers(
     came from."""
 
     settings = Settings()
+    invocation = _ScriptedInvocation(
+        {PREFERRED: preferred_advice, NEXT_PREFERRED: next_preferred_advice}
+    )
     plan = build_plan(
         schemas=SCHEMAS,
         place_bound_types=frozenset(),
         schema_context_index=SCHEMA_CONTEXT_INDEX,
-        invocation=_ScriptedInvocation(
-            {PREFERRED: preferred_advice, NEXT_PREFERRED: next_preferred_advice}
-        ),
+        invocation_for=lambda _turn: invocation,
         identity=load_identity(),
         prompts=build_prompt_service(_REPO_ROOT / "configs" / "prompts.yaml"),
         model=_resolve_model(settings.planner_model, settings),
