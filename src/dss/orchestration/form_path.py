@@ -71,7 +71,11 @@ from dss.orchestration.orchestrator import (
 )
 from dss.orchestration.plan import InvocationFor
 from dss.orchestration.provider_action import FORM_ASK_INDEX, call_provider_action
-from dss.orchestration.stage_content import asks_text, discovery_text
+from dss.orchestration.stage_content import (
+    asks_text,
+    discovery_text,
+    provider_response_text,
+)
 from dss.orchestration.turn import moderation_attributes
 from dss.ports.llm import LLMProvider
 from dss.ports.prompts import PromptProvider
@@ -277,6 +281,10 @@ class FormPath:
                 action=action.context.action,
                 provider_id=provider.provider_id,
                 is_failure=isinstance(response, Failure),
+            )
+            set_current_span_content(
+                input=f"{action.context.action} to {provider.provider_name}",
+                output=provider_response_text(response),
             )
         return response
 
