@@ -28,6 +28,7 @@ from dss.core.forms.models import (
 from dss.core.forms.registry import FormRegistry
 from dss.core.forms.service import (
     WITHHELD,
+    answer_for_failed_call,
     build_action_attributes,
     build_form_registry,
     candidates_for_scheme,
@@ -43,7 +44,7 @@ from dss.core.forms.service import (
 from dss.core.planner.models import Failure
 from dss.core.provider_discovery.models import ProviderCapability
 from dss.core.schema_packs.models import SchemaPackFiles
-from dss.core.shared.models import Cause
+from dss.core.shared.models import Cause, TextBlock
 from tests.support.providers import build_capability, grievance_provider
 
 
@@ -632,3 +633,33 @@ def test_a_failed_call_is_unavailable_only_if_trying_again_may_work(
     )
 
     assert cause_for_failed_call(failure) is cause
+
+
+_TEXT = load_clarification_text()
+
+
+@pytest.mark.parametrize(
+    ("action", "cause", "expected_text"),
+    [
+        ("support", Cause.PROVIDER_UNAVAILABLE, _TEXT.not_filed),
+        ("support", Cause.PROVIDER_REJECTED, _TEXT.not_filed_rejected),
+        ("status", Cause.PROVIDER_UNAVAILABLE, _TEXT.status_not_checked),
+        ("status", Cause.PROVIDER_REJECTED, _TEXT.status_not_found),
+    ],
+)
+def test_a_failed_call_is_told_in_the_words_for_its_action_and_cause(
+    action: str, cause: Cause, expected_text: str
+) -> None:
+    submission = FormSubmission(
+        form_id="offer-1",
+        context=FormContext(scheme="PMFBY", category="Grievance", action=action),
+        submission_id="submission-1",
+        values=(),
+    )
+
+    told, kept = answer_for_failed_call(submission, cause, _TEXT).content
+
+    assert told == TextBlock(text=expected_text)
+    assert kept == FormErrorBlock(
+        form_id="offer-1", context=submission.context, submission_id="submission-1"
+    )
