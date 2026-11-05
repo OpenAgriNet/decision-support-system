@@ -12,7 +12,7 @@ from dss.core.provider_discovery.models import (
 )
 from dss.core.redaction.visibility import Visibility
 from dss.core.shared.network import NetworkTransactionID
-from dss.ports.invocation import CapabilityInvocation, ProviderCallFailedError
+from dss.ports.invocation import ProviderActionInvocation, ProviderCallFailedError
 
 # A form turn has one ask: the form's.
 FORM_ASK_INDEX = 0
@@ -25,7 +25,7 @@ async def call_provider_action(  # noqa: PLR0913
     action: ActionSchema,
     values: Mapping[str, str],
     *,
-    invocation: CapabilityInvocation,
+    invocation: ProviderActionInvocation,
     transaction_id: NetworkTransactionID,
     visibility: Visibility,
 ) -> DiscoveredAnswer | Failure:
@@ -41,7 +41,7 @@ async def call_provider_action(  # noqa: PLR0913
 
 
 def _invocation_call_for(
-    action: ActionSchema, invocation: CapabilityInvocation
+    action: ActionSchema, invocation: ProviderActionInvocation
 ) -> InvocationCall:
     calls_by_action: Mapping[ProviderAction, InvocationCall] = {
         ProviderAction.SUPPORT: invocation.support,
