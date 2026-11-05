@@ -1,7 +1,3 @@
-"""Tier 3 — the path a submitted form runs on, driven through the live
-`Orchestrator`. The registry is real, read from the Grievance pack; the sink
-and the localizer are fakes."""
-
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -47,7 +43,6 @@ from dss.orchestration.orchestrator import Components, Orchestrator
 from dss.orchestration.redaction import RedactTexts, pass_through, redact_texts
 from dss.ports.invocation import (
     ProviderCallFailedError,
-    StatusFailedError,
     SupportFailedError,
 )
 from tests.support.fakes import FakeLocalizer, FakePromptProvider, FakeSchemeCatalog
@@ -61,21 +56,14 @@ from .test_orchestrator import (
     _FakeModerationLLM,
 )
 from .test_orchestrator_redaction import PHONE, POLICY, _FindsValues
-from .test_turn_span_tree import spans  # noqa: F401 - a fixture
 
 _GRIEVANCE_YAML = (
     Path(__file__).parents[2] / "fixtures" / "api_packs" / "grievance_attributes.yaml"
 ).read_text(encoding="utf-8")
 
-_PMFBY_SUPPORT = FormContext(scheme="PMFBY", category="Grievance", action="support")
 _PMFBY = Scheme(code="PMFBY", name="Pradhan Mantri Fasal Bima Yojana")
-
-
-def _providers_found(*providers: ProviderCapability) -> DiscoveryResult:
-    return DiscoveryResult(
-        answers={}, capabilities={0: providers}, failures={}, events=()
-    )
-
+_PMFBY_SUPPORT = FormContext(scheme="PMFBY", category="Grievance", action="support")
+_PMFBY_STATUS = FormContext(scheme="PMFBY", category="Grievance", action="status")
 
 _VALUES = {
     "enrolmentId": "PMFBY-2024-000123",
@@ -84,6 +72,14 @@ _VALUES = {
     "season": "Kharif",
     "grievance.description": "Claim for the Kharif crop loss has not been paid.",
 }
+_LOOKUP = {"applicantMobile": "9876543210", "case.ticketNo": "100626000099001"}
+_TICKET = {"case": {"ticketNo": "100626000099001", "filedOn": "2026-10-29"}}
+
+
+def _providers_found(*providers: ProviderCapability) -> DiscoveryResult:
+    return DiscoveryResult(
+        answers={}, capabilities={0: providers}, failures={}, events=()
+    )
 
 
 class _RecordingInvocation:
@@ -112,11 +108,62 @@ class _RecordingInvocation:
         return ActionReply(attributes=self._reply)
 
 
+def _support_unavailable(
+    *, retry_after_seconds: int | None = None
+) -> _RecordingInvocation:
+    return _RecordingInvocation(
+        failure=SupportFailedError(
+            "openagrinet:Grievance",
+            503,
+            FailureClass.TRANSIENT,
+            retry_after_seconds=retry_after_seconds,
+        )
+    )
+
+
+def _support_refused() -> _RecordingInvocation:
+    return _RecordingInvocation(
+        failure=SupportFailedError("openagrinet:Grievance", 400, FailureClass.DEFECT)
+    )
+
+
 async def _no_plan(*args, **kwargs):
     raise AssertionError("a form turn never runs the planner")
 
 
-def _turn(
+class _RecordingModerationLLM:
+    def __init__(self) -> None:
+        self.judged: list[str] = []
+
+    async def structured(self, *, system_prompt, user_query, schema):
+        self.judged.append(user_query)
+        return schema(violated_policy_id=None)
+
+
+class _BrokenModerationLLM:
+    async def structured(self, *, system_prompt, user_query, schema):
+        raise RuntimeError("model unavailable")
+
+
+class _StageOutcomes:
+    def __init__(self) -> None:
+        self.noted: list[tuple[str, str]] = []
+
+    def stage(self, name: str, ctx: TurnContext, outcome: str) -> None:
+        self.noted.append((name, outcome))
+
+
+class _RecordingDiscovery:
+    def __init__(self, result: DiscoveryResult) -> None:
+        self._result = result
+        self.intents: list[Intent] = []
+
+    async def __call__(self, intent: Intent, turn: UserTurn, *, now) -> DiscoveryResult:
+        self.intents.append(intent)
+        return self._result
+
+
+def _form_turn(
     values: Mapping[str, str], *, context: FormContext = _PMFBY_SUPPORT
 ) -> UserTurn:
     return UserTurn(
@@ -136,7 +183,7 @@ def _turn(
     )
 
 
-def _build(  # noqa: PLR0913
+def _build_orchestrator_and_turn_sink(  # noqa: PLR0913
     *,
     localize: FakeLocalizer | None = None,
     redact: RedactTexts = pass_through,
@@ -190,9 +237,9 @@ async def _collect(orch: Orchestrator, turn: UserTurn) -> list[TurnEvent]:
 
 
 async def test_bad_values_hand_the_form_back_with_the_errors() -> None:
-    orch, _ = _build()
+    orch, _ = _build_orchestrator_and_turn_sink()
 
-    events = await _collect(orch, _turn({**_VALUES, "applicantMobile": "12345"}))
+    events = await _collect(orch, _form_turn({**_VALUES, "applicantMobile": "12345"}))
 
     finished = events[-1]
     assert finished.outcome.status is TurnStatus.REQUIRES_INPUT
@@ -214,9 +261,9 @@ async def test_bad_values_hand_the_form_back_with_the_errors() -> None:
 
 
 async def test_the_record_holds_names_and_references_never_a_value() -> None:
-    orch, turns = _build()
+    orch, turns = _build_orchestrator_and_turn_sink()
 
-    await _collect(orch, _turn({**_VALUES, "applicantMobile": "12345"}))
+    await _collect(orch, _form_turn({**_VALUES, "applicantMobile": "12345"}))
 
     record = turns.records["t1"]
     assert record.turn is not None and record.finished is not None
@@ -228,11 +275,11 @@ async def test_the_record_holds_names_and_references_never_a_value() -> None:
     assert [field.name for field in record.turn.input.values] == list(_VALUES)
 
 
-async def test_a_form_nobody_serves_gets_text_only() -> None:
+async def test_a_form_the_registry_does_not_have_is_unknown() -> None:
     kisan = FormContext(scheme="PM-KISAN", category="Grievance", action="support")
-    orch, _ = _build()
+    orch, _ = _build_orchestrator_and_turn_sink()
 
-    events = await _collect(orch, _turn(_VALUES, context=kisan))
+    events = await _collect(orch, _form_turn(_VALUES, context=kisan))
 
     finished = events[-1]
     assert finished.outcome.status is TurnStatus.REQUIRES_INPUT
@@ -242,15 +289,35 @@ async def test_a_form_nobody_serves_gets_text_only() -> None:
     assert text.text == load_clarification_text().unknown_form
 
 
-async def test_history_and_the_phone_reach_the_record_as_tags() -> None:
-    """The form's values are withheld; the rest of the turn is redacted as on
-    the text path."""
+async def test_a_registered_form_with_no_provider_action_is_unknown() -> None:
+    attributes = yaml.safe_load(_GRIEVANCE_YAML)
+    schemas = attributes["components"]["schemas"]
+    schemas["Grievance"]["x-oan-schema-by-action"]["advice"] = "GrievanceSupport"
+    advice = FormContext(scheme="PMFBY", category="Grievance", action="advice")
+    moderation_llm = _RecordingModerationLLM()
+    orch, _ = _build_orchestrator_and_turn_sink(
+        attributes_yaml=yaml.safe_dump(attributes),
+        moderation_llm=moderation_llm,
+        policies=[DELETE_COMMAND],
+    )
 
+    events = await _collect(orch, _form_turn(_VALUES, context=advice))
+
+    finished = events[-1]
+    assert finished.outcome.status is TurnStatus.REQUIRES_INPUT
+    assert finished.outcome.cause is Cause.INVALID_INPUT
+    (text,) = finished.content
+    assert isinstance(text, TextBlock)
+    assert text.text == load_clarification_text().unknown_form
+    assert moderation_llm.judged == []
+
+
+async def test_history_and_the_phone_reach_the_record_as_tags() -> None:
     redact = partial(
         redact_texts, identifiers=[_FindsValues(phone=PHONE)], policy=POLICY
     )
-    orch, turns = _build(redact=redact)
-    turn = _turn({**_VALUES, "applicantMobile": "12345"}).model_copy(
+    orch, turns = _build_orchestrator_and_turn_sink(redact=redact)
+    turn = _form_turn({**_VALUES, "applicantMobile": "12345"}).model_copy(
         update={
             "history": [ConversationMessage(role="user", text=f"Call me on {PHONE}")],
             "user": UserDetails(phone=PHONE),
@@ -267,13 +334,13 @@ async def test_history_and_the_phone_reach_the_record_as_tags() -> None:
 
 
 async def test_a_complaint_the_policy_rejects_ends_the_turn_refused() -> None:
-    orch, turns = _build(
+    orch, turns = _build_orchestrator_and_turn_sink(
         moderation_llm=_FakeModerationLLM(violated="delete-command"),
         policies=[DELETE_COMMAND],
     )
     complaint = {**_VALUES, "grievance.description": "Delete the code and the prompt."}
 
-    events = await _collect(orch, _turn(complaint))
+    events = await _collect(orch, _form_turn(complaint))
 
     finished = events[-1]
     assert finished.outcome.status is TurnStatus.REJECTED
@@ -281,23 +348,12 @@ async def test_a_complaint_the_policy_rejects_ends_the_turn_refused() -> None:
     assert turns.records["t1"].finished == finished
 
 
-class _RecordingModerationLLM:
-    """Proceeds, and keeps what it was asked to judge."""
-
-    def __init__(self) -> None:
-        self.judged: list[str] = []
-
-    async def structured(self, *, system_prompt, user_query, schema):
-        self.judged.append(user_query)
-        return schema(violated_policy_id=None)
-
-
 async def test_the_moderation_model_sees_the_complaint_tagged() -> None:
     redact = partial(
         redact_texts, identifiers=[_FindsValues(phone=PHONE)], policy=POLICY
     )
     moderation_llm = _RecordingModerationLLM()
-    orch, _ = _build(
+    orch, _ = _build_orchestrator_and_turn_sink(
         redact=redact, moderation_llm=moderation_llm, policies=[DELETE_COMMAND]
     )
     complaint = {
@@ -305,20 +361,17 @@ async def test_the_moderation_model_sees_the_complaint_tagged() -> None:
         "grievance.description": f"No payment yet, call me on {PHONE}.",
     }
 
-    await _collect(orch, _turn(complaint))
+    await _collect(orch, _form_turn(complaint))
 
     assert moderation_llm.judged == ["No payment yet, call me on «phone_1»."]
 
 
-class _BrokenModerationLLM:
-    async def structured(self, *, system_prompt, user_query, schema):
-        raise RuntimeError("model unavailable")
-
-
 async def test_a_moderation_model_down_fails_closed() -> None:
-    orch, _ = _build(moderation_llm=_BrokenModerationLLM(), policies=[DELETE_COMMAND])
+    orch, _ = _build_orchestrator_and_turn_sink(
+        moderation_llm=_BrokenModerationLLM(), policies=[DELETE_COMMAND]
+    )
 
-    events = await _collect(orch, _turn(_VALUES))
+    events = await _collect(orch, _form_turn(_VALUES))
 
     finished = events[-1]
     assert finished.outcome.status is TurnStatus.REJECTED
@@ -326,74 +379,36 @@ async def test_a_moderation_model_down_fails_closed() -> None:
 
 
 async def test_a_form_with_no_free_text_is_not_moderated() -> None:
-    """The status form holds an id and a ticket number, nothing a farmer wrote."""
-
-    status = FormContext(scheme="PMFBY", category="Grievance", action="status")
     moderation_llm = _RecordingModerationLLM()
-    orch, _ = _build(moderation_llm=moderation_llm, policies=[DELETE_COMMAND])
-    lookup = {"applicantMobile": "9876543210", "case.ticketNo": "123456"}
+    orch, _ = _build_orchestrator_and_turn_sink(
+        moderation_llm=moderation_llm, policies=[DELETE_COMMAND]
+    )
 
-    await _collect(orch, _turn(lookup, context=status))
+    await _collect(orch, _form_turn(_LOOKUP, context=_PMFBY_STATUS))
 
     assert moderation_llm.judged == []
 
 
-class _StageOutcomes:
-    def __init__(self) -> None:
-        self.noted: list[tuple[str, str]] = []
-
-    def stage(self, name: str, ctx: TurnContext, outcome: str) -> None:
-        self.noted.append((name, outcome))
-
-
 async def test_the_moderation_outcome_reaches_the_stage_telemetry() -> None:
     telemetry = _StageOutcomes()
-    orch, _ = _build(
+    orch, _ = _build_orchestrator_and_turn_sink(
         moderation_llm=_FakeModerationLLM(violated="delete-command"),
         policies=[DELETE_COMMAND],
         telemetry=telemetry,
     )
 
-    await _collect(orch, _turn(_VALUES))
+    await _collect(orch, _form_turn(_VALUES))
 
     assert telemetry.noted == [("moderation", "reject")]
-
-
-async def test_no_provider_for_the_scheme_ends_the_turn_unserved() -> None:
-    """A PM-KISAN provider is found under the same grievance type; it must not
-    receive a PMFBY complaint."""
-
-    orch, turns = _build(
-        discovery=_providers_found(grievance_provider("kisan-provider", "PM-KISAN"))
-    )
-
-    events = await _collect(orch, _turn(_VALUES))
-
-    finished = events[-1]
-    assert finished.outcome.status is TurnStatus.NO_MATCH
-    (text,) = finished.content
-    assert isinstance(text, TextBlock)
-    assert text.text == load_clarification_text().no_provider
-    assert turns.records["t1"].finished == finished
-
-
-class _RecordingDiscovery:
-    def __init__(self, result: DiscoveryResult) -> None:
-        self._result = result
-        self.intents: list[Intent] = []
-
-    async def __call__(self, intent: Intent, turn: UserTurn, *, now) -> DiscoveryResult:
-        self.intents.append(intent)
-        return self._result
 
 
 async def test_discovery_is_asked_for_the_one_ask_the_form_stands_for() -> None:
     discovery = _RecordingDiscovery(
         _providers_found(grievance_provider("pmfby-provider", "PMFBY"))
     )
-    orch, _ = _build(discover=discovery)
+    orch, _ = _build_orchestrator_and_turn_sink(discover=discovery)
 
-    await _collect(orch, _turn(_VALUES))
+    await _collect(orch, _form_turn(_VALUES))
 
     (intent,) = discovery.intents
     (ask,) = intent.asks
@@ -403,35 +418,22 @@ async def test_discovery_is_asked_for_the_one_ask_the_form_stands_for() -> None:
     assert ask.place is None
 
 
-async def test_a_registered_form_the_path_cannot_file_is_unknown() -> None:
-    """The registry serves every action a pack declares; only support and
-    status can be filed. A crafted submission for another must not crash."""
-
-    attributes = yaml.safe_load(_GRIEVANCE_YAML)
-    schemas = attributes["components"]["schemas"]
-    schemas["Grievance"]["x-oan-schema-by-action"]["advice"] = "GrievanceSupport"
-    advice = FormContext(scheme="PMFBY", category="Grievance", action="advice")
-    moderation_llm = _RecordingModerationLLM()
-    orch, _ = _build(
-        attributes_yaml=yaml.safe_dump(attributes),
-        moderation_llm=moderation_llm,
-        policies=[DELETE_COMMAND],
+async def test_no_provider_for_the_scheme_ends_the_turn_unserved() -> None:
+    orch, turns = _build_orchestrator_and_turn_sink(
+        discovery=_providers_found(grievance_provider("kisan-provider", "PM-KISAN"))
     )
 
-    events = await _collect(orch, _turn(_VALUES, context=advice))
+    events = await _collect(orch, _form_turn(_VALUES))
 
     finished = events[-1]
-    assert finished.outcome.status is TurnStatus.REQUIRES_INPUT
-    assert finished.outcome.cause is Cause.INVALID_INPUT
+    assert finished.outcome.status is TurnStatus.NO_MATCH
     (text,) = finished.content
     assert isinstance(text, TextBlock)
-    assert text.text == load_clarification_text().unknown_form
-    assert moderation_llm.judged == []
+    assert text.text == load_clarification_text().no_provider
+    assert turns.records["t1"].finished == finished
 
 
 async def test_a_direct_answer_does_not_stand_in_for_a_provider() -> None:
-    """Filing needs a provider to call; a catalog answer is not one."""
-
     direct = DiscoveredAnswer(
         provider_id="leaflet",
         provider_name="Leaflet",
@@ -441,14 +443,11 @@ async def test_a_direct_answer_does_not_stand_in_for_a_provider() -> None:
         validity=None,
     )
     found = DiscoveryResult(
-        answers={0: (direct,)},
-        capabilities={0: (grievance_provider("kisan-provider", "PM-KISAN"),)},
-        failures={},
-        events=(),
+        answers={0: (direct,)}, capabilities={}, failures={}, events=()
     )
-    orch, _ = _build(discovery=found)
+    orch, _ = _build_orchestrator_and_turn_sink(discovery=found)
 
-    events = await _collect(orch, _turn(_VALUES))
+    events = await _collect(orch, _form_turn(_VALUES))
 
     assert events[-1].outcome.status is TurnStatus.NO_MATCH
 
@@ -460,9 +459,9 @@ async def test_the_first_ranked_provider_for_the_forms_scheme_is_called() -> Non
         grievance_provider("pmfby-provider", "PMFBY"),
         grievance_provider("pmfby-backup", "PMFBY"),
     )
-    orch, _ = _build(discovery=found, invocation=invocation)
+    orch, _ = _build_orchestrator_and_turn_sink(discovery=found, invocation=invocation)
 
-    await _collect(orch, _turn(_VALUES))
+    await _collect(orch, _form_turn(_VALUES))
 
     (call,) = invocation.calls
     assert call["action"] == "support"
@@ -470,18 +469,22 @@ async def test_the_first_ranked_provider_for_the_forms_scheme_is_called() -> Non
     assert call["attributes"]["enrolmentId"] == _VALUES["enrolmentId"]
 
 
-async def test_a_form_turn_never_runs_the_planner() -> None:
-    orch, _ = _build(invocation=_RecordingInvocation(_TICKET))
+async def test_a_status_form_is_sent_with_status() -> None:
+    invocation = _RecordingInvocation()
+    orch, _ = _build_orchestrator_and_turn_sink(invocation=invocation)
 
-    events = await _collect(orch, _turn(_VALUES))
+    await _collect(orch, _form_turn(_LOOKUP, context=_PMFBY_STATUS))
 
-    assert events[-1].outcome.status is TurnStatus.ANSWERED
+    (call,) = invocation.calls
+    assert call["action"] == "status"
 
 
-async def test_the_provider_call_is_its_own_stage(spans) -> None:  # noqa: F811
-    orch, _ = _build(invocation=_RecordingInvocation(_TICKET))
+async def test_the_provider_call_is_its_own_stage(spans) -> None:
+    orch, _ = _build_orchestrator_and_turn_sink(
+        invocation=_RecordingInvocation(_TICKET)
+    )
 
-    await _collect(orch, _turn(_VALUES))
+    await _collect(orch, _form_turn(_VALUES))
 
     finished = {span.name: span for span in spans.get_finished_spans()}
     assert "dss.stage.planner" not in finished
@@ -491,23 +494,22 @@ async def test_the_provider_call_is_its_own_stage(spans) -> None:  # noqa: F811
     assert attributes["is_failure"] is False
 
 
-async def test_a_failed_provider_call_is_marked_on_its_stage(spans) -> None:  # noqa: F811
-    orch, _ = _build(invocation=_unfiled())
+async def test_a_failed_provider_call_is_marked_on_its_stage(spans) -> None:
+    orch, _ = _build_orchestrator_and_turn_sink(invocation=_support_unavailable())
 
-    await _collect(orch, _turn(_VALUES))
+    await _collect(orch, _form_turn(_VALUES))
 
     finished = {span.name: span for span in spans.get_finished_spans()}
     assert finished["dss.stage.provider_action"].attributes["is_failure"] is True
 
 
-_TICKET = {"case": {"ticketNo": "100626000099001", "filedOn": "2026-10-29"}}
-
-
 async def test_a_filed_form_is_answered_with_the_composers_text() -> None:
     compose = _FakeCompose("Your complaint is filed. Ticket 100626000099001.")
-    orch, turns = _build(invocation=_RecordingInvocation(_TICKET), compose=compose)
+    orch, turns = _build_orchestrator_and_turn_sink(
+        invocation=_RecordingInvocation(_TICKET), compose=compose
+    )
 
-    events = await _collect(orch, _turn(_VALUES))
+    events = await _collect(orch, _form_turn(_VALUES))
 
     finished = events[-1]
     assert finished.outcome.status is TurnStatus.ANSWERED
@@ -521,9 +523,11 @@ async def test_a_filed_form_is_answered_with_the_composers_text() -> None:
 
 async def test_the_composer_gets_the_providers_reply_as_evidence() -> None:
     compose = _FakeCompose("Your complaint is filed.")
-    orch, _ = _build(invocation=_RecordingInvocation(_TICKET), compose=compose)
+    orch, _ = _build_orchestrator_and_turn_sink(
+        invocation=_RecordingInvocation(_TICKET), compose=compose
+    )
 
-    await _collect(orch, _turn(_VALUES))
+    await _collect(orch, _form_turn(_VALUES))
 
     (source,) = compose.evidence.sources
     assert source.name == "PMFBY-PROVIDER"
@@ -532,140 +536,15 @@ async def test_the_composer_gets_the_providers_reply_as_evidence() -> None:
     assert result.data == _TICKET
 
 
-def _unfiled(*, retry_after_seconds: int | None = None) -> _RecordingInvocation:
-    return _RecordingInvocation(
-        failure=SupportFailedError(
-            "openagrinet:Grievance",
-            503,
-            FailureClass.TRANSIENT,
-            retry_after_seconds=retry_after_seconds,
-        )
-    )
-
-
-def _refused() -> _RecordingInvocation:
-    return _RecordingInvocation(
-        failure=SupportFailedError("openagrinet:Grievance", 400, FailureClass.DEFECT)
-    )
-
-
-async def test_a_filing_the_provider_could_not_take_keeps_the_form() -> None:
-    """`unavailable`, the provider's own time to wait, a `form_error` with no
-    fields so every UI keeps the form, and no composer call."""
-
-    compose = _FakeCompose("must not be written")
-    orch, turns = _build(invocation=_unfiled(retry_after_seconds=120), compose=compose)
-
-    events = await _collect(orch, _turn(_VALUES))
-
-    finished = events[-1]
-    assert finished.outcome.status is TurnStatus.UNAVAILABLE
-    assert finished.outcome.cause is Cause.PROVIDER_UNAVAILABLE
-    assert finished.outcome.retry_after_seconds == 120
-    text, kept = finished.content
-    assert isinstance(text, TextBlock)
-    assert text.text == load_clarification_text().not_filed
-    assert kept == FormErrorBlock(
-        form_id="offer-1", context=_PMFBY_SUPPORT, submission_id="submission-1"
-    )
-    assert compose.calls == 0
-    assert turns.records["t1"].finished == finished
-
-
-async def test_a_filing_the_provider_refused_is_not_retryable() -> None:
-    orch, _ = _build(invocation=_refused())
-
-    events = await _collect(orch, _turn(_VALUES))
-
-    finished = events[-1]
-    assert finished.outcome.status is TurnStatus.UNAVAILABLE
-    assert finished.outcome.cause is Cause.PROVIDER_REJECTED
-    assert finished.outcome.retry_after_seconds is None
-    text, _kept = finished.content
-    assert isinstance(text, TextBlock)
-    assert text.text == load_clarification_text().not_filed_rejected
-
-
-_PMFBY_STATUS = FormContext(scheme="PMFBY", category="Grievance", action="status")
-_LOOKUP = {"applicantMobile": "9876543210", "case.ticketNo": "100626000099001"}
-
-
-async def test_a_status_form_is_sent_with_status() -> None:
-    invocation = _RecordingInvocation()
-    orch, _ = _build(invocation=invocation)
-
-    await _collect(orch, _turn(_LOOKUP, context=_PMFBY_STATUS))
-
-    (call,) = invocation.calls
-    assert call["action"] == "status"
-
-
-async def test_a_read_case_is_answered_with_the_composers_text() -> None:
-    case = {"case": {"status": {"code": "UnderReview"}, "filedOn": "2026-09-28"}}
-    compose = _FakeCompose("Your complaint is under review.")
-    orch, _ = _build(invocation=_RecordingInvocation(case), compose=compose)
-
-    events = await _collect(orch, _turn(_LOOKUP, context=_PMFBY_STATUS))
-
-    finished = events[-1]
-    assert finished.outcome.status is TurnStatus.ANSWERED
-    (text,) = finished.content
-    assert isinstance(text, TextBlock)
-    assert text.text == "Your complaint is under review."
-
-
-async def test_a_status_the_provider_could_not_check_keeps_the_form() -> None:
-    unread = _RecordingInvocation(
-        failure=StatusFailedError("openagrinet:Grievance", 503, FailureClass.TRANSIENT)
-    )
-    orch, _ = _build(invocation=unread)
-
-    events = await _collect(orch, _turn(_LOOKUP, context=_PMFBY_STATUS))
-
-    finished = events[-1]
-    assert finished.outcome.status is TurnStatus.UNAVAILABLE
-    assert finished.outcome.cause is Cause.PROVIDER_UNAVAILABLE
-    text, kept = finished.content
-    assert isinstance(text, TextBlock)
-    assert text.text == load_clarification_text().status_not_checked
-    assert kept == FormErrorBlock(
-        form_id="offer-1", context=_PMFBY_STATUS, submission_id="submission-1"
-    )
-
-
-async def test_a_status_the_provider_refused_reads_as_no_complaint_found() -> None:
-    """How a provider says it has no case for that ticket and phone. The form
-    stays the farmer's, to correct and send again."""
-
-    unread = _RecordingInvocation(
-        failure=StatusFailedError("openagrinet:Grievance", 404, FailureClass.DEFECT)
-    )
-    orch, _ = _build(invocation=unread)
-
-    events = await _collect(orch, _turn(_LOOKUP, context=_PMFBY_STATUS))
-
-    finished = events[-1]
-    assert finished.outcome.status is TurnStatus.UNAVAILABLE
-    assert finished.outcome.cause is Cause.PROVIDER_REJECTED
-    text, kept = finished.content
-    assert isinstance(text, TextBlock)
-    assert text.text == load_clarification_text().status_not_found
-    assert isinstance(kept, FormErrorBlock)
-    assert kept.fields == ()
-
-
 async def test_the_composer_sees_the_tagged_history_and_no_form_value() -> None:
-    """The text path hands the composer the redacted turn; the form path
-    must too, or a phone in an earlier message reaches the model."""
-
     redact = partial(
         redact_texts, identifiers=[_FindsValues(phone=PHONE)], policy=POLICY
     )
     compose = _FakeCompose("Your complaint is filed. Ticket 100626000099001.")
-    orch, _ = _build(
+    orch, _ = _build_orchestrator_and_turn_sink(
         redact=redact, invocation=_RecordingInvocation(_TICKET), compose=compose
     )
-    turn = _turn({**_VALUES, "applicantMobile": "9123456789"}).model_copy(
+    turn = _form_turn({**_VALUES, "applicantMobile": "9123456789"}).model_copy(
         update={
             "history": [ConversationMessage(role="user", text=f"Call me on {PHONE}")]
         }
@@ -675,3 +554,37 @@ async def test_the_composer_sees_the_tagged_history_and_no_form_value() -> None:
 
     assert compose.turn.history[0].text == "Call me on «phone_1»"
     assert "9123456789" not in compose.turn.model_dump_json()
+
+
+async def test_a_support_call_the_provider_could_not_take_keeps_the_form() -> None:
+    compose = _FakeCompose("must not be written")
+    orch, turns = _build_orchestrator_and_turn_sink(
+        invocation=_support_unavailable(retry_after_seconds=120), compose=compose
+    )
+
+    events = await _collect(orch, _form_turn(_VALUES))
+
+    finished = events[-1]
+    assert finished.outcome.status is TurnStatus.UNAVAILABLE
+    assert finished.outcome.cause is Cause.PROVIDER_UNAVAILABLE
+    assert finished.outcome.retry_after_seconds == 120
+    _text, kept = finished.content
+    assert kept == FormErrorBlock(
+        form_id="offer-1", context=_PMFBY_SUPPORT, submission_id="submission-1"
+    )
+    assert compose.calls == 0
+    assert turns.records["t1"].finished == finished
+
+
+async def test_a_support_call_the_provider_refused_is_not_retryable() -> None:
+    orch, _ = _build_orchestrator_and_turn_sink(invocation=_support_refused())
+
+    events = await _collect(orch, _form_turn(_VALUES))
+
+    finished = events[-1]
+    assert finished.outcome.status is TurnStatus.UNAVAILABLE
+    assert finished.outcome.cause is Cause.PROVIDER_REJECTED
+    assert finished.outcome.retry_after_seconds is None
+    _text, kept = finished.content
+    assert isinstance(kept, FormErrorBlock)
+    assert kept.fields == ()

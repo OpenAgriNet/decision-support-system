@@ -11,17 +11,9 @@ below the integration level can prove it.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-
 import httpx
-import pytest
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
-from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from dss.adapters.invocation.client import HttpCapabilityInvocation
-from dss.adapters.observability.tracing import open_span
-from dss.observability.trace_log import set_stage_span_opener
 from tests.support.providers import build_capability
 
 from .test_orchestrator import (
@@ -89,17 +81,6 @@ class _PlanThatCallsSelect:
             )
             await invocation.select(_CAPABILITY, {}, "t1")
         return self._evidence
-
-
-@pytest.fixture
-def spans(monkeypatch) -> Iterator[InMemorySpanExporter]:
-    exporter = InMemorySpanExporter()
-    provider = TracerProvider()
-    provider.add_span_processor(SimpleSpanProcessor(exporter))
-    monkeypatch.setattr("opentelemetry.trace.get_tracer_provider", lambda: provider)
-    set_stage_span_opener(open_span)
-    yield exporter
-    set_stage_span_opener(None)
 
 
 async def test_every_stage_hangs_off_the_turn(spans) -> None:
