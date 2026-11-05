@@ -11,13 +11,12 @@ the four ways out map from the verdict and the evidence.
 from __future__ import annotations
 
 import pytest
+from pydantic_ai.messages import ModelMessage, ModelResponse
+from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from dss.adapters.sinks.memory import MemoryTurnSink
 from dss.config.clarification_text_loader import load_clarification_text
 from dss.core.channel.service import NO_MATCH_TEXT
-from pydantic_ai.messages import ModelMessage, ModelResponse
-from pydantic_ai.models.function import AgentInfo, FunctionModel
-
 from dss.core.forms.models import ActionSchema, FormBlock, FormContext, FormDefinition
 from dss.core.forms.registry import FormLookup, FormRegistry
 from dss.core.intent.models import (
@@ -63,6 +62,7 @@ from dss.core.shared.models import (
     UserTurn,
 )
 from dss.core.translation.service import EdgeTranslation
+from dss.orchestration.form_offer import NO_FORM_STEP
 from dss.orchestration.orchestrator import (
     Components,
     NoPathForKindError,
@@ -70,7 +70,6 @@ from dss.orchestration.orchestrator import (
     TextPath,
     unrouted_kinds,
 )
-from dss.orchestration.form_offer import NO_FORM_STEP
 from dss.orchestration.plan import Plan, build_plan
 from dss.orchestration.redaction import RedactTexts, pass_through
 from dss.ports.area_lookup import AreaMatch
@@ -663,7 +662,7 @@ def _planner_that_must_not_run() -> Plan:
     )
 
 
-async def test_a_problem_with_no_scheme_is_asked_which_scheme() -> None:
+async def test_missing_scheme_is_asked() -> None:
     """The turn has no place, and a desk serves it. The question is the
     composer's, no place is asked, and no planner model or provider runs."""
 
@@ -689,7 +688,7 @@ async def test_a_problem_with_no_scheme_is_asked_which_scheme() -> None:
     assert waiting.missing == ("scheme",)
 
 
-async def test_advice_on_filing_carries_the_form_with_no_desk() -> None:
+async def test_filing_advice_carries_the_form() -> None:
     """Nobody serves advice on a grievance, by design. The farmer still gets
     the form, and the planner has nothing left to answer."""
 
@@ -713,7 +712,7 @@ async def test_advice_on_filing_carries_the_form_with_no_desk() -> None:
     assert isinstance(form, FormBlock) and form.form.context == _PMFBY_SUPPORT
 
 
-async def test_the_answer_comes_before_the_question_in_one_reply() -> None:
+async def test_answer_comes_before_question() -> None:
     plan = _FakePlan(
         build_evidence(
             sources=(
@@ -753,7 +752,7 @@ async def test_the_answer_comes_before_the_question_in_one_reply() -> None:
     assert events[-1].outcome.status is TurnStatus.REQUIRES_INPUT
 
 
-async def test_a_scheme_with_no_form_gets_no_place_question() -> None:
+async def test_no_form_no_place_question() -> None:
     """PM-KISAN names a scheme the registry has no form for, so the ask is the
     planner's. Its desk indexes no place, so the farmer is not asked for one;
     nothing can serve it, and the turn says so."""

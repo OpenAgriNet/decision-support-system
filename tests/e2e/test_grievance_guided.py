@@ -37,7 +37,7 @@ def _form_contexts(message: dict[str, Any]) -> list[dict[str, str]]:
     return [item["context"] for item in message["content"] if item["type"] == "form"]
 
 
-def test_a_scheme_problem_is_guided_to_the_file_form_then_the_status_form(
+def test_scheme_problem_guided_to_forms(
     live_app,  # noqa: F811
     live_network: _Network,  # noqa: F811
     a_body,

@@ -21,14 +21,14 @@ def place_optional_asks(
     discovery: DiscoveryResult,
     place_bound_types: Collection[str],
     *,
-    awaiting: Collection[int] = frozenset(),
+    form_asks: Collection[int] = frozenset(),
 ) -> frozenset[int]:
     """The indexes of the asks that name no place and are not failed for it:
     some option discovered for them comes from a pack that needs none, or no
     option was found at all. The second is not a place failure — nobody
     serves the ask, and a place would not change that — so it ends as
     unserved rather than as a question the farmer's reply cannot finish.
-    An ask in ``awaiting`` needs none either: its form carries what its call
+    An ask in ``form_asks`` needs none either: its form carries what its call
     needs.
 
     The pack's own fact decides, so a type no pack holds a place path for
@@ -38,7 +38,7 @@ def place_optional_asks(
         index
         for index, ask in enumerate(intent.asks)
         if ask.place is None and _needs_no_place(index, discovery, place_bound_types)
-    ) | frozenset(awaiting)
+    ) | frozenset(form_asks)
 
 
 def _needs_no_place(

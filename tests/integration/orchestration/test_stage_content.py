@@ -26,7 +26,7 @@ def test_no_sources_says_so() -> None:
     assert cited_sources_text(_evidence(), {}) == "no sources"
 
 
-def test_the_trace_names_the_pieces_an_ask_waits_on() -> None:
+def test_trace_names_waiting_pieces() -> None:
     """A scheme question reads apart from a place question in the trace."""
 
     evidence = build_evidence(missing={1: ("scheme",)})
@@ -34,5 +34,5 @@ def test_the_trace_names_the_pieces_an_ask_waits_on() -> None:
     assert "waiting ask 2: scheme" in evidence_text(evidence)
 
 
-def test_an_ask_that_waits_on_nothing_adds_no_waiting_line() -> None:
+def test_nothing_waiting_adds_no_line() -> None:
     assert "waiting" not in evidence_text(build_evidence())

@@ -78,7 +78,7 @@ def test_a_direct_answer_counts_as_an_option() -> None:
     assert place_optional_asks(intent, discovery, _PLACE_BOUND) == frozenset({0})
 
 
-def test_an_option_from_a_pack_with_no_place_path_needs_none() -> None:
+def test_pack_without_place_path_needs_none() -> None:
     """A grievance desk indexes no location and has no planner schema: the
     pack's own fact decides, not whether the planner can call it."""
 
@@ -125,6 +125,6 @@ def test_an_ask_awaiting_a_form_needs_no_place() -> None:
     intent = Intent(asks=(_ask(),))
     discovery = _discovery(**{"0": (_capability(_WEATHER),)})
 
-    optional = place_optional_asks(intent, discovery, _PLACE_BOUND, awaiting={0})
+    optional = place_optional_asks(intent, discovery, _PLACE_BOUND, form_asks={0})
 
     assert optional == frozenset({0})

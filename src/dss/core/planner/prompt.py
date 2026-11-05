@@ -48,7 +48,7 @@ def guidance_section(skills: Sequence[Skill]) -> str:
 def asks_section(
     asks: Sequence[Ask],
     *,
-    awaiting: Collection[int] = frozenset(),
+    awaits_farmer: Collection[int] = frozenset(),
     filing: Collection[int] = frozenset(),
     checking: Collection[int] = frozenset(),
 ) -> str:
@@ -57,8 +57,9 @@ def asks_section(
 
     The category and interaction type are DSS enums, not the farmer's words,
     so they are safe here. The place is left out: whether a capability needs
-    one is ``describe_capability``'s to say. ``awaiting`` marks the asks a
-    form answers, so the model calls no provider for them; ``filing`` and
+    one is ``describe_capability``'s to say. ``awaits_farmer`` marks the asks a
+    form or a question to the farmer answers, so the model calls no provider
+    for them; ``filing`` and
     ``checking`` mark the asks a submitted form answers, filed or a status
     read, whose values are not the model's."""
 
@@ -67,7 +68,9 @@ def asks_section(
 
     lines = [
         f"- ask {index}: {ask.subject_categories.value} ({ask.interaction_type.value})"
-        + _ask_note(index, awaiting=awaiting, filing=filing, checking=checking)
+        + _ask_note(
+            index, awaits_farmer=awaits_farmer, filing=filing, checking=checking
+        )
         for index, ask in enumerate(asks)
     ]
     return "# Asks\n\n" + "\n".join(lines) + "\n\n"
@@ -76,12 +79,12 @@ def asks_section(
 def _ask_note(
     index: int,
     *,
-    awaiting: Collection[int],
+    awaits_farmer: Collection[int],
     filing: Collection[int],
     checking: Collection[int],
 ) -> str:
-    if index in awaiting:
-        return ", awaits a form"
+    if index in awaits_farmer:
+        return ", awaits the farmer"
     if index in filing:
         return ", files the farmer's form"
     if index in checking:

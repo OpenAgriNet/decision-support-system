@@ -122,9 +122,9 @@ def test_an_ask_awaiting_a_form_is_marked() -> None:
         interaction_type=InteractionType.ACT,
     )
 
-    section = asks_section((ask,), awaiting=frozenset({0}))
+    section = asks_section((ask,), awaits_farmer=frozenset({0}))
 
-    assert "ask 0: Grievance (act), awaits a form" in section
+    assert "ask 0: Grievance (act), awaits the farmer" in section
 
 
 def test_no_asks_leaves_no_section() -> None:

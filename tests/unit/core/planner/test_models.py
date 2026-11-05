@@ -178,12 +178,12 @@ def test_nothing_served_reports_every_ask() -> None:
 _MISSING_SCHEME = AskEvidence(ask=_ASK, results=(), failures=(), missing=("scheme",))
 
 
-def test_an_ask_missing_a_piece_waits_on_the_farmer() -> None:
+def test_missing_piece_waits_on_farmer() -> None:
     assert _MISSING_SCHEME.awaits_farmer is True
     assert _UNSERVED.awaits_farmer is False
 
 
-def test_an_ask_awaiting_a_form_waits_on_the_farmer() -> None:
+def test_awaited_form_waits_on_farmer() -> None:
     form = FormDefinition(
         context=FormContext(scheme="PMFBY", category="Grievance", action="support"),
         fields=(),
@@ -192,13 +192,13 @@ def test_an_ask_awaiting_a_form_waits_on_the_farmer() -> None:
     assert AskEvidence(ask=_ASK, results=(), failures=(), awaiting=form).awaits_farmer
 
 
-def test_an_ask_waiting_on_the_farmer_is_no_gap() -> None:
+def test_waiting_ask_is_no_gap() -> None:
     """The question is the reply to it: "nothing found" would contradict it."""
 
     assert _evidence(_SERVED, _MISSING_SCHEME).unserved_asks == ()
 
 
-def test_a_turn_waits_on_the_farmer_when_any_ask_does() -> None:
+def test_turn_waits_when_any_ask_does() -> None:
     assert _evidence(_SERVED, _MISSING_SCHEME).awaits_farmer is True
     assert _evidence(_SERVED, _UNSERVED).awaits_farmer is False
 

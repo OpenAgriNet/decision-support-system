@@ -70,37 +70,6 @@ _GRIEVANCE_FORM = FormDefinition(
 )
 
 
-async def test_the_reply_points_at_the_form_and_names_no_field() -> None:
-    ask = Ask(
-        agriculture_subjects=_PMFBY.name,
-        subject_categories=SubjectCategory.GRIEVANCE,
-        interaction_type=InteractionType.ACT,
-        scheme=_PMFBY,
-    )
-    evidence = build_evidence(asks=(ask,), awaiting={0: _GRIEVANCE_FORM})
-    turn = UserTurn[TextQuery](
-        input=TextQuery(text="I want to file a PMFBY grievance"),
-        session_id="s1",
-        transaction_id="t1",
-        source_lang="en",
-        target_lang="en",
-        channel="web",
-    )
-
-    pieces = stream_response(
-        evidence,
-        turn=turn,
-        identity=load_identity(),
-        llm=_composer_llm(Settings()),
-        prompts=build_prompt_service(_REPO / "configs" / "prompts.yaml"),
-    )
-    text = "".join([piece async for piece in pieces])
-
-    assert "form" in text.casefold(), f"no mention of the form: {text!r}"
-    named = [label for label in _FIELD_LABELS if label.casefold() in text.casefold()]
-    assert not named, f"the reply lists fields the form carries: {named} in {text!r}"
-
-
 def _turn(query: str) -> UserTurn[TextQuery]:
     return UserTurn[TextQuery](
         input=TextQuery(text=query),
@@ -123,7 +92,25 @@ async def _written(evidence: Evidence, query: str) -> str:
     return "".join([piece async for piece in pieces])
 
 
-async def test_a_waiting_ask_gets_one_question_and_no_scheme_names() -> None:
+async def test_the_reply_points_at_the_form_and_names_no_field() -> None:
+    ask = Ask(
+        agriculture_subjects=_PMFBY.name,
+        subject_categories=SubjectCategory.GRIEVANCE,
+        interaction_type=InteractionType.ACT,
+        scheme=_PMFBY,
+    )
+    evidence = build_evidence(asks=(ask,), awaiting={0: _GRIEVANCE_FORM})
+
+    text = await _written(evidence, "I want to file a PMFBY grievance")
+
+    assert "form" in text.casefold(), f"no mention of the form: {text!r}"
+    named = [label for label in _FIELD_LABELS if label.casefold() in text.casefold()]
+    assert not named, f"the reply lists fields the form carries: {named} in {text!r}"
+
+
+async def test_waiting_ask_gets_one_question() -> None:
+    """One question, no scheme names offered as choices."""
+
     ask = Ask(
         subject_categories=SubjectCategory.GRIEVANCE,
         interaction_type=InteractionType.ACT,
@@ -140,7 +127,7 @@ async def test_a_waiting_ask_gets_one_question_and_no_scheme_names() -> None:
     assert "nothing" not in text.casefold(), f"reads as a failure: {text!r}"
 
 
-async def test_a_file_form_offer_mentions_the_ticket_number() -> None:
+async def test_file_offer_mentions_ticket() -> None:
     ask = Ask(
         agriculture_subjects=_PMFBY.name,
         subject_categories=SubjectCategory.GRIEVANCE,
@@ -152,4 +139,16 @@ async def test_a_file_form_offer_mentions_the_ticket_number() -> None:
     text = await _written(evidence, "My PMFBY claim money has not come")
 
     assert "ticket" in text.casefold(), f"no mention of a ticket: {text!r}"
-    assert "support" not in text.casefold(), f"says the action word: {text!r}"
+
+
+async def test_unknown_scheme_asked_again() -> None:
+    ask = Ask(
+        subject_categories=SubjectCategory.GRIEVANCE,
+        interaction_type=InteractionType.ACT,
+    )
+    evidence = build_evidence(asks=(ask,), missing={0: ("scheme",)})
+
+    text = await _written(evidence, "My Rythu Bandhu payment has not come")
+
+    assert text.count("?") == 1, f"not one question: {text!r}"
+    assert _PMFBY.name.casefold() not in text.casefold(), f"names a choice: {text!r}"

@@ -390,7 +390,7 @@ def test_an_ask_that_needs_no_place_is_not_asked_for_one() -> None:
     assert answer_for_unplaced_asks(asks, _TEXT, place_optional={0}) is None
 
 
-def test_a_place_optional_ask_with_an_ambiguous_place_needs_no_answer() -> None:
+def test_optional_ambiguous_place_needs_no_answer() -> None:
     """A form's ask can carry a place from history. The form needs none, so
     the turn goes on instead of stopping to ask "which Ashti?"."""
 
@@ -399,7 +399,7 @@ def test_a_place_optional_ask_with_an_ambiguous_place_needs_no_answer() -> None:
     assert answer_for_unplaced_asks(asks, _TEXT, place_optional={0}) is None
 
 
-def test_a_place_optional_ask_with_an_ambiguous_place_adds_no_question() -> None:
+def test_optional_ambiguous_place_adds_no_question() -> None:
     asks = (_ask(place=_ASHTI), _ask(place=_PUNE))
 
     assert question_for_unplaced_asks(asks, _TEXT, place_optional={0}) is None

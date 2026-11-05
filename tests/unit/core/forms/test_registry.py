@@ -57,7 +57,7 @@ def test_registry_counts_its_forms() -> None:
     assert len(FormRegistry()) == 0
 
 
-def test_registry_lists_the_contexts_of_a_category() -> None:
+def test_registry_lists_category_contexts() -> None:
     other = FormContext(scheme="PMKSY", category="Irrigation", action="support")
     registry = FormRegistry(
         [

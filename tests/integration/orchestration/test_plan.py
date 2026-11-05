@@ -369,7 +369,7 @@ async def test_a_turn_with_only_form_asks_never_runs_the_agent() -> None:
     assert evidence.unserved_asks == ()
 
 
-async def test_a_turn_with_only_missing_pieces_never_runs_the_agent() -> None:
+async def test_missing_pieces_never_run_agent() -> None:
     """The question is the whole answer: no provider is called for an ask
     that cannot say which scheme it is about."""
 
@@ -400,7 +400,7 @@ async def test_a_turn_with_only_missing_pieces_never_runs_the_agent() -> None:
     assert waiting.failures == ()
 
 
-async def test_an_advice_ask_a_provider_serves_still_runs_the_agent() -> None:
+async def test_served_advice_runs_the_agent() -> None:
     """The form is for the filing that follows; the steps are the planner's."""
 
     runs: list[int] = []
@@ -433,6 +433,41 @@ async def test_an_advice_ask_a_provider_serves_still_runs_the_agent() -> None:
     assert evidence.awaiting_forms == (GRIEVANCE_FORM,)
 
 
+async def test_served_advice_missing_a_scheme_runs() -> None:
+    """The agent answers the advice once; the question about the scheme
+    still reaches the ask's evidence."""
+
+    runs: list[int] = []
+
+    def records_the_run(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        runs.append(len(messages))
+        return ModelResponse(parts=[TextPart(content="Steps.")])
+
+    plan = build_plan(
+        schemas=SCHEMAS,
+        place_bound_types=frozenset(),
+        schema_context_index={},
+        invocation_for=lambda _turn: _FakeInvocation(),
+        identity=IDENTITY,
+        prompts=FakePromptProvider(skills=(SKILL,)),
+        model=FunctionModel(records_the_run),
+    )
+
+    evidence = await plan(
+        _turn(),
+        intent=Intent(asks=(GRIEVANCE_ASK,), confidence=0.9),
+        discovery=DiscoveryResult(
+            answers={}, capabilities={0: (CAPABILITY,)}, failures={}, events=()
+        ),
+        verdict=_cleared_verdict(),
+        form_step=FormStep(missing={0: ("scheme",)}),
+    )
+
+    assert runs == [1]
+    [waiting] = evidence.ask_evidences
+    assert waiting.missing == ("scheme",)
+
+
 def _calls_select_for_ask_0_then_answers(
     messages: list[ModelMessage], info: AgentInfo
 ) -> ModelResponse:
@@ -453,7 +488,7 @@ def _calls_select_for_ask_0_then_answers(
 
 
 async def test_a_model_that_still_selects_for_a_form_ask_reaches_no_provider() -> None:
-    """The ask line says "awaits a form"; a model that calls anyway finds no
+    """The ask line says "awaits the farmer"; a model that calls anyway finds no
     schema it may call, because the Grievance pack is not one select serves.
     The farmer's form is not lost over it."""
 

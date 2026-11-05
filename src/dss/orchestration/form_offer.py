@@ -38,11 +38,15 @@ class FormStep:
 
     ``settled`` holds the asks the planner must not run for, because the form
     or the question already answers them. Always a subset of the asks offered
-    or missing; `find_forms` is the one place that builds a non-empty one."""
+    or missing."""
 
     offered: Mapping[int, FormDefinition] = field(default_factory=dict)
     missing: Mapping[int, tuple[FormPiece, ...]] = field(default_factory=dict)
     settled: frozenset[int] = frozenset()
+
+    def __post_init__(self) -> None:
+        if not self.settled <= self.asks:
+            raise ValueError("settled names an ask the step did not take")
 
     @property
     def asks(self) -> frozenset[int]:
@@ -95,9 +99,10 @@ def find_forms(
     neither, which leaves it to the planner as today.
 
     An ask whose own call the form is (filing, checking) is a form ask only
-    when a provider serves it. Advice is not: the form is for the filing that
-    follows, so the registry alone offers it, and the planner still answers the
-    advice when a provider serves it."""
+    when a provider serves it, and the planner never runs for it. Advice is
+    not: the form is for the filing that follows, so the registry alone offers
+    it, or asks for its missing piece, and the planner still answers the advice
+    when a provider serves it."""
 
     form_asks = {
         position: ask
@@ -114,11 +119,11 @@ def find_forms(
         for position, ask in form_asks.items()
         if position not in offered and (pieces := _pieces_missing(ask, forms))
     }
-    settled = frozenset(missing) | {
+    settled = frozenset(
         position
-        for position in offered
+        for position in offered.keys() | missing.keys()
         if _is_own_call(intent.asks[position]) or not discovery.serves(position)
-    }
+    )
     return FormStep(offered=offered, missing=missing, settled=settled)
 
 

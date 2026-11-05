@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from dss.core.forms.models import FormContext, FormDefinition
 from dss.core.intent.models import (
     Ask,
@@ -157,7 +159,9 @@ def test_only_the_form_ask_is_taken_from_a_mixed_turn() -> None:
 _FORMS = {PMFBY_SUPPORT: GRIEVANCE_FORM}
 
 
-def test_a_served_ask_without_a_scheme_misses_the_scheme() -> None:
+def test_served_ask_misses_the_scheme() -> None:
+    """The ask names no scheme, so the scheme is the piece that is missing."""
+
     intent = Intent(
         asks=(_grievance_ask(InteractionType.ACT, scheme=None),), confidence=0.9
     )
@@ -169,7 +173,7 @@ def test_a_served_ask_without_a_scheme_misses_the_scheme() -> None:
     assert step.settled == {0}
 
 
-def test_an_unserved_ask_without_a_scheme_is_no_form_ask() -> None:
+def test_unserved_ask_is_no_form_ask() -> None:
     """Nobody serves the category here: the unserved reply, not a question
     that leads nowhere."""
 
@@ -180,7 +184,7 @@ def test_an_unserved_ask_without_a_scheme_is_no_form_ask() -> None:
     assert find_forms(intent, _discovery(), _FakeForms(_FORMS)) == FormStep()
 
 
-def test_an_action_with_no_form_asks_for_nothing() -> None:
+def test_action_without_form_asks_nothing() -> None:
     intent = Intent(
         asks=(_grievance_ask(InteractionType.OBSERVE, scheme=None),), confidence=0.9
     )
@@ -190,7 +194,7 @@ def test_an_action_with_no_form_asks_for_nothing() -> None:
     assert step == FormStep()
 
 
-def test_an_ask_outside_the_forms_categories_is_left_alone() -> None:
+def test_other_category_is_left_alone() -> None:
     intent = Intent(asks=(WEATHER_ASK,), confidence=0.9)
 
     step = find_forms(intent, _discovery({0: (WEATHER_DESK,)}), _FakeForms(_FORMS))
@@ -198,7 +202,7 @@ def test_an_ask_outside_the_forms_categories_is_left_alone() -> None:
     assert step == FormStep()
 
 
-def test_advice_gets_the_form_with_no_desk_and_nothing_left_to_call() -> None:
+def test_advice_form_needs_no_desk() -> None:
     """The grievance desk is never found for advice, on purpose: the form
     comes from the registry, and no planner run has anything to answer."""
 
@@ -210,7 +214,7 @@ def test_advice_gets_the_form_with_no_desk_and_nothing_left_to_call() -> None:
     assert step.settled == {0}
 
 
-def test_advice_a_provider_serves_still_goes_to_the_planner() -> None:
+def test_served_advice_goes_to_planner() -> None:
     """A Knowledge provider with steps answers the ask; the form is for the
     filing that follows."""
 
@@ -222,7 +226,9 @@ def test_advice_a_provider_serves_still_goes_to_the_planner() -> None:
     assert step.settled == frozenset()
 
 
-def test_advice_without_a_scheme_misses_the_scheme_even_when_served() -> None:
+def test_served_advice_keeps_the_planner() -> None:
+    """The missing scheme is asked after the planner answers the advice."""
+
     intent = Intent(
         asks=(_grievance_ask(InteractionType.ADVISE, scheme=None),), confidence=0.9
     )
@@ -230,10 +236,26 @@ def test_advice_without_a_scheme_misses_the_scheme_even_when_served() -> None:
     step = find_forms(intent, _discovery({0: (GRIEVANCE_DESK,)}), _FakeForms(_FORMS))
 
     assert step.missing == {0: ("scheme",)}
+    assert step.settled == frozenset()
+
+
+def test_unserved_advice_asks_the_scheme() -> None:
+    intent = Intent(
+        asks=(_grievance_ask(InteractionType.ADVISE, scheme=None),), confidence=0.9
+    )
+
+    step = find_forms(intent, _discovery(), _FakeForms(_FORMS))
+
+    assert step.missing == {0: ("scheme",)}
     assert step.settled == {0}
 
 
-def test_a_form_step_names_the_asks_it_holds() -> None:
+def test_a_stray_settled_ask_is_refused() -> None:
+    with pytest.raises(ValueError, match="settled names an ask"):
+        FormStep(settled=frozenset({0}))
+
+
+def test_form_step_names_its_asks() -> None:
     step = FormStep(offered={0: GRIEVANCE_FORM}, missing={2: ("scheme",)})
 
     assert step.asks == {0, 2}

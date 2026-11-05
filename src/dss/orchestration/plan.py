@@ -112,11 +112,12 @@ def build_plan(  # noqa: PLR0913
         )
         # A place failure is known before the run and no tool reads it, so it
         # skips the deps. An ask with no place at all only fails when every
-        # option found for it needs one — the pack decides. A form's ask,
-        # offered, missing a piece or filed, needs none: the form carries what
-        # its call needs.
+        # option found for it needs one — the pack decides. An ask the form
+        # step took (a form offered, or a piece of one missing) or a filed
+        # form's ask needs none: a form carries what its call needs, and a
+        # missing piece is never a place.
         place_optional = place_optional_asks(
-            intent, discovery, place_bound_types, awaiting=form_step.asks | filing_asks
+            intent, discovery, place_bound_types, form_asks=form_step.asks | filing_asks
         )
         unplaced = place_failures(intent, place_optional=place_optional)
         # Nothing left to call when the form or the question settles every ask:
@@ -149,7 +150,7 @@ def build_plan(  # noqa: PLR0913
                     "guidance_section": guidance_section(skills),
                     "asks_section": asks_section(
                         intent.asks,
-                        awaiting=form_step.settled,
+                        awaits_farmer=form_step.settled,
                         filing=filing_asks - checking_asks,
                         checking=checking_asks,
                     ),

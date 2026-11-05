@@ -306,7 +306,7 @@ def test_an_ask_that_awaits_a_form_is_not_an_unserved_ask() -> None:
     assert evidence.awaiting_forms == (GRIEVANCE_FORM,)
 
 
-def test_an_ask_missing_a_piece_carries_it() -> None:
+def test_ask_carries_its_missing_piece() -> None:
     evidence = assemble_evidence(
         [], intent=_intent(PRICE_ASK, ADVISORY_ASK), missing={1: ("scheme",)}
     )
@@ -315,7 +315,7 @@ def test_an_ask_missing_a_piece_carries_it() -> None:
     assert [entry.ask for entry in evidence.unserved_asks] == [PRICE_ASK]
 
 
-def test_a_missing_piece_for_an_ask_the_turn_lacks_is_refused() -> None:
+def test_stray_missing_piece_is_refused() -> None:
     with pytest.raises(ValueError, match="ask 3 "):
         assemble_evidence([], intent=_intent(PRICE_ASK), missing={3: ("scheme",)})
 
@@ -556,7 +556,7 @@ def test_missing_needed_place_fails() -> None:
     assert "place" in failure.reason
 
 
-def test_a_place_optional_ask_never_fails_for_its_place() -> None:
+def test_optional_place_never_fails() -> None:
     """A form's ask can carry a place from history that no longer fits: the
     form needs none, so the place must not become a question."""
 

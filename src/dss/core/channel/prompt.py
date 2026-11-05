@@ -38,6 +38,10 @@ from dss.ports.prompts import PromptIdentifier, PromptProvider
 # messages hold that question; the whole chat would make every answer slower.
 _HISTORY_WINDOW = 3
 
+# A pack's actions that file a new case. The offer says so in plain words, so
+# the composer never reads an action name.
+_NEW_CASE_ACTIONS: frozenset[str] = frozenset({"support"})
+
 
 def system_prompt(
     identity: Identity, *, turn: UserTurn, prompts: PromptProvider
@@ -190,10 +194,11 @@ def _render_failures(ask_evidence: AskEvidence) -> list[str]:
 
 def _render_awaiting(ask: Ask, form: FormDefinition) -> str:
     scheme = ask.scheme.name if ask.scheme else form.context.scheme
+    files_new_case = form.context.action in _NEW_CASE_ACTIONS
     return (
         f"Awaits a form{_place_label(ask)}: the farmer fills in the {scheme} "
-        f"{form.context.category.lower()} form shown below this reply "
-        f"(action: {form.context.action})."
+        f"{form.context.category.lower()} form shown below this reply."
+        + (" It files a new case." if files_new_case else "")
     )
 
 
@@ -201,7 +206,7 @@ def _render_missing(ask: Ask, pieces: Sequence[FormPiece]) -> str:
     return (
         f"Waits on the farmer{_place_label(ask)}: their "
         f"{ask.subject_categories.value.lower()} ask needs the "
-        f"{' and '.join(pieces)}, which they have not said."
+        f"{' and '.join(pieces)}. They have not named one the assistant knows."
     )
 
 

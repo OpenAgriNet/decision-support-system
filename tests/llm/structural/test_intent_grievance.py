@@ -141,7 +141,7 @@ async def test_checking_a_pmfby_complaint_is_grievance_pmfby_observe(
     "query",
     ["My PMFBY claim money has not come", "My crop insurance payment is stuck"],
 )
-async def test_a_scheme_problem_is_a_grievance_act(query: str) -> None:
+async def test_scheme_problem_is_grievance_act(query: str) -> None:
     prompts = build_prompt_service(_REPO / "configs" / "prompts.yaml")
     schemes = load_scheme_catalog(_CATALOG).schemes()
 
@@ -152,7 +152,7 @@ async def test_a_scheme_problem_is_a_grievance_act(query: str) -> None:
     assert ask.interaction_type is InteractionType.ACT
 
 
-async def test_the_scheme_named_after_our_question_keeps_the_grievance() -> None:
+async def test_scheme_reply_keeps_the_grievance() -> None:
     history = (
         ConversationMessage(role="user", text="My payment has not come"),
         ConversationMessage(role="assistant", text="Which scheme is this about?"),
@@ -171,10 +171,28 @@ async def test_the_scheme_named_after_our_question_keeps_the_grievance() -> None
     assert ask.scheme.code == "PMFBY"
 
 
+async def test_unlisted_scheme_stays_missing() -> None:
+    history = (
+        ConversationMessage(role="user", text="my payment has not come"),
+        ConversationMessage(role="assistant", text="Which scheme is this about?"),
+    )
+    prompts = build_prompt_service(_REPO / "configs" / "prompts.yaml")
+    schemes = load_scheme_catalog(_CATALOG).schemes()
+
+    classification = await classify_intent(
+        _turn("Rythu Bandhu", history), _live_llm(), prompts, schemes
+    )
+
+    (ask,) = classification.asks
+    assert ask.subject_categories is SubjectCategory.GRIEVANCE
+    assert ask.interaction_type is InteractionType.ACT
+    assert ask.scheme is None
+
+
 @pytest.mark.parametrize(
     "reply", ["I already filed it, the ticket is 4521", "I have filed already"]
 )
-async def test_an_already_filed_reply_is_a_grievance_observe(reply: str) -> None:
+async def test_filed_reply_is_observe(reply: str) -> None:
     history = (
         ConversationMessage(role="user", text="My PMFBY claim money has not come"),
         ConversationMessage(

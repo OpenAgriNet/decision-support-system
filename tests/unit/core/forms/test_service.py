@@ -619,19 +619,19 @@ _PMFBY_SUPPORT = FormContext(scheme="PMFBY", category="Grievance", action="suppo
 _PMFBY_STATUS = FormContext(scheme="PMFBY", category="Grievance", action="status")
 
 
-def test_the_scheme_is_missing_when_only_category_and_action_are_known() -> None:
+def test_only_category_and_action_miss_scheme() -> None:
     known = {"category": "Grievance", "action": "support"}
 
     assert missing_pieces(known, [_PMFBY_SUPPORT]) == ("scheme",)
 
 
-def test_nothing_is_missing_when_every_piece_is_known() -> None:
+def test_nothing_missing_when_all_known() -> None:
     known = {"scheme": "PMFBY", "category": "Grievance", "action": "support"}
 
     assert missing_pieces(known, [_PMFBY_SUPPORT]) == ()
 
 
-def test_no_piece_is_asked_for_when_no_form_agrees() -> None:
+def test_no_agreeing_form_asks_nothing() -> None:
     """The registry holds only a status form: asking for a scheme would
     lead to a form that does not exist."""
 

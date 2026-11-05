@@ -216,9 +216,9 @@ def test_an_ask_awaiting_a_form_is_rendered_as_such() -> None:
     assert "Nothing was retrieved" not in rendered
 
 
-def test_the_awaiting_line_carries_the_forms_action() -> None:
-    """The composer's "already filed?" line keys on the action, so the
-    evidence must say it."""
+def test_a_filing_offer_says_new_case() -> None:
+    """The composer's "already filed?" line keys on this plain sentence, never
+    on the pack's action name."""
 
     ask = Ask(
         subject_categories=SubjectCategory.GRIEVANCE,
@@ -231,10 +231,26 @@ def test_the_awaiting_line_carries_the_forms_action() -> None:
 
     rendered = render_evidence(build_evidence(asks=(ask,), awaiting={0: form}))
 
-    assert "(action: support)" in rendered
+    assert "It files a new case." in rendered
+    assert "(action:" not in rendered
 
 
-def test_an_ask_missing_a_piece_says_which() -> None:
+def test_a_status_offer_says_nothing_new() -> None:
+    ask = Ask(
+        subject_categories=SubjectCategory.GRIEVANCE,
+        interaction_type=InteractionType.OBSERVE,
+    )
+    form = FormDefinition(
+        context=FormContext(scheme="PMFBY", category="Grievance", action="status"),
+        fields=(),
+    )
+
+    rendered = render_evidence(build_evidence(asks=(ask,), awaiting={0: form}))
+
+    assert "new case" not in rendered
+
+
+def test_missing_piece_says_which() -> None:
     ask = Ask(
         subject_categories=SubjectCategory.GRIEVANCE,
         interaction_type=InteractionType.ACT,
@@ -248,7 +264,22 @@ def test_an_ask_missing_a_piece_says_which() -> None:
     assert "Nothing was retrieved" not in rendered
 
 
-def test_the_missing_piece_line_comes_after_the_results() -> None:
+def test_missing_line_claims_no_silence() -> None:
+    """The farmer may have named a scheme the catalog does not hold, so the
+    line must not say they said nothing."""
+
+    ask = Ask(
+        subject_categories=SubjectCategory.GRIEVANCE,
+        interaction_type=InteractionType.ACT,
+    )
+
+    rendered = render_evidence(build_evidence(asks=(ask,), missing={0: ("scheme",)}))
+
+    assert "not named one the assistant knows" in rendered
+    assert "have not said" not in rendered
+
+
+def test_missing_line_after_results() -> None:
     """The composer answers first and asks last."""
 
     waiting = Ask(
