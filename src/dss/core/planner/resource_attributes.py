@@ -49,14 +49,20 @@ _MANDI_TZ = timezone(timedelta(hours=5, minutes=30))
 
 
 def _validity_window(day: date) -> dict[str, str]:
-    """One whole local day, as the `TimePeriod` the pack defines.
+    """The day before and the day itself, as the `TimePeriod` the pack defines.
+
+    The day before too, because a market often has not reported today's
+    prices yet, and yesterday's price is better than none.
 
     `startsAt` and `endsAt` are both `date-time`, and `additionalProperties`
     is false — so these two keys, in this format, and nothing else.
     """
 
+    day_before = day - timedelta(days=1)
     return {
-        "startsAt": datetime.combine(day, time.min, tzinfo=_MANDI_TZ).isoformat(),
+        "startsAt": datetime.combine(
+            day_before, time.min, tzinfo=_MANDI_TZ
+        ).isoformat(),
         "endsAt": datetime.combine(day, time(23, 59, 59), tzinfo=_MANDI_TZ).isoformat(),
     }
 
