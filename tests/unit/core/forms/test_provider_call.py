@@ -1,0 +1,127 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from dss.core.forms.service import (
+    build_action_attributes,
+    candidates_for_scheme,
+    without_farmer_values,
+)
+from tests.support.grievance_pack import (
+    PMFBY_STATUS,
+    PMFBY_SUPPORT,
+    find_action_schema,
+)
+from tests.support.providers import build_capability, grievance_provider
+
+
+def test_only_the_providers_advertising_the_scheme_are_kept() -> None:
+    pmfby = grievance_provider("pmfby-provider", "PMFBY")
+    kisan = grievance_provider("kisan-provider", "PM-KISAN")
+    unmarked = build_capability(
+        provider_id="plain",
+        provider_name="PLAIN",
+        capability="openagrinet:Grievance",
+        resource_id="res:plain:grievance",
+    )
+
+    kept = candidates_for_scheme((kisan, pmfby, unmarked), "PMFBY")
+
+    assert kept == (pmfby,)
+
+
+_FILE_GRIEVANCE_EXAMPLE = json.loads(
+    (
+        Path(__file__).parents[3]
+        / "fixtures"
+        / "api_packs"
+        / "pmfby_file_grievance_example.json"
+    ).read_text(encoding="utf-8")
+)
+
+
+def test_the_body_holds_every_must_send_path_from_pack_provider_and_form() -> None:
+    """Compared with the pack's published example, less the `maySend` fields
+    this slice does not send."""
+
+    schema = find_action_schema(PMFBY_SUPPORT)
+    provider = build_capability(
+        provider_id="pmfby",
+        provider_name="PMFBY Grievance Portal",
+        capability="openagrinet:Grievance",
+        resource_id="res:pmfby:grievance",
+    )
+    values = {
+        "enrolmentId": "KA2026KH00123456",
+        "applicantMobile": "9876543210",
+        "cropYear": "2026",
+        "season": "Kharif",
+        "grievance.description": (
+            "Cannot log in to the PMFBY portal to view my Kharif 2026 enrolment."
+        ),
+    }
+
+    body = build_action_attributes(schema, provider, values)
+
+    expected = {
+        key: value
+        for key, value in _FILE_GRIEVANCE_EXAMPLE.items()
+        if key not in ("complaintDate", "receiptSourceId")
+    }
+    expected["grievance"] = {
+        "description": _FILE_GRIEVANCE_EXAMPLE["grievance"]["description"]
+    }
+    expected["scheme"] = {"code": "PMFBY"}
+    assert body == expected
+
+
+_READ_CASE_EXAMPLE = json.loads(
+    (
+        Path(__file__).parents[3]
+        / "fixtures"
+        / "api_packs"
+        / "pmfby_read_case_example.json"
+    ).read_text(encoding="utf-8")
+)
+
+
+def test_a_status_body_matches_the_packs_read_case_example() -> None:
+    """The same builder reads a case: the pack's example, less the scheme's
+    name, a `maySend` field this slice does not send."""
+
+    schema = find_action_schema(PMFBY_STATUS)
+    provider = build_capability(
+        provider_id="pmfby",
+        provider_name="PMFBY Grievance Portal",
+        capability="openagrinet:Grievance",
+        resource_id="res:pmfby:grievance",
+    )
+    values = {"applicantMobile": "9876543210", "case.ticketNo": "100626000099001"}
+
+    body = build_action_attributes(schema, provider, values)
+
+    expected = dict(_READ_CASE_EXAMPLE)
+    expected["scheme"] = {"code": "PMFBY"}
+    assert body == expected
+
+
+def test_the_reply_keeps_what_the_provider_added_not_what_the_farmer_typed() -> None:
+    schema = find_action_schema(PMFBY_SUPPORT)
+    reply = {
+        "@type": "openagrinet:Grievance",
+        "scheme": {"code": "PMFBY"},
+        "enrolmentId": "KA2026KH00123456",
+        "applicantMobile": "9876543210",
+        "grievance": {"description": "No payment yet.", "category": {"code": "3"}},
+        "case": {"ticketNo": "100626000099001"},
+    }
+
+    kept = without_farmer_values(reply, schema)
+
+    assert kept == {
+        "@type": "openagrinet:Grievance",
+        "scheme": {"code": "PMFBY"},
+        "grievance": {"category": {"code": "3"}},
+        "case": {"ticketNo": "100626000099001"},
+    }
