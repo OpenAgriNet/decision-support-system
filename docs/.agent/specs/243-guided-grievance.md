@@ -64,8 +64,11 @@ No wire change. The turn ends `requires_input` with one text block.
   today, the planner path; the ask may end unserved.
 - Two asks, one missing a scheme, one answerable: both go to the composer
   in one reply, the question after the answer.
-- Nobody serves the category: unserved reply, as today. The question is
-  asked only when a provider serves the ask.
+- Nobody serves the category: a filing or a status check gets the unserved
+  reply, as today. Advice is different: "how do I file a complaint" still
+  gets the scheme question, then the file form, from the registry alone. If
+  no desk serves the grievance, the filing then ends unserved
+  (`docs/DSS_ARCHITECTURE.md` §8, "An advice offer made with no desk").
 - Farmer answers the scheme question with a new question: intent treats it
   as new, as it does for the place question.
 - Farmer names a scheme the catalog does not hold: scheme stays missing,
