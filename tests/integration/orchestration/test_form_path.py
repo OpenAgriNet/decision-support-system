@@ -481,6 +481,45 @@ async def test_a_failed_provider_call_is_marked_on_its_stage(spans) -> None:
     assert finished["dss.stage.provider_action"].attributes["is_failure"] is True
 
 
+async def test_the_provider_stage_shows_the_call_and_the_reply_without_values(
+    spans, monkeypatch
+) -> None:
+    monkeypatch.setenv("DSS_TRACE_INCLUDE_MESSAGE_CONTENT", "true")
+    echoed = {**_TICKET, "applicantMobile": _VALUES["applicantMobile"]}
+    orch, _ = _build_orchestrator_and_turn_sink(
+        invocation=RecordingActionInvocation(echoed)
+    )
+
+    await _collect(orch, _form_turn(_VALUES))
+
+    (stage,) = [
+        span
+        for span in spans.get_finished_spans()
+        if span.name == "dss.stage.provider_action"
+    ]
+    assert stage.attributes["langfuse.observation.input"] == "support to PMFBY-PROVIDER"
+    output = stage.attributes["langfuse.observation.output"]
+    assert "100626000099001" in output
+    assert _VALUES["applicantMobile"] not in output
+
+
+async def test_a_failed_provider_call_shows_its_reason_on_the_stage(
+    spans, monkeypatch
+) -> None:
+    monkeypatch.setenv("DSS_TRACE_INCLUDE_MESSAGE_CONTENT", "true")
+    orch, _ = _build_orchestrator_and_turn_sink(invocation=_support_unavailable())
+
+    await _collect(orch, _form_turn(_VALUES))
+
+    (stage,) = [
+        span
+        for span in spans.get_finished_spans()
+        if span.name == "dss.stage.provider_action"
+    ]
+    output = stage.attributes["langfuse.observation.output"]
+    assert output == "support failed with status 503"
+
+
 async def test_a_filed_form_is_answered_with_the_composers_text() -> None:
     compose = _FakeCompose("Your complaint is filed. Ticket 100626000099001.")
     orch, turns = _build_orchestrator_and_turn_sink(

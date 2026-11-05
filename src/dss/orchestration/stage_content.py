@@ -7,6 +7,7 @@ the model calls underneath. Writing them onto a span is
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping, Sequence
 
 from dss.core.intent.models import (
@@ -16,8 +17,8 @@ from dss.core.intent.models import (
     ResolvedPlace,
     UnresolvedPlace,
 )
-from dss.core.planner.models import Evidence
-from dss.core.provider_discovery.models import DiscoveryResult
+from dss.core.planner.models import Evidence, Failure
+from dss.core.provider_discovery.models import DiscoveredAnswer, DiscoveryResult
 
 
 def asks_text(asks: Sequence[Ask | ClassifiedAsk]) -> str:
@@ -108,3 +109,9 @@ def evidence_text(evidence: Evidence) -> str:
         for failure in entry.failures
     ]
     return "\n".join(lines)
+
+
+def provider_response_text(response: DiscoveredAnswer | Failure) -> str:
+    if isinstance(response, Failure):
+        return response.reason
+    return json.dumps(response.attributes, ensure_ascii=False, sort_keys=True)
