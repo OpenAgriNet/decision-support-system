@@ -9,12 +9,12 @@ import yaml
 from dss.adapters.sinks.memory import MemoryTurnSink
 from dss.config.clarification_text_loader import load_clarification_text
 from dss.core.forms.models import (
-    ActionReply,
     FieldErrorEntry,
     FieldValue,
     FormContext,
     FormErrorBlock,
     FormSubmission,
+    ProviderAction,
 )
 from dss.core.forms.service import build_form_registry
 from dss.core.intent.models import Intent, InteractionType, Scheme, SubjectCategory
@@ -42,10 +42,14 @@ from dss.orchestration.form_path import FormPath
 from dss.orchestration.orchestrator import Components, Orchestrator
 from dss.orchestration.redaction import RedactTexts, pass_through, redact_texts
 from dss.ports.invocation import (
-    ProviderCallFailedError,
     SupportFailedError,
 )
-from tests.support.fakes import FakeLocalizer, FakePromptProvider, FakeSchemeCatalog
+from tests.support.fakes import (
+    FakeLocalizer,
+    FakePromptProvider,
+    FakeSchemeCatalog,
+    RecordingActionInvocation,
+)
 from tests.support.providers import grievance_provider
 from tests.support.turn_events import assert_well_formed
 
@@ -82,36 +86,10 @@ def _providers_found(*providers: ProviderCapability) -> DiscoveryResult:
     )
 
 
-class _RecordingInvocation:
-    def __init__(
-        self,
-        reply: Mapping[str, object] | None = None,
-        *,
-        failure: ProviderCallFailedError | None = None,
-    ) -> None:
-        self._reply = reply or {}
-        self._failure = failure
-        self.calls: list[dict] = []
-
-    async def support(self, capability, attributes, transaction_id, *, visibility):
-        return self._answer("support", capability, attributes)
-
-    async def status(self, capability, attributes, transaction_id, *, visibility):
-        return self._answer("status", capability, attributes)
-
-    def _answer(self, action, capability, attributes) -> ActionReply:
-        self.calls.append(
-            {"action": action, "provider": capability, "attributes": attributes}
-        )
-        if self._failure is not None:
-            raise self._failure
-        return ActionReply(attributes=self._reply)
-
-
 def _support_unavailable(
     *, retry_after_seconds: int | None = None
-) -> _RecordingInvocation:
-    return _RecordingInvocation(
+) -> RecordingActionInvocation:
+    return RecordingActionInvocation(
         failure=SupportFailedError(
             "openagrinet:Grievance",
             503,
@@ -121,8 +99,8 @@ def _support_unavailable(
     )
 
 
-def _support_refused() -> _RecordingInvocation:
-    return _RecordingInvocation(
+def _support_refused() -> RecordingActionInvocation:
+    return RecordingActionInvocation(
         failure=SupportFailedError("openagrinet:Grievance", 400, FailureClass.DEFECT)
     )
 
@@ -193,7 +171,7 @@ def _build_orchestrator_and_turn_sink(  # noqa: PLR0913
     discovery: DiscoveryResult | None = None,
     discover: _RecordingDiscovery | None = None,
     attributes_yaml: str = _GRIEVANCE_YAML,
-    invocation: _RecordingInvocation | None = None,
+    invocation: RecordingActionInvocation | None = None,
     compose: _FakeCompose | None = None,
 ) -> tuple[Orchestrator, MemoryTurnSink]:
     pack = SchemaPackFiles(
@@ -221,7 +199,7 @@ def _build_orchestrator_and_turn_sink(  # noqa: PLR0913
         forms=build_form_registry([pack]),
         scheme_catalog=FakeSchemeCatalog(_PMFBY),
         components=components,
-        invocation_for=lambda _turn: invocation or _RecordingInvocation(),
+        invocation_for=lambda _turn: invocation or RecordingActionInvocation(),
         turns=turns,
         telemetry=telemetry or _StageOutcomes(),
         clarification_text=load_clarification_text(),
@@ -453,7 +431,7 @@ async def test_a_direct_answer_does_not_stand_in_for_a_provider() -> None:
 
 
 async def test_the_first_ranked_provider_for_the_forms_scheme_is_called() -> None:
-    invocation = _RecordingInvocation()
+    invocation = RecordingActionInvocation()
     found = _providers_found(
         grievance_provider("kisan-provider", "PM-KISAN"),
         grievance_provider("pmfby-provider", "PMFBY"),
@@ -464,24 +442,24 @@ async def test_the_first_ranked_provider_for_the_forms_scheme_is_called() -> Non
     await _collect(orch, _form_turn(_VALUES))
 
     (call,) = invocation.calls
-    assert call["action"] == "support"
-    assert call["provider"].provider_id == "pmfby-provider"
-    assert call["attributes"]["enrolmentId"] == _VALUES["enrolmentId"]
+    assert call.action is ProviderAction.SUPPORT
+    assert call.provider.provider_id == "pmfby-provider"
+    assert call.attributes["enrolmentId"] == _VALUES["enrolmentId"]
 
 
 async def test_a_status_form_is_sent_with_status() -> None:
-    invocation = _RecordingInvocation()
+    invocation = RecordingActionInvocation()
     orch, _ = _build_orchestrator_and_turn_sink(invocation=invocation)
 
     await _collect(orch, _form_turn(_LOOKUP, context=_PMFBY_STATUS))
 
     (call,) = invocation.calls
-    assert call["action"] == "status"
+    assert call.action is ProviderAction.STATUS
 
 
 async def test_the_provider_call_is_its_own_stage(spans) -> None:
     orch, _ = _build_orchestrator_and_turn_sink(
-        invocation=_RecordingInvocation(_TICKET)
+        invocation=RecordingActionInvocation(_TICKET)
     )
 
     await _collect(orch, _form_turn(_VALUES))
@@ -506,7 +484,7 @@ async def test_a_failed_provider_call_is_marked_on_its_stage(spans) -> None:
 async def test_a_filed_form_is_answered_with_the_composers_text() -> None:
     compose = _FakeCompose("Your complaint is filed. Ticket 100626000099001.")
     orch, turns = _build_orchestrator_and_turn_sink(
-        invocation=_RecordingInvocation(_TICKET), compose=compose
+        invocation=RecordingActionInvocation(_TICKET), compose=compose
     )
 
     events = await _collect(orch, _form_turn(_VALUES))
@@ -524,7 +502,7 @@ async def test_a_filed_form_is_answered_with_the_composers_text() -> None:
 async def test_the_composer_gets_the_providers_reply_as_evidence() -> None:
     compose = _FakeCompose("Your complaint is filed.")
     orch, _ = _build_orchestrator_and_turn_sink(
-        invocation=_RecordingInvocation(_TICKET), compose=compose
+        invocation=RecordingActionInvocation(_TICKET), compose=compose
     )
 
     await _collect(orch, _form_turn(_VALUES))
@@ -542,7 +520,7 @@ async def test_the_composer_sees_the_tagged_history_and_no_form_value() -> None:
     )
     compose = _FakeCompose("Your complaint is filed. Ticket 100626000099001.")
     orch, _ = _build_orchestrator_and_turn_sink(
-        redact=redact, invocation=_RecordingInvocation(_TICKET), compose=compose
+        redact=redact, invocation=RecordingActionInvocation(_TICKET), compose=compose
     )
     turn = _form_turn({**_VALUES, "applicantMobile": "9123456789"}).model_copy(
         update={

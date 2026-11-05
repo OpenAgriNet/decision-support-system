@@ -8,15 +8,19 @@ fails, which is the point of having a contract at all.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any, Literal
 
+from dss.core.forms.models import ActionReply, ProviderAction
 from dss.core.intent.models import Scheme, SchemeEntry
 from dss.core.planner.models import Skill
+from dss.core.provider_discovery.models import ProviderCapability
 from dss.core.provider_preferences.models import PreferenceBook, capability_key
 from dss.core.shared.errors import ProviderUnavailableError, TranslationError
 from dss.core.shared.language import LanguageTag
 from dss.core.shared.models import Geometry, TurnContext, TurnEvent, UserTurn
 from dss.ports.area_lookup import AreaMatch
+from dss.ports.invocation import ProviderCallFailedError
 from dss.ports.prompts import PromptIdentifier
 
 
@@ -264,3 +268,36 @@ class FakeAreaLookup:
     async def nearest(self, point: Geometry, max_km: float) -> AreaMatch | None:
         self.nearest_max_km.append(max_km)
         return self._nearest
+
+
+@dataclass(frozen=True)
+class ActionCall:
+    action: ProviderAction
+    provider: ProviderCapability
+    attributes: dict
+
+
+class RecordingActionInvocation:
+    def __init__(
+        self,
+        reply: Mapping[str, object] | None = None,
+        *,
+        failure: ProviderCallFailedError | None = None,
+    ) -> None:
+        self._reply = reply or {}
+        self._failure = failure
+        self.calls: list[ActionCall] = []
+
+    async def support(self, capability, attributes, transaction_id, *, visibility):
+        return self._answer(ProviderAction.SUPPORT, capability, attributes)
+
+    async def status(self, capability, attributes, transaction_id, *, visibility):
+        return self._answer(ProviderAction.STATUS, capability, attributes)
+
+    def _answer(
+        self, action: ProviderAction, provider: ProviderCapability, attributes: dict
+    ) -> ActionReply:
+        self.calls.append(ActionCall(action, provider, attributes))
+        if self._failure is not None:
+            raise self._failure
+        return ActionReply(attributes=self._reply)
