@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator, Sequence
+from collections.abc import AsyncGenerator, Callable, Sequence
 from contextlib import aclosing
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -11,7 +11,7 @@ from dss.adapters.observability.tracing import (
     set_current_span_attributes,
     set_current_span_content,
 )
-from dss.core.channel.localize import localize_answer
+from dss.core.channel.localize import LocalizeText, localize_answer
 from dss.core.channel.models import ClarificationText, ComposedAnswer
 from dss.core.channel.service import answer_for_unserved_asks
 from dss.core.forms.models import (
@@ -56,11 +56,12 @@ from dss.core.shared.models import (
     TurnStatus,
     UserTurn,
 )
+from dss.core.stream_response.service import ComposeStream
 from dss.observability.stages import Stage
 from dss.observability.trace_log import trace_component
+from dss.orchestration.discovery import DiscoverProviders
 from dss.orchestration.form_offer import ask_for_form
 from dss.orchestration.orchestrator import (
-    Components,
     build_turn_finished,
     compose_answer,
     note_stage,
@@ -69,14 +70,15 @@ from dss.orchestration.orchestrator import (
     reveal_to_farmer,
     spoken_text,
 )
-from dss.orchestration.plan import InvocationFor
 from dss.orchestration.provider_action import FORM_ASK_INDEX, call_provider_action
+from dss.orchestration.redaction import RedactTexts
 from dss.orchestration.stage_content import (
     asks_text,
     discovery_text,
     provider_response_text,
 )
 from dss.orchestration.turn import moderation_attributes
+from dss.ports.invocation import ProviderActionInvocation
 from dss.ports.llm import LLMProvider
 from dss.ports.prompts import PromptProvider
 from dss.ports.scheme_catalog import SchemeCatalog
@@ -94,6 +96,15 @@ class _Redacted:
     visibility: Visibility
 
 
+@dataclass(frozen=True)
+class FormPathComponents:
+    redact: RedactTexts
+    discover: DiscoverProviders
+    compose: ComposeStream
+    localize: LocalizeText
+    invocation_for: Callable[[UserTurn], ProviderActionInvocation]
+
+
 class FormPath:
     def __init__(  # noqa: PLR0913
         self,
@@ -103,8 +114,7 @@ class FormPath:
         policies: Sequence[Policy],
         forms: FormLookup,
         scheme_catalog: SchemeCatalog,
-        components: Components,
-        invocation_for: InvocationFor,
+        components: FormPathComponents,
         turns: TurnSink,
         telemetry: TelemetrySink,
         clarification_text: ClarificationText,
@@ -115,7 +125,6 @@ class FormPath:
         self._forms = forms
         self._scheme_catalog = scheme_catalog
         self._components = components
-        self._invocation_for = invocation_for
         self._turns = turns
         self._telemetry = telemetry
         self._clarification_text = clarification_text
@@ -221,7 +230,8 @@ class FormPath:
                 compose_answer(
                     evidence,
                     turn=turn,
-                    components=self._components,
+                    compose=self._components.compose,
+                    localize=self._components.localize,
                     question=None,
                     ctx=ctx,
                     recorder=recorder,
@@ -273,7 +283,7 @@ class FormPath:
                 provider,
                 action,
                 submission.values,
-                invocation=self._invocation_for(turn),
+                invocation=self._components.invocation_for(turn),
                 transaction_id=turn.transaction_id,
                 visibility=visibility,
             )

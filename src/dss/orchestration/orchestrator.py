@@ -383,7 +383,8 @@ class TextPath:
             compose_answer(
                 evidence,
                 turn=turn,
-                components=self._components,
+                compose=self._components.compose,
+                localize=self._components.localize,
                 question=trailing_question,
                 ctx=ctx,
                 recorder=recorder,
@@ -559,7 +560,8 @@ async def compose_answer(  # noqa: PLR0913
     evidence: Evidence,
     *,
     turn: UserTurn,
-    components: Components,
+    compose: ComposeStream,
+    localize: LocalizeText,
     question: str | None,
     ctx: TurnContext,
     recorder: TurnRecorder,
@@ -575,7 +577,8 @@ async def compose_answer(  # noqa: PLR0913
         _write_answer(
             evidence,
             turn=turn,
-            components=components,
+            compose=compose,
+            localize=localize,
             numbers=numbers,
             ctx=ctx,
             question=question,
@@ -600,7 +603,8 @@ async def _write_answer(  # noqa: PLR0913
     evidence: Evidence,
     *,
     turn: UserTurn,
-    components: Components,
+    compose: ComposeStream,
+    localize: LocalizeText,
     numbers: CitationNumbers,
     ctx: TurnContext,
     question: str | None,
@@ -616,13 +620,13 @@ async def _write_answer(  # noqa: PLR0913
         # the model's stream too, and closing an async generator does not
         # reach the one it relays from.
         async with (
-            aclosing(components.compose(evidence, turn=turn)) as written,
+            aclosing(compose(evidence, turn=turn)) as written,
             aclosing(numbers.renumber(written)) as pieces,
         ):
             async for piece in pieces:
                 yield piece
         if question is not None:
-            question = await components.localize(question, turn=turn)
+            question = await localize(question, turn=turn)
             yield numbers.feed(f"\n\n{question}")
         set_current_span_content(
             input=cited_sources_text(evidence, numbers.cited),
