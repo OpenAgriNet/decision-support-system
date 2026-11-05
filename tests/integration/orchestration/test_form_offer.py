@@ -14,7 +14,12 @@ from dss.core.intent.models import (
 )
 from dss.core.provider_discovery.models import DiscoveryResult, ProviderCapability
 from dss.core.shared.models import TurnStatus
-from dss.orchestration.form_offer import ask_for_form, find_forms, form_context_for
+from dss.orchestration.form_offer import (
+    FormStep,
+    ask_for_form,
+    find_forms,
+    form_context_for,
+)
 from tests.integration.orchestration.test_orchestrator import (
     _build,
     _ctx,
@@ -57,6 +62,9 @@ class _FakeForms:
         self.asked.append(context)
         return self._forms.get(context)
 
+    def contexts_for(self, category: str) -> tuple[FormContext, ...]:
+        return tuple(context for context in self._forms if context.category == category)
+
 
 def _discovery(
     capabilities: dict[int, tuple[ProviderCapability, ...]] | None = None,
@@ -89,8 +97,12 @@ def test_a_lookup_names_the_status_form() -> None:
     assert context == FormContext(scheme="PMFBY", category="Grievance", action="status")
 
 
-def test_advice_names_no_form() -> None:
-    assert form_context_for(_grievance_ask(InteractionType.ADVISE)) is None
+def test_advice_names_the_support_form() -> None:
+    """How to file a complaint comes with the form to file it."""
+
+    context = form_context_for(_grievance_ask(InteractionType.ADVISE))
+
+    assert context == PMFBY_SUPPORT
 
 
 def test_an_ask_without_a_scheme_names_no_form() -> None:
@@ -101,9 +113,10 @@ def test_a_served_ask_the_registry_knows_gets_its_form() -> None:
     intent = Intent(asks=(_grievance_ask(InteractionType.ACT),), confidence=0.9)
     forms = _FakeForms({PMFBY_SUPPORT: GRIEVANCE_FORM})
 
-    awaiting = find_forms(intent, _discovery({0: (GRIEVANCE_DESK,)}), forms)
+    step = find_forms(intent, _discovery({0: (GRIEVANCE_DESK,)}), forms)
 
-    assert awaiting == {0: GRIEVANCE_FORM}
+    assert step.offered == {0: GRIEVANCE_FORM}
+    assert step.settled == {0}
 
 
 def test_an_ask_nobody_serves_gets_no_form() -> None:
@@ -113,18 +126,18 @@ def test_an_ask_nobody_serves_gets_no_form() -> None:
     intent = Intent(asks=(_grievance_ask(InteractionType.ACT),), confidence=0.9)
     forms = _FakeForms({PMFBY_SUPPORT: GRIEVANCE_FORM})
 
-    awaiting = find_forms(intent, _discovery(), forms)
+    step = find_forms(intent, _discovery(), forms)
 
-    assert awaiting == {}
+    assert step == FormStep()
     assert forms.asked == []
 
 
 def test_a_served_ask_without_a_registry_form_is_the_planners() -> None:
     intent = Intent(asks=(_grievance_ask(InteractionType.ACT),), confidence=0.9)
 
-    awaiting = find_forms(intent, _discovery({0: (GRIEVANCE_DESK,)}), _FakeForms({}))
+    step = find_forms(intent, _discovery({0: (GRIEVANCE_DESK,)}), _FakeForms({}))
 
-    assert awaiting == {}
+    assert step == FormStep()
 
 
 def test_only_the_form_ask_is_taken_from_a_mixed_turn() -> None:
@@ -136,11 +149,94 @@ def test_only_the_form_ask_is_taken_from_a_mixed_turn() -> None:
     )
     discovery = _discovery({0: (WEATHER_DESK,), 1: (GRIEVANCE_DESK,)})
 
-    awaiting = find_forms(
-        intent, discovery, _FakeForms({PMFBY_SUPPORT: GRIEVANCE_FORM})
+    step = find_forms(intent, discovery, _FakeForms({PMFBY_SUPPORT: GRIEVANCE_FORM}))
+
+    assert step.offered == {1: GRIEVANCE_FORM}
+
+
+_FORMS = {PMFBY_SUPPORT: GRIEVANCE_FORM}
+
+
+def test_a_served_ask_without_a_scheme_misses_the_scheme() -> None:
+    intent = Intent(
+        asks=(_grievance_ask(InteractionType.ACT, scheme=None),), confidence=0.9
     )
 
-    assert awaiting == {1: GRIEVANCE_FORM}
+    step = find_forms(intent, _discovery({0: (GRIEVANCE_DESK,)}), _FakeForms(_FORMS))
+
+    assert step.missing == {0: ("scheme",)}
+    assert step.offered == {}
+    assert step.settled == {0}
+
+
+def test_an_unserved_ask_without_a_scheme_is_no_form_ask() -> None:
+    """Nobody serves the category here: the unserved reply, not a question
+    that leads nowhere."""
+
+    intent = Intent(
+        asks=(_grievance_ask(InteractionType.ACT, scheme=None),), confidence=0.9
+    )
+
+    assert find_forms(intent, _discovery(), _FakeForms(_FORMS)) == FormStep()
+
+
+def test_an_action_with_no_form_asks_for_nothing() -> None:
+    intent = Intent(
+        asks=(_grievance_ask(InteractionType.OBSERVE, scheme=None),), confidence=0.9
+    )
+
+    step = find_forms(intent, _discovery({0: (GRIEVANCE_DESK,)}), _FakeForms(_FORMS))
+
+    assert step == FormStep()
+
+
+def test_an_ask_outside_the_forms_categories_is_left_alone() -> None:
+    intent = Intent(asks=(WEATHER_ASK,), confidence=0.9)
+
+    step = find_forms(intent, _discovery({0: (WEATHER_DESK,)}), _FakeForms(_FORMS))
+
+    assert step == FormStep()
+
+
+def test_advice_gets_the_form_with_no_desk_and_nothing_left_to_call() -> None:
+    """The grievance desk is never found for advice, on purpose: the form
+    comes from the registry, and no planner run has anything to answer."""
+
+    intent = Intent(asks=(_grievance_ask(InteractionType.ADVISE),), confidence=0.9)
+
+    step = find_forms(intent, _discovery(), _FakeForms(_FORMS))
+
+    assert step.offered == {0: GRIEVANCE_FORM}
+    assert step.settled == {0}
+
+
+def test_advice_a_provider_serves_still_goes_to_the_planner() -> None:
+    """A Knowledge provider with steps answers the ask; the form is for the
+    filing that follows."""
+
+    intent = Intent(asks=(_grievance_ask(InteractionType.ADVISE),), confidence=0.9)
+
+    step = find_forms(intent, _discovery({0: (GRIEVANCE_DESK,)}), _FakeForms(_FORMS))
+
+    assert step.offered == {0: GRIEVANCE_FORM}
+    assert step.settled == frozenset()
+
+
+def test_advice_without_a_scheme_misses_the_scheme_even_when_served() -> None:
+    intent = Intent(
+        asks=(_grievance_ask(InteractionType.ADVISE, scheme=None),), confidence=0.9
+    )
+
+    step = find_forms(intent, _discovery({0: (GRIEVANCE_DESK,)}), _FakeForms(_FORMS))
+
+    assert step.missing == {0: ("scheme",)}
+    assert step.settled == {0}
+
+
+def test_a_form_step_names_the_asks_it_holds() -> None:
+    step = FormStep(offered={0: GRIEVANCE_FORM}, missing={2: ("scheme",)})
+
+    assert step.asks == {0, 2}
 
 
 def _grievance_classification() -> IntentClassification:
@@ -175,7 +271,7 @@ async def test_the_planner_is_told_which_asks_await_a_form() -> None:
         event async for event in orch.run(_turn("file my PMFBY grievance"), _ctx())
     ]
 
-    assert plan.awaiting == {0: GRIEVANCE_FORM}
+    assert plan.form_step.offered == {0: GRIEVANCE_FORM}
     assert events[-1].outcome.status is TurnStatus.REQUIRES_INPUT
 
 

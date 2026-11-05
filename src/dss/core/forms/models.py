@@ -10,6 +10,9 @@ from pydantic import BaseModel, ConfigDict
 
 from dss.core.shared.models import MessageReference, OutputBlock, Role, TurnInput
 
+# A `FormContext` field name: one fact a form's type is made of.
+type FormPiece = str
+
 
 class FormContext(BaseModel):
     """The form's type. Sent with the form, copied back with the submission."""

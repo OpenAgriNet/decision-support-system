@@ -3,7 +3,7 @@ from __future__ import annotations
 import copy
 import re
 from collections import Counter
-from collections.abc import Callable, Container, Mapping, Sequence
+from collections.abc import Callable, Container, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from uuid import uuid4
 
@@ -25,6 +25,7 @@ from dss.core.forms.models import (
     FormDefinition,
     FormErrorBlock,
     FormErrors,
+    FormPiece,
     FormSubmission,
     JsonScalar,
     PiiClass,
@@ -77,6 +78,24 @@ def offer_form(definition: FormDefinition) -> FormBlock:
     fill in, and a submission names the offer it answers."""
 
     return FormBlock(form_id=uuid4().hex, form=definition)
+
+
+def missing_pieces(
+    known: Mapping[FormPiece, str], contexts: Iterable[FormContext]
+) -> tuple[FormPiece, ...]:
+    """The pieces the first context agreeing with every known one still needs,
+    in field order. ``()`` when none agrees: a wrong guess is not a question
+    to ask. Names no piece, so a new one on `FormContext` needs no change here."""
+
+    pieces_by_context = [context.model_dump() for context in contexts]
+    return next(
+        (
+            tuple(piece for piece in pieces if piece not in known)
+            for pieces in pieces_by_context
+            if known.items() <= pieces.items()
+        ),
+        (),
+    )
 
 
 def build_form_registry(packs: Sequence[SchemaPackFiles]) -> FormRegistry:

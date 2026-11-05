@@ -306,6 +306,20 @@ def test_an_ask_that_awaits_a_form_is_not_an_unserved_ask() -> None:
     assert evidence.awaiting_forms == (GRIEVANCE_FORM,)
 
 
+def test_an_ask_missing_a_piece_carries_it() -> None:
+    evidence = assemble_evidence(
+        [], intent=_intent(PRICE_ASK, ADVISORY_ASK), missing={1: ("scheme",)}
+    )
+
+    assert evidence.ask_evidences[1].missing == ("scheme",)
+    assert [entry.ask for entry in evidence.unserved_asks] == [PRICE_ASK]
+
+
+def test_a_missing_piece_for_an_ask_the_turn_lacks_is_refused() -> None:
+    with pytest.raises(ValueError, match="ask 3 "):
+        assemble_evidence([], intent=_intent(PRICE_ASK), missing={3: ("scheme",)})
+
+
 def test_a_form_for_an_ask_the_turn_lacks_is_refused() -> None:
     with pytest.raises(ValueError, match="ask 3 "):
         assemble_evidence([], intent=_intent(PRICE_ASK), awaiting={3: GRIEVANCE_FORM})
@@ -540,3 +554,12 @@ def test_missing_needed_place_fails() -> None:
     assert failure.ask_index == 1
     assert failure.capability is None
     assert "place" in failure.reason
+
+
+def test_a_place_optional_ask_never_fails_for_its_place() -> None:
+    """A form's ask can carry a place from history that no longer fits: the
+    form needs none, so the place must not become a question."""
+
+    ask = _weather_ask(UnresolvedPlace(unresolved_name="Xyzzy"))
+
+    assert place_failures(_intent(ask), place_optional={0}) == []

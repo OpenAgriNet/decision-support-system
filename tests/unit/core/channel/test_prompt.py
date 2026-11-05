@@ -216,6 +216,57 @@ def test_an_ask_awaiting_a_form_is_rendered_as_such() -> None:
     assert "Nothing was retrieved" not in rendered
 
 
+def test_the_awaiting_line_carries_the_forms_action() -> None:
+    """The composer's "already filed?" line keys on the action, so the
+    evidence must say it."""
+
+    ask = Ask(
+        subject_categories=SubjectCategory.GRIEVANCE,
+        interaction_type=InteractionType.ACT,
+    )
+    form = FormDefinition(
+        context=FormContext(scheme="PMFBY", category="Grievance", action="support"),
+        fields=(),
+    )
+
+    rendered = render_evidence(build_evidence(asks=(ask,), awaiting={0: form}))
+
+    assert "(action: support)" in rendered
+
+
+def test_an_ask_missing_a_piece_says_which() -> None:
+    ask = Ask(
+        subject_categories=SubjectCategory.GRIEVANCE,
+        interaction_type=InteractionType.ACT,
+    )
+
+    rendered = render_evidence(build_evidence(asks=(ask,), missing={0: ("scheme",)}))
+
+    assert "Waits on the farmer" in rendered
+    assert "scheme" in rendered
+    assert "grievance" in rendered
+    assert "Nothing was retrieved" not in rendered
+
+
+def test_the_missing_piece_line_comes_after_the_results() -> None:
+    """The composer answers first and asks last."""
+
+    waiting = Ask(
+        subject_categories=SubjectCategory.GRIEVANCE,
+        interaction_type=InteractionType.ACT,
+    )
+    evidence = build_evidence(
+        asks=(waiting, _ask(_place("Pune"))),
+        sources=(Source(id="1", name="IMD", kind=SourceKind.PROVIDER, url=None),),
+        results=(Result(ask_index=1, source_id="1", data={"rain": "none"}),),
+        missing={0: ("scheme",)},
+    )
+
+    rendered = render_evidence(evidence)
+
+    assert rendered.index("[1] IMD") < rendered.index("Waits on the farmer")
+
+
 def test_a_place_failure_does_not_blame_a_provider() -> None:
     """No provider was called for Xyzzy. "Could not reach a provider" would
     have the composer tell the farmer a service is down."""

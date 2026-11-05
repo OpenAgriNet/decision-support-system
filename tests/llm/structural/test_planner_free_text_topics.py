@@ -166,6 +166,7 @@ async def sent_topics() -> list[str]:
     invocation = _RecordingInvocation()
     plan = build_plan(
         schemas=SCHEMAS,
+        place_bound_types=frozenset(),
         schema_context_index={
             "openagrinet:KnowledgeAdvisory": (
                 "https://openagrinet.github.io/network-specs/schema/"

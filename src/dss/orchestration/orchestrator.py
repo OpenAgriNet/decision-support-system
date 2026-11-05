@@ -74,7 +74,6 @@ from dss.core.channel.service import (
     no_match_answer,
     question_for_unplaced_asks,
 )
-from dss.core.forms.models import FormDefinition
 from dss.core.forms.registry import FormLookup
 from dss.core.forms.service import offer_form
 from dss.core.intent.models import Intent
@@ -82,7 +81,6 @@ from dss.core.moderation.messages import messages_for
 from dss.core.moderation.models import ModerationDecision, Outcome
 from dss.core.planner.models import Evidence, Verdict
 from dss.core.planner.place import place_optional_asks
-from dss.core.planner.validation import DomainSchema
 from dss.core.policy.models import Policy
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.redaction.turn import texts_of, with_texts
@@ -112,7 +110,7 @@ from dss.observability.trace_log import bind_turn_ids, trace_component
 from dss.orchestration.answer_stream import AnswerStream
 from dss.orchestration.discovery import DiscoverProviders
 from dss.orchestration.events import CoreEvent
-from dss.orchestration.form_offer import find_forms
+from dss.orchestration.form_offer import FormStep, find_forms
 from dss.orchestration.plan import Plan
 from dss.orchestration.redaction import RedactTexts
 from dss.orchestration.stage_content import (
@@ -259,7 +257,7 @@ class TextPath:
         telemetry: TelemetrySink,
         area_lookup: AreaLookup,
         clarification_text: ClarificationText,
-        schemas: Mapping[str, DomainSchema],
+        place_bound_types: frozenset[str],
         edge_translation: EdgeTranslation,
         forms: FormLookup,
     ) -> None:
@@ -277,9 +275,9 @@ class TextPath:
         self._telemetry = telemetry
         self._area_lookup = area_lookup
         self._clarification_text = clarification_text
-        # The same schemas the planner validates against. Read here for one
-        # thing only: whether a pack serves an ask that names no place.
-        self._schemas = schemas
+        # The packs that search by place. Read here for one thing only:
+        # whether a pack serves an ask that names no place.
+        self._place_bound_types = place_bound_types
         self._edge_translation = edge_translation
         # Required: no packs is an empty registry, so a default would make a
         # wiring mistake look like a deployment that serves no forms.
@@ -352,12 +350,15 @@ class TextPath:
             yield await self._no_match(turn)
             return
 
-        # The asks a form answers: settled once discovery has said who serves
-        # what, and before the place question, because a form ask needs no
-        # place; the form carries what its call needs.
-        awaiting = find_forms(result.intent, result.discovery, self._forms)
+        # What each form-backed ask needs: settled once discovery has said who
+        # serves what, and before the place question, because a form ask needs
+        # no place; the form carries what its call needs.
+        form_step = find_forms(result.intent, result.discovery, self._forms)
         place_optional = place_optional_asks(
-            result.intent, result.discovery, self._schemas, awaiting=awaiting
+            result.intent,
+            result.discovery,
+            self._place_bound_types,
+            awaiting=form_step.asks,
         )
         clarification = await self._place_clarification(
             result.intent, turn, place_optional=place_optional
@@ -366,14 +367,14 @@ class TextPath:
             yield clarification
             return
 
-        if _nobody_serves(result.discovery):
+        if _nobody_serves(result.discovery) and not form_step.asks:
             yield await self._unserved_reply(
                 result, turn=turn, place_optional=place_optional
             )
             return
 
         evidence = await self._plan(
-            turn, result, ctx=ctx, visibility=visibility, awaiting=awaiting
+            turn, result, ctx=ctx, visibility=visibility, form_step=form_step
         )
         trailing_question = question_for_unplaced_asks(
             result.intent.asks, self._clarification_text, place_optional=place_optional
@@ -479,7 +480,7 @@ class TextPath:
         *,
         ctx: TurnContext,
         visibility: Visibility,
-        awaiting: Mapping[int, FormDefinition],
+        form_step: FormStep,
     ) -> Evidence:
         """Past the barrier: the decision cleared, so the planner's `select`
         tool is free to call providers. The `Verdict` is how that clearance
@@ -494,7 +495,7 @@ class TextPath:
                 discovery=result.discovery,
                 verdict=verdict,
                 visibility=visibility,
-                awaiting=awaiting,
+                form_step=form_step,
             )
             set_current_span_content(
                 input=asks_text(result.intent.asks),
@@ -725,8 +726,9 @@ def _status_for(evidence: Evidence) -> tuple[TurnStatus, Cause | None]:
     """Map what the loop actually gathered to a contract outcome. Reads facts
     off `Evidence` — it invents no rule, so no business `if` escapes `core/`:
 
-    - an ask awaits a form → `requires_input`: the farmer's next turn fills
-      it in, whatever else was answered.
+    - an ask awaits a form or a piece the farmer has not said →
+      `requires_input`: the farmer's next turn fills it in, whatever else was
+      answered.
     - no results, but provider calls failed → the providers exist but could
       not be reached: `unavailable`, which the transport reports as a
       retryable error.
@@ -736,7 +738,7 @@ def _status_for(evidence: Evidence) -> tuple[TurnStatus, Cause | None]:
     - every ask served → `answered`.
     """
 
-    if evidence.awaiting_forms:
+    if evidence.awaits_farmer:
         return TurnStatus.REQUIRES_INPUT, None
     if not evidence.has_any_result:
         if evidence.has_provider_failure:

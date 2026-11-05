@@ -20,7 +20,7 @@ from dss.config.prompt_service import build_prompt_service
 from dss.config.settings import Settings
 from dss.core.intent.models import InteractionType, SubjectCategory
 from dss.core.intent.service import classify_intent
-from dss.core.shared.models import TextQuery, UserTurn
+from dss.core.shared.models import ConversationMessage, TextQuery, UserTurn
 from dss.entrypoint.composition import _resolve_model
 from dss.observability.stages import Stage
 from tests.support.live_model import missing_model_key
@@ -64,9 +64,12 @@ def _live_llm() -> PydanticAILLMProvider:
     )
 
 
-def _turn(query: str) -> UserTurn[TextQuery]:
+def _turn(
+    query: str, history: tuple[ConversationMessage, ...] = ()
+) -> UserTurn[TextQuery]:
     return UserTurn[TextQuery](
         input=TextQuery(text=query),
+        history=list(history),
         session_id="s1",
         transaction_id="t1",
         source_lang="en",
@@ -126,6 +129,68 @@ async def test_checking_a_pmfby_complaint_is_grievance_pmfby_observe(
     schemes = load_scheme_catalog(_CATALOG).schemes()
 
     classification = await classify_intent(_turn(query), _live_llm(), prompts, schemes)
+
+    (ask,) = classification.asks
+    assert ask.subject_categories is SubjectCategory.GRIEVANCE
+    assert ask.interaction_type is InteractionType.OBSERVE
+    assert ask.scheme is not None
+    assert ask.scheme.code == "PMFBY"
+
+
+@pytest.mark.parametrize(
+    "query",
+    ["My PMFBY claim money has not come", "My crop insurance payment is stuck"],
+)
+async def test_a_scheme_problem_is_a_grievance_act(query: str) -> None:
+    prompts = build_prompt_service(_REPO / "configs" / "prompts.yaml")
+    schemes = load_scheme_catalog(_CATALOG).schemes()
+
+    classification = await classify_intent(_turn(query), _live_llm(), prompts, schemes)
+
+    (ask,) = classification.asks
+    assert ask.subject_categories is SubjectCategory.GRIEVANCE
+    assert ask.interaction_type is InteractionType.ACT
+
+
+async def test_the_scheme_named_after_our_question_keeps_the_grievance() -> None:
+    history = (
+        ConversationMessage(role="user", text="My payment has not come"),
+        ConversationMessage(role="assistant", text="Which scheme is this about?"),
+    )
+    prompts = build_prompt_service(_REPO / "configs" / "prompts.yaml")
+    schemes = load_scheme_catalog(_CATALOG).schemes()
+
+    classification = await classify_intent(
+        _turn("PMFBY", history), _live_llm(), prompts, schemes
+    )
+
+    (ask,) = classification.asks
+    assert ask.subject_categories is SubjectCategory.GRIEVANCE
+    assert ask.interaction_type is InteractionType.ACT
+    assert ask.scheme is not None
+    assert ask.scheme.code == "PMFBY"
+
+
+@pytest.mark.parametrize(
+    "reply", ["I already filed it, the ticket is 4521", "I have filed already"]
+)
+async def test_an_already_filed_reply_is_a_grievance_observe(reply: str) -> None:
+    history = (
+        ConversationMessage(role="user", text="My PMFBY claim money has not come"),
+        ConversationMessage(
+            role="assistant",
+            text=(
+                "Please fill in the form below. If you have already filed a "
+                "complaint, give me the ticket number."
+            ),
+        ),
+    )
+    prompts = build_prompt_service(_REPO / "configs" / "prompts.yaml")
+    schemes = load_scheme_catalog(_CATALOG).schemes()
+
+    classification = await classify_intent(
+        _turn(reply, history), _live_llm(), prompts, schemes
+    )
 
     (ask,) = classification.asks
     assert ask.subject_categories is SubjectCategory.GRIEVANCE

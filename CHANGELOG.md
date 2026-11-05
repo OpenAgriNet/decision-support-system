@@ -3,6 +3,12 @@
 ## [Unreleased]
 
 ### Changed
+- A problem with a scheme is read as a grievance to file, and a reply that
+  says a complaint is already filed as a status check. Advice on how to file
+  a complaint now comes with the file form, and every file form offer says
+  the farmer can give a ticket number if they already filed. A grievance ask
+  never gets a place question, because the grievance desk needs no place
+  (#243)
 - A select, support or status call is addressed to the catalog's BPP:
   `receiverId` is the catalog's `bppId` and the context carries its `bppUri`. A catalog
   that names neither is dropped from discovery, logged, and reported as a
@@ -17,6 +23,9 @@
   (#206)
 
 ### Added
+- A farmer who describes a scheme problem without naming the scheme is asked
+  which scheme, in one short question the composer writes. No choices are
+  listed. The turn ends `requires_input`, and no provider is called (#243)
 - A farmer can check a PMFBY grievance's status. The status form they send
   back is read at the desk's `/status` through the planner's new `status`
   tool, and the reply says where the case stands, when it was filed and for

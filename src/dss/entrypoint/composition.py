@@ -263,6 +263,7 @@ def _build_components(
         discover=network.discover,
         plan=build_plan(
             schemas=network.schemas,
+            place_bound_types=network.place_bound_types,
             schema_context_index=network.schema_context_index,
             invocation_for=network.invocation_for,
             identity=boot.identity,
@@ -310,7 +311,7 @@ def _build_text_path(settings: Settings, wiring: _Wiring) -> TextPath:
         telemetry=wiring.telemetry,
         area_lookup=wiring.area_lookup,
         clarification_text=boot.clarification_text,
-        schemas=wiring.network.schemas,
+        place_bound_types=wiring.network.place_bound_types,
         edge_translation=EdgeTranslation(routes=boot.translation_routes),
         forms=wiring.forms,
     )
@@ -566,6 +567,9 @@ class _Network:
     discover: DiscoverProviders
     invocation_for: InvocationFor
     schemas: dict[str, DomainSchema]
+    # A boot snapshot beside `schemas`, from the same packs: which types search
+    # by place. Read to tell an ask that needs a place from one that needs none.
+    place_bound_types: frozenset[str]
     schema_context_index: dict[str, str]
     client: httpx.AsyncClient | None
     preferences: ProviderPreferences
@@ -596,6 +600,7 @@ def _network(
             discover=_discovers_nothing,
             invocation_for=lambda _turn: _UnwiredInvocation(),
             schemas={},
+            place_bound_types=frozenset(),
             schema_context_index={},
             client=None,
             preferences=preferences,
@@ -670,6 +675,7 @@ def _network(
         discover=discover,
         invocation_for=invocation_for,
         schemas=_planner_schemas(good),
+        place_bound_types=cache.place_bound_types(),
         schema_context_index=cache.current_schema_context(),
         client=client,
         preferences=preferences,

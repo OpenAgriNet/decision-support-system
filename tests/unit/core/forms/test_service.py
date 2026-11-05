@@ -33,6 +33,7 @@ from dss.core.forms.service import (
     candidates_for_scheme,
     form_error_block,
     free_text_of,
+    missing_pieces,
     offer_form,
     parse_api_pack,
     validate_submission,
@@ -612,3 +613,28 @@ def test_the_reply_keeps_what_the_provider_added_not_what_the_farmer_typed() -> 
         "grievance": {"category": {"code": "3"}},
         "case": {"ticketNo": "100626000099001"},
     }
+
+
+_PMFBY_SUPPORT = FormContext(scheme="PMFBY", category="Grievance", action="support")
+_PMFBY_STATUS = FormContext(scheme="PMFBY", category="Grievance", action="status")
+
+
+def test_the_scheme_is_missing_when_only_category_and_action_are_known() -> None:
+    known = {"category": "Grievance", "action": "support"}
+
+    assert missing_pieces(known, [_PMFBY_SUPPORT]) == ("scheme",)
+
+
+def test_nothing_is_missing_when_every_piece_is_known() -> None:
+    known = {"scheme": "PMFBY", "category": "Grievance", "action": "support"}
+
+    assert missing_pieces(known, [_PMFBY_SUPPORT]) == ()
+
+
+def test_no_piece_is_asked_for_when_no_form_agrees() -> None:
+    """The registry holds only a status form: asking for a scheme would
+    lead to a form that does not exist."""
+
+    known = {"category": "Grievance", "action": "support"}
+
+    assert missing_pieces(known, [_PMFBY_STATUS]) == ()

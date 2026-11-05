@@ -49,6 +49,7 @@ from dss.core.provider_discovery.models import (
 )
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import ConversationMessage, TextQuery, UserTurn
+from dss.orchestration.form_offer import FormStep
 from dss.orchestration.plan import build_plan
 from tests.support.fakes import FakePromptProvider
 from tests.support.providers import build_capability
@@ -164,6 +165,7 @@ async def test_plan_returns_evidence_from_what_the_tools_returned() -> None:
     invocation = _FakeInvocation()
     plan = build_plan(
         schemas=SCHEMAS,
+        place_bound_types=frozenset(),
         schema_context_index={
             "openagrinet:MandiPrice": "https://schemas.openagrinet.global/schema/MandiPrice/0.1/context.jsonld"
         },
@@ -201,6 +203,7 @@ async def test_the_invocation_is_built_for_the_turn() -> None:
 
     plan = build_plan(
         schemas=SCHEMAS,
+        place_bound_types=frozenset(),
         schema_context_index={
             "openagrinet:MandiPrice": "https://schemas.openagrinet.global/schema/MandiPrice/0.1/context.jsonld"
         },
@@ -242,6 +245,7 @@ async def test_the_prompt_carries_the_identity_and_the_marked_history() -> None:
 
     plan = build_plan(
         schemas=SCHEMAS,
+        place_bound_types=frozenset(),
         schema_context_index={
             "openagrinet:MandiPrice": "https://schemas.openagrinet.global/schema/MandiPrice/0.1/context.jsonld"
         },
@@ -306,6 +310,7 @@ async def test_a_direct_answer_reaches_the_evidence_through_plan() -> None:
     invocation = _FakeInvocation()
     plan = build_plan(
         schemas=SCHEMAS,
+        place_bound_types=frozenset(),
         schema_context_index={
             "openagrinet:MandiPrice": (
                 "https://schemas.openagrinet.global/schema/MandiPrice/v0.1/context.jsonld"
@@ -342,6 +347,7 @@ async def test_a_turn_with_only_form_asks_never_runs_the_agent() -> None:
 
     plan = build_plan(
         schemas=SCHEMAS,
+        place_bound_types=frozenset(),
         schema_context_index={},
         invocation_for=lambda _turn: _FakeInvocation(),
         identity=IDENTITY,
@@ -356,11 +362,75 @@ async def test_a_turn_with_only_form_asks_never_runs_the_agent() -> None:
             answers={}, capabilities={0: (CAPABILITY,)}, failures={}, events=()
         ),
         verdict=_cleared_verdict(),
-        awaiting={0: GRIEVANCE_FORM},
+        form_step=FormStep(offered={0: GRIEVANCE_FORM}, settled=frozenset({0})),
     )
 
     assert evidence.awaiting_forms == (GRIEVANCE_FORM,)
     assert evidence.unserved_asks == ()
+
+
+async def test_a_turn_with_only_missing_pieces_never_runs_the_agent() -> None:
+    """The question is the whole answer: no provider is called for an ask
+    that cannot say which scheme it is about."""
+
+    plan = build_plan(
+        schemas=SCHEMAS,
+        place_bound_types=frozenset(),
+        schema_context_index={},
+        invocation_for=lambda _turn: _FakeInvocation(),
+        identity=IDENTITY,
+        prompts=FakePromptProvider(skills=(SKILL,)),
+        model=FunctionModel(_must_not_run),
+    )
+
+    evidence = await plan(
+        _turn(),
+        intent=Intent(asks=(GRIEVANCE_ASK,), confidence=0.9),
+        discovery=DiscoveryResult(
+            answers={}, capabilities={0: (CAPABILITY,)}, failures={}, events=()
+        ),
+        verdict=_cleared_verdict(),
+        form_step=FormStep(missing={0: ("scheme",)}, settled=frozenset({0})),
+    )
+
+    [waiting] = evidence.ask_evidences
+    assert waiting.missing == ("scheme",)
+    assert evidence.awaits_farmer is True
+    assert evidence.unserved_asks == ()
+    assert waiting.failures == ()
+
+
+async def test_an_advice_ask_a_provider_serves_still_runs_the_agent() -> None:
+    """The form is for the filing that follows; the steps are the planner's."""
+
+    runs: list[int] = []
+
+    def records_the_run(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        runs.append(len(messages))
+        return ModelResponse(parts=[TextPart(content="Steps.")])
+
+    plan = build_plan(
+        schemas=SCHEMAS,
+        place_bound_types=frozenset(),
+        schema_context_index={},
+        invocation_for=lambda _turn: _FakeInvocation(),
+        identity=IDENTITY,
+        prompts=FakePromptProvider(skills=(SKILL,)),
+        model=FunctionModel(records_the_run),
+    )
+
+    evidence = await plan(
+        _turn(),
+        intent=Intent(asks=(GRIEVANCE_ASK,), confidence=0.9),
+        discovery=DiscoveryResult(
+            answers={}, capabilities={0: (CAPABILITY,)}, failures={}, events=()
+        ),
+        verdict=_cleared_verdict(),
+        form_step=FormStep(offered={0: GRIEVANCE_FORM}),
+    )
+
+    assert runs == [1]
+    assert evidence.awaiting_forms == (GRIEVANCE_FORM,)
 
 
 def _calls_select_for_ask_0_then_answers(
@@ -393,6 +463,7 @@ async def test_a_model_that_still_selects_for_a_form_ask_reaches_no_provider() -
     )
     plan = build_plan(
         schemas=SCHEMAS,
+        place_bound_types=frozenset(),
         schema_context_index={},
         invocation_for=lambda _turn: invocation,
         identity=IDENTITY,
@@ -410,7 +481,7 @@ async def test_a_model_that_still_selects_for_a_form_ask_reaches_no_provider() -
             events=(),
         ),
         verdict=_cleared_verdict(),
-        awaiting={0: GRIEVANCE_FORM},
+        form_step=FormStep(offered={0: GRIEVANCE_FORM}, settled=frozenset({0})),
     )
 
     assert invocation.calls == []
@@ -427,6 +498,7 @@ async def test_an_ask_whose_place_failed_is_a_failure_even_if_never_called() -> 
     )
     plan = build_plan(
         schemas=SCHEMAS,
+        place_bound_types=frozenset(),
         schema_context_index={},
         invocation_for=lambda _turn: _FakeInvocation(),
         identity=IDENTITY,
@@ -469,6 +541,7 @@ async def test_the_planner_binds_its_own_model_settings() -> None:
 
     plan = build_plan(
         schemas=SCHEMAS,
+        place_bound_types=frozenset(),
         schema_context_index={
             "openagrinet:MandiPrice": "https://schemas.openagrinet.global/schema/MandiPrice/0.1/context.jsonld"
         },
@@ -500,6 +573,7 @@ async def test_a_rejected_turn_yields_empty_evidence() -> None:
     invocation = _FakeInvocation()
     plan = build_plan(
         schemas=SCHEMAS,
+        place_bound_types=frozenset(),
         schema_context_index={
             "openagrinet:MandiPrice": "https://schemas.openagrinet.global/schema/MandiPrice/0.1/context.jsonld"
         },
@@ -558,6 +632,7 @@ async def test_a_planner_run_that_fails_still_records_what_it_spent() -> None:
     begin_turn_usage()
     plan = build_plan(
         schemas=SCHEMAS,
+        place_bound_types=frozenset(),
         schema_context_index={
             "openagrinet:MandiPrice": "https://schemas.openagrinet.global/schema/MandiPrice/0.1/context.jsonld"
         },
@@ -677,6 +752,7 @@ async def test_a_submission_turn_files_the_form_and_keeps_the_ticket() -> None:
     invocation = _FilingInvocation()
     plan = build_plan(
         schemas=SCHEMAS,
+        place_bound_types=frozenset(),
         schema_context_index={},
         invocation_for=lambda _turn: invocation,
         identity=IDENTITY,

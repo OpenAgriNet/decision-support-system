@@ -9,7 +9,7 @@ from typing import Literal
 import anyio
 from pydantic import BaseModel, ConfigDict
 
-from dss.core.forms.models import FormDefinition
+from dss.core.forms.models import FormDefinition, FormPiece
 from dss.core.intent.models import Ask
 from dss.core.moderation.models import ModerationDecision
 
@@ -140,13 +140,19 @@ class Identity(BaseModel):
 
 @dataclass(frozen=True)
 class AskEvidence:
-    """What the turn gathered for one ask: its results and its failures, or
-    the form the farmer fills in before any provider is called."""
+    """What the turn gathered for one ask: its results and its failures, the
+    form the farmer fills in before any provider is called, or the pieces the
+    farmer must still say before there is a form to offer."""
 
     ask: Ask
     results: tuple[Result, ...]
     failures: tuple[Failure, ...]
     awaiting: FormDefinition | None = None
+    missing: tuple[FormPiece, ...] = ()
+
+    @property
+    def awaits_farmer(self) -> bool:
+        return self.awaiting is not None or bool(self.missing)
 
     @property
     def is_served(self) -> bool:
@@ -172,13 +178,18 @@ class Evidence:
 
     @property
     def unserved_asks(self) -> tuple[AskEvidence, ...]:
-        """Asks with no result and no form: the gaps the farmer is told about."""
+        """Asks with no result that wait on nothing from the farmer: the gaps
+        the farmer is told about."""
 
         return tuple(
             entry
             for entry in self.ask_evidences
-            if not entry.is_served and entry.awaiting is None
+            if not entry.is_served and not entry.awaits_farmer
         )
+
+    @property
+    def awaits_farmer(self) -> bool:
+        return any(entry.awaits_farmer for entry in self.ask_evidences)
 
     @property
     def awaiting_forms(self) -> tuple[FormDefinition, ...]:

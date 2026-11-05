@@ -97,7 +97,7 @@ class _RecordingPlan:
         discovery,
         verdict,
         visibility=None,
-        awaiting=None,
+        form_step=None,
         filing=None,
     ):
         self.calls.append(

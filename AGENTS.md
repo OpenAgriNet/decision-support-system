@@ -34,7 +34,10 @@ Do not duplicate architecture, domain model, or design-decision detail here — 
   ships as a marked demo. System-authored text (refusals, clarifications,
   no-provider answers) stays English in code and is rendered in the turn's
   target language on the way out by the `localizer` prompt on the composer's
-  binding — English skips the call, failures fall back to English.
+  binding — English skips the call, failures fall back to English. The one
+  exception is the question for a piece a form needs (which scheme): the
+  composer writes it from the evidence, in the target language, not fixed
+  text through the localizer.
 - Telemetry destination: one OTLP endpoint, pointed at an OpenTelemetry Collector
   that fans out (ADR-0014) — traces to self-hosted Langfuse (ADR-0007) with message
   content, and traces + metrics + logs to an existing ClickHouse with that content

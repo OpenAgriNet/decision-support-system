@@ -83,7 +83,7 @@ def _build(
         telemetry=_Telemetry(),
         area_lookup=FakeAreaLookup({"pune": [_PUNE_MATCH]}),
         clarification_text=load_clarification_text(),
-        schemas={},
+        place_bound_types=frozenset(),
         edge_translation=EdgeTranslation(routes={}),
         forms=FormRegistry(),
     )
@@ -213,7 +213,7 @@ async def test_the_real_component_streams_through_the_runner() -> None:
         telemetry=_Telemetry(),
         area_lookup=FakeAreaLookup({"pune": [_PUNE_MATCH]}),
         clarification_text=load_clarification_text(),
-        schemas={},
+        place_bound_types=frozenset(),
         edge_translation=EdgeTranslation(routes={}),
         forms=FormRegistry(),
     )

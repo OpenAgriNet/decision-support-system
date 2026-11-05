@@ -1,15 +1,14 @@
 """Tier 1 — which asks may go on without a place.
 
 The schema pack decides: an option from a pack that indexes no location can
-serve an ask that names nowhere. The rule itself lives on ``DomainSchema``
-and is tested with it; this is the per-ask reading of it over discovery.
+serve an ask that names nowhere. The pack's answer arrives as the set of
+place-bound types; this is the per-ask reading of it over discovery.
 """
 
 from __future__ import annotations
 
 from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
 from dss.core.planner.place import place_optional_asks
-from dss.core.planner.validation import DomainSchema
 from dss.core.provider_discovery.models import (
     DiscoveredAnswer,
     DiscoveryResult,
@@ -20,10 +19,7 @@ from tests.support.providers import build_capability
 _ADVISORY = "openagrinet:KnowledgeAdvisory"
 _WEATHER = "openagrinet:WeatherObservation"
 
-_SCHEMAS = {
-    _ADVISORY: DomainSchema(type="KnowledgeAdvisory", filterable=()),
-    _WEATHER: DomainSchema(type="WeatherObservation", filterable=(), needs_place=True),
-}
+_PLACE_BOUND = frozenset({_WEATHER})
 
 
 def _ask(place=None) -> Ask:  # noqa: ANN001
@@ -59,7 +55,7 @@ def test_one_placeless_option_is_enough() -> None:
     intent = Intent(asks=(_ask(),))
     discovery = _discovery(**{"0": (_capability(_ADVISORY),)})
 
-    assert place_optional_asks(intent, discovery, _SCHEMAS) == frozenset({0})
+    assert place_optional_asks(intent, discovery, _PLACE_BOUND) == frozenset({0})
 
 
 def test_a_direct_answer_counts_as_an_option() -> None:
@@ -79,18 +75,17 @@ def test_a_direct_answer_counts_as_an_option() -> None:
         answers={0: (answer,)}, capabilities={}, failures={}, events=()
     )
 
-    assert place_optional_asks(intent, discovery, _SCHEMAS) == frozenset({0})
+    assert place_optional_asks(intent, discovery, _PLACE_BOUND) == frozenset({0})
 
 
-def test_an_option_with_no_loaded_schema_needs_a_place() -> None:
-    """Discovery can name a @type whose pack was skipped on disk. Nothing says
-    it serves an ask from nowhere, so it does not: the farmer is asked, as
-    before this rule existed."""
+def test_an_option_from_a_pack_with_no_place_path_needs_none() -> None:
+    """A grievance desk indexes no location and has no planner schema: the
+    pack's own fact decides, not whether the planner can call it."""
 
     intent = Intent(asks=(_ask(),))
-    discovery = _discovery(**{"0": (_capability("openagrinet:Unknown"),)})
+    discovery = _discovery(**{"0": (_capability("openagrinet:Grievance"),)})
 
-    assert place_optional_asks(intent, discovery, _SCHEMAS) == frozenset()
+    assert place_optional_asks(intent, discovery, _PLACE_BOUND) == frozenset({0})
 
 
 def test_every_option_needs_place() -> None:
@@ -99,7 +94,7 @@ def test_every_option_needs_place() -> None:
     intent = Intent(asks=(_ask(),))
     discovery = _discovery(**{"0": (_capability(_WEATHER),)})
 
-    assert place_optional_asks(intent, discovery, _SCHEMAS) == frozenset()
+    assert place_optional_asks(intent, discovery, _PLACE_BOUND) == frozenset()
 
 
 def test_no_option_found_is_not_a_place_failure() -> None:
@@ -109,7 +104,7 @@ def test_no_option_found_is_not_a_place_failure() -> None:
     intent = Intent(asks=(_ask(),))
     discovery = _discovery(**{"0": ()})
 
-    assert place_optional_asks(intent, discovery, _SCHEMAS) == frozenset({0})
+    assert place_optional_asks(intent, discovery, _PLACE_BOUND) == frozenset({0})
 
 
 def test_one_option_needing_no_place_is_enough() -> None:
@@ -120,7 +115,7 @@ def test_one_option_needing_no_place_is_enough() -> None:
     intent = Intent(asks=(_ask(),))
     discovery = _discovery(**{"0": (_capability(_WEATHER), _capability(_ADVISORY))})
 
-    assert place_optional_asks(intent, discovery, _SCHEMAS) == frozenset({0})
+    assert place_optional_asks(intent, discovery, _PLACE_BOUND) == frozenset({0})
 
 
 def test_an_ask_awaiting_a_form_needs_no_place() -> None:
@@ -130,6 +125,6 @@ def test_an_ask_awaiting_a_form_needs_no_place() -> None:
     intent = Intent(asks=(_ask(),))
     discovery = _discovery(**{"0": (_capability(_WEATHER),)})
 
-    optional = place_optional_asks(intent, discovery, _SCHEMAS, awaiting={0})
+    optional = place_optional_asks(intent, discovery, _PLACE_BOUND, awaiting={0})
 
     assert optional == frozenset({0})

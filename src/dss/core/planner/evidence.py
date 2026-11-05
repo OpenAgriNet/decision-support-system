@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from collections.abc import Collection, Mapping, Sequence
 
-from dss.core.forms.models import FormDefinition
+from dss.core.forms.models import FormDefinition, FormPiece
 from dss.core.intent.models import AmbiguousPlace, Ask, Intent, UnresolvedPlace
 from dss.core.planner.models import (
     AskEvidence,
@@ -38,33 +38,43 @@ def place_failures(
     Recorded before the planner runs, so the farmer hears about the ask even
     when the model never tries to call anything for it.
 
-    An ask with no place at all fails too, unless `place_optional` names it:
-    the pack serves it from nowhere (`core/planner/place.py`).
+    An ask `place_optional` names never fails for its place, whatever the
+    place says: the pack serves it from nowhere, or its form carries what its
+    call needs (`core/planner/place.py`). An ask with no place at all fails
+    otherwise.
     """
 
-    failures: list[Failure] = []
-    for index, ask in enumerate(intent.asks):
-        if isinstance(ask.place, UnresolvedPlace):
-            reason = f"{ask.place.unresolved_name}: place not found"
-        elif isinstance(ask.place, AmbiguousPlace):
-            reason = f"{ask.place.unresolved_name}: matches several places"
-        elif ask.place is None and index not in place_optional:
-            reason = "no place given, and this needs one"
-        else:
-            continue
-        failures.append(
-            Failure(ask_index=index, capability=None, reason=reason, retryable=False)
-        )
-    return failures
+    reasons = (
+        (index, _place_failure_reason(ask))
+        for index, ask in enumerate(intent.asks)
+        if index not in place_optional
+    )
+    return [
+        Failure(ask_index=index, capability=None, reason=reason, retryable=False)
+        for index, reason in reasons
+        if reason is not None
+    ]
 
 
-def assemble_evidence(
+def _place_failure_reason(ask: Ask) -> str | None:
+    match ask.place:
+        case UnresolvedPlace(unresolved_name=name):
+            return f"{name}: place not found"
+        case AmbiguousPlace(unresolved_name=name):
+            return f"{name}: matches several places"
+        case None:
+            return "no place given, and this needs one"
+    return None
+
+
+def assemble_evidence(  # noqa: PLR0913
     raw_answers: Sequence[tuple[int, DiscoveredAnswer]],
     *,
     intent: Intent,
     direct_answers: Mapping[int, tuple[DiscoveredAnswer, ...]] | None = None,
     failures: Sequence[Failure] = (),
     awaiting: Mapping[int, FormDefinition] | None = None,
+    missing: Mapping[int, tuple[FormPiece, ...]] | None = None,
 ) -> Evidence:
     """Turn everything the turn gathered into ``Evidence``.
 
@@ -130,7 +140,11 @@ def assemble_evidence(
     return Evidence(
         sources=tuple(sources),
         ask_evidences=group_by_ask(
-            intent.asks, results=results, failures=failures, awaiting=awaiting
+            intent.asks,
+            results=results,
+            failures=failures,
+            awaiting=awaiting,
+            missing=missing,
         ),
     )
 
@@ -141,16 +155,21 @@ def group_by_ask(
     results: Sequence[Result],
     failures: Sequence[Failure],
     awaiting: Mapping[int, FormDefinition] | None = None,
+    missing: Mapping[int, tuple[FormPiece, ...]] | None = None,
 ) -> tuple[AskEvidence, ...]:
     """One entry per ask, in ask order, holding that ask's results and
-    failures, and the form it awaits if any.
+    failures, the form it awaits if any, and the pieces it still needs.
 
     Raises ``ValueError`` for a part naming an ask the turn does not have.
     """
 
     awaiting = awaiting or {}
+    missing = missing or {}
     _reject_stray_ask_indexes(
-        len(asks), results=results, failures=failures, awaiting=awaiting
+        len(asks),
+        results=results,
+        failures=failures,
+        waiting=(*awaiting, *missing),
     )
     return tuple(
         AskEvidence(
@@ -160,6 +179,7 @@ def group_by_ask(
                 failure for failure in failures if failure.ask_index == index
             ),
             awaiting=awaiting.get(index),
+            missing=missing.get(index, ()),
         )
         for index, ask in enumerate(asks)
     )
@@ -170,11 +190,11 @@ def _reject_stray_ask_indexes(
     *,
     results: Sequence[Result],
     failures: Sequence[Failure],
-    awaiting: Mapping[int, FormDefinition],
+    waiting: Sequence[int],
 ) -> None:
     # Every producer keeps the index in range, so a stray one is a bug. Dropping
     # the part instead would quietly turn the turn into no_match.
-    named = [*(part.ask_index for part in (*results, *failures)), *awaiting]
+    named = [*(part.ask_index for part in (*results, *failures)), *waiting]
     stray = [index for index in named if not 0 <= index < ask_count]
     if stray:
         raise ValueError(f"ask {stray[0]} is not one of the turn's {ask_count} asks")

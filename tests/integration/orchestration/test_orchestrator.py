@@ -15,17 +15,28 @@ import pytest
 from dss.adapters.sinks.memory import MemoryTurnSink
 from dss.config.clarification_text_loader import load_clarification_text
 from dss.core.channel.service import NO_MATCH_TEXT
-from dss.core.forms.models import FormBlock, FormContext, FormDefinition
+from pydantic_ai.messages import ModelMessage, ModelResponse
+from pydantic_ai.models.function import AgentInfo, FunctionModel
+
+from dss.core.forms.models import ActionSchema, FormBlock, FormContext, FormDefinition
 from dss.core.forms.registry import FormLookup, FormRegistry
 from dss.core.intent.models import (
+    Ask,
     ClassifiedAsk,
     IntentClassification,
     InteractionType,
+    Scheme,
     SubjectCategory,
 )
 from dss.core.moderation.models import Outcome
-from dss.core.planner.models import Evidence, Failure, Result, Source, SourceKind
-from dss.core.planner.validation import DomainSchema
+from dss.core.planner.models import (
+    Evidence,
+    Failure,
+    Identity,
+    Result,
+    Source,
+    SourceKind,
+)
 from dss.core.policy.models import (
     Checkpoint,
     EvaluationKind,
@@ -59,7 +70,8 @@ from dss.orchestration.orchestrator import (
     TextPath,
     unrouted_kinds,
 )
-from dss.orchestration.plan import Plan
+from dss.orchestration.form_offer import NO_FORM_STEP
+from dss.orchestration.plan import Plan, build_plan
 from dss.orchestration.redaction import RedactTexts, pass_through
 from dss.ports.area_lookup import AreaMatch
 from tests.support.evidence import ANY_ASK, build_evidence
@@ -91,6 +103,12 @@ CAPABILITY = build_capability(
     observed_categories=("Market",),
 )
 
+
+# The desks these tests discover that are for somewhere. A desk outside the
+# set (advisory, grievance) serves an ask that names nowhere.
+_PLACE_BOUND_TYPES = frozenset(
+    {"openagrinet:MandiPrice", "openagrinet:WeatherObservation"}
+)
 
 _PUNE = Location(geometry=Geometry(coordinates=[74.067998, 18.571118]))
 _PUNE_MATCH = AreaMatch(
@@ -203,10 +221,10 @@ class _FakePlan:
         self.verdict_was_set: bool | None = None
 
     async def __call__(
-        self, turn, *, intent, discovery, verdict, visibility, awaiting=None
+        self, turn, *, intent, discovery, verdict, visibility, form_step=NO_FORM_STEP
     ) -> Evidence:
         self.calls += 1
-        self.awaiting = dict(awaiting or {})
+        self.form_step = form_step
         self.verdict_was_set = verdict.is_set()
         self.turn = turn
         self.visibility = visibility
@@ -232,6 +250,7 @@ class _FakeCompose:
 
     async def __call__(self, evidence, *, turn):
         self.calls += 1
+        self.evidence = evidence
         self.turn = turn
         try:
             for index, chunk in enumerate(self._chunks):
@@ -274,14 +293,14 @@ def _build(
     intent_llm=None,
     moderation_llm=None,
     localize: FakeLocalizer | None = None,
-    schemas: dict[str, DomainSchema] | None = None,
+    place_bound_types: frozenset[str] = _PLACE_BOUND_TYPES,
     edge_translation: EdgeTranslation | None = None,
     forms: FormLookup | None = None,
     scheme_catalog: FakeSchemeCatalog | None = None,
 ) -> tuple[Orchestrator, MemoryTurnSink]:
     turns = MemoryTurnSink()
     text_path = TextPath(
-        schemas=schemas or {},
+        place_bound_types=place_bound_types,
         intent_llm=intent_llm or _FakeIntentLLM(intent),
         moderation_llm=moderation_llm or _FakeModerationLLM(violated=violated),
         prompts=FakePromptProvider(),
@@ -516,11 +535,6 @@ async def test_an_unlocated_advisory_ask_is_answered() -> None:
         ),
         plan=plan,
         compose=compose,
-        schemas={
-            "openagrinet:KnowledgeAdvisory": DomainSchema(
-                type="KnowledgeAdvisory", filterable=()
-            )
-        },
     )
 
     events = await _collect(orch, _turn("how do I grow potatoes", location=None))
@@ -577,14 +591,6 @@ async def test_mixed_turn_answers_then_asks_place() -> None:
         ),
         plan=plan,
         compose=_FakeCompose("Sow in October [1]."),
-        schemas={
-            "openagrinet:KnowledgeAdvisory": DomainSchema(
-                type="KnowledgeAdvisory", filterable=()
-            ),
-            "openagrinet:WeatherObservation": DomainSchema(
-                type="WeatherObservation", filterable=(), needs_place=True
-            ),
-        },
     )
 
     events = await _collect(
@@ -615,6 +621,173 @@ async def test_an_ask_awaiting_a_form_ends_the_turn_on_the_form() -> None:
     text, form = finished.content
     assert isinstance(text, TextBlock) and text.text == "Please fill in the form below."
     assert isinstance(form, FormBlock) and form.form == _GRIEVANCE_FORM
+
+
+_PMFBY = Scheme(code="PMFBY", name="Pradhan Mantri Fasal Bima Yojana")
+_PMFBY_SUPPORT = FormContext(scheme="PMFBY", category="Grievance", action="support")
+_GRIEVANCE_DESK = build_capability(
+    provider_id="pmfby",
+    provider_name="PMFBY desk",
+    capability="openagrinet:Grievance",
+    resource_id="res:pmfby:grievance",
+    observed_categories=("Grievance",),
+)
+
+
+def _grievance_ask(
+    interaction: InteractionType, *, scheme_code: str | None = None
+) -> ClassifiedAsk:
+    return ClassifiedAsk(
+        subject_categories=SubjectCategory.GRIEVANCE,
+        interaction_type=interaction,
+        scheme_code=scheme_code,
+    )
+
+
+def _grievance_forms() -> FormRegistry:
+    return FormRegistry([ActionSchema(context=_PMFBY_SUPPORT, must_send=())])
+
+
+def _planner_that_must_not_run() -> Plan:
+    def refuses(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        raise AssertionError("the planner model ran for a turn the question settles")
+
+    return build_plan(
+        schemas={},
+        place_bound_types=_PLACE_BOUND_TYPES,
+        schema_context_index={},
+        invocation_for=lambda _turn: pytest.fail("a provider was called"),
+        identity=Identity(name="Kisan Mitra", persona="Calm.", boundaries="None."),
+        prompts=FakePromptProvider(),
+        model=FunctionModel(refuses),
+    )
+
+
+async def test_a_problem_with_no_scheme_is_asked_which_scheme() -> None:
+    """The turn has no place, and a desk serves it. The question is the
+    composer's, no place is asked, and no planner model or provider runs."""
+
+    compose = _FakeCompose("Which scheme is this about?")
+    orch, _ = _build(
+        intent=IntentClassification(
+            asks=(_grievance_ask(InteractionType.ACT),), confidence=0.9
+        ),
+        discovery=DiscoveryResult(
+            answers={}, capabilities={0: (_GRIEVANCE_DESK,)}, failures={}, events=()
+        ),
+        plan=_planner_that_must_not_run(),
+        compose=compose,
+        forms=_grievance_forms(),
+    )
+
+    events = await _collect(orch, _turn("my payment did not come", location=None))
+
+    finished = events[-1]
+    assert finished.outcome.status is TurnStatus.REQUIRES_INPUT
+    assert [block.text for block in finished.content] == ["Which scheme is this about?"]
+    [waiting] = compose.evidence.ask_evidences
+    assert waiting.missing == ("scheme",)
+
+
+async def test_advice_on_filing_carries_the_form_with_no_desk() -> None:
+    """Nobody serves advice on a grievance, by design. The farmer still gets
+    the form, and the planner has nothing left to answer."""
+
+    orch, _ = _build(
+        intent=IntentClassification(
+            asks=(_grievance_ask(InteractionType.ADVISE, scheme_code="PMFBY"),),
+            confidence=0.9,
+        ),
+        discovery=DiscoveryResult(answers={}, capabilities={}, failures={}, events=()),
+        plan=_planner_that_must_not_run(),
+        compose=_FakeCompose("Fill in the form below."),
+        forms=_grievance_forms(),
+        scheme_catalog=FakeSchemeCatalog(_PMFBY),
+    )
+
+    events = await _collect(orch, _turn("how do I file a complaint", location=None))
+
+    finished = events[-1]
+    assert finished.outcome.status is TurnStatus.REQUIRES_INPUT
+    *_, form = finished.content
+    assert isinstance(form, FormBlock) and form.form.context == _PMFBY_SUPPORT
+
+
+async def test_the_answer_comes_before_the_question_in_one_reply() -> None:
+    plan = _FakePlan(
+        build_evidence(
+            sources=(
+                Source(id="1", name="Agmarknet", kind=SourceKind.PROVIDER, url=None),
+            ),
+            results=(Result(ask_index=0, source_id="1", data={"modal": 2275}),),
+            missing={1: ("scheme",)},
+        )
+    )
+    orch, _ = _build(
+        intent=IntentClassification(
+            asks=(
+                ClassifiedAsk(
+                    agriculture_subjects="wheat",
+                    subject_categories=SubjectCategory.MARKET,
+                    interaction_type=InteractionType.OBSERVE,
+                ),
+                _grievance_ask(InteractionType.ACT),
+            ),
+            confidence=0.9,
+        ),
+        discovery=DiscoveryResult(
+            answers={},
+            capabilities={0: (CAPABILITY,), 1: (_GRIEVANCE_DESK,)},
+            failures={},
+            events=(),
+        ),
+        plan=plan,
+        compose=_FakeCompose("Wheat is 2,275 Rs [1]. Which scheme is this about?"),
+        forms=_grievance_forms(),
+    )
+
+    events = await _collect(orch)
+
+    assert plan.form_step.missing == {1: ("scheme",)}
+    assert plan.form_step.settled == {1}
+    assert events[-1].outcome.status is TurnStatus.REQUIRES_INPUT
+
+
+async def test_a_scheme_with_no_form_gets_no_place_question() -> None:
+    """PM-KISAN names a scheme the registry has no form for, so the ask is the
+    planner's. Its desk indexes no place, so the farmer is not asked for one;
+    nothing can serve it, and the turn says so."""
+
+    plan = _FakePlan(
+        build_evidence(
+            asks=(
+                Ask(
+                    subject_categories=SubjectCategory.GRIEVANCE,
+                    interaction_type=InteractionType.ACT,
+                ),
+            ),
+        )
+    )
+    orch, _ = _build(
+        intent=IntentClassification(
+            asks=(_grievance_ask(InteractionType.ACT, scheme_code="PMKISAN"),),
+            confidence=0.9,
+        ),
+        discovery=DiscoveryResult(
+            answers={}, capabilities={0: (_GRIEVANCE_DESK,)}, failures={}, events=()
+        ),
+        plan=plan,
+        compose=_FakeCompose("Nothing could be found."),
+        forms=_grievance_forms(),
+        scheme_catalog=FakeSchemeCatalog(Scheme(code="PMKISAN", name="PM-KISAN")),
+    )
+
+    events = await _collect(
+        orch, _turn("my PM-KISAN payment did not come", location=None)
+    )
+
+    assert plan.calls == 1
+    assert events[-1].outcome.status is TurnStatus.NO_MATCH
 
 
 async def test_some_asks_unserved_is_partial() -> None:

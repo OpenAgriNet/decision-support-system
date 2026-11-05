@@ -149,6 +149,15 @@ def _not_found_line(name: str, text: ClarificationText) -> str:
     return text.unknown_place_in.format(name=place.strip(), part=part.strip())
 
 
+def _asks_needing_place(
+    asks: Sequence[Ask], place_optional: Collection[int]
+) -> list[Ask]:
+    """A place-optional ask is left out whatever its place says: its form
+    carries what its call needs, so a place carried from history is no question."""
+
+    return [ask for index, ask in enumerate(asks) if index not in place_optional]
+
+
 def question_for_unplaced_asks(
     asks: Sequence[Ask],
     text: ClarificationText,
@@ -166,11 +175,11 @@ def question_for_unplaced_asks(
     paragraphs: list[str] = []
     reported: list[AmbiguousPlace] = []
     needs_place = False
-    for index, ask in enumerate(asks):
+    for ask in _asks_needing_place(asks, place_optional):
         if isinstance(ask.place, AmbiguousPlace) and ask.place not in reported:
             reported.append(ask.place)
             paragraphs.append(_ambiguous_paragraph(ask.place, text))
-        elif ask.place is None and index not in place_optional:
+        elif ask.place is None:
             needs_place = True
     if needs_place:
         paragraphs.append(text.needs_place)
@@ -187,17 +196,17 @@ def answer_for_unplaced_asks(
     ask can be answered; the rest travel on as failures, so the answerable
     ones still get answered.
 
-    `place_optional` names the asks (by position) that have no place and need
-    none — the pack serves them from nowhere (`core/planner/place.py`). They
-    count as answerable, not as missing a place.
+    `place_optional` names the asks (by position) that need no place — the
+    pack serves them from nowhere, or their form carries what the call needs
+    (`core/planner/place.py`). They count as answerable, not as missing a
+    place, even when they carry one.
 
     Reports every failing ask, not just one, so fixing all of them takes one
     reply. Plain `None` asks share one question, asked once.
     """
 
     if any(
-        isinstance(ask.place, ResolvedPlace)
-        or (ask.place is None and index in place_optional)
+        index in place_optional or isinstance(ask.place, ResolvedPlace)
         for index, ask in enumerate(asks)
     ):
         return None

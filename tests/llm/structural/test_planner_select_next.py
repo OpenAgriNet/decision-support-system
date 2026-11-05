@@ -186,6 +186,7 @@ async def _find_answering_providers(
     settings = Settings()
     plan = build_plan(
         schemas=SCHEMAS,
+        place_bound_types=frozenset(),
         schema_context_index=SCHEMA_CONTEXT_INDEX,
         invocation=_ScriptedInvocation(
             {PREFERRED: preferred_advice, NEXT_PREFERRED: next_preferred_advice}

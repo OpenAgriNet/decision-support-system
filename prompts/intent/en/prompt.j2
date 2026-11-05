@@ -42,8 +42,12 @@ Examples:
   'file a complaint about my PMFBY claim' -> one ask: Grievance / act / 'PMFBY'.
   'am I eligible for PM-KISAN' -> one ask: Scheme / observe / 'PM-KISAN'. Eligibility is a fact about the user, not advice.
   'how do I apply for PM-KISAN' -> one ask: Scheme / advise / 'PM-KISAN'. Explaining the steps is advice; only submitting is act.
-  'my cotton leaves are curling' -> one ask: Crop / advise / 'cotton'. A problem description is still a request for guidance.
+  'my cotton leaves are curling' -> one ask: Crop / advise / 'cotton'. A problem with a crop is still a request for guidance.
+  'my PMFBY claim money has not come' -> one ask: Grievance / act / 'PMFBY'. A problem with a scheme (a payment, claim or enrolment that went wrong) is a wish to have it put right, so it is act. This is narrower than the crop line above: a crop problem is guidance, a scheme problem is a grievance.
+  'my payment has not come' -> one ask: Grievance / act, with scheme_code null. Do not guess a scheme the user did not name.
   'tomato price and when should I spray' -> two asks: Market / observe / 'tomato', and Crop / advise / 'tomato'.
+  Conversation: user 'my PMFBY claim money has not come', assistant 'Please fill in the form below. If you have already filed a complaint, give me the ticket number.', then 'I filed already, ticket 4521' -> one ask: Grievance / observe, scheme_code 'PMFBY'. When the conversation shows the user already filed a complaint (they say so, or they give a ticket number), they want its status, so it is observe. Carry the scheme from the conversation.
+  Conversation: user 'my payment has not come', assistant 'Which scheme is this about?', then 'PMFBY' -> one ask: Grievance / act / 'PMFBY', scheme_code 'PMFBY'. When the assistant's last message asked for something an ask needed (which scheme) and the reply gives it, keep the earlier ask and fill it in. If the reply is a new question ('what is the weather today?'), classify it fresh.
 
 Also return an overall confidence in [0, 1]: how sure you are that these asks are what the user meant. Below about 0.5 the turn may be refused, so use a low value when the query is too vague to place rather than guessing a category to look decisive. Returning no asks is a valid answer when nothing here is about agriculture.
 If the query is a follow-up ('And potato?', 'Is it safe to use?'), resolve it against the conversation before classifying.

@@ -97,7 +97,8 @@ def cited_sources_text(evidence: Evidence, cited: Mapping[str, str]) -> str:
 
 
 def evidence_text(evidence: Evidence) -> str:
-    """Which asks were served, from where, and what failed."""
+    """Which asks were served, from where, what failed, and what the farmer
+    is asked for. Piece names only: they are never personal."""
 
     numbered = list(enumerate(evidence.ask_evidences, start=1))
     served = ", ".join(str(number) for number, entry in numbered if entry.is_served)
@@ -106,5 +107,10 @@ def evidence_text(evidence: Evidence) -> str:
         f"failed ask {number}: {failure.capability or '-'}: {failure.reason}"
         for number, entry in numbered
         for failure in entry.failures
+    ]
+    lines += [
+        f"waiting ask {number}: {', '.join(entry.missing)}"
+        for number, entry in numbered
+        if entry.missing
     ]
     return "\n".join(lines)

@@ -49,8 +49,12 @@
   'file a complaint about my PMFBY claim' -> एक ask: Grievance / act / 'PMFBY'।
   'am I eligible for PM-KISAN' -> एक ask: Scheme / observe / 'PM-KISAN'। पात्रता उपयोगकर्ता के बारे में एक तथ्य है, सलाह नहीं।
   'how do I apply for PM-KISAN' -> एक ask: Scheme / advise / 'PM-KISAN'। चरण समझाना सलाह है; केवल जमा करना act है।
-  'my cotton leaves are curling' -> एक ask: Crop / advise / 'cotton'। समस्या का वर्णन भी मार्गदर्शन का ही अनुरोध है।
+  'my cotton leaves are curling' -> एक ask: Crop / advise / 'cotton'। फसल की समस्या भी मार्गदर्शन का ही अनुरोध है।
+  'my PMFBY claim money has not come' -> एक ask: Grievance / act / 'PMFBY'। योजना की समस्या (भुगतान, दावा या नामांकन में जो गड़बड़ हुई) का मतलब है कि उपयोगकर्ता उसे ठीक करवाना चाहता है, इसलिए यह act है। यह ऊपर की फसल वाली पंक्ति से संकरा नियम है: फसल की समस्या मार्गदर्शन है, योजना की समस्या शिकायत है।
+  'my payment has not come' -> एक ask: Grievance / act, scheme_code null। जो योजना उपयोगकर्ता ने नहीं बताई उसका अनुमान न लगाइए।
   'tomato price and when should I spray' -> दो asks: Market / observe / 'tomato', और Crop / advise / 'tomato'।
+  बातचीत: user 'my PMFBY claim money has not come', assistant 'Please fill in the form below. If you have already filed a complaint, give me the ticket number.', फिर 'I filed already, ticket 4521' -> एक ask: Grievance / observe, scheme_code 'PMFBY'। जब बातचीत दिखाए कि उपयोगकर्ता शिकायत पहले ही दर्ज करा चुका है (वह खुद कहे, या ticket number दे), तो वह उसकी स्थिति चाहता है, इसलिए यह observe है। योजना बातचीत से लीजिए।
+  बातचीत: user 'my payment has not come', assistant 'Which scheme is this about?', फिर 'PMFBY' -> एक ask: Grievance / act / 'PMFBY', scheme_code 'PMFBY'। जब assistant के पिछले संदेश ने कुछ ऐसा माँगा हो जो किसी ask को चाहिए था (कौन-सी योजना) और उत्तर वह दे दे, तो पहले वाला ask रखिए और उसे भर दीजिए। यदि उत्तर नया प्रश्न हो ('what is the weather today?'), तो उसे नए सिरे से वर्गीकृत कीजिए।
 
 साथ ही [0, 1] में एक समग्र confidence लौटाइए: आप कितने आश्वस्त हैं कि यही asks उपयोगकर्ता का आशय हैं। लगभग 0.5 से नीचे turn अस्वीकृत हो सकता है, इसलिए जब प्रश्न वर्गीकृत करने के लिए बहुत अस्पष्ट हो तो निर्णायक दिखने के लिए कोई श्रेणी अनुमान से चुनने के बजाय कम मान दीजिए। जब यहाँ कुछ भी कृषि के बारे में न हो तो कोई ask न लौटाना भी मान्य उत्तर है।
 यदि प्रश्न किसी पिछली बात से जुड़ा हो ('And potato?', 'Is it safe to use?'), तो वर्गीकरण से पहले उसे बातचीत के संदर्भ में समझिए।

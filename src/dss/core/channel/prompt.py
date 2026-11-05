@@ -22,7 +22,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping, Sequence
 
-from dss.core.forms.models import FormDefinition, FormSubmission
+from dss.core.forms.models import FormDefinition, FormPiece, FormSubmission
 from dss.core.intent.models import Ask, ResolvedPlace
 from dss.core.planner.markers import (
     CONVERSATION,
@@ -136,6 +136,11 @@ def render_evidence(evidence: Evidence) -> str:
         for entry in evidence.ask_evidences
         if entry.awaiting
     ]
+    blocks += [
+        _render_missing(entry.ask, entry.missing)
+        for entry in evidence.ask_evidences
+        if entry.missing
+    ]
 
     if not blocks:
         return "Nothing was retrieved."
@@ -187,7 +192,16 @@ def _render_awaiting(ask: Ask, form: FormDefinition) -> str:
     scheme = ask.scheme.name if ask.scheme else form.context.scheme
     return (
         f"Awaits a form{_place_label(ask)}: the farmer fills in the {scheme} "
-        f"{form.context.category.lower()} form shown below this reply."
+        f"{form.context.category.lower()} form shown below this reply "
+        f"(action: {form.context.action})."
+    )
+
+
+def _render_missing(ask: Ask, pieces: Sequence[FormPiece]) -> str:
+    return (
+        f"Waits on the farmer{_place_label(ask)}: their "
+        f"{ask.subject_categories.value.lower()} ask needs the "
+        f"{' and '.join(pieces)}, which they have not said."
     )
 
 

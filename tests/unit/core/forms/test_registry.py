@@ -57,6 +57,23 @@ def test_registry_counts_its_forms() -> None:
     assert len(FormRegistry()) == 0
 
 
+def test_registry_lists_the_contexts_of_a_category() -> None:
+    other = FormContext(scheme="PMKSY", category="Irrigation", action="support")
+    registry = FormRegistry(
+        [
+            ActionSchema(context=_PMFBY_SUPPORT, must_send=()),
+            ActionSchema(context=other, must_send=()),
+            ActionSchema(context=_PMFBY_STATUS, must_send=()),
+        ]
+    )
+
+    assert registry.contexts_for("Grievance") == (_PMFBY_SUPPORT, _PMFBY_STATUS)
+
+
+def test_an_unknown_category_has_no_contexts() -> None:
+    assert FormRegistry().contexts_for("Grievance") == ()
+
+
 def test_registry_satisfies_the_lookup_the_orchestrator_takes() -> None:
     lookup: FormLookup = FormRegistry()
 

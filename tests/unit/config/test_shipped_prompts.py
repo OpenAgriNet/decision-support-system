@@ -419,6 +419,49 @@ def test_composer_hindi_demo_keeps_the_citation_form() -> None:
     assert "[1]" in prompt
 
 
+def _prompt_in(component: PromptIdentifier, lang: str, **values: object) -> str:
+    return _service().get_prompt(
+        component, lang=LanguageTag(lang), placeholder_values=values
+    )
+
+
+@pytest.mark.parametrize("lang", ["en", "hi"])
+def test_composer_prompts_key_on_the_guided_grievance_evidence(lang: str) -> None:
+    """The rules read the evidence lines `render_evidence` writes: a waiting
+    ask, and an awaited form's action. Both languages must carry both."""
+
+    prompt = _prompt_in(
+        PromptIdentifier.COMPOSER,
+        lang,
+        name="n",
+        persona="p",
+        boundaries="b",
+        target_lang=lang,
+    )
+
+    assert "waits on the farmer" in prompt
+    assert "`support`" in prompt
+
+
+@pytest.mark.parametrize("lang", ["en", "hi"])
+def test_intent_prompts_teach_the_guided_grievance_rules(lang: str) -> None:
+    """A scheme problem is act, a reply with a ticket is observe, and the
+    scheme named after our question fills the earlier ask in."""
+
+    prompt = _prompt_in(
+        PromptIdentifier.INTENT,
+        lang,
+        categories="Grievance",
+        interactions="act",
+        history=(),
+        schemes=(),
+    )
+
+    assert "'my PMFBY claim money has not come' ->" in prompt
+    assert "ticket 4521' ->" in prompt
+    assert "'Which scheme is this about?', " in prompt
+
+
 # --- planner (moved from tests/unit/core/planner/test_prompt.py) -----------
 
 

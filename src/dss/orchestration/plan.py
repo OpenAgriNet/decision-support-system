@@ -12,14 +12,14 @@ would merge the two components the design deliberately splits.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Sequence
 from typing import Protocol
 
 from pydantic_ai.models import Model
 from pydantic_ai.usage import RunUsage
 
 from dss.adapters.observability.metrics import model_that_ran, record_agent_run
-from dss.core.forms.models import Filing, FormDefinition, FormSubmission
+from dss.core.forms.models import Filing, FormSubmission
 from dss.core.intent.models import Intent
 from dss.core.planner.evidence import assemble_evidence, place_failures
 from dss.core.planner.models import Evidence, Identity, Skill, Verdict
@@ -36,6 +36,7 @@ from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import TextQuery, TurnInput, UserTurn
 from dss.observability.stages import Stage
 from dss.observability.trace_log import log_external_response
+from dss.orchestration.form_offer import NO_FORM_STEP, FormStep
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
 from dss.ports.invocation import CapabilityInvocation
 from dss.ports.prompts import PromptIdentifier, PromptProvider
@@ -52,7 +53,7 @@ class Plan(Protocol):
         discovery: DiscoveryResult,
         verdict: Verdict,
         visibility: Visibility = NOTHING_HELD,
-        awaiting: Mapping[int, FormDefinition] | None = None,
+        form_step: FormStep = NO_FORM_STEP,
         filing: Filing | None = None,
     ) -> Evidence: ...
 
@@ -65,6 +66,7 @@ type InvocationFor = Callable[[UserTurn], CapabilityInvocation]
 def build_plan(  # noqa: PLR0913
     *,
     schemas: dict[str, DomainSchema],
+    place_bound_types: frozenset[str],
     schema_context_index: dict[str, str],
     invocation_for: InvocationFor,
     identity: Identity,
@@ -97,10 +99,9 @@ def build_plan(  # noqa: PLR0913
         discovery: DiscoveryResult,
         verdict: Verdict,
         visibility: Visibility = NOTHING_HELD,
-        awaiting: Mapping[int, FormDefinition] | None = None,
+        form_step: FormStep = NO_FORM_STEP,
         filing: Filing | None = None,
     ) -> Evidence:
-        awaiting = awaiting or {}
         # A submission turn has one ask, the form's, at position 0. A status
         # form reads a case rather than filing one, and the ask line says so.
         filing_asks = frozenset({0}) if filing is not None else frozenset()
@@ -112,21 +113,23 @@ def build_plan(  # noqa: PLR0913
         # A place failure is known before the run and no tool reads it, so it
         # skips the deps. An ask with no place at all only fails when every
         # option found for it needs one — the pack decides. A form's ask,
-        # offered or filed, needs none: the form carries what its call needs.
+        # offered, missing a piece or filed, needs none: the form carries what
+        # its call needs.
         place_optional = place_optional_asks(
-            intent, discovery, schemas, awaiting=frozenset(awaiting) | filing_asks
+            intent, discovery, place_bound_types, awaiting=form_step.asks | filing_asks
         )
         unplaced = place_failures(intent, place_optional=place_optional)
-        # Nothing left to call when every ask is a form's: a run would only
-        # cost a model round-trip.
-        actionable = [i for i in range(len(intent.asks)) if i not in awaiting]
+        # Nothing left to call when the form or the question settles every ask:
+        # a run would only cost a model round-trip.
+        actionable = [i for i in range(len(intent.asks)) if i not in form_step.settled]
         if not actionable:
             return assemble_evidence(
                 [],
                 intent=intent,
                 direct_answers=discovery.answers,
                 failures=unplaced,
-                awaiting=awaiting,
+                awaiting=form_step.offered,
+                missing=form_step.missing,
             )
 
         skills = _skills_for(
@@ -146,7 +149,7 @@ def build_plan(  # noqa: PLR0913
                     "guidance_section": guidance_section(skills),
                     "asks_section": asks_section(
                         intent.asks,
-                        awaiting=frozenset(awaiting),
+                        awaiting=form_step.settled,
                         filing=filing_asks - checking_asks,
                         checking=checking_asks,
                     ),
@@ -195,7 +198,8 @@ def build_plan(  # noqa: PLR0913
             intent=intent,
             direct_answers=discovery.answers,
             failures=[*unplaced, *deps.failures],
-            awaiting=awaiting,
+            awaiting=form_step.offered,
+            missing=form_step.missing,
         )
 
     return plan
