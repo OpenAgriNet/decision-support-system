@@ -26,6 +26,11 @@ from dss.core.planner.describe_capability import render_candidates_as_markdown
 from dss.core.planner.lookup import find_capability
 from dss.core.planner.markdown import render_answers_as_markdown
 from dss.core.planner.models import Failure, Skill, Verdict
+from dss.core.planner.other_markets import (
+    commodity_codes_in,
+    find_other_markets,
+    market_name,
+)
 from dss.core.planner.resource_attributes import build_resource_attributes
 from dss.core.planner.skills import tool_names_for
 from dss.core.planner.validation import (
@@ -191,12 +196,90 @@ async def _select(
     chosen = next((one for one in consulted if one.answers), None)
     _log_consultation(deps, ask_index=ask_index, consulted=consulted, chosen=chosen)
 
+    if chosen is None and _is_empty_everywhere(consulted):
+        other_markets = find_other_markets(
+            deps.discovery.capabilities.get(ask_index, ()),
+            tried=(one.capability for one in consulted),
+            near=ask.place.geometry if isinstance(ask.place, ResolvedPlace) else None,
+            commodity_codes=commodity_codes_in(resource_attributes),
+        )
+        if other_markets:
+            return await _price_at_other_market(
+                deps,
+                ask_index=ask_index,
+                asked=consulted,
+                other_markets=other_markets,
+                attributes_for=attributes_for,
+            )
+
     if chosen is None:
         return _nothing_came_back(deps, ask_index=ask_index, consulted=consulted)
 
     deps.next_choices.hold_after(ask_index, consulted=consulted, chosen=chosen)
     deps.raw_answers.extend((ask_index, answer) for answer in chosen.answers)
     return render_answers_as_markdown(chosen.answers)
+
+
+def _is_empty_everywhere(consulted: tuple[Consulted, ...]) -> bool:
+    """Every provider was reached and none had data. An unreachable one is
+    not a market with no price, and the farmer is told that instead."""
+
+    return all(one.failure is None and not one.answers for one in consulted)
+
+
+async def _price_at_other_market(
+    deps: PlannerDeps,
+    *,
+    ask_index: int,
+    asked: tuple[Consulted, ...],
+    other_markets: tuple[ProviderCapability, ...],
+    attributes_for: Callable[[ProviderCapability], dict],
+) -> str:
+    """Answer the ask from the nearest other market with a price.
+
+    One at a time, nearest first, stopping at the first that has one: the
+    farmer wants the closest price, not every district's. A market that
+    cannot be reached is passed over and not recorded as a failure — the
+    farmer is told about a price, or that none was found, never that a market
+    they did not ask about was down.
+    """
+
+    asked_names = ", ".join(market_name(one.capability) for one in asked)
+    for market in other_markets:
+        (consulted,) = await _consult_all(
+            deps, (market,), attributes_for=attributes_for
+        )
+        _log_other_market_consulted(deps, ask_index=ask_index, consulted=consulted)
+        if consulted.answers:
+            deps.raw_answers.extend((ask_index, answer) for answer in consulted.answers)
+            return (
+                f"No price at {asked_names} for ask {ask_index}. These are "
+                f"prices from {market_name(market)}, the nearest other market "
+                f"with one. Do not call select for this ask again; report "
+                f"them as that market's prices.\n\n"
+                + render_answers_as_markdown(consulted.answers)
+            )
+    return (
+        f"No data for ask {ask_index}: neither {asked_names} nor any other "
+        f"market had a price. Do not call select for this ask again; report "
+        f"that it has no answer."
+    )
+
+
+def _log_other_market_consulted(
+    deps: PlannerDeps, *, ask_index: int, consulted: Consulted
+) -> None:
+    log_event(
+        "planner",
+        deps.turn.transaction_id,
+        event="other_market_consulted",
+        ask_index=ask_index,
+        provider_id=consulted.capability.provider_id,
+        resource_id=consulted.capability.resource_id,
+        results=len(consulted.answers),
+        failed=consulted.failure is not None,
+        detail=_detail(consulted.failure),
+    )
 
 
 async def _select_next(ctx: RunContext[PlannerDeps], ask_index: int) -> str:
