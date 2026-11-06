@@ -82,7 +82,11 @@ def _schema(*fields: ActionField) -> ActionSchema:
     return ActionSchema(context=_PMFBY_GRIEVANCE, must_send=fields)
 
 
-def test_form_keeps_only_the_farmer_fields_in_order() -> None:
+def _form_of(*fields: ActionField) -> FormDefinition:
+    return FormDefinition.from_fields(_PMFBY_GRIEVANCE, fields)
+
+
+def test_the_request_fields_are_the_farmer_fields_in_order() -> None:
     schema = _schema(
         ActionField(
             path="informationMode",
@@ -94,16 +98,25 @@ def test_form_keeps_only_the_farmer_fields_in_order() -> None:
         _farmer("cropYear"),
     )
 
-    form = schema.form()
+    assert [field.path for field in schema.request_fields()] == [
+        "enrolmentId",
+        "cropYear",
+    ]
+
+
+def test_a_form_is_built_from_the_fields_it_is_given() -> None:
+    form = FormDefinition.from_fields(
+        _PMFBY_GRIEVANCE, (_farmer("enrolmentId"), _farmer("cropYear"))
+    )
 
     assert form.context == _PMFBY_GRIEVANCE
     assert [field.name for field in form.fields] == ["enrolmentId", "cropYear"]
 
 
 def test_form_field_carries_the_pack_rules_and_is_required() -> None:
-    form = _schema(
+    form = _form_of(
         _farmer("enrolmentId", pattern="^[A-Z0-9]+$", min_length=10, max_length=30)
-    ).form()
+    )
 
     assert form.fields[0].rules == FieldRules(
         required=True, pattern="^[A-Z0-9]+$", min_length=10, max_length=30
@@ -111,7 +124,7 @@ def test_form_field_carries_the_pack_rules_and_is_required() -> None:
 
 
 def test_a_field_with_allowed_values_is_a_select_of_them() -> None:
-    form = _schema(_farmer("season", allowed_values=("Kharif", "Rabi"))).form()
+    form = _form_of(_farmer("season", allowed_values=("Kharif", "Rabi")))
 
     season = form.fields[0]
 
@@ -123,7 +136,7 @@ def test_a_field_with_allowed_values_is_a_select_of_them() -> None:
 
 
 def test_an_option_that_is_not_text_is_written_as_json() -> None:
-    form = _schema(_farmer("isUrgent", allowed_values=(True, False))).form()
+    form = _form_of(_farmer("isUrgent", allowed_values=(True, False)))
 
     assert [option.value for option in form.fields[0].rules.options] == [
         "true",
@@ -142,13 +155,13 @@ def test_an_option_that_is_not_text_is_written_as_json() -> None:
     ],
 )
 def test_a_long_answer_is_a_textarea(max_length: int | None, kind: FieldKind) -> None:
-    form = _schema(_farmer("value", max_length=max_length)).form()
+    form = _form_of(_farmer("value", max_length=max_length))
 
     assert form.fields[0].kind is kind
 
 
 def test_options_make_a_select_however_long_the_answer() -> None:
-    form = _schema(_farmer("value", allowed_values=("a",), max_length=2000)).form()
+    form = _form_of(_farmer("value", allowed_values=("a",), max_length=2000))
 
     assert form.fields[0].kind is FieldKind.SELECT
 
@@ -166,4 +179,23 @@ def test_options_make_a_select_however_long_the_answer() -> None:
     ],
 )
 def test_the_label_is_the_path_in_words(path: str, label: str) -> None:
-    assert _schema(_farmer(path)).form().fields[0].label == label
+    assert _form_of(_farmer(path)).fields[0].label == label
+
+
+def test_init_fields_are_kept_apart_from_the_request_fields() -> None:
+    otp = ActionField(path="challenge.response.value", source=FieldSource.INIT)
+    schema = _schema(_farmer("enrolmentId"), otp)
+
+    assert [field.path for field in schema.request_fields()] == ["enrolmentId"]
+    assert schema.init_fields() == (otp,)
+    assert schema.needs_init()
+
+
+def test_a_schema_with_no_init_fields_needs_no_init() -> None:
+    assert not _schema(_farmer("enrolmentId")).needs_init()
+
+
+def test_a_credential_is_a_secret_field() -> None:
+    form = _form_of(_farmer("challenge.response.value", pii_class="credential"))
+
+    assert form.fields[0].kind is FieldKind.SECRET
