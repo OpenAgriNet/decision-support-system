@@ -106,11 +106,14 @@ type JsonScalar = str | int | float | bool
 
 
 class FieldSource(StrEnum):
-    """Who supplies a path's value on the call."""
+    """Who supplies a path's value on the call, and when."""
 
     FIXED = "fixed"
     PROVIDER = "provider"
     FARMER = "farmer"
+    # The farmer too, but only once init has run: it answers what init
+    # issued, e.g. an OTP.
+    INIT = "init"
 
 
 class ActionField(BaseModel):
@@ -139,10 +142,17 @@ class ActionSchema(BaseModel):
     # The pack's `x-jsonld`: the `@context` and `@type` every call carries.
     jsonld: Mapping[str, str] = {}
 
+    def needs_init(self) -> bool:
+        return bool(self.init_fields())
+
     def request_fields(self) -> tuple[ActionField, ...]:
-        return tuple(
-            field for field in self.must_send if field.source is FieldSource.FARMER
-        )
+        return self._fields_from(FieldSource.FARMER)
+
+    def init_fields(self) -> tuple[ActionField, ...]:
+        return self._fields_from(FieldSource.INIT)
+
+    def _fields_from(self, source: FieldSource) -> tuple[ActionField, ...]:
+        return tuple(field for field in self.must_send if field.source is source)
 
 
 # Above this a farmer is writing prose, not filling in a value. Our number: the
@@ -171,6 +181,8 @@ def _to_form_field(field: ActionField) -> FieldDefinition:
 
 
 def _kind_for(field: ActionField) -> FieldKind:
+    if field.pii_class == PiiClass.CREDENTIAL:
+        return FieldKind.SECRET
     if field.allowed_values:
         return FieldKind.SELECT
     if field.max_length is not None and field.max_length > _LONGEST_ONE_LINE_ANSWER:
