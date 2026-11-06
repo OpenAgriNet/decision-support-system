@@ -508,40 +508,63 @@ _PROVIDER_VALUES: Mapping[str, Callable[[ProviderCapability], str]] = {
 
 
 def build_action_attributes(
-    schema: ActionSchema, provider: ProviderCapability, values: Mapping[str, str]
+    schema: ActionSchema,
+    provider: ProviderCapability,
+    values: Mapping[str, str],
+    *,
+    init_values: Mapping[str, str] | None = None,
 ) -> dict:
     """The body of one call, every `mustSend` path filled by its source: the
-    pack's fixed values, the chosen provider, the farmer's form."""
+    pack's fixed values, the chosen provider, the farmer's form, and what the
+    farmer typed once init had run."""
 
+    _check_init_values(schema, init_values)
+    sources = _Sources(provider, values, init_values or {})
     body: dict = dict(schema.jsonld)
     for field in schema.must_send:
-        _set_at(body, field.path, _value_for(field, provider, values))
+        _set_at(body, field.path, _value_for(field, sources))
     return body
 
 
-def _value_for(
-    field: ActionField, provider: ProviderCapability, values: Mapping[str, str]
-) -> JsonScalar:
+def _check_init_values(
+    schema: ActionSchema, init_values: Mapping[str, str] | None
+) -> None:
+    # A programming error, never a farmer's: the form path picks the call.
+    if schema.needs_init() and init_values is None:
+        raise ValueError(f"{schema.context} needs the init values")
+    if not schema.needs_init() and init_values is not None:
+        raise ValueError(f"{schema.context} needs no init values")
+
+
+@dataclass(frozen=True)
+class _Sources:
+    provider: ProviderCapability
+    farmer_values: Mapping[str, str]
+    init_values: Mapping[str, str]
+
+
+def _value_for(field: ActionField, sources: _Sources) -> JsonScalar:
     match field.source:
         case FieldSource.FIXED:
             return field.allowed_values[0]
         case FieldSource.PROVIDER:
-            return _PROVIDER_VALUES[field.path](provider)
+            return _PROVIDER_VALUES[field.path](sources.provider)
         case FieldSource.FARMER:
-            return values[field.path]
+            return sources.farmer_values[field.path]
+        case FieldSource.INIT:
+            return sources.init_values[field.path]
 
 
 def without_farmer_values(
     attributes: Mapping[str, object], schema: ActionSchema
 ) -> dict:
     """A provider's reply less the paths the farmer filled in. The pack says
-    a desk echoes them back; the ticket and the rest are what the turn keeps,
+    a provider echoes them back; the ticket and the rest are what the turn keeps,
     so no typed value reaches the composer or a trace."""
 
     kept = copy.deepcopy(dict(attributes))
-    for field in schema.must_send:
-        if field.source is FieldSource.FARMER:
-            _delete_at(kept, field.path)
+    for field in (*schema.request_fields(), *schema.init_fields()):
+        _delete_at(kept, field.path)
     return kept
 
 
