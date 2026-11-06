@@ -1,7 +1,7 @@
 """The mock network's routes.
 
-`POST /discover`, `POST /select`, `POST /support` and `POST /status`, synchronous
-request/response —
+`POST /discover`, `POST /select`, `POST /init`, `POST /support` and `POST /status`,
+synchronous request/response —
 the same contract the real Network Adapter offers. No callbacks, no auth, no signing:
 the DSS never speaks Beckn itself, so there is nothing here to sign.
 
@@ -34,7 +34,7 @@ from __future__ import annotations
 import json
 import os
 import tomllib
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from itertools import count
 from pathlib import Path
 from typing import Any
@@ -53,6 +53,10 @@ _RESPONSES = Path(__file__).parent / "responses"
 
 # Read as a file, not imported: `tools/` does not depend on `benchmarks/` code.
 DEFAULT_QUESTIONS = Path(__file__).parents[2] / "benchmarks" / "questions.toml"
+
+# The one OTP PM-KISAN's mock accepts: no SMS is ever sent, so a tester types this.
+MOCK_OTP = "1234"
+_OTP_LIFETIME = timedelta(minutes=5)
 
 # Which recorded catalog answers which capability. A `@type` with no entry is
 # a provider nobody serves — an empty catalog, which is what the real network
@@ -146,7 +150,8 @@ def build_mock_app(
 
 
 def _add_grievance_routes(app: FastAPI) -> None:
-    """`/support` files a grievance and `/status` reads it back. The mock
+    """`/init` issues PM-KISAN's OTP, `/support` files a grievance and
+    `/status` reads it back. The mock
     remembers what it filed for the life of the process only: a restarted
     mock knows no case."""
 
@@ -154,11 +159,16 @@ def _add_grievance_routes(app: FastAPI) -> None:
     ticket_numbers = count(1)
     cases: dict[str, dict[str, Any]] = {}
 
+    @app.post("/init")
+    async def init(request: Request) -> dict[str, Any]:
+        return _issue_challenge(await request.json())
+
     @app.post("/support")
     async def support(request: Request) -> dict[str, Any]:
         body = await request.json()
         filed = body["message"]["support"]["channels"][0]
-        reply = _on_support(body, filed, _ticket_no(next(ticket_numbers)))
+        _refuse_a_wrong_otp(filed)
+        reply = _on_support(body, _without_otp(filed), _ticket_no(next(ticket_numbers)))
         registered = reply["message"]["support"]["channels"][0]
         cases[registered["case"]["ticketNo"]] = registered
         return reply
@@ -294,6 +304,7 @@ def _read_case(body: dict[str, Any], cases: dict[str, dict[str, Any]]) -> dict:
     the not-found path the DSS tells the farmer about."""
 
     commitment = body["message"]["contract"]["commitments"][0]
+    _refuse_a_wrong_otp(commitment["commitmentAttributes"])
     case = _case_for(commitment["commitmentAttributes"], cases)
     if case is None:
         raise HTTPException(status_code=400, detail="no case for that ticket and phone")
@@ -306,10 +317,86 @@ def _case_for(
     """The case filed under the asked ticket, if it was filed from the asked
     phone: the portal matches a ticket to the phone it was filed from."""
 
+    if _is_pm_kisan(asked):
+        return _pm_kisan_case_for(asked, cases)
     case = cases.get(asked.get("case", {}).get("ticketNo", ""))
     if case is None or case.get("applicantMobile") != asked.get("applicantMobile"):
         return None
     return case
+
+
+def _pm_kisan_case_for(
+    asked: dict[str, Any], cases: dict[str, dict[str, Any]]
+) -> dict[str, Any] | None:
+    # PM-KISAN names a case by its enrolment and the day it was filed, not a ticket.
+    enrolment_id = asked.get("enrolmentId")
+    if not enrolment_id:
+        return None
+    return next(
+        (
+            case
+            for case in cases.values()
+            if _is_pm_kisan(case)
+            and case.get("enrolmentId") == enrolment_id
+            and case["case"]["filedOn"] == _value_at(asked, "case", "filedOn")
+        ),
+        None,
+    )
+
+
+def _issue_challenge(body: dict[str, Any]) -> dict[str, Any]:
+    commitment = body["message"]["contract"]["commitments"][0]
+    asked = commitment["commitmentAttributes"]
+    if not _is_pm_kisan(asked) or not asked.get("enrolmentId"):
+        raise HTTPException(status_code=400, detail="init needs a PM-KISAN enrolmentId")
+    issued = {key: value for key, value in asked.items() if key != "enrolmentId"}
+    issued["challenge"] = {
+        "issued": {
+            "method": "OTP",
+            "channel": "SMS",
+            "length": len(MOCK_OTP),
+            "valueType": "NUMERIC",
+            "expiresAt": (datetime.now(tz=UTC) + _OTP_LIFETIME).isoformat(),
+        }
+    }
+    return {
+        "context": _echo(body, "on_init"),
+        "message": {
+            "contract": {
+                "id": body["message"]["contract"].get("id"),
+                "commitments": [
+                    {
+                        "resources": commitment.get("resources", []),
+                        "commitmentAttributes": issued,
+                    }
+                ],
+            }
+        },
+    }
+
+
+def _refuse_a_wrong_otp(asked: dict[str, Any]) -> None:
+    otp = _value_at(asked, "challenge", "response", "value")
+    if _is_pm_kisan(asked) and otp != MOCK_OTP:
+        raise HTTPException(status_code=400, detail="wrong or missing OTP")
+
+
+def _without_otp(filed: dict[str, Any]) -> dict[str, Any]:
+    # A provider never sends an OTP back, so the mock neither stores nor echoes it.
+    return {key: value for key, value in filed.items() if key != "challenge"}
+
+
+def _is_pm_kisan(asked: dict[str, Any]) -> bool:
+    return _value_at(asked, "scheme", "code") == "PM-KISAN"
+
+
+def _value_at(body: Any, *keys: str) -> Any:
+    # A shape the mock does not expect is a refusal, never a 500 the DSS retries.
+    for key in keys:
+        if not isinstance(body, dict):
+            return None
+        body = body.get(key)
+    return body
 
 
 def _on_status(
