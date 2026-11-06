@@ -7,7 +7,7 @@ enforceable, even before anything calls it.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Protocol
+from typing import ClassVar, Protocol
 
 from dss.core.forms.models import ActionReply
 from dss.core.provider_discovery.models import (
@@ -62,10 +62,9 @@ class SelectFailedError(ProviderCallFailedError):
         self.detail = detail
 
 
-class SupportFailedError(ProviderCallFailedError):
-    """No provider text, by design: a failed filing is reported to the
-    farmer in the DSS's own words. ``retry_after_seconds`` is the provider's
-    `Retry-After`, when it sent one."""
+class ProviderActionFailedError(ProviderCallFailedError):
+    # No provider text: the farmer is told in the DSS's own words.
+    action: ClassVar[str]
 
     def __init__(
         self,
@@ -75,28 +74,33 @@ class SupportFailedError(ProviderCallFailedError):
         *,
         retry_after_seconds: int | None = None,
     ) -> None:
-        super().__init__("support", capability, status_code, failure_class)
+        super().__init__(self.action, capability, status_code, failure_class)
         self.retry_after_seconds = retry_after_seconds
 
 
-class StatusFailedError(ProviderCallFailedError):
-    """No provider text, as for a filing: the farmer is told in the DSS's own
-    words. ``retry_after_seconds`` is the provider's `Retry-After`, when it
-    sent one."""
+class SupportFailedError(ProviderActionFailedError):
+    action = "support"
 
-    def __init__(
-        self,
-        capability: str,
-        status_code: int,
-        failure_class: FailureClass,
-        *,
-        retry_after_seconds: int | None = None,
-    ) -> None:
-        super().__init__("status", capability, status_code, failure_class)
-        self.retry_after_seconds = retry_after_seconds
+
+class StatusFailedError(ProviderActionFailedError):
+    action = "status"
+
+
+class InitFailedError(ProviderActionFailedError):
+    action = "init"
 
 
 class ProviderActionInvocation(Protocol):
+    # Sent once, never retried: each try can text the farmer a new OTP.
+    async def init(
+        self,
+        capability: ProviderCapability,
+        attributes: dict,
+        transaction_id: NetworkTransactionID,
+        *,
+        visibility: Visibility = NOTHING_HELD,
+    ) -> ActionReply: ...
+
     async def support(
         self,
         capability: ProviderCapability,

@@ -88,6 +88,15 @@ async def test_a_status_form_is_sent_with_status() -> None:
     assert call.action is ProviderAction.STATUS
 
 
+async def test_an_init_form_is_sent_with_init() -> None:
+    invocation = RecordingActionInvocation(FILED)
+
+    await _call(_action("init"), invocation)
+
+    (call,) = invocation.calls
+    assert call.action is ProviderAction.INIT
+
+
 async def test_the_reply_loses_the_farmers_values() -> None:
     response = await _call(SUPPORT, RecordingActionInvocation(FILED))
 

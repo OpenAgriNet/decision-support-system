@@ -44,6 +44,7 @@ def _invocation_call_for(
     action: ActionSchema, invocation: ProviderActionInvocation
 ) -> InvocationCall:
     calls_by_action: Mapping[ProviderAction, InvocationCall] = {
+        ProviderAction.INIT: invocation.init,
         ProviderAction.SUPPORT: invocation.support,
         ProviderAction.STATUS: invocation.status,
     }

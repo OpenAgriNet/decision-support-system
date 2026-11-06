@@ -157,7 +157,7 @@ a warning, and offers no forms. A `var/schema-packs/` fetched before
 
 Discovery and invocation leave for the OAN network, which a local build does
 not have. `tools/mock_network/` stands in for it — the same synchronous
-`POST /discover` / `POST /select` / `POST /support` / `POST /status` contract,
+`POST /discover` / `POST /select` / `POST /init` / `POST /support` / `POST /status` contract,
 no auth:
 
 ```bash
@@ -261,6 +261,12 @@ the status form. Send back a ticket this mock filed, with the same phone, and
 `/status` answers the case. Any other ticket or phone is a 400, which the DSS
 tells the farmer as no complaint found. The mock remembers its filings only
 while it runs: restart it and it knows no case.
+
+PM-KISAN needs an OTP. `/init` takes a PM-KISAN enrolment number and answers
+that a 4-digit OTP was sent by SMS; no SMS is sent. PM-KISAN's `/support` and
+`/status` accept only the OTP `1234` (`MOCK_OTP`) and refuse any other with a
+400. A PM-KISAN case is read back by its enrolment number and filing date, not
+a ticket. PMFBY needs no OTP. The DSS's form path does not call `/init` yet.
 
 A question intent classifies into a category the mock does not serve comes
 back `no_match` — which is the honest answer, and worth telling apart from a

@@ -524,6 +524,16 @@ class _UnwiredInvocation:
     ) -> Never:
         _refuse_unwired_call()
 
+    async def init(
+        self,
+        capability: ProviderCapability,
+        attributes: dict,
+        transaction_id: NetworkTransactionID,
+        *,
+        visibility: Visibility = NOTHING_HELD,
+    ) -> Never:
+        _refuse_unwired_call()
+
     async def support(
         self,
         capability: ProviderCapability,
