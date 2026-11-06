@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-05
+
 ### Changed
 - A select, support or status call is addressed to the catalog's BPP:
   `receiverId` is the catalog's `bppId` and the context carries its `bppUri`. A catalog
