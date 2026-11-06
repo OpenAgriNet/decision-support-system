@@ -1,6 +1,6 @@
 [project]
 name = "decision-support-system"
-version = "0.1.0"
+version = "0.2.0"
 description = "Decision Support System — reasoning runtime for the OpenAgriNet Experience Layer"
 readme = "README.md"
 requires-python = ">=3.13"
