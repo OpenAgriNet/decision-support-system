@@ -69,13 +69,13 @@ def test_a_field_sent_twice_is_a_duplicate() -> None:
 
 
 def test_a_context_nobody_serves_is_an_unknown_form() -> None:
-    kisan = FormContext(scheme="PM-KISAN", category="Grievance", action="support")
+    unserved = FormContext(scheme="NO-SUCH", category="Grievance", action="support")
 
     outcome = validate_submission(
-        _submission(_PMFBY_VALUES, context=kisan), build_grievance_forms()
+        _submission(_PMFBY_VALUES, context=unserved), build_grievance_forms()
     )
 
-    assert outcome == UnknownForm(context=kisan)
+    assert outcome == UnknownForm(context=unserved)
 
 
 def test_a_missing_required_field_is_reported_as_required() -> None:

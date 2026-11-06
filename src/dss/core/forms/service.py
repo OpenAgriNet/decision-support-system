@@ -51,24 +51,12 @@ _JSONLD = "x-jsonld"
 # then: PM-KISAN's init issues a `challenge` (an OTP), so what the farmer fills
 # under it waits for init.
 _INIT_PREFIX = "challenge."
-# The DSS cannot run this OTP step yet, so a scheme that needs it is not served.
-_OTP_CHALLENGE_ACTION = "init"
 
 
 @dataclass(frozen=True)
 class _ParsedPack:
     pack_name: str
     schemas: tuple[ActionSchema, ...]
-
-
-@dataclass(frozen=True)
-class _SchemeKey:
-    scheme: str
-    category: str
-
-    @classmethod
-    def of(cls, context: FormContext) -> _SchemeKey:
-        return cls(context.scheme, context.category)
 
 
 @dataclass(frozen=True)
@@ -85,16 +73,14 @@ def offer_form(definition: FormDefinition) -> FormBlock:
 
 
 def build_form_registry(packs: Sequence[SchemaPackFiles]) -> FormRegistry:
-    """Never raises. A pack it cannot read, or a form the DSS cannot serve
-    yet, is left out and named in ``skipped``. A catalog pack is ignored. Of
-    two forms for one context, the first pack's wins."""
+    """Never raises. A pack it cannot read is left out and named in
+    ``skipped``. A catalog pack is ignored. Of two forms for one context, the
+    first pack's wins."""
 
     pack_outcomes = tuple(_parse_api_pack_or_skip(pack) for pack in packs)
     parsed = tuple(o for o in pack_outcomes if isinstance(o, _ParsedPack))
     unreadable = tuple(o for o in pack_outcomes if isinstance(o, SchemaPackSkipped))
-    registration = _register_servable(
-        parsed, challenged=_schemes_needing_a_challenge(parsed)
-    )
+    registration = _register_first_per_context(parsed)
     return FormRegistry(
         registration.schemas, skipped=(*unreadable, *registration.skipped)
     )
@@ -113,45 +99,17 @@ def _parse_api_pack_or_skip(
         return SchemaPackSkipped(pack.pack_name, f"{type(exc).__name__}: {exc}")
 
 
-def _schemes_needing_a_challenge(
-    parsed: Sequence[_ParsedPack],
-) -> frozenset[_SchemeKey]:
-    return frozenset(
-        _SchemeKey.of(schema.context)
-        for pack in parsed
-        for schema in pack.schemas
-        if schema.context.action == _OTP_CHALLENGE_ACTION
-    )
-
-
-def _register_servable(
-    parsed: Sequence[_ParsedPack], *, challenged: frozenset[_SchemeKey]
-) -> _Registration:
+def _register_first_per_context(parsed: Sequence[_ParsedPack]) -> _Registration:
     served: dict[FormContext, ActionSchema] = {}
     skipped: list[SchemaPackSkipped] = []
     for pack in parsed:
         for schema in pack.schemas:
-            reason = _why_unserved(schema.context, challenged=challenged, taken=served)
-            if reason is None:
-                served[schema.context] = schema
-            else:
+            if schema.context in served:
+                reason = f"{schema.context}: a form for this context exists"
                 skipped.append(SchemaPackSkipped(pack.pack_name, reason))
+            else:
+                served[schema.context] = schema
     return _Registration(tuple(served.values()), tuple(skipped))
-
-
-def _why_unserved(
-    context: FormContext,
-    *,
-    challenged: frozenset[_SchemeKey],
-    taken: Container[FormContext],
-) -> str | None:
-    if _SchemeKey.of(context) in challenged:
-        return (
-            f"{context}: needs an {_OTP_CHALLENGE_ACTION} step the DSS cannot run yet"
-        )
-    if context in taken:
-        return f"{context}: a form for this context exists"
-    return None
 
 
 def parse_api_pack(pack: SchemaPackFiles) -> tuple[ActionSchema, ...]:

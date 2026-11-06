@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from dss.core.forms.models import FormContext, FormDefinition
 from dss.core.intent.models import (
     Ask,
@@ -24,6 +26,11 @@ from tests.integration.orchestration.test_orchestrator import (
     _turn,
 )
 from tests.support.fakes import FakeSchemeCatalog
+from tests.support.grievance_pack import (
+    PMKISAN_STATUS,
+    PMKISAN_SUPPORT,
+    build_grievance_forms,
+)
 from tests.support.providers import build_capability
 
 PMFBY = Scheme(code="PMFBY", name="Pradhan Mantri Fasal Bima Yojana")
@@ -104,6 +111,34 @@ def test_a_served_ask_the_registry_knows_gets_its_form() -> None:
     awaiting = find_forms(intent, _discovery({0: (GRIEVANCE_DESK,)}), forms)
 
     assert awaiting == {0: GRIEVANCE_FORM}
+
+
+PMKISAN = Scheme(code="PM-KISAN", name="Pradhan Mantri Kisan Samman Nidhi")
+PMKISAN_PROVIDER = build_capability(
+    provider_id="pmkisan",
+    provider_name="PM-KISAN provider",
+    capability="openagrinet:Grievance",
+    resource_id="res:pmkisan:grievance",
+    observed_categories=("Grievance",),
+)
+
+
+@pytest.mark.parametrize(
+    ("interaction", "context"),
+    [(InteractionType.ACT, PMKISAN_SUPPORT), (InteractionType.OBSERVE, PMKISAN_STATUS)],
+)
+def test_a_pmkisan_ask_gets_its_form_without_the_otp(
+    interaction: InteractionType, context: FormContext
+) -> None:
+    intent = Intent(asks=(_grievance_ask(interaction, scheme=PMKISAN),), confidence=0.9)
+
+    awaiting = find_forms(
+        intent, _discovery({0: (PMKISAN_PROVIDER,)}), build_grievance_forms()
+    )
+
+    form = awaiting[0]
+    assert form.context == context
+    assert "challenge.response.value" not in {field.name for field in form.fields}
 
 
 def test_an_ask_nobody_serves_gets_no_form() -> None:
