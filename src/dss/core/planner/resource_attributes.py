@@ -46,22 +46,25 @@ _VALIDITY_EXCEPTION_CAPABILITY = "openagrinet:MandiPrice"
 # is a local day rather than a UTC one — a UTC window would start and end at
 # 05:30 local and straddle two trading days.
 _MANDI_TZ = timezone(timedelta(hours=5, minutes=30))
+_VALIDITY_LOOKBACK = timedelta(days=7)
 
 
 def _validity_window(day: date) -> dict[str, str]:
-    """The day before and the day itself, as the `TimePeriod` the pack defines.
+    """The week up to and including `day`, as the `TimePeriod` the pack
+    defines.
 
-    The day before too, because a market often has not reported today's
-    prices yet, and yesterday's price is better than none.
+    A week, because markets report late and not every day: a market with no
+    price today often has one from a few days ago, and a dated recent price is
+    better than none.
 
     `startsAt` and `endsAt` are both `date-time`, and `additionalProperties`
     is false — so these two keys, in this format, and nothing else.
     """
 
-    day_before = day - timedelta(days=1)
+    week_before = day - _VALIDITY_LOOKBACK
     return {
         "startsAt": datetime.combine(
-            day_before, time.min, tzinfo=_MANDI_TZ
+            week_before, time.min, tzinfo=_MANDI_TZ
         ).isoformat(),
         "endsAt": datetime.combine(day, time(23, 59, 59), tzinfo=_MANDI_TZ).isoformat(),
     }

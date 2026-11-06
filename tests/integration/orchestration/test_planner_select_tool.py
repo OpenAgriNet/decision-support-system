@@ -494,6 +494,6 @@ async def test_a_mandi_select_carries_a_validity_window() -> None:
 
     assert invocation.calls, "select was never called"
     assert invocation.calls[0]["validity"] == {
-        "startsAt": "2026-09-16T00:00:00+05:30",
+        "startsAt": "2026-09-10T00:00:00+05:30",
         "endsAt": "2026-09-17T23:59:59+05:30",
     }
