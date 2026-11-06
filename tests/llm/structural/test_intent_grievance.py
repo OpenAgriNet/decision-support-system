@@ -132,3 +132,45 @@ async def test_checking_a_pmfby_complaint_is_grievance_pmfby_observe(
     assert ask.interaction_type is InteractionType.OBSERVE
     assert ask.scheme is not None
     assert ask.scheme.code == "PMFBY"
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "I want to file a PM-KISAN grievance",
+        "My PM Kisan installment has not come, I want to complain",
+    ],
+)
+async def test_filing_a_pmkisan_complaint_is_grievance_pmkisan_act(query: str) -> None:
+    prompts = build_prompt_service(_REPO / "configs" / "prompts.yaml")
+    schemes = load_scheme_catalog(_CATALOG).schemes()
+
+    classification = await classify_intent(_turn(query), _live_llm(), prompts, schemes)
+
+    (ask,) = classification.asks
+    assert ask.subject_categories is SubjectCategory.GRIEVANCE
+    assert ask.interaction_type is InteractionType.ACT
+    assert ask.scheme is not None
+    assert ask.scheme.code == "PM-KISAN"
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "What happened to my PM-KISAN complaint?",
+        "What is the status of my PMKisan grievance?",
+    ],
+)
+async def test_checking_a_pmkisan_complaint_is_grievance_pmkisan_observe(
+    query: str,
+) -> None:
+    prompts = build_prompt_service(_REPO / "configs" / "prompts.yaml")
+    schemes = load_scheme_catalog(_CATALOG).schemes()
+
+    classification = await classify_intent(_turn(query), _live_llm(), prompts, schemes)
+
+    (ask,) = classification.asks
+    assert ask.subject_categories is SubjectCategory.GRIEVANCE
+    assert ask.interaction_type is InteractionType.OBSERVE
+    assert ask.scheme is not None
+    assert ask.scheme.code == "PM-KISAN"
