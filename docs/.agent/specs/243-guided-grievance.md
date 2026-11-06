@@ -36,7 +36,7 @@ flowchart TD
   C -->|no| N[No match]
   C -->|yes| S[Settle each ask:<br/>which slots it needs, from packs and forms;<br/>fill them from intent's values]
   S --> F{All asks settled?}
-  F -->|a slot is missing, unsure or unmatched| Q[One question:<br/>requires_input]
+  F -->|a slot is missing, unsure, ambiguous or rejected| Q[One question:<br/>requires_input]
   F -->|yes| D[Discovery: who serves each ask]
   D -->|nobody| U[Can't serve]
   D -->|form ask| H[Offer the form]
@@ -91,7 +91,9 @@ it. "How do I file" is file. "How do I check the status" is status.
 ask: action, then scheme, then place. Action goes first because it is the
 bigger fork, and it stops a duplicate complaint early. The next slot comes
 on the next turn. A vague scheme problem takes three turns: action, scheme,
-then the form.
+then the form. `settle` lists every open slot. For now the composer asks
+about the first one only. Later, a per-channel rule in the composer's code
+decides how many to ask (voice one, web all).
 
 **The composer writes the question.** It gets the missing slot as evidence
 and words the sentence in the farmer's language. Exact parts, such as a
@@ -161,7 +163,7 @@ Evidence
 
 | Outcome | Holds | Comes from | Lands in |
 |---|---|---|---|
-| `NeedsAnswer` | slot, choices (0, 1 or several) | settlement | task 2 |
+| `NeedsAnswer` | the open slots, in order | settlement | task 2 |
 | `CannotServe` | why | settlement or discovery | task 2 |
 | `Attempted` | results, failures | the planner | task 1 |
 | `AwaitingInput` | the form; later an OTP request | the form step | task 1 |
@@ -170,19 +172,28 @@ Evidence
   structured input read by its own path; `NeedsAnswer` is answered in
   words, read by intent.
 
-  Choices: 0 is an open question, 1 is a confirm, several is a pick list.
+  Each slot's state gives the composer a brief: missing → open question,
+  unsure → confirm, ambiguous → pick list, rejected → say why and ask
+  again.
 - `Evidence` now means "what we know per ask", not only provider data. The
   docstring says so.
 - An ambiguous place stops being a `Failure` and becomes "needs answer". A
-  place we cannot find at all stays "can't serve".
+  place we cannot find is rejected: we say so and ask again.
 
 ### Settlement (`core/settlement/`)
 
-- `Slot`: place, scheme, action.
-- `SlotState`: filled (value), missing, unsure (guess), unmatched (the
-  farmer's words, no catalog match).
-- `settle(ask, packs, forms) -> Settled | NeedsAnswer | CannotServe`. Plain
-  Python, no framework.
+- `Frame`: an ask's slots, in order. `Slot` = name and state.
+- `SlotState`: filled, skipped, missing, unsure, ambiguous, rejected (not
+  found, too broad, invalid), unservable. Each state answers `is_settled`
+  and `ends_ask` and gives a brief. `settle` never checks the kind, so a
+  new state needs no change to `settle`.
+- `settle(frame) -> Settled | NeedsAnswer | CannotServe`. Pure. Any slot
+  that ends the ask → can't serve; else open slots → needs answer; else
+  settled.
+- One slot source per slot kind builds the frame: whether the ask needs
+  the slot, and its state. The LLM only reads values, in intent's
+  structured output (no tool call); code checks them. The detailed design
+  comes when it is built.
 
 ### Intent (`core/intent/models.py`)
 
@@ -221,6 +232,9 @@ plus any exact block code adds.
 - **A ticket number in the message.** Action is status.
 - **Two asks, one unsettled.** The settled one is answered. The composer
   asks about the other in the same reply.
+- **Two asks need the same slot** (weather and mandi, no place). One
+  question answers both.
+- **The farmer answers both open asks at once.** Both settle that turn.
 - **Reply is a new question.** Intent treats it as new, as for places.
 - **No scheme has a form for this category.** Can't serve, no question.
 - **Nobody serves the category.** Found by discovery after settlement.
@@ -244,7 +258,7 @@ plus any exact block code adds.
    today's readers over. No behaviour change.
 2. Settlement types and `settle`, starting with place. Replace
    `place_optional_asks` and the place question path. Place behaviour
-   unchanged.
+   unchanged, except a place we cannot find is asked again.
 3. Scheme slot: registry contexts by category, intent's `scheme_sure`,
    confirm and no-match handling.
 4. Action slot: intent's `action` and `action_sure`, the question when
