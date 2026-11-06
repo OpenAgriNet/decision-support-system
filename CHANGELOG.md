@@ -3,6 +3,10 @@
 ## [Unreleased]
 
 ### Changed
+- A mandi price is asked for over yesterday and today, not today alone, so
+  a market that has not reported today still has a price (#242)
+- When the market asked about has no price, the answer comes from the
+  nearest other district's market that does, and says which market (#242)
 - A select, support or status call is addressed to the catalog's BPP:
   `receiverId` is the catalog's `bppId` and the context carries its `bppUri`. A catalog
   that names neither is dropped from discovery, logged, and reported as a
