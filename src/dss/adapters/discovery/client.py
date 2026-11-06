@@ -201,6 +201,23 @@ def map_discover_response(response: dict[str, Any]) -> ProviderQueryResult:
     )
 
 
+def _network_fields(request_body: dict[str, Any]) -> dict[str, str]:
+    """The network message id and network id this call went out with."""
+
+    context = request_body["context"]
+    return {"message_id": context["messageId"], "network_id": context["networkId"]}
+
+
+def _provider_ids_in(query_result: ProviderQueryResult) -> list[str]:
+    """Every provider that answered, offered a capability or failed, once each."""
+
+    return sorted(
+        {c.provider_id for c in query_result.capabilities}
+        | {a.provider_id for a in query_result.answers}
+        | {f.provider_id for f in query_result.failures if f.provider_id}
+    )
+
+
 def _has_bpp(catalog: dict[str, Any]) -> bool:
     return all(catalog.get(field) for field in _BPP_FIELDS)
 
@@ -212,7 +229,9 @@ def _reject_catalog(catalog: dict[str, Any]) -> list[DiscoveryFailure]:
     provider_id = catalog["provider"]["id"]
     missing = next(field for field in _BPP_FIELDS if not catalog.get(field))
     detail = f"catalog {catalog.get('id')} has no {missing}"
-    logger.error("discover: %s (provider %s); catalog dropped", detail, provider_id)
+    logger.warning(
+        "catalog dropped", extra={"provider_id": provider_id, "reason": detail}
+    )
     return [
         DiscoveryFailure(
             capability=capability,
@@ -385,47 +404,66 @@ class HttpCapabilityDiscovery:
             except (KeyError, TypeError, ValueError) as exc:
                 span.set_status(Status(StatusCode.ERROR, f"unbuildable: {exc!r}"))
                 return _malformed_result(query, f"unbuildable request: {exc!r}")
+            network_fields = {
+                **_network_fields(request_body),
+                "capabilities": ",".join(query.capabilities),
+            }
             log_external_request(
                 "discovery",
                 transaction_id,
                 endpoint=f"{self._base_url}/discover",
-                capabilities=",".join(query.capabilities),
                 body=request_body,
+                **network_fields,
             )
             try:
                 response = await self._client.post(
                     f"{self._base_url}/discover", json=request_body
-                )
-                log_external_response(
-                    "discovery",
-                    transaction_id,
-                    status=response.status_code,
-                    capabilities=",".join(query.capabilities),
-                    body=response.text,
-                )
-                response.raise_for_status()
-            except httpx.HTTPStatusError as exc:
-                span.set_status(
-                    Status(StatusCode.ERROR, f"HTTP {exc.response.status_code}")
-                )
-                return _failure_result(
-                    query, exc.response.status_code, exc.response.text
                 )
             except httpx.HTTPError as exc:
                 log_external_response(
                     "discovery",
                     transaction_id,
                     status="transport_error",
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    **network_fields,
                 )
                 span.set_status(Status(StatusCode.ERROR, f"transport: {exc}"))
                 return _failure_result(query, NO_STATUS_CODE, str(exc))
+            if response.is_error:
+                log_external_response(
+                    "discovery",
+                    transaction_id,
+                    status=response.status_code,
+                    body=response.text,
+                    **network_fields,
+                )
+                span.set_status(
+                    Status(StatusCode.ERROR, f"HTTP {response.status_code}")
+                )
+                return _failure_result(query, response.status_code, response.text)
             try:
                 query_result = map_discover_response(response.json())
             except (KeyError, TypeError, ValueError) as exc:
-                # The only signal on this path: it writes no log line of its own.
+                log_external_response(
+                    "discovery",
+                    transaction_id,
+                    status="malformed",
+                    error_type=type(exc).__name__,
+                    body=response.text,
+                    **network_fields,
+                )
                 span.set_status(Status(StatusCode.ERROR, f"malformed: {exc!r}"))
                 return _malformed_result(query, f"malformed response: {exc!r}")
+            provider_ids = _provider_ids_in(query_result)
+            log_external_response(
+                "discovery",
+                transaction_id,
+                status=response.status_code,
+                provider_ids=provider_ids,
+                provider_count=len(provider_ids),
+                body=response.text,
+                **network_fields,
+            )
             # A green span that found nobody and one that found three providers
             # are otherwise identical. The catalogs themselves stay off the
             # span — they carry the provider's own data.

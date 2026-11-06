@@ -319,7 +319,7 @@ def _log_consultation(
     """Record what every consulted provider gave back, used or not.
 
     Counts, ids and error details only — each response body is already logged
-    at DEBUG by the invocation adapter, against the same `request_id`, so a
+    at DEBUG by the invocation adapter, against the same `transaction_id`, so a
     reader who needs the values joins on that rather than getting them twice
     at INFO (ADR-0014).
 

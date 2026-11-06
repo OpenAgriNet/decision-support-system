@@ -107,8 +107,9 @@ from dss.core.shared.models import (
 from dss.core.stream_response.citations import CitationNumbers
 from dss.core.stream_response.service import ComposeStream
 from dss.core.translation.service import EdgeTranslation
+from dss.observability.log_fields import bind_turn_ids
 from dss.observability.stages import Stage
-from dss.observability.trace_log import bind_turn_ids, trace_component
+from dss.observability.trace_log import trace_component
 from dss.orchestration.answer_stream import AnswerStream
 from dss.orchestration.discovery import DiscoverProviders
 from dss.orchestration.events import CoreEvent
@@ -210,7 +211,10 @@ class Orchestrator:
         self, turn: UserTurn[TurnInput], ctx: TurnContext
     ) -> AsyncIterator[TurnEvent]:
         bind_turn_ids(
-            ctx.trace_id, message_id=ctx.message_id, session_id=ctx.session_id
+            transaction_id=ctx.trace_id,
+            turn_message_id=ctx.message_id,
+            session_id=ctx.session_id,
+            sender_id=ctx.sender_id,
         )
         # Opened around the whole turn so every span Pydantic AI makes inside it
         # — intent, moderation, planner, composer — lands under one trace with
@@ -290,7 +294,7 @@ class TextPath:
     ) -> AsyncGenerator[TurnEvent]:
         with trace_component(Stage.REDACTION, ctx.trace_id):
             redaction = await self._components.redact(
-                texts_of(turn), request_id=turn.transaction_id
+                texts_of(turn), transaction_id=turn.transaction_id
             )
         farmer_turn = with_texts(turn, redaction.texts)
         recorder.redacted(found=redaction.found, failed=redaction.failed)

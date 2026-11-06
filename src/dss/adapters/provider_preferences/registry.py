@@ -209,7 +209,6 @@ def _warn_on_unmatchable(rows: dict[str, Rankings]) -> None:
     for sender_id, rankings in rows.items():
         for capability in sorted(rankings.keys() - _CAPABILITIES):
             logger.warning(
-                "registry ranking for %s names the capability %r, which no ask carries",
-                sender_id,
-                capability,
+                "registry ranking names a capability no ask carries",
+                extra={"ranking_sender_id": sender_id, "capability": capability},
             )

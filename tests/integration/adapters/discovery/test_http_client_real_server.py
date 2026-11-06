@@ -118,6 +118,50 @@ async def test_the_outbound_request_is_logged(httpserver: HTTPServer, caplog) ->
 
             await discovery.discover(query, transaction_id="t1")
 
-    assert "external=discovery event=request" in caplog.text
-    assert "/discover" in caplog.text
-    assert "request_id=t1" in caplog.text
+    [request] = _lines(caplog, event="request")
+    assert request.endpoint.endswith("/discover")
+    assert request.transaction_id == "t1"
+    assert request.network_id == "host.oan"
+    assert request.message_id
+
+
+async def test_the_response_names_the_providers_that_answered(
+    httpserver: HTTPServer, caplog
+) -> None:
+    on_discover = json.loads((FIXTURES / "discover_response.json").read_text())
+    httpserver.expect_request("/discover", method="POST").respond_with_json(on_discover)
+
+    with caplog.at_level(logging.INFO, logger="dss.trace"):
+        async with httpx.AsyncClient() as client:
+            discovery = HttpCapabilityDiscovery(
+                client=client,
+                base_url=_base_url(httpserver),
+                schema_pack_cache=SCHEMA_PACK_CACHE,
+                sender_id="consumer.oan.dev",
+                network_host_id="host.oan",
+            )
+            query = ProviderQuery(
+                capabilities=("openagrinet:WeatherObservation",),
+                subject_category="Weather",
+                languages=("hi",),
+                coverage=None,
+            )
+
+            await discovery.discover(query, transaction_id="t1")
+
+    [request] = _lines(caplog, event="request")
+    [response] = _lines(caplog, event="response")
+    assert response.status == 200
+    assert response.provider_ids == ["mausamgram"]
+    assert response.provider_count == 1
+    # The two halves of one call share the network message id.
+    assert response.message_id == request.message_id
+    assert response.network_id == "host.oan"
+
+
+def _lines(caplog, *, event: str) -> list[logging.LogRecord]:
+    return [
+        r
+        for r in caplog.records
+        if getattr(r, "external", None) == "discovery" and r.event == event
+    ]
