@@ -60,6 +60,18 @@ def test_the_grievance_pack_serves_pmfby_filing_and_status() -> None:
     assert registry.find(PMFBY_STATUS) is not None
 
 
+@pytest.mark.parametrize("context", [PMFBY_SUPPORT, PMFBY_STATUS])
+def test_each_form_is_built_from_its_request_fields(context: FormContext) -> None:
+    registry = build_form_registry([build_grievance_pack()])
+
+    schema = registry.action_schema(context)
+
+    assert schema is not None
+    assert registry.find(context) == FormDefinition.from_fields(
+        context, schema.request_fields()
+    )
+
+
 def test_a_scheme_that_needs_an_init_step_is_left_out_and_named() -> None:
     """PM-KISAN files only after the OTP that `init` starts, which the DSS lacks."""
     registry = build_form_registry([build_grievance_pack(GRIEVANCE_YAML)])

@@ -33,7 +33,9 @@ class FormRegistry:
             if schema.context in self._schemas:
                 raise ValueError(f"two forms for {schema.context}")
             self._schemas[schema.context] = schema
-            self._forms[schema.context] = schema.form()
+            self._forms[schema.context] = FormDefinition.from_fields(
+                schema.context, schema.request_fields()
+            )
         self._skipped = skipped
 
     def find(self, context: FormContext) -> FormDefinition | None:

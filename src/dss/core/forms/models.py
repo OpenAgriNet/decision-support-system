@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from enum import StrEnum
 from typing import Literal
 
@@ -90,6 +90,14 @@ class FormDefinition(BaseModel):
     context: FormContext
     fields: tuple[FieldDefinition, ...]
 
+    @classmethod
+    def from_fields(
+        cls, context: FormContext, fields: Iterable[ActionField]
+    ) -> FormDefinition:
+        return cls(
+            context=context, fields=tuple(_to_form_field(field) for field in fields)
+        )
+
     def field(self, name: str) -> FieldDefinition | None:
         return next((field for field in self.fields if field.name == name), None)
 
@@ -131,17 +139,9 @@ class ActionSchema(BaseModel):
     # The pack's `x-jsonld`: the `@context` and `@type` every call carries.
     jsonld: Mapping[str, str] = {}
 
-    def form(self) -> FormDefinition:
-        """The fields the farmer fills in; the rest come from the schema or
-        from discovery."""
-
-        return FormDefinition(
-            context=self.context,
-            fields=tuple(
-                _to_form_field(field)
-                for field in self.must_send
-                if field.source is FieldSource.FARMER
-            ),
+    def request_fields(self) -> tuple[ActionField, ...]:
+        return tuple(
+            field for field in self.must_send if field.source is FieldSource.FARMER
         )
 
 
