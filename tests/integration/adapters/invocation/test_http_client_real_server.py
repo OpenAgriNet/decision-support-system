@@ -44,6 +44,7 @@ async def test_select_against_a_real_local_server(httpserver: HTTPServer) -> Non
             client=client,
             base_url=_base_url(httpserver),
             sender_id="seeker-network-vistaar.da.gov.in",
+            network_id="host.oan",
         )
 
         [answer] = await invocation.select(
@@ -66,6 +67,7 @@ async def test_a_real_429_response_raises_selectfailed(httpserver: HTTPServer) -
             client=client,
             base_url=_base_url(httpserver),
             sender_id="seeker-network-vistaar.da.gov.in",
+            network_id="host.oan",
             attempts=1,  # classification, not retry — see test_retry.py
         )
 
@@ -89,6 +91,7 @@ async def test_the_outbound_request_is_logged(httpserver: HTTPServer, caplog) ->
                 client=client,
                 base_url=_base_url(httpserver),
                 sender_id="seeker-network-vistaar.da.gov.in",
+                network_id="host.oan",
             )
 
             await invocation.select(
@@ -97,9 +100,16 @@ async def test_the_outbound_request_is_logged(httpserver: HTTPServer, caplog) ->
                 transaction_id="txn-test",
             )
 
-    assert "external=invocation event=request" in caplog.text
-    assert "/select" in caplog.text
-    assert "request_id=txn-test" in caplog.text
+    [request] = [
+        r
+        for r in caplog.records
+        if getattr(r, "external", None) == "invocation" and r.event == "request"
+    ]
+    assert request.endpoint.endswith("/select")
+    assert request.transaction_id == "txn-test"
+    assert request.provider_id == CAPABILITY.provider_id
+    assert request.network_id == "host.oan"
+    assert request.message_id
 
 
 async def test_select_names_the_discovered_resource_id(httpserver: HTTPServer) -> None:
@@ -120,6 +130,7 @@ async def test_select_names_the_discovered_resource_id(httpserver: HTTPServer) -
             client=client,
             base_url=_base_url(httpserver),
             sender_id="seeker-network-vistaar.da.gov.in",
+            network_id="host.oan",
         )
 
         await invocation.select(

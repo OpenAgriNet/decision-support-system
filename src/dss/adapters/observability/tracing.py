@@ -40,7 +40,8 @@ from dss.adapters.observability.metrics import (
     record_turn,
     reset_metrics,
 )
-from dss.observability.trace_log import current_session_id, set_stage_span_opener
+from dss.observability.log_fields import MISSING, current_turn_ids
+from dss.observability.trace_log import set_stage_span_opener
 from dss.observability.turn_usage import begin_turn_usage, current_turn_usage
 
 if TYPE_CHECKING:
@@ -109,8 +110,8 @@ class TurnIdSpanProcessor(SpanProcessor):
     """
 
     def on_start(self, span, parent_context=None) -> None:  # noqa: ANN001
-        session_id = current_session_id()
-        if session_id is not None:
+        session_id = current_turn_ids().session_id
+        if session_id != MISSING:
             span.set_attribute("langfuse.session.id", session_id)
             span.set_attribute("session.id", session_id)
 

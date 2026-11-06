@@ -7,6 +7,7 @@ discarded — the composer writes the answer from ``Evidence``.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import replace
 
 import pytest
@@ -573,3 +574,27 @@ async def test_a_planner_run_that_fails_still_records_what_it_spent() -> None:
     assert usage is not None
     assert usage.cost == pytest.approx(0.003)
     assert model_for(Stage.PLANNER) == "function:select_then_fail:"
+
+
+async def test_the_planner_run_is_logged_before_and_after(caplog) -> None:
+    plan = build_plan(
+        schemas=SCHEMAS,
+        schema_context_index={},
+        invocation_for=lambda _turn: _FakeInvocation(),
+        identity=IDENTITY,
+        prompts=FakePromptProvider(skills=(SKILL,)),
+        model=FunctionModel(_answers_without_calling),
+    )
+
+    with caplog.at_level(logging.INFO, logger="dss.trace"):
+        await plan(
+            _turn(),
+            intent=Intent(asks=(PRICE_ASK,), confidence=0.9),
+            discovery=DiscoveryResult(
+                answers={0: (DIRECT_ANSWER,)}, capabilities={}, failures={}, events=()
+            ),
+            verdict=_cleared_verdict(),
+        )
+
+    events = [r.event for r in caplog.records if getattr(r, "agent", None) == "planner"]
+    assert events == ["agent_call", "agent_done"]

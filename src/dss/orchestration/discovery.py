@@ -19,6 +19,7 @@ from dss.core.provider_discovery.service import (
 )
 from dss.core.provider_preferences.service import prioritise
 from dss.core.shared.models import UserTurn
+from dss.observability.log_fields import MISSING
 from dss.observability.trace_log import log_event
 from dss.ports.discovery import CapabilityDiscovery
 from dss.ports.provider_preferences import ProviderPreferences
@@ -141,7 +142,7 @@ def _report(result: DiscoveryResult, *, turn: UserTurn) -> None:
             event="ranking_applied",
             ask_index=priority.ask_index,
             capability=priority.capability,
-            sender_id=priority.sender_id or "-",
+            sender_id=priority.sender_id or MISSING,
             source=priority.source,
             ranked=_ids(priority.ranking),
             found=_ids(priority.kept),

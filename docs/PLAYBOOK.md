@@ -700,11 +700,11 @@ Three things to know before editing a sender's row:
   subject categories (`Crop`, `Livestock`, `Weather`, `Market`, `Scheme`,
   `Facility`) is logged — it can never match an ask.
 
-To see what a ranking did to a turn, grep the server's log output for the
-turn's `transactionId`:
+To see what a ranking did to a turn, filter HyperDX on the turn's
+`transaction_id` and `component=provider_preferences`. Locally, grep stderr:
 
 ```
-request_id=<txn> component=provider_preferences event=...
+... component=provider_preferences event=... transaction_id=<txn>
 ```
 
 `event=ranking_applied` says what was ranked and what was dropped;

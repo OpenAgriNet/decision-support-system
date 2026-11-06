@@ -68,6 +68,7 @@ def _invocation(provider: _Provider) -> HttpCapabilityInvocation:
         client=httpx.AsyncClient(transport=httpx.MockTransport(provider)),
         base_url="https://provider-network-vistaar.da.gov.in/oan",
         sender_id="seeker-network-vistaar.da.gov.in",
+        network_id="host.oan",
         backoff_seconds=0.0,
     )
 
@@ -140,8 +141,9 @@ async def test_the_logs_show_tags_never_the_value(caplog) -> None:
             visibility=REVEAL,
         )
 
-    assert "«phone_1»" in caplog.text
-    assert PHONE not in caplog.text
+    logged = " ".join(str(vars(record)) for record in caplog.records)
+    assert "«phone_1»" in logged
+    assert PHONE not in logged
 
 
 async def test_a_failed_call_does_not_carry_the_value_in_its_detail() -> None:

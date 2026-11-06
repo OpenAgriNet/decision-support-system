@@ -10,6 +10,7 @@ from collections.abc import Sequence
 
 from dss.adapters.observability.metrics import record_area_lookup
 from dss.core.shared.models import Geometry
+from dss.observability.trace_log import log_failure
 from dss.ports.area_lookup import AreaLookup, AreaLookupUnavailableError, AreaMatch
 
 
@@ -37,8 +38,9 @@ class ChainedAreaLookup:
         for source, lookup in self._sources:
             try:
                 matches = await lookup.resolve(name, region)
-            except AreaLookupUnavailableError:
+            except AreaLookupUnavailableError as unavailable:
                 record_area_lookup(source=source, outcome="error")
+                _log_unavailable(source, unavailable)
                 continue
             if matches:
                 record_area_lookup(source=source, outcome="hit")
@@ -52,11 +54,24 @@ class ChainedAreaLookup:
         return fallback
 
     async def nearest(self, point: Geometry, max_km: float) -> AreaMatch | None:
-        for _, lookup in self._sources:
+        for source, lookup in self._sources:
             try:
                 match = await lookup.nearest(point, max_km)
-            except AreaLookupUnavailableError:
+            except AreaLookupUnavailableError as unavailable:
+                _log_unavailable(source, unavailable)
                 continue
             if match is not None:
                 return match
         return None
+
+
+def _log_unavailable(source: str, unavailable: AreaLookupUnavailableError) -> None:
+    """The cause's type only: its message can carry the place the farmer named."""
+
+    cause = unavailable.__cause__ or unavailable
+    log_failure(
+        "area_lookup",
+        event="source_unavailable",
+        error_type=type(cause).__name__,
+        source=source,
+    )

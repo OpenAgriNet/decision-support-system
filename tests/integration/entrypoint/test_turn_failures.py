@@ -27,6 +27,7 @@ from dss.core.shared.models import (
     TurnStatus,
 )
 from dss.entrypoint.app import build_app
+from dss.observability.log_fields import TurnIdsFilter
 
 JSON = "application/json"
 
@@ -84,16 +85,18 @@ def test_a_crash_is_logged_with_the_trace_id(a_body, caplog):
     invisible to whoever has to fix it. The trace id is what joins the log line
     to the evidence files."""
 
+    # The app's handlers carry this filter; caplog's own handler does not.
+    caplog.handler.addFilter(TurnIdsFilter())
     with caplog.at_level(logging.ERROR):
         _client(ExplodingRunner()).post(
             "/v1/turns", json=a_body(), headers={"Accept": "text/event-stream"}
         )
 
-    assert any(r.levelno >= logging.ERROR for r in caplog.records), "nothing logged"
+    [crash] = [r for r in caplog.records if r.name == "dss.adapters.http.v1.router"]
+    assert crash.levelno == logging.ERROR
     assert "the runner fell over" in caplog.text, "the traceback is missing"
-    # In the message, not only in `extra`: the default formatter drops extras, so
-    # a trace id passed that way is invisible to whoever reads the logs.
-    assert "9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44" in caplog.text
+    # Bound by the router, so even a runner that never binds is traceable.
+    assert crash.transaction_id == "9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44"
 
 
 def test_a_crash_in_json_mode_is_logged_too(a_body, caplog):
