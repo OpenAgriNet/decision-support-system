@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from dss.core.settlement.models import Filled, Frame, Missing, Slot, SlotName
-
-PLACE = SlotName("place")
+from dss.core.settlement.models import AskSlot, Frame, Missing, Resolved, Slot
 
 
 def test_frame_refuses_repeated_slot() -> None:
     """Two states for one slot leave nothing to say which one counts."""
 
+    place = AskSlot.PLACE
     with pytest.raises(ValueError, match="place"):
-        Frame(slots=(Slot(PLACE, Missing()), Slot(PLACE, Filled("Pune"))))
+        Frame(slots=(Slot(place, Missing()), Slot(place, Resolved("Pune"))))

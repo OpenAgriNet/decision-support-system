@@ -1,24 +1,22 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import NewType, Protocol
+from enum import StrEnum
+from typing import Any
 
-SlotName = NewType("SlotName", str)
+# An `AskSlot`, or a field name from a form pack.
+type SlotName = str
 
 
-class SlotState(Protocol):
-    """`settle` reads only these, never the state's class, so a new state
-    needs no change to `settle`."""
+class AskSlot(StrEnum):
+    """The facts intent reads from the message for every ask. Fixed by the
+    product, unlike form fields, which come from the packs."""
 
-    @property
-    def is_settled(self) -> bool: ...
-
-    @property
-    def ends_ask(self) -> bool: ...
+    PLACE = "place"
 
 
 @dataclass(frozen=True)
-class Filled[T]:
+class Resolved[T]:
     value: T
     is_settled = True
     ends_ask = False
@@ -31,10 +29,39 @@ class Missing:
 
 
 @dataclass(frozen=True)
+class Ambiguous[T]:
+    """One choice is a confirm: "Do you mean X?"."""
+
+    choices: tuple[T, ...]
+    is_settled = False
+    ends_ask = False
+
+
+class UnresolvedReason(StrEnum):
+    NOT_FOUND = "not_found"
+    TOO_BROAD = "too_broad"
+
+
+@dataclass(frozen=True)
+class Unresolved:
+    """A value given for this slot that we cannot use."""
+
+    value: str
+    reason: UnresolvedReason
+    is_settled = False
+    ends_ask = False
+
+
+@dataclass(frozen=True)
 class Unservable:
     reason: str
     is_settled = False
     ends_ask = True
+
+
+# Closed on purpose: every slot uses these, whatever value it holds, so a new
+# slot needs no new state. A new state is a design change.
+type SlotState = Resolved[Any] | Ambiguous[Any] | Unresolved | Missing | Unservable
 
 
 @dataclass(frozen=True)
@@ -78,6 +105,5 @@ class CannotServe:
     slot: Slot
 
 
-# Closed on purpose: callers match on these three, and a fourth is a design
-# change, unlike a new kind of slot state.
+# Closed on purpose, like the states: callers match on these three.
 type Settlement = Settled | NeedsAnswer | CannotServe
