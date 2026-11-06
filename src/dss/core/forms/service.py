@@ -47,6 +47,10 @@ _SCHEME_PATH = "scheme.code"
 _PROVIDER_PREFIX = "provider."
 _PII_MARK = "x-oan-pii"
 _JSONLD = "x-jsonld"
+# The pack does not mark which fields answer init yet; v2 packs will. Until
+# then: PM-KISAN's init issues a `challenge` (an OTP), so what the farmer fills
+# under it waits for init.
+_INIT_PREFIX = "challenge."
 # The DSS cannot run this OTP step yet, so a scheme that needs it is not served.
 _OTP_CHALLENGE_ACTION = "init"
 
@@ -302,6 +306,8 @@ def _source_of(path: str, allowed_values: tuple[JsonScalar, ...]) -> FieldSource
         return FieldSource.FIXED
     if path.startswith(_PROVIDER_PREFIX):
         return FieldSource.PROVIDER
+    if path.startswith(_INIT_PREFIX):
+        return FieldSource.INIT
     return FieldSource.FARMER
 
 

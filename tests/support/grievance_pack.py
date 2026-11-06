@@ -18,6 +18,8 @@ API_PROFILE = '{"semantic_model": "provider-api"}'
 PMFBY_SUPPORT = FormContext(scheme="PMFBY", category="Grievance", action="support")
 PMFBY_STATUS = FormContext(scheme="PMFBY", category="Grievance", action="status")
 PMKISAN_INIT = FormContext(scheme="PM-KISAN", category="Grievance", action="init")
+PMKISAN_SUPPORT = FormContext(scheme="PM-KISAN", category="Grievance", action="support")
+PMKISAN_STATUS = FormContext(scheme="PM-KISAN", category="Grievance", action="status")
 
 
 def build_grievance_pack(

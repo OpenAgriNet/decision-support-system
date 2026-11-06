@@ -180,3 +180,22 @@ def test_options_make_a_select_however_long_the_answer() -> None:
 )
 def test_the_label_is_the_path_in_words(path: str, label: str) -> None:
     assert _form_of(_farmer(path)).fields[0].label == label
+
+
+def test_init_fields_are_kept_apart_from_the_request_fields() -> None:
+    otp = ActionField(path="challenge.response.value", source=FieldSource.INIT)
+    schema = _schema(_farmer("enrolmentId"), otp)
+
+    assert [field.path for field in schema.request_fields()] == ["enrolmentId"]
+    assert schema.init_fields() == (otp,)
+    assert schema.needs_init()
+
+
+def test_a_schema_with_no_init_fields_needs_no_init() -> None:
+    assert not _schema(_farmer("enrolmentId")).needs_init()
+
+
+def test_a_credential_is_a_secret_field() -> None:
+    form = _form_of(_farmer("challenge.response.value", pii_class="credential"))
+
+    assert form.fields[0].kind is FieldKind.SECRET
