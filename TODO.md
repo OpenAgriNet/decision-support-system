@@ -283,6 +283,13 @@
   `OPENAI_ENDPOINT` is not a name any SDK reads — the OpenAI SDK reads
   `OPENAI_BASE_URL`.
 
+- **Run pyright in CI, then check every `match`.** CI runs no type check,
+  and `src/` has about 53 pyright errors. Fix those, add pyright to CI, then
+  set `reportMatchNotExhaustive = true` so a `match` on a union must cover
+  every case, as a sealed type would. Turning it on flags 10 matches in 7
+  files today; each needs an explicit `case _:`. Until then, a `match` on a
+  `Settlement` ends with `assert_never`.
+
 ## Stubs pending real implementations
 
 - **STUB(#83) — `adapters/llm/stub_llm.py`.** Delete this module once a real
