@@ -33,6 +33,7 @@ from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import TextQuery, UserTurn
 from dss.entrypoint.composition import _resolve_model
 from dss.orchestration.plan import build_plan
+from tests.support.evidence import attempted
 from tests.support.live_model import missing_model_key
 from tests.support.providers import build_capability
 
@@ -208,7 +209,9 @@ async def _find_answering_providers(
     source_names = {source.id: source.name for source in evidence.sources}
     (blight_evidence,) = evidence.ask_evidences
     assert blight_evidence.is_served, "the model left the ask unanswered"
-    return {source_names[result.source_id] for result in blight_evidence.results}
+    return {
+        source_names[result.source_id] for result in attempted(blight_evidence).results
+    }
 
 
 async def test_off_topic_data_falls_back_to_the_next_provider() -> None:

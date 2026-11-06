@@ -17,7 +17,7 @@ from dss.core.intent.models import (
     ResolvedPlace,
     UnresolvedPlace,
 )
-from dss.core.planner.models import Evidence, Failure
+from dss.core.planner.models import AskEvidence, Attempted, Evidence, Failure
 from dss.core.provider_discovery.models import DiscoveredAnswer, DiscoveryResult
 
 
@@ -106,9 +106,16 @@ def evidence_text(evidence: Evidence) -> str:
     lines += [
         f"failed ask {number}: {failure.capability or '-'}: {failure.reason}"
         for number, entry in numbered
-        for failure in entry.failures
+        for failure in _failures_of(entry)
     ]
     return "\n".join(lines)
+
+
+def _failures_of(ask_evidence: AskEvidence) -> tuple[Failure, ...]:
+    match ask_evidence.outcome:
+        case Attempted(failures=failures):
+            return failures
+    return ()
 
 
 def provider_response_text(response: DiscoveredAnswer | Failure) -> str:

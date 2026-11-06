@@ -147,23 +147,28 @@ After:
 
 ```
 Evidence
-  about the whole message: none          ← new, empty in this story
+  turn_note: none                        ← new, empty in this story
   sources
   per ask: ask, outcome
 ```
 
-- **About the whole message.** An open base type with no kinds yet, the
-  same pattern as `TurnInput` and `OutputBlock`. Always `None` in this
-  story. It is added now so refusal and no-match can use it later without
-  another shape change. The code comment says so.
-- **Outcome.** Exactly one per ask:
+- **`turn_note`**, a fact about the whole message. `TurnNote` is an open
+  base with no kinds yet, the same pattern as `TurnInput` and
+  `OutputBlock`. Always `None` in this story. It is added now so refusal
+  and no-match can use it later without another shape change. The code
+  comment says so.
+- **`outcome`**, exactly one per ask (`AskOutcome`):
 
-| Outcome | Holds | Comes from |
-|---|---|---|
-| needs answer | slot, choices (0, 1 or several) | settlement |
-| can't serve | why | settlement or discovery |
-| answered | results, failures | the planner |
-| form offered | the form | the form step |
+| Outcome | Holds | Comes from | Lands in |
+|---|---|---|---|
+| `NeedsAnswer` | slot, choices (0, 1 or several) | settlement | task 2 |
+| `CannotServe` | why | settlement or discovery | task 2 |
+| `Attempted` | results, failures | the planner | task 1 |
+| `AwaitingInput` | the form; later an OTP request | the form step | task 1 |
+
+  `Attempted` with no results is unanswered: the farmer is told so. `AwaitingInput` is answered with a
+  structured input read by its own path; `NeedsAnswer` is answered in
+  words, read by intent.
 
   Choices: 0 is an open question, 1 is a confirm, several is a pick list.
 - `Evidence` now means "what we know per ask", not only provider data. The

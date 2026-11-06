@@ -32,7 +32,7 @@ from dss.core.intent.models import (
     UnresolvedPlace,
 )
 from dss.core.moderation.models import ModerationDecision, Outcome, ReasonCode
-from dss.core.planner.models import Identity, Skill, Verdict
+from dss.core.planner.models import AwaitingInput, Identity, Skill, Verdict
 from dss.core.planner.validation import DomainSchema
 from dss.core.provider_discovery.models import (
     DiscoveredAnswer,
@@ -42,6 +42,7 @@ from dss.core.provider_discovery.models import (
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import ConversationMessage, TextQuery, UserTurn
 from dss.orchestration.plan import build_plan
+from tests.support.evidence import attempted
 from tests.support.fakes import FakePromptProvider
 from tests.support.providers import build_capability
 
@@ -177,7 +178,7 @@ async def test_plan_returns_evidence_from_what_the_tools_returned() -> None:
     assert len(invocation.calls) == 1
     assert [source.name for source in evidence.sources] == ["Agmarknet"]
     [served] = evidence.ask_evidences
-    assert served.results[0].data == {"prices": {"modal": 2200}}
+    assert attempted(served).results[0].data == {"prices": {"modal": 2200}}
 
 
 async def test_the_invocation_is_built_for_the_turn() -> None:
@@ -321,7 +322,7 @@ async def test_a_direct_answer_reaches_the_evidence_through_plan() -> None:
     assert invocation.calls == []  # no provider call was needed
     assert [source.name for source in evidence.sources] == ["Krishi Knowledge Base"]
     [served] = evidence.ask_evidences
-    assert served.results[0].data == {"soilType": "sandy loam"}
+    assert attempted(served).results[0].data == {"soilType": "sandy loam"}
 
 
 def _must_not_run(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
@@ -407,7 +408,7 @@ async def test_a_model_that_still_selects_for_a_form_ask_reaches_no_provider() -
 
     assert invocation.calls == []
     assert evidence.awaiting_forms == (GRIEVANCE_FORM,)
-    assert evidence.ask_evidences[0].failures == ()
+    assert evidence.ask_evidences[0].outcome == AwaitingInput(form=GRIEVANCE_FORM)
 
 
 async def test_an_ask_whose_place_failed_is_a_failure_even_if_never_called() -> None:
@@ -441,7 +442,7 @@ async def test_an_ask_whose_place_failed_is_a_failure_even_if_never_called() -> 
     assert [
         (failure.ask_index, failure.capability)
         for entry in evidence.ask_evidences
-        for failure in entry.failures
+        for failure in attempted(entry).failures
     ] == [(1, None)]
 
 

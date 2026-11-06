@@ -16,16 +16,29 @@ from dss.core.intent.models import (
     UnresolvedPlace,
 )
 from dss.core.planner.evidence import assemble_evidence, place_failures
-from dss.core.planner.models import Evidence, Failure, Result, SourceKind
+from dss.core.planner.models import (
+    Attempted,
+    AwaitingInput,
+    Evidence,
+    Failure,
+    Result,
+    SourceKind,
+)
 from dss.core.provider_discovery.models import DiscoveredAnswer
 from dss.core.shared.models import Geometry
 from dss.ports.area_lookup import AreaMatch
+from tests.support.evidence import attempted
 
 
 def _results(evidence: Evidence) -> list[Result]:
     """Every result, in ask order — first-seen order too, for these tests."""
 
-    return [result for entry in evidence.ask_evidences for result in entry.results]
+    return [
+        result
+        for entry in evidence.ask_evidences
+        if isinstance(outcome := entry.outcome, Attempted)
+        for result in outcome.results
+    ]
 
 
 # One answer per capability this change touches. `attributes` holds a
@@ -264,9 +277,8 @@ def test_results_and_failures_sit_under_the_ask_they_are_about() -> None:
         intent=_intent(PRICE_ASK, ADVISORY_ASK),
     )
 
-    price, advisory = evidence.ask_evidences
-    assert price.results == ()
-    assert price.failures == (failure,)
+    price, advisory = map(attempted, evidence.ask_evidences)
+    assert price == Attempted(results=(), failures=(failure,))
     assert [result.ask_index for result in advisory.results] == [1]
     assert advisory.failures == ()
 
@@ -286,12 +298,31 @@ GRIEVANCE_FORM = FormDefinition(
 )
 
 
-def test_an_ask_that_awaits_a_form_carries_it() -> None:
+def test_a_form_ask_awaits_input() -> None:
     evidence = assemble_evidence(
         [], intent=_intent(PRICE_ASK), awaiting={0: GRIEVANCE_FORM}
     )
 
-    assert evidence.ask_evidences[0].awaiting == GRIEVANCE_FORM
+    assert evidence.ask_evidences[0].outcome == AwaitingInput(form=GRIEVANCE_FORM)
+
+
+def test_a_served_ask_is_attempted() -> None:
+    evidence = assemble_evidence([(0, MANDI_PRICE)], intent=_intent(PRICE_ASK))
+
+    assert evidence.ask_evidences[0].outcome == Attempted(
+        results=tuple(_results(evidence)), failures=()
+    )
+
+
+def test_a_form_ask_with_a_result_is_refused() -> None:
+    """An ask waits on the farmer or was served, never both."""
+
+    with pytest.raises(ValueError, match="ask 0"):
+        assemble_evidence(
+            [(0, MANDI_PRICE)],
+            intent=_intent(PRICE_ASK),
+            awaiting={0: GRIEVANCE_FORM},
+        )
 
 
 def test_an_ask_that_awaits_a_form_is_not_an_unserved_ask() -> None:
@@ -348,7 +379,9 @@ def test_failures_are_carried_onto_the_evidence() -> None:
 
     evidence = assemble_evidence([], failures=[failure], intent=_intent(PRICE_ASK))
 
-    assert evidence.ask_evidences[0].failures == (failure,)
+    assert evidence.ask_evidences[0].outcome == Attempted(
+        results=(), failures=(failure,)
+    )
 
 
 def test_the_originator_outranks_the_provider_that_served_it() -> None:

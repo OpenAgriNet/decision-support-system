@@ -5,7 +5,14 @@ from collections.abc import Mapping, Sequence
 from dss.core.forms.models import FormDefinition
 from dss.core.intent.models import Ask, InteractionType, SubjectCategory
 from dss.core.planner.evidence import group_by_ask
-from dss.core.planner.models import Evidence, Failure, Result, Source
+from dss.core.planner.models import (
+    AskEvidence,
+    Attempted,
+    Evidence,
+    Failure,
+    Result,
+    Source,
+)
 
 # For a test that does not care which ask its results answer.
 ANY_ASK = Ask(
@@ -33,6 +40,13 @@ def build_evidence(
             asks, results=results, failures=failures, awaiting=awaiting
         ),
     )
+
+
+def attempted(ask_evidence: AskEvidence) -> Attempted:
+    """The ask's outcome, failing the test if it is not an attempted one."""
+
+    assert isinstance(ask_evidence.outcome, Attempted), ask_evidence.outcome
+    return ask_evidence.outcome
 
 
 def _count_asks_named(

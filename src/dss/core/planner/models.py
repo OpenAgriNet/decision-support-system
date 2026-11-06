@@ -134,22 +134,60 @@ class Identity(BaseModel):
 
 
 @dataclass(frozen=True)
-class AskEvidence:
-    """What the turn gathered for one ask: its results and its failures, or
-    the form the farmer fills in before any provider is called."""
+class Attempted:
+    """What the providers returned. No results is a gap, not an error."""
 
-    ask: Ask
     results: tuple[Result, ...]
     failures: tuple[Failure, ...]
-    awaiting: FormDefinition | None = None
 
     @property
     def is_served(self) -> bool:
         return bool(self.results)
 
     @property
+    def is_unanswered(self) -> bool:
+        return not self.is_served
+
+    @property
     def has_provider_failure(self) -> bool:
         return any(failure.is_provider_failure for failure in self.failures)
+
+
+@dataclass(frozen=True)
+class AwaitingInput:
+    form: FormDefinition
+
+    is_served = False
+    is_unanswered = False
+    has_provider_failure = False
+
+
+# Every outcome answers is_served, is_unanswered and has_provider_failure,
+# so readers never need isinstance to ask them.
+type AskOutcome = Attempted | AwaitingInput
+
+
+@dataclass(frozen=True)
+class TurnNote:
+    """A fact about the whole message, not one ask: a refusal, or nothing
+    understood. Each kind extends this."""
+
+
+@dataclass(frozen=True)
+class AskEvidence:
+    """One ask and how it ended. One outcome, so an ask can never both wait
+    on the farmer and carry results."""
+
+    ask: Ask
+    outcome: AskOutcome
+
+    @property
+    def is_served(self) -> bool:
+        return self.outcome.is_served
+
+    @property
+    def has_provider_failure(self) -> bool:
+        return self.outcome.has_provider_failure
 
 
 @dataclass(frozen=True)
@@ -164,22 +202,27 @@ class Evidence:
 
     sources: tuple[Source, ...]
     ask_evidences: tuple[AskEvidence, ...]
+    # Always empty for now: refusal and no-match fill it once they reach the
+    # composer. Added early so they add a kind of note, not a new shape.
+    turn_note: TurnNote | None = None
 
     @property
     def unserved_asks(self) -> tuple[AskEvidence, ...]:
-        """Asks with no result and no form: the gaps the farmer is told about."""
+        """Attempted asks with no result: the gaps the farmer is told about."""
 
         return tuple(
-            entry
-            for entry in self.ask_evidences
-            if not entry.is_served and entry.awaiting is None
+            entry for entry in self.ask_evidences if entry.outcome.is_unanswered
         )
 
     @property
     def awaiting_forms(self) -> tuple[FormDefinition, ...]:
         """In ask order: the reply carries one form block per entry."""
 
-        return tuple(entry.awaiting for entry in self.ask_evidences if entry.awaiting)
+        return tuple(
+            outcome.form
+            for entry in self.ask_evidences
+            if isinstance(outcome := entry.outcome, AwaitingInput)
+        )
 
     @property
     def has_any_result(self) -> bool:

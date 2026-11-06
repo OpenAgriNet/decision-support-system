@@ -22,7 +22,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping, Sequence
 
-from dss.core.forms.models import FormDefinition, FormSubmission
+from dss.core.forms.models import FormSubmission
 from dss.core.intent.models import Ask, ResolvedPlace
 from dss.core.planner.markers import (
     CONVERSATION,
@@ -30,7 +30,15 @@ from dss.core.planner.markers import (
     RETRIEVED_DATA,
     wrap_as_data,
 )
-from dss.core.planner.models import AskEvidence, Evidence, Failure, Identity, Result
+from dss.core.planner.models import (
+    AskEvidence,
+    Attempted,
+    AwaitingInput,
+    Evidence,
+    Failure,
+    Identity,
+    Result,
+)
 from dss.core.shared.models import TextQuery, UserTurn
 from dss.ports.prompts import PromptIdentifier, PromptProvider
 
@@ -132,9 +140,7 @@ def render_evidence(evidence: Evidence) -> str:
         block for entry in evidence.ask_evidences for block in _render_failures(entry)
     ]
     blocks += [
-        _render_awaiting(entry.ask, entry.awaiting)
-        for entry in evidence.ask_evidences
-        if entry.awaiting
+        block for entry in evidence.ask_evidences for block in _render_awaiting(entry)
     ]
 
     if not blocks:
@@ -147,12 +153,18 @@ def _render_results(
 ) -> list[str]:
     """One block per source that answered this ask, in first-seen order."""
 
-    label = _place_label(ask_evidence.ask)
-    return [
-        f"Question {position} — [{source_id}] {name_by_id.get(source_id, 'unknown')}"
-        f"{label}\n{_render_payloads(payloads)}"
-        for source_id, payloads in _payloads_by_source(ask_evidence.results).items()
-    ]
+    match ask_evidence.outcome:
+        case Attempted(results=results):
+            label = _place_label(ask_evidence.ask)
+            return [
+                (
+                    f"Question {position} — [{source_id}] "
+                    f"{name_by_id.get(source_id, 'unknown')}"
+                    f"{label}\n{_render_payloads(payloads)}"
+                )
+                for source_id, payloads in _payloads_by_source(results).items()
+            ]
+    return []
 
 
 def _payloads_by_source(results: Sequence[Result]) -> dict[str, list[dict]]:
@@ -176,19 +188,29 @@ def _render_failures(ask_evidence: AskEvidence) -> list[str]:
     composer saw only results and rendered both as "Nothing was retrieved."
     """
 
-    label = _place_label(ask_evidence.ask)
-    return [
-        f"{_failure_lead(failure)}{label}: {failure.reason}"
-        for failure in ask_evidence.failures
-    ]
+    match ask_evidence.outcome:
+        case Attempted(failures=failures):
+            label = _place_label(ask_evidence.ask)
+            return [
+                f"{_failure_lead(failure)}{label}: {failure.reason}"
+                for failure in failures
+            ]
+    return []
 
 
-def _render_awaiting(ask: Ask, form: FormDefinition) -> str:
-    scheme = ask.scheme.name if ask.scheme else form.context.scheme
-    return (
-        f"Awaits a form{_place_label(ask)}: the farmer fills in the {scheme} "
-        f"{form.context.category.lower()} form shown below this reply."
-    )
+def _render_awaiting(ask_evidence: AskEvidence) -> list[str]:
+    match ask_evidence.outcome:
+        case AwaitingInput(form=form):
+            ask = ask_evidence.ask
+            scheme = ask.scheme.name if ask.scheme else form.context.scheme
+            category = form.context.category.lower()
+            return [
+                (
+                    f"Awaits a form{_place_label(ask)}: the farmer fills in the "
+                    f"{scheme} {category} form shown below this reply."
+                )
+            ]
+    return []
 
 
 def _failure_lead(failure: Failure) -> str:
