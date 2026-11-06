@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from dss.core.forms.models import FieldKind, FormContext, FormDefinition
+from dss.core.forms.models import FormContext, FormDefinition
 from tests.support.grievance_pack import (
     PMFBY_STATUS,
     PMFBY_SUPPORT,
@@ -42,14 +42,3 @@ def test_the_details_form_leaves_out_what_waits_for_init() -> None:
         "grievance.category.code",
         "grievance.description",
     ]
-
-
-def test_the_init_form_asks_only_for_the_response_and_hides_it() -> None:
-    schema = find_action_schema(PMKISAN_SUPPORT)
-
-    form = FormDefinition.from_fields(PMKISAN_INIT, schema.init_fields())
-
-    [response] = form.fields
-    assert response.name == "challenge.response.value"
-    assert response.kind is FieldKind.SECRET
-    assert response.rules.pattern == "^[0-9]{4}$"

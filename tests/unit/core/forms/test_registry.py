@@ -3,7 +3,12 @@ from __future__ import annotations
 import pytest
 import yaml
 
-from dss.core.forms.models import ActionSchema, FormContext, FormDefinition
+from dss.core.forms.models import (
+    ActionSchema,
+    FieldKind,
+    FormContext,
+    FormDefinition,
+)
 from dss.core.forms.registry import FormLookup, FormRegistry
 from dss.core.forms.service import build_form_registry
 from dss.core.schema_packs.models import SchemaPackSkipped
@@ -11,6 +16,9 @@ from tests.support.grievance_pack import (
     GRIEVANCE_YAML,
     PMFBY_STATUS,
     PMFBY_SUPPORT,
+    PMKISAN_INIT,
+    PMKISAN_STATUS,
+    PMKISAN_SUPPORT,
     build_grievance_pack,
 )
 
@@ -72,28 +80,49 @@ def test_each_form_is_built_from_its_request_fields(context: FormContext) -> Non
     )
 
 
-def test_a_scheme_that_needs_an_init_step_is_left_out_and_named() -> None:
-    """PM-KISAN files only after the OTP that `init` starts, which the DSS lacks."""
-    registry = build_form_registry([build_grievance_pack(GRIEVANCE_YAML)])
+def test_every_action_of_the_pack_is_registered() -> None:
+    every_action = (
+        PMFBY_SUPPORT,
+        PMFBY_STATUS,
+        PMKISAN_INIT,
+        PMKISAN_SUPPORT,
+        PMKISAN_STATUS,
+    )
 
-    for action in ("init", "status", "support"):
-        kisan = FormContext(scheme="PM-KISAN", category="Grievance", action=action)
-        assert registry.find(kisan) is None
-    assert {skip.pack_name for skip in registry.skipped} == {"Grievance"}
-    assert len(registry.skipped) == 3
+    registry = build_form_registry([build_grievance_pack()])
+
+    assert registry.skipped == ()
+    assert len(registry) == len(every_action)
+    assert all(registry.action_schema(context) for context in every_action)
 
 
-def test_an_init_in_one_pack_rules_out_the_scheme_in_another() -> None:
-    """The rule is per scheme, not per file: `init` and `support` may ship apart."""
-    attributes = yaml.safe_load(GRIEVANCE_YAML)
-    schemas = attributes["components"]["schemas"]
-    schemas["Grievance"]["x-oan-schema-by-action"] = {"init": "GrievanceInit"}
-    schemas["GrievanceInit"]["oneOf"] = [{"$ref": "#/components/schemas/PMFBYStatus"}]
-    init_only = build_grievance_pack(yaml.safe_dump(attributes), pack_name="PmfbyInit")
+@pytest.mark.parametrize("context", [PMKISAN_SUPPORT, PMKISAN_STATUS])
+def test_an_action_that_answers_an_init_gets_a_form(context: FormContext) -> None:
+    registry = build_form_registry([build_grievance_pack()])
 
-    registry = build_form_registry([init_only, build_grievance_pack(GRIEVANCE_YAML)])
+    form = registry.find(context)
 
-    assert registry.find(PMFBY_SUPPORT) is None
+    assert form is not None
+    assert "challenge.response.value" not in {field.name for field in form.fields}
+
+
+def test_the_init_form_asks_only_for_what_waits_for_init() -> None:
+    registry = build_form_registry([build_grievance_pack()])
+
+    form = registry.find(PMKISAN_INIT)
+
+    assert form is not None
+    [otp] = form.fields
+    assert otp.name == "challenge.response.value"
+    assert otp.kind is FieldKind.SECRET
+    assert otp.rules.pattern == "^[0-9]{4}$"
+
+
+def test_a_scheme_with_no_init_has_no_init_form() -> None:
+    registry = build_form_registry([build_grievance_pack()])
+
+    pmfby_init = PMFBY_SUPPORT.model_copy(update={"action": "init"})
+    assert registry.find(pmfby_init) is None
 
 
 def test_two_forms_for_one_context_are_refused() -> None:
