@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
 from dss.core.settlement.models import (
     Ambiguous,
     AskSlot,
@@ -16,7 +17,7 @@ from dss.core.settlement.models import (
     UnresolvedReason,
     Unservable,
 )
-from dss.core.settlement.service import settle
+from dss.core.settlement.service import settle, settle_asks
 
 PLACE = AskSlot.PLACE
 # Form field names: settle works on any frame, not only an ask's.
@@ -73,3 +74,33 @@ def test_unservable_slot_beats_open_ones() -> None:
     village = Slot(name=VILLAGE, state=Unservable(reason="farmer declined"))
 
     assert settle(Frame(slots=(phone, village))) == CannotServe(slot=village)
+
+
+WEATHER_PACK = "openagrinet:WeatherObservation"
+GRIEVANCE_PACK = "openagrinet:Grievance"
+INDEX = {
+    ("Weather", "Service"): (WEATHER_PACK,),
+    ("Grievance", "Service"): (GRIEVANCE_PACK,),
+}
+
+
+def _ask(category: SubjectCategory, interaction: InteractionType) -> Ask:
+    return Ask(subject_categories=category, interaction_type=interaction)
+
+
+def test_each_ask_settles_on_its_own() -> None:
+    """Weather's pack needs a place and none was given; a grievance needs none."""
+
+    weather = _ask(SubjectCategory.WEATHER, InteractionType.OBSERVE)
+    grievance = _ask(SubjectCategory.GRIEVANCE, InteractionType.ACT)
+
+    settlements = settle_asks(
+        Intent(asks=(weather, grievance)),
+        index=INDEX,
+        place_bound_types={WEATHER_PACK},
+    )
+
+    assert settlements == (
+        NeedsAnswer(open_slots=(Slot(PLACE, Missing()),)),
+        Settled(Frame(slots=())),
+    )

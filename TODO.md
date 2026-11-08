@@ -166,7 +166,7 @@
 
 - **Use `CapabilityIndex` everywhere.** The alias exists in
   `provider_discovery/models.py`, but `Mapping[tuple[str, str], tuple[str,
-  ...]]` is still written out by hand in 8 places. Swap them for the alias.
+  ...]]` (and its `dict` form) is still written out by hand in several places. Swap them for the alias.
   Its key, `tuple[str, str]`, is (subject category, action type) with
   nothing to stop the two being swapped. Make it a frozen `CapabilityKey`
   with named fields in the same change.
@@ -229,6 +229,17 @@
   `network-adapter/tools/area-lookups/README.md`), which is a decision for
   whoever owns that pipeline, not something regenerating from the current
   snapshot can fix.
+
+## Ask identity
+
+- **Pass the ask itself, not its index.** Results, failures, forms,
+  discovery and the planner's tools all name an ask by its position in
+  `intent.asks`, so any step that branches has to keep positions lined up by
+  hand. #243 works around it by running only the settled asks through
+  discovery and the planner as their own `Intent`, then merging their
+  evidence back with the unsettled asks. Direction: each stage's output
+  carries its ask, as `AskEvidence` already does, so a step can pass on just
+  the asks it means and the merge goes.
 
 ## Transport
 

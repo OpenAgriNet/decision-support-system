@@ -156,8 +156,8 @@ def _find_asks_to_discover(
     intent: Intent,
     languages: tuple[str, ...],
     radius_m: int,
-    index: Mapping[tuple[str, str], tuple[str, ...]],
-    place_bound_types: frozenset[str],
+    index: CapabilityIndex,
+    place_bound_types: frozenset[NetworkSchemaType],
 ) -> AsksToBeDiscovered:
     """Coverage is computed per ask: each ask carries its own resolved place
     (or none), so a turn asking about two places issues two spatially
