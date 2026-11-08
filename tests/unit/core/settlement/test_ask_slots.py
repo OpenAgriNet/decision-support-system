@@ -11,12 +11,14 @@ from dss.core.intent.models import (
     SubjectCategory,
     UnresolvedPlace,
 )
-from dss.core.settlement.ask_slots import ask_slot_state, is_place_needed
+from dss.core.settlement.ask_slots import ask_slot_state, frame_for, needed_slots
 from dss.core.settlement.models import (
     Ambiguous,
     AskSlot,
+    Frame,
     Missing,
     Resolved,
+    Slot,
     SlotState,
     Unresolved,
     UnresolvedReason,
@@ -36,18 +38,23 @@ PUNE = ResolvedPlace(
 
 
 def test_place_needed_when_every_pack_says_so() -> None:
-    assert is_place_needed((MANDI, FACILITY), place_bound_types={MANDI, FACILITY})
+    assert needed_slots(
+        capability_types=(MANDI, FACILITY), place_bound_types={MANDI, FACILITY}
+    ) == (AskSlot.PLACE,)
 
 
 def test_one_placeless_pack_needs_no_place() -> None:
-    assert not is_place_needed((MANDI, FACILITY), place_bound_types={MANDI})
+    assert (
+        needed_slots(capability_types=(MANDI, FACILITY), place_bound_types={MANDI})
+        == ()
+    )
 
 
 def test_no_pack_needs_no_place() -> None:
     """With no pack, nothing says a place is needed, so asking for one would
     make the farmer answer for nothing."""
 
-    assert not is_place_needed((), place_bound_types={MANDI})
+    assert needed_slots(capability_types=(), place_bound_types={MANDI}) == ()
 
 
 def _place_of(
@@ -102,3 +109,23 @@ def test_whole_state_is_too_broad() -> None:
     assert _place_of(place) == Unresolved(
         value="Maharashtra", reason=UnresolvedReason.TOO_BROAD
     )
+
+
+def _weather_at(place: ResolvedPlace | None) -> Ask:
+    return Ask(
+        subject_categories=SubjectCategory.WEATHER,
+        interaction_type=InteractionType.OBSERVE,
+        place=place,
+    )
+
+
+def test_frame_holds_each_needed_slot() -> None:
+    frame = frame_for(_weather_at(PUNE), needed=(AskSlot.PLACE,))
+
+    assert frame == Frame(slots=(Slot(AskSlot.PLACE, Resolved(PUNE)),))
+
+
+def test_frame_leaves_out_unneeded_slots() -> None:
+    """A place said in passing is never asked about."""
+
+    assert frame_for(_weather_at(PUNE), needed=()) == Frame(slots=())

@@ -164,6 +164,13 @@
   dereferences either at runtime, so this is fixture/reality drift rather than
   a live fault.
 
+- **Use `CapabilityIndex` everywhere.** The alias exists in
+  `provider_discovery/models.py`, but `Mapping[tuple[str, str], tuple[str,
+  ...]]` is still written out by hand in 8 places. Swap them for the alias.
+  Its key, `tuple[str, str]`, is (subject category, action type) with
+  nothing to stop the two being swapped. Make it a frozen `CapabilityKey`
+  with named fields in the same change.
+
 ## Place resolution (#130) — deferred to separate PRs
 
 - **An ask has no type of its own after discovery.** Its options, place

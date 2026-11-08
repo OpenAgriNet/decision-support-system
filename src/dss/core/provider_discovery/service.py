@@ -19,12 +19,14 @@ from dss.core.intent.models import (
 )
 from dss.core.provider_discovery.models import (
     AsksToBeDiscovered,
+    CapabilityIndex,
     CapabilityUnresolved,
     CategoryMappingDiverged,
     Coverage,
     DiscoveredAsk,
     DiscoveredAsks,
     DiscoveryResult,
+    NetworkSchemaType,
     ProviderQuery,
     ProviderQueryResult,
 )
@@ -57,6 +59,15 @@ def resolve_capability_type(
     if not types:
         return (), CapabilityUnresolved(subject_category, action_type)
     return types, None
+
+
+def capability_types_for(
+    ask: Ask, index: CapabilityIndex
+) -> tuple[NetworkSchemaType, ...]:
+    """The pack types discovery would search for this ask."""
+
+    action_type = _ACTION_TYPE_BY_INTERACTION[ask.interaction_type]
+    return index.get((ask.subject_categories.value, action_type), ())
 
 
 def coverage_for_ask(ask: Ask, *, radius_m: int) -> Coverage | None:
