@@ -8,6 +8,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from dss.core.provider_discovery.models import ProviderCapability
 from dss.core.shared.models import MessageReference, OutputBlock, Role, TurnInput
 
 
@@ -327,3 +328,22 @@ _FORM_NOTE: Mapping[tuple[FormItem, Role], str] = {
     ("form_error", "assistant"): "a form was handed back with errors",
     ("form_error", "user"): "a form was handed back with errors",
 }
+
+
+class FormStatus(StrEnum):
+    AWAITING_INIT = "awaiting_init"  # init succeeded; the init form is out
+    DONE = "done"  # filed or read; nothing more expected
+
+
+class FormEntry(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    definition: FormDefinition  # the details form
+    submission: FormSubmission  # raw; validated again on read
+    status: FormStatus
+    # Where init went; set with AWAITING_INIT.
+    provider: ProviderCapability | None = None
+
+
+# Details forms by form_id; DONE entries stay until the TTL.
+type FormRecords = Mapping[str, FormEntry]

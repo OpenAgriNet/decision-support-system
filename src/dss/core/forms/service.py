@@ -23,8 +23,11 @@ from dss.core.forms.models import (
     FormBlock,
     FormContext,
     FormDefinition,
+    FormEntry,
     FormErrorBlock,
     FormErrors,
+    FormRecords,
+    FormStatus,
     FormSubmission,
     JsonScalar,
     PiiClass,
@@ -612,3 +615,31 @@ def _advertised_at(candidate: ProviderCapability, path: str) -> object:
             return None
         node = node.get(segment)
     return node
+
+
+def clear_awaiting_init_record(forms: FormRecords) -> FormRecords:
+    return {
+        form_id: entry
+        for form_id, entry in forms.items()
+        if entry.status is not FormStatus.AWAITING_INIT
+    }
+
+
+def awaiting_init_for(forms: FormRecords, init_context: FormContext) -> str | None:
+    return next(
+        (
+            form_id
+            for form_id, entry in forms.items()
+            if entry.status is FormStatus.AWAITING_INIT
+            and _is_same_flow(entry, init_context)
+        ),
+        None,
+    )
+
+
+def _is_same_flow(entry: FormEntry, init_context: FormContext) -> bool:
+    details_context = entry.definition.context
+    return (details_context.scheme, details_context.category) == (
+        init_context.scheme,
+        init_context.category,
+    )
