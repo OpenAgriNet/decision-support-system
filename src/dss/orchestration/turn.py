@@ -28,7 +28,7 @@ different models.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 
 import anyio
@@ -55,6 +55,7 @@ from dss.core.moderation.models import (
 from dss.core.moderation.service import moderate
 from dss.core.policy.models import Policy
 from dss.core.provider_discovery.models import DiscoveryResult
+from dss.core.settlement.models import Frame, Settled, Settlement
 from dss.core.shared.models import TextQuery, UserTurn
 from dss.observability.stages import Stage
 from dss.observability.trace_log import trace_component
@@ -79,6 +80,15 @@ def _nothing_discovered() -> DiscoveryResult:
     """
 
     return DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
+
+
+# One settlement per ask, in ask order.
+type SettleAsks = Callable[[Intent], tuple[Settlement, ...]]
+
+
+# TODO(#243): remove once the orchestrator passes the real settle_asks.
+def settle_every_ask(intent: Intent) -> tuple[Settlement, ...]:
+    return tuple(Settled(Frame(slots=())) for _ in intent.asks)
 
 
 def place_attributes(
@@ -164,7 +174,27 @@ class TurnResult(BaseModel):
 
     intent: Intent
     decision: ModerationDecision
+    # One per ask in `intent`, same order.
+    settlements: tuple[Settlement, ...] = ()
+    # Of `settled_intent`'s asks, numbered as that intent numbers them.
     discovery: DiscoveryResult
+
+    @property
+    def settled_intent(self) -> Intent:
+        """Only the settled asks: the ones discovery and the planner work on."""
+
+        return _settled_only(self.intent, self.settlements)
+
+
+def _settled_only(intent: Intent, settlements: tuple[Settlement, ...]) -> Intent:
+    return Intent(
+        asks=tuple(
+            ask
+            for ask, settlement in zip(intent.asks, settlements, strict=True)
+            if isinstance(settlement, Settled)
+        ),
+        confidence=intent.confidence,
+    )
 
 
 async def run_turn(  # noqa: PLR0913
@@ -179,6 +209,7 @@ async def run_turn(  # noqa: PLR0913
     scheme_catalog: SchemeCatalog | None = None,
     nearest_max_km: float = DEFAULT_NEAREST_MAX_KM,
     now: datetime | None = None,
+    settle_asks: SettleAsks = settle_every_ask,
 ) -> TurnResult:
     """Classify intent, moderate the turn, and find who can answer it.
 
@@ -197,11 +228,12 @@ async def run_turn(  # noqa: PLR0913
     """
 
     intent = Intent()
+    settlements: tuple[Settlement, ...] = ()
     discovery = _nothing_discovered()
     decision: ModerationDecision | None = None
 
     async def classify_then_discover() -> None:
-        nonlocal intent, discovery
+        nonlocal intent, settlements, discovery
         with trace_component(Stage.INTENT, turn.transaction_id):
             classification = await classify_intent(
                 turn,
@@ -220,12 +252,16 @@ async def run_turn(  # noqa: PLR0913
                 nearest_max_km=nearest_max_km,
             )
             set_current_span_attributes(**place_attributes(classification, intent))
+        settlements = settle_asks(intent)
+        settled = _settled_only(intent, settlements)
+        if not settled.asks:
+            return
         with trace_component(Stage.DISCOVERY, turn.transaction_id):
             discovery = await discover_providers(
-                intent, turn, now=now or datetime.now(UTC)
+                settled, turn, now=now or datetime.now(UTC)
             )
             set_current_span_content(
-                input=asks_text(intent.asks), output=discovery_text(discovery)
+                input=asks_text(settled.asks), output=discovery_text(discovery)
             )
 
     async def run_moderation() -> None:
@@ -249,4 +285,9 @@ async def run_turn(  # noqa: PLR0913
         return TurnResult(
             intent=Intent(), decision=decision, discovery=_nothing_discovered()
         )
-    return TurnResult(intent=intent, decision=decision, discovery=discovery)
+    return TurnResult(
+        intent=intent,
+        decision=decision,
+        settlements=settlements,
+        discovery=discovery,
+    )
