@@ -294,6 +294,14 @@ class FormErrorBlock(OutputBlock):
     fields: tuple[FieldErrorEntry, ...] = ()
 
 
+class FailedCallOutcome(StrEnum):
+    ANSWERED = "answered"
+    REFUSED = "refused"
+    NOT_SENT = "not_sent"
+    # It may have reached the provider, so sending it again might file twice.
+    OUTCOME_UNKNOWN = "outcome_unknown"
+
+
 class ActionReply(BaseModel):
     """What the provider sent back for one call: the attributes the pack
     lists under `comesBack`, concealed like any provider text."""

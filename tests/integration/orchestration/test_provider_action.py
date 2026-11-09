@@ -121,6 +121,7 @@ async def test_a_failed_call_becomes_a_failure() -> None:
         reason="support failed with status 503",
         retryable=True,
         retry_after_seconds=120,
+        status_code=503,
     )
 
 
@@ -132,3 +133,4 @@ async def test_a_refused_status_is_not_retryable() -> None:
     assert isinstance(response, Failure)
     assert response.retryable is False
     assert response.reason == "status failed with status 404"
+    assert response.status_code == 404
