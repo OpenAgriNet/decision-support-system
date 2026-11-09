@@ -16,6 +16,7 @@ never seen assembles with no code change.
 from __future__ import annotations
 
 from collections.abc import Collection, Mapping, Sequence
+from dataclasses import replace
 
 from dss.core.forms.models import FormDefinition
 from dss.core.intent.models import AmbiguousPlace, Ask, Intent, UnresolvedPlace
@@ -31,6 +32,7 @@ from dss.core.planner.models import (
     SourceKind,
 )
 from dss.core.provider_discovery.models import DiscoveredAnswer
+from dss.core.settlement.models import Settled, Settlement
 
 
 def place_failures(
@@ -166,6 +168,31 @@ def group_by_ask(
         )
         for index, ask in enumerate(asks)
     )
+
+
+def merge_unsettled(
+    intent: Intent, settlements: Sequence[Settlement], *, settled: Evidence
+) -> Evidence:
+    """Every ask in the farmer's order. A settled ask gets its evidence.
+    An unsettled ask gets its settlement.
+
+    Raises ValueError if the settled evidence does not match the settled asks.
+    """
+
+    settled_count = sum(isinstance(s, Settled) for s in settlements)
+    if len(settled.ask_evidences) != settled_count:
+        raise ValueError(
+            f"{len(settled.ask_evidences)} evidence entries for "
+            f"{settled_count} settled asks"
+        )
+    settled_evidences = iter(settled.ask_evidences)
+    ask_evidences = tuple(
+        next(settled_evidences)
+        if isinstance(settlement, Settled)
+        else AskEvidence(ask=ask, outcome=settlement)
+        for ask, settlement in zip(intent.asks, settlements, strict=True)
+    )
+    return replace(settled, ask_evidences=ask_evidences)
 
 
 def _outcome_for(

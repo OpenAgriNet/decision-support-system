@@ -9,7 +9,7 @@ from dss.core.settlement.models import (
     CannotServe,
     Frame,
     Missing,
-    NeedsAnswer,
+    NeedsClarification,
     Resolved,
     Settled,
     Slot,
@@ -31,24 +31,24 @@ def test_no_slots_is_settled() -> None:
     assert settle(frame) == Settled(frame)
 
 
-def test_missing_slot_needs_answer() -> None:
+def test_missing_slot_needs_clarification() -> None:
     place = Slot(name=PLACE, state=Missing())
 
-    assert settle(Frame(slots=(place,))) == NeedsAnswer(open_slots=(place,))
+    assert settle(Frame(slots=(place,))) == NeedsClarification(open_slots=(place,))
 
 
-def test_ambiguous_slot_needs_answer() -> None:
+def test_ambiguous_slot_needs_clarification() -> None:
     place = Slot(name=PLACE, state=Ambiguous(("Aurangabad MH", "Aurangabad BR")))
 
-    assert settle(Frame(slots=(place,))) == NeedsAnswer(open_slots=(place,))
+    assert settle(Frame(slots=(place,))) == NeedsClarification(open_slots=(place,))
 
 
-def test_unresolved_slot_needs_answer() -> None:
+def test_unresolved_slot_needs_clarification() -> None:
     place = Slot(
         name=PLACE, state=Unresolved(value="Xyzzy", reason=UnresolvedReason.NOT_FOUND)
     )
 
-    assert settle(Frame(slots=(place,))) == NeedsAnswer(open_slots=(place,))
+    assert settle(Frame(slots=(place,))) == NeedsClarification(open_slots=(place,))
 
 
 def test_resolved_slots_are_settled() -> None:
@@ -62,7 +62,7 @@ def test_open_slots_keep_frame_order() -> None:
     village = Slot(name=VILLAGE, state=Resolved("Wagholi"))
     place = Slot(name=PLACE, state=Missing())
 
-    assert settle(Frame(slots=(phone, village, place))) == NeedsAnswer(
+    assert settle(Frame(slots=(phone, village, place))) == NeedsClarification(
         open_slots=(phone, place)
     )
 
@@ -101,6 +101,6 @@ def test_each_ask_settles_on_its_own() -> None:
     )
 
     assert settlements == (
-        NeedsAnswer(open_slots=(Slot(PLACE, Missing()),)),
+        NeedsClarification(open_slots=(Slot(PLACE, Missing()),)),
         Settled(Frame(slots=())),
     )

@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict
 from dss.core.forms.models import FormDefinition
 from dss.core.intent.models import Ask
 from dss.core.moderation.models import ModerationDecision
+from dss.core.settlement.models import CannotServe, NeedsClarification
 
 
 class Verdict:
@@ -164,7 +165,7 @@ class AwaitingInput:
 
 # Every outcome answers is_served, is_unanswered and has_provider_failure,
 # so readers never need isinstance to ask them.
-type AskOutcome = Attempted | AwaitingInput
+type AskOutcome = Attempted | AwaitingInput | NeedsClarification | CannotServe
 
 
 @dataclass(frozen=True)

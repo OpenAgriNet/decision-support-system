@@ -15,8 +15,13 @@ from dss.core.intent.models import (
     SubjectCategory,
     UnresolvedPlace,
 )
-from dss.core.planner.evidence import assemble_evidence, place_failures
+from dss.core.planner.evidence import (
+    assemble_evidence,
+    merge_unsettled,
+    place_failures,
+)
 from dss.core.planner.models import (
+    AskEvidence,
     Attempted,
     AwaitingInput,
     Evidence,
@@ -25,6 +30,14 @@ from dss.core.planner.models import (
     SourceKind,
 )
 from dss.core.provider_discovery.models import DiscoveredAnswer
+from dss.core.settlement.models import (
+    AskSlot,
+    Frame,
+    Missing,
+    NeedsClarification,
+    Settled,
+    Slot,
+)
 from dss.core.shared.models import Geometry
 from dss.ports.area_lookup import AreaMatch
 from tests.support.evidence import attempted
@@ -573,3 +586,47 @@ def test_missing_needed_place_fails() -> None:
     assert failure.ask_index == 1
     assert failure.capability is None
     assert "place" in failure.reason
+
+
+_RAIN = Ask(
+    subject_categories=SubjectCategory.WEATHER,
+    interaction_type=InteractionType.OBSERVE,
+)
+_POTATO = Ask(
+    subject_categories=SubjectCategory.CROP,
+    interaction_type=InteractionType.ADVISE,
+    agriculture_subjects="potato",
+)
+_NEEDS_PLACE = NeedsClarification(open_slots=(Slot(AskSlot.PLACE, Missing()),))
+_SETTLED = Settled(Frame(slots=()))
+
+
+def test_merge_keeps_the_farmers_order() -> None:
+    """The settled asks were worked on as their own intent; each comes back
+    beside the unsettled ones, where the farmer put it."""
+
+    potato_evidence = AskEvidence(
+        ask=_POTATO, outcome=Attempted(results=(), failures=())
+    )
+    settled = Evidence(sources=(), ask_evidences=(potato_evidence,))
+
+    merged = merge_unsettled(
+        _intent(_RAIN, _POTATO), (_NEEDS_PLACE, _SETTLED), settled=settled
+    )
+
+    assert merged.ask_evidences == (
+        AskEvidence(ask=_RAIN, outcome=_NEEDS_PLACE),
+        potato_evidence,
+    )
+
+
+def test_merge_refuses_mismatched_evidence() -> None:
+    """One settled ask, two evidence entries: one would be lost."""
+
+    entry = AskEvidence(ask=_POTATO, outcome=Attempted(results=(), failures=()))
+    settled = Evidence(sources=(), ask_evidences=(entry, entry))
+
+    with pytest.raises(ValueError, match="settled"):
+        merge_unsettled(
+            _intent(_RAIN, _POTATO), (_NEEDS_PLACE, _SETTLED), settled=settled
+        )

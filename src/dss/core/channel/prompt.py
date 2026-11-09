@@ -39,6 +39,17 @@ from dss.core.planner.models import (
     Identity,
     Result,
 )
+from dss.core.settlement.models import (
+    Ambiguous,
+    CannotServe,
+    Missing,
+    NeedsClarification,
+    Resolved,
+    Slot,
+    Unresolved,
+    UnresolvedReason,
+    Unservable,
+)
 from dss.core.shared.models import TextQuery, UserTurn
 from dss.ports.prompts import PromptIdentifier, PromptProvider
 
@@ -142,6 +153,9 @@ def render_evidence(evidence: Evidence) -> str:
     blocks += [
         block for entry in evidence.ask_evidences for block in _render_awaiting(entry)
     ]
+    blocks += [
+        block for entry in evidence.ask_evidences for block in _render_unsettled(entry)
+    ]
 
     if not blocks:
         return "Nothing was retrieved."
@@ -211,6 +225,41 @@ def _render_awaiting(ask_evidence: AskEvidence) -> list[str]:
                 )
             ]
     return []
+
+
+def _render_unsettled(ask_evidence: AskEvidence) -> list[str]:
+    """Only the first open slot: the farmer is asked one thing per turn."""
+
+    category = ask_evidence.ask.subject_categories.value
+    match ask_evidence.outcome:
+        case NeedsClarification(open_slots=(first, *_)):
+            return [f"Ask the farmer ({category}): {_slot_brief(first)}"]
+        case CannotServe(slot=Slot(state=Unservable(reason=reason))):
+            return [f"Cannot serve this ({category}): {reason}"]
+    return []
+
+
+_UNRESOLVED_BRIEFS: Mapping[UnresolvedReason, str] = {
+    UnresolvedReason.NOT_FOUND: "Which {slot}? We could not find {value!r}. Ask again.",
+    UnresolvedReason.TOO_BROAD: (
+        "Which {slot}? {value!r} is too big. Ask for a smaller one inside it."
+    ),
+}
+
+
+def _slot_brief(slot: Slot) -> str:
+    match slot.state:
+        case Missing():
+            return f"Which {slot.name}? None was given."
+        case Ambiguous():
+            return (
+                f"Which {slot.name}? It matched more than one. "
+                "Ask them to pick one from the list below this reply."
+            )
+        case Unresolved(value=value, reason=reason):
+            return _UNRESOLVED_BRIEFS[reason].format(slot=slot.name, value=value)
+        case Resolved() | Unservable():
+            raise ValueError(f"{slot.name} is not waiting on the farmer")
 
 
 def _failure_lead(failure: Failure) -> str:

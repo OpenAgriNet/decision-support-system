@@ -95,15 +95,23 @@ class Settled:
     frame: Frame
 
 
+# NeedsClarification and CannotServe are also an ask's outcome in Evidence, so they
+# answer the questions every outcome does.
 @dataclass(frozen=True)
-class NeedsAnswer:
+class NeedsClarification:
     open_slots: tuple[Slot, ...]
+    is_served = False
+    is_unanswered = False
+    has_provider_failure = False
 
 
 @dataclass(frozen=True)
 class CannotServe:
     slot: Slot
+    is_served = False
+    is_unanswered = True
+    has_provider_failure = False
 
 
 # Closed on purpose, like the states: callers match on these three.
-type Settlement = Settled | NeedsAnswer | CannotServe
+type Settlement = Settled | NeedsClarification | CannotServe

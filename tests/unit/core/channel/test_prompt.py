@@ -25,12 +25,24 @@ from dss.core.intent.models import (
     SubjectCategory,
 )
 from dss.core.planner.models import (
+    AskEvidence,
     Evidence,
     Failure,
     Identity,
     Result,
     Source,
     SourceKind,
+)
+from dss.core.settlement.models import (
+    Ambiguous,
+    AskSlot,
+    CannotServe,
+    Missing,
+    NeedsClarification,
+    Slot,
+    Unresolved,
+    UnresolvedReason,
+    Unservable,
 )
 from dss.core.shared.language import LanguageTag
 from dss.core.shared.models import ConversationMessage, Geometry, TextQuery, UserTurn
@@ -214,6 +226,86 @@ def test_an_ask_awaiting_a_form_is_rendered_as_such() -> None:
     assert "Awaits a form" in rendered
     assert "Pradhan Mantri Fasal Bima Yojana grievance form" in rendered
     assert "Nothing was retrieved" not in rendered
+
+
+def _waiting_on(*open_slots: Slot) -> Evidence:
+    rain = Ask(
+        subject_categories=SubjectCategory.WEATHER,
+        interaction_type=InteractionType.OBSERVE,
+    )
+    outcome = NeedsClarification(open_slots=open_slots)
+    return Evidence(sources=(), ask_evidences=(AskEvidence(ask=rain, outcome=outcome),))
+
+
+def test_an_ask_waiting_on_the_farmer_asks_one_question() -> None:
+    """Only the first open slot: one question per turn."""
+
+    rendered = render_evidence(
+        _waiting_on(Slot(AskSlot.PLACE, Missing()), Slot("village", Missing()))
+    )
+
+    assert "Ask the farmer" in rendered
+    assert "place" in rendered
+    assert "village" not in rendered
+    assert "Nothing was retrieved" not in rendered
+
+
+def test_an_ambiguous_slot_points_at_the_choices() -> None:
+    """Code lists the choices exactly, below the reply; the composer only
+    asks which one."""
+
+    rendered = render_evidence(
+        _waiting_on(Slot(AskSlot.PLACE, Ambiguous(("Aurangabad MH", "Aurangabad BR"))))
+    )
+
+    assert "list below this reply" in rendered
+    assert "Aurangabad MH" not in rendered
+
+
+def test_an_unknown_value_is_named_and_asked_again() -> None:
+    rendered = render_evidence(
+        _waiting_on(
+            Slot(
+                AskSlot.PLACE,
+                Unresolved(value="Xyzzy", reason=UnresolvedReason.NOT_FOUND),
+            )
+        )
+    )
+
+    assert "Xyzzy" in rendered
+    assert "could not find" in rendered
+
+
+def test_a_too_broad_value_asks_for_a_smaller_one() -> None:
+    rendered = render_evidence(
+        _waiting_on(
+            Slot(
+                AskSlot.PLACE,
+                Unresolved(value="Maharashtra", reason=UnresolvedReason.TOO_BROAD),
+            )
+        )
+    )
+
+    assert "Maharashtra" in rendered
+    assert "too big" in rendered
+
+
+def test_an_ask_we_cannot_serve_says_why() -> None:
+    complaint = Ask(
+        subject_categories=SubjectCategory.GRIEVANCE,
+        interaction_type=InteractionType.ACT,
+    )
+    outcome = CannotServe(
+        slot=Slot("scheme", Unservable(reason="PMFBY has no complaint form"))
+    )
+    evidence = Evidence(
+        sources=(), ask_evidences=(AskEvidence(ask=complaint, outcome=outcome),)
+    )
+
+    rendered = render_evidence(evidence)
+
+    assert "Cannot serve" in rendered
+    assert "PMFBY has no complaint form" in rendered
 
 
 def test_a_place_failure_does_not_blame_a_provider() -> None:

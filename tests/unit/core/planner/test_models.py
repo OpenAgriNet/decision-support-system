@@ -19,6 +19,14 @@ from dss.core.planner.models import (
     Source,
     SourceKind,
 )
+from dss.core.settlement.models import (
+    AskSlot,
+    CannotServe,
+    Missing,
+    NeedsClarification,
+    Slot,
+    Unservable,
+)
 
 
 def test_source_carries_provenance() -> None:
@@ -149,6 +157,30 @@ _SERVED = _attempted_ask((_RESULT,))
 _UNSERVED = _attempted_ask()
 _PLACE_FAILED = _attempted_ask(failures=(_PLACE_FAILURE,))
 _PROVIDER_FAILED = _attempted_ask(failures=(_PROVIDER_FAILURE,))
+_NEEDS_PLACE = AskEvidence(
+    ask=_ASK,
+    outcome=NeedsClarification(open_slots=(Slot(AskSlot.PLACE, Missing()),)),
+)
+_CANNOT_SERVE = AskEvidence(
+    ask=_ASK,
+    outcome=CannotServe(
+        slot=Slot("scheme", Unservable(reason="no complaint form for PMFBY"))
+    ),
+)
+
+
+def test_ask_waiting_on_farmer_is_a_question() -> None:
+    """Neither served nor a gap: the farmer is asked, not told we failed."""
+
+    assert _NEEDS_PLACE.is_served is False
+    assert _NEEDS_PLACE.outcome.is_unanswered is False
+    assert _NEEDS_PLACE.has_provider_failure is False
+
+
+def test_ask_we_cannot_serve_is_unanswered() -> None:
+    assert _CANNOT_SERVE.is_served is False
+    assert _CANNOT_SERVE.outcome.is_unanswered is True
+    assert _CANNOT_SERVE.has_provider_failure is False
 
 
 def _evidence(*ask_evidences: AskEvidence) -> Evidence:

@@ -241,6 +241,12 @@
   carries its ask, as `AskEvidence` already does, so a step can pass on just
   the asks it means and the merge goes.
 
+- **Give `Evidence` its own package.** It lives in `core/planner/` because
+  the planner was its first producer, but the form step and settlement add
+  outcomes to it too. Move `Evidence`, `AskEvidence`, `AskOutcome`,
+  `group_by_ask` and `merge_unsettled` to `core/evidence/`, so no stage
+  looks like the owner.
+
 ## Transport
 
 - ~~**SSE streams the transport, not the content.**~~ Done: `/v1/turns` with

@@ -38,7 +38,7 @@ from dss.core.settlement.models import (
     AskSlot,
     Frame,
     Missing,
-    NeedsAnswer,
+    NeedsClarification,
     Settled,
     Settlement,
     Slot,
@@ -399,7 +399,7 @@ _RAIN = ClassifiedAsk(
     subject_categories=SubjectCategory.WEATHER,
     interaction_type=InteractionType.OBSERVE,
 )
-_NEEDS_PLACE = NeedsAnswer(open_slots=(Slot(AskSlot.PLACE, Missing()),))
+_NEEDS_PLACE = NeedsClarification(open_slots=(Slot(AskSlot.PLACE, Missing()),))
 _SETTLED = Settled(Frame(slots=()))
 
 
