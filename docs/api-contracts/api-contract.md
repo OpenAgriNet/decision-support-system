@@ -258,7 +258,16 @@ The same canonical response object is used for non-streaming JSON and the termin
 ### 3.0 Types used in this response
 
 - `message.outcome.status` — closed enum: `answered` | `rejected` | `no_match` | `requires_input` | `unavailable` | `partially_answered`.
-- `message.outcome.cause` — open, additive set. `null` when answered; otherwise a machine-readable string. Known values: `unsafe_illegal`, `provider_unavailable`, `provider_rejected`, `domain_unmapped`, `invalid_input`. New causes may be added without a major version change — clients must treat an unrecognized value as an opaque string, not fail on it.
+- `message.outcome.cause` — open, additive set. `null` when answered; otherwise a machine-readable string. New causes may be added without a major version change — clients must treat an unrecognized value as an opaque string, not fail on it. Known values:
+  - `unsafe_illegal` — the question asks for something unsafe or illegal.
+  - `provider_unavailable` — the provider could not be reached or did not answer; try again later.
+  - `provider_rejected` — the provider refused the request; sending it again would not help.
+  - `domain_unmapped` — the question is outside what this assistant covers.
+  - `invalid_input` — a form sent back could not be accepted.
+  - `already_filed` — this form was already sent; the earlier request stands.
+  - `no_init_pending` — nothing is waiting for this init response; it expired or was used.
+  - `init_response_refused` — the provider did not accept the init response; the init form is sent again.
+  - `provider_outcome_unknown` — the request may have reached the provider, but we could not confirm it; check before sending again.
 
 ### 3.1 Streaming events
 

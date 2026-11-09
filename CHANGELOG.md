@@ -15,6 +15,9 @@
 - Form turns keep a little state between turns in Redis, when
   `DSS_REDIS_URL` is set, and every turn runs one at a time per session.
   Unset, nothing changes (#207, ADR-0022)
+- Four new `cause` values for the form flow: `already_filed`,
+  `no_init_pending`, `init_response_refused` and `provider_outcome_unknown`.
+  `provider_outcome_unknown` is sent with `retryable: false` (#207)
 
 ## [0.2.0] - 2026-11-05
 

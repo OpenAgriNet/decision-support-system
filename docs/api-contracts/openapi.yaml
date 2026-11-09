@@ -529,7 +529,8 @@ components:
             additive set — an unrecognized value must be treated as an opaque
             string, not an error. Known values include `unsafe_illegal`,
             `provider_unavailable`, `provider_rejected`, `domain_unmapped`,
-            `invalid_input`.
+            `invalid_input`, `already_filed`, `no_init_pending`,
+            `init_response_refused`, `provider_outcome_unknown`.
           example: null
         confidence:
           type: integer
