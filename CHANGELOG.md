@@ -13,8 +13,8 @@
 - `clarification-text.yaml` has more required keys: `already_filed`,
   `no_init_pending`, `init_not_sent`, `init_rejected`, `init_response_needed`,
   `went_wrong`, `form_cannot_complete`, `saved_details_unusable`,
-  `field_recheck`, `init_response_refused`, `init_response_not_sent` and
-  `outcome_unknown` (#207)
+  `field_recheck`, `init_response_refused`, `init_response_not_sent`,
+  `outcome_unknown` and `case_not_found` (#207, #208)
 
 ### Added
 - A form sent again after the provider took it is answered `rejected`,
@@ -27,6 +27,8 @@
   init went to. A refused or unsent response hands the init form back as a
   `form_error` on the response field; one that may have gone through ends
   with `provider_outcome_unknown` (#207)
+- A PM-KISAN status check the provider refuses ends the flow: no such case,
+  and no init form back (#208)
 - Form turns keep a little state between turns in Redis, when
   `DSS_REDIS_URL` is set, and every turn runs one at a time per session.
   Unset, nothing changes (#207, ADR-0022)

@@ -65,6 +65,7 @@ _TEXT = ClarificationText(
     init_response_refused="The provider did not accept that response.",
     init_response_not_sent="Nothing was sent. Try the same response again.",
     outcome_unknown="We could not confirm whether this went through.",
+    case_not_found="No case was found for these details.",
 )
 
 

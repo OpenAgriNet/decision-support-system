@@ -86,6 +86,8 @@ class ClarificationText(BaseModel):
     init_response_not_sent: str
     # It may have reached the provider: the farmer checks before sending again.
     outcome_unknown: str
+    # A status check with an init response the provider refused: no such case.
+    case_not_found: str
     # More choices than this are grouped one level up before they are listed.
     max_choices: int = Field(default=5, gt=0)
 

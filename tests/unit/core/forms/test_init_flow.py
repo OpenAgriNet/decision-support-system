@@ -47,6 +47,7 @@ from dss.core.provider_discovery.models import DiscoveredAnswer
 from dss.core.shared.models import Cause, TextBlock, TurnStatus
 from tests.support.grievance_pack import (
     PMKISAN_INIT,
+    PMKISAN_STATUS,
     PMKISAN_SUPPORT,
     build_grievance_forms,
 )
@@ -523,3 +524,29 @@ def test_our_credentials_refused_end_the_flow_as_our_fault(status_code: int) -> 
     assert settled.ending.cause is Cause.INTERNAL
     assert settled.ending.answer.content == (TextBlock(text=_TEXT.went_wrong),)
     assert settled.forms == {}
+
+
+_STATUS_DETAILS = _submission(PMKISAN_STATUS, _KISAN_LOOKUP)
+
+
+@pytest.mark.parametrize("status_code", [400, 404, 422])
+def test_a_refused_status_check_ends_the_flow_with_no_such_case(
+    status_code: int,
+) -> None:
+    settled = _settle(status_code, details=_STATUS_DETAILS)
+
+    assert settled.ending.status is TurnStatus.UNAVAILABLE
+    assert settled.ending.cause is Cause.PROVIDER_REJECTED
+    assert settled.ending.answer.content == (TextBlock(text=_TEXT.case_not_found),)
+    assert settled.forms == {}
+
+
+@pytest.mark.parametrize("status_code", [429, 503, 401])
+def test_a_status_check_reads_every_other_failure_as_support_does(
+    status_code: int,
+) -> None:
+    support = _settle(status_code, retry_after_seconds=30)
+
+    status = _settle(status_code, details=_STATUS_DETAILS, retry_after_seconds=30)
+
+    assert status.ending == support.ending

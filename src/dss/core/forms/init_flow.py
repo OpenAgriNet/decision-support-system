@@ -305,7 +305,9 @@ def settle_failed_init_response(  # noqa: PLR0913
     text: ClarificationText,
     now: datetime,
 ) -> FlowSettled:
-    exit_for_failure = _init_response_exit_for(failure)
+    exit_for_failure = _init_response_exit_for(
+        failure, ProviderAction(flow.action.context.action)
+    )
     if not exit_for_failure.should_await_init:
         return FlowSettled(forms=forms, ending=_ended_for_good(exit_for_failure, text))
     return FlowSettled(
@@ -355,6 +357,20 @@ _INIT_RESPONSE_EXITS: Mapping[FailedCallOutcome, _InitResponseExit] = {
         should_await_init=False,
     ),
 }
+# Where an action reads a refusal its own way. A wrong case.filedOn must not
+# loop the farmer through the init form: no such case.
+_INIT_RESPONSE_EXITS_FOR_ACTION: Mapping[
+    ProviderAction, Mapping[FailedCallOutcome, _InitResponseExit]
+] = {
+    ProviderAction.STATUS: {
+        FailedCallOutcome.REFUSED: _InitResponseExit(
+            TurnStatus.UNAVAILABLE,
+            Cause.PROVIDER_REJECTED,
+            lambda text: text.case_not_found,
+            should_await_init=False,
+        ),
+    },
+}
 # 401/403 refuse our own credentials: asking for the response again cannot help.
 _AUTH_REFUSED_EXIT = _InitResponseExit(
     TurnStatus.UNAVAILABLE,
@@ -364,10 +380,15 @@ _AUTH_REFUSED_EXIT = _InitResponseExit(
 )
 
 
-def _init_response_exit_for(failure: Failure) -> _InitResponseExit:
+def _init_response_exit_for(
+    failure: Failure, action: ProviderAction
+) -> _InitResponseExit:
     if is_auth_refused(failure):
         return _AUTH_REFUSED_EXIT
-    return _INIT_RESPONSE_EXITS[outcome_of_failed_call(failure)]
+    outcome = outcome_of_failed_call(failure)
+    return _INIT_RESPONSE_EXITS_FOR_ACTION.get(action, {}).get(
+        outcome, _INIT_RESPONSE_EXITS[outcome]
+    )
 
 
 def _ended_for_good(

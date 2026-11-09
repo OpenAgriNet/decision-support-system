@@ -94,6 +94,8 @@ _KISAN_VALUES = {
     "grievance.category.code": "G001",
     "grievance.description": "My last installment has not come.",
 }
+_PMKISAN_STATUS = FormContext(scheme="PM-KISAN", category="Grievance", action="status")
+_KISAN_LOOKUP = {"enrolmentId": "PMK1234567", "case.filedOn": "2026-10-29"}
 _CHALLENGE = {"challenge": {"issued": {"method": "OTP", "channel": "SMS"}}}
 
 _VALUES = {
@@ -1316,3 +1318,25 @@ async def test_on_an_init_response_history_and_phone_reach_the_record_as_tags() 
     assert PHONE not in recorded.model_dump_json()
     assert recorded.history[0].text == "Call me on «phone_1»"
     assert recorded.user.phone == "«phone_1»"
+
+
+async def test_a_pm_kisan_status_is_read_over_two_form_turns() -> None:
+    invocation = RecordingActionInvocation(
+        replies={ProviderAction.INIT: _CHALLENGE, ProviderAction.STATUS: _TICKET}
+    )
+    compose = _FakeCompose("Your complaint is open.")
+    orch, store, _ = _build_kisan_orchestrator(invocation, compose=compose)
+
+    offered = _finished(
+        await _collect(orch, _form_turn(_KISAN_LOOKUP, context=_PMKISAN_STATUS))
+    )
+    read = _finished(await _collect(orch, _init_response_turn()))
+
+    assert offered.outcome.status is TurnStatus.REQUIRES_INPUT
+    assert read.outcome.status is TurnStatus.ANSWERED
+    init, status = invocation.calls
+    assert init.action is ProviderAction.INIT
+    assert status.action is ProviderAction.STATUS
+    assert status.attributes["case"] == {"filedOn": "2026-10-29"}
+    assert status.attributes["challenge"]["response"]["value"] == _OTP
+    assert _stored_state(store).forms["offer-1"].status is FormStatus.DONE
