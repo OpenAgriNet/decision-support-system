@@ -35,7 +35,7 @@ and composer, the event stream, the evidence writes, and the mapping from a
 turn's findings to a contract outcome.
 
 `Orchestrator.run` opens the turn's span and hands the turn to the path for
-its input kind. `TextPath` is the path for a sentence, in three layers: `run`
+its input type. `TextPath` is the path for a sentence, in three layers: `run`
 is the edge (redact, record, reveal kept values),
 `orchestration/translation.py` translates in and out or passes through, and
 `_run_core` runs the pipeline on tags only.
@@ -51,6 +51,7 @@ from collections.abc import (
     AsyncGenerator,
     AsyncIterator,
     Callable,
+    Container,
     Iterable,
     Mapping,
     Sequence,
@@ -106,7 +107,7 @@ from dss.core.shared.models import (
 )
 from dss.core.stream_response.citations import CitationNumbers
 from dss.core.stream_response.service import ComposeStream
-from dss.core.translation.service import EdgeTranslation
+from dss.core.translation.service import EdgeTranslation, TurnTranslation
 from dss.observability.stages import Stage
 from dss.observability.trace_log import bind_turn_ids, trace_component
 from dss.orchestration.answer_stream import AnswerStream
@@ -115,6 +116,7 @@ from dss.orchestration.events import CoreEvent
 from dss.orchestration.form_offer import find_forms
 from dss.orchestration.plan import Plan
 from dss.orchestration.redaction import RedactTexts
+from dss.orchestration.session import Session, SessionBusy, Sessions
 from dss.orchestration.stage_content import (
     asks_text,
     cited_sources_text,
@@ -182,29 +184,42 @@ class Components:
 
 
 class TurnPath[InputT: TurnInput](Protocol):
-    """One input kind's pipeline, from the turn as sent to the events the
+    """One input type's pipeline, from the turn as sent to the events the
     farmer reads."""
 
     def run(
-        self, turn: UserTurn[InputT], *, ctx: TurnContext, recorder: TurnRecorder
+        self,
+        turn: UserTurn[InputT],
+        *,
+        ctx: TurnContext,
+        recorder: TurnRecorder,
+        session: Session,
     ) -> AsyncGenerator[TurnEvent]: ...
 
 
-# `Any`: the table mixes kinds, and the type checker cannot say that a value's
-# kind equals its key. The boot check does.
+# `Any`: the table mixes input types, and the type checker cannot say that a
+# value's input type equals its key. The boot check does.
 type TurnPaths = Mapping[type[TurnInput], TurnPath[Any]]
 
 
-class NoPathForKindError(Exception):
+class NoPathForInputTypeError(Exception):
     pass
 
 
 class Orchestrator:
     """Satisfies `ports.turn.TurnRunner`. Opens the turn's span, then runs the
-    path wired for the input's kind."""
+    path wired for the input type inside the turn's session."""
 
-    def __init__(self, *, paths: TurnPaths) -> None:
+    def __init__(
+        self,
+        *,
+        paths: TurnPaths,
+        session_busy_answer: ComposedAnswer,
+        sessions: Sessions,
+    ) -> None:
         self._paths = paths
+        self._session_busy_answer = session_busy_answer
+        self._sessions = sessions
 
     async def run(
         self, turn: UserTurn[TurnInput], ctx: TurnContext
@@ -223,22 +238,46 @@ class Orchestrator:
         ) as recorder:
             yield TurnStarted()
             path = self._path_for(type(turn.input))
-            # `aclosing`: closing this generator does not reach the path's, and
-            # a closed screen must close every model stream.
-            async with aclosing(path.run(turn, ctx=ctx, recorder=recorder)) as events:
-                async for event in events:
-                    yield event
+            # One turn at a time per session, whatever its path.
+            async with self._sessions.open(ctx) as opened:
+                if isinstance(opened, SessionBusy):
+                    yield self._session_busy(recorder)
+                    return
+                # `aclosing`: closing this generator does not reach the path's,
+                # and a closed screen must close every model stream.
+                async with aclosing(
+                    path.run(turn, ctx=ctx, recorder=recorder, session=opened)
+                ) as events:
+                    async for event in events:
+                        yield event
 
-    def _path_for(self, kind: type[TurnInput]) -> TurnPath[Any]:
-        if kind not in self._paths:
-            raise NoPathForKindError(kind.__name__)
-        return self._paths[kind]
+    def _path_for(self, input_type: type[TurnInput]) -> TurnPath[Any]:
+        if input_type not in self._paths:
+            raise NoPathForInputTypeError(input_type.__name__)
+        return self._paths[input_type]
+
+    # shortcut: not redacted, recorded or localized, since no path ran; the
+    # turn record misses busy turns until a path answers them.
+    def _session_busy(self, recorder: TurnRecorder) -> TurnFinished:
+        finished = build_turn_finished(
+            outcome_for(TurnStatus.UNAVAILABLE, Cause.TIMEOUT),
+            self._session_busy_answer,
+        )
+        recorder.status(finished.outcome.status.value)
+        return finished
 
 
-def unrouted_kinds(
-    paths: TurnPaths, kinds: Iterable[type[TurnInput]]
+def unrouted_input_types(
+    routed: Container[type[TurnInput]], input_types: Iterable[type[TurnInput]]
 ) -> list[type[TurnInput]]:
-    return [kind for kind in kinds if kind not in paths]
+    return [input_type for input_type in input_types if input_type not in routed]
+
+
+@dataclass(frozen=True)
+class _Redacted:
+    turn: UserTurn[TextQuery]
+    # The real values behind the tags, for the provider calls only.
+    visibility: Visibility
 
 
 class TextPath:
@@ -286,8 +325,29 @@ class TextPath:
         self._forms = forms
 
     async def run(
-        self, turn: UserTurn[TextQuery], *, ctx: TurnContext, recorder: TurnRecorder
+        self,
+        turn: UserTurn[TextQuery],
+        *,
+        ctx: TurnContext,
+        recorder: TurnRecorder,
+        session: Session,
     ) -> AsyncGenerator[TurnEvent]:
+        redacted = await self._redact_for_the_record(turn, ctx, recorder)
+        translation = self._edge_translation.for_turn(redacted.turn)
+        core_turn = await translate_in(
+            redacted.turn, translation, trace_id=ctx.trace_id
+        )
+        async with aclosing(
+            self._stream_to_farmer(
+                core_turn, redacted, translation, ctx=ctx, recorder=recorder
+            )
+        ) as events:
+            async for event in events:
+                yield event
+
+    async def _redact_for_the_record(
+        self, turn: UserTurn[TextQuery], ctx: TurnContext, recorder: TurnRecorder
+    ) -> _Redacted:
         with trace_component(Stage.REDACTION, ctx.trace_id):
             redaction = await self._components.redact(
                 texts_of(turn), request_id=turn.transaction_id
@@ -295,10 +355,17 @@ class TextPath:
         farmer_turn = with_texts(turn, redaction.texts)
         recorder.redacted(found=redaction.found, failed=redaction.failed)
         self._turns.opened(ctx, farmer_turn)
+        return _Redacted(turn=farmer_turn, visibility=redaction.visibility)
 
-        translation = self._edge_translation.for_turn(farmer_turn)
-        core_turn = await translate_in(farmer_turn, translation, trace_id=ctx.trace_id)
-
+    async def _stream_to_farmer(
+        self,
+        core_turn: UserTurn[TextQuery],
+        redacted: _Redacted,
+        translation: TurnTranslation | None,
+        *,
+        ctx: TurnContext,
+        recorder: TurnRecorder,
+    ) -> AsyncGenerator[TurnEvent]:
         # `aclosing` each layer: closing an async generator does not reach the
         # one it reads from, and a closed screen must close every model stream.
         async with (
@@ -307,7 +374,7 @@ class TextPath:
                     core_turn,
                     ctx=ctx,
                     recorder=recorder,
-                    visibility=redaction.visibility,
+                    visibility=redacted.visibility,
                 )
             ) as core_events,
             aclosing(
@@ -316,12 +383,12 @@ class TextPath:
             aclosing(
                 reveal_to_farmer(
                     translated_events,
-                    visibility=redaction.visibility,
+                    visibility=redacted.visibility,
                     recorder=recorder,
                     on_finished=partial(
                         self._record_finished,
                         ctx=ctx,
-                        farmer_turn=farmer_turn,
+                        farmer_turn=redacted.turn,
                         recorder=recorder,
                     ),
                 )

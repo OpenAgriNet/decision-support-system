@@ -870,6 +870,28 @@ the column across when regenerating against a newer snapshot. An adopter who
 needs a different area set or different aliases points `DSS_AREA_CSV_PATH`
 at their own file.
 
+### Session state for forms (Redis)
+
+Some forms take more than one turn: PM-KISAN sends an OTP, and the farmer's
+next form answers it. The DSS keeps what it needs between those turns in
+Redis, for 180 seconds per session. Every turn runs in its session, one at a
+time; only form turns write to it for now.
+
+| Setting | Default | What it does |
+|---|---|---|
+| `DSS_REDIS_URL` | unset | The Redis address, like `redis://:<password>@redis:6379/0`. Unset means no store: a form turn forgets everything when it ends, so a flow that needs an OTP cannot finish. Forms that file in one turn work as before. |
+
+`docker-compose.yml` runs a Redis with a password (`DSS_REDIS_PASSWORD`) and
+nothing saved to disk, and points the DSS at it. Set `DSS_REDIS_URL=` (empty)
+in `.env` to turn it off. The Redis container still starts; the DSS just
+does not use it.
+
+- The password goes into the URL as it is. Use only letters, digits, `-` and
+  `_`, or set `DSS_REDIS_URL` yourself with the password URL-encoded.
+- Beyond a laptop, use TLS: a `rediss://` address.
+- A Redis that cannot be reached does not stop a form turn. That turn runs as
+  if `DSS_REDIS_URL` were unset, and the log says why.
+
 ### Place names the file lacks (Photon)
 
 The area file stops at blocks, so a village is not in it. Photon fills that gap.

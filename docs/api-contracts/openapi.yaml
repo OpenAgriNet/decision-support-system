@@ -195,7 +195,9 @@ components:
           description: RFC 3339 timestamp of the request.
         sessionId:
           type: string
-          description: Conversation key. The Experience owns conversation storage.
+          minLength: 1
+          pattern: '\S'
+          description: Conversation key. The Experience owns conversation storage. Must not be blank; leading and trailing spaces are dropped.
 
     RequestMessage:
       type: object

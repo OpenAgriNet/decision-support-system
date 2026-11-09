@@ -85,6 +85,15 @@ services:
       # The scheme catalog the intent model is shown (ADR-0021). The one in
       # the image by default; point it at a mounted CSV to use your own.
       DSS_SCHEMES_CONFIG_PATH: ${DSS_SCHEMES_CONFIG_PATH:-/app/configs/schemes.csv}
+      # Session state for form turns (ADR-0022), by service name. Set it empty
+      # in .env to run form turns without a store.
+      DSS_REDIS_URL: ${DSS_REDIS_URL-redis://:${DSS_REDIS_PASSWORD:-dss-local}@redis:6379/0}
+    # Started, not healthy: a Redis that is down only costs form turns their
+    # session, so it must not keep the DSS from starting. An empty
+    # DSS_REDIS_URL turns the store off but still starts the container.
+    depends_on:
+      redis:
+        condition: service_started
     ports:
       - "127.0.0.1:${DSS_HOST_PORT:-8077}:8077"
     healthcheck:
@@ -177,6 +186,26 @@ services:
       timeout: 5s
       retries: 6
       start_period: 60s
+    restart: unless-stopped
+
+  # Session state for form turns (ADR-0022). Password set; nothing saved to
+  # disk, so a restart forgets every open flow. Set DSS_REDIS_PASSWORD in .env
+  # anywhere but a laptop, using only letters, digits, `-` and `_`: it goes
+  # into the URL as it is. Beyond a laptop, use TLS: set DSS_REDIS_URL to a
+  # `rediss://` address. No published port: the DSS reaches it by name.
+  redis:
+    image: redis:${REDIS_TAG:-7-alpine}
+    command:
+      - sh
+      - -c
+      - exec redis-server --requirepass "$$REDIS_PASSWORD" --save "" --appendonly no
+    environment:
+      REDIS_PASSWORD: ${DSS_REDIS_PASSWORD:-dss-local}
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
 
 volumes:
