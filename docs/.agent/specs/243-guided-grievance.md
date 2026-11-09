@@ -23,9 +23,11 @@ farmer's words.
    `no_match`, as today.
 2. Settlement runs right after intent, from local data only: the schema
    packs and the form registry. It fills or flags each slot.
-3. An unsettled ask ends the turn `requires_input` with one question.
-4. A settled ask goes on to discovery, then the form step or the planner.
-   "Nobody serves it" is still found by discovery and ends as "can't serve".
+3. Unsettled asks skip discovery and the planner. The turn is
+   `requires_input`, and the composer asks one question.
+4. Settled asks go on as their own `Intent`: discovery, then the form step
+   or the planner, even when another ask in the turn is unsettled. "Nobody
+   serves it" is still found by discovery and ends as "can't serve".
 5. Every reply in this story goes through the composer.
 
 ```mermaid
@@ -163,37 +165,46 @@ Evidence
 
 | Outcome | Holds | Comes from | Lands in |
 |---|---|---|---|
-| `NeedsAnswer` | the open slots, in order | settlement | task 2 |
-| `CannotServe` | why | settlement or discovery | task 2 |
+| `NeedsClarification` | the open slots, in order | settlement | task 2 |
+| `CannotServe` | the slot that ends the ask | settlement | task 2 |
 | `Attempted` | results, failures | the planner | task 1 |
 | `AwaitingInput` | the form; later an OTP request | the form step | task 1 |
 
-  `Attempted` with no results is unanswered: the farmer is told so. `AwaitingInput` is answered with a
-  structured input read by its own path; `NeedsAnswer` is answered in
-  words, read by intent.
+  `Attempted` with no results is unanswered: the farmer is told so.
+  `AwaitingInput` waits for a structured input, read by its own path.
+  `NeedsClarification` waits for words, read by intent. `NeedsClarification`
+  and `CannotServe` are settlement's own results, stored as they are.
 
-  Each slot's state gives the composer a brief: missing → open question,
-  unsure → confirm, ambiguous → pick list, rejected → say why and ask
-  again.
+  The composer sees only the first open slot. Its state says what to ask:
+  missing → open question, ambiguous → pick from the choices code lists
+  below the reply, not found → say so and ask again, too broad → ask for a
+  smaller one.
 - `Evidence` now means "what we know per ask", not only provider data. The
   docstring says so.
-- An ambiguous place stops being a `Failure` and becomes "needs answer". A
-  place we cannot find is rejected: we say so and ask again.
+- An ambiguous or unknown place stops being a `Failure` and becomes
+  `NeedsClarification`.
 
 ### Settlement (`core/settlement/`)
 
 - `Frame`: an ask's slots, in order. `Slot` = name and state.
-- `SlotState`: filled, skipped, missing, unsure, ambiguous, rejected (not
-  found, too broad, invalid), unservable. Each state answers `is_settled`
-  and `ends_ask` and gives a brief. `settle` never checks the kind, so a
-  new state needs no change to `settle`.
-- `settle(frame) -> Settled | NeedsAnswer | CannotServe`. Pure. Any slot
-  that ends the ask → can't serve; else open slots → needs answer; else
+- `SlotState`, a closed set: `Resolved(value)`, `Ambiguous(choices)` (one
+  choice is a confirm), `Unresolved(value, reason)` (not found, too broad),
+  `Missing`, `Unservable(reason)`. A new slot needs no new state. `Skipped`
+  comes with voice forms.
+- `settle(frame) -> Settled | NeedsClarification | CannotServe`. Pure, and
+  reads only each state's `is_settled` and `ends_ask`. Any slot that ends
+  the ask → can't serve; else open slots → needs clarification; else
   settled.
-- One slot source per slot kind builds the frame: whether the ask needs
-  the slot, and its state. The LLM only reads values, in intent's
-  structured output (no tool call); code checks them. The detailed design
-  comes when it is built.
+- **Ask slots** are a fixed `AskSlot` enum, read from the ask's own fields
+  (`ask_slot_state`). **Form fields** are named by the pack, and are filled
+  by the form step later (voice).
+- **Which slots an ask needs** is worked out each turn from the current
+  capability index (`needed_slots`), since the index can refresh.
+- **Branch and merge:** `run_turn` settles each ask, then runs only the
+  settled asks as their own `Intent`. `merge_unsettled` puts their evidence
+  back beside the unsettled asks, in the farmer's order. Passing the ask
+  itself instead of its index would remove the merge (`TODO.md`, "Ask
+  identity").
 
 ### Intent (`core/intent/models.py`)
 
