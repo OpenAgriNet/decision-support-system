@@ -32,6 +32,7 @@ from tests.support.fakes import (
     FakeSchemeCatalog,
     FakeTranslator,
 )
+from tests.support.settlement import settles_every_ask
 
 
 def drive(runner: TurnRunner, turn: UserTurn, ctx: TurnContext) -> list[TurnEvent]:
@@ -106,6 +107,7 @@ def test_the_orchestrator_satisfies_the_port(a_turn, a_context):
         clarification_text=load_clarification_text(),
         edge_translation=EdgeTranslation(routes={}),
         forms=FormRegistry(),
+        settle_asks=settles_every_ask,
     )
     runner = Orchestrator(paths={TextQuery: text_path})
 

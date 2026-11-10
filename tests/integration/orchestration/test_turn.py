@@ -48,6 +48,7 @@ from dss.orchestration.turn import SettleAsks, build_settle_asks, run_turn
 from dss.ports.area_lookup import AreaMatch
 from tests.support.fakes import FakeAreaLookup, FakePromptProvider
 from tests.support.providers import build_capability
+from tests.support.settlement import settles_every_ask
 
 PROFANITY = WordCheckPolicy(
     id="profanity-filter",
@@ -173,6 +174,7 @@ async def test_the_nearest_place_guard_reaches_the_lookup() -> None:
         prompts=FakePromptProvider(),
         policies=[],
         discover_providers=_FakeDiscovery(),
+        settle_asks=settles_every_ask,
         area_lookup=lookup,
         nearest_max_km=12.5,
     )
@@ -219,6 +221,7 @@ async def test_discovery_runs_on_the_classified_intent() -> None:
         prompts=FakePromptProvider(),
         policies=[PROFANITY, DELETE_COMMAND],
         discover_providers=discovery,
+        settle_asks=settles_every_ask,
         area_lookup=FakeAreaLookup(),
     )
 
@@ -263,6 +266,7 @@ async def test_run_turn_returns_both_intent_and_decision() -> None:
         prompts=FakePromptProvider(),
         policies=[PROFANITY, DELETE_COMMAND],
         discover_providers=_FakeDiscovery(),
+        settle_asks=settles_every_ask,
         area_lookup=FakeAreaLookup(),
     )
 
@@ -292,6 +296,7 @@ async def test_moderation_reject_blanks_the_intent() -> None:
         prompts=FakePromptProvider(),
         policies=[DELETE_COMMAND],
         discover_providers=_FakeDiscovery(),
+        settle_asks=settles_every_ask,
         area_lookup=FakeAreaLookup(),
     )
 
@@ -321,6 +326,7 @@ async def test_moderation_reject_blanks_the_discovery_result() -> None:
         prompts=FakePromptProvider(),
         policies=[DELETE_COMMAND],
         discover_providers=discovery,
+        settle_asks=settles_every_ask,
         area_lookup=FakeAreaLookup(),
     )
 
@@ -380,6 +386,7 @@ async def test_discovery_does_not_wait_for_moderation() -> None:
         prompts=FakePromptProvider(),
         policies=[DELETE_COMMAND],
         discover_providers=discovery,
+        settle_asks=settles_every_ask,
         area_lookup=FakeAreaLookup(),
     )
 
@@ -448,25 +455,6 @@ async def test_nothing_settled_skips_discovery() -> None:
 
     assert discovery.intents == []
     assert result.settled_intent.asks == ()
-
-
-async def test_without_settlement_every_ask_is_settled() -> None:
-    """Until a deployment wires settlement, a turn runs as it did before."""
-
-    discovery = _FakeDiscovery()
-
-    result = await run_turn(
-        _turn("potato price, and will it rain?"),
-        intent_llm=_FakeIntentLLM(IntentClassification(asks=(_POTATO, _RAIN))),
-        moderation_llm=_FakeModerationLLM(),
-        prompts=FakePromptProvider(),
-        policies=[],
-        discover_providers=discovery,
-        area_lookup=FakeAreaLookup(),
-    )
-
-    assert result.settlements == (_SETTLED, _SETTLED)
-    assert [intent.asks for intent in discovery.intents] == [result.intent.asks]
 
 
 async def test_moderation_reject_blanks_the_settlements() -> None:

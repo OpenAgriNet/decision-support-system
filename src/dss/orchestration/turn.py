@@ -57,7 +57,7 @@ from dss.core.policy.models import Policy
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.provider_discovery.service import CapabilityIndexSource
 from dss.core.settlement import service as settlement
-from dss.core.settlement.models import Frame, Settled, Settlement
+from dss.core.settlement.models import Settled, Settlement
 from dss.core.shared.models import TextQuery, UserTurn
 from dss.observability.stages import Stage
 from dss.observability.trace_log import trace_component
@@ -86,11 +86,6 @@ def _nothing_discovered() -> DiscoveryResult:
 
 # One settlement per ask, in ask order.
 type SettleAsks = Callable[[Intent], tuple[Settlement, ...]]
-
-
-# TODO(#243): remove once the orchestrator passes the real settle_asks.
-def settle_every_ask(intent: Intent) -> tuple[Settlement, ...]:
-    return tuple(Settled(Frame(slots=())) for _ in intent.asks)
 
 
 def build_settle_asks(index: CapabilityIndexSource) -> SettleAsks:
@@ -224,11 +219,11 @@ async def run_turn(  # noqa: PLR0913
     prompts: PromptProvider,
     policies: Sequence[Policy],
     discover_providers: DiscoverProviders,
+    settle_asks: SettleAsks,
     area_lookup: AreaLookup,
     scheme_catalog: SchemeCatalog | None = None,
     nearest_max_km: float = DEFAULT_NEAREST_MAX_KM,
     now: datetime | None = None,
-    settle_asks: SettleAsks = settle_every_ask,
 ) -> TurnResult:
     """Classify intent, moderate the turn, and find who can answer it.
 

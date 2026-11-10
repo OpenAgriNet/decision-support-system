@@ -71,7 +71,7 @@ from dss.orchestration.orchestrator import (
 )
 from dss.orchestration.plan import Plan
 from dss.orchestration.redaction import RedactTexts, pass_through
-from dss.orchestration.turn import SettleAsks, settle_every_ask
+from dss.orchestration.turn import SettleAsks
 from dss.ports.area_lookup import AreaMatch
 from tests.support.evidence import ANY_ASK, build_evidence
 from tests.support.fakes import (
@@ -81,6 +81,7 @@ from tests.support.fakes import (
     FakeSchemeCatalog,
 )
 from tests.support.providers import build_capability
+from tests.support.settlement import settles_every_ask
 from tests.support.turn_events import assert_well_formed
 
 DELETE_COMMAND = LlmPolicy(
@@ -284,7 +285,7 @@ def _build(
     policies=(),
     area_lookup: FakeAreaLookup | None = None,
     redact: RedactTexts = pass_through,
-    settle_asks: SettleAsks = settle_every_ask,
+    settle_asks: SettleAsks = settles_every_ask,
     intent_llm=None,
     moderation_llm=None,
     localize: FakeLocalizer | None = None,

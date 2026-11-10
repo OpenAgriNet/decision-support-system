@@ -123,12 +123,7 @@ from dss.orchestration.stage_content import (
     evidence_text,
 )
 from dss.orchestration.translation import translate_in, translate_out
-from dss.orchestration.turn import (
-    SettleAsks,
-    TurnResult,
-    run_turn,
-    settle_every_ask,
-)
+from dss.orchestration.turn import SettleAsks, TurnResult, run_turn
 from dss.ports.area_lookup import AreaLookup
 from dss.ports.llm import LLMProvider
 from dss.ports.prompts import PromptProvider
@@ -269,7 +264,7 @@ class TextPath:
         schemas: Mapping[str, DomainSchema],
         edge_translation: EdgeTranslation,
         forms: FormLookup,
-        settle_asks: SettleAsks = settle_every_ask,
+        settle_asks: SettleAsks,
     ) -> None:
         self._intent_llm = intent_llm
         self._moderation_llm = moderation_llm

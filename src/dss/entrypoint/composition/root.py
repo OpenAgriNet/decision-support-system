@@ -72,7 +72,11 @@ from dss.core.intent.models import Intent
 from dss.core.planner.models import Identity
 from dss.core.planner.validation import DomainSchema
 from dss.core.policy.models import Checkpoint, Policy
-from dss.core.provider_discovery.models import DiscoveryResult, ProviderCapability
+from dss.core.provider_discovery.models import (
+    CapabilityIndex,
+    DiscoveryResult,
+    ProviderCapability,
+)
 from dss.core.provider_preferences.models import NO_PREFERENCE, SenderPreference
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import TextQuery, TurnInput, UserTurn
@@ -108,7 +112,7 @@ from dss.orchestration.orchestrator import (
 )
 from dss.orchestration.plan import InvocationFor, build_plan
 from dss.orchestration.redaction import RedactTexts, pass_through, redact_texts
-from dss.orchestration.turn import SettleAsks, build_settle_asks, settle_every_ask
+from dss.orchestration.turn import SettleAsks, build_settle_asks
 from dss.ports.area_lookup import AreaLookup
 from dss.ports.discovery import CapabilityDiscovery
 from dss.ports.invocation import CapabilityInvocation
@@ -568,11 +572,19 @@ class _Network:
     preferences: ProviderPreferences
 
 
+class _NoPacks:
+    """An empty capability index. No pack says an ask needs anything, so
+    every ask settles."""
+
+    def current(self) -> CapabilityIndex:
+        return {}
+
+    def place_bound_types(self) -> frozenset[str]:
+        return frozenset()
+
+
 def _settle_asks(packs: SchemaPacks | None) -> SettleAsks:
-    if packs is None:
-        # No packs, so nothing says an ask needs anything.
-        return settle_every_ask
-    return build_settle_asks(packs.cache)
+    return build_settle_asks(_NoPacks() if packs is None else packs.cache)
 
 
 def _network(

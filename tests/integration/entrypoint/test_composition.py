@@ -20,7 +20,9 @@ from dss.adapters.provider_preferences.registry import RegistryProviderPreferenc
 from dss.config.settings import Settings
 from dss.core.forms.models import FormContext
 from dss.core.forms.registry import FormLookup
+from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
 from dss.core.schema_packs.models import SchemaPackFiles
+from dss.core.settlement.models import Frame, Settled
 from dss.core.shared.models import TextQuery
 from dss.entrypoint.composition.root import (
     _aclose_for,
@@ -36,7 +38,6 @@ from dss.entrypoint.composition.schema_packs import (
     planner_schemas,
 )
 from dss.orchestration.orchestrator import Orchestrator
-from dss.orchestration.turn import settle_every_ask
 from dss.ports.turn import TurnRunner
 
 SCHEMA_PACKS_FIXTURE_ROOT = (
@@ -111,21 +112,16 @@ def test_wired_network_builds_theplanner_schemas(tmp_path: Path) -> None:
     assert set(network.schemas) <= set(network.schema_context_index)
 
 
-def test_only_loaded_packs_settle_asks(tmp_path: Path) -> None:
+def test_with_no_packs_every_ask_settles(tmp_path: Path) -> None:
     """Unwired there are no packs, so nothing says an ask needs anything."""
 
-    wired = load_schema_packs(
-        _settings(
-            tmp_path,
-            discovery_base_url="https://discovery.example/oan",
-            invocation_base_url="https://select.example/oan",
-            schema_pack_dir=SCHEMA_PACKS_FIXTURE_ROOT,
-        )
+    settle = _settle_asks(load_schema_packs(_settings(tmp_path)))
+    rain = Ask(
+        subject_categories=SubjectCategory.WEATHER,
+        interaction_type=InteractionType.OBSERVE,
     )
-    unwired = load_schema_packs(_settings(tmp_path))
 
-    assert _settle_asks(wired) is not settle_every_ask
-    assert _settle_asks(unwired) is settle_every_ask
+    assert settle(Intent(asks=(rain,))) == (Settled(Frame(slots=())),)
 
 
 def test_the_network_refuses_to_boot_with_no_packs(tmp_path: Path) -> None:

@@ -32,6 +32,7 @@ from dss.orchestration.discovery import (
 )
 from dss.orchestration.turn import run_turn
 from tests.support.fakes import NO_PREFERENCES, FakeAreaLookup, FakePromptProvider
+from tests.support.settlement import settles_every_ask
 
 SCHEMA_PACKS_FIXTURE_ROOT = (
     Path(__file__).parents[1]
@@ -335,6 +336,7 @@ async def test_run_turn_can_call_the_composed_discover_providers() -> None:
             prompts=FakePromptProvider(),
             policies=[],
             discover_providers=discover_providers,
+            settle_asks=settles_every_ask,
             area_lookup=FakeAreaLookup(),
         )
 
