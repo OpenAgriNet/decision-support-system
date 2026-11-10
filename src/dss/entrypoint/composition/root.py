@@ -304,7 +304,6 @@ def _build_text_path(settings: Settings, wiring: _Wiring) -> TextPath:
         telemetry=wiring.telemetry,
         area_lookup=wiring.area_lookup,
         clarification_text=boot.clarification_text,
-        schemas=wiring.network.schemas,
         edge_translation=EdgeTranslation(routes=boot.translation_routes),
         forms=wiring.forms,
         settle_asks=wiring.settle_asks,

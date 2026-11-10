@@ -894,8 +894,7 @@ How it behaves:
   middle of the state. If the platform says where the user is, and that is in
   Maharashtra, the answer is for there, and it names the place. Otherwise the
   user is asked for a district or village in it.
-  This works the same with the area file alone. If you override the
-  clarification text, add a `region_place` line, or the DSS will not start.
+  This works the same with the area file alone.
 - **A name the file has only inside a longer one.** "Kanha" is not in the file,
   but "Kanha Chatti" starts with it and may be far away. That is only a guess.
   Photon gets the chance to find the exact name first. Otherwise the guess is

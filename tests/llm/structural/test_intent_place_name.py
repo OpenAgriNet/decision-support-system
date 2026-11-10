@@ -25,7 +25,7 @@ from dss.adapters.area_lookup.csv_lookup import CsvAreaLookup
 from dss.adapters.llm.pydantic_ai_provider import PydanticAILLMProvider
 from dss.config.clarification_text_loader import load_clarification_text
 from dss.config.settings import DEFAULT_AREA_CSV, Settings
-from dss.core.channel.service import answer_for_unplaced_asks
+from dss.core.channel.service import pick_lists
 from dss.core.intent.models import (
     AmbiguousPlace,
     ClassifiedAsk,
@@ -38,6 +38,9 @@ from dss.core.intent.models import (
 )
 from dss.core.intent.service import classify_intent
 from dss.core.location.service import resolve_places
+from dss.core.planner.models import AskEvidence, Evidence
+from dss.core.settlement.ask_slots import ask_slot_state
+from dss.core.settlement.models import AskSlot, NeedsClarification, Slot
 from dss.core.shared.models import ConversationMessage, TextQuery, UserTurn
 from dss.entrypoint.composition.root import _resolve_model
 from dss.observability.stages import Stage
@@ -457,7 +460,8 @@ async def test_a_reply_that_picks_nothing_listed_is_not_turned_into_a_pick(
 
 
 async def _question_we_send(name: str) -> str:
-    """The question our code sends for `name`, built from the real place list."""
+    """The question the farmer reads for `name`: the composer's "which one?",
+    then the pick list code adds, built from the real place list."""
 
     ask = ClassifiedAsk(
         subject_categories=SubjectCategory.WEATHER,
@@ -467,9 +471,16 @@ async def _question_we_send(name: str) -> str:
     intent = await resolve_places(
         IntentClassification(asks=(ask,)), _turn("q"), lookup=LOOKUP
     )
-    answer = answer_for_unplaced_asks(intent.asks, load_clarification_text())
-    assert answer is not None, f"{name} is not ambiguous in the place list"
-    return answer.content[0].text
+    [resolved] = intent.asks
+    outcome = NeedsClarification(
+        open_slots=(Slot(AskSlot.PLACE, ask_slot_state(resolved, AskSlot.PLACE)),)
+    )
+    evidence = Evidence(
+        sources=(), ask_evidences=(AskEvidence(ask=resolved, outcome=outcome),)
+    )
+    lists = pick_lists(evidence, load_clarification_text())
+    assert lists, f"{name} is not ambiguous in the place list"
+    return f"Which {name}?\n{lists[0].text}"
 
 
 async def _place_for_reply(name: str, reply: str) -> ResolvedPlace:

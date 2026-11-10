@@ -81,7 +81,6 @@ from dss.core.moderation.messages import messages_for
 from dss.core.moderation.models import ModerationDecision, Outcome
 from dss.core.planner.evidence import group_by_ask, merge_unsettled
 from dss.core.planner.models import Evidence, Verdict
-from dss.core.planner.validation import DomainSchema
 from dss.core.policy.models import Policy
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.redaction.turn import texts_of, with_texts
@@ -258,7 +257,6 @@ class TextPath:
         telemetry: TelemetrySink,
         area_lookup: AreaLookup,
         clarification_text: ClarificationText,
-        schemas: Mapping[str, DomainSchema],
         edge_translation: EdgeTranslation,
         forms: FormLookup,
         settle_asks: SettleAsks,
@@ -277,9 +275,6 @@ class TextPath:
         self._telemetry = telemetry
         self._area_lookup = area_lookup
         self._clarification_text = clarification_text
-        # The same schemas the planner validates against. Read here for one
-        # thing only: whether a pack serves an ask that names no place.
-        self._schemas = schemas
         self._edge_translation = edge_translation
         # Required: no packs is an empty registry, so a default would make a
         # wiring mistake look like a deployment that serves no forms.

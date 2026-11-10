@@ -25,7 +25,6 @@ from dss.core.intent.models import (
 )
 from dss.core.moderation.models import Outcome
 from dss.core.planner.models import Evidence, Failure, Result, Source, SourceKind
-from dss.core.planner.validation import DomainSchema
 from dss.core.policy.models import (
     Checkpoint,
     EvaluationKind,
@@ -289,14 +288,12 @@ def _build(
     intent_llm=None,
     moderation_llm=None,
     localize: FakeLocalizer | None = None,
-    schemas: dict[str, DomainSchema] | None = None,
     edge_translation: EdgeTranslation | None = None,
     forms: FormLookup | None = None,
     scheme_catalog: FakeSchemeCatalog | None = None,
 ) -> tuple[Orchestrator, MemoryTurnSink]:
     turns = MemoryTurnSink()
     text_path = TextPath(
-        schemas=schemas or {},
         intent_llm=intent_llm or _FakeIntentLLM(intent),
         moderation_llm=moderation_llm or _FakeModerationLLM(violated=violated),
         prompts=FakePromptProvider(),
@@ -479,9 +476,8 @@ async def test_no_asks_is_no_match_with_a_message() -> None:
 
 
 async def test_an_unlocated_advisory_ask_is_answered() -> None:
-    """ "How do I grow potatoes" names nowhere, and the advisory pack indexes
-    no location: the turn goes on to the planner and composer instead of
-    stopping to ask for a place it does not need."""
+    """ "How do I grow potatoes" names nowhere. Settled, it goes on to the
+    planner and composer. Whether it needs a place is settlement's rule."""
 
     advisory = build_capability(
         provider_id="kvk",
@@ -508,11 +504,6 @@ async def test_an_unlocated_advisory_ask_is_answered() -> None:
         ),
         plan=plan,
         compose=compose,
-        schemas={
-            "openagrinet:KnowledgeAdvisory": DomainSchema(
-                type="KnowledgeAdvisory", filterable=()
-            )
-        },
     )
 
     events = await _collect(orch, _turn("how do I grow potatoes", location=None))

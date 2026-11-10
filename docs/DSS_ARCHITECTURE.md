@@ -148,7 +148,7 @@ The DSS accepts six primitives, mounted as YAML/Markdown files under `/config/`:
 | **Policies** | Yes | Yes | No | Enforceable guardrails at named checkpoints (Moderation, Pre-tool-call, Post-response). LLM-evaluated or deterministic. Follow the policy's `on_violation` action on rejection. |
 | **Context Providers** | Yes | **No** | No | Declarative mapping from prompt variable → source (`request.user_context.*`, `builtin://clock.date`, …). Override by using a different variable name. |
 | **Response Reviewers** | Yes | Yes | No | Post-hoc quality/safety checks on candidate answers (length, language conformance, presence of citations, …). May merge with post-response Policies in a later refactor. |
-| **Clarification text** | No | Yes | No | The fixed questions a farmer reads when a place is missing, not found, matches several, or is a whole region. Bundled default; the loader takes an override path. Every key is required, so an override must carry `region_place` too. |
+| **Clarification text** | No | Yes | No | The fixed text a farmer reads that the composer does not write: the pick-list hint, the no-provider lines, and the form messages. The composer asks for a missing or unclear place. Bundled default; the loader takes an override path. Every key is required. |
 
 **Personas.** A Persona is a *composition label* referencing a bundle of primitives (Identity + Skill set + Policy pack + Reviewers). Not a separate primitive; a way to bundle for a tenant.
 
