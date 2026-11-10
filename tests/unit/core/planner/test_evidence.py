@@ -5,21 +5,8 @@ from __future__ import annotations
 import pytest
 
 from dss.core.forms.models import FormContext, FormDefinition
-from dss.core.intent.models import (
-    AmbiguousPlace,
-    Ask,
-    Intent,
-    InteractionType,
-    PlaceSource,
-    ResolvedPlace,
-    SubjectCategory,
-    UnresolvedPlace,
-)
-from dss.core.planner.evidence import (
-    assemble_evidence,
-    merge_unsettled,
-    place_failures,
-)
+from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
+from dss.core.planner.evidence import assemble_evidence, merge_unsettled
 from dss.core.planner.models import (
     AskEvidence,
     Attempted,
@@ -38,8 +25,6 @@ from dss.core.settlement.models import (
     Settled,
     Slot,
 )
-from dss.core.shared.models import Geometry
-from dss.ports.area_lookup import AreaMatch
 from tests.support.evidence import attempted
 
 
@@ -496,96 +481,6 @@ def test_the_same_originator_twice_from_one_provider_is_one_source() -> None:
 
     assert [s.id for s in evidence.sources] == ["1"]
     assert [result.source_id for result in _results(evidence)] == ["1", "1"]
-
-
-_PUNE_PLACE = ResolvedPlace(
-    name="Pune",
-    within=("India", "Maharashtra"),
-    geometry=Geometry(coordinates=[73.85, 18.52]),
-    source=PlaceSource.NAMED,
-)
-
-
-def _weather_ask(place: ResolvedPlace | AmbiguousPlace | UnresolvedPlace) -> Ask:
-    return Ask(
-        subject_categories=SubjectCategory.WEATHER,
-        interaction_type=InteractionType.OBSERVE,
-        place=place,
-    )
-
-
-def test_an_unresolved_place_is_a_failure_without_a_provider() -> None:
-    """ "Weather in Pune and Xyzzy": Pune goes to the planner, Xyzzy is
-    already known to have nowhere to search. No provider was called, so none
-    is named."""
-
-    intent = _intent(
-        _weather_ask(_PUNE_PLACE),
-        _weather_ask(UnresolvedPlace(unresolved_name="Xyzzy")),
-    )
-
-    failures = place_failures(intent)
-
-    [failure] = failures
-    assert failure.ask_index == 1
-    assert failure.capability is None
-    assert failure.retryable is False
-    assert "Xyzzy" in failure.reason
-
-
-def test_an_ambiguous_place_is_a_failure_without_a_provider() -> None:
-    """Two Aurangabads: searching either could answer for the wrong one, so
-    no provider is called until the farmer picks."""
-
-    aurangabad = AmbiguousPlace(
-        unresolved_name="Aurangabad",
-        candidates=(
-            AreaMatch(
-                name="Aurangabad",
-                region="IN-MH",
-                within=("India", "Maharashtra"),
-                geometry=Geometry(coordinates=[75.34, 19.88]),
-            ),
-            AreaMatch(
-                name="Aurangabad",
-                region="IN-BR",
-                within=("India", "Bihar"),
-                geometry=Geometry(coordinates=[84.37, 24.75]),
-            ),
-        ),
-    )
-    intent = _intent(_weather_ask(_PUNE_PLACE), _weather_ask(aurangabad))
-
-    failures = place_failures(intent)
-
-    [failure] = failures
-    assert failure.ask_index == 1
-    assert failure.capability is None
-    assert "Aurangabad" in failure.reason
-    assert "several" in failure.reason
-
-
-def test_missing_needed_place_fails() -> None:
-    """ "How do I grow potato, and will it rain?" with nothing named: the
-    potato ask goes on without a place, the weather ask cannot."""
-
-    potato = Ask(
-        subject_categories=SubjectCategory.CROP,
-        interaction_type=InteractionType.ADVISE,
-        agriculture_subjects="potato",
-    )
-    rain = Ask(
-        subject_categories=SubjectCategory.WEATHER,
-        interaction_type=InteractionType.OBSERVE,
-    )
-    intent = _intent(potato, rain)
-
-    failures = place_failures(intent, place_optional={0})
-
-    [failure] = failures
-    assert failure.ask_index == 1
-    assert failure.capability is None
-    assert "place" in failure.reason
 
 
 _RAIN = Ask(

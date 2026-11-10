@@ -24,13 +24,7 @@ from dss.core.forms.models import (
     FormContext,
     FormDefinition,
 )
-from dss.core.intent.models import (
-    Ask,
-    Intent,
-    InteractionType,
-    SubjectCategory,
-    UnresolvedPlace,
-)
+from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
 from dss.core.moderation.models import ModerationDecision, Outcome, ReasonCode
 from dss.core.planner.models import AwaitingInput, Identity, Skill, Verdict
 from dss.core.planner.validation import DomainSchema
@@ -409,41 +403,6 @@ async def test_a_model_that_still_selects_for_a_form_ask_reaches_no_provider() -
     assert invocation.calls == []
     assert evidence.awaiting_forms == (GRIEVANCE_FORM,)
     assert evidence.ask_evidences[0].outcome == AwaitingInput(form=GRIEVANCE_FORM)
-
-
-async def test_an_ask_whose_place_failed_is_a_failure_even_if_never_called() -> None:
-    """Xyzzy has no place, so the model never calls select for it. Its failure
-    must still reach the evidence, or the farmer never hears about Xyzzy."""
-
-    xyzzy_ask = PRICE_ASK.model_copy(
-        update={"place": UnresolvedPlace(unresolved_name="Xyzzy")}
-    )
-    plan = build_plan(
-        schemas=SCHEMAS,
-        schema_context_index={},
-        invocation_for=lambda _turn: _FakeInvocation(),
-        identity=IDENTITY,
-        prompts=FakePromptProvider(skills=(SKILL,)),
-        model=FunctionModel(_answers_without_calling),
-    )
-
-    evidence = await plan(
-        _turn(),
-        intent=Intent(asks=(PRICE_ASK, xyzzy_ask), confidence=0.9),
-        discovery=DiscoveryResult(
-            answers={},
-            capabilities={0: (CAPABILITY,), 1: (CAPABILITY,)},
-            failures={},
-            events=(),
-        ),
-        verdict=_cleared_verdict(),
-    )
-
-    assert [
-        (failure.ask_index, failure.capability)
-        for entry in evidence.ask_evidences
-        for failure in attempted(entry).failures
-    ] == [(1, None)]
 
 
 async def test_the_planner_binds_its_own_model_settings() -> None:

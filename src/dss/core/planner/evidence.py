@@ -15,11 +15,11 @@ never seen assembles with no code change.
 
 from __future__ import annotations
 
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 
 from dss.core.forms.models import FormDefinition
-from dss.core.intent.models import AmbiguousPlace, Ask, Intent, UnresolvedPlace
+from dss.core.intent.models import Ask, Intent
 from dss.core.planner.models import (
     AskEvidence,
     AskOutcome,
@@ -33,34 +33,6 @@ from dss.core.planner.models import (
 )
 from dss.core.provider_discovery.models import DiscoveredAnswer
 from dss.core.settlement.models import Settled, Settlement
-
-
-def place_failures(
-    intent: Intent, *, place_optional: Collection[int] = ()
-) -> list[Failure]:
-    """One failure per ask whose place has nowhere to search.
-
-    Recorded before the planner runs, so the farmer hears about the ask even
-    when the model never tries to call anything for it.
-
-    An ask with no place at all fails too, unless `place_optional` names it:
-    the pack serves it from nowhere (`core/planner/place.py`).
-    """
-
-    failures: list[Failure] = []
-    for index, ask in enumerate(intent.asks):
-        if isinstance(ask.place, UnresolvedPlace):
-            reason = f"{ask.place.unresolved_name}: place not found"
-        elif isinstance(ask.place, AmbiguousPlace):
-            reason = f"{ask.place.unresolved_name}: matches several places"
-        elif ask.place is None and index not in place_optional:
-            reason = "no place given, and this needs one"
-        else:
-            continue
-        failures.append(
-            Failure(ask_index=index, capability=None, reason=reason, retryable=False)
-        )
-    return failures
 
 
 def assemble_evidence(

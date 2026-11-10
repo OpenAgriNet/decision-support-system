@@ -529,3 +529,15 @@ def test_an_ask_with_no_place_nobody_serves_still_gets_an_answer() -> None:
 
     (block,) = answer.content
     assert block.text == _TEXT.no_provider
+
+
+def test_an_unclear_place_nobody_serves_still_gets_an_answer() -> None:
+    """A complaint names Xyzzy in passing. No question follows it now, so the
+    farmer must still hear that nobody serves it."""
+
+    xyzzy = _ask(place=UnresolvedPlace(unresolved_name="Xyzzy"))
+
+    answer = answer_for_unserved_asks([xyzzy], _TEXT)
+
+    (block,) = answer.content
+    assert block.text == _TEXT.no_provider

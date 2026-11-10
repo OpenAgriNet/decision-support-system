@@ -50,13 +50,7 @@ def answer_for_unserved_asks(
     new schema needs no new text.
     """
 
-    # An ask whose place is still in question gets no line: the place question
-    # that follows is its answer.
-    lines = [
-        _no_provider_line(ask, text)
-        for ask in asks
-        if ask.place is None or isinstance(ask.place, ResolvedPlace)
-    ]
+    lines = [_no_provider_line(ask, text) for ask in asks]
     # Two asks on one place are one thing for the farmer to act on.
     unique = dict.fromkeys(lines)
     return ComposedAnswer(content=(TextBlock(text="\n".join(unique)),))

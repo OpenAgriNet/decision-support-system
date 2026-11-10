@@ -16,19 +16,20 @@ from dss.adapters.observability.tracing import open_span
 from dss.adapters.sinks.memory import MemoryTurnSink
 from dss.core.forms.models import FormBlock, FormContext, FormDefinition
 from dss.core.intent.models import (
-    ClassifiedAsk,
     IntentClassification,
-    InteractionType,
-    SubjectCategory,
 )
-from dss.core.planner.models import Result
 from dss.core.provider_discovery.models import DiscoveryResult
+from dss.core.settlement.models import (
+    Ambiguous,
+    AskSlot,
+    NeedsClarification,
+    Slot,
+)
 from dss.core.shared.errors import TranslationError
 from dss.core.shared.language import ENGLISH, LanguageTag
 from dss.core.shared.models import (
     Claim,
     ClaimDelta,
-    Geometry,
     Location,
     RefusalBlock,
     TextBlock,
@@ -45,8 +46,9 @@ from dss.orchestration.orchestrator import Orchestrator, outcome_for
 from dss.orchestration.plan import Plan
 from dss.orchestration.redaction import RedactTexts, pass_through
 from dss.orchestration.translation import translate_out
-from dss.ports.area_lookup import AreaMatch
+from dss.orchestration.turn import SettleAsks
 from tests.support.fakes import FakeAreaLookup, FakeLocalizer, FakeTranslator
+from tests.support.settlement import settles_every_ask
 from tests.support.turn_events import assert_well_formed
 
 from .test_orchestrator import (
@@ -56,7 +58,6 @@ from .test_orchestrator import (
     DELETE_COMMAND,
     _build,
     _ctx,
-    _evidence,
     _FakeCompose,
     _FakePlan,
     _one_ask,
@@ -149,6 +150,7 @@ def _build_translating(  # noqa: PLR0913
     redact: RedactTexts = pass_through,
     intent_llm: _RecordingIntentLLM | None = None,
     moderation_llm: _RecordingModerationLLM | None = None,
+    settle_asks: SettleAsks = settles_every_ask,
 ) -> _Translating:
     """An orchestrator that translates `language` to `to` and, unless told
     otherwise, answers. One LLM policy, so moderation asks its model."""
@@ -168,6 +170,7 @@ def _build_translating(  # noqa: PLR0913
         edge_translation=EdgeTranslation(
             routes={language: TranslationRoute(translator=translator, to=to)}
         ),
+        settle_asks=settle_asks,
     )
     return _Translating(orchestrator=orchestrator, turns=turns)
 
@@ -442,48 +445,22 @@ async def test_translator_sees_tags_farmer_sees_values() -> None:
     assert "«phone_1»" in turns.records["t1"].finished.content[0].text
 
 
-async def test_ambiguous_place_question_is_translated_with_the_answer() -> None:
-    def weather_in(place_name: str) -> ClassifiedAsk:
-        return ClassifiedAsk(
-            subject_categories=SubjectCategory.WEATHER,
-            interaction_type=InteractionType.OBSERVE,
-            place_name=place_name,
-        )
-
-    def aurangabad(state: str) -> AreaMatch:
-        return AreaMatch(
-            name="Aurangabad",
-            region="IN-XX",
-            within=("India", state),
-            geometry=Geometry(coordinates=[75.3, 19.9]),
-        )
-
+async def test_the_pick_list_is_translated_with_the_question() -> None:
+    other_pune = _PUNE_MATCH.model_copy(update={"within": ("India", "Telangana")})
+    which_pune = NeedsClarification(
+        open_slots=(Slot(AskSlot.PLACE, Ambiguous((_PUNE_MATCH, other_pune))),)
+    )
     orch = _build_translating(
         FakeTranslator(),
-        intent=IntentClassification(
-            asks=(weather_in("Pune"), weather_in("Aurangabad")), confidence=0.9
-        ),
-        plan=_FakePlan(
-            _evidence(
-                results=(Result(ask_index=0, source_id="1", data={"rain": "none"}),),
-            )
-        ),
-        compose=_FakeCompose("No rain in Pune [1]."),
-        area_lookup=FakeAreaLookup(
-            {
-                "pune": [_PUNE_MATCH],
-                "aurangabad": [aurangabad("Maharashtra"), aurangabad("Bihar")],
-            }
-        ),
+        compose=_FakeCompose("Which Pune do you mean?"),
+        settle_asks=lambda intent: (which_pune,),
     ).orchestrator
 
-    events = await _drain(orch, _build_turn(GUJARATI, location=None))
+    events = await _drain(orch, _build_turn(GUJARATI))
 
     streamed = "".join(_collect_streamed_texts(events))
-    assert streamed.startswith("[gu] No rain in Pune [1].")
-    assert streamed.endswith(
-        "Which Aurangabad?\n1. Aurangabad, Maharashtra\n2. Aurangabad, Bihar"
-    )
+    assert streamed.startswith("[gu] Which Pune do you mean?")
+    assert "1. Pune, Maharashtra\n2. Pune, Telangana" in streamed
 
 
 async def test_stream_failure_mid_way_raises_after_sent_pieces() -> None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
 
@@ -111,22 +112,61 @@ def _query_for_ask(
     coverage: Coverage | None,
     index: Mapping[tuple[str, str], tuple[str, ...]],
     place_bound_types: frozenset[str],
-) -> tuple[ProviderQuery | None, CapabilityUnresolved | None]:
+) -> ProviderQuery | CapabilityUnresolved:
     action_type = _ACTION_TYPE_BY_INTERACTION[ask.interaction_type]
     types, event = resolve_capability_type(
         ask.subject_categories.value, action_type, index
     )
     if (
-        not types
+        event is not None
         and ask.subject_categories not in _DISCOVERABLE_WITHOUT_CAPABILITY_TYPE
     ):
-        return None, event
+        return event
     return ProviderQuery(
         capabilities=types,
         subject_category=ask.subject_categories.value,
         languages=languages,
         coverage=coverage if _is_searched_by_place(types, place_bound_types) else None,
-    ), None
+    )
+
+
+@dataclass(frozen=True)
+class _NoPlaceToSearch:
+    """The ask names a place we cannot use, and its search is filtered by
+    place."""
+
+
+_NO_PLACE_TO_SEARCH = _NoPlaceToSearch()
+
+
+def _search_for(
+    ask: Ask,
+    languages: tuple[str, ...],
+    radius_m: int,
+    index: CapabilityIndex,
+    place_bound_types: frozenset[NetworkSchemaType],
+) -> ProviderQuery | CapabilityUnresolved | _NoPlaceToSearch:
+    """What to search for this ask, or why it cannot be searched."""
+
+    coverage = coverage_for_ask(ask, radius_m=radius_m)
+    query = _query_for_ask(ask, languages, coverage, index, place_bound_types)
+    if _lacks_a_needed_place(ask, query, place_bound_types):
+        return _NO_PLACE_TO_SEARCH
+    return query
+
+
+def _lacks_a_needed_place(
+    ask: Ask,
+    query: ProviderQuery | CapabilityUnresolved,
+    place_bound_types: frozenset[NetworkSchemaType],
+) -> bool:
+    # A safety net. Settlement asks for a needed place first. Without one,
+    # the search has no place and could answer for some other place.
+    if not isinstance(ask.place, AmbiguousPlace | UnresolvedPlace):
+        return False
+    return isinstance(query, CapabilityUnresolved) or _is_searched_by_place(
+        query.capabilities, place_bound_types
+    )
 
 
 def _expected_categories(
@@ -163,29 +203,26 @@ def _find_asks_to_discover(
     (or none), so a turn asking about two places issues two spatially
     different discover calls rather than one shared coordinate."""
 
-    queries_by_ask: dict[int, ProviderQuery] = {}
-    unsearchable_asks: set[int] = set()
-    events: list[CapabilityUnresolved] = []
-    for ask_index, ask in enumerate(intent.asks):
-        # Nowhere to search: an unfiltered discover would bring back answers
-        # for some other place. The place failure is reported downstream.
-        if isinstance(ask.place, AmbiguousPlace | UnresolvedPlace):
-            unsearchable_asks.add(ask_index)
-            continue
-        coverage = coverage_for_ask(ask, radius_m=radius_m)
-        query, event = _query_for_ask(
-            ask, languages, coverage, index, place_bound_types
-        )
-        if query is None:
-            assert event is not None  # noqa: S101 - type narrowing only
-            events.append(event)
-            unsearchable_asks.add(ask_index)
-            continue
-        queries_by_ask[ask_index] = query
+    outcomes = {
+        ask_index: _search_for(ask, languages, radius_m, index, place_bound_types)
+        for ask_index, ask in enumerate(intent.asks)
+    }
     return AsksToBeDiscovered(
-        queries_by_ask=queries_by_ask,
-        unsearchable_asks=frozenset(unsearchable_asks),
-        events=tuple(events),
+        queries_by_ask={
+            i: outcome
+            for i, outcome in outcomes.items()
+            if isinstance(outcome, ProviderQuery)
+        },
+        unsearchable_asks=frozenset(
+            i
+            for i, outcome in outcomes.items()
+            if not isinstance(outcome, ProviderQuery)
+        ),
+        events=tuple(
+            outcome
+            for outcome in outcomes.values()
+            if isinstance(outcome, CapabilityUnresolved)
+        ),
     )
 
 
