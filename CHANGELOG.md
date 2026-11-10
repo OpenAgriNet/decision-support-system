@@ -12,7 +12,9 @@
   DSS refuses to boot (#207)
 - `clarification-text.yaml` has more required keys: `already_filed`,
   `no_init_pending`, `init_not_sent`, `init_rejected`, `init_response_needed`,
-  `went_wrong` and `form_cannot_complete` (#207)
+  `went_wrong`, `form_cannot_complete`, `saved_details_unusable`,
+  `field_recheck`, `init_response_refused`, `init_response_not_sent` and
+  `outcome_unknown` (#207)
 
 ### Added
 - A form sent again after the provider took it is answered `rejected`,
@@ -21,6 +23,10 @@
   farmer the init form for the OTP the provider texted them. Without a kept
   session (no `DSS_REDIS_URL`, or Redis down) it calls nothing and ends
   `unavailable`, `internal` (#207)
+- The init form sent back files the waiting PM-KISAN form with the provider
+  init went to. A refused or unsent response hands the init form back as a
+  `form_error` on the response field; one that may have gone through ends
+  with `provider_outcome_unknown` (#207)
 - Form turns keep a little state between turns in Redis, when
   `DSS_REDIS_URL` is set, and every turn runs one at a time per session.
   Unset, nothing changes (#207, ADR-0022)

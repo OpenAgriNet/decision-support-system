@@ -31,9 +31,10 @@ async def call_provider_action(  # noqa: PLR0913
     invocation: ProviderActionInvocation,
     transaction_id: NetworkTransactionID,
     visibility: Visibility,
+    init_values: Mapping[str, str] | None = None,
 ) -> DiscoveredAnswer | Failure:
     invocation_call = _invocation_call_for(action, invocation)
-    body = build_action_attributes(action, provider, values)
+    body = build_action_attributes(action, provider, values, init_values=init_values)
     try:
         reply = await invocation_call(
             provider, body, transaction_id, visibility=visibility

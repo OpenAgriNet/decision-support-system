@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 from dss.core.forms.models import (
     FieldValue,
     FormContext,
@@ -43,6 +45,9 @@ def _entry(
         status=status,
         provider=provider,
     )
+
+
+_NOW = datetime(2026, 11, 10, 9, 30, tzinfo=UTC)
 
 
 def test_clearing_the_awaiting_init_record_keeps_done_ones() -> None:
@@ -98,6 +103,7 @@ def test_a_done_form_keeps_its_definition_and_no_value() -> None:
     assert done["open"].status is FormStatus.DONE
     assert done["open"].definition == entry.definition
     assert done["open"].provider is None
+    assert done["open"].awaited_at is None
     assert [value.value for value in done["open"].submission.values] == [WITHHELD]
 
 
@@ -119,9 +125,38 @@ def test_a_form_awaiting_init_keeps_its_submission_and_provider() -> None:
     entry = _entry(FormStatus.DONE, provider=provider)
 
     waiting = with_init_awaited(
-        {}, "f1", entry.definition, entry.submission, provider=provider
+        {},
+        "f1",
+        entry.definition,
+        entry.submission,
+        provider=provider,
+        now=_NOW,
     )
 
     assert waiting["f1"] == entry.model_copy(
-        update={"status": FormStatus.AWAITING_INIT}
+        update={"status": FormStatus.AWAITING_INIT, "awaited_at": _NOW}
     )
+
+
+def test_an_entry_awaited_again_differs_from_the_one_before() -> None:
+    entry = _entry(FormStatus.AWAITING_INIT)
+    provider = grievance_provider("pmkisan", "PM-KISAN")
+    first = with_init_awaited(
+        {},
+        "f1",
+        entry.definition,
+        entry.submission,
+        provider=provider,
+        now=_NOW,
+    )
+
+    again = with_init_awaited(
+        first,
+        "f1",
+        entry.definition,
+        entry.submission,
+        provider=provider,
+        now=_NOW + timedelta(seconds=1),
+    )
+
+    assert again != first

@@ -22,7 +22,6 @@ from dss.core.shared.language import LanguageTag
 from dss.core.shared.models import Geometry, TurnContext, TurnEvent, UserTurn
 from dss.core.shared.network import NetworkTransactionID
 from dss.ports.area_lookup import AreaMatch
-from dss.ports.invocation import ProviderCallFailedError
 from dss.ports.prompts import PromptIdentifier
 
 
@@ -282,14 +281,20 @@ class ActionCall:
 
 
 class RecordingActionInvocation:
+    # `replies` and `failures` by action override `reply` and `failure`, so
+    # init can succeed while the call after it fails.
     def __init__(
         self,
         reply: Mapping[str, object] | None = None,
         *,
-        failure: ProviderCallFailedError | None = None,
+        failure: Exception | None = None,
+        replies: Mapping[ProviderAction, Mapping[str, object]] | None = None,
+        failures: Mapping[ProviderAction, Exception] | None = None,
     ) -> None:
         self._reply = reply or {}
         self._failure = failure
+        self._replies = replies or {}
+        self._failures = failures or {}
         self.calls: list[ActionCall] = []
 
     async def init(
@@ -348,6 +353,7 @@ class RecordingActionInvocation:
 
     def _answer(self, call: ActionCall) -> ActionReply:
         self.calls.append(call)
-        if self._failure is not None:
-            raise self._failure
-        return ActionReply(attributes=self._reply)
+        failure = self._failures.get(call.action, self._failure)
+        if failure is not None:
+            raise failure
+        return ActionReply(attributes=self._replies.get(call.action, self._reply))

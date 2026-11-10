@@ -5,6 +5,7 @@ import re
 from collections import Counter
 from collections.abc import Callable, Container, Mapping, Sequence
 from dataclasses import dataclass, replace
+from datetime import datetime
 from http import HTTPStatus
 from uuid import uuid4
 
@@ -422,12 +423,12 @@ def answer_for_form_errors(
     )
 
 
-type NotSentText = Callable[[ClarificationText], str]
+type TextChoice = Callable[[ClarificationText], str]
 
 # What the farmer reads for each way a form's call can fail, by the call. A
 # `form_error` with no fields says the form is still theirs; the values were
 # fine. A status check the provider refused is read as no such case (#206).
-_NOT_SENT_TEXT: Mapping[ProviderAction, Mapping[Cause, NotSentText]] = {
+_NOT_SENT_TEXT: Mapping[ProviderAction, Mapping[Cause, TextChoice]] = {
     ProviderAction.SUPPORT: {
         Cause.PROVIDER_UNAVAILABLE: lambda text: text.not_filed,
         Cause.PROVIDER_REJECTED: lambda text: text.not_filed_rejected,
@@ -549,14 +550,6 @@ def end_for_no_provider(intent: Intent, text: ClarificationText) -> FlowEnding:
         status=TurnStatus.NO_MATCH,
         cause=None,
         answer=answer_for_unserved_asks(intent.asks, text),
-    )
-
-
-def end_for_no_init_pending(text: ClarificationText) -> FlowEnding:
-    return FlowEnding(
-        status=TurnStatus.REQUIRES_INPUT,
-        cause=Cause.NO_INIT_PENDING,
-        answer=answer_with_text(text.no_init_pending),
     )
 
 
@@ -784,18 +777,20 @@ def with_call_filed(
     return with_form_done(forms, submission.form_id, details.definition, submission)
 
 
-def with_init_awaited(
+def with_init_awaited(  # noqa: PLR0913
     forms: FormRecords,
     form_id: str,
     definition: FormDefinition,
     submission: FormSubmission,
     *,
     provider: ProviderCapability,
+    now: datetime,
 ) -> FormRecords:
     waiting = FormEntry(
         definition=definition,
         submission=submission,
         status=FormStatus.AWAITING_INIT,
         provider=provider,
+        awaited_at=now,
     )
     return {**forms, form_id: waiting}

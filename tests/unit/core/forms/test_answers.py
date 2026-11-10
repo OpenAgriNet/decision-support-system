@@ -27,7 +27,6 @@ from dss.core.forms.service import (
     end_for_call_cause,
     end_for_failed_call,
     end_for_invalid_form,
-    end_for_no_init_pending,
     end_for_no_provider,
     end_for_unknown_form,
     form_error_block,
@@ -225,14 +224,6 @@ def test_the_init_form_goes_out_as_a_new_offer_under_its_text() -> None:
                 status=TurnStatus.REQUIRES_INPUT,
                 cause=Cause.INVALID_INPUT,
                 answer=answer_for_unknown_form(_TEXT),
-            ),
-        ),
-        (
-            end_for_no_init_pending(_TEXT),
-            FlowEnding(
-                status=TurnStatus.REQUIRES_INPUT,
-                cause=Cause.NO_INIT_PENDING,
-                answer=answer_with_text(_TEXT.no_init_pending),
             ),
         ),
     ],

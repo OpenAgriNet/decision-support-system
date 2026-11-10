@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Iterable, Mapping
+from datetime import datetime
 from enum import StrEnum
 from typing import Literal
 
@@ -368,6 +369,9 @@ class FormEntry(BaseModel):
     status: FormStatus
     # Where init went; set with AWAITING_INIT.
     provider: ProviderCapability | None = None
+    # Set each time the entry waits for init again, so the session is saved
+    # and its time to live starts over.
+    awaited_at: datetime | None = None
 
 
 # Details forms by form_id; DONE entries stay until the TTL.

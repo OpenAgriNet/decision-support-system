@@ -60,6 +60,11 @@ _TEXT = ClarificationText(
     init_response_needed="Enter the one-time password the provider sent you.",
     went_wrong="Something went wrong on our side.",
     form_cannot_complete="This form cannot be completed right now.",
+    saved_details_unusable="We could not use your saved details.",
+    field_recheck="Check this value.",
+    init_response_refused="The provider did not accept that response.",
+    init_response_not_sent="Nothing was sent. Try the same response again.",
+    outcome_unknown="We could not confirm whether this went through.",
 )
 
 
@@ -288,7 +293,7 @@ def test_a_grouped_list_is_cut_at_five_and_says_how_to_find_the_rest() -> None:
     ]
 
 
-def _ask(place=None) -> Ask:  # noqa: ANN001
+def _ask(place=None) -> Ask:
     return Ask(
         subject_categories=SubjectCategory.WEATHER,
         interaction_type=InteractionType.OBSERVE,

@@ -77,6 +77,15 @@ class ClarificationText(BaseModel):
     went_wrong: str
     # A form that needs init, on a session nothing keeps past this turn.
     form_cannot_complete: str
+    # Saved details the DSS can no longer use, e.g. the pack changed between turns.
+    saved_details_unusable: str
+    # The field error on an init response handed back; the sentence says why.
+    field_recheck: str
+    # The provider saw the init response and refused it; or never took it in.
+    init_response_refused: str
+    init_response_not_sent: str
+    # It may have reached the provider: the farmer checks before sending again.
+    outcome_unknown: str
     # More choices than this are grouped one level up before they are listed.
     max_choices: int = Field(default=5, gt=0)
 

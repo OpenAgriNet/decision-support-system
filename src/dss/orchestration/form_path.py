@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator, Callable, Sequence
+from collections.abc import AsyncGenerator, Callable, Mapping, Sequence
 from contextlib import aclosing
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -17,11 +17,18 @@ from dss.core.forms.init_flow import (
     FlowSettled,
     InitCall,
     NoInitChallenge,
+    NoInitPending,
+    SavedDetailsUnusable,
+    WaitingFlow,
     end_for_failed_init,
     end_for_session_not_kept,
     find_init_call,
     find_init_failure,
+    find_waiting_flow,
+    settle_failed_init_response,
+    settle_no_waiting_flow,
     settle_sent_init,
+    with_init_response_filed,
 )
 from dss.core.forms.models import (
     ActionSchema,
@@ -40,7 +47,6 @@ from dss.core.forms.service import (
     end_for_already_filed,
     end_for_failed_call,
     end_for_invalid_form,
-    end_for_no_init_pending,
     end_for_no_provider,
     end_for_unknown_form,
     free_text_of,
@@ -286,10 +292,72 @@ class FormPath:
     async def _handle_init_response(
         self, form_turn: _FormTurn, session: Session
     ) -> _Reply:
-        await self._redact_for_the_record(form_turn, ())
-        return await self._end(
-            end_for_no_init_pending(self._clarification_text), form_turn
+        flow = find_waiting_flow(
+            session.forms,
+            form_turn.turn.input.context,
+            self._forms,
+            intent_for=self._intent_for,
         )
+        # The record and the composer only ever get the tagged turn, so
+        # every exit below waits for this.
+        redacted = await self._redact_for_the_record(
+            form_turn, _free_text_of_flow(flow)
+        )
+        match flow:
+            case WaitingFlow():
+                return await self._send_init_response(
+                    form_turn, flow, redacted, session
+                )
+            case NoInitPending() | SavedDetailsUnusable():
+                return await self._save_and_end(
+                    settle_no_waiting_flow(
+                        session.forms, flow, self._clarification_text
+                    ),
+                    session,
+                    form_turn,
+                )
+
+    async def _send_init_response(
+        self,
+        form_turn: _FormTurn,
+        flow: WaitingFlow,
+        redacted: _Redacted,
+        session: Session,
+    ) -> _Reply:
+        init_response = form_turn.turn.input
+        checked = validate_submission(init_response, self._forms)
+        if not isinstance(checked, ValidSubmission):
+            return await self._end(
+                end_for_invalid_form(checked, self._clarification_text), form_turn
+            )
+        # Removed before the call: a crash after it must not leave a response
+        # that may have reached the provider open to be used again.
+        session.update_forms(clear_awaiting_init_record(session.forms))
+        response = await self._call_provider_action(
+            form_turn,
+            flow.details,
+            flow.action,
+            provider=flow.provider,
+            visibility=redacted.visibility,
+            init_values=checked.values,
+        )
+        if isinstance(response, Failure):
+            _warn_if_auth_refused(response, form_turn.ctx)
+            return await self._save_and_end(
+                settle_failed_init_response(
+                    session.forms,
+                    flow,
+                    response,
+                    init_response=init_response,
+                    init_form=checked.definition,
+                    text=self._clarification_text,
+                    now=datetime.now(UTC),
+                ),
+                session,
+                form_turn,
+            )
+        session.update_forms(with_init_response_filed(session.forms, flow))
+        return self._stream_provider_answer(response, flow.intent, redacted, form_turn)
 
     def _stream_provider_answer(
         self,
@@ -370,6 +438,7 @@ class FormPath:
                 provider=provider,
                 init=init,
                 text=self._clarification_text,
+                now=datetime.now(UTC),
             ),
             session,
             form_turn,
@@ -389,7 +458,7 @@ class FormPath:
         )
         return await self._finish(outcome, ending.answer, form_turn)
 
-    async def _call_provider_action(
+    async def _call_provider_action(  # noqa: PLR0913
         self,
         form_turn: _FormTurn,
         submission: ValidSubmission,
@@ -397,6 +466,7 @@ class FormPath:
         *,
         provider: ProviderCapability,
         visibility: Visibility,
+        init_values: Mapping[str, str] | None = None,
     ) -> DiscoveredAnswer | Failure:
         turn = form_turn.turn
         with trace_component(Stage.PROVIDER_ACTION, form_turn.ctx.trace_id):
@@ -407,6 +477,7 @@ class FormPath:
                 invocation=self._components.invocation_for(turn),
                 transaction_id=turn.transaction_id,
                 visibility=visibility,
+                init_values=init_values,
             )
             set_current_span_attributes(
                 action=action.context.action,
@@ -542,6 +613,12 @@ def _free_text_of(
 def _warn_if_auth_refused(failure: Failure | NoInitChallenge, ctx: TurnContext) -> None:
     if isinstance(failure, Failure) and is_auth_refused(failure):
         warn_auth_refused(failure, request_id=ctx.trace_id)
+
+
+def _free_text_of_flow(
+    flow: NoInitPending | SavedDetailsUnusable | WaitingFlow,
+) -> tuple[str, ...]:
+    return free_text_of(flow.details) if isinstance(flow, WaitingFlow) else ()
 
 
 def _count(discovery: DiscoveryResult) -> int:
