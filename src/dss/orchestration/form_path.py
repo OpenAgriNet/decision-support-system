@@ -122,6 +122,13 @@ class _Redacted:
     visibility: Visibility
 
 
+@dataclass(frozen=True)
+class _CheckedForm:
+    details: ValidSubmission
+    intent: Intent
+    action: ActionSchema
+
+
 # Which turn this is; the session is apart, since it changes during the turn.
 @dataclass(frozen=True)
 class _FormTurn:
@@ -187,14 +194,44 @@ class FormPath:
             async for event in events:
                 yield event
 
-    async def _handle_action_form(  # noqa: PLR0911 - one exit per way a form is not sent
+    async def _handle_action_form(
         self, form_turn: _FormTurn, session: Session
     ) -> _Reply:
-        submission = form_turn.turn.input
         # Raw values are checked first: a tagged phone fails its own pattern.
-        checked = validate_submission(submission, self._forms)
+        checked = validate_submission(form_turn.turn.input, self._forms)
         redacted = await self._redact_for_the_record(form_turn, _free_text_of(checked))
+        form = await self._check_before_moderation(form_turn, checked, session)
+        if isinstance(form, TurnFinished):
+            return form
+        decision = await self._moderate(redacted, form_turn)
+        if decision.outcome is not Outcome.PROCEED:
+            return await self._refuse(decision, form_turn)
+        provider = await self._find_form_provider(form.intent, form_turn)
+        if provider is None:
+            return await self._end(
+                end_for_no_provider(form.intent, self._clarification_text), form_turn
+            )
+        # One form waits for init at a time: this form's call replaces any other.
+        session.update_forms(clear_awaiting_init_record(session.forms))
+        if form.action.needs_init():
+            return await self._send_init(
+                form_turn,
+                form.details,
+                provider=provider,
+                visibility=redacted.visibility,
+                session=session,
+            )
+        return await self._call_and_compose(
+            form_turn, form, provider, redacted, session
+        )
 
+    async def _check_before_moderation(
+        self,
+        form_turn: _FormTurn,
+        checked: ValidSubmission | FormErrors | UnknownForm,
+        session: Session,
+    ) -> _CheckedForm | TurnFinished:
+        submission = form_turn.turn.input
         if is_done(session.forms, submission.form_id):
             return await self._end(
                 end_for_already_filed(self._clarification_text), form_turn
@@ -203,18 +240,13 @@ class FormPath:
             return await self._end(
                 end_for_invalid_form(checked, self._clarification_text), form_turn
             )
-
         # Before moderation: a form that cannot be sent is not worth a model call.
         intent = self._intent_for(submission.context)
-        if intent is None:  # a known form, but not an action the DSS can file
-            return await self._end(
-                end_for_unknown_form(self._clarification_text), form_turn
-            )
-
         action = self._forms.action_schema(submission.context)
-        # shortcut: the registry builds each form from its schema, so this should
-        # not happen; link the two so it cannot, then drop this branch.
-        if action is None:
+        # A known form, but not an action the DSS can file. shortcut: the
+        # registry builds each form from its schema, so a missing action should
+        # not happen; link the two so it cannot, then drop that check.
+        if intent is None or action is None:
             return await self._end(
                 end_for_unknown_form(self._clarification_text), form_turn
             )
@@ -223,52 +255,20 @@ class FormPath:
             return await self._end(
                 end_for_session_not_kept(self._clarification_text), form_turn
             )
+        return _CheckedForm(details=checked, intent=intent, action=action)
 
-        decision = await self._moderate(redacted, form_turn)
-        if decision.outcome is not Outcome.PROCEED:
-            return await self._refuse(decision, form_turn)
-
-        provider = await self._find_form_provider(intent, form_turn)
-        if provider is None:
-            return await self._end(
-                end_for_no_provider(intent, self._clarification_text), form_turn
-            )
-
-        # One form waits for init at a time: this form's call replaces any other.
-        session.update_forms(clear_awaiting_init_record(session.forms))
-        if action.needs_init():
-            return await self._send_init(
-                form_turn,
-                checked,
-                provider=provider,
-                visibility=redacted.visibility,
-                session=session,
-            )
-        return await self._call_and_compose(
-            form_turn,
-            checked,
-            action,
-            intent=intent,
-            provider=provider,
-            redacted=redacted,
-            session=session,
-        )
-
-    async def _call_and_compose(  # noqa: PLR0913
+    async def _call_and_compose(
         self,
         form_turn: _FormTurn,
-        checked: ValidSubmission,
-        action: ActionSchema,
-        *,
-        intent: Intent,
+        form: _CheckedForm,
         provider: ProviderCapability,
         redacted: _Redacted,
         session: Session,
     ) -> _Reply:
         response = await self._call_provider_action(
             form_turn,
-            checked,
-            action,
+            form.details,
+            form.action,
             provider=provider,
             visibility=redacted.visibility,
         )
@@ -279,15 +279,15 @@ class FormPath:
                     form_turn.turn.input,
                     response,
                     self._clarification_text,
-                    action=action,
+                    action=form.action,
                 ),
                 form_turn,
             )
         # Before the answer streams: a closed screen must still leave it done.
         session.update_forms(
-            with_call_filed(session.forms, checked, form_turn.turn.input)
+            with_call_filed(session.forms, form.details, form_turn.turn.input)
         )
-        return self._stream_provider_answer(response, intent, redacted, form_turn)
+        return self._stream_provider_answer(response, form.intent, redacted, form_turn)
 
     async def _handle_init_response(
         self, form_turn: _FormTurn, session: Session
