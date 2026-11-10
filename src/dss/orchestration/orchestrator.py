@@ -152,8 +152,18 @@ _STUB_CONFIDENCE = {
 }
 
 
-def outcome_for(status: TurnStatus, cause: Cause | None = None) -> TurnOutcome:
-    return TurnOutcome(status=status, cause=cause, confidence=_STUB_CONFIDENCE[status])
+def outcome_for(
+    status: TurnStatus,
+    cause: Cause | None = None,
+    *,
+    retry_after_seconds: int | None = None,
+) -> TurnOutcome:
+    return TurnOutcome(
+        status=status,
+        cause=cause,
+        confidence=_STUB_CONFIDENCE[status],
+        retry_after_seconds=retry_after_seconds,
+    )
 
 
 @dataclass(frozen=True)

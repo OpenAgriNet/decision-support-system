@@ -14,10 +14,11 @@ from dss.core.forms.models import (
     FieldValue,
     FormContext,
     FormErrorBlock,
+    FormStatus,
     FormSubmission,
     ProviderAction,
 )
-from dss.core.forms.service import build_form_registry
+from dss.core.forms.service import WITHHELD, build_form_registry
 from dss.core.intent.models import Intent, InteractionType, Scheme, SubjectCategory
 from dss.core.policy.models import Policy
 from dss.core.provider_discovery.models import (
@@ -35,14 +36,16 @@ from dss.core.shared.models import (
     TextBlock,
     TurnContext,
     TurnEvent,
+    TurnFinished,
     TurnStatus,
     UserDetails,
     UserTurn,
 )
+from dss.core.shared.session_state import SessionState
 from dss.orchestration.form_path import FormPath, FormPathComponents
 from dss.orchestration.orchestrator import Orchestrator
 from dss.orchestration.redaction import RedactTexts, pass_through, redact_texts
-from dss.orchestration.session import NoSessionStore, Sessions
+from dss.orchestration.session import NoSessionStore, Sessions, SessionStore
 from dss.ports.invocation import (
     SupportFailedError,
 )
@@ -52,6 +55,7 @@ from tests.support.fakes import (
     FakeSchemeCatalog,
     RecordingActionInvocation,
 )
+from tests.support.key_value import FakeKeyValueStore
 from tests.support.providers import grievance_provider
 from tests.support.turn_events import assert_well_formed
 
@@ -70,6 +74,7 @@ _GRIEVANCE_YAML = (
 _PMFBY = Scheme(code="PMFBY", name="Pradhan Mantri Fasal Bima Yojana")
 _PMFBY_SUPPORT = FormContext(scheme="PMFBY", category="Grievance", action="support")
 _PMFBY_STATUS = FormContext(scheme="PMFBY", category="Grievance", action="status")
+_PMKISAN_INIT = FormContext(scheme="PM-KISAN", category="Grievance", action="init")
 
 _VALUES = {
     "enrolmentId": "PMFBY-2024-000123",
@@ -78,6 +83,8 @@ _VALUES = {
     "season": "Kharif",
     "grievance.description": "Claim for the Kharif crop loss has not been paid.",
 }
+_OTP = "1234"
+_INIT_RESPONSE = {"challenge.response.value": _OTP}
 _LOOKUP = {"applicantMobile": "9876543210", "case.ticketNo": "100626000099001"}
 _TICKET = {"case": {"ticketNo": "100626000099001", "filedOn": "2026-10-29"}}
 
@@ -475,6 +482,23 @@ async def test_the_provider_call_is_its_own_stage(spans) -> None:
     assert attributes["is_failure"] is False
 
 
+async def test_a_stream_closed_mid_answer_closes_the_composer() -> None:
+    compose = _FakeCompose("Filed. Ticket 1.", chunks=("Filed. ", "Ticket 1."))
+    orch, _ = _build_orchestrator_and_turn_sink(
+        invocation=RecordingActionInvocation(_TICKET), compose=compose
+    )
+    ctx = TurnContext(trace_id="t1", message_id="m1", session_id="s1", sender_id="c1")
+
+    events = orch.run(_form_turn(_VALUES), ctx)
+    async for event in events:
+        if isinstance(event, ClaimDelta):
+            break
+    assert not compose.closed
+    await events.aclose()  # type: ignore[attr-defined]
+
+    assert compose.closed
+
+
 async def test_a_failed_provider_call_is_marked_on_its_stage(spans) -> None:
     orch, _ = _build_orchestrator_and_turn_sink(invocation=_support_unavailable())
 
@@ -608,3 +632,91 @@ async def test_a_support_call_the_provider_refused_is_not_retryable() -> None:
     _text, kept = finished.content
     assert isinstance(kept, FormErrorBlock)
     assert kept.fields == ()
+
+
+def _finished(events: list[TurnEvent]) -> TurnFinished:
+    finished = events[-1]
+    assert isinstance(finished, TurnFinished)
+    return finished
+
+
+def _with_a_store() -> tuple[FakeKeyValueStore, SessionStore]:
+    store = FakeKeyValueStore()
+    return store, SessionStore(store)
+
+
+def _stored_state(store: FakeKeyValueStore) -> SessionState:
+    stored = store.values.get("c1:s1")
+    return (
+        SessionState() if stored is None else SessionState.model_validate_json(stored)
+    )
+
+
+async def test_a_filed_form_is_kept_done_without_its_values() -> None:
+    store, sessions = _with_a_store()
+    orch, _ = _build_orchestrator_and_turn_sink(
+        invocation=RecordingActionInvocation(_TICKET), sessions=sessions
+    )
+
+    await _collect(orch, _form_turn(_VALUES))
+
+    entry = _stored_state(store).forms["offer-1"]
+    assert entry.status is FormStatus.DONE
+    assert entry.definition.context == _PMFBY_SUPPORT
+    assert {value.value for value in entry.submission.values} == {WITHHELD}
+
+
+async def test_a_form_sent_again_after_filing_is_already_filed() -> None:
+    invocation = RecordingActionInvocation(_TICKET)
+    _, sessions = _with_a_store()
+    orch, turns = _build_orchestrator_and_turn_sink(
+        invocation=invocation, sessions=sessions
+    )
+    await _collect(orch, _form_turn(_VALUES))
+
+    events = await _collect(orch, _form_turn(_VALUES))
+
+    finished = _finished(events)
+    assert finished.outcome.status is TurnStatus.REJECTED
+    assert finished.outcome.cause is Cause.ALREADY_FILED
+    (text,) = finished.content
+    assert text == TextBlock(text=load_clarification_text().already_filed)
+    assert len(invocation.calls) == 1
+    assert turns.records["t1"].finished == finished
+
+
+async def test_a_form_the_provider_did_not_take_can_be_sent_again() -> None:
+    store, sessions = _with_a_store()
+    invocation = _support_unavailable()
+    orch, _ = _build_orchestrator_and_turn_sink(
+        invocation=invocation, sessions=sessions
+    )
+    await _collect(orch, _form_turn(_VALUES))
+
+    await _collect(orch, _form_turn(_VALUES))
+
+    assert len(invocation.calls) == 2
+    assert _stored_state(store).forms == {}
+
+
+async def test_an_init_response_with_nothing_waiting_calls_nobody() -> None:
+    invocation = RecordingActionInvocation()
+    discovery = _RecordingDiscovery(_providers_found())
+    orch, turns = _build_orchestrator_and_turn_sink(
+        invocation=invocation,
+        discover=discovery,
+        sessions=_with_a_store()[1],
+    )
+
+    events = await _collect(orch, _form_turn(_INIT_RESPONSE, context=_PMKISAN_INIT))
+
+    finished = _finished(events)
+    assert finished.outcome.status is TurnStatus.REQUIRES_INPUT
+    assert finished.outcome.cause is Cause.NO_INIT_PENDING
+    (text,) = finished.content
+    assert text == TextBlock(text=load_clarification_text().no_init_pending)
+    assert invocation.calls == []
+    assert discovery.intents == []
+    record = turns.records["t1"]
+    assert record.turn is not None and record.finished == finished
+    assert _OTP not in record.turn.model_dump_json()

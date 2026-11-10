@@ -8,8 +8,16 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from dss.core.channel.models import ComposedAnswer
 from dss.core.provider_discovery.models import ProviderCapability
-from dss.core.shared.models import MessageReference, OutputBlock, Role, TurnInput
+from dss.core.shared.models import (
+    Cause,
+    MessageReference,
+    OutputBlock,
+    Role,
+    TurnInput,
+    TurnStatus,
+)
 
 
 class ProviderAction(StrEnum):
@@ -300,6 +308,16 @@ class FailedCallOutcome(StrEnum):
     NOT_SENT = "not_sent"
     # It may have reached the provider, so sending it again might file twice.
     OUTCOME_UNKNOWN = "outcome_unknown"
+
+
+# How a form flow's turn ends when no answer is composed from evidence.
+class FlowEnding(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    status: TurnStatus
+    cause: Cause | None
+    answer: ComposedAnswer
+    retry_after_seconds: int | None = None
 
 
 class ActionReply(BaseModel):

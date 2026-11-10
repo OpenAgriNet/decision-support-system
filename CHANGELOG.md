@@ -10,8 +10,12 @@
   answer to a form turn that waited too long while another turn from the same
   farmer held its session. An adopter with their own copy must add it, or the
   DSS refuses to boot (#207)
+- `clarification-text.yaml` has two more required keys: `already_filed` and
+  `no_init_pending` (#207)
 
 ### Added
+- A form sent again after the provider took it is answered `rejected`,
+  `already_filed`, and nothing is called. Needs `DSS_REDIS_URL` (#207)
 - Form turns keep a little state between turns in Redis, when
   `DSS_REDIS_URL` is set, and every turn runs one at a time per session.
   Unset, nothing changes (#207, ADR-0022)

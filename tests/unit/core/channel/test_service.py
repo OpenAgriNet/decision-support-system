@@ -53,6 +53,8 @@ _TEXT = ClarificationText(
     status_not_checked="We could not check your complaint's status right now.",
     status_not_found="No complaint was found for that ticket number and phone.",
     session_busy="Another message from you is still being handled. Try again.",
+    already_filed="This form was already sent.",
+    no_init_pending="Nothing is waiting for this response.",
 )
 
 

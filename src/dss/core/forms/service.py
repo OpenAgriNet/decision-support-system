@@ -4,13 +4,14 @@ import copy
 import re
 from collections import Counter
 from collections.abc import Callable, Container, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from http import HTTPStatus
 from uuid import uuid4
 
 import yaml
 
 from dss.core.channel.models import ClarificationText, ComposedAnswer
+from dss.core.channel.service import answer_for_unserved_asks
 from dss.core.forms.models import (
     ActionField,
     ActionSchema,
@@ -22,6 +23,7 @@ from dss.core.forms.models import (
     FieldRules,
     FieldSource,
     FieldValue,
+    FlowEnding,
     FormBlock,
     FormContext,
     FormDefinition,
@@ -38,11 +40,12 @@ from dss.core.forms.models import (
     ValidSubmission,
 )
 from dss.core.forms.registry import FormLookup, FormRegistry
+from dss.core.intent.models import Intent
 from dss.core.planner.models import NO_READABLE_REPLY, Failure
-from dss.core.provider_discovery.models import ProviderCapability
+from dss.core.provider_discovery.models import DiscoveryResult, ProviderCapability
 from dss.core.schema_packs.models import SchemaPackFiles, SchemaPackSkipped
 from dss.core.schema_packs.service import PACK_DEFECTS, is_api_pack
-from dss.core.shared.models import Cause, TextBlock
+from dss.core.shared.models import Cause, TextBlock, TurnStatus
 from dss.core.shared.schema import resolve_schema
 
 _ACTION_MAP = "x-oan-schema-by-action"
@@ -437,7 +440,7 @@ _NOT_SENT_TEXT: Mapping[ProviderAction, Mapping[Cause, NotSentText]] = {
 }
 
 
-def cause_for_failed_call(failure: Failure) -> Cause:
+def _cause_for_failed_call(failure: Failure) -> Cause:
     if failure.retryable:
         return Cause.PROVIDER_UNAVAILABLE
     return Cause.PROVIDER_REJECTED
@@ -493,8 +496,72 @@ def answer_for_failed_call(
     )
 
 
+def end_for_failed_call(
+    submission: FormSubmission, failure: Failure, text: ClarificationText
+) -> FlowEnding:
+    cause = _cause_for_failed_call(failure)
+    return FlowEnding(
+        status=TurnStatus.UNAVAILABLE,
+        cause=cause,
+        answer=answer_for_failed_call(submission, cause, text),
+        retry_after_seconds=failure.retry_after_seconds,
+    )
+
+
+def end_for_form_errors(errors: FormErrors, text: ClarificationText) -> FlowEnding:
+    return FlowEnding(
+        status=TurnStatus.REQUIRES_INPUT,
+        cause=Cause.INVALID_INPUT,
+        answer=answer_for_form_errors(errors, text),
+    )
+
+
+def end_for_unknown_form(text: ClarificationText) -> FlowEnding:
+    return FlowEnding(
+        status=TurnStatus.REQUIRES_INPUT,
+        cause=Cause.INVALID_INPUT,
+        answer=answer_for_unknown_form(text),
+    )
+
+
+def end_for_invalid_form(
+    checked: FormErrors | UnknownForm, text: ClarificationText
+) -> FlowEnding:
+    if isinstance(checked, FormErrors):
+        return end_for_form_errors(checked, text)
+    return end_for_unknown_form(text)
+
+
+def end_for_already_filed(text: ClarificationText) -> FlowEnding:
+    return FlowEnding(
+        status=TurnStatus.REJECTED,
+        cause=Cause.ALREADY_FILED,
+        answer=answer_with_text(text.already_filed),
+    )
+
+
+def end_for_no_provider(intent: Intent, text: ClarificationText) -> FlowEnding:
+    return FlowEnding(
+        status=TurnStatus.NO_MATCH,
+        cause=None,
+        answer=answer_for_unserved_asks(intent.asks, text),
+    )
+
+
+def end_for_no_init_pending(text: ClarificationText) -> FlowEnding:
+    return FlowEnding(
+        status=TurnStatus.REQUIRES_INPUT,
+        cause=Cause.NO_INIT_PENDING,
+        answer=answer_with_text(text.no_init_pending),
+    )
+
+
 def answer_for_unknown_form(text: ClarificationText) -> ComposedAnswer:
     return ComposedAnswer(content=(TextBlock(text=text.unknown_form),))
+
+
+def answer_with_text(text: str) -> ComposedAnswer:
+    return ComposedAnswer(content=(TextBlock(text=text),))
 
 
 def form_error_block(errors: FormErrors, text: ClarificationText) -> FormErrorBlock:
@@ -638,6 +705,18 @@ def candidates_for_scheme(
     )
 
 
+def discovery_for_scheme(
+    discovery: DiscoveryResult, scheme_code: str
+) -> DiscoveryResult:
+    return replace(
+        discovery,
+        capabilities={
+            position: candidates_for_scheme(candidates, scheme_code)
+            for position, candidates in discovery.capabilities.items()
+        },
+    )
+
+
 def _advertised_at(candidate: ProviderCapability, path: str) -> object:
     node: object = candidate.advertised
     for segment in path.split("."):
@@ -673,3 +752,29 @@ def _is_same_flow(entry: FormEntry, init_context: FormContext) -> bool:
         init_context.scheme,
         init_context.category,
     )
+
+
+def is_done(forms: FormRecords, form_id: str) -> bool:
+    entry = forms.get(form_id)
+    return entry is not None and entry.status is FormStatus.DONE
+
+
+def with_form_done(
+    forms: FormRecords,
+    form_id: str,
+    definition: FormDefinition,
+    submission: FormSubmission,
+) -> FormRecords:
+    # Values withheld: a done form is only ever looked up, never sent again.
+    done = FormEntry(
+        definition=definition,
+        submission=withhold_values(submission),
+        status=FormStatus.DONE,
+    )
+    return {**forms, form_id: done}
+
+
+def with_call_filed(
+    forms: FormRecords, details: ValidSubmission, submission: FormSubmission
+) -> FormRecords:
+    return with_form_done(forms, submission.form_id, details.definition, submission)

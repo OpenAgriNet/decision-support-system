@@ -64,6 +64,10 @@ class ClarificationText(BaseModel):
     status_not_found: str
     # A form turn while another from the same farmer still holds the session.
     session_busy: str
+    # A form sent again after the provider took it.
+    already_filed: str
+    # An init response with no form waiting for it: never sent, expired or used.
+    no_init_pending: str
     # More choices than this are grouped one level up before they are listed.
     max_choices: int = Field(default=5, gt=0)
 
