@@ -64,6 +64,30 @@ class ClarificationText(BaseModel):
     status_not_found: str
     # A form turn while another from the same farmer still holds the session.
     session_busy: str
+    # A form sent again after the provider took it.
+    already_filed: str
+    # An init response with no form waiting for it: never sent, expired or used.
+    no_init_pending: str
+    # Init did not reach the provider, or the provider refused the details.
+    init_not_sent: str
+    init_rejected: str
+    # Sent with the init form: what the farmer answers, e.g. an OTP.
+    init_response_needed: str
+    # Our own fault, e.g. a pack that gives no init for a scheme that needs one.
+    went_wrong: str
+    # A form that needs init, on a session nothing keeps past this turn.
+    form_cannot_complete: str
+    # Saved details the DSS can no longer use, e.g. the pack changed between turns.
+    saved_details_unusable: str
+    # The field error on an init response handed back; the sentence says why.
+    field_recheck: str
+    # The provider saw the init response and refused it; or never took it in.
+    init_response_refused: str
+    init_response_not_sent: str
+    # It may have reached the provider: the farmer checks before sending again.
+    outcome_unknown: str
+    # A status check with an init response the provider refused: no such case.
+    case_not_found: str
     # More choices than this are grouped one level up before they are listed.
     max_choices: int = Field(default=5, gt=0)
 

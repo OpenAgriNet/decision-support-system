@@ -49,9 +49,10 @@ VALUES = {"applicantMobile": PHONE, "case.ticketNo": TICKET}
 
 
 class _Network:
-    """The OAN network adapter, faked: one PMFBY grievance desk. Records what
-    the DSS sent; `/status` refuses a body the pack would refuse, and a case
-    it does not hold."""
+    """The OAN network adapter, faked: the PMFBY and PM-KISAN grievance
+    providers; the test reads a PMFBY case. Records what the DSS sent;
+    `/status` refuses a body the pack would refuse, and a case it does not
+    hold."""
 
     def __init__(self, *, holds_the_case: bool = True) -> None:
         self.holds_the_case = holds_the_case

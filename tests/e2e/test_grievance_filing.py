@@ -41,7 +41,14 @@ SCHEMA_PACKS = FIXTURES / "network-specs" / "schema"
 DISCOVER_RESPONSE = json.loads(
     (FIXTURES / "discover_response_grievance.json").read_text()
 )
-PROVIDER_ID = DISCOVER_RESPONSE["message"]["catalogs"][0]["provider"]["id"]
+PROVIDER_ID = next(
+    catalog["provider"]["id"]
+    for catalog in DISCOVER_RESPONSE["message"]["catalogs"]
+    if any(
+        resource["resourceAttributes"]["scheme"]["code"] == "PMFBY"
+        for resource in catalog["resources"]
+    )
+)
 TICKET = "100626000099001"
 PHONE = "9876543210"
 VALUES = {
@@ -54,8 +61,9 @@ VALUES = {
 
 
 class _Network:
-    """The OAN network adapter, faked: one PMFBY grievance desk. Records what
-    the DSS sent; `/support` refuses a body the pack would refuse."""
+    """The OAN network adapter, faked: the PMFBY and PM-KISAN grievance
+    providers; the test files with PMFBY. Records what the DSS sent; `/support`
+    refuses a body the pack would refuse."""
 
     def __init__(self) -> None:
         self.discover_requests: list[dict[str, Any]] = []

@@ -3,13 +3,22 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Iterable, Mapping
+from datetime import datetime
 from enum import StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from dss.core.channel.models import ComposedAnswer
 from dss.core.provider_discovery.models import ProviderCapability
-from dss.core.shared.models import MessageReference, OutputBlock, Role, TurnInput
+from dss.core.shared.models import (
+    Cause,
+    MessageReference,
+    OutputBlock,
+    Role,
+    TurnInput,
+    TurnStatus,
+)
 
 
 class ProviderAction(StrEnum):
@@ -295,11 +304,20 @@ class FormErrorBlock(OutputBlock):
 
 
 class FailedCallOutcome(StrEnum):
-    ANSWERED = "answered"
     REFUSED = "refused"
     NOT_SENT = "not_sent"
     # It may have reached the provider, so sending it again might file twice.
     OUTCOME_UNKNOWN = "outcome_unknown"
+
+
+# How a form flow's turn ends when no answer is composed from evidence.
+class FlowEnding(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    status: TurnStatus
+    cause: Cause | None
+    answer: ComposedAnswer
+    retry_after_seconds: int | None = None
 
 
 class ActionReply(BaseModel):
@@ -351,6 +369,9 @@ class FormEntry(BaseModel):
     status: FormStatus
     # Where init went; set with AWAITING_INIT.
     provider: ProviderCapability | None = None
+    # Set each time the entry waits for init again, so the session is saved
+    # and its time to live starts over.
+    awaited_at: datetime | None = None
 
 
 # Details forms by form_id; DONE entries stay until the TTL.

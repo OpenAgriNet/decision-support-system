@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from dss.core.forms.models import (
     FieldValue,
     FormContext,
@@ -33,13 +35,16 @@ def _entry(
     )
 
 
+_NOW = datetime(2026, 11, 10, 9, 30, tzinfo=UTC)
+
+
 def test_session_state_round_trips_through_json() -> None:
     state = SessionState(
         forms={
             "f1": _entry(
                 FormStatus.AWAITING_INIT,
                 provider=grievance_provider("pmkisan", "PM-KISAN"),
-            ),
+            ).model_copy(update={"awaited_at": _NOW}),
             "f2": _entry(FormStatus.DONE),
         }
     )
