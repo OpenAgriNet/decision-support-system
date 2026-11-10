@@ -14,7 +14,7 @@ def missing_model_key(model: str, env: Mapping[str, str]) -> str | None:
     """The key `model` needs that `env` lacks, or None when it is set.
 
     `azure:` models go through the Azure SDK; every other model string goes
-    to the OpenAI provider (`entrypoint/composition.py` `_resolve_model`).
+    to the OpenAI provider (`entrypoint/composition/` `_resolve_model`).
     """
 
     needed = "AZURE_OPENAI_API_KEY" if model.startswith("azure:") else "OPENAI_API_KEY"

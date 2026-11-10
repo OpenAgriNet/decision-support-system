@@ -1290,7 +1290,7 @@ is the only runner, and `core/channel/service.py` now just shapes the answer
 (`answer_from_evidence`, `no_match_answer`).
 
 Swapping any of them is a one-line change in
-`src/dss/entrypoint/composition.py` — the only file that names concrete classes.
+`src/dss/entrypoint/composition/` — the only package that names concrete classes.
 
 ## Tests
 

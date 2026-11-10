@@ -21,7 +21,7 @@ from dss.config.settings import Settings
 from dss.core.intent.models import InteractionType, SubjectCategory
 from dss.core.intent.service import classify_intent
 from dss.core.shared.models import TextQuery, UserTurn
-from dss.entrypoint.composition import _resolve_model
+from dss.entrypoint.composition.root import _resolve_model
 from dss.observability.stages import Stage
 from tests.support.live_model import missing_model_key
 

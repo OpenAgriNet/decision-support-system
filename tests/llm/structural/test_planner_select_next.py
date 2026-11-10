@@ -31,7 +31,7 @@ from dss.core.provider_discovery.models import (
 from dss.core.provider_preferences.models import AskPriority
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import TextQuery, UserTurn
-from dss.entrypoint.composition import _resolve_model
+from dss.entrypoint.composition.root import _resolve_model
 from dss.orchestration.plan import build_plan
 from tests.support.evidence import attempted
 from tests.support.live_model import missing_model_key
