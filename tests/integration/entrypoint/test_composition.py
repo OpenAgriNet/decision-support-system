@@ -26,8 +26,11 @@ from dss.entrypoint.composition import (
     _aclose_for,
     _discovers_nothing,
     _network,
+    _Network,
     _NoRankings,
     _planner_schemas,
+    _schema_packs,
+    _settle_asks,
     build_runner,
 )
 from dss.orchestration.orchestrator import Orchestrator
@@ -55,6 +58,16 @@ def _no_preferences():
     return _NoRankings()
 
 
+def _wire(settings: Settings, **fetch) -> _Network:
+    """The network as `build_runner` builds it: the packs first."""
+
+    return _network(
+        settings,
+        packs=_schema_packs(settings, **fetch),
+        preferences=_no_preferences(),
+    )
+
+
 def test_build_runner_returns_a_turn_runner(tmp_path: Path) -> None:
     runner = build_runner(_settings(tmp_path))
 
@@ -63,7 +76,7 @@ def test_build_runner_returns_a_turn_runner(tmp_path: Path) -> None:
 
 
 def test_unwired_network_discovers_nothing(tmp_path: Path) -> None:
-    network = _network(_settings(tmp_path), preferences=_no_preferences())
+    network = _wire(_settings(tmp_path))
 
     # the seam is the single unwired function, and the planner's dicts are empty
     assert network.discover is _discovers_nothing
@@ -81,7 +94,7 @@ def test_wired_network_builds_the_planner_schemas(tmp_path: Path) -> None:
     )
     assert settings.network_enabled
 
-    network = _network(settings, preferences=_no_preferences())
+    network = _wire(settings)
 
     # the real client replaced the unwired stand-in...
     assert network.discover is not _discovers_nothing
@@ -96,22 +109,21 @@ def test_wired_network_builds_the_planner_schemas(tmp_path: Path) -> None:
     assert set(network.schemas) <= set(network.schema_context_index)
 
 
-def test_only_the_wired_network_settles_from_the_packs(tmp_path: Path) -> None:
+def test_only_loaded_packs_settle_asks(tmp_path: Path) -> None:
     """Unwired there are no packs, so nothing says an ask needs anything."""
 
-    wired = _network(
+    wired = _schema_packs(
         _settings(
             tmp_path,
             discovery_base_url="https://discovery.example/oan",
             invocation_base_url="https://select.example/oan",
             schema_pack_dir=SCHEMA_PACKS_FIXTURE_ROOT,
-        ),
-        preferences=_no_preferences(),
+        )
     )
-    unwired = _network(_settings(tmp_path), preferences=_no_preferences())
+    unwired = _schema_packs(_settings(tmp_path))
 
-    assert wired.settle_asks is not settle_every_ask
-    assert unwired.settle_asks is settle_every_ask
+    assert _settle_asks(wired) is not settle_every_ask
+    assert _settle_asks(unwired) is settle_every_ask
 
 
 def test_the_network_refuses_to_boot_with_no_packs(tmp_path: Path) -> None:
@@ -139,7 +151,21 @@ def test_the_network_refuses_to_boot_with_no_packs(tmp_path: Path) -> None:
         return ()
 
     with pytest.raises(ValueError, match="fetch_schema_packs"):
-        _network(settings, fetch=fetches_nothing, preferences=_no_preferences())
+        _schema_packs(settings, fetch=fetches_nothing)
+
+
+def test_the_network_refuses_to_boot_with_no_pack_folder(tmp_path: Path) -> None:
+    """No folder means forms are off. Discovery cannot run without one."""
+
+    settings = _settings(
+        tmp_path,
+        discovery_base_url="https://discovery.example/oan",
+        invocation_base_url="https://select.example/oan",
+        schema_pack_dir=None,
+    )
+
+    with pytest.raises(ValueError, match="DSS_SCHEMA_PACK_DIR"):
+        _schema_packs(settings)
 
 
 async def test_the_runner_builds_inside_a_running_event_loop(tmp_path: Path) -> None:
@@ -186,9 +212,7 @@ def test_packs_already_on_disk_are_not_re_fetched(tmp_path: Path) -> None:
     def must_not_be_called(**_kwargs) -> tuple[str, ...]:
         raise AssertionError("fetched with packs already on disk")
 
-    network = _network(
-        settings, fetch=must_not_be_called, preferences=_no_preferences()
-    )
+    network = _wire(settings, fetch=must_not_be_called)
 
     assert network.discover is not _discovers_nothing
     assert "openagrinet:MandiPrice" in network.schema_context_index
@@ -197,7 +221,7 @@ def test_packs_already_on_disk_are_not_re_fetched(tmp_path: Path) -> None:
 def test_build_runner_passes_the_fetch_through(tmp_path: Path) -> None:
     """`build_runner` is what `create_app` calls, so the seam has to reach it.
 
-    Testing `_network` alone would leave the wiring untested: a fake on one
+    Testing `_schema_packs` alone would leave the wiring untested: a fake on one
     side and a call that never forwards the argument on the other both pass,
     and the refusal would never fire in the process that matters.
     """
@@ -341,7 +365,7 @@ def test_a_skipped_pack_is_logged_for_an_operator_to_see(
     )
 
     with caplog.at_level("WARNING"):
-        _network(settings, preferences=_no_preferences())
+        _schema_packs(settings)
 
     # `SchemaPackSkipped.pack_name` and `.reason` both reach the log — an
     # operator reading it can tell which pack and why, not just "something
@@ -604,7 +628,7 @@ def test_a_registry_url_swaps_the_registry_adapter_in(tmp_path: Path) -> None:
         provider_preferences_base_url="https://registry.example",
     )
 
-    network = _network(settings, preferences=_no_preferences())
+    network = _wire(settings)
 
     assert isinstance(network.preferences, RegistryProviderPreferences)
 
@@ -759,7 +783,7 @@ def test_a_wired_network_indexes_grievance_but_plans_no_filters_for_it(
         schema_pack_dir=pack_root,
     )
 
-    network = _network(settings, preferences=_no_preferences())
+    network = _wire(settings)
 
     assert "openagrinet:Grievance" in network.schema_context_index
     assert "openagrinet:MandiPrice" in network.schema_context_index

@@ -173,13 +173,15 @@ def build_runner_with_lifecycle(
     # Before the network, like the rest of the boot config: the area file is
     # checked in, so an unreadable one is a broken build either way.
     area_lookup, area_aclose = build_area_lookup(settings)
-    network = _network(settings, fetch=fetch, preferences=boot.preferences)
-    # Forms (#205) work with the network off too. After `_network`, because
-    # its startup fetch is what fills the folder they are read from.
+    packs = _schema_packs(settings, fetch=fetch)
+    network = _network(settings, packs=packs, preferences=boot.preferences)
+    # Forms (#205) work with the network off too. After `_schema_packs`,
+    # because its startup fetch is what fills the folder they are read from.
     forms = _boot_forms(settings)
     wiring = _Wiring(
         boot=boot,
         network=network,
+        settle_asks=_settle_asks(packs),
         components=_build_components(settings, boot, network),
         area_lookup=area_lookup,
         forms=forms,
@@ -289,6 +291,7 @@ class _Wiring:
 
     boot: _BootConfig
     network: _Network
+    settle_asks: SettleAsks
     components: Components
     area_lookup: AreaLookup
     forms: FormRegistry
@@ -314,7 +317,7 @@ def _build_text_path(settings: Settings, wiring: _Wiring) -> TextPath:
         schemas=wiring.network.schemas,
         edge_translation=EdgeTranslation(routes=boot.translation_routes),
         forms=wiring.forms,
-        settle_asks=wiring.network.settle_asks,
+        settle_asks=wiring.settle_asks,
     )
 
 
@@ -577,14 +580,63 @@ class _Network:
     schema_context_index: dict[str, str]
     client: httpx.AsyncClient | None
     preferences: ProviderPreferences
-    settle_asks: SettleAsks
+
+
+@dataclass(frozen=True)
+class _SchemaPacks:
+    """The capability index, and the good packs it was built from."""
+
+    cache: SchemaPackCache
+    packs: tuple[SchemaPackFiles, ...]
+
+
+def _schema_packs(
+    settings: Settings, *, fetch: FetchPacks = fetch_packs
+) -> _SchemaPacks | None:
+    """None when the network is off. Then no packs are read."""
+
+    if not settings.network_enabled:
+        return None
+    if settings.schema_pack_dir is None:
+        raise ValueError(
+            "the network is configured but DSS_SCHEMA_PACK_DIR is empty. "
+            "Discovery needs the schema packs. Set it, or leave it unset for "
+            "the default."
+        )
+    _ensure_schema_packs(settings, fetch=fetch)
+    source = FilesystemSchemaPackSource(root=settings.schema_pack_dir)
+    cache, packs = _run_on_fresh_loop(_load_schema_packs, source)
+    if not packs:
+        raise ValueError(
+            f"the network is configured but no schema packs loaded from "
+            f"{settings.schema_pack_dir} — refusing to boot, because every turn "
+            f"would come back no_match and look like 'no provider serves this'. "
+            f"Run: uv run python scripts/fetch_schema_packs.py "
+            f"--ref {PUBLISHED_REF}"
+        )
+    for skip in cache.skipped_packs():
+        logger.warning(
+            "schema pack %r left out of the capability index: %s",
+            skip.pack_name,
+            skip.reason,
+        )
+    skipped = {skip.pack_name for skip in cache.skipped_packs()}
+    good = tuple(pack for pack in packs if pack.pack_name not in skipped)
+    return _SchemaPacks(cache=cache, packs=good)
+
+
+def _settle_asks(packs: _SchemaPacks | None) -> SettleAsks:
+    if packs is None:
+        # No packs, so nothing says an ask needs anything.
+        return settle_every_ask
+    return build_settle_asks(packs.cache)
 
 
 def _network(
     settings: Settings,
     *,
+    packs: _SchemaPacks | None,
     preferences: ProviderPreferences,
-    fetch: FetchPacks = fetch_packs,
 ) -> _Network:
     """Wire discovery + invocation, or return the unwired stand-ins. The
     registry ranking adapter rides the network's client (ADR-0020), so
@@ -592,7 +644,7 @@ def _network(
     discovery finds nobody — all harmless, because the planner is never
     reached."""
 
-    if not settings.network_enabled:
+    if packs is None:
         if settings.provider_preferences_base_url is not None:
             # Harmless — an unwired run calls no provider for a ranking to
             # order — but said out loud, so a half-configured deployment reads
@@ -608,27 +660,13 @@ def _network(
             schema_context_index={},
             client=None,
             preferences=preferences,
-            # No packs, so nothing says an ask needs anything.
-            settle_asks=settle_every_ask,
         )
 
-    _ensure_schema_packs(settings, fetch=fetch)
-
-    # The client is constructed here, not in the loop below: it is used later
-    # from uvicorn's loop for real requests, so binding it to the throwaway
-    # startup loop would break the first one.
+    # Built here, not during the pack read: it is used later from uvicorn's
+    # loop for real requests, so binding it to the throwaway startup loop
+    # would break the first one.
     client = httpx.AsyncClient(timeout=settings.select_timeout_seconds)
-    source = FilesystemSchemaPackSource(root=settings.schema_pack_dir)
-    cache, packs = _run_on_fresh_loop(_load_schema_packs, source)
-    if not packs:
-        raise ValueError(
-            f"the network is configured but no schema packs loaded from "
-            f"{settings.schema_pack_dir} — refusing to boot, because every turn "
-            f"would come back no_match and look like 'no provider serves this'. "
-            f"Run: uv run python scripts/fetch_schema_packs.py "
-            f"--ref {PUBLISHED_REF}"
-        )
-
+    cache = packs.cache
     sender_for = _network_sender_for(settings)
 
     def discovery_for(turn: UserTurn) -> CapabilityDiscovery:
@@ -669,22 +707,13 @@ def _network(
         preferences=preferences,
     )
 
-    for skip in cache.skipped_packs():
-        logger.warning(
-            "schema pack %r left out of the capability index: %s",
-            skip.pack_name,
-            skip.reason,
-        )
-    skipped = {skip.pack_name for skip in cache.skipped_packs()}
-    good = tuple(pack for pack in packs if pack.pack_name not in skipped)
     return _Network(
         discover=discover,
         invocation_for=invocation_for,
-        schemas=_planner_schemas(good),
+        schemas=_planner_schemas(packs.packs),
         schema_context_index=cache.current_schema_context(),
         client=client,
         preferences=preferences,
-        settle_asks=build_settle_asks(cache),
     )
 
 
