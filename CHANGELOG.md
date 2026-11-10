@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+### Changed
+- `context.sessionId` must not be blank: a request with an empty or
+  whitespace-only one is refused with 422. Every turn is keyed by it, and a
+  blank one would put every caller that sends it on one session (#207)
+- `clarification-text.yaml` has a new required key, `session_busy`: the
+  answer to a form turn that waited too long while another turn from the same
+  farmer held its session. An adopter with their own copy must add it, or the
+  DSS refuses to boot (#207)
+
+### Added
+- Form turns keep a little state between turns in Redis, when
+  `DSS_REDIS_URL` is set, and every turn runs one at a time per session.
+  Unset, nothing changes (#207, ADR-0022)
+- Four new `cause` values for the form flow: `already_filed`,
+  `no_init_pending`, `init_response_refused` and `provider_outcome_unknown`.
+  `provider_outcome_unknown` is sent with `retryable: false` (#207)
+
 ## [0.2.0] - 2026-11-05
 
 ### Changed

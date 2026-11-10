@@ -378,6 +378,7 @@ def _nothing_came_back(
                 capability=one.failure.capability,
                 reason=_detail(one.failure),
                 retryable=one.failure.failure_class is FailureClass.TRANSIENT,
+                status_code=one.failure.status_code,
             )
         )
 

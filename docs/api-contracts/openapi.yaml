@@ -195,7 +195,9 @@ components:
           description: RFC 3339 timestamp of the request.
         sessionId:
           type: string
-          description: Conversation key. The Experience owns conversation storage.
+          minLength: 1
+          pattern: '\S'
+          description: Conversation key. The Experience owns conversation storage. Must not be blank; leading and trailing spaces are dropped.
 
     RequestMessage:
       type: object
@@ -527,7 +529,8 @@ components:
             additive set — an unrecognized value must be treated as an opaque
             string, not an error. Known values include `unsafe_illegal`,
             `provider_unavailable`, `provider_rejected`, `domain_unmapped`,
-            `invalid_input`.
+            `invalid_input`, `already_filed`, `no_init_pending`,
+            `init_response_refused`, `provider_outcome_unknown`.
           example: null
         confidence:
           type: integer

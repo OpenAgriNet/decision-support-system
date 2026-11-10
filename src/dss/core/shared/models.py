@@ -220,6 +220,11 @@ class Cause(StrEnum):
     UNSUPPORTED_ACTION_TYPE = "unsupported_action_type"
     # a submitted form the DSS cannot accept (#205)
     INVALID_INPUT = "invalid_input"
+    # the form flow (#207)
+    ALREADY_FILED = "already_filed"
+    NO_INIT_PENDING = "no_init_pending"
+    INIT_RESPONSE_REFUSED = "init_response_refused"
+    PROVIDER_OUTCOME_UNKNOWN = "provider_outcome_unknown"
     # infrastructure
     MODERATION_UNAVAILABLE = "moderation_unavailable"
     PROVIDER_UNAVAILABLE = "provider_unavailable"

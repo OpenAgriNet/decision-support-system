@@ -263,3 +263,7 @@ def answer_from_evidence(text: str, evidence: Evidence) -> ComposedAnswer:
     )
     block = TextBlock(text=text, source_ids=tuple(source.id for source in sources))
     return ComposedAnswer(content=(block,), sources=sources)
+
+
+def answer_for_session_busy(text: ClarificationText) -> ComposedAnswer:
+    return ComposedAnswer(content=(TextBlock(text=text.session_busy),))

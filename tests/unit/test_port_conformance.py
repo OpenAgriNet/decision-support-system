@@ -79,9 +79,11 @@ def test_the_orchestrator_satisfies_the_port(a_turn, a_context):
     from dss.adapters.sinks.memory import MemoryTurnSink
     from dss.adapters.sinks.stdout import StdoutTelemetrySink
     from dss.config.clarification_text_loader import load_clarification_text
+    from dss.core.channel.service import answer_for_session_busy
     from dss.core.translation.service import EdgeTranslation
     from dss.orchestration.orchestrator import Components, Orchestrator, TextPath
     from dss.orchestration.redaction import pass_through
+    from dss.orchestration.session import NoSessionStore
 
     text_path = TextPath(
         intent_llm=StubLLM(),
@@ -107,7 +109,11 @@ def test_the_orchestrator_satisfies_the_port(a_turn, a_context):
         edge_translation=EdgeTranslation(routes={}),
         forms=FormRegistry(),
     )
-    runner = Orchestrator(paths={TextQuery: text_path})
+    runner = Orchestrator(
+        paths={TextQuery: text_path},
+        session_busy_answer=answer_for_session_busy(load_clarification_text()),
+        sessions=NoSessionStore(),
+    )
 
     events = drive(runner, a_turn(), a_context)
 

@@ -19,11 +19,12 @@ from dss.adapters.network import (
 )
 
 
-def test_the_actions_are_the_four_this_network_uses():
+def test_the_actions_are_the_five_this_network_uses():
     # All answer synchronously, so there is no `on_` reply message to name.
     assert {action.value for action in NetworkAction} == {
         "discover",
         "select",
+        "init",
         "support",
         "status",
     }

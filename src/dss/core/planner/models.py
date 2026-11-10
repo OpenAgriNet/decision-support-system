@@ -96,6 +96,11 @@ class Result(BaseModel):
     data: dict
 
 
+# A failure's status code when no readable reply came back: a timeout, a
+# dropped connection, or a 2xx whose body could not be read.
+NO_READABLE_REPLY = 0
+
+
 class Failure(BaseModel):
     """An ask that did not produce a result.
 
@@ -113,6 +118,8 @@ class Failure(BaseModel):
     retryable: bool
     # The provider's own `Retry-After`, when it sent one on a failed filing.
     retry_after_seconds: int | None = None
+    # None: the provider was never called.
+    status_code: int | None = None
 
     @property
     def is_provider_failure(self) -> bool:

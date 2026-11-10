@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import tomllib
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
@@ -24,6 +25,7 @@ import pytest
 from dss.adapters.discovery.client import HttpCapabilityDiscovery
 from dss.adapters.invocation.client import HttpCapabilityInvocation
 from dss.adapters.schema_packs.filesystem import FilesystemSchemaPackSource
+from dss.core.forms.models import ActionReply
 from dss.core.intent.models import PlaceSource, ResolvedPlace
 from dss.core.planner.resource_attributes import build_resource_attributes
 from dss.core.provider_discovery.models import (
@@ -33,9 +35,13 @@ from dss.core.provider_discovery.models import (
 )
 from dss.core.provider_discovery.schema_pack_cache import SchemaPackCache
 from dss.core.shared.models import Geometry
-from dss.ports.invocation import SelectFailedError, StatusFailedError
+from dss.ports.invocation import (
+    SelectFailedError,
+    StatusFailedError,
+    SupportFailedError,
+)
 from tests.support.providers import build_capability
-from tools.mock_network.app import DEFAULT_QUESTIONS, build_mock_app
+from tools.mock_network.app import DEFAULT_QUESTIONS, MOCK_OTP, build_mock_app
 from tools.mock_network.generators import (
     advisory_answer,
     mandi_answer,
@@ -582,3 +588,177 @@ async def test_status_refuses_a_case_it_does_not_hold(
         )
 
     assert failed.value.status_code == 400
+
+
+_PM_KISAN = build_capability(
+    provider_id="pmkisan",
+    provider_name="PM-KISAN Portal",
+    capability="openagrinet:Grievance",
+    resource_id="res:pmkisan:grievance",
+)
+_PM_KISAN_SCHEME = {"code": "PM-KISAN", "name": "Pradhan Mantri Kisan Samman Nidhi"}
+_ENROLMENT_ID = "UP12345678A"
+
+
+def _pm_kisan_filing(otp: str) -> dict:
+    return {
+        "@type": "openagrinet:Grievance",
+        "scheme": _PM_KISAN_SCHEME,
+        "provider": {"id": "pmkisan"},
+        "challenge": {"response": {"method": "OTP", "value": otp}},
+        "enrolmentId": _ENROLMENT_ID,
+        "grievance": {"description": "Third instalment has not been credited."},
+    }
+
+
+def _pm_kisan_read(otp: str, filed_on: str) -> dict:
+    return {
+        "@type": "openagrinet:Grievance",
+        "scheme": _PM_KISAN_SCHEME,
+        "challenge": {"response": {"method": "OTP", "value": otp}},
+        "enrolmentId": _ENROLMENT_ID,
+        "case": {"filedOn": filed_on},
+    }
+
+
+def _init_body(attributes: dict) -> dict:
+    return {
+        "context": {"action": "init", "transactionId": "txn-init"},
+        "message": {
+            "contract": {"commitments": [{"commitmentAttributes": attributes}]}
+        },
+    }
+
+
+def _filed_on(reply: ActionReply) -> str:
+    case = reply.attributes["case"]
+    assert isinstance(case, dict)
+    return case["filedOn"]
+
+
+async def _post_init(pack_dir: Path, attributes: dict) -> httpx.Response:
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=build_mock_app(pack_dir=pack_dir)),
+        base_url="http://mock.test",
+    ) as client:
+        return await client.post("/init", json=_init_body(attributes))
+
+
+async def test_init_issues_an_otp_challenge_for_a_pm_kisan_enrolment(
+    pack_dir: Path,
+) -> None:
+    response = await _post_init(
+        pack_dir,
+        {
+            "@type": "openagrinet:Grievance",
+            "scheme": _PM_KISAN_SCHEME,
+            "enrolmentId": _ENROLMENT_ID,
+        },
+    )
+
+    commitment = response.json()["message"]["contract"]["commitments"][0]
+    issued = commitment["commitmentAttributes"]["challenge"]["issued"]
+    assert response.status_code == 200
+    assert issued["method"] == "OTP"
+    assert issued["channel"] == "SMS"
+    assert issued["length"] == 4
+    assert issued["valueType"] == "NUMERIC"
+    assert datetime.fromisoformat(issued["expiresAt"]) > datetime.now(tz=UTC)
+
+
+async def test_init_refuses_a_body_with_no_enrolment(pack_dir: Path) -> None:
+    response = await _post_init(
+        pack_dir, {"@type": "openagrinet:Grievance", "scheme": _PM_KISAN_SCHEME}
+    )
+
+    assert response.status_code == 400
+
+
+async def test_pm_kisan_support_and_status_accept_the_mock_otp(
+    pack_dir: Path,
+) -> None:
+    invocation = _grievance_invocation(pack_dir)
+    filed = await invocation.support(_PM_KISAN, _pm_kisan_filing(MOCK_OTP), "txn-file")
+    filed_on = _filed_on(filed)
+
+    read = await invocation.status(
+        _PM_KISAN, _pm_kisan_read(MOCK_OTP, filed_on), "txn-check"
+    )
+
+    assert _filed_on(read) == filed_on
+    assert read.attributes["enrolmentId"] == _ENROLMENT_ID
+
+
+async def test_pm_kisan_support_refuses_any_other_otp(pack_dir: Path) -> None:
+    invocation = _grievance_invocation(pack_dir)
+
+    with pytest.raises(SupportFailedError) as failed:
+        await invocation.support(_PM_KISAN, _pm_kisan_filing("9999"), "txn-file")
+
+    assert failed.value.status_code == 400
+
+
+async def test_pm_kisan_status_refuses_any_other_otp(pack_dir: Path) -> None:
+    invocation = _grievance_invocation(pack_dir)
+    filed = await invocation.support(_PM_KISAN, _pm_kisan_filing(MOCK_OTP), "txn-file")
+
+    with pytest.raises(StatusFailedError) as failed:
+        await invocation.status(
+            _PM_KISAN,
+            _pm_kisan_read("9999", _filed_on(filed)),
+            "txn-check",
+        )
+
+    assert failed.value.status_code == 400
+
+
+async def test_init_refuses_a_scheme_with_no_otp(pack_dir: Path) -> None:
+    response = await _post_init(
+        pack_dir,
+        {
+            "@type": "openagrinet:Grievance",
+            "scheme": {"code": "PMFBY"},
+            "enrolmentId": _ENROLMENT_ID,
+        },
+    )
+
+    assert response.status_code == 400
+
+
+async def test_pm_kisan_status_with_no_enrolment_finds_no_case(
+    pack_dir: Path,
+) -> None:
+    invocation = _grievance_invocation(pack_dir)
+    filed = await invocation.support(_DESK, _FILING, "txn-file")
+    read = {
+        key: value
+        for key, value in _pm_kisan_read(MOCK_OTP, _filed_on(filed)).items()
+        if key != "enrolmentId"
+    }
+
+    with pytest.raises(StatusFailedError) as failed:
+        await invocation.status(_PM_KISAN, read, "txn-check")
+
+    assert failed.value.status_code == 400
+
+
+async def test_a_challenge_that_is_not_an_object_is_refused(pack_dir: Path) -> None:
+    invocation = _grievance_invocation(pack_dir)
+    filing = {**_pm_kisan_filing(MOCK_OTP), "challenge": MOCK_OTP}
+
+    with pytest.raises(SupportFailedError) as failed:
+        await invocation.support(_PM_KISAN, filing, "txn-file")
+
+    assert failed.value.status_code == 400
+
+
+async def test_neither_pm_kisan_reply_sends_the_otp_back(pack_dir: Path) -> None:
+    invocation = _grievance_invocation(pack_dir)
+    filed = await invocation.support(_PM_KISAN, _pm_kisan_filing(MOCK_OTP), "txn-file")
+
+    read = await invocation.status(
+        _PM_KISAN, _pm_kisan_read(MOCK_OTP, _filed_on(filed)), "txn-check"
+    )
+
+    assert "challenge" not in filed.attributes
+    assert "challenge" not in read.attributes

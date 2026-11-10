@@ -8,6 +8,7 @@ import yaml
 
 from dss.adapters.sinks.memory import MemoryTurnSink
 from dss.config.clarification_text_loader import load_clarification_text
+from dss.core.channel.service import answer_for_session_busy
 from dss.core.forms.models import (
     FieldErrorEntry,
     FieldValue,
@@ -41,6 +42,7 @@ from dss.core.shared.models import (
 from dss.orchestration.form_path import FormPath, FormPathComponents
 from dss.orchestration.orchestrator import Orchestrator
 from dss.orchestration.redaction import RedactTexts, pass_through, redact_texts
+from dss.orchestration.session import NoSessionStore, Sessions
 from dss.ports.invocation import (
     SupportFailedError,
 )
@@ -169,6 +171,7 @@ def _build_orchestrator_and_turn_sink(  # noqa: PLR0913
     attributes_yaml: str = _GRIEVANCE_YAML,
     invocation: RecordingActionInvocation | None = None,
     compose: _FakeCompose | None = None,
+    sessions: Sessions | None = None,
 ) -> tuple[Orchestrator, MemoryTurnSink]:
     pack = SchemaPackFiles(
         pack_name="Grievance",
@@ -199,7 +202,12 @@ def _build_orchestrator_and_turn_sink(  # noqa: PLR0913
         telemetry=telemetry or _StageOutcomes(),
         clarification_text=load_clarification_text(),
     )
-    return Orchestrator(paths={FormSubmission: path}), turns
+    orchestrator = Orchestrator(
+        paths={FormSubmission: path},
+        session_busy_answer=answer_for_session_busy(load_clarification_text()),
+        sessions=sessions or NoSessionStore(),
+    )
+    return orchestrator, turns
 
 
 async def _collect(orch: Orchestrator, turn: UserTurn) -> list[TurnEvent]:

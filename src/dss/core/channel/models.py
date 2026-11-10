@@ -62,6 +62,8 @@ class ClarificationText(BaseModel):
     # read as no case for that ticket and phone (#206).
     status_not_checked: str
     status_not_found: str
+    # A form turn while another from the same farmer still holds the session.
+    session_busy: str
     # More choices than this are grouped one level up before they are listed.
     max_choices: int = Field(default=5, gt=0)
 

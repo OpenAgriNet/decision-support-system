@@ -292,6 +292,24 @@ class RecordingActionInvocation:
         self._failure = failure
         self.calls: list[ActionCall] = []
 
+    async def init(
+        self,
+        capability: ProviderCapability,
+        attributes: dict,
+        transaction_id: NetworkTransactionID,
+        *,
+        visibility: Visibility = NOTHING_HELD,
+    ) -> ActionReply:
+        return self._answer(
+            ActionCall(
+                ProviderAction.INIT,
+                capability,
+                attributes,
+                transaction_id,
+                visibility,
+            )
+        )
+
     async def support(
         self,
         capability: ProviderCapability,

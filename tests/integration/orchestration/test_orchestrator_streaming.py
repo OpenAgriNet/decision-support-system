@@ -16,6 +16,7 @@ import pytest
 from dss.adapters.llm.stub import StubLLM
 from dss.adapters.sinks.memory import MemoryTurnSink
 from dss.config.clarification_text_loader import load_clarification_text
+from dss.core.channel.service import answer_for_session_busy
 from dss.core.forms.registry import FormRegistry
 from dss.core.planner.models import Identity
 from dss.core.provider_discovery.models import DiscoveryResult
@@ -33,6 +34,7 @@ from dss.core.stream_response.service import build_stream_response
 from dss.core.translation.service import EdgeTranslation
 from dss.orchestration.orchestrator import Components, Orchestrator, TextPath
 from dss.orchestration.redaction import pass_through
+from dss.orchestration.session import NoSessionStore
 from tests.integration.orchestration.test_orchestrator import (
     _ANSWERED_EVIDENCE,
     _PUNE_MATCH,
@@ -87,7 +89,11 @@ def _build(
         edge_translation=EdgeTranslation(routes={}),
         forms=FormRegistry(),
     )
-    orch = Orchestrator(paths={TextQuery: text_path})
+    orch = Orchestrator(
+        paths={TextQuery: text_path},
+        session_busy_answer=answer_for_session_busy(load_clarification_text()),
+        sessions=NoSessionStore(),
+    )
     return orch, turns
 
 
@@ -217,7 +223,11 @@ async def test_the_real_component_streams_through_the_runner() -> None:
         edge_translation=EdgeTranslation(routes={}),
         forms=FormRegistry(),
     )
-    orch = Orchestrator(paths={TextQuery: text_path})
+    orch = Orchestrator(
+        paths={TextQuery: text_path},
+        session_busy_answer=answer_for_session_busy(load_clarification_text()),
+        sessions=NoSessionStore(),
+    )
 
     events = await _collect(orch)
 

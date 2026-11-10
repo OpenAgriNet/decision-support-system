@@ -227,6 +227,11 @@ def _caller_or_host(sender_id: str | None, network_sender_id: str) -> str:
 
 UNAVAILABLE_MESSAGE = "A service this turn needed could not be reached."
 
+# A refusal would come back unchanged; an unknown outcome may file twice.
+_NOT_RETRYABLE_CAUSES = frozenset(
+    {Cause.PROVIDER_REJECTED, Cause.PROVIDER_OUTCOME_UNKNOWN}
+)
+
 
 def to_created_frame(
     ctx: TurnContext, *, now: datetime, seq: int | None, response_id: str
@@ -321,8 +326,7 @@ def _error(outcome: TurnOutcome) -> schema.TurnError | None:
     return schema.TurnError(
         code=cause,
         message=UNAVAILABLE_MESSAGE,
-        # A provider that refused a filing would refuse it again unchanged.
-        retryable=outcome.cause is not Cause.PROVIDER_REJECTED,
+        retryable=outcome.cause not in _NOT_RETRYABLE_CAUSES,
         retry_after_seconds=outcome.retry_after_seconds,
     )
 

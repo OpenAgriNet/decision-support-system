@@ -44,6 +44,7 @@ def _invocation_call_for(
     action: ActionSchema, invocation: ProviderActionInvocation
 ) -> InvocationCall:
     calls_by_action: Mapping[ProviderAction, InvocationCall] = {
+        ProviderAction.INIT: invocation.init,
         ProviderAction.SUPPORT: invocation.support,
         ProviderAction.STATUS: invocation.status,
     }
@@ -58,6 +59,7 @@ def _as_failure(failed: ProviderCallFailedError, action: ActionSchema) -> Failur
         reason=f"{action.context.action} failed with status {failed.status_code}",
         retryable=failed.failure_class is FailureClass.TRANSIENT,
         retry_after_seconds=failed.retry_after_seconds,
+        status_code=failed.status_code,
     )
 
 

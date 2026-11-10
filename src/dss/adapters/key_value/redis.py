@@ -11,11 +11,19 @@ from dss.ports.key_value_store import KeyValueStore, LockAcquireTimeoutError
 
 # The lock is a Redis key of its own; without a prefix, set() would overwrite it.
 _LOCK_KEY_PREFIX = "lock:"
+# A Redis that does not answer must fail fast: callers fall back without it.
+_SOCKET_CONNECT_TIMEOUT_SECONDS = 3
+_SOCKET_TIMEOUT_SECONDS = 3
 
 
 class RedisKeyValueStore(KeyValueStore):
     def __init__(self, url: str) -> None:
-        self._client = Redis.from_url(url, decode_responses=True)
+        self._client = Redis.from_url(
+            url,
+            decode_responses=True,
+            socket_connect_timeout=_SOCKET_CONNECT_TIMEOUT_SECONDS,
+            socket_timeout=_SOCKET_TIMEOUT_SECONDS,
+        )
 
     async def get(self, key: str) -> str | None:
         # decode_responses=True gives str; redis-py's types still say bytes or str.

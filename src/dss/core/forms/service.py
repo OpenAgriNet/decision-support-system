@@ -5,6 +5,7 @@ import re
 from collections import Counter
 from collections.abc import Callable, Container, Mapping, Sequence
 from dataclasses import dataclass
+from http import HTTPStatus
 from uuid import uuid4
 
 import yaml
@@ -13,6 +14,7 @@ from dss.core.channel.models import ClarificationText, ComposedAnswer
 from dss.core.forms.models import (
     ActionField,
     ActionSchema,
+    FailedCallOutcome,
     FieldDefinition,
     FieldError,
     FieldErrorCode,
@@ -23,8 +25,11 @@ from dss.core.forms.models import (
     FormBlock,
     FormContext,
     FormDefinition,
+    FormEntry,
     FormErrorBlock,
     FormErrors,
+    FormRecords,
+    FormStatus,
     FormSubmission,
     JsonScalar,
     PiiClass,
@@ -33,7 +38,7 @@ from dss.core.forms.models import (
     ValidSubmission,
 )
 from dss.core.forms.registry import FormLookup, FormRegistry
-from dss.core.planner.models import Failure
+from dss.core.planner.models import NO_READABLE_REPLY, Failure
 from dss.core.provider_discovery.models import ProviderCapability
 from dss.core.schema_packs.models import SchemaPackFiles, SchemaPackSkipped
 from dss.core.schema_packs.service import PACK_DEFECTS, is_api_pack
@@ -438,6 +443,34 @@ def cause_for_failed_call(failure: Failure) -> Cause:
     return Cause.PROVIDER_REJECTED
 
 
+# Read from the status alone, not `retryable`: the client calls only
+# 400/401/403 a defect, so a 404 or 422 refusal would read as retryable.
+def outcome_of_failed_call(failure: Failure | None) -> FailedCallOutcome:
+    if failure is None:
+        return FailedCallOutcome.ANSWERED
+    return _outcome_for_status(failure.status_code)
+
+
+# The provider said it did not take the request in.
+_NOT_TAKEN_IN_STATUS_CODES = frozenset(
+    {HTTPStatus.REQUEST_TIMEOUT, HTTPStatus.TOO_MANY_REQUESTS}
+)
+
+
+def _outcome_for_status(status_code: int | None) -> FailedCallOutcome:
+    if status_code is None or status_code in _NOT_TAKEN_IN_STATUS_CODES:
+        return FailedCallOutcome.NOT_SENT
+    if status_code == NO_READABLE_REPLY:
+        return FailedCallOutcome.OUTCOME_UNKNOWN
+    if _is_client_error(status_code):
+        return FailedCallOutcome.REFUSED
+    return FailedCallOutcome.OUTCOME_UNKNOWN
+
+
+def _is_client_error(status_code: int) -> bool:
+    return HTTPStatus.BAD_REQUEST <= status_code < HTTPStatus.INTERNAL_SERVER_ERROR
+
+
 def _not_sent_text(action: str, cause: Cause) -> NotSentText:
     # An action with no words of its own reads as a filing: the form is
     # still the farmer's either way.
@@ -612,3 +645,31 @@ def _advertised_at(candidate: ProviderCapability, path: str) -> object:
             return None
         node = node.get(segment)
     return node
+
+
+def clear_awaiting_init_record(forms: FormRecords) -> FormRecords:
+    return {
+        form_id: entry
+        for form_id, entry in forms.items()
+        if entry.status is not FormStatus.AWAITING_INIT
+    }
+
+
+def awaiting_init_for(forms: FormRecords, init_context: FormContext) -> str | None:
+    return next(
+        (
+            form_id
+            for form_id, entry in forms.items()
+            if entry.status is FormStatus.AWAITING_INIT
+            and _is_same_flow(entry, init_context)
+        ),
+        None,
+    )
+
+
+def _is_same_flow(entry: FormEntry, init_context: FormContext) -> bool:
+    details_context = entry.definition.context
+    return (details_context.scheme, details_context.category) == (
+        init_context.scheme,
+        init_context.category,
+    )
