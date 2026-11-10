@@ -35,6 +35,16 @@ from dss.core.policy.models import (
 )
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.provider_preferences.models import AskPriority
+from dss.core.settlement.models import (
+    Ambiguous,
+    AskSlot,
+    Frame,
+    Missing,
+    NeedsClarification,
+    Settled,
+    Settlement,
+    Slot,
+)
 from dss.core.shared.models import (
     Claim,
     ClaimDelta,
@@ -61,6 +71,7 @@ from dss.orchestration.orchestrator import (
 )
 from dss.orchestration.plan import Plan
 from dss.orchestration.redaction import RedactTexts, pass_through
+from dss.orchestration.turn import SettleAsks, settle_every_ask
 from dss.ports.area_lookup import AreaMatch
 from tests.support.evidence import ANY_ASK, build_evidence
 from tests.support.fakes import (
@@ -206,6 +217,7 @@ class _FakePlan:
         self, turn, *, intent, discovery, verdict, visibility, awaiting=None
     ) -> Evidence:
         self.calls += 1
+        self.intent = intent
         self.awaiting = dict(awaiting or {})
         self.verdict_was_set = verdict.is_set()
         self.turn = turn
@@ -272,6 +284,7 @@ def _build(
     policies=(),
     area_lookup: FakeAreaLookup | None = None,
     redact: RedactTexts = pass_through,
+    settle_asks: SettleAsks = settle_every_ask,
     intent_llm=None,
     moderation_llm=None,
     localize: FakeLocalizer | None = None,
@@ -302,6 +315,7 @@ def _build(
         clarification_text=load_clarification_text(),
         edge_translation=edge_translation or EdgeTranslation(routes={}),
         forms=forms or FormRegistry(),
+        settle_asks=settle_asks,
     )
     return Orchestrator(paths={TextQuery: text_path}), turns
 
@@ -889,3 +903,104 @@ def test_unrouted_kinds_lists_the_kind_without_a_path() -> None:
     kinds = [TextQuery, _OtpReply]
 
     assert unrouted_kinds({TextQuery: _FakePath()}, kinds) == [_OtpReply]
+
+
+_NEEDS_PLACE = NeedsClarification(open_slots=(Slot(AskSlot.PLACE, Missing()),))
+_SETTLED = Settled(Frame(slots=()))
+
+
+def _settle_with(*settlements: Settlement) -> SettleAsks:
+    def settle(intent):
+        return settlements
+
+    return settle
+
+
+async def test_an_unsettled_ask_is_asked_by_the_composer() -> None:
+    plan = _FakePlan(_ANSWERED_EVIDENCE)
+    compose = _FakeCompose("Which district?")
+    orch, _ = _build(
+        intent=_one_ask(),
+        discovery=_served_discovery(),
+        plan=plan,
+        compose=compose,
+        settle_asks=_settle_with(_NEEDS_PLACE),
+    )
+
+    events = await _collect(orch)
+
+    assert plan.calls == 0
+    [entry] = compose.evidence.ask_evidences
+    assert entry.outcome == _NEEDS_PLACE
+    assert events[-1].outcome.status is TurnStatus.REQUIRES_INPUT
+
+
+async def test_a_settled_ask_is_served_beside_a_question() -> None:
+    """The settled ask is planned on its own; the composer gets both asks,
+    in the farmer's order."""
+
+    plan = _FakePlan(_ANSWERED_EVIDENCE)
+    compose = _FakeCompose("Wheat is 2,275 Rs [1]. Which district for the rain?")
+    orch, _ = _build(
+        intent=_one_ask(2),
+        discovery=_served_discovery(),
+        plan=plan,
+        compose=compose,
+        settle_asks=_settle_with(_NEEDS_PLACE, _SETTLED),
+    )
+
+    events = await _collect(orch)
+
+    assert len(plan.intent.asks) == 1
+    question, answer = compose.evidence.ask_evidences
+    assert question.outcome == _NEEDS_PLACE
+    assert answer == _ANSWERED_EVIDENCE.ask_evidences[0]
+    assert events[-1].outcome.status is TurnStatus.REQUIRES_INPUT
+
+
+async def test_nobody_serving_beside_a_question_reaches_the_composer() -> None:
+    """The fixed "nobody serves" reply would drop the question, so the
+    composer writes both."""
+
+    plan = _FakePlan(_ANSWERED_EVIDENCE)
+    compose = _FakeCompose("No onion prices found. Which district for the rain?")
+    nobody = DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
+    orch, _ = _build(
+        intent=_one_ask(2),
+        discovery=nobody,
+        plan=plan,
+        compose=compose,
+        settle_asks=_settle_with(_SETTLED, _NEEDS_PLACE),
+    )
+
+    events = await _collect(orch)
+
+    assert plan.calls == 0
+    unanswered, question = compose.evidence.ask_evidences
+    assert unanswered.outcome.is_unanswered is True
+    assert question.outcome == _NEEDS_PLACE
+    assert events[-1].outcome.status is TurnStatus.REQUIRES_INPUT
+
+
+async def test_the_pick_list_follows_the_question() -> None:
+    """The composer asks which one. Code lists the choices after it."""
+
+    other_pune = _PUNE_MATCH.model_copy(update={"within": ("India", "Telangana")})
+    which_pune = NeedsClarification(
+        open_slots=(Slot(AskSlot.PLACE, Ambiguous((_PUNE_MATCH, other_pune))),)
+    )
+    orch, _ = _build(
+        intent=_one_ask(),
+        discovery=_served_discovery(),
+        plan=_FakePlan(_ANSWERED_EVIDENCE),
+        compose=_FakeCompose("Which Pune do you mean?"),
+        settle_asks=_settle_with(which_pune),
+    )
+
+    events = await _collect(orch)
+
+    question, choices = events[-1].content
+    assert isinstance(question, TextBlock)
+    assert question.text == "Which Pune do you mean?"
+    assert isinstance(choices, TextBlock)
+    assert choices.text == "1. Pune, Maharashtra\n2. Pune, Telangana"

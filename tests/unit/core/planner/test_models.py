@@ -191,6 +191,11 @@ def test_turn_note_empty_by_default() -> None:
     assert _evidence(_SERVED).turn_note is None
 
 
+def test_a_turn_with_a_question_needs_clarification() -> None:
+    assert _evidence(_SERVED, _NEEDS_PLACE).needs_clarification is True
+    assert _evidence(_SERVED, _CANNOT_SERVE).needs_clarification is False
+
+
 def test_an_ask_no_result_served_is_reported() -> None:
     assert _evidence(_SERVED, _UNSERVED).unserved_asks == (_UNSERVED,)
 

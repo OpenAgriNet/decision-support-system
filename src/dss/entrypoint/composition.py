@@ -117,6 +117,7 @@ from dss.orchestration.orchestrator import (
 )
 from dss.orchestration.plan import InvocationFor, build_plan
 from dss.orchestration.redaction import RedactTexts, pass_through, redact_texts
+from dss.orchestration.turn import SettleAsks, build_settle_asks, settle_every_ask
 from dss.ports.area_lookup import AreaLookup
 from dss.ports.discovery import CapabilityDiscovery
 from dss.ports.invocation import CapabilityInvocation
@@ -313,6 +314,7 @@ def _build_text_path(settings: Settings, wiring: _Wiring) -> TextPath:
         schemas=wiring.network.schemas,
         edge_translation=EdgeTranslation(routes=boot.translation_routes),
         forms=wiring.forms,
+        settle_asks=wiring.network.settle_asks,
     )
 
 
@@ -575,6 +577,7 @@ class _Network:
     schema_context_index: dict[str, str]
     client: httpx.AsyncClient | None
     preferences: ProviderPreferences
+    settle_asks: SettleAsks
 
 
 def _network(
@@ -605,6 +608,8 @@ def _network(
             schema_context_index={},
             client=None,
             preferences=preferences,
+            # No packs, so nothing says an ask needs anything.
+            settle_asks=settle_every_ask,
         )
 
     _ensure_schema_packs(settings, fetch=fetch)
@@ -679,6 +684,7 @@ def _network(
         schema_context_index=cache.current_schema_context(),
         client=client,
         preferences=preferences,
+        settle_asks=build_settle_asks(cache),
     )
 
 

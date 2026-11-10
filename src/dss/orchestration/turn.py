@@ -55,6 +55,8 @@ from dss.core.moderation.models import (
 from dss.core.moderation.service import moderate
 from dss.core.policy.models import Policy
 from dss.core.provider_discovery.models import DiscoveryResult
+from dss.core.provider_discovery.service import CapabilityIndexSource
+from dss.core.settlement import service as settlement
 from dss.core.settlement.models import Frame, Settled, Settlement
 from dss.core.shared.models import TextQuery, UserTurn
 from dss.observability.stages import Stage
@@ -89,6 +91,19 @@ type SettleAsks = Callable[[Intent], tuple[Settlement, ...]]
 # TODO(#243): remove once the orchestrator passes the real settle_asks.
 def settle_every_ask(intent: Intent) -> tuple[Settlement, ...]:
     return tuple(Settled(Frame(slots=())) for _ in intent.asks)
+
+
+def build_settle_asks(index: CapabilityIndexSource) -> SettleAsks:
+    """Reads the index on every turn. It can refresh while the app runs."""
+
+    def settle(intent: Intent) -> tuple[Settlement, ...]:
+        return settlement.settle_asks(
+            intent,
+            index=index.current(),
+            place_bound_types=index.place_bound_types(),
+        )
+
+    return settle
 
 
 def place_attributes(
@@ -184,6 +199,10 @@ class TurnResult(BaseModel):
         """Only the settled asks: the ones discovery and the planner work on."""
 
         return _settled_only(self.intent, self.settlements)
+
+    @property
+    def is_every_ask_settled(self) -> bool:
+        return all(isinstance(s, Settled) for s in self.settlements)
 
 
 def _settled_only(intent: Intent, settlements: tuple[Settlement, ...]) -> Intent:

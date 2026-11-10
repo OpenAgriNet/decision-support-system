@@ -31,6 +31,7 @@ from dss.entrypoint.composition import (
     build_runner,
 )
 from dss.orchestration.orchestrator import Orchestrator
+from dss.orchestration.turn import settle_every_ask
 from dss.ports.turn import TurnRunner
 
 SCHEMA_PACKS_FIXTURE_ROOT = (
@@ -93,6 +94,24 @@ def test_wired_network_builds_the_planner_schemas(tmp_path: Path) -> None:
     # a Direct-answer pack with no `filterable_paths`, so it is (correctly) left
     # out of `schemas` while still resolvable through the context index.
     assert set(network.schemas) <= set(network.schema_context_index)
+
+
+def test_only_the_wired_network_settles_from_the_packs(tmp_path: Path) -> None:
+    """Unwired there are no packs, so nothing says an ask needs anything."""
+
+    wired = _network(
+        _settings(
+            tmp_path,
+            discovery_base_url="https://discovery.example/oan",
+            invocation_base_url="https://select.example/oan",
+            schema_pack_dir=SCHEMA_PACKS_FIXTURE_ROOT,
+        ),
+        preferences=_no_preferences(),
+    )
+    unwired = _network(_settings(tmp_path), preferences=_no_preferences())
+
+    assert wired.settle_asks is not settle_every_ask
+    assert unwired.settle_asks is settle_every_ask
 
 
 def test_the_network_refuses_to_boot_with_no_packs(tmp_path: Path) -> None:

@@ -13,6 +13,7 @@ from dss.core.channel.service import (
     answer_for_unplaced_asks,
     answer_for_unserved_asks,
     no_match_answer,
+    pick_lists,
     question_for_unplaced_asks,
 )
 from dss.core.intent.models import (
@@ -23,6 +24,13 @@ from dss.core.intent.models import (
     ResolvedPlace,
     SubjectCategory,
     UnresolvedPlace,
+)
+from dss.core.planner.models import AskEvidence, Evidence
+from dss.core.settlement.models import (
+    Ambiguous,
+    AskSlot,
+    NeedsClarification,
+    Slot,
 )
 from dss.core.shared.models import Geometry
 from dss.ports.area_lookup import AreaMatch
@@ -123,6 +131,58 @@ def test_each_choice_shows_the_part_of_its_chain_that_differs() -> None:
     text = answer.content[0].text
     assert "1. Ashti, Wardha" in text
     assert "2. Ashti, Beed" in text
+
+
+_BILASPUR_HP = AreaMatch(
+    name="Bilaspur",
+    region="IN-HP",
+    within=("India", "Himachal Pradesh"),
+    geometry=Geometry(coordinates=[76.75, 31.33]),
+)
+_BILASPUR_CT = AreaMatch(
+    name="Bilaspur",
+    region="IN-CT",
+    within=("India", "Chhattisgarh"),
+    geometry=Geometry(coordinates=[82.15, 22.09]),
+)
+
+
+def _waiting_on(*open_slots: Slot) -> Evidence:
+    outcome = NeedsClarification(open_slots=open_slots)
+    return Evidence(
+        sources=(), ask_evidences=(AskEvidence(ask=_ask(), outcome=outcome),)
+    )
+
+
+def test_an_ambiguous_place_gets_a_numbered_pick_list() -> None:
+    """Code writes the list, so the farmer's "2" matches what was shown."""
+
+    evidence = _waiting_on(Slot(AskSlot.PLACE, Ambiguous((_BILASPUR_HP, _BILASPUR_CT))))
+
+    [block] = pick_lists(evidence, _TEXT)
+
+    assert block.text == "1. Bilaspur, Himachal Pradesh\n2. Bilaspur, Chhattisgarh"
+
+
+def test_too_many_places_are_grouped() -> None:
+    """Past five choices, list the states and say how to reach the rest."""
+
+    rampurs = tuple(
+        AreaMatch(
+            name="Rampur",
+            region=f"IN-{n}",
+            within=("India", f"State {n}"),
+            geometry=Geometry(coordinates=[78.0, 25.0]),
+        )
+        for n in range(7)
+    )
+    evidence = _waiting_on(Slot(AskSlot.PLACE, Ambiguous(rampurs)))
+
+    [block] = pick_lists(evidence, _TEXT)
+
+    assert block.text.splitlines()[0] == "1. Rampur, State 0"
+    assert block.text.splitlines()[-1] == _TEXT.more_places_hint
+    assert "State 5" not in block.text
 
 
 def test_the_same_failed_place_is_reported_once() -> None:

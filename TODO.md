@@ -247,6 +247,12 @@
   `group_by_ask` and `merge_unsettled` to `core/evidence/`, so no stage
   looks like the owner.
 
+- **Fake planners return too few asks.** In `test_localized_system_text`,
+  `test_orchestrator_translation` and `test_turn_metrics`, a fake planner
+  returns evidence for one ask on a two-ask turn. The real planner never
+  does. The orchestrator merges only when an ask is unsettled, so these
+  pass for now. Make each fake return one entry per ask.
+
 ## Transport
 
 - ~~**SSE streams the transport, not the content.**~~ Done: `/v1/turns` with

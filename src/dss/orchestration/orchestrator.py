@@ -72,6 +72,7 @@ from dss.core.channel.service import (
     answer_for_unserved_asks,
     answer_from_evidence,
     no_match_answer,
+    pick_lists,
     question_for_unplaced_asks,
 )
 from dss.core.forms.models import FormDefinition
@@ -80,6 +81,7 @@ from dss.core.forms.service import offer_form
 from dss.core.intent.models import Intent
 from dss.core.moderation.messages import messages_for
 from dss.core.moderation.models import ModerationDecision, Outcome
+from dss.core.planner.evidence import group_by_ask, merge_unsettled
 from dss.core.planner.models import Evidence, Verdict
 from dss.core.planner.place import place_optional_asks
 from dss.core.planner.validation import DomainSchema
@@ -121,7 +123,12 @@ from dss.orchestration.stage_content import (
     evidence_text,
 )
 from dss.orchestration.translation import translate_in, translate_out
-from dss.orchestration.turn import TurnResult, run_turn
+from dss.orchestration.turn import (
+    SettleAsks,
+    TurnResult,
+    run_turn,
+    settle_every_ask,
+)
 from dss.ports.area_lookup import AreaLookup
 from dss.ports.llm import LLMProvider
 from dss.ports.prompts import PromptProvider
@@ -262,6 +269,7 @@ class TextPath:
         schemas: Mapping[str, DomainSchema],
         edge_translation: EdgeTranslation,
         forms: FormLookup,
+        settle_asks: SettleAsks = settle_every_ask,
     ) -> None:
         self._intent_llm = intent_llm
         self._moderation_llm = moderation_llm
@@ -284,6 +292,7 @@ class TextPath:
         # Required: no packs is an empty registry, so a default would make a
         # wiring mistake look like a deployment that serves no forms.
         self._forms = forms
+        self._settle_asks = settle_asks
 
     async def run(
         self, turn: UserTurn[TextQuery], *, ctx: TurnContext, recorder: TurnRecorder
@@ -352,32 +361,34 @@ class TextPath:
             yield await self._no_match(turn)
             return
 
+        # Discovery searched only the settled asks, so everything that reads
+        # it works on those. The rest wait on the farmer.
+        settled = result.settled_intent
         # The asks a form answers: settled once discovery has said who serves
         # what, and before the place question, because a form ask needs no
         # place; the form carries what its call needs.
-        awaiting = find_forms(result.intent, result.discovery, self._forms)
+        awaiting = find_forms(settled, result.discovery, self._forms)
         place_optional = place_optional_asks(
-            result.intent, result.discovery, self._schemas, awaiting=awaiting
+            settled, result.discovery, self._schemas, awaiting=awaiting
         )
-        clarification = await self._place_clarification(
-            result.intent, turn, place_optional=place_optional
-        )
-        if clarification is not None:
-            yield clarification
-            return
-
-        if _nobody_serves(result.discovery):
-            yield await self._unserved_reply(
+        if result.is_every_ask_settled:
+            fixed_reply = await self._fixed_reply(
                 result, turn=turn, place_optional=place_optional
             )
-            return
+            if fixed_reply is not None:
+                yield fixed_reply
+                return
+        trailing_question = self._trailing_question(
+            result, place_optional=place_optional
+        )
 
-        evidence = await self._plan(
+        evidence = await self._settled_evidence(
             turn, result, ctx=ctx, visibility=visibility, awaiting=awaiting
         )
-        trailing_question = question_for_unplaced_asks(
-            result.intent.asks, self._clarification_text, place_optional=place_optional
-        )
+        if not result.is_every_ask_settled:
+            evidence = merge_unsettled(
+                result.intent, result.settlements, settled=evidence
+            )
         # `aclosing`: closing this generator does not reach the composer's.
         async with aclosing(
             compose_answer(
@@ -388,6 +399,7 @@ class TextPath:
                 question=trailing_question,
                 ctx=ctx,
                 recorder=recorder,
+                pick_lists=pick_lists(evidence, self._clarification_text),
             )
         ) as events:
             async for event in events:
@@ -410,6 +422,7 @@ class TextPath:
             area_lookup=self._area_lookup,
             scheme_catalog=self._scheme_catalog,
             nearest_max_km=self._nearest_max_km,
+            settle_asks=self._settle_asks,
         )
         self._note("moderation", ctx, result.decision.outcome.value)
         return result
@@ -473,6 +486,61 @@ class TextPath:
             outcome_for(TurnStatus.REQUIRES_INPUT), clarification
         )
 
+    # TODO(#243): remove once settlement asks about places.
+    async def _fixed_reply(
+        self,
+        result: TurnResult,
+        *,
+        turn: UserTurn[TextQuery],
+        place_optional: frozenset[int],
+    ) -> TurnFinished | None:
+        """Today's fixed replies: the place question, or nobody serves."""
+
+        clarification = await self._place_clarification(
+            result.settled_intent, turn, place_optional=place_optional
+        )
+        if clarification is not None:
+            return clarification
+        if _nobody_serves(result.discovery):
+            return await self._unserved_reply(
+                result, turn=turn, place_optional=place_optional
+            )
+        return None
+
+    # TODO(#243): remove once settlement asks about places.
+    def _trailing_question(
+        self, result: TurnResult, *, place_optional: frozenset[int]
+    ) -> str | None:
+        if not result.is_every_ask_settled:
+            return None
+        return question_for_unplaced_asks(
+            result.settled_intent.asks,
+            self._clarification_text,
+            place_optional=place_optional,
+        )
+
+    async def _settled_evidence(
+        self,
+        turn: UserTurn[TextQuery],
+        result: TurnResult,
+        *,
+        ctx: TurnContext,
+        visibility: Visibility,
+        awaiting: Mapping[int, FormDefinition],
+    ) -> Evidence:
+        """The planner's evidence for the settled asks. With none to plan, or
+        nobody to serve them, the planner is not called."""
+
+        settled = result.settled_intent
+        if not settled.asks or _nobody_serves(result.discovery):
+            return Evidence(
+                sources=(),
+                ask_evidences=group_by_ask(settled.asks, results=(), failures=()),
+            )
+        return await self._plan(
+            turn, result, ctx=ctx, visibility=visibility, awaiting=awaiting
+        )
+
     async def _plan(
         self,
         turn: UserTurn[TextQuery],
@@ -484,21 +552,24 @@ class TextPath:
     ) -> Evidence:
         """Past the barrier: the decision cleared, so the planner's `select`
         tool is free to call providers. The `Verdict` is how that clearance
-        reaches the tool, which may be several model round-trips deep."""
+        reaches the tool, which may be several model round-trips deep.
 
+        Plans the settled asks only. Discovery searched just those."""
+
+        settled = result.settled_intent
         verdict = Verdict()
         verdict.set(result.decision)
         with trace_component(Stage.PLANNER, ctx.trace_id):
             evidence = await self._components.plan(
                 turn,
-                intent=result.intent,
+                intent=settled,
                 discovery=result.discovery,
                 verdict=verdict,
                 visibility=visibility,
                 awaiting=awaiting,
             )
             set_current_span_content(
-                input=asks_text(result.intent.asks),
+                input=asks_text(settled.asks),
                 output=evidence_text(evidence),
             )
         return evidence
@@ -565,11 +636,15 @@ async def compose_answer(  # noqa: PLR0913
     question: str | None,
     ctx: TurnContext,
     recorder: TurnRecorder,
+    pick_lists: Sequence[TextBlock] = (),
 ) -> AsyncGenerator[CoreEvent]:
     """The answer as the composer writes it, then its claim, the forms
     offered, and the outcome read off the evidence. ``question``, the place
     question for an ask still missing its place, goes last: one bubble, and
-    the farmer's next reply can finish it."""
+    the farmer's next reply can finish it.
+
+    Each pick list follows the claim. The composer asks the question. The
+    list shows the exact choices."""
 
     answer_stream = AnswerStream()
     numbers = CitationNumbers(source.id for source in evidence.sources)
@@ -594,6 +669,11 @@ async def compose_answer(  # noqa: PLR0913
     yield answer_stream.claim(block, answer.sources)
     for definition in evidence.awaiting_forms:
         yield answer_stream.add_block(offer_form(definition))
+    # Streamed, like the composer's text: the farmer's copy of a text block is
+    # rebuilt from its pieces.
+    for pick_list in pick_lists:
+        yield answer_stream.add_piece(await localize(pick_list.text, turn=turn))
+        yield answer_stream.claim(pick_list, ())
 
     status, cause = _status_for(evidence)
     yield answer_stream.finish(outcome_for(status, cause))
@@ -731,6 +811,8 @@ def _status_for(evidence: Evidence) -> tuple[TurnStatus, Cause | None]:
 
     - an ask awaits a form → `requires_input`: the farmer's next turn fills
       it in, whatever else was answered.
+    - an ask needs clarification → `requires_input`: the farmer's next turn
+      answers the question.
     - no results, but provider calls failed → the providers exist but could
       not be reached: `unavailable`, which the transport reports as a
       retryable error.
@@ -740,7 +822,7 @@ def _status_for(evidence: Evidence) -> tuple[TurnStatus, Cause | None]:
     - every ask served → `answered`.
     """
 
-    if evidence.awaiting_forms:
+    if evidence.awaiting_forms or evidence.needs_clarification:
         return TurnStatus.REQUIRES_INPUT, None
     if not evidence.has_any_result:
         if evidence.has_provider_failure:

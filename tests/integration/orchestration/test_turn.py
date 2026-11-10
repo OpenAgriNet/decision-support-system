@@ -44,7 +44,7 @@ from dss.core.settlement.models import (
     Slot,
 )
 from dss.core.shared.models import Geometry, Location, TextQuery, UserTurn
-from dss.orchestration.turn import SettleAsks, run_turn
+from dss.orchestration.turn import SettleAsks, build_settle_asks, run_turn
 from dss.ports.area_lookup import AreaMatch
 from tests.support.fakes import FakeAreaLookup, FakePromptProvider
 from tests.support.providers import build_capability
@@ -482,3 +482,33 @@ async def test_moderation_reject_blanks_the_settlements() -> None:
     )
 
     assert result.settlements == ()
+
+
+class _FakeIndex:
+    def __init__(self, index, place_bound_types) -> None:
+        self._index = index
+        self._place_bound_types = place_bound_types
+
+    def current(self):
+        return self._index
+
+    def place_bound_types(self) -> frozenset[str]:
+        return self._place_bound_types
+
+
+def test_settle_reads_the_index_each_turn() -> None:
+    """The index can refresh, so the one in use now decides."""
+
+    weather_pack = "openagrinet:WeatherObservation"
+    index = _FakeIndex({("Weather", "Service"): (weather_pack,)}, frozenset())
+    settle = build_settle_asks(index)
+    rain = Ask(
+        subject_categories=SubjectCategory.WEATHER,
+        interaction_type=InteractionType.OBSERVE,
+    )
+
+    assert settle(Intent(asks=(rain,))) == (_SETTLED,)
+
+    index._place_bound_types = frozenset({weather_pack})
+
+    assert settle(Intent(asks=(rain,))) == (_NEEDS_PLACE,)

@@ -12,8 +12,9 @@ from collections.abc import Collection, Sequence
 
 from dss.core.channel.models import ClarificationText, ComposedAnswer
 from dss.core.intent.models import AmbiguousPlace, Ask, ResolvedPlace, UnresolvedPlace
-from dss.core.planner.models import Evidence
+from dss.core.planner.models import AskOutcome, Evidence
 from dss.core.planner.models import Source as EvidenceSource
+from dss.core.settlement.models import Ambiguous, NeedsClarification, Slot
 from dss.core.shared.models import Source, SourceKind, TextBlock
 from dss.core.stream_response.citations import CitationNumbers
 from dss.ports.area_lookup import AreaMatch
@@ -137,6 +138,35 @@ def _ambiguous_paragraph(place: AmbiguousPlace, text: ClarificationText) -> str:
             *_candidate_lines(place.candidates),
         ]
     return "\n".join(lines)
+
+
+def pick_lists(evidence: Evidence, text: ClarificationText) -> tuple[TextBlock, ...]:
+    """The numbered choices for each ask whose first open slot matched more
+    than one place. The composer asks the question. This lists the choices."""
+
+    choices = (_places_to_pick(entry.outcome) for entry in evidence.ask_evidences)
+    return tuple(
+        TextBlock(text="\n".join(_place_choice_lines(places, text)))
+        for places in choices
+        if places
+    )
+
+
+def _places_to_pick(outcome: AskOutcome) -> tuple[AreaMatch, ...]:
+    match outcome:
+        case NeedsClarification(
+            open_slots=(Slot(state=Ambiguous(choices=choices)), *_)
+        ):
+            return tuple(choice for choice in choices if isinstance(choice, AreaMatch))
+    return ()
+
+
+def _place_choice_lines(
+    candidates: Sequence[AreaMatch], text: ClarificationText
+) -> list[str]:
+    if len(candidates) > text.max_choices:
+        return _group_lines(candidates[0].name, candidates, text)
+    return _candidate_lines(candidates)
 
 
 def _not_found_line(name: str, text: ClarificationText) -> str:

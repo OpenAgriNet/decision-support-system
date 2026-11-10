@@ -226,6 +226,13 @@ class Evidence:
         )
 
     @property
+    def needs_clarification(self) -> bool:
+        return any(
+            isinstance(entry.outcome, NeedsClarification)
+            for entry in self.ask_evidences
+        )
+
+    @property
     def has_any_result(self) -> bool:
         return any(entry.is_served for entry in self.ask_evidences)
 
