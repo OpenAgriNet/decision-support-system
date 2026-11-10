@@ -36,15 +36,15 @@ flowchart TD
   B -->|harm| R[Refuse]
   B --> C{Any ask with a known category?}
   C -->|no| N[No match]
-  C -->|yes| S[Settle each ask:<br/>which slots it needs, from packs and forms;<br/>fill them from intent's values]
-  S --> F{All asks settled?}
-  F -->|a slot is missing, unsure, ambiguous or rejected| Q[One question:<br/>requires_input]
-  F -->|yes| D[Discovery: who serves each ask]
-  D -->|nobody| U[Can't serve]
-  D -->|form ask| H[Offer the form]
+  C -->|yes| S[Settle each ask]
+  S -->|settled| D[Discovery: who serves it]
+  S -->|needs clarification or can't serve| M[Merge, in the farmer's order]
+  D -->|form ask| H[Form]
   D -->|data ask| P[Planner calls providers]
+  D -->|nobody| U[Unanswered]
+  H & P & U --> M
   R & N --> Z1[Fixed text + localizer, as today]
-  Q & U & H & P --> Z[Composer to farmer]
+  M --> Z[Composer to farmer]
 ```
 
 Refusal and no-match stay fixed text for now. They move to the composer in
