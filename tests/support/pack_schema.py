@@ -33,6 +33,11 @@ from referencing.jsonschema import DRAFT202012
 
 _REMOTE = "https://schema.beckn.io/"
 
+# The full packs the e2e tests carry, Grievance among them.
+FIXTURE_PACK_ROOT = (
+    Path(__file__).parents[1] / "e2e" / "fixtures" / "network-specs" / "schema"
+)
+
 # What replaces a subschema whose `$ref` is remote: anything passes. A stricter
 # placeholder would reject bodies the provider accepts, and a validator that
 # rejects a correct shape is worse than no validator — it teaches the model a

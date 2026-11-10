@@ -23,10 +23,10 @@ Hindi, which is how the channel's language handling gets exercised.
 
 ## One command
 
-`scripts/run-local.sh` starts the whole stack — Langfuse, the collector, the
-mock network and the DSS. Every prerequisite is checked before anything
-starts, so a missing piece is one message naming the fix rather than a failure
-three minutes in:
+`scripts/run-local.sh` starts the whole stack — Langfuse, the collector, a
+Redis for form sessions, the mock network and the DSS. Every prerequisite is
+checked before anything starts, so a missing piece is one message naming the
+fix rather than a failure three minutes in:
 
 ```bash
 ./scripts/run-local.sh
@@ -58,9 +58,9 @@ in the gateway instead. Without it, `azure:<deployment>` uses the first pair.
 See [`RUNNING-GATEWAY.md`](./RUNNING-GATEWAY.md). The Langfuse keys come from
 Settings → API Keys at <http://localhost:3000>.
 
-Ctrl-C stops the DSS and leaves Langfuse, the collector and the mock up — they
-are slow to start and a local session restarts the DSS often. `--down` stops
-all three.
+Ctrl-C stops the DSS and leaves Langfuse, the collector, Redis and the mock
+up — they are slow to start and a local session restarts the DSS often.
+`--down` stops them all, and Redis forgets every session.
 
 The collector runs `otel/collector.local.yaml`, which has no ClickHouse
 exporter: a laptop needs no ClickHouse, and the collector refuses to start
@@ -167,18 +167,22 @@ uv run python -m tools.mock_network --port 8078 --reload
 `--reload` restarts the mock when its code changes. It does not watch
 `benchmarks/questions.toml`, so restart the mock after editing that file.
 
-One mock serves weather, mandi, advisory and a PMFBY grievance desk. The
-first three answer only the questions in `benchmarks/questions.toml`; the desk
-takes any form the DSS files at `/support` and answers a fresh ticket number,
-and reads that case back at `/status`:
+One mock serves weather, mandi, advisory, and grievances for PMFBY and
+PM-KISAN. The first three answer only the questions in
+`benchmarks/questions.toml`. The grievance providers take any form the DSS
+files at `/support`, answer a fresh ticket number, and read that case back at
+`/status`. PM-KISAN needs an OTP first, from `/init`:
 
 | Type | Answers | Matched on |
 |---|---|---|
 | Mandi | 5 markets, 4 commodities | commodity code and market code |
 | Weather | any point | the turn's coordinates (must be sent) |
 | Advisory | 10 written answers | the crop word in `topics` |
-| Grievance | a ticket, status Registered, filed today | nothing; every filing is accepted |
-| Grievance status | the filed case, status UnderReview, crop Paddy | the ticket and the phone it was filed from |
+| Grievance (PMFBY) | a ticket, status Registered, filed today | nothing; every filing is accepted |
+| Grievance status (PMFBY) | the filed case, status UnderReview, crop Paddy | the ticket and the phone it was filed from |
+| Grievance init (PM-KISAN) | an OTP was sent by SMS (none is sent) | any PM-KISAN enrolment number (must be present) |
+| Grievance (PM-KISAN) | a ticket, status Registered, filed today | only the OTP `1234` (`MOCK_OTP`) |
+| Grievance status (PM-KISAN) | the filed case | the enrolment number and the filing date, with the OTP `1234` |
 
 The same question gets the same answer every run. A request it can't match
 gets a `400`, and is counted at `GET /_bench/misses`. `/docs` on port 8078
@@ -266,7 +270,18 @@ PM-KISAN needs an OTP. `/init` takes a PM-KISAN enrolment number and answers
 that a 4-digit OTP was sent by SMS; no SMS is sent. PM-KISAN's `/support` and
 `/status` accept only the OTP `1234` (`MOCK_OTP`) and refuse any other with a
 400. A PM-KISAN case is read back by its enrolment number and filing date, not
-a ticket. PMFBY needs no OTP. The DSS's form path does not call `/init` yet.
+a ticket. PMFBY needs no OTP.
+
+To try the OTP flow, start the stack with `./scripts/run-local.sh` (it starts
+Redis too, which carries the flow from one turn to the next). Then:
+
+1. Ask "I want to file a PM-KISAN grievance". The reply is the details form.
+2. Send it back filled in. The DSS calls `/init`, and the reply is a form with
+   one `secret` field, its `context.action` set to `init`.
+3. Send that form back with `1234`. The DSS files at `/support`, and the
+   reply names the ticket.
+
+Any other OTP is refused by the mock, and the DSS hands the OTP form back.
 
 A question intent classifies into a category the mock does not serve comes
 back `no_match` — which is the honest answer, and worth telling apart from a
