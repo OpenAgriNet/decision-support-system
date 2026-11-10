@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping
 from functools import partial
 from pathlib import Path
 
+import pytest
 import yaml
 
 from dss.adapters.sinks.memory import MemoryTurnSink
@@ -12,13 +14,14 @@ from dss.core.channel.service import answer_for_session_busy
 from dss.core.forms.models import (
     FieldErrorEntry,
     FieldValue,
+    FormBlock,
     FormContext,
     FormErrorBlock,
     FormStatus,
     FormSubmission,
     ProviderAction,
 )
-from dss.core.forms.service import WITHHELD, build_form_registry
+from dss.core.forms.service import WITHHELD, build_form_registry, with_init_awaited
 from dss.core.intent.models import Intent, InteractionType, Scheme, SubjectCategory
 from dss.core.policy.models import Policy
 from dss.core.provider_discovery.models import (
@@ -47,6 +50,7 @@ from dss.orchestration.orchestrator import Orchestrator
 from dss.orchestration.redaction import RedactTexts, pass_through, redact_texts
 from dss.orchestration.session import NoSessionStore, Sessions, SessionStore
 from dss.ports.invocation import (
+    InitFailedError,
     SupportFailedError,
 )
 from tests.support.fakes import (
@@ -55,7 +59,8 @@ from tests.support.fakes import (
     FakeSchemeCatalog,
     RecordingActionInvocation,
 )
-from tests.support.key_value import FakeKeyValueStore
+from tests.support.grievance_pack import build_grievance_forms
+from tests.support.key_value import FakeKeyValueStore, UnreachableStore
 from tests.support.providers import grievance_provider
 from tests.support.turn_events import assert_well_formed
 
@@ -75,6 +80,16 @@ _PMFBY = Scheme(code="PMFBY", name="Pradhan Mantri Fasal Bima Yojana")
 _PMFBY_SUPPORT = FormContext(scheme="PMFBY", category="Grievance", action="support")
 _PMFBY_STATUS = FormContext(scheme="PMFBY", category="Grievance", action="status")
 _PMKISAN_INIT = FormContext(scheme="PM-KISAN", category="Grievance", action="init")
+_PMKISAN_SUPPORT = FormContext(
+    scheme="PM-KISAN", category="Grievance", action="support"
+)
+_KISAN_PROVIDER = grievance_provider("kisan-provider", "PM-KISAN")
+_KISAN_VALUES = {
+    "enrolmentId": "PMK1234567",
+    "grievance.category.code": "G001",
+    "grievance.description": "My last installment has not come.",
+}
+_CHALLENGE = {"challenge": {"issued": {"method": "OTP", "channel": "SMS"}}}
 
 _VALUES = {
     "enrolmentId": "PMFBY-2024-000123",
@@ -147,11 +162,14 @@ class _RecordingDiscovery:
 
 
 def _form_turn(
-    values: Mapping[str, str], *, context: FormContext = _PMFBY_SUPPORT
+    values: Mapping[str, str],
+    *,
+    context: FormContext = _PMFBY_SUPPORT,
+    form_id: str = "offer-1",
 ) -> UserTurn:
     return UserTurn(
         input=FormSubmission(
-            form_id="offer-1",
+            form_id=form_id,
             context=context,
             submission_id="submission-1",
             values=tuple(
@@ -508,6 +526,22 @@ async def test_a_failed_provider_call_is_marked_on_its_stage(spans) -> None:
     assert finished["dss.stage.provider_action"].attributes["is_failure"] is True
 
 
+async def test_our_credentials_refused_on_a_filing_are_logged_and_read_as_rejected(
+    caplog,
+) -> None:
+    caplog.set_level(logging.WARNING)
+    refused = SupportFailedError("openagrinet:Grievance", 403, FailureClass.DEFECT)
+    orch, _ = _build_orchestrator_and_turn_sink(
+        invocation=RecordingActionInvocation(failure=refused)
+    )
+
+    finished = _finished(await _collect(orch, _form_turn(_VALUES)))
+
+    assert finished.outcome.status is TurnStatus.UNAVAILABLE
+    assert finished.outcome.cause is Cause.PROVIDER_REJECTED
+    assert "request_id=t1 provider_auth_refused status_code=403" in caplog.text
+
+
 async def test_the_provider_stage_shows_the_call_and_the_reply_without_values(
     spans, monkeypatch
 ) -> None:
@@ -720,3 +754,225 @@ async def test_an_init_response_with_nothing_waiting_calls_nobody() -> None:
     record = turns.records["t1"]
     assert record.turn is not None and record.finished == finished
     assert _OTP not in record.turn.model_dump_json()
+
+
+def _init_failed(status_code: int) -> RecordingActionInvocation:
+    failure_class = FailureClass.DEFECT if status_code < 500 else FailureClass.TRANSIENT
+    return RecordingActionInvocation(
+        failure=InitFailedError("openagrinet:Grievance", status_code, failure_class)
+    )
+
+
+def _build_kisan_orchestrator(
+    invocation: RecordingActionInvocation, **overrides
+) -> tuple[Orchestrator, FakeKeyValueStore, MemoryTurnSink]:
+    store, sessions = _with_a_store()
+    orch, turns = _build_orchestrator_and_turn_sink(
+        invocation=invocation,
+        discovery=_providers_found(_KISAN_PROVIDER),
+        sessions=sessions,
+        **overrides,
+    )
+    return orch, store, turns
+
+
+def _save_waiting(
+    store: FakeKeyValueStore,
+    form_id: str,
+    *,
+    context: FormContext = _PMKISAN_SUPPORT,
+    values: Mapping[str, str] = _KISAN_VALUES,
+) -> None:
+    definition = build_grievance_forms().find(context)
+    assert definition is not None
+    details = _form_turn(values, context=context, form_id=form_id).input
+    assert isinstance(details, FormSubmission)
+    waiting = with_init_awaited(
+        _stored_state(store).forms,
+        form_id,
+        definition,
+        details,
+        provider=_KISAN_PROVIDER,
+    )
+    store.values["c1:s1"] = SessionState(forms=waiting).model_dump_json()
+
+
+def _kisan_details_turn(form_id: str = "offer-1") -> UserTurn:
+    return _form_turn(_KISAN_VALUES, context=_PMKISAN_SUPPORT, form_id=form_id)
+
+
+async def test_a_form_needing_init_sends_init_once_with_only_its_paths() -> None:
+    invocation = RecordingActionInvocation(_CHALLENGE)
+    orch, _, _ = _build_kisan_orchestrator(invocation)
+
+    await _collect(orch, _kisan_details_turn())
+
+    (call,) = invocation.calls
+    assert call.action is ProviderAction.INIT
+    assert call.provider == _KISAN_PROVIDER
+    assert call.attributes["enrolmentId"] == _KISAN_VALUES["enrolmentId"]
+    assert call.attributes["scheme"] == {"code": "PM-KISAN"}
+    assert "grievance" not in call.attributes
+    assert "challenge" not in call.attributes
+
+
+async def test_after_init_the_farmer_gets_the_init_form() -> None:
+    orch, _, turns = _build_kisan_orchestrator(RecordingActionInvocation(_CHALLENGE))
+
+    finished = _finished(await _collect(orch, _kisan_details_turn()))
+
+    assert finished.outcome.status is TurnStatus.REQUIRES_INPUT
+    assert finished.outcome.cause is None
+    told, offered = finished.content
+    assert told == TextBlock(text=load_clarification_text().init_response_needed)
+    assert isinstance(offered, FormBlock)
+    assert offered.form.context == _PMKISAN_INIT
+    assert [field.name for field in offered.form.fields] == ["challenge.response.value"]
+    assert turns.records["t1"].finished == finished
+
+
+async def test_after_init_the_details_form_waits_with_its_provider() -> None:
+    orch, store, _ = _build_kisan_orchestrator(RecordingActionInvocation(_CHALLENGE))
+
+    await _collect(orch, _kisan_details_turn())
+
+    entry = _stored_state(store).forms["offer-1"]
+    assert entry.status is FormStatus.AWAITING_INIT
+    assert entry.provider == _KISAN_PROVIDER
+    assert entry.definition.context == _PMKISAN_SUPPORT
+
+
+@pytest.mark.parametrize(
+    "sessions",
+    [NoSessionStore(), SessionStore(UnreachableStore())],
+    ids=["no-store", "store-unreachable"],
+)
+async def test_a_form_needing_init_without_a_kept_session_sends_nothing(
+    sessions: Sessions,
+) -> None:
+    invocation = RecordingActionInvocation(_CHALLENGE)
+    orch, _ = _build_orchestrator_and_turn_sink(
+        invocation=invocation,
+        discovery=_providers_found(_KISAN_PROVIDER),
+        sessions=sessions,
+    )
+
+    finished = _finished(await _collect(orch, _kisan_details_turn()))
+
+    assert finished.outcome.status is TurnStatus.UNAVAILABLE
+    assert finished.outcome.cause is Cause.INTERNAL
+    assert finished.content == (
+        TextBlock(text=load_clarification_text().form_cannot_complete),
+    )
+    assert invocation.calls == []
+
+
+async def test_a_refused_complaint_never_sends_init_and_keeps_the_open_flow() -> None:
+    invocation = RecordingActionInvocation(_CHALLENGE)
+    orch, store, _ = _build_kisan_orchestrator(
+        invocation,
+        moderation_llm=_FakeModerationLLM(violated="delete-command"),
+        policies=[DELETE_COMMAND],
+    )
+    _save_waiting(store, "offer-1")
+
+    events = await _collect(orch, _kisan_details_turn("offer-2"))
+
+    assert _finished(events).outcome.status is TurnStatus.REJECTED
+    assert invocation.calls == []
+    assert set(_stored_state(store).forms) == {"offer-1"}
+
+
+async def test_no_provider_for_the_scheme_never_sends_init() -> None:
+    invocation = RecordingActionInvocation(_CHALLENGE)
+    orch, _ = _build_orchestrator_and_turn_sink(
+        invocation=invocation, sessions=_with_a_store()[1]
+    )
+
+    events = await _collect(orch, _kisan_details_turn())
+
+    assert _finished(events).outcome.status is TurnStatus.NO_MATCH
+    assert invocation.calls == []
+
+
+@pytest.mark.parametrize(
+    ("invocation", "cause", "text_key"),
+    [
+        (_init_failed(404), Cause.PROVIDER_REJECTED, "init_rejected"),
+        (RecordingActionInvocation({}), Cause.PROVIDER_REJECTED, "init_rejected"),
+    ],
+    ids=["E9-refused", "E10-no-challenge"],
+)
+async def test_an_init_that_fails_hands_the_details_form_back(
+    invocation: RecordingActionInvocation, cause: Cause, text_key: str
+) -> None:
+    orch, store, _ = _build_kisan_orchestrator(invocation)
+
+    finished = _finished(await _collect(orch, _kisan_details_turn()))
+
+    assert finished.outcome.status is TurnStatus.UNAVAILABLE
+    assert finished.outcome.cause is cause
+    told, kept = finished.content
+    assert told == TextBlock(text=getattr(load_clarification_text(), text_key))
+    assert kept == FormErrorBlock(
+        form_id="offer-1", context=_PMKISAN_SUPPORT, submission_id="submission-1"
+    )
+    assert [call.action for call in invocation.calls] == [ProviderAction.INIT]
+    assert _stored_state(store).forms == {}
+
+
+async def test_an_init_the_pack_does_not_give_is_our_fault_and_sends_nothing() -> None:
+    attributes = yaml.safe_load(_GRIEVANCE_YAML)
+    del attributes["components"]["schemas"]["Grievance"]["x-oan-schema-by-action"][
+        "init"
+    ]
+    invocation = RecordingActionInvocation(_CHALLENGE)
+    orch, store, _ = _build_kisan_orchestrator(
+        invocation, attributes_yaml=yaml.safe_dump(attributes)
+    )
+
+    finished = _finished(await _collect(orch, _kisan_details_turn()))
+
+    assert finished.outcome.status is TurnStatus.UNAVAILABLE
+    assert finished.outcome.cause is Cause.INTERNAL
+    assert finished.content == (TextBlock(text=load_clarification_text().went_wrong),)
+    assert invocation.calls == []
+    assert _stored_state(store).forms == {}
+
+
+async def test_an_init_refusing_our_credentials_is_our_fault(caplog) -> None:
+    caplog.set_level(logging.WARNING)
+    orch, store, _ = _build_kisan_orchestrator(_init_failed(401))
+
+    finished = _finished(await _collect(orch, _kisan_details_turn()))
+
+    assert finished.outcome.status is TurnStatus.UNAVAILABLE
+    assert finished.outcome.cause is Cause.INTERNAL
+    assert finished.content == (TextBlock(text=load_clarification_text().went_wrong),)
+    assert _stored_state(store).forms == {}
+    assert "request_id=t1 provider_auth_refused status_code=401" in caplog.text
+
+
+async def test_the_same_details_form_sent_again_while_waiting_sends_a_new_init() -> (
+    None
+):
+    invocation = RecordingActionInvocation(_CHALLENGE)
+    orch, store, _ = _build_kisan_orchestrator(invocation)
+    first = _finished(await _collect(orch, _kisan_details_turn()))
+
+    second = _finished(await _collect(orch, _kisan_details_turn()))
+
+    assert [call.action for call in invocation.calls] == [ProviderAction.INIT] * 2
+    first_offer, second_offer = first.content[1], second.content[1]
+    assert isinstance(first_offer, FormBlock) and isinstance(second_offer, FormBlock)
+    assert first_offer.form_id != second_offer.form_id
+    assert _stored_state(store).forms["offer-1"].status is FormStatus.AWAITING_INIT
+
+
+async def test_a_new_details_form_replaces_the_open_flow() -> None:
+    orch, store, _ = _build_kisan_orchestrator(RecordingActionInvocation(_CHALLENGE))
+    await _collect(orch, _kisan_details_turn("offer-1"))
+
+    await _collect(orch, _kisan_details_turn("offer-2"))
+
+    assert set(_stored_state(store).forms) == {"offer-2"}

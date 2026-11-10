@@ -15,7 +15,6 @@ from dss.core.channel.service import answer_for_unserved_asks
 from dss.core.forms.models import (
     ActionField,
     ActionSchema,
-    FailedCallOutcome,
     FieldDefinition,
     FieldError,
     FieldErrorCode,
@@ -41,7 +40,7 @@ from dss.core.forms.models import (
 )
 from dss.core.forms.registry import FormLookup, FormRegistry
 from dss.core.intent.models import Intent
-from dss.core.planner.models import NO_READABLE_REPLY, Failure
+from dss.core.planner.models import Failure
 from dss.core.provider_discovery.models import DiscoveryResult, ProviderCapability
 from dss.core.schema_packs.models import SchemaPackFiles, SchemaPackSkipped
 from dss.core.schema_packs.service import PACK_DEFECTS, is_api_pack
@@ -437,6 +436,10 @@ _NOT_SENT_TEXT: Mapping[ProviderAction, Mapping[Cause, NotSentText]] = {
         Cause.PROVIDER_UNAVAILABLE: lambda text: text.status_not_checked,
         Cause.PROVIDER_REJECTED: lambda text: text.status_not_found,
     },
+    ProviderAction.INIT: {
+        Cause.PROVIDER_UNAVAILABLE: lambda text: text.init_not_sent,
+        Cause.PROVIDER_REJECTED: lambda text: text.init_rejected,
+    },
 }
 
 
@@ -446,47 +449,24 @@ def _cause_for_failed_call(failure: Failure) -> Cause:
     return Cause.PROVIDER_REJECTED
 
 
-# Read from the status alone, not `retryable`: the client calls only
-# 400/401/403 a defect, so a 404 or 422 refusal would read as retryable.
-def outcome_of_failed_call(failure: Failure | None) -> FailedCallOutcome:
-    if failure is None:
-        return FailedCallOutcome.ANSWERED
-    return _outcome_for_status(failure.status_code)
+_AUTH_REFUSED_STATUS_CODES = frozenset({HTTPStatus.UNAUTHORIZED, HTTPStatus.FORBIDDEN})
 
 
-# The provider said it did not take the request in.
-_NOT_TAKEN_IN_STATUS_CODES = frozenset(
-    {HTTPStatus.REQUEST_TIMEOUT, HTTPStatus.TOO_MANY_REQUESTS}
-)
-
-
-def _outcome_for_status(status_code: int | None) -> FailedCallOutcome:
-    if status_code is None or status_code in _NOT_TAKEN_IN_STATUS_CODES:
-        return FailedCallOutcome.NOT_SENT
-    if status_code == NO_READABLE_REPLY:
-        return FailedCallOutcome.OUTCOME_UNKNOWN
-    if _is_client_error(status_code):
-        return FailedCallOutcome.REFUSED
-    return FailedCallOutcome.OUTCOME_UNKNOWN
-
-
-def _is_client_error(status_code: int) -> bool:
-    return HTTPStatus.BAD_REQUEST <= status_code < HTTPStatus.INTERNAL_SERVER_ERROR
-
-
-def _not_sent_text(action: str, cause: Cause) -> NotSentText:
-    # An action with no words of its own reads as a filing: the form is
-    # still the farmer's either way.
-    texts = _NOT_SENT_TEXT.get(action, _NOT_SENT_TEXT[ProviderAction.SUPPORT])
-    return texts[cause]
+# The network refused our own credentials, not the farmer's details or response.
+def is_auth_refused(failure: Failure) -> bool:
+    return failure.status_code in _AUTH_REFUSED_STATUS_CODES
 
 
 def answer_for_failed_call(
-    submission: FormSubmission, cause: Cause, text: ClarificationText
+    submission: FormSubmission,
+    cause: Cause,
+    text: ClarificationText,
+    *,
+    action: ProviderAction,
 ) -> ComposedAnswer:
     return ComposedAnswer(
         content=(
-            TextBlock(text=_not_sent_text(submission.context.action, cause)(text)),
+            TextBlock(text=_NOT_SENT_TEXT[action][cause](text)),
             FormErrorBlock(
                 form_id=submission.form_id,
                 context=submission.context,
@@ -497,15 +477,39 @@ def answer_for_failed_call(
 
 
 def end_for_failed_call(
-    submission: FormSubmission, failure: Failure, text: ClarificationText
+    submission: FormSubmission,
+    failure: Failure,
+    text: ClarificationText,
+    *,
+    action: ActionSchema,
 ) -> FlowEnding:
-    cause = _cause_for_failed_call(failure)
+    return end_for_call_cause(
+        submission,
+        _cause_for_failed_call(failure),
+        text,
+        action=ProviderAction(action.context.action),
+        retry_after_seconds=failure.retry_after_seconds,
+    )
+
+
+def end_for_call_cause(
+    submission: FormSubmission,
+    cause: Cause,
+    text: ClarificationText,
+    *,
+    action: ProviderAction,
+    retry_after_seconds: int | None = None,
+) -> FlowEnding:
     return FlowEnding(
         status=TurnStatus.UNAVAILABLE,
         cause=cause,
-        answer=answer_for_failed_call(submission, cause, text),
-        retry_after_seconds=failure.retry_after_seconds,
+        answer=answer_for_failed_call(submission, cause, text, action=action),
+        retry_after_seconds=retry_after_seconds,
     )
+
+
+def answer_for_init_form(init_form: FormDefinition, text: str) -> ComposedAnswer:
+    return ComposedAnswer(content=(TextBlock(text=text), offer_form(init_form)))
 
 
 def end_for_form_errors(errors: FormErrors, text: ClarificationText) -> FlowEnding:
@@ -778,3 +782,20 @@ def with_call_filed(
     forms: FormRecords, details: ValidSubmission, submission: FormSubmission
 ) -> FormRecords:
     return with_form_done(forms, submission.form_id, details.definition, submission)
+
+
+def with_init_awaited(
+    forms: FormRecords,
+    form_id: str,
+    definition: FormDefinition,
+    submission: FormSubmission,
+    *,
+    provider: ProviderCapability,
+) -> FormRecords:
+    waiting = FormEntry(
+        definition=definition,
+        submission=submission,
+        status=FormStatus.AWAITING_INIT,
+        provider=provider,
+    )
+    return {**forms, form_id: waiting}

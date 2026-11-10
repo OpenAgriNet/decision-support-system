@@ -24,4 +24,9 @@ status_not_found: No complaint was found for that ticket number and phone. You n
 session_busy: Another message from you is still being handled. Try again.
 already_filed: This form was already sent. Your earlier request stands.
 no_init_pending: Nothing is waiting for this response. It may have expired or been used. Send the details form again.
+init_not_sent: We could not reach the provider to start this. Try again.
+init_rejected: The provider did not accept these details.
+init_response_needed: Enter the one-time password the provider sent you.
+went_wrong: Something went wrong on our side.
+form_cannot_complete: This form cannot be completed right now. Please try again later.
 max_choices: 5

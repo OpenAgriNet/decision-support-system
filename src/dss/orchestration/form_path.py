@@ -13,6 +13,16 @@ from dss.adapters.observability.tracing import (
 )
 from dss.core.channel.localize import LocalizeText, localize_answer
 from dss.core.channel.models import ClarificationText, ComposedAnswer
+from dss.core.forms.init_flow import (
+    FlowSettled,
+    InitCall,
+    NoInitChallenge,
+    end_for_failed_init,
+    end_for_session_not_kept,
+    find_init_call,
+    find_init_failure,
+    settle_sent_init,
+)
 from dss.core.forms.models import (
     ActionSchema,
     FlowEnding,
@@ -34,6 +44,7 @@ from dss.core.forms.service import (
     end_for_no_provider,
     end_for_unknown_form,
     free_text_of,
+    is_auth_refused,
     is_done,
     validate_submission,
     with_call_filed,
@@ -74,7 +85,11 @@ from dss.orchestration.orchestrator import (
     reveal_to_farmer,
     spoken_text,
 )
-from dss.orchestration.provider_action import FORM_ASK_INDEX, call_provider_action
+from dss.orchestration.provider_action import (
+    FORM_ASK_INDEX,
+    call_provider_action,
+    warn_auth_refused,
+)
 from dss.orchestration.redaction import RedactTexts
 from dss.orchestration.session import Session
 from dss.orchestration.stage_content import (
@@ -197,6 +212,11 @@ class FormPath:
             return await self._end(
                 end_for_unknown_form(self._clarification_text), form_turn
             )
+        # Before init: an init response could never find this form again.
+        if action.needs_init() and not session.is_kept:
+            return await self._end(
+                end_for_session_not_kept(self._clarification_text), form_turn
+            )
 
         decision = await self._moderate(redacted, form_turn)
         if decision.outcome is not Outcome.PROCEED:
@@ -210,6 +230,14 @@ class FormPath:
 
         # One form waits for init at a time: this form's call replaces any other.
         session.update_forms(clear_awaiting_init_record(session.forms))
+        if action.needs_init():
+            return await self._send_init(
+                form_turn,
+                checked,
+                provider=provider,
+                visibility=redacted.visibility,
+                session=session,
+            )
         return await self._call_and_compose(
             form_turn,
             checked,
@@ -239,9 +267,13 @@ class FormPath:
             visibility=redacted.visibility,
         )
         if isinstance(response, Failure):
+            _warn_if_auth_refused(response, form_turn.ctx)
             return await self._end(
                 end_for_failed_call(
-                    form_turn.turn.input, response, self._clarification_text
+                    form_turn.turn.input,
+                    response,
+                    self._clarification_text,
+                    action=action,
                 ),
                 form_turn,
             )
@@ -299,6 +331,55 @@ class FormPath:
         ):
             async for event in farmer_events:
                 yield event
+
+    async def _send_init(
+        self,
+        form_turn: _FormTurn,
+        details: ValidSubmission,
+        *,
+        provider: ProviderCapability,
+        visibility: Visibility,
+        session: Session,
+    ) -> TurnFinished:
+        submission = form_turn.turn.input
+        init = find_init_call(details, self._forms)
+        if not isinstance(init, InitCall):
+            return await self._end(
+                end_for_failed_init(
+                    init, details=submission, text=self._clarification_text
+                ),
+                form_turn,
+            )
+        reply = await self._call_provider_action(
+            form_turn, details, init.action, provider=provider, visibility=visibility
+        )
+        failure = find_init_failure(reply)
+        if failure is not None:
+            _warn_if_auth_refused(failure, form_turn.ctx)
+            return await self._end(
+                end_for_failed_init(
+                    failure, details=submission, text=self._clarification_text
+                ),
+                form_turn,
+            )
+        return await self._save_and_end(
+            settle_sent_init(
+                session.forms,
+                details,
+                submission,
+                provider=provider,
+                init=init,
+                text=self._clarification_text,
+            ),
+            session,
+            form_turn,
+        )
+
+    async def _save_and_end(
+        self, settled: FlowSettled, session: Session, form_turn: _FormTurn
+    ) -> TurnFinished:
+        session.update_forms(settled.forms)
+        return await self._end(settled.ending, form_turn)
 
     async def _end(self, ending: FlowEnding, form_turn: _FormTurn) -> TurnFinished:
         outcome = outcome_for(
@@ -456,6 +537,11 @@ def _free_text_of(
     checked: ValidSubmission | FormErrors | UnknownForm,
 ) -> tuple[str, ...]:
     return free_text_of(checked) if isinstance(checked, ValidSubmission) else ()
+
+
+def _warn_if_auth_refused(failure: Failure | NoInitChallenge, ctx: TurnContext) -> None:
+    if isinstance(failure, Failure) and is_auth_refused(failure):
+        warn_auth_refused(failure, request_id=ctx.trace_id)
 
 
 def _count(discovery: DiscoveryResult) -> int:

@@ -879,7 +879,7 @@ time; only form turns write to it for now.
 
 | Setting | Default | What it does |
 |---|---|---|
-| `DSS_REDIS_URL` | unset | The Redis address, like `redis://:<password>@redis:6379/0`. Unset means no store: a form turn forgets everything when it ends, so a flow that needs an OTP cannot finish. Forms that file in one turn work as before. |
+| `DSS_REDIS_URL` | unset | The Redis address, like `redis://:<password>@redis:6379/0`. Unset means no store: a form turn forgets everything when it ends, so a form that needs an OTP is refused before init is called, and no SMS goes out. Forms that file in one turn work as before. |
 
 `docker-compose.yml` runs a Redis with a password (`DSS_REDIS_PASSWORD`) and
 nothing saved to disk, and points the DSS at it. Set `DSS_REDIS_URL=` (empty)

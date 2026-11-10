@@ -17,6 +17,7 @@ from dss.core.forms.service import (
     is_done,
     with_call_filed,
     with_form_done,
+    with_init_awaited,
 )
 from dss.core.provider_discovery.models import ProviderCapability
 from tests.support.providers import grievance_provider
@@ -111,3 +112,16 @@ def test_a_filed_call_leaves_its_form_done_under_its_form_id() -> None:
     filed = with_call_filed({}, details, entry.submission)
 
     assert filed == with_form_done({}, "f1", entry.definition, entry.submission)
+
+
+def test_a_form_awaiting_init_keeps_its_submission_and_provider() -> None:
+    provider = grievance_provider("pmkisan", "PM-KISAN")
+    entry = _entry(FormStatus.DONE, provider=provider)
+
+    waiting = with_init_awaited(
+        {}, "f1", entry.definition, entry.submission, provider=provider
+    )
+
+    assert waiting["f1"] == entry.model_copy(
+        update={"status": FormStatus.AWAITING_INIT}
+    )

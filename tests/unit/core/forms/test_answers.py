@@ -9,19 +9,22 @@ from dss.core.forms.models import (
     FieldErrorCode,
     FieldErrorEntry,
     FlowEnding,
-    FormContext,
+    FormBlock,
     FormDefinition,
     FormErrorBlock,
     FormErrors,
     FormSubmission,
+    ProviderAction,
     UnknownForm,
 )
 from dss.core.forms.service import (
     answer_for_failed_call,
     answer_for_form_errors,
+    answer_for_init_form,
     answer_for_unknown_form,
     answer_with_text,
     end_for_already_filed,
+    end_for_call_cause,
     end_for_failed_call,
     end_for_invalid_form,
     end_for_no_init_pending,
@@ -35,7 +38,9 @@ from dss.core.planner.models import Failure
 from dss.core.shared.models import Cause, TextBlock, TurnStatus
 from tests.support.grievance_pack import (
     PMFBY_SUPPORT,
+    PMKISAN_INIT,
     build_grievance_forms,
+    find_action_schema,
 )
 
 
@@ -128,36 +133,56 @@ def test_a_failed_call_is_rejected_unless_trying_again_may_work(
         retry_after_seconds=30,
     )
 
-    ending = end_for_failed_call(_SUBMISSION, failure, _TEXT)
+    ending = end_for_failed_call(
+        _SUBMISSION, failure, _TEXT, action=find_action_schema(PMFBY_SUPPORT)
+    )
 
     assert ending == FlowEnding(
         status=TurnStatus.UNAVAILABLE,
         cause=cause,
-        answer=answer_for_failed_call(_SUBMISSION, cause, _TEXT),
+        answer=answer_for_failed_call(
+            _SUBMISSION, cause, _TEXT, action=ProviderAction.SUPPORT
+        ),
         retry_after_seconds=30,
+    )
+
+
+def test_a_call_ended_by_a_given_cause_is_unavailable_and_keeps_the_form() -> None:
+    ending = end_for_call_cause(
+        _SUBMISSION, Cause.PROVIDER_REJECTED, _TEXT, action=ProviderAction.INIT
+    )
+
+    assert ending == FlowEnding(
+        status=TurnStatus.UNAVAILABLE,
+        cause=Cause.PROVIDER_REJECTED,
+        answer=answer_for_failed_call(
+            _SUBMISSION, Cause.PROVIDER_REJECTED, _TEXT, action=ProviderAction.INIT
+        ),
     )
 
 
 @pytest.mark.parametrize(
     ("action", "cause", "expected_text"),
     [
-        ("support", Cause.PROVIDER_UNAVAILABLE, _TEXT.not_filed),
-        ("support", Cause.PROVIDER_REJECTED, _TEXT.not_filed_rejected),
-        ("status", Cause.PROVIDER_UNAVAILABLE, _TEXT.status_not_checked),
-        ("status", Cause.PROVIDER_REJECTED, _TEXT.status_not_found),
+        (ProviderAction.SUPPORT, Cause.PROVIDER_UNAVAILABLE, _TEXT.not_filed),
+        (ProviderAction.SUPPORT, Cause.PROVIDER_REJECTED, _TEXT.not_filed_rejected),
+        (ProviderAction.STATUS, Cause.PROVIDER_UNAVAILABLE, _TEXT.status_not_checked),
+        (ProviderAction.STATUS, Cause.PROVIDER_REJECTED, _TEXT.status_not_found),
+        (ProviderAction.INIT, Cause.PROVIDER_UNAVAILABLE, _TEXT.init_not_sent),
+        (ProviderAction.INIT, Cause.PROVIDER_REJECTED, _TEXT.init_rejected),
     ],
 )
 def test_a_failed_call_is_told_in_the_words_for_its_action_and_cause(
-    action: str, cause: Cause, expected_text: str
+    action: ProviderAction, cause: Cause, expected_text: str
 ) -> None:
     submission = FormSubmission(
         form_id="offer-1",
-        context=FormContext(scheme="PMFBY", category="Grievance", action=action),
+        context=PMFBY_SUPPORT,
         submission_id="submission-1",
         values=(),
     )
 
-    told, kept = answer_for_failed_call(submission, cause, _TEXT).content
+    told, kept = answer_for_failed_call(submission, cause, _TEXT, action=action).content
 
     assert told == TextBlock(text=expected_text)
     assert kept == FormErrorBlock(
@@ -169,6 +194,18 @@ def test_an_answer_with_text_is_that_text_alone() -> None:
     answer = answer_with_text("This form was already sent.")
 
     assert answer.content == (TextBlock(text="This form was already sent."),)
+
+
+def test_the_init_form_goes_out_as_a_new_offer_under_its_text() -> None:
+    init_form = build_grievance_forms().find(PMKISAN_INIT)
+    assert init_form is not None
+
+    told, offered = answer_for_init_form(init_form, "Enter the password.").content
+
+    assert told == TextBlock(text="Enter the password.")
+    assert isinstance(offered, FormBlock)
+    assert offered.form == init_form
+    assert offered.form_id
 
 
 @pytest.mark.parametrize(

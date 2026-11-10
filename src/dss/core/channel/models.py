@@ -68,6 +68,15 @@ class ClarificationText(BaseModel):
     already_filed: str
     # An init response with no form waiting for it: never sent, expired or used.
     no_init_pending: str
+    # Init did not reach the provider, or the provider refused the details.
+    init_not_sent: str
+    init_rejected: str
+    # Sent with the init form: what the farmer answers, e.g. an OTP.
+    init_response_needed: str
+    # Our own fault, e.g. a pack that gives no init for a scheme that needs one.
+    went_wrong: str
+    # A form that needs init, on a session nothing keeps past this turn.
+    form_cannot_complete: str
     # More choices than this are grouped one level up before they are listed.
     max_choices: int = Field(default=5, gt=0)
 

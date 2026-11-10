@@ -10,12 +10,17 @@
   answer to a form turn that waited too long while another turn from the same
   farmer held its session. An adopter with their own copy must add it, or the
   DSS refuses to boot (#207)
-- `clarification-text.yaml` has two more required keys: `already_filed` and
-  `no_init_pending` (#207)
+- `clarification-text.yaml` has more required keys: `already_filed`,
+  `no_init_pending`, `init_not_sent`, `init_rejected`, `init_response_needed`,
+  `went_wrong` and `form_cannot_complete` (#207)
 
 ### Added
 - A form sent again after the provider took it is answered `rejected`,
   `already_filed`, and nothing is called. Needs `DSS_REDIS_URL` (#207)
+- A PM-KISAN details form calls the provider's `init` once, then sends the
+  farmer the init form for the OTP the provider texted them. Without a kept
+  session (no `DSS_REDIS_URL`, or Redis down) it calls nothing and ends
+  `unavailable`, `internal` (#207)
 - Form turns keep a little state between turns in Redis, when
   `DSS_REDIS_URL` is set, and every turn runs one at a time per session.
   Unset, nothing changes (#207, ADR-0022)

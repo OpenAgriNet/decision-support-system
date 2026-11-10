@@ -55,6 +55,11 @@ _TEXT = ClarificationText(
     session_busy="Another message from you is still being handled. Try again.",
     already_filed="This form was already sent.",
     no_init_pending="Nothing is waiting for this response.",
+    init_not_sent="We could not reach the provider to start this.",
+    init_rejected="The provider did not accept these details.",
+    init_response_needed="Enter the one-time password the provider sent you.",
+    went_wrong="Something went wrong on our side.",
+    form_cannot_complete="This form cannot be completed right now.",
 )
 
 

@@ -303,7 +303,6 @@ class FormErrorBlock(OutputBlock):
 
 
 class FailedCallOutcome(StrEnum):
-    ANSWERED = "answered"
     REFUSED = "refused"
     NOT_SENT = "not_sent"
     # It may have reached the provider, so sending it again might file twice.
