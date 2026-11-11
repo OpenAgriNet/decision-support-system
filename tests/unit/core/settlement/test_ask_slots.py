@@ -184,9 +184,11 @@ def test_guess_without_a_form_is_not_confirmed() -> None:
     assert _scheme_of(GuessedScheme(scheme=PM_KISAN)) == Missing()
 
 
-def test_unlisted_scheme_is_not_found() -> None:
-    assert _scheme_of(UnlistedScheme(name="XYZ Yojana")) == Unresolved(
-        value="XYZ Yojana", reason=UnresolvedReason.NOT_FOUND
+def test_unlisted_scheme_ends_the_ask() -> None:
+    """Asking again would go in a circle: the farmer has no other answer."""
+
+    assert _scheme_of(UnlistedScheme(name="XYZ Yojana")) == Unservable(
+        reason="XYZ Yojana is not a scheme we know."
     )
 
 

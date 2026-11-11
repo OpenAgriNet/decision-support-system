@@ -84,9 +84,9 @@ or ask.
   model matches the reply.
   - Sure match: filled.
   - Close but unsure: confirm. "Do you mean PM Fasal Bima Yojana?"
-  - No match: say so and ask again. No retry count; the farmer can leave.
-  - Named, but no form for it here: can't serve, no question. Asking again
-    would go in a circle.
+  - No match, or named with no form for it here: can't serve, no question.
+    Asking again would go in a circle. The farmer can send the right name
+    as a new message.
 
 The model reads the action from what the farmer wants, not how they say
 it. "How do I file" is file. "How do I check the status" is status.
@@ -223,7 +223,7 @@ Evidence
   guess keeps the farmer's words as the subject and never picks a form.
 - `ClassifiedAsk.unlisted_scheme_name`: the name the farmer said, when it
   is none of the listed schemes. The ask then carries an `UnlistedScheme`.
-  Settlement reads it as not found: we say so and ask again.
+  Settlement ends the ask on it: we say so, with no question.
 - `ClassifiedAsk.action: str | None` and `action_sure: bool`. Picked from
   the category's form actions shown in the prompt. Checked against the
   registry; unknown is dropped and the action is asked.
