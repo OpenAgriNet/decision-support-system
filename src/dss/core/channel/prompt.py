@@ -41,11 +41,13 @@ from dss.core.planner.models import (
 )
 from dss.core.settlement.models import (
     Ambiguous,
+    AskSlot,
     CannotServe,
     Missing,
     NeedsClarification,
     Resolved,
     Slot,
+    SlotName,
     Unresolved,
     UnresolvedReason,
     Unservable,
@@ -248,10 +250,21 @@ _UNRESOLVED_BRIEFS: Mapping[UnresolvedReason, str] = {
 }
 
 
+# For a slot whose name means nothing to a farmer. No category is named: the
+# line's own label says what the "something" is.
+_MISSING_BRIEFS: Mapping[SlotName, str] = {
+    AskSlot.ACTION: (
+        "Do they want to raise something new, or check on one they already "
+        "raised? Their words did not say."
+    ),
+}
+
+
 def _slot_brief(slot: Slot) -> str:
     match slot.state:
         case Missing():
-            return f"Which {slot.name}? None was given."
+            asked_by_name = f"Which {slot.name}? None was given."
+            return _MISSING_BRIEFS.get(slot.name, asked_by_name)
         case Ambiguous(value=value, choices=(_,)):
             return f"Do they mean {value!r}? Ask them to confirm."
         case Ambiguous():

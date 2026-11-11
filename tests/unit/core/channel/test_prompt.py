@@ -271,6 +271,17 @@ def test_an_ask_waiting_on_the_farmer_asks_one_question() -> None:
     assert "Nothing was retrieved" not in rendered
 
 
+def test_a_missing_action_asks_new_or_old() -> None:
+    """Asked by its name, it would read "which action?", which means nothing
+    to a farmer."""
+
+    rendered = render_evidence(_waiting_on(Slot(AskSlot.ACTION, Missing())))
+
+    assert "raise something new" in rendered
+    assert "already raised" in rendered
+    assert "Which action" not in rendered
+
+
 def test_an_ambiguous_slot_points_at_the_choices() -> None:
     """Code lists the choices exactly, below the reply; the composer only
     asks which one."""
