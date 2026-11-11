@@ -76,7 +76,8 @@ def _scheme_state(ask: Ask, schemes_with_a_form: frozenset[str]) -> SlotState:
             # Not asked again: the farmer has no other scheme to name.
             category = ask.subject_categories.value.lower()
             return Unservable(reason=f"{name} has no {category} form.")
-        case GuessedScheme(scheme=scheme):
+        case GuessedScheme(scheme=scheme) if scheme.code in schemes_with_a_form:
             return Ambiguous(value=scheme.name, choices=(scheme,))
-        case None:
+        # A guess without a form is not confirmed: a yes could not be served.
+        case GuessedScheme() | None:
             return Missing()

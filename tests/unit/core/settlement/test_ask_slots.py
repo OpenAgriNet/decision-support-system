@@ -172,6 +172,13 @@ def test_guessed_scheme_is_one_choice() -> None:
     )
 
 
+def test_guess_without_a_form_is_not_confirmed() -> None:
+    """A yes would only lead to "we cannot serve this". The open question
+    lets the farmer name a scheme we do serve."""
+
+    assert _scheme_of(GuessedScheme(scheme=PM_KISAN)) == Missing()
+
+
 def test_no_scheme_given() -> None:
     assert _scheme_of(None) == Missing()
 
