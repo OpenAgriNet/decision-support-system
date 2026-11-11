@@ -23,7 +23,7 @@ import json
 from collections.abc import Mapping, Sequence
 
 from dss.core.forms.models import FormSubmission
-from dss.core.intent.models import Ask, ResolvedPlace
+from dss.core.intent.models import Ask, ResolvedPlace, Scheme
 from dss.core.planner.markers import (
     CONVERSATION,
     QUESTION,
@@ -216,7 +216,8 @@ def _render_awaiting(ask_evidence: AskEvidence) -> list[str]:
     match ask_evidence.outcome:
         case AwaitingInput(form=form):
             ask = ask_evidence.ask
-            scheme = ask.scheme.name if ask.scheme else form.context.scheme
+            named = ask.scheme
+            scheme = named.name if isinstance(named, Scheme) else form.context.scheme
             category = form.context.category.lower()
             return [
                 (

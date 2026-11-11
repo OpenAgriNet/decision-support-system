@@ -18,6 +18,7 @@ from dss.core.forms.models import (
 )
 from dss.core.intent.models import (
     Ask,
+    GuessedScheme,
     InteractionType,
     PlaceSource,
     ResolvedPlace,
@@ -226,6 +227,26 @@ def test_an_ask_awaiting_a_form_is_rendered_as_such() -> None:
     assert "Awaits a form" in rendered
     assert "Pradhan Mantri Fasal Bima Yojana grievance form" in rendered
     assert "Nothing was retrieved" not in rendered
+
+
+def test_a_form_beside_a_guess_names_the_forms_scheme() -> None:
+    """Only a named scheme has a name to show. The form's own code is the
+    one we are sure of."""
+
+    pmfby = Scheme(code="PMFBY", name="Pradhan Mantri Fasal Bima Yojana")
+    ask = Ask(
+        subject_categories=SubjectCategory.GRIEVANCE,
+        interaction_type=InteractionType.ACT,
+        scheme=GuessedScheme(scheme=pmfby),
+    )
+    form = FormDefinition(
+        context=FormContext(scheme="PMFBY", category="Grievance", action="support"),
+        fields=(),
+    )
+
+    rendered = render_evidence(build_evidence(asks=(ask,), awaiting={0: form}))
+
+    assert "PMFBY grievance form" in rendered
 
 
 def _waiting_on(*open_slots: Slot) -> Evidence:
