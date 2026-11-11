@@ -37,12 +37,14 @@ from dss.core.provider_preferences.models import AskPriority
 from dss.core.settlement.models import (
     Ambiguous,
     AskSlot,
+    CannotServe,
     Frame,
     Missing,
     NeedsClarification,
     Settled,
     Settlement,
     Slot,
+    Unservable,
 )
 from dss.core.shared.models import (
     Claim,
@@ -778,6 +780,34 @@ async def test_nobody_serving_beside_a_question_reaches_the_composer() -> None:
     assert unanswered.outcome.is_unanswered is True
     assert question.outcome == _NEEDS_PLACE
     assert events[-1].outcome.status is TurnStatus.REQUIRES_INPUT
+
+
+async def test_an_ask_we_cannot_serve_ends_the_turn() -> None:
+    """The composer says why. No question is asked, so the turn does not
+    wait on the farmer."""
+
+    cannot_serve = CannotServe(
+        slot=Slot(
+            AskSlot.SCHEME,
+            Unservable(reason="PM Kisan Samman Nidhi has no grievance form."),
+        )
+    )
+    plan = _FakePlan(_ANSWERED_EVIDENCE)
+    compose = _FakeCompose("We cannot take a PM Kisan complaint here.")
+    orch, _ = _build(
+        intent=_one_ask(),
+        discovery=_served_discovery(),
+        plan=plan,
+        compose=compose,
+        settle_asks=_settle_with(cannot_serve),
+    )
+
+    events = await _collect(orch)
+
+    assert plan.calls == 0
+    [entry] = compose.evidence.ask_evidences
+    assert entry.outcome == cannot_serve
+    assert events[-1].outcome.status is TurnStatus.NO_MATCH
 
 
 async def test_the_pick_list_follows_the_question() -> None:
