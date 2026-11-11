@@ -30,7 +30,7 @@ from dss.core.settlement.models import (
     UnresolvedReason,
     Unservable,
 )
-from dss.core.shared.models import Geometry
+from dss.core.shared.models import Geometry, ProviderAction
 from dss.ports.area_lookup import AreaMatch
 
 PUNE = ResolvedPlace(
@@ -194,6 +194,27 @@ def test_unlisted_scheme_ends_the_ask() -> None:
 
 def test_no_scheme_given() -> None:
     assert _scheme_of(None) == Missing()
+
+
+def _action_of(action: ProviderAction | None) -> SlotState:
+    ask = Ask(
+        subject_categories=SubjectCategory.GRIEVANCE,
+        interaction_type=InteractionType.ACT,
+        action=action,
+    )
+    needs = AskNeeds(needs_place=False, schemes_with_a_form=NO_FORMS)
+    return ask_slot_state(ask, AskSlot.ACTION, needs)
+
+
+def test_clear_action() -> None:
+    assert _action_of(ProviderAction.SUPPORT) == Resolved(ProviderAction.SUPPORT)
+
+
+def test_unclear_action_is_asked() -> None:
+    """Never guessed: a wrong guess files a second complaint, or asks for a
+    ticket the farmer does not have."""
+
+    assert _action_of(None) == Missing()
 
 
 def test_unknown_slot_fails_at_once() -> None:

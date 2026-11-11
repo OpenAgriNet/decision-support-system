@@ -53,8 +53,14 @@ def ask_slot_state(ask: Ask, slot: AskSlot, needs: AskNeeds) -> SlotState:
             return _place_state(ask)
         case AskSlot.SCHEME:
             return _scheme_state(ask, needs.schemes_with_a_form)
+        case AskSlot.ACTION:
+            return _action_state(ask)
         case unknown:
             assert_never(unknown)
+
+
+def _action_state(ask: Ask) -> SlotState:
+    return Resolved(ask.action) if ask.action else Missing()
 
 
 def _place_state(ask: Ask) -> SlotState:

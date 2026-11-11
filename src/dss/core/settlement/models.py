@@ -14,6 +14,7 @@ class AskSlot(StrEnum):
 
     PLACE = "place"
     SCHEME = "scheme"
+    ACTION = "action"
 
 
 @dataclass(frozen=True)
