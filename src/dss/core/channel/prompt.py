@@ -251,6 +251,8 @@ def _slot_brief(slot: Slot) -> str:
     match slot.state:
         case Missing():
             return f"Which {slot.name}? None was given."
+        case Ambiguous(value=value, choices=(_,)):
+            return f"Do they mean {value!r}? Ask them to confirm."
         case Ambiguous():
             return (
                 f"Which {slot.name}? It matched more than one. "

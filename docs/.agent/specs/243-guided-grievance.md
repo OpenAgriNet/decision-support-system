@@ -188,7 +188,8 @@ Evidence
 
 - `Frame`: an ask's slots, in order. `Slot` = name and state.
 - `SlotState`, a closed set: `Resolved(value)`, `Ambiguous(value, choices)`
-  (the value is what the farmer typed; one choice is a confirm),
+  (the value is the name the question is about: what the farmer typed when
+  they pick, our one guess when they confirm),
   `Unresolved(value, reason)` (not found, too broad), `Missing`,
   `Unservable(reason)`. A new slot needs no new state. `Skipped` comes with
   voice forms.

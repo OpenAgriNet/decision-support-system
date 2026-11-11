@@ -264,6 +264,19 @@ def test_an_ambiguous_slot_points_at_the_choices() -> None:
     assert "Aurangabad MH" not in rendered
 
 
+def test_one_choice_is_a_confirm() -> None:
+    """No list follows one choice, so the brief must not point at one."""
+
+    pmfby = Scheme(code="PMFBY", name="Pradhan Mantri Fasal Bima Yojana")
+
+    rendered = render_evidence(
+        _waiting_on(Slot(AskSlot.SCHEME, Ambiguous(pmfby.name, (pmfby,))))
+    )
+
+    assert "Do they mean 'Pradhan Mantri Fasal Bima Yojana'?" in rendered
+    assert "list below this reply" not in rendered
+
+
 def test_an_unknown_value_is_named_and_asked_again() -> None:
     rendered = render_evidence(
         _waiting_on(

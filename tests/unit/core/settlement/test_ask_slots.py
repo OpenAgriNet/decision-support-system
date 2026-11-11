@@ -99,6 +99,21 @@ def test_ambiguous_place() -> None:
     assert _place_of(place) == Ambiguous("Aurangabad", candidates)
 
 
+def test_lone_place_guess_is_named() -> None:
+    """One candidate is a confirm, so the value is the name we guessed, not
+    the one the farmer typed."""
+
+    kanha_chatti = AreaMatch(
+        name="Kanha Chatti",
+        region="IN-JH",
+        within=("India",),
+        geometry=Geometry(coordinates=[85.0, 24.2]),
+    )
+    place = AmbiguousPlace(unresolved_name="Kanha", candidates=(kanha_chatti,))
+
+    assert _place_of(place) == Ambiguous("Kanha Chatti", (kanha_chatti,))
+
+
 def test_unknown_place_is_not_found() -> None:
     place = UnresolvedPlace(unresolved_name="Xyzzy")
 

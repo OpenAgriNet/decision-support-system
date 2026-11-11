@@ -41,8 +41,9 @@ class Missing:
 @dataclass(frozen=True)
 class Ambiguous[T]:
     """The farmer has to pick, or confirm when there is one choice: "Do you
-    mean X?". ``value`` is the name the question is about: the place name the
-    farmer typed, or the name of the scheme we guessed."""
+    mean X?". ``value`` is the name the question is about: the name the
+    farmer typed when they pick, or the name of our one guess when they
+    confirm."""
 
     value: str
     choices: tuple[T, ...]
