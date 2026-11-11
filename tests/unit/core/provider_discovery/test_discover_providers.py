@@ -212,6 +212,28 @@ async def test_an_unclear_place_does_not_stop_a_placeless_search() -> None:
     assert len(discovery.calls) == 1
 
 
+async def test_scheme_ask_ignores_unclear_place() -> None:
+    """No pack serves a scheme ask, so none says it needs a place."""
+
+    ask = Ask(
+        subject_categories=SubjectCategory.SCHEME,
+        interaction_type=InteractionType.ADVISE,
+        place=UnresolvedPlace(unresolved_name="Xyzzy"),
+    )
+    discovery = _FakeDiscovery(_query_result())
+
+    await discover_providers(
+        Intent(asks=(ask,), confidence=0.9),
+        _turn(),
+        discovery=discovery,
+        schema_pack_cache=_FakeSchemaPackCache({}),
+        radius_m=25000,
+        now=NOW,
+    )
+
+    assert len(discovery.calls) == 1
+
+
 class _PartiallyFailingDiscovery:
     """Returns a failure result for one capability, succeeds for another —
     proves one query's failure doesn't prevent a concurrent sibling from
@@ -1194,6 +1216,29 @@ async def test_a_placeless_pack_is_searched_everywhere() -> None:
         schema_pack_cache=_FakeSchemaPackCache(
             {("Grievance", "Service"): ("openagrinet:Grievance",)}
         ),
+        radius_m=25000,
+        now=NOW,
+    )
+
+    assert discovery.calls[0].coverage is None
+
+
+async def test_scheme_ask_is_searched_everywhere() -> None:
+    """Only a pack can ask for a place, and no pack serves a scheme ask. So
+    even a clear place is not sent."""
+
+    discovery = _NetworkDiscovery({})
+    scheme_ask = Ask(
+        subject_categories=SubjectCategory.SCHEME,
+        interaction_type=InteractionType.ADVISE,
+        place=_PUNE,
+    )
+
+    await discover_providers(
+        Intent(asks=(scheme_ask,), confidence=0.9),
+        _turn(),
+        discovery=discovery,
+        schema_pack_cache=_FakeSchemaPackCache({}),
         radius_m=25000,
         now=NOW,
     )

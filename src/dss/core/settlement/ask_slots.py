@@ -12,6 +12,7 @@ from dss.core.intent.models import (
     UnresolvedPlace,
 )
 from dss.core.provider_discovery.models import NetworkSchemaType
+from dss.core.schema_packs.service import is_place_needed
 from dss.core.settlement.models import (
     Ambiguous,
     AskSlot,
@@ -32,18 +33,9 @@ def needed_slots(
 ) -> tuple[AskSlot, ...]:
     """The ask's slots its packs need, in the order they are asked."""
 
-    if _is_place_needed(capability_types, place_bound_types):
+    if is_place_needed(capability_types, place_bound_types):
         return (AskSlot.PLACE,)
     return ()
-
-
-def _is_place_needed(
-    capability_types: Collection[NetworkSchemaType],
-    place_bound_types: Collection[NetworkSchemaType],
-) -> bool:
-    return bool(capability_types) and all(
-        capability in place_bound_types for capability in capability_types
-    )
 
 
 def frame_for(ask: Ask, *, needed: tuple[AskSlot, ...]) -> Frame:

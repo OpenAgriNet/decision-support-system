@@ -171,6 +171,16 @@
   nothing to stop the two being swapped. Make it a frozen `CapabilityKey`
   with named fields in the same change.
 
+- **One pack per category in the index.** The index lists a pack under every
+  category its examples name, so Crop lists both the advisory pack and the
+  facility pack. Crop should map to the advisory pack only, and Facility to
+  the facility pack. Until then `is_place_needed`
+  (`core/schema_packs/service.py`) says a place is needed only when *every*
+  pack of the category needs one. So a Crop ask that only the facility pack
+  can answer is never asked for its place. When the mapping is fixed, change
+  the rule in the same change: with one pack per category it is just "the
+  pack needs a place".
+
 ## Place resolution (#130) — deferred to separate PRs
 
 - **An ask has no type of its own after discovery.** Its options, place

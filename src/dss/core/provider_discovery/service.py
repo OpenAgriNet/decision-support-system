@@ -31,6 +31,7 @@ from dss.core.provider_discovery.models import (
     ProviderQuery,
     ProviderQueryResult,
 )
+from dss.core.schema_packs.service import is_place_needed
 from dss.core.shared.models import UserTurn
 from dss.ports.discovery import CapabilityDiscovery
 
@@ -96,16 +97,6 @@ def coverage_for_ask(ask: Ask, *, radius_m: int) -> Coverage | None:
 _DISCOVERABLE_WITHOUT_CAPABILITY_TYPE = frozenset({SubjectCategory.SCHEME})
 
 
-def _is_searched_by_place(
-    types: tuple[str, ...], place_bound_types: frozenset[str]
-) -> bool:
-    """A spatial filter drops every resource with no coverage area, so one
-    placeless @type in the query is enough to send none. A query with no @type
-    (a scheme ask) has no pack to say, and keeps the filter."""
-
-    return all(capability in place_bound_types for capability in types)
-
-
 def _query_for_ask(
     ask: Ask,
     languages: tuple[str, ...],
@@ -126,7 +117,7 @@ def _query_for_ask(
         capabilities=types,
         subject_category=ask.subject_categories.value,
         languages=languages,
-        coverage=coverage if _is_searched_by_place(types, place_bound_types) else None,
+        coverage=coverage if is_place_needed(types, place_bound_types) else None,
     )
 
 
@@ -164,7 +155,7 @@ def _lacks_a_needed_place(
     # the search has no place and could answer for some other place.
     if not isinstance(ask.place, AmbiguousPlace | UnresolvedPlace):
         return False
-    return isinstance(query, CapabilityUnresolved) or _is_searched_by_place(
+    return isinstance(query, CapabilityUnresolved) or is_place_needed(
         query.capabilities, place_bound_types
     )
 
