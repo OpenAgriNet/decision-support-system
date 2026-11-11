@@ -63,9 +63,9 @@ only if every pack mentions a location. So Crop and Livestock do not ask.
 Whether the index should list AgricultureFacility under Crop at all is a
 separate issue.
 
-**Every slot value comes with a sure flag.** Intent says whether it is sure
-of each value it reads. Code fills a slot only when the value is sure and
-checks out. Unsure means we confirm or ask.
+**Every slot value comes with how sure intent is of it.** Code fills a slot
+only when intent is sure and the value checks out. Unsure means we confirm
+or ask.
 
 **How each slot is asked.**
 
@@ -209,8 +209,12 @@ Evidence
 
 ### Intent (`core/intent/models.py`)
 
-- `ClassifiedAsk.scheme_sure: bool`. Set by the model. Code still checks
-  the code against the catalog.
+- `ClassifiedAsk.scheme_confidence`: `high` or `low`, set by the model.
+  `high` means the farmer's words name the scheme. Two levels, not a
+  number: a number needs a cut-off, and models rate themselves badly.
+  Left out counts as `low`. Code still checks the code against the catalog.
+- `Ask.scheme` is a `Scheme` (high), a `GuessedScheme` (low) or nothing. A
+  guess keeps the farmer's words as the subject and never picks a form.
 - `ClassifiedAsk.action: str | None` and `action_sure: bool`. Picked from
   the category's form actions shown in the prompt. Checked against the
   registry; unknown is dropped and the action is asked.
@@ -271,8 +275,8 @@ plus any exact block code adds.
 2. Settlement types and `settle`, starting with place. Replace
    `place_optional_asks` and the place question path. Place behaviour
    unchanged, except a place we cannot find is asked again.
-3. Scheme slot: registry contexts by category, intent's `scheme_sure`,
-   confirm and no-match handling.
+3. Scheme slot: registry contexts by category, intent's
+   `scheme_confidence`, confirm and no-match handling.
 4. Action slot: intent's `action` and `action_sure`, the question when
    unclear, drop the interaction mapping.
 5. Intent examples config: loader, boot checks, cap, template.
@@ -290,7 +294,7 @@ plus any exact block code adds.
 - **Tier 3:** orchestrator stops on an unsettled ask before discovery;
   composer gets the question; fallback on composer failure.
 - **Tier 5:** intent picks Grievance for loose phrasing, the action, and
-  `scheme_sure`. Structure only.
+  `scheme_confidence`. Structure only.
 - **Tier 7:** one smoke: scheme problem, "which scheme", reply, form.
 
 ## Reuse from the earlier branch

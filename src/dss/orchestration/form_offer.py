@@ -43,7 +43,8 @@ def ask_for_form(context: FormContext, *, scheme: Scheme) -> Ask | None:
 
 def form_context_for(ask: Ask) -> FormContext | None:
     action = _ACTION_BY_INTERACTION.get(ask.interaction_type)
-    if ask.scheme is None or action is None:
+    # A guessed scheme gets no form: it could file against the wrong scheme.
+    if not isinstance(ask.scheme, Scheme) or action is None:
         return None
     return FormContext(
         scheme=ask.scheme.code, category=ask.subject_categories.value, action=action

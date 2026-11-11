@@ -22,9 +22,11 @@ from collections.abc import Sequence
 
 from dss.core.intent.models import (
     ClassifiedAsk,
+    GuessedScheme,
     IntentClassification,
     InteractionType,
     Scheme,
+    SchemeConfidence,
     SchemeEntry,
     SubjectCategory,
 )
@@ -74,12 +76,15 @@ def _with_scheme(ask: ClassifiedAsk, by_code: dict[str, Scheme]) -> ClassifiedAs
     """Put the catalog's scheme on the ask, or clear a code it does not hold.
 
     The subject becomes the official name: the planner fills a request with
-    it and the composer names it back to the farmer.
+    it and the composer names it back to the farmer. A guess keeps the
+    farmer's words, for the confirm to show.
     """
 
     scheme = by_code.get(ask.scheme_code) if ask.scheme_code else None
     if scheme is None:
         return ask.model_copy(update={"scheme_code": None, "scheme": None})
+    if ask.scheme_confidence is SchemeConfidence.LOW:
+        return ask.model_copy(update={"scheme": GuessedScheme(scheme=scheme)})
     return ask.model_copy(
         update={"agriculture_subjects": scheme.name, "scheme": scheme}
     )

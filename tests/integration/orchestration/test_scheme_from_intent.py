@@ -15,6 +15,7 @@ from dss.core.intent.models import (
     IntentClassification,
     InteractionType,
     Scheme,
+    SchemeConfidence,
     SubjectCategory,
 )
 from dss.core.provider_discovery.models import DiscoveryResult
@@ -46,6 +47,7 @@ def _grievance(scheme_code: str | None) -> IntentClassification:
                 subject_categories=SubjectCategory.GRIEVANCE,
                 interaction_type=InteractionType.ACT,
                 scheme_code=scheme_code,
+                scheme_confidence=SchemeConfidence.HIGH,
             ),
         ),
         confidence=0.9,

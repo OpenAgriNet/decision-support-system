@@ -14,7 +14,9 @@ from dss.core.intent.models import (
     AmbiguousPlace,
     Ask,
     ClassifiedAsk,
+    GuessedScheme,
     ResolvedPlace,
+    Scheme,
     UnresolvedPlace,
 )
 from dss.core.planner.models import AskEvidence, Attempted, Evidence, Failure
@@ -23,7 +25,8 @@ from dss.core.provider_discovery.models import DiscoveredAnswer, DiscoveryResult
 
 def asks_text(asks: Sequence[Ask | ClassifiedAsk]) -> str:
     """`market/observe: wheat @ Pune`, one line per ask. A scheme the intent
-    model named shows its code, `[PMFBY]`: a wrong match is read here."""
+    model named shows its code, `[PMFBY]`: a wrong match is read here. A
+    guess shows `[PMFBY?]`."""
 
     if not asks:
         return "no asks"
@@ -35,7 +38,13 @@ def asks_text(asks: Sequence[Ask | ClassifiedAsk]) -> str:
 
 
 def _scheme(ask: Ask | ClassifiedAsk) -> str:
-    return f" [{ask.scheme.code}]" if ask.scheme is not None else ""
+    match ask.scheme:
+        case Scheme(code=code):
+            return f" [{code}]"
+        case GuessedScheme(scheme=Scheme(code=code)):
+            return f" [{code}?]"
+        case None:
+            return ""
 
 
 def _place(ask: Ask | ClassifiedAsk) -> str:

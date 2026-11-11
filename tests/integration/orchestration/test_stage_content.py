@@ -2,8 +2,15 @@
 
 from __future__ import annotations
 
+from dss.core.intent.models import (
+    Ask,
+    GuessedScheme,
+    InteractionType,
+    Scheme,
+    SubjectCategory,
+)
 from dss.core.planner.models import Evidence, Source, SourceKind
-from dss.orchestration.stage_content import cited_sources_text
+from dss.orchestration.stage_content import asks_text, cited_sources_text
 from tests.support.evidence import build_evidence
 
 
@@ -24,3 +31,17 @@ def test_each_source_shows_the_number_the_farmer_read() -> None:
 
 def test_no_sources_says_so() -> None:
     assert cited_sources_text(_evidence(), {}) == "no sources"
+
+
+def test_guessed_scheme_is_marked_in_the_trace() -> None:
+    """Whoever reads a trace must tell a guess from a scheme the farmer named."""
+
+    pmfby = Scheme(code="PMFBY", name="Pradhan Mantri Fasal Bima Yojana")
+    ask = Ask(
+        agriculture_subjects="crop insurance",
+        subject_categories=SubjectCategory.GRIEVANCE,
+        interaction_type=InteractionType.ACT,
+        scheme=GuessedScheme(scheme=pmfby),
+    )
+
+    assert asks_text((ask,)) == "1. Grievance/act: crop insurance [PMFBY?]"

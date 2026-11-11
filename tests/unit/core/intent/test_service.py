@@ -10,9 +10,11 @@ from __future__ import annotations
 
 from dss.core.intent.models import (
     ClassifiedAsk,
+    GuessedScheme,
     IntentClassification,
     InteractionType,
     Scheme,
+    SchemeConfidence,
     SchemeEntry,
     SubjectCategory,
 )
@@ -149,7 +151,10 @@ _PMFBY = Scheme(code="PMFBY", name="Pradhan Mantri Fasal Bima Yojana")
 _CATALOG = (SchemeEntry(scheme=_PMFBY, aliases=("fasal bima",)),)
 
 
-def _grievance(scheme_code: str | None) -> IntentClassification:
+def _grievance(
+    scheme_code: str | None,
+    scheme_confidence: SchemeConfidence = SchemeConfidence.HIGH,
+) -> IntentClassification:
     return IntentClassification(
         asks=(
             ClassifiedAsk(
@@ -157,6 +162,7 @@ def _grievance(scheme_code: str | None) -> IntentClassification:
                 subject_categories=SubjectCategory.GRIEVANCE,
                 interaction_type=InteractionType.ACT,
                 scheme_code=scheme_code,
+                scheme_confidence=scheme_confidence,
             ),
         ),
         confidence=0.9,
@@ -192,6 +198,21 @@ async def test_a_listed_code_puts_the_catalogs_scheme_on_the_ask() -> None:
     assert ask.scheme == _PMFBY
     assert ask.agriculture_subjects == "Pradhan Mantri Fasal Bima Yojana"
     assert ask.subject_categories is SubjectCategory.GRIEVANCE
+
+
+async def test_low_confidence_scheme_is_a_guess() -> None:
+    """A guess keeps the farmer's words, so the confirm can show them."""
+
+    classification = await classify_intent(
+        _turn("fasal bima complaint"),
+        _FakeLLM(_grievance("PMFBY", SchemeConfidence.LOW)),
+        FakePromptProvider(),
+        _CATALOG,
+    )
+
+    [ask] = classification.asks
+    assert ask.scheme == GuessedScheme(scheme=_PMFBY)
+    assert ask.agriculture_subjects == "fasal bima"
 
 
 async def test_a_code_the_catalog_does_not_hold_is_dropped() -> None:

@@ -123,6 +123,19 @@ class Scheme(BaseModel):
     name: str
 
 
+class GuessedScheme(BaseModel):
+    """The closest listed scheme, when the farmer did not clearly name one."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    scheme: Scheme
+
+
+class SchemeConfidence(StrEnum):
+    HIGH = "high"
+    LOW = "low"
+
+
 class SchemeEntry(BaseModel):
     """One catalog row, as the intent model is shown it: the scheme and every
     other way a farmer may name it."""
@@ -146,6 +159,7 @@ class Ask(BaseModel):
     and the lookup could not turn it into one place.
 
     ``scheme`` is set when the intent model named a scheme the catalog holds.
+    A ``GuessedScheme`` must be confirmed with the farmer before it is used.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -154,7 +168,7 @@ class Ask(BaseModel):
     subject_categories: SubjectCategory
     interaction_type: InteractionType
     place: ResolvedPlace | AmbiguousPlace | UnresolvedPlace | None = None
-    scheme: Scheme | None = None
+    scheme: Scheme | GuessedScheme | None = None
 
 
 # The docstrings of ClassifiedAsk and IntentClassification go to the model as
@@ -169,6 +183,10 @@ class ClassifiedAsk(BaseModel):
 
     ``scheme_code`` is the code of the listed scheme this ask is about, or
     null when it names none of them.
+
+    ``scheme_confidence`` is high when the user's words name that scheme: its
+    name, its code or another listed name, even misspelt. It is low when you
+    only picked the closest one.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -181,9 +199,11 @@ class ClassifiedAsk(BaseModel):
     # Only the model can tell: it read both, in whatever language they were.
     place_from_history: bool = False
     scheme_code: str | None = None
+    # Low when left out: a scheme the model did not vouch for is confirmed.
+    scheme_confidence: SchemeConfidence = SchemeConfidence.LOW
     # Set by `classify_intent` from the catalog, never by the model: hidden
     # from the schema it is shown, so a code it invents never becomes a scheme.
-    scheme: SkipJsonSchema[Scheme | None] = None
+    scheme: SkipJsonSchema[Scheme | GuessedScheme | None] = None
 
     @field_validator("place_name")
     @classmethod

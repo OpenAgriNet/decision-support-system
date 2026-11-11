@@ -36,6 +36,7 @@ Each ask has:
 {%- else %}
   No schemes are listed, so scheme_code is always null.
 {%- endif %}
+- scheme_confidence: high when the user's words name that scheme: its name, its code or another listed name, even misspelt. low when you picked the closest scheme from what they described ('my crop insurance money did not come'). Keep it low when scheme_code is null.
 
 Examples:
   'what is the onion rate at Lasalgaon' -> one ask: Market / observe / 'onion'.

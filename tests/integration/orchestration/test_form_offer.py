@@ -6,10 +6,12 @@ from dss.core.forms.models import FormContext, FormDefinition
 from dss.core.intent.models import (
     Ask,
     ClassifiedAsk,
+    GuessedScheme,
     Intent,
     IntentClassification,
     InteractionType,
     Scheme,
+    SchemeConfidence,
     SubjectCategory,
 )
 from dss.core.provider_discovery.models import DiscoveryResult, ProviderCapability
@@ -66,7 +68,9 @@ def _discovery(
     )
 
 
-def _grievance_ask(interaction: InteractionType, scheme: Scheme | None = PMFBY) -> Ask:
+def _grievance_ask(
+    interaction: InteractionType, scheme: Scheme | GuessedScheme | None = PMFBY
+) -> Ask:
     return Ask(
         agriculture_subjects=PMFBY.name,
         subject_categories=SubjectCategory.GRIEVANCE,
@@ -95,6 +99,15 @@ def test_advice_names_no_form() -> None:
 
 def test_an_ask_without_a_scheme_names_no_form() -> None:
     assert form_context_for(_grievance_ask(InteractionType.ACT, scheme=None)) is None
+
+
+def test_a_guessed_scheme_names_no_form() -> None:
+    """A guess may be the wrong scheme, and its form would file the complaint
+    against that one."""
+
+    guess = GuessedScheme(scheme=PMFBY)
+
+    assert form_context_for(_grievance_ask(InteractionType.ACT, scheme=guess)) is None
 
 
 def test_a_served_ask_the_registry_knows_gets_its_form() -> None:
@@ -151,6 +164,7 @@ def _grievance_classification() -> IntentClassification:
                 subject_categories=SubjectCategory.GRIEVANCE,
                 interaction_type=InteractionType.ACT,
                 scheme_code="PMFBY",
+                scheme_confidence=SchemeConfidence.HIGH,
             ),
         ),
         confidence=0.9,
