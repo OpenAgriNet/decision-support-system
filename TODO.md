@@ -251,11 +251,32 @@
   carries its ask, as `AskEvidence` already does, so a step can pass on just
   the asks it means and the merge goes.
 
+- **`ask_index` is wrong after the merge.** `merge_unsettled` puts every ask
+  back in the farmer's order. But a `Result` or `Failure` keeps the number it
+  had among the settled asks only. With the asks [needs a place, settled],
+  the settled ask's result says `ask_index == 0`, which is the other ask.
+  Nothing reads the number after the merge today. The item above removes it.
+
 - **Give `Evidence` its own package.** It lives in `core/planner/` because
   the planner was its first producer, but the form step and settlement add
   outcomes to it too. Move `Evidence`, `AskEvidence`, `AskOutcome`,
   `group_by_ask` and `merge_unsettled` to `core/evidence/`, so no stage
   looks like the owner.
+
+## Settlement (#243)
+
+- **Settlement reads the capability index from discovery.**
+  `core/settlement/` imports `capability_types_for`, `CapabilityIndex` and
+  `NetworkSchemaType` from `core/provider_discovery/`, a stage that runs
+  after it. Which packs serve a category is a fact about packs, not about
+  discovery. Move the index and its types to `core/schema_packs/`, where
+  `is_place_needed` already lives. Do it with the `CapabilityKey` item
+  under Provider Discovery.
+
+- **`TurnResult.settlements` defaults to empty.** Every turn now settles its
+  asks, but the field still has a default. A `TurnResult` built without
+  settlements passes `is_every_ask_settled` and then fails in
+  `settled_intent`, far from where it was built. Make the field required.
 
 ## Transport
 
