@@ -226,6 +226,11 @@ class ClassifiedAsk(BaseModel):
         trimmed = _LINE_NUMBER.sub("", value.strip(_PLACE_NAME_EDGE_JUNK))
         return trimmed.strip(_PLACE_NAME_EDGE_JUNK) or None
 
+    @field_validator("unlisted_scheme_name")
+    @classmethod
+    def _drop_blank_scheme_name(cls, value: str | None) -> str | None:
+        return (value or "").strip() or None
+
 
 # The raw model output. resolve_places turns it into an Intent, below.
 class IntentClassification(BaseModel):

@@ -191,6 +191,17 @@ def test_classified_ask_keeps_punctuation_inside_the_place_name() -> None:
     assert ask.place_name == "St. Thomas"
 
 
+def test_blank_unlisted_scheme_name_is_dropped() -> None:
+    """A blank name would have the farmer told "we could not find ' '"."""
+
+    ask = ClassifiedAsk(
+        subject_categories=SubjectCategory.GRIEVANCE,
+        interaction_type=InteractionType.ACT,
+        unlisted_scheme_name="  ",
+    )
+    assert ask.unlisted_scheme_name is None
+
+
 @pytest.mark.parametrize(
     "raw", ["2. Rampur, Himachal Pradesh", "2) Rampur, Himachal Pradesh"]
 )
