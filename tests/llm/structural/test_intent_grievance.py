@@ -116,7 +116,7 @@ async def test_filing_a_pmfby_complaint_is_grievance_pmfby_act(query: str) -> No
     (ask,) = classification.asks
     assert ask.subject_categories is SubjectCategory.GRIEVANCE
     assert ask.interaction_type is InteractionType.ACT
-    assert ask.scheme is not None
+    assert isinstance(ask.scheme, Scheme), f"{classification!r}"
     assert ask.scheme.code == "PMFBY"
 
 
@@ -138,7 +138,7 @@ async def test_checking_a_pmfby_complaint_is_grievance_pmfby_observe(
     (ask,) = classification.asks
     assert ask.subject_categories is SubjectCategory.GRIEVANCE
     assert ask.interaction_type is InteractionType.OBSERVE
-    assert ask.scheme is not None
+    assert isinstance(ask.scheme, Scheme), f"{classification!r}"
     assert ask.scheme.code == "PMFBY"
 
 
