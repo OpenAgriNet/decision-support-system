@@ -12,6 +12,8 @@ from datetime import datetime
 
 import anyio
 
+from dss.core.forms.models import ActionSchema, FormContext
+from dss.core.forms.registry import FormRegistry
 from dss.core.intent.models import (
     Ask,
     ClassifiedAsk,
@@ -489,7 +491,7 @@ def test_settle_reads_the_index_each_turn() -> None:
 
     weather_pack = "openagrinet:WeatherObservation"
     index = _FakeIndex({("Weather", "Service"): (weather_pack,)}, frozenset())
-    settle = build_settle_asks(index)
+    settle = build_settle_asks(index, FormRegistry().contexts_for)
     rain = Ask(
         subject_categories=SubjectCategory.WEATHER,
         interaction_type=InteractionType.OBSERVE,
@@ -500,3 +502,22 @@ def test_settle_reads_the_index_each_turn() -> None:
     index._place_bound_types = frozenset({weather_pack})
 
     assert settle(Intent(asks=(rain,))) == (_NEEDS_PLACE,)
+
+
+def test_settle_asks_for_the_scheme_of_a_form_category() -> None:
+    pmfby_support = FormContext(scheme="PMFBY", category="Grievance", action="support")
+    forms = FormRegistry([ActionSchema(context=pmfby_support, must_send=())])
+    settle = build_settle_asks(_FakeIndex({}, frozenset()), forms.contexts_for)
+    complaint = Ask(
+        subject_categories=SubjectCategory.GRIEVANCE,
+        interaction_type=InteractionType.ACT,
+    )
+    rain = Ask(
+        subject_categories=SubjectCategory.WEATHER,
+        interaction_type=InteractionType.OBSERVE,
+    )
+
+    assert settle(Intent(asks=(complaint, rain))) == (
+        NeedsClarification(open_slots=(Slot(AskSlot.SCHEME, Missing()),)),
+        _SETTLED,
+    )

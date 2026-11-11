@@ -19,7 +19,7 @@ import pytest
 from dss.adapters.provider_preferences.registry import RegistryProviderPreferences
 from dss.config.settings import Settings
 from dss.core.forms.models import FormContext
-from dss.core.forms.registry import FormLookup
+from dss.core.forms.registry import FormLookup, FormRegistry
 from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
 from dss.core.schema_packs.models import SchemaPackFiles
 from dss.core.settlement.models import Frame, Settled
@@ -115,7 +115,7 @@ def test_wired_network_builds_theplanner_schemas(tmp_path: Path) -> None:
 def test_with_no_packs_every_ask_settles(tmp_path: Path) -> None:
     """Unwired there are no packs, so nothing says an ask needs anything."""
 
-    settle = _settle_asks(load_schema_packs(_settings(tmp_path)))
+    settle = _settle_asks(load_schema_packs(_settings(tmp_path)), FormRegistry())
     rain = Ask(
         subject_categories=SubjectCategory.WEATHER,
         interaction_type=InteractionType.OBSERVE,

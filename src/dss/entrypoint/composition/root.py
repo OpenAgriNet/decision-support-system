@@ -171,7 +171,7 @@ def build_runner_with_lifecycle(
     wiring = _Wiring(
         boot=boot,
         network=network,
-        settle_asks=_settle_asks(packs),
+        settle_asks=_settle_asks(packs, forms),
         components=_build_components(settings, boot, network),
         area_lookup=area_lookup,
         forms=forms,
@@ -572,8 +572,7 @@ class _Network:
 
 
 class _NoPacks:
-    """An empty capability index. No pack says an ask needs anything, so
-    every ask settles."""
+    """An empty capability index. No pack says an ask needs a place."""
 
     def current(self) -> CapabilityIndex:
         return {}
@@ -582,8 +581,9 @@ class _NoPacks:
         return frozenset()
 
 
-def _settle_asks(packs: SchemaPacks | None) -> SettleAsks:
-    return build_settle_asks(_NoPacks() if packs is None else packs.cache)
+def _settle_asks(packs: SchemaPacks | None, forms: FormRegistry) -> SettleAsks:
+    index = _NoPacks() if packs is None else packs.cache
+    return build_settle_asks(index, forms.contexts_for)
 
 
 def _network(

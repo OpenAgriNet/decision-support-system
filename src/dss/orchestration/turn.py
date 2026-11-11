@@ -14,7 +14,7 @@ intent and moderation can use different models.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Collection, Sequence
+from collections.abc import Callable, Collection, Iterable, Sequence
 from datetime import UTC, datetime
 from functools import partial
 
@@ -25,6 +25,7 @@ from dss.adapters.observability.tracing import (
     set_current_span_attributes,
     set_current_span_content,
 )
+from dss.core.forms.models import FormContext
 from dss.core.intent.models import (
     AmbiguousPlace,
     Ask,
@@ -84,7 +85,13 @@ def _nothing_discovered() -> DiscoveryResult:
 type SettleAsks = Callable[[Intent], tuple[Settlement, ...]]
 
 
-def build_settle_asks(index: CapabilityIndexSource) -> SettleAsks:
+# A category's forms.
+type FormContextLookup = Callable[[str], Iterable[FormContext]]
+
+
+def build_settle_asks(
+    index: CapabilityIndexSource, contexts_for: FormContextLookup
+) -> SettleAsks:
     """Reads the index on every turn. It can refresh while the app runs."""
 
     def settle(intent: Intent) -> tuple[Settlement, ...]:
@@ -92,6 +99,7 @@ def build_settle_asks(index: CapabilityIndexSource) -> SettleAsks:
             _ask_needs,
             index=index.current(),
             place_bound_types=index.place_bound_types(),
+            contexts_for=contexts_for,
         )
         return settlement.settle_asks(intent, needs_for=needs_for)
 
@@ -103,11 +111,13 @@ def _ask_needs(
     *,
     index: CapabilityIndex,
     place_bound_types: Collection[NetworkSchemaType],
+    contexts_for: FormContextLookup,
 ) -> AskNeeds:
     pack_types = capability_types_for(ask, index)
+    contexts = contexts_for(ask.subject_categories.value)
     return AskNeeds(
         needs_place=is_place_needed(pack_types, place_bound_types),
-        schemes_with_a_form=frozenset(),
+        schemes_with_a_form=frozenset(context.scheme for context in contexts),
     )
 
 
