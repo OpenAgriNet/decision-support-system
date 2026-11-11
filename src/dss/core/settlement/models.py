@@ -13,6 +13,7 @@ class AskSlot(StrEnum):
     product, unlike form fields, which come from the packs."""
 
     PLACE = "place"
+    SCHEME = "scheme"
 
 
 @dataclass(frozen=True)
@@ -30,8 +31,9 @@ class Missing:
 
 @dataclass(frozen=True)
 class Ambiguous[T]:
-    """A value given for this slot that fits more than one choice. One choice
-    is a confirm: "Do you mean X?"."""
+    """The farmer has to pick, or confirm when there is one choice: "Do you
+    mean X?". ``value`` is the name the question is about: the place name the
+    farmer typed, or the name of the scheme we guessed."""
 
     value: str
     choices: tuple[T, ...]

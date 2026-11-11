@@ -5,9 +5,11 @@ from __future__ import annotations
 from dss.core.intent.models import (
     AmbiguousPlace,
     Ask,
+    GuessedScheme,
     InteractionType,
     PlaceSource,
     ResolvedPlace,
+    Scheme,
     SubjectCategory,
     UnresolvedPlace,
 )
@@ -109,6 +111,35 @@ def test_whole_state_is_too_broad() -> None:
     assert _place_of(place) == Unresolved(
         value="Maharashtra", reason=UnresolvedReason.TOO_BROAD
     )
+
+
+PMFBY = Scheme(code="PMFBY", name="Pradhan Mantri Fasal Bima Yojana")
+
+
+def _scheme_of(scheme: Scheme | GuessedScheme | None) -> SlotState:
+    ask = Ask(
+        subject_categories=SubjectCategory.GRIEVANCE,
+        interaction_type=InteractionType.ACT,
+        scheme=scheme,
+    )
+    return ask_slot_state(ask, AskSlot.SCHEME)
+
+
+def test_named_scheme() -> None:
+    assert _scheme_of(PMFBY) == Resolved(PMFBY)
+
+
+def test_guessed_scheme_is_one_choice() -> None:
+    """One choice is a confirm. The farmer typed no scheme name, so the
+    value is the guessed scheme's name: the name the question is about."""
+
+    assert _scheme_of(GuessedScheme(scheme=PMFBY)) == Ambiguous(
+        value="Pradhan Mantri Fasal Bima Yojana", choices=(PMFBY,)
+    )
+
+
+def test_no_scheme_given() -> None:
+    assert _scheme_of(None) == Missing()
 
 
 def _weather_at(place: ResolvedPlace | None) -> Ask:

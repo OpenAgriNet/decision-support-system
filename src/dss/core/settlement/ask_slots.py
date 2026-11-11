@@ -8,7 +8,9 @@ from collections.abc import Collection
 from dss.core.intent.models import (
     AmbiguousPlace,
     Ask,
+    GuessedScheme,
     ResolvedPlace,
+    Scheme,
     UnresolvedPlace,
 )
 from dss.core.provider_discovery.models import NetworkSchemaType
@@ -46,6 +48,8 @@ def ask_slot_state(ask: Ask, slot: AskSlot) -> SlotState:
     match slot:
         case AskSlot.PLACE:
             return _place_state(ask)
+        case AskSlot.SCHEME:
+            return _scheme_state(ask)
 
 
 def _place_state(ask: Ask) -> SlotState:
@@ -58,5 +62,15 @@ def _place_state(ask: Ask) -> SlotState:
             return Unresolved(value=region, reason=UnresolvedReason.TOO_BROAD)
         case UnresolvedPlace(unresolved_name=name):
             return Unresolved(value=name, reason=UnresolvedReason.NOT_FOUND)
+        case None:
+            return Missing()
+
+
+def _scheme_state(ask: Ask) -> SlotState:
+    match ask.scheme:
+        case Scheme() as scheme:
+            return Resolved(scheme)
+        case GuessedScheme(scheme=scheme):
+            return Ambiguous(value=scheme.name, choices=(scheme,))
         case None:
             return Missing()
