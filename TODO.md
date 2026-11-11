@@ -278,6 +278,12 @@
 - **`scheme_confidence` counts as low when left out.** A model that always
   leaves it out would confirm the same scheme forever. The live model fills
   it every time today. Make the field required, or stop after one confirm.
+- **An ask can read "advise" and still want a form filed.** "How do I file a
+  complaint" is advice by its words. The provider search treats any ask with
+  an action as a service ask, but the ask keeps the model's label, so a trace
+  shows "advise" beside "support". The tidier end state: once a form serves
+  the ask, relabel it `act` or `observe` before the search, as the form path
+  already does for a submitted form.
 
 ## Transport
 

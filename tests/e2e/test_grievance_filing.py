@@ -229,3 +229,18 @@ def test_an_unclear_problem_is_asked_then_gets_its_form(live_app, a_body):
         assert [form["context"] for form in forms] == [
             {"scheme": "PMFBY", "category": "Grievance", "action": "support"}
         ], offered
+
+
+def test_asking_how_to_complain_gets_the_form(live_app, a_body):
+    """The form is the how. Worded as a question, it used to find no desk."""
+
+    with TestClient(live_app) as client:
+        how_to = _text("How do I file a PMFBY complaint?")
+
+        offered = _message(_post(client, a_body, [how_to]))
+
+        assert offered["outcome"]["status"] == "requires_input", offered
+        forms = [item for item in offered["content"] if item["type"] == "form"]
+        assert [form["context"] for form in forms] == [
+            {"scheme": "PMFBY", "category": "Grievance", "action": "support"}
+        ], offered

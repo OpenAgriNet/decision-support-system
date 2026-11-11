@@ -46,6 +46,14 @@ _ACTION_TYPE_BY_INTERACTION = {
 }
 
 
+def _action_type_of(ask: Ask) -> str:
+    # An ask with an action wants it done, however it is worded: "how do I
+    # file a complaint" is advice by its words and a filing by its aim.
+    if ask.action is not None:
+        return "Service"
+    return _ACTION_TYPE_BY_INTERACTION[ask.interaction_type]
+
+
 class CapabilityIndexSource(Protocol):
     def current(self) -> Mapping[tuple[str, str], tuple[str, ...]]: ...
 
@@ -68,8 +76,7 @@ def capability_types_for(
 ) -> tuple[NetworkSchemaType, ...]:
     """The pack types discovery would search for this ask."""
 
-    action_type = _ACTION_TYPE_BY_INTERACTION[ask.interaction_type]
-    return index.get((ask.subject_categories.value, action_type), ())
+    return index.get((ask.subject_categories.value, _action_type_of(ask)), ())
 
 
 def coverage_for_ask(ask: Ask, *, radius_m: int) -> Coverage | None:
@@ -104,9 +111,8 @@ def _query_for_ask(
     index: Mapping[tuple[str, str], tuple[str, ...]],
     place_bound_types: frozenset[str],
 ) -> ProviderQuery | CapabilityUnresolved:
-    action_type = _ACTION_TYPE_BY_INTERACTION[ask.interaction_type]
     types, event = resolve_capability_type(
-        ask.subject_categories.value, action_type, index
+        ask.subject_categories.value, _action_type_of(ask), index
     )
     if (
         event is not None

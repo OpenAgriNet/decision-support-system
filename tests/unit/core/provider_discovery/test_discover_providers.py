@@ -35,7 +35,7 @@ from dss.core.provider_discovery.models import (
     Validity,
 )
 from dss.core.provider_discovery.service import discover_providers
-from dss.core.shared.models import Geometry, TextQuery, UserTurn
+from dss.core.shared.models import Geometry, ProviderAction, TextQuery, UserTurn
 from tests.support.providers import build_capability
 
 NOW = datetime(2026, 8, 26, 12, 0, 0, tzinfo=UTC)
@@ -207,6 +207,31 @@ async def test_an_unclear_place_does_not_stop_a_placeless_search() -> None:
 
     discovery, _ = await _discover_in_xyzzy(
         SubjectCategory.GRIEVANCE, "openagrinet:Grievance", place_bound=False
+    )
+
+    assert len(discovery.calls) == 1
+
+
+async def test_a_how_to_with_an_action_is_searched_as_a_service() -> None:
+    """Searched by its wording, "how do I file a complaint" would look among
+    the advice packs and never find the desk."""
+
+    how_to_file = Ask(
+        subject_categories=SubjectCategory.GRIEVANCE,
+        interaction_type=InteractionType.ADVISE,
+        action=ProviderAction.SUPPORT,
+    )
+    discovery = _FakeDiscovery(_query_result())
+
+    await discover_providers(
+        Intent(asks=(how_to_file,), confidence=0.9),
+        _turn(),
+        discovery=discovery,
+        schema_pack_cache=_FakeSchemaPackCache(
+            {("Grievance", "Service"): ("openagrinet:Grievance",)}
+        ),
+        radius_m=25000,
+        now=NOW,
     )
 
     assert len(discovery.calls) == 1

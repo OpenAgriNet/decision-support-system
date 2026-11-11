@@ -8,6 +8,7 @@ from dss.core.provider_discovery.service import (
     capability_types_for,
     resolve_capability_type,
 )
+from dss.core.shared.models import ProviderAction
 
 
 def test_a_pinned_pair_resolves_to_its_single_type() -> None:
@@ -55,3 +56,17 @@ def test_an_asks_types_follow_its_interaction() -> None:
         "MarketIntelligence",
     )
     assert capability_types_for(ask(InteractionType.OBSERVE), index) == ("MandiPrice",)
+
+
+def test_an_ask_with_an_action_is_a_service_ask() -> None:
+    """ "How do I file a complaint" is worded as advice, and still wants the
+    desk that files one."""
+
+    index = {("Grievance", "Service"): ("openagrinet:Grievance",)}
+    how_to_file = Ask(
+        subject_categories=SubjectCategory.GRIEVANCE,
+        interaction_type=InteractionType.ADVISE,
+        action=ProviderAction.SUPPORT,
+    )
+
+    assert capability_types_for(how_to_file, index) == ("openagrinet:Grievance",)
