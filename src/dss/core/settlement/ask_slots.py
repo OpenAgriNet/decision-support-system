@@ -3,6 +3,8 @@ for it."""
 
 from __future__ import annotations
 
+from typing import assert_never
+
 from dss.core.intent.models import (
     AmbiguousPlace,
     Ask,
@@ -51,6 +53,8 @@ def ask_slot_state(ask: Ask, slot: AskSlot, needs: AskNeeds) -> SlotState:
             return _place_state(ask)
         case AskSlot.SCHEME:
             return _scheme_state(ask, needs.schemes_with_a_form)
+        case unknown:
+            assert_never(unknown)
 
 
 def _place_state(ask: Ask) -> SlotState:
@@ -67,6 +71,8 @@ def _place_state(ask: Ask) -> SlotState:
             return Unresolved(value=name, reason=UnresolvedReason.NOT_FOUND)
         case None:
             return Missing()
+        case unknown:
+            assert_never(unknown)
 
 
 def _scheme_state(ask: Ask, schemes_with_a_form: frozenset[str]) -> SlotState:
@@ -84,3 +90,5 @@ def _scheme_state(ask: Ask, schemes_with_a_form: frozenset[str]) -> SlotState:
         # A guess without a form is not confirmed: a yes could not be served.
         case GuessedScheme() | None:
             return Missing()
+        case unknown:
+            assert_never(unknown)

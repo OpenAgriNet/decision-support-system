@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from dss.core.intent.models import (
     AmbiguousPlace,
     Ask,
@@ -190,6 +192,15 @@ def test_unlisted_scheme_is_not_found() -> None:
 
 def test_no_scheme_given() -> None:
     assert _scheme_of(None) == Missing()
+
+
+def test_unknown_slot_fails_at_once() -> None:
+    """A slot with no case would come back as None and fail far from here."""
+
+    needs = AskNeeds(needs_place=False, schemes_with_a_form=NO_FORMS)
+
+    with pytest.raises(AssertionError):
+        ask_slot_state(_weather_at(None), "village", needs)  # type: ignore[arg-type]
 
 
 def _weather_at(place: ResolvedPlace | None) -> Ask:
