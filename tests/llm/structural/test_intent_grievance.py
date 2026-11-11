@@ -18,9 +18,9 @@ from dss.adapters.llm.pydantic_ai_provider import PydanticAILLMProvider
 from dss.adapters.scheme_catalog.csv_file import load_scheme_catalog
 from dss.config.prompt_service import build_prompt_service
 from dss.config.settings import Settings
-from dss.core.intent.models import InteractionType, SubjectCategory
+from dss.core.intent.models import InteractionType, Scheme, SubjectCategory
 from dss.core.intent.service import classify_intent
-from dss.core.shared.models import TextQuery, UserTurn
+from dss.core.shared.models import ConversationMessage, TextQuery, UserTurn
 from dss.entrypoint.composition.root import _resolve_model
 from dss.observability.stages import Stage
 from tests.support.live_model import missing_model_key
@@ -64,7 +64,9 @@ def _live_llm() -> PydanticAILLMProvider:
     )
 
 
-def _turn(query: str) -> UserTurn[TextQuery]:
+def _turn(
+    query: str, *, history: list[ConversationMessage] | None = None
+) -> UserTurn[TextQuery]:
     return UserTurn[TextQuery](
         input=TextQuery(text=query),
         session_id="s1",
@@ -72,6 +74,7 @@ def _turn(query: str) -> UserTurn[TextQuery]:
         source_lang="en",
         target_lang="en",
         channel="web",
+        history=history or [],
     )
 
 
@@ -131,4 +134,29 @@ async def test_checking_a_pmfby_complaint_is_grievance_pmfby_observe(
     assert ask.subject_categories is SubjectCategory.GRIEVANCE
     assert ask.interaction_type is InteractionType.OBSERVE
     assert ask.scheme is not None
+    assert ask.scheme.code == "PMFBY"
+
+
+async def test_yes_to_the_confirm_names_the_scheme() -> None:
+    """A yes read as a guess would be confirmed again, in a circle."""
+
+    prompts = build_prompt_service(_REPO / "configs" / "prompts.yaml")
+    schemes = load_scheme_catalog(_CATALOG).schemes()
+    history = [
+        ConversationMessage(
+            role="user",
+            text="My crop insurance money did not come, I want to complain",
+        ),
+        ConversationMessage(
+            role="assistant", text="Do you mean Pradhan Mantri Fasal Bima Yojana?"
+        ),
+    ]
+
+    classification = await classify_intent(
+        _turn("yes", history=history), _live_llm(), prompts, schemes
+    )
+
+    (ask,) = classification.asks
+    assert ask.subject_categories is SubjectCategory.GRIEVANCE
+    assert isinstance(ask.scheme, Scheme), f"{classification!r}"
     assert ask.scheme.code == "PMFBY"

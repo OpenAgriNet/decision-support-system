@@ -43,7 +43,7 @@
 {%- else %}
   कोई योजना सूचीबद्ध नहीं है, इसलिए scheme_code हमेशा null है।
 {%- endif %}
-- scheme_confidence: high जब उपयोगकर्ता के शब्दों में वह योजना नामित हो: उसका नाम, उसका code या कोई दूसरा सूचीबद्ध नाम, गलत वर्तनी में भी। low जब आपने उनके वर्णन से सबसे निकट की योजना चुनी हो ('my crop insurance money did not come')। जब scheme_code null हो तो इसे low ही रखिए।
+- scheme_confidence: high जब उपयोगकर्ता के शब्दों में वह योजना नामित हो: उसका नाम, उसका code या कोई दूसरा सूचीबद्ध नाम, गलत वर्तनी में भी। high तब भी जब उपयोगकर्ता उस योजना के लिए हाँ कहे जिसकी पुष्टि assistant ने अभी-अभी माँगी हो। low जब आपने उनके वर्णन से सबसे निकट की योजना चुनी हो ('my crop insurance money did not come')। जब scheme_code null हो तो इसे low ही रखिए।
 
 उदाहरण:
   'what is the onion rate at Lasalgaon' -> एक ask: Market / observe / 'onion'।
