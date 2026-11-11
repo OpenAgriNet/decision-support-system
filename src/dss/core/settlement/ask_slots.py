@@ -28,7 +28,11 @@ from dss.core.settlement.models import (
 def needed_slots(needs: AskNeeds) -> tuple[AskSlot, ...]:
     """In the order they are asked."""
 
-    return (AskSlot.PLACE,) if needs.needs_place else ()
+    is_needed = {
+        AskSlot.SCHEME: bool(needs.schemes_with_a_form),
+        AskSlot.PLACE: needs.needs_place,
+    }
+    return tuple(slot for slot, needed in is_needed.items() if needed)
 
 
 def frame_for(ask: Ask, *, needed: tuple[AskSlot, ...]) -> Frame:

@@ -21,6 +21,8 @@ class AskNeeds:
     """Worked out by the caller, so settlement reads no pack and no registry."""
 
     needs_place: bool
+    # By Scheme code.
+    schemes_with_a_form: frozenset[str]
 
 
 @dataclass(frozen=True)

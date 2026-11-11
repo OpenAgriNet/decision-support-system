@@ -37,12 +37,31 @@ PUNE = ResolvedPlace(
 )
 
 
+NO_FORMS: frozenset[str] = frozenset()
+
+
 def test_place_slot_when_needed() -> None:
-    assert needed_slots(AskNeeds(needs_place=True)) == (AskSlot.PLACE,)
+    needs = AskNeeds(needs_place=True, schemes_with_a_form=NO_FORMS)
+
+    assert needed_slots(needs) == (AskSlot.PLACE,)
 
 
 def test_no_slot_when_nothing_needed() -> None:
-    assert needed_slots(AskNeeds(needs_place=False)) == ()
+    needs = AskNeeds(needs_place=False, schemes_with_a_form=NO_FORMS)
+
+    assert needed_slots(needs) == ()
+
+
+def test_scheme_slot_when_category_has_forms() -> None:
+    needs = AskNeeds(needs_place=False, schemes_with_a_form=frozenset({"PMFBY"}))
+
+    assert needed_slots(needs) == (AskSlot.SCHEME,)
+
+
+def test_scheme_is_asked_before_place() -> None:
+    needs = AskNeeds(needs_place=True, schemes_with_a_form=frozenset({"PMFBY"}))
+
+    assert needed_slots(needs) == (AskSlot.SCHEME, AskSlot.PLACE)
 
 
 def _place_of(

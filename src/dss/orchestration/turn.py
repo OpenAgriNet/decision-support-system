@@ -105,7 +105,10 @@ def _ask_needs(
     place_bound_types: Collection[NetworkSchemaType],
 ) -> AskNeeds:
     pack_types = capability_types_for(ask, index)
-    return AskNeeds(needs_place=is_place_needed(pack_types, place_bound_types))
+    return AskNeeds(
+        needs_place=is_place_needed(pack_types, place_bound_types),
+        schemes_with_a_form=frozenset(),
+    )
 
 
 def place_attributes(
