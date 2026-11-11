@@ -55,11 +55,10 @@ from dss.core.provider_discovery.service import (
 from dss.core.schema_packs.service import is_place_needed
 from dss.core.settlement import service as settlement
 from dss.core.settlement.models import AskNeeds, Settled, Settlement
-from dss.core.shared.models import TextQuery, UserTurn
+from dss.core.shared.models import ProviderAction, TextQuery, UserTurn
 from dss.observability.stages import Stage
 from dss.observability.trace_log import trace_component
 from dss.orchestration.discovery import DiscoverProviders
-from dss.orchestration.form_offer import form_action_for
 from dss.orchestration.stage_content import asks_text, discovery_text
 from dss.ports.area_lookup import AreaLookup
 from dss.ports.llm import LLMProvider
@@ -115,15 +114,19 @@ def _ask_needs(
     contexts_for: FormContextLookup,
 ) -> AskNeeds:
     pack_types = capability_types_for(ask, index)
-    # Only the forms for what this ask wants to do. Advice has none.
-    action = form_action_for(ask)
-    contexts = contexts_for(ask.subject_categories.value)
+    forms = [
+        context
+        for context in contexts_for(ask.subject_categories.value)
+        # A pack can declare a step, such as init, that no form files.
+        if context.action in ProviderAction
+    ]
+    # Until the action is known, a form for any action counts: the farmer's
+    # answer may still pick the one a scheme has.
+    counted = [form for form in forms if ask.action in (None, form.action)]
     return AskNeeds(
         needs_place=is_place_needed(pack_types, place_bound_types),
-        schemes_with_a_form=frozenset(
-            context.scheme for context in contexts if context.action == action
-        ),
-        actions_with_a_form=frozenset(),
+        schemes_with_a_form=frozenset(form.scheme for form in counted),
+        actions_with_a_form=frozenset(ProviderAction(form.action) for form in forms),
     )
 
 

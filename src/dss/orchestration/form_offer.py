@@ -16,13 +16,11 @@ from dss.core.intent.models import Ask, Intent, InteractionType, Scheme, Subject
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.shared.models import ProviderAction
 
-# The pack's calls a form stands for. Advice is answered, never filed.
-_ACTION_BY_INTERACTION: Mapping[InteractionType, ProviderAction] = {
-    InteractionType.ACT: ProviderAction.SUPPORT,
-    InteractionType.OBSERVE: ProviderAction.STATUS,
-}
+# Discovery finds a provider by the interaction type, so the ask a submitted
+# form stands for needs one.
 _INTERACTION_BY_ACTION: Mapping[ProviderAction, InteractionType] = {
-    action: interaction for interaction, action in _ACTION_BY_INTERACTION.items()
+    ProviderAction.SUPPORT: InteractionType.ACT,
+    ProviderAction.STATUS: InteractionType.OBSERVE,
 }
 
 
@@ -32,27 +30,25 @@ def ask_for_form(context: FormContext, *, scheme: Scheme) -> Ask | None:
     only the two above can be filed. No place: the form carries what its
     call needs."""
 
-    interaction = _INTERACTION_BY_ACTION.get(context.action)
-    if interaction is None or context.category not in SubjectCategory:
+    if context.action not in ProviderAction or context.category not in SubjectCategory:
         return None
+    action = ProviderAction(context.action)
     return Ask(
         subject_categories=SubjectCategory(context.category),
-        interaction_type=interaction,
+        interaction_type=_INTERACTION_BY_ACTION[action],
         scheme=scheme,
+        action=action,
     )
 
 
-def form_action_for(ask: Ask) -> ProviderAction | None:
-    return _ACTION_BY_INTERACTION.get(ask.interaction_type)
-
-
 def form_context_for(ask: Ask) -> FormContext | None:
-    action = form_action_for(ask)
     # A guessed scheme gets no form: it could file against the wrong scheme.
-    if not isinstance(ask.scheme, Scheme) or action is None:
+    if not isinstance(ask.scheme, Scheme) or ask.action is None:
         return None
     return FormContext(
-        scheme=ask.scheme.code, category=ask.subject_categories.value, action=action
+        scheme=ask.scheme.code,
+        category=ask.subject_categories.value,
+        action=ask.action,
     )
 
 
