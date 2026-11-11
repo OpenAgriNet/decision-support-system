@@ -42,6 +42,9 @@ class FormRegistry:
     def action_schema(self, context: FormContext) -> ActionSchema | None:
         return self._schemas.get(context)
 
+    def contexts_for(self, category: str) -> tuple[FormContext, ...]:
+        return tuple(context for context in self._forms if context.category == category)
+
     def __len__(self) -> int:
         return len(self._schemas)
 
