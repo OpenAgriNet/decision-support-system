@@ -290,7 +290,7 @@ def test_system_prompt_hands_the_identity_and_language_to_the_template() -> None
         channel="web",
     )
 
-    system_prompt(identity, turn=turn, prompts=prompts)
+    system_prompt(identity, turn=turn, prompts=prompts, evidence=build_evidence())
 
     [(identifier, lang, kwargs)] = prompts.calls
     assert identifier is PromptIdentifier.COMPOSER
@@ -300,7 +300,59 @@ def test_system_prompt_hands_the_identity_and_language_to_the_template() -> None
         "persona": "a calm advisor.",
         "boundaries": "Never gives legal advice.",
         "target_lang": LanguageTag("mr"),
+        "topic_guidance": "",
     }
+
+
+def _guidance_given(*categories: SubjectCategory) -> str:
+    """What the composer prompt was told for a turn asking about these."""
+
+    prompts = FakePromptProvider(
+        topics={
+            SubjectCategory.MARKET: "Name the market and the date.",
+            SubjectCategory.WEATHER: "Give rain in millimetres.",
+        }
+    )
+    asks = [
+        Ask(subject_categories=category, interaction_type=InteractionType.OBSERVE)
+        for category in categories
+    ]
+    turn = UserTurn(
+        input=TextQuery(text="q"),
+        session_id="s1",
+        transaction_id="t1",
+        source_lang="en",
+        target_lang="en",
+        channel="web",
+    )
+
+    system_prompt(
+        Identity(name="n", persona="p", boundaries="b"),
+        turn=turn,
+        prompts=prompts,
+        evidence=build_evidence(asks=asks),
+    )
+
+    [(_, _, kwargs)] = prompts.calls
+    return kwargs["topic_guidance"]
+
+
+def test_a_market_question_brings_the_market_guidance() -> None:
+    """Intent decided what the turn is about; the composer's prompt carries a
+    topic's rules only on a turn about that topic."""
+
+    assert _guidance_given(SubjectCategory.MARKET) == "Name the market and the date."
+
+
+def test_a_question_on_another_topic_carries_no_market_guidance() -> None:
+    assert _guidance_given(SubjectCategory.CROP) == ""
+
+
+def test_every_topic_the_turn_asks_about_brings_its_guidance() -> None:
+    guidance = _guidance_given(SubjectCategory.WEATHER, SubjectCategory.MARKET)
+
+    assert "Name the market and the date." in guidance
+    assert "Give rain in millimetres." in guidance
 
 
 def test_composer_sees_last_three_messages() -> None:

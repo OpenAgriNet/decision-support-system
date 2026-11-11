@@ -82,7 +82,9 @@ async def stream_response(
     async with (
         aclosing(
             llm.stream_text(
-                system_prompt=system_prompt(identity, turn=turn, prompts=prompts),
+                system_prompt=system_prompt(
+                    identity, turn=turn, prompts=prompts, evidence=evidence
+                ),
                 user_query=user_prompt(evidence, turn=turn),
             )
         ) as written,

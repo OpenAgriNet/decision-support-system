@@ -2,7 +2,8 @@
 
 ``configs/prompts.yaml`` names, per LLM component and per language, which
 template under ``prompts/`` is the system prompt (and, for the planner, which
-skill files ride with it). This module loads that registry once at boot and
+skill files ride with it; for any component, which guidance is added for which
+intent category). This module loads that registry once at boot and
 answers ``get_prompt(PromptIdentifier.INTENT, lang=LanguageTag("hi"),
 placeholder_values={...})`` per turn.
 
@@ -33,7 +34,7 @@ the repo root, or wherever a deployment mounts the two side by side.
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -43,6 +44,7 @@ from jinja2 import Environment, StrictUndefined, Template, meta
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from dss.config.skill_loader import load_skill_file
+from dss.core.intent.models import SubjectCategory
 from dss.core.planner.models import Skill
 from dss.core.shared.language import ENGLISH, LanguageTag
 from dss.observability.trace_log import log_event
@@ -69,6 +71,8 @@ class _LanguageSpec(BaseModel):
 
     system_prompt: str
     skills: tuple[str, ...] = ()
+    # Intent category → guidance file, in the order the guidance is added.
+    topics: dict[str, str] = {}
 
 
 class _ComponentSpec(BaseModel):
@@ -87,6 +91,7 @@ class _LanguageEntry:
 
     template: Template
     skills: tuple[Skill, ...]
+    topics: Mapping[SubjectCategory, str]
 
 
 @dataclass(frozen=True)
@@ -141,6 +146,22 @@ class PromptService:
         # A language entry may override the prompt alone. Its skills then come
         # from English — "each prompt falls back on its own" holds per file.
         return component.languages[FALLBACK_LANGUAGE].skills
+
+    def get_topic_guidance(
+        self,
+        prompt_identifier: PromptIdentifier,
+        lang: LanguageTag,
+        categories: Collection[SubjectCategory],
+    ) -> str:
+        component = self._components[prompt_identifier.value]
+        served = self._resolve(prompt_identifier, component, lang)
+        topics = (
+            component.languages[served].topics
+            or component.languages[FALLBACK_LANGUAGE].topics
+        )
+        return "\n\n".join(
+            guidance for category, guidance in topics.items() if category in categories
+        )
 
     def languages_for(
         self, prompt_identifier: PromptIdentifier
@@ -286,7 +307,35 @@ def _load_language(
     skills = tuple(
         load_skill_file(_resolved(base, skill_path)) for skill_path in entry.skills
     )
-    return _LanguageEntry(template=environment.from_string(text), skills=skills)
+    topics = {
+        _topic_category(topic, label): _read_topic(_resolved(base, path), label)
+        for topic, path in entry.topics.items()
+    }
+    return _LanguageEntry(
+        template=environment.from_string(text), skills=skills, topics=topics
+    )
+
+
+def _topic_category(topic: str, label: str) -> SubjectCategory:
+    """Guidance keyed by a name intent never produces would never be added —
+    so it refuses to boot rather than sit there unread."""
+
+    try:
+        return SubjectCategory(topic)
+    except ValueError:
+        categories = ", ".join(category.value for category in SubjectCategory)
+        raise ValueError(
+            f"prompt {label} has guidance for topic {topic!r}, which is not an "
+            f"intent category ({categories})"
+        ) from None
+
+
+def _read_topic(path: Path, label: str) -> str:
+    if not path.exists():
+        raise FileNotFoundError(
+            f"prompt {label} points at topic guidance {path} but no file is there"
+        )
+    return path.read_text(encoding="utf-8").strip()
 
 
 def _resolved(base: Path, path: str) -> Path:
