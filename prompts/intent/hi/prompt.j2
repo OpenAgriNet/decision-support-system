@@ -11,7 +11,7 @@
     Weather, Market, Scheme, Facility, Grievance), interaction values (advise, observe,
     act), field names (subject_categories, interaction_type,
     agriculture_subjects, place_name, place_from_history, scheme_code,
-    scheme_confidence), null/true, high/low, scheme codes exactly as listed, and
+    scheme_confidence, unlisted_scheme_name), null/true, high/low, scheme codes exactly as listed, and
     place names transliterated to English.
   - Scheme names (PM-KISAN, PMFBY), units and the worked example queries stay
     exactly as in the English prompt.
@@ -44,6 +44,7 @@
   कोई योजना सूचीबद्ध नहीं है, इसलिए scheme_code हमेशा null है।
 {%- endif %}
 - scheme_confidence: high जब उपयोगकर्ता के शब्दों में वह योजना नामित हो: उसका नाम, उसका code या कोई दूसरा सूचीबद्ध नाम, गलत वर्तनी में भी। high तब भी जब उपयोगकर्ता उस योजना के लिए हाँ कहे जिसकी पुष्टि assistant ने अभी-अभी माँगी हो। low जब आपने उनके वर्णन से सबसे निकट की योजना चुनी हो ('my crop insurance money did not come')। जब scheme_code null हो तो इसे low ही रखिए।
+- unlisted_scheme_name: जब उपयोगकर्ता ऐसी योजना का नाम ले जो सूचीबद्ध योजनाओं में से कोई नहीं है, तो वह नाम उन्हीं के शब्दों में; नहीं तो null। जब scheme_code दिया गया हो तो null। जब वे केवल समस्या का वर्णन करें तो null।
 
 उदाहरण:
   'what is the onion rate at Lasalgaon' -> एक ask: Market / observe / 'onion'।

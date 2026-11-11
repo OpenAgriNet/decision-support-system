@@ -11,6 +11,7 @@ from dss.core.intent.models import (
     ResolvedPlace,
     Scheme,
     SubjectCategory,
+    UnlistedScheme,
     UnresolvedPlace,
 )
 from dss.core.settlement.ask_slots import ask_slot_state, frame_for, needed_slots
@@ -139,7 +140,9 @@ PMFBY = Scheme(code="PMFBY", name="Pradhan Mantri Fasal Bima Yojana")
 PM_KISAN = Scheme(code="PMKISAN", name="PM Kisan Samman Nidhi")
 
 
-def _scheme_of(scheme: Scheme | GuessedScheme | None) -> SlotState:
+def _scheme_of(
+    scheme: Scheme | GuessedScheme | UnlistedScheme | None,
+) -> SlotState:
     """Only PMFBY has a form."""
 
     ask = Ask(
@@ -177,6 +180,12 @@ def test_guess_without_a_form_is_not_confirmed() -> None:
     lets the farmer name a scheme we do serve."""
 
     assert _scheme_of(GuessedScheme(scheme=PM_KISAN)) == Missing()
+
+
+def test_unlisted_scheme_is_not_found() -> None:
+    assert _scheme_of(UnlistedScheme(name="XYZ Yojana")) == Unresolved(
+        value="XYZ Yojana", reason=UnresolvedReason.NOT_FOUND
+    )
 
 
 def test_no_scheme_given() -> None:

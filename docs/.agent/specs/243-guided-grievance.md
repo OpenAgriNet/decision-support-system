@@ -221,6 +221,9 @@ Evidence
   Left out counts as `low`. Code still checks the code against the catalog.
 - `Ask.scheme` is a `Scheme` (high), a `GuessedScheme` (low) or nothing. A
   guess keeps the farmer's words as the subject and never picks a form.
+- `ClassifiedAsk.unlisted_scheme_name`: the name the farmer said, when it
+  is none of the listed schemes. The ask then carries an `UnlistedScheme`.
+  Settlement reads it as not found: we say so and ask again.
 - `ClassifiedAsk.action: str | None` and `action_sure: bool`. Picked from
   the category's form actions shown in the prompt. Checked against the
   registry; unknown is dropped and the action is asked.

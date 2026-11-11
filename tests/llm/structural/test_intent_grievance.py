@@ -18,7 +18,12 @@ from dss.adapters.llm.pydantic_ai_provider import PydanticAILLMProvider
 from dss.adapters.scheme_catalog.csv_file import load_scheme_catalog
 from dss.config.prompt_service import build_prompt_service
 from dss.config.settings import Settings
-from dss.core.intent.models import InteractionType, Scheme, SubjectCategory
+from dss.core.intent.models import (
+    InteractionType,
+    Scheme,
+    SubjectCategory,
+    UnlistedScheme,
+)
 from dss.core.intent.service import classify_intent
 from dss.core.shared.models import ConversationMessage, TextQuery, UserTurn
 from dss.entrypoint.composition.root import _resolve_model
@@ -160,3 +165,22 @@ async def test_yes_to_the_confirm_names_the_scheme() -> None:
     assert ask.subject_categories is SubjectCategory.GRIEVANCE
     assert isinstance(ask.scheme, Scheme), f"{classification!r}"
     assert ask.scheme.code == "PMFBY"
+
+
+async def test_an_unlisted_scheme_keeps_its_name() -> None:
+    """Without the name, the farmer cannot be told which scheme we could
+    not find."""
+
+    prompts = build_prompt_service(_REPO / "configs" / "prompts.yaml")
+    schemes = load_scheme_catalog(_CATALOG).schemes()
+
+    classification = await classify_intent(
+        _turn("I want to file a complaint about my Kisan Credit Card"),
+        _live_llm(),
+        prompts,
+        schemes,
+    )
+
+    (ask,) = classification.asks
+    assert ask.subject_categories is SubjectCategory.GRIEVANCE
+    assert isinstance(ask.scheme, UnlistedScheme), f"{classification!r}"

@@ -131,6 +131,14 @@ class GuessedScheme(BaseModel):
     scheme: Scheme
 
 
+class UnlistedScheme(BaseModel):
+    """A scheme the farmer named that the catalog does not hold."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    name: str
+
+
 class SchemeConfidence(StrEnum):
     HIGH = "high"
     LOW = "low"
@@ -158,8 +166,9 @@ class Ask(BaseModel):
     (``AmbiguousPlace``/``UnresolvedPlace``) when a name was actually given
     and the lookup could not turn it into one place.
 
-    ``scheme`` is set when the intent model named a scheme the catalog holds.
-    A ``GuessedScheme`` must be confirmed with the farmer before it is used.
+    ``scheme`` is a ``Scheme`` only when the farmer named one the catalog
+    holds. A ``GuessedScheme`` must be confirmed with the farmer before it is
+    used. An ``UnlistedScheme`` is a name we could not find.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -168,7 +177,7 @@ class Ask(BaseModel):
     subject_categories: SubjectCategory
     interaction_type: InteractionType
     place: ResolvedPlace | AmbiguousPlace | UnresolvedPlace | None = None
-    scheme: Scheme | GuessedScheme | None = None
+    scheme: Scheme | GuessedScheme | UnlistedScheme | None = None
 
 
 # The docstrings of ClassifiedAsk and IntentClassification go to the model as
@@ -187,6 +196,9 @@ class ClassifiedAsk(BaseModel):
     ``scheme_confidence`` is high when the user's words name that scheme: its
     name, its code or another listed name, even misspelt. It is low when you
     only picked the closest one.
+
+    ``unlisted_scheme_name`` is the scheme the user named, in their words,
+    when it is none of the listed schemes. Null otherwise.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -201,9 +213,10 @@ class ClassifiedAsk(BaseModel):
     scheme_code: str | None = None
     # Low when left out: a scheme the model did not vouch for is confirmed.
     scheme_confidence: SchemeConfidence = SchemeConfidence.LOW
+    unlisted_scheme_name: str | None = None
     # Set by `classify_intent` from the catalog, never by the model: hidden
     # from the schema it is shown, so a code it invents never becomes a scheme.
-    scheme: SkipJsonSchema[Scheme | GuessedScheme | None] = None
+    scheme: SkipJsonSchema[Scheme | GuessedScheme | UnlistedScheme | None] = None
 
     @field_validator("place_name")
     @classmethod

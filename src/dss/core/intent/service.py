@@ -29,6 +29,7 @@ from dss.core.intent.models import (
     SchemeConfidence,
     SchemeEntry,
     SubjectCategory,
+    UnlistedScheme,
 )
 from dss.core.shared.models import TextQuery, UserTurn
 from dss.ports.llm import LLMProvider
@@ -82,7 +83,9 @@ def _with_scheme(ask: ClassifiedAsk, by_code: dict[str, Scheme]) -> ClassifiedAs
 
     scheme = by_code.get(ask.scheme_code) if ask.scheme_code else None
     if scheme is None:
-        return ask.model_copy(update={"scheme_code": None, "scheme": None})
+        name = ask.unlisted_scheme_name
+        unlisted = UnlistedScheme(name=name) if name else None
+        return ask.model_copy(update={"scheme_code": None, "scheme": unlisted})
     if ask.scheme_confidence is SchemeConfidence.LOW:
         return ask.model_copy(update={"scheme": GuessedScheme(scheme=scheme)})
     return ask.model_copy(

@@ -8,6 +8,7 @@ from dss.core.intent.models import (
     InteractionType,
     Scheme,
     SubjectCategory,
+    UnlistedScheme,
 )
 from dss.core.planner.models import Evidence, Source, SourceKind
 from dss.orchestration.stage_content import asks_text, cited_sources_text
@@ -45,3 +46,16 @@ def test_guessed_scheme_is_marked_in_the_trace() -> None:
     )
 
     assert asks_text((ask,)) == "1. Grievance/act: crop insurance [PMFBY?]"
+
+
+def test_unlisted_scheme_is_marked_in_the_trace() -> None:
+    ask = Ask(
+        agriculture_subjects="crop insurance",
+        subject_categories=SubjectCategory.GRIEVANCE,
+        interaction_type=InteractionType.ACT,
+        scheme=UnlistedScheme(name="XYZ Yojana"),
+    )
+
+    assert asks_text((ask,)) == (
+        "1. Grievance/act: crop insurance [not listed: XYZ Yojana]"
+    )

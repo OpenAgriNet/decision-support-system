@@ -9,6 +9,7 @@ from dss.core.intent.models import (
     GuessedScheme,
     ResolvedPlace,
     Scheme,
+    UnlistedScheme,
     UnresolvedPlace,
 )
 from dss.core.settlement.models import (
@@ -78,6 +79,8 @@ def _scheme_state(ask: Ask, schemes_with_a_form: frozenset[str]) -> SlotState:
             return Unservable(reason=f"{name} has no {category} form.")
         case GuessedScheme(scheme=scheme) if scheme.code in schemes_with_a_form:
             return Ambiguous(value=scheme.name, choices=(scheme,))
+        case UnlistedScheme(name=name):
+            return Unresolved(value=name, reason=UnresolvedReason.NOT_FOUND)
         # A guess without a form is not confirmed: a yes could not be served.
         case GuessedScheme() | None:
             return Missing()

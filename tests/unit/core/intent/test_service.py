@@ -17,6 +17,7 @@ from dss.core.intent.models import (
     SchemeConfidence,
     SchemeEntry,
     SubjectCategory,
+    UnlistedScheme,
 )
 from dss.core.intent.service import classify_intent, scheme_with_code
 from dss.core.shared.language import LanguageTag
@@ -154,6 +155,8 @@ _CATALOG = (SchemeEntry(scheme=_PMFBY, aliases=("fasal bima",)),)
 def _grievance(
     scheme_code: str | None,
     scheme_confidence: SchemeConfidence = SchemeConfidence.HIGH,
+    *,
+    unlisted_scheme_name: str | None = None,
 ) -> IntentClassification:
     return IntentClassification(
         asks=(
@@ -163,6 +166,7 @@ def _grievance(
                 interaction_type=InteractionType.ACT,
                 scheme_code=scheme_code,
                 scheme_confidence=scheme_confidence,
+                unlisted_scheme_name=unlisted_scheme_name,
             ),
         ),
         confidence=0.9,
@@ -230,6 +234,20 @@ async def test_a_code_the_catalog_does_not_hold_is_dropped() -> None:
     assert ask.scheme is None
     assert ask.scheme_code is None
     assert ask.agriculture_subjects == "fasal bima"
+
+
+async def test_an_unlisted_scheme_name_is_kept() -> None:
+    """So the farmer can be told which name we could not find."""
+
+    classification = await classify_intent(
+        _turn("complaint about XYZ Yojana"),
+        _FakeLLM(_grievance(None, unlisted_scheme_name="XYZ Yojana")),
+        FakePromptProvider(),
+        _CATALOG,
+    )
+
+    [ask] = classification.asks
+    assert ask.scheme == UnlistedScheme(name="XYZ Yojana")
 
 
 async def test_with_no_catalog_no_ask_gets_a_scheme() -> None:
