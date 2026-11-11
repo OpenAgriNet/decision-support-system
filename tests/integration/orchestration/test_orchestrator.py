@@ -785,7 +785,7 @@ async def test_the_pick_list_follows_the_question() -> None:
 
     other_pune = _PUNE_MATCH.model_copy(update={"within": ("India", "Telangana")})
     which_pune = NeedsClarification(
-        open_slots=(Slot(AskSlot.PLACE, Ambiguous((_PUNE_MATCH, other_pune))),)
+        open_slots=(Slot(AskSlot.PLACE, Ambiguous("Pune", (_PUNE_MATCH, other_pune))),)
     )
     orch, _ = _build(
         intent=_one_ask(),

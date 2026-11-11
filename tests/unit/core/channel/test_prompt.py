@@ -254,8 +254,10 @@ def test_an_ambiguous_slot_points_at_the_choices() -> None:
     """Code lists the choices exactly, below the reply; the composer only
     asks which one."""
 
+    choices = ("Aurangabad MH", "Aurangabad BR")
+
     rendered = render_evidence(
-        _waiting_on(Slot(AskSlot.PLACE, Ambiguous(("Aurangabad MH", "Aurangabad BR"))))
+        _waiting_on(Slot(AskSlot.PLACE, Ambiguous("Aurangabad", choices)))
     )
 
     assert "list below this reply" in rendered

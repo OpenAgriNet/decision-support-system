@@ -74,6 +74,7 @@ _BILASPUR_CT = AreaMatch(
     within=("India", "Chhattisgarh"),
     geometry=Geometry(coordinates=[82.15, 22.09]),
 )
+_WHICH_BILASPUR = Ambiguous("Bilaspur", (_BILASPUR_HP, _BILASPUR_CT))
 
 
 def _waiting_on(*open_slots: Slot) -> Evidence:
@@ -86,7 +87,7 @@ def _waiting_on(*open_slots: Slot) -> Evidence:
 def test_an_ambiguous_place_gets_a_numbered_pick_list() -> None:
     """Code writes the list, so the farmer's "2" matches what was shown."""
 
-    evidence = _waiting_on(Slot(AskSlot.PLACE, Ambiguous((_BILASPUR_HP, _BILASPUR_CT))))
+    evidence = _waiting_on(Slot(AskSlot.PLACE, _WHICH_BILASPUR))
 
     [block] = pick_lists(evidence, _TEXT)
 
@@ -97,7 +98,7 @@ def test_two_asks_share_one_pick_list() -> None:
     """Two asks stuck on one name are one thing for the farmer to pick."""
 
     which_bilaspur = NeedsClarification(
-        open_slots=(Slot(AskSlot.PLACE, Ambiguous((_BILASPUR_HP, _BILASPUR_CT))),)
+        open_slots=(Slot(AskSlot.PLACE, _WHICH_BILASPUR),)
     )
     evidence = Evidence(
         sources=(),
@@ -120,7 +121,8 @@ def _place(name: str, *within: str) -> AreaMatch:
 
 
 def _pick_list(*candidates: AreaMatch) -> list[str]:
-    evidence = _waiting_on(Slot(AskSlot.PLACE, Ambiguous(candidates)))
+    typed_name = candidates[0].name
+    evidence = _waiting_on(Slot(AskSlot.PLACE, Ambiguous(typed_name, candidates)))
     [block] = pick_lists(evidence, _TEXT)
     return block.text.splitlines()
 
@@ -191,6 +193,21 @@ def test_a_grouped_list_is_cut_at_five_and_says_how_to_find_the_rest() -> None:
         "5. Rampur, JH",
         "Not in this list? Tell me the area it is in.",
     ]
+
+
+def test_grouped_list_uses_the_typed_name() -> None:
+    """No place is called "North", so six that only start with it come back.
+    No one of their names fits every group. What the farmer typed does."""
+
+    states = ["Goa", "Sikkim", "Tripura", "Delhi", "Meghalaya", "West Bengal"]
+    starting_with_north = tuple(_place(f"North {state}", state) for state in states)
+    evidence = _waiting_on(
+        Slot(AskSlot.PLACE, Ambiguous(value="North", choices=starting_with_north))
+    )
+
+    [block] = pick_lists(evidence, _TEXT)
+
+    assert block.text.splitlines()[:2] == ["1. North, Goa", "2. North, Sikkim"]
 
 
 def _ask(place=None) -> Ask:  # noqa: ANN001

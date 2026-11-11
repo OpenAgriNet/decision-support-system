@@ -52,8 +52,8 @@ def _place_state(ask: Ask) -> SlotState:
     match ask.place:
         case ResolvedPlace() as place:
             return Resolved(place)
-        case AmbiguousPlace(candidates=candidates):
-            return Ambiguous(candidates)
+        case AmbiguousPlace(unresolved_name=name, candidates=candidates):
+            return Ambiguous(value=name, choices=candidates)
         case UnresolvedPlace(region=str(region)):
             return Unresolved(value=region, reason=UnresolvedReason.TOO_BROAD)
         case UnresolvedPlace(unresolved_name=name):

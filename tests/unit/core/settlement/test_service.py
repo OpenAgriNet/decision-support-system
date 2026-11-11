@@ -38,7 +38,8 @@ def test_missing_slot_needs_clarification() -> None:
 
 
 def test_ambiguous_slot_needs_clarification() -> None:
-    place = Slot(name=PLACE, state=Ambiguous(("Aurangabad MH", "Aurangabad BR")))
+    choices = ("Aurangabad MH", "Aurangabad BR")
+    place = Slot(name=PLACE, state=Ambiguous("Aurangabad", choices))
 
     assert settle(Frame(slots=(place,))) == NeedsClarification(open_slots=(place,))
 

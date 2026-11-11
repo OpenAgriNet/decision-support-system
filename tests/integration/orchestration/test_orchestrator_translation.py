@@ -448,7 +448,7 @@ async def test_translator_sees_tags_farmer_sees_values() -> None:
 async def test_the_pick_list_is_translated_with_the_question() -> None:
     other_pune = _PUNE_MATCH.model_copy(update={"within": ("India", "Telangana")})
     which_pune = NeedsClarification(
-        open_slots=(Slot(AskSlot.PLACE, Ambiguous((_PUNE_MATCH, other_pune))),)
+        open_slots=(Slot(AskSlot.PLACE, Ambiguous("Pune", (_PUNE_MATCH, other_pune))),)
     )
     orch = _build_translating(
         FakeTranslator(),

@@ -30,8 +30,10 @@ class Missing:
 
 @dataclass(frozen=True)
 class Ambiguous[T]:
-    """One choice is a confirm: "Do you mean X?"."""
+    """A value given for this slot that fits more than one choice. One choice
+    is a confirm: "Do you mean X?"."""
 
+    value: str
     choices: tuple[T, ...]
     is_settled = False
     ends_ask = False

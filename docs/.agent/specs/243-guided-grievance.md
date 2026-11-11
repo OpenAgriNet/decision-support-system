@@ -187,10 +187,11 @@ Evidence
 ### Settlement (`core/settlement/`)
 
 - `Frame`: an ask's slots, in order. `Slot` = name and state.
-- `SlotState`, a closed set: `Resolved(value)`, `Ambiguous(choices)` (one
-  choice is a confirm), `Unresolved(value, reason)` (not found, too broad),
-  `Missing`, `Unservable(reason)`. A new slot needs no new state. `Skipped`
-  comes with voice forms.
+- `SlotState`, a closed set: `Resolved(value)`, `Ambiguous(value, choices)`
+  (the value is what the farmer typed; one choice is a confirm),
+  `Unresolved(value, reason)` (not found, too broad), `Missing`,
+  `Unservable(reason)`. A new slot needs no new state. `Skipped` comes with
+  voice forms.
 - `settle(frame) -> Settled | NeedsClarification | CannotServe`. Pure, and
   reads only each state's `is_settled` and `ends_ask`. Any slot that ends
   the ask → can't serve; else open slots → needs clarification; else

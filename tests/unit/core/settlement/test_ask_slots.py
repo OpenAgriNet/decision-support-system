@@ -89,7 +89,7 @@ def test_ambiguous_place() -> None:
     candidates = (_aurangabad("IN-MH"), _aurangabad("IN-BR"))
     place = AmbiguousPlace(unresolved_name="Aurangabad", candidates=candidates)
 
-    assert _place_of(place) == Ambiguous(candidates)
+    assert _place_of(place) == Ambiguous("Aurangabad", candidates)
 
 
 def test_unknown_place_is_not_found() -> None:

@@ -14,7 +14,7 @@ from dss.core.channel.models import ClarificationText, ComposedAnswer
 from dss.core.intent.models import Ask, ResolvedPlace
 from dss.core.planner.models import AskOutcome, Evidence
 from dss.core.planner.models import Source as EvidenceSource
-from dss.core.settlement.models import Ambiguous, NeedsClarification, Slot
+from dss.core.settlement.models import Ambiguous, AskSlot, NeedsClarification, Slot
 from dss.core.shared.models import Source, SourceKind, TextBlock
 from dss.core.stream_response.citations import CitationNumbers
 from dss.ports.area_lookup import AreaMatch
@@ -121,13 +121,11 @@ def pick_lists(evidence: Evidence, text: ClarificationText) -> tuple[TextBlock, 
     """The numbered choices for each pick the farmer has to make. Asks stuck
     on the same choices share one list. The composer asks the question."""
 
-    places_per_ask = (
-        _places_to_pick(entry.outcome) for entry in evidence.ask_evidences
-    )
+    pick_per_ask = (_place_pick(entry.outcome) for entry in evidence.ask_evidences)
     return tuple(
-        TextBlock(text="\n".join(_place_choice_lines(places, text)))
-        for places in _distinct(places_per_ask)
-        if places
+        TextBlock(text="\n".join(_place_choice_lines(pick, text)))
+        for pick in _distinct(pick_per_ask)
+        if pick is not None
     )
 
 
@@ -140,21 +138,25 @@ def _distinct[T](items: Iterable[T]) -> list[T]:
     return distinct
 
 
-def _places_to_pick(outcome: AskOutcome) -> tuple[AreaMatch, ...]:
+def _place_pick(outcome: AskOutcome) -> Ambiguous[AreaMatch] | None:
+    """The place choices the ask waits on first, if that is what it waits on."""
+
     match outcome:
         case NeedsClarification(
-            open_slots=(Slot(state=Ambiguous(choices=choices)), *_)
+            open_slots=(Slot(name=AskSlot.PLACE, state=Ambiguous() as pick), *_)
         ):
-            return tuple(choice for choice in choices if isinstance(choice, AreaMatch))
-    return ()
+            return pick
+    return None
 
 
 def _place_choice_lines(
-    candidates: Sequence[AreaMatch], text: ClarificationText
+    pick: Ambiguous[AreaMatch], text: ClarificationText
 ) -> list[str]:
-    if len(candidates) > text.max_choices:
-        return _group_lines(candidates[0].name, candidates, text)
-    return _candidate_lines(candidates)
+    if len(pick.choices) > text.max_choices:
+        # The choices may each have their own name. Only the typed one fits
+        # every group.
+        return _group_lines(pick.value, pick.choices, text)
+    return _candidate_lines(pick.choices)
 
 
 def _to_wire_source(source: EvidenceSource) -> Source:
