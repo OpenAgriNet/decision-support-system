@@ -14,8 +14,9 @@ intent and moderation can use different models.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Sequence
 from datetime import UTC, datetime
+from functools import partial
 
 import anyio
 from pydantic import BaseModel, ConfigDict
@@ -26,6 +27,7 @@ from dss.adapters.observability.tracing import (
 )
 from dss.core.intent.models import (
     AmbiguousPlace,
+    Ask,
     Intent,
     IntentClassification,
     ResolvedPlace,
@@ -40,10 +42,18 @@ from dss.core.moderation.models import (
 )
 from dss.core.moderation.service import moderate
 from dss.core.policy.models import Policy
-from dss.core.provider_discovery.models import DiscoveryResult
-from dss.core.provider_discovery.service import CapabilityIndexSource
+from dss.core.provider_discovery.models import (
+    CapabilityIndex,
+    DiscoveryResult,
+    NetworkSchemaType,
+)
+from dss.core.provider_discovery.service import (
+    CapabilityIndexSource,
+    capability_types_for,
+)
+from dss.core.schema_packs.service import is_place_needed
 from dss.core.settlement import service as settlement
-from dss.core.settlement.models import Settled, Settlement
+from dss.core.settlement.models import AskNeeds, Settled, Settlement
 from dss.core.shared.models import TextQuery, UserTurn
 from dss.observability.stages import Stage
 from dss.observability.trace_log import trace_component
@@ -78,13 +88,24 @@ def build_settle_asks(index: CapabilityIndexSource) -> SettleAsks:
     """Reads the index on every turn. It can refresh while the app runs."""
 
     def settle(intent: Intent) -> tuple[Settlement, ...]:
-        return settlement.settle_asks(
-            intent,
+        needs_for = partial(
+            _ask_needs,
             index=index.current(),
             place_bound_types=index.place_bound_types(),
         )
+        return settlement.settle_asks(intent, needs_for=needs_for)
 
     return settle
+
+
+def _ask_needs(
+    ask: Ask,
+    *,
+    index: CapabilityIndex,
+    place_bound_types: Collection[NetworkSchemaType],
+) -> AskNeeds:
+    pack_types = capability_types_for(ask, index)
+    return AskNeeds(needs_place=is_place_needed(pack_types, place_bound_types))
 
 
 def place_attributes(

@@ -27,6 +27,7 @@ from dss.core.schema_packs.service import (
     PACK_DEFECTS,
     flatten_fields,
     is_api_pack,
+    is_place_needed,
     pack_needs_place,
 )
 
@@ -92,6 +93,25 @@ def test_a_pack_needs_a_place_when_it_indexes_a_location(
 ) -> None:
     profile_json = json.dumps({"indexable_paths": indexable_paths})
     assert pack_needs_place(_pack_with_profile(profile_json)) is expected
+
+
+_MANDI = "openagrinet:MandiPrice"
+_FACILITY = "openagrinet:AgricultureFacility"
+
+
+def test_place_needed_when_every_pack_says_so() -> None:
+    assert is_place_needed((_MANDI, _FACILITY), {_MANDI, _FACILITY})
+
+
+def test_one_placeless_pack_needs_no_place() -> None:
+    assert not is_place_needed((_MANDI, _FACILITY), {_MANDI})
+
+
+def test_no_pack_needs_no_place() -> None:
+    """With no pack, nothing says a place is needed, so asking for one would
+    make the farmer answer for nothing."""
+
+    assert not is_place_needed((), {_MANDI})
 
 
 # Untrimmed copies of two real packs. The hand-written fixtures below prove the

@@ -199,8 +199,11 @@ Evidence
 - **Ask slots** are a fixed `AskSlot` enum, read from the ask's own fields
   (`ask_slot_state`). **Form fields** are named by the pack, and are filled
   by the form step later (voice).
-- **Which slots an ask needs** is worked out each turn from the current
-  capability index (`needed_slots`), since the index can refresh.
+- **Which slots an ask needs** comes to settlement as an `AskNeeds`, one
+  per ask. The wiring (`orchestration/turn.py`) works it out each turn from
+  the current capability index, since the index can refresh. Settlement
+  reads no pack and no registry, so a new slot adds a field, not a
+  parameter.
 - **Branch and merge:** `run_turn` settles each ask, then runs only the
   settled asks as their own `Intent`. `merge_unsettled` puts their evidence
   back beside the unsettled asks, in the farmer's order. Passing the ask

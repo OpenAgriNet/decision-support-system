@@ -3,8 +3,6 @@ for it."""
 
 from __future__ import annotations
 
-from collections.abc import Collection
-
 from dss.core.intent.models import (
     AmbiguousPlace,
     Ask,
@@ -13,10 +11,9 @@ from dss.core.intent.models import (
     Scheme,
     UnresolvedPlace,
 )
-from dss.core.provider_discovery.models import NetworkSchemaType
-from dss.core.schema_packs.service import is_place_needed
 from dss.core.settlement.models import (
     Ambiguous,
+    AskNeeds,
     AskSlot,
     Frame,
     Missing,
@@ -28,16 +25,10 @@ from dss.core.settlement.models import (
 )
 
 
-def needed_slots(
-    *,
-    capability_types: Collection[NetworkSchemaType],
-    place_bound_types: Collection[NetworkSchemaType],
-) -> tuple[AskSlot, ...]:
-    """The ask's slots its packs need, in the order they are asked."""
+def needed_slots(needs: AskNeeds) -> tuple[AskSlot, ...]:
+    """In the order they are asked."""
 
-    if is_place_needed(capability_types, place_bound_types):
-        return (AskSlot.PLACE,)
-    return ()
+    return (AskSlot.PLACE,) if needs.needs_place else ()
 
 
 def frame_for(ask: Ask, *, needed: tuple[AskSlot, ...]) -> Frame:

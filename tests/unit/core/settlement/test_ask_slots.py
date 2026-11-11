@@ -16,6 +16,7 @@ from dss.core.intent.models import (
 from dss.core.settlement.ask_slots import ask_slot_state, frame_for, needed_slots
 from dss.core.settlement.models import (
     Ambiguous,
+    AskNeeds,
     AskSlot,
     Frame,
     Missing,
@@ -28,9 +29,6 @@ from dss.core.settlement.models import (
 from dss.core.shared.models import Geometry
 from dss.ports.area_lookup import AreaMatch
 
-MANDI = "openagrinet:MandiPrice"
-FACILITY = "openagrinet:AgricultureFacility"
-
 PUNE = ResolvedPlace(
     name="Pune",
     within=("IN-MH",),
@@ -39,24 +37,12 @@ PUNE = ResolvedPlace(
 )
 
 
-def test_place_needed_when_every_pack_says_so() -> None:
-    assert needed_slots(
-        capability_types=(MANDI, FACILITY), place_bound_types={MANDI, FACILITY}
-    ) == (AskSlot.PLACE,)
+def test_place_slot_when_needed() -> None:
+    assert needed_slots(AskNeeds(needs_place=True)) == (AskSlot.PLACE,)
 
 
-def test_one_placeless_pack_needs_no_place() -> None:
-    assert (
-        needed_slots(capability_types=(MANDI, FACILITY), place_bound_types={MANDI})
-        == ()
-    )
-
-
-def test_no_pack_needs_no_place() -> None:
-    """With no pack, nothing says a place is needed, so asking for one would
-    make the farmer answer for nothing."""
-
-    assert needed_slots(capability_types=(), place_bound_types={MANDI}) == ()
+def test_no_slot_when_nothing_needed() -> None:
+    assert needed_slots(AskNeeds(needs_place=False)) == ()
 
 
 def _place_of(

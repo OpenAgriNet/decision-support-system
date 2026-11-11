@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from collections.abc import Collection
+from collections.abc import Callable
 
 from dss.core.intent.models import Ask, Intent
-from dss.core.provider_discovery.models import CapabilityIndex, NetworkSchemaType
-from dss.core.provider_discovery.service import capability_types_for
 from dss.core.settlement.ask_slots import frame_for, needed_slots
 from dss.core.settlement.models import (
+    AskNeeds,
     CannotServe,
     Frame,
     NeedsClarification,
@@ -16,30 +15,15 @@ from dss.core.settlement.models import (
 
 
 def settle_asks(
-    intent: Intent,
-    *,
-    index: CapabilityIndex,
-    place_bound_types: Collection[NetworkSchemaType],
+    intent: Intent, *, needs_for: Callable[[Ask], AskNeeds]
 ) -> tuple[Settlement, ...]:
     """One settlement per ask, in ask order."""
 
-    return tuple(
-        _settle_ask(ask, index=index, place_bound_types=place_bound_types)
-        for ask in intent.asks
-    )
+    return tuple(_settle_ask(ask, needs_for(ask)) for ask in intent.asks)
 
 
-def _settle_ask(
-    ask: Ask,
-    *,
-    index: CapabilityIndex,
-    place_bound_types: Collection[NetworkSchemaType],
-) -> Settlement:
-    needed = needed_slots(
-        capability_types=capability_types_for(ask, index),
-        place_bound_types=place_bound_types,
-    )
-    return settle(frame_for(ask, needed=needed))
+def _settle_ask(ask: Ask, needs: AskNeeds) -> Settlement:
+    return settle(frame_for(ask, needed=needed_slots(needs)))
 
 
 def settle(frame: Frame) -> Settlement:

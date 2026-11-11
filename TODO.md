@@ -265,14 +265,6 @@
 
 ## Settlement (#243)
 
-- **Settlement reads the capability index from discovery.**
-  `core/settlement/` imports `capability_types_for`, `CapabilityIndex` and
-  `NetworkSchemaType` from `core/provider_discovery/`, a stage that runs
-  after it. Which packs serve a category is a fact about packs, not about
-  discovery. Move the index and its types to `core/schema_packs/`, where
-  `is_place_needed` already lives. Do it with the `CapabilityKey` item
-  under Provider Discovery.
-
 - **`TurnResult.settlements` defaults to empty.** Every turn now settles its
   asks, but the field still has a default. A `TurnResult` built without
   settlements passes `is_every_ask_settled` and then fails in

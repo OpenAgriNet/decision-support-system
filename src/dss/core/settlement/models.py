@@ -17,6 +17,13 @@ class AskSlot(StrEnum):
 
 
 @dataclass(frozen=True)
+class AskNeeds:
+    """Worked out by the caller, so settlement reads no pack and no registry."""
+
+    needs_place: bool
+
+
+@dataclass(frozen=True)
 class Resolved[T]:
     value: T
     is_settled = True
