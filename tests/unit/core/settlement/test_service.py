@@ -91,7 +91,9 @@ def test_each_ask_settles_on_its_own() -> None:
     settlements = settle_asks(
         Intent(asks=(weather, grievance)),
         needs_for=lambda ask: AskNeeds(
-            needs_place=ask is weather, schemes_with_a_form=frozenset()
+            needs_place=ask is weather,
+            schemes_with_a_form=frozenset(),
+            actions_with_a_form=frozenset(),
         ),
     )
 

@@ -33,6 +33,8 @@ def needed_slots(needs: AskNeeds) -> tuple[AskSlot, ...]:
     """In the order they are asked."""
 
     is_needed = {
+        # One kind of form leaves nothing to choose.
+        AskSlot.ACTION: len(needs.actions_with_a_form) > 1,
         AskSlot.SCHEME: bool(needs.schemes_with_a_form),
         AskSlot.PLACE: needs.needs_place,
     }

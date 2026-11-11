@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 import pytest
 
 from dss.core.intent.models import (
@@ -41,31 +43,53 @@ PUNE = ResolvedPlace(
 )
 
 
-NO_FORMS: frozenset[str] = frozenset()
+def _needs(
+    *,
+    place: bool = False,
+    schemes: Iterable[str] = (),
+    actions: Iterable[ProviderAction] = (),
+) -> AskNeeds:
+    return AskNeeds(
+        needs_place=place,
+        schemes_with_a_form=frozenset(schemes),
+        actions_with_a_form=frozenset(actions),
+    )
 
 
 def test_place_slot_when_needed() -> None:
-    needs = AskNeeds(needs_place=True, schemes_with_a_form=NO_FORMS)
-
-    assert needed_slots(needs) == (AskSlot.PLACE,)
+    assert needed_slots(_needs(place=True)) == (AskSlot.PLACE,)
 
 
 def test_no_slot_when_nothing_needed() -> None:
-    needs = AskNeeds(needs_place=False, schemes_with_a_form=NO_FORMS)
-
-    assert needed_slots(needs) == ()
+    assert needed_slots(_needs()) == ()
 
 
 def test_scheme_slot_when_category_has_forms() -> None:
-    needs = AskNeeds(needs_place=False, schemes_with_a_form=frozenset({"PMFBY"}))
-
-    assert needed_slots(needs) == (AskSlot.SCHEME,)
+    assert needed_slots(_needs(schemes={"PMFBY"})) == (AskSlot.SCHEME,)
 
 
 def test_scheme_is_asked_before_place() -> None:
-    needs = AskNeeds(needs_place=True, schemes_with_a_form=frozenset({"PMFBY"}))
+    needs = _needs(place=True, schemes={"PMFBY"})
 
     assert needed_slots(needs) == (AskSlot.SCHEME, AskSlot.PLACE)
+
+
+def test_action_slot_when_there_is_a_choice() -> None:
+    assert needed_slots(_needs(actions=ProviderAction)) == (AskSlot.ACTION,)
+
+
+def test_no_action_slot_for_one_kind_of_form() -> None:
+    """With one kind of form there is nothing to choose."""
+
+    assert needed_slots(_needs(actions={ProviderAction.SUPPORT})) == ()
+
+
+def test_action_is_asked_before_scheme_and_place() -> None:
+    """It is the bigger fork, and it stops a second complaint early."""
+
+    needs = _needs(place=True, schemes={"PMFBY"}, actions=ProviderAction)
+
+    assert needed_slots(needs) == (AskSlot.ACTION, AskSlot.SCHEME, AskSlot.PLACE)
 
 
 def _place_of(
@@ -76,8 +100,7 @@ def _place_of(
         interaction_type=InteractionType.OBSERVE,
         place=place,
     )
-    needs = AskNeeds(needs_place=True, schemes_with_a_form=NO_FORMS)
-    return ask_slot_state(ask, AskSlot.PLACE, needs)
+    return ask_slot_state(ask, AskSlot.PLACE, _needs(place=True))
 
 
 def test_resolved_place() -> None:
@@ -152,8 +175,7 @@ def _scheme_of(
         interaction_type=InteractionType.ACT,
         scheme=scheme,
     )
-    needs = AskNeeds(needs_place=False, schemes_with_a_form=frozenset({"PMFBY"}))
-    return ask_slot_state(ask, AskSlot.SCHEME, needs)
+    return ask_slot_state(ask, AskSlot.SCHEME, _needs(schemes={"PMFBY"}))
 
 
 def test_named_scheme() -> None:
@@ -202,8 +224,7 @@ def _action_of(action: ProviderAction | None) -> SlotState:
         interaction_type=InteractionType.ACT,
         action=action,
     )
-    needs = AskNeeds(needs_place=False, schemes_with_a_form=NO_FORMS)
-    return ask_slot_state(ask, AskSlot.ACTION, needs)
+    return ask_slot_state(ask, AskSlot.ACTION, _needs(actions=ProviderAction))
 
 
 def test_clear_action() -> None:
@@ -220,10 +241,8 @@ def test_unclear_action_is_asked() -> None:
 def test_unknown_slot_fails_at_once() -> None:
     """A slot with no case would come back as None and fail far from here."""
 
-    needs = AskNeeds(needs_place=False, schemes_with_a_form=NO_FORMS)
-
     with pytest.raises(AssertionError):
-        ask_slot_state(_weather_at(None), "village", needs)  # type: ignore[arg-type]
+        ask_slot_state(_weather_at(None), "village", _needs())  # type: ignore[arg-type]
 
 
 def _weather_at(place: ResolvedPlace | None) -> Ask:
@@ -235,9 +254,7 @@ def _weather_at(place: ResolvedPlace | None) -> Ask:
 
 
 def test_frame_holds_each_needed_slot() -> None:
-    needs = AskNeeds(needs_place=True, schemes_with_a_form=NO_FORMS)
-
-    frame = frame_for(_weather_at(PUNE), needs)
+    frame = frame_for(_weather_at(PUNE), _needs(place=True))
 
     assert frame == Frame(slots=(Slot(AskSlot.PLACE, Resolved(PUNE)),))
 
@@ -245,6 +262,4 @@ def test_frame_holds_each_needed_slot() -> None:
 def test_frame_leaves_out_unneeded_slots() -> None:
     """A place said in passing is never asked about."""
 
-    needs = AskNeeds(needs_place=False, schemes_with_a_form=NO_FORMS)
-
-    assert frame_for(_weather_at(PUNE), needs) == Frame(slots=())
+    assert frame_for(_weather_at(PUNE), _needs()) == Frame(slots=())

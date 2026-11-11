@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
+from dss.core.shared.models import ProviderAction
+
 # An `AskSlot`, or a field name from a form pack.
 type SlotName = str
 
@@ -24,6 +26,7 @@ class AskNeeds:
     needs_place: bool
     # By Scheme code.
     schemes_with_a_form: frozenset[str]
+    actions_with_a_form: frozenset[ProviderAction]
 
 
 @dataclass(frozen=True)

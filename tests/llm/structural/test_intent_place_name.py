@@ -472,7 +472,11 @@ async def _question_we_send(name: str) -> str:
         IntentClassification(asks=(ask,)), _turn("q"), lookup=LOOKUP
     )
     [resolved] = intent.asks
-    needs = AskNeeds(needs_place=True, schemes_with_a_form=frozenset())
+    needs = AskNeeds(
+        needs_place=True,
+        schemes_with_a_form=frozenset(),
+        actions_with_a_form=frozenset(),
+    )
     outcome = NeedsClarification(open_slots=frame_for(resolved, needs).slots)
     evidence = Evidence(
         sources=(), ask_evidences=(AskEvidence(ask=resolved, outcome=outcome),)

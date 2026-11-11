@@ -123,6 +123,7 @@ def _ask_needs(
         schemes_with_a_form=frozenset(
             context.scheme for context in contexts if context.action == action
         ),
+        actions_with_a_form=frozenset(),
     )
 
 
