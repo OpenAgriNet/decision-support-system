@@ -8,7 +8,7 @@ transport streams, and the fixed no-match reply.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 
 from dss.core.channel.models import ClarificationText, ComposedAnswer
 from dss.core.intent.models import Ask, ResolvedPlace
@@ -118,15 +118,26 @@ def _group_lines(
 
 
 def pick_lists(evidence: Evidence, text: ClarificationText) -> tuple[TextBlock, ...]:
-    """The numbered choices for each ask whose first open slot matched more
-    than one place. The composer asks the question. This lists the choices."""
+    """The numbered choices for each pick the farmer has to make. Asks stuck
+    on the same choices share one list. The composer asks the question."""
 
-    choices = (_places_to_pick(entry.outcome) for entry in evidence.ask_evidences)
+    places_per_ask = (
+        _places_to_pick(entry.outcome) for entry in evidence.ask_evidences
+    )
     return tuple(
         TextBlock(text="\n".join(_place_choice_lines(places, text)))
-        for places in choices
+        for places in _distinct(places_per_ask)
         if places
     )
+
+
+def _distinct[T](items: Iterable[T]) -> list[T]:
+    # By equality, not a set: a place's geometry holds a list and cannot hash.
+    distinct: list[T] = []
+    for item in items:
+        if item not in distinct:
+            distinct.append(item)
+    return distinct
 
 
 def _places_to_pick(outcome: AskOutcome) -> tuple[AreaMatch, ...]:

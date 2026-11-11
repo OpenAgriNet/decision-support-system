@@ -93,6 +93,23 @@ def test_an_ambiguous_place_gets_a_numbered_pick_list() -> None:
     assert block.text == "1. Bilaspur, Himachal Pradesh\n2. Bilaspur, Chhattisgarh"
 
 
+def test_two_asks_share_one_pick_list() -> None:
+    """Two asks stuck on one name are one thing for the farmer to pick."""
+
+    which_bilaspur = NeedsClarification(
+        open_slots=(Slot(AskSlot.PLACE, Ambiguous((_BILASPUR_HP, _BILASPUR_CT))),)
+    )
+    evidence = Evidence(
+        sources=(),
+        ask_evidences=(
+            AskEvidence(ask=_ask(), outcome=which_bilaspur),
+            AskEvidence(ask=_ask(), outcome=which_bilaspur),
+        ),
+    )
+
+    assert len(pick_lists(evidence, _TEXT)) == 1
+
+
 def _place(name: str, *within: str) -> AreaMatch:
     return AreaMatch(
         name=name,
