@@ -68,6 +68,9 @@ class Unresolved:
 
 @dataclass(frozen=True)
 class Unservable:
+    """Only when no earlier slot's answer could change it: settle ends the
+    ask on this without asking them."""
+
     reason: str
     is_settled = False
     ends_ask = True

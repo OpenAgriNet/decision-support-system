@@ -289,7 +289,7 @@ plus any exact block code adds.
 4. Action slot: intent's `action` and `action_sure`, the question when
    unclear, drop the interaction mapping. Covers the flaky portal case: "I
    cannot log in to the PMFBY portal…" is read as advice about 4 times in
-   10 today.
+   10 today. The scheme is `Unservable` only once the action is known.
 5. Intent examples config: loader, boot checks, cap, template.
 6. Composer writes the question; fallback to fixed text; exact parts after
    the prose.
