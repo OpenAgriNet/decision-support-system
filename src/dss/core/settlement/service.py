@@ -19,11 +19,7 @@ def settle_asks(
 ) -> tuple[Settlement, ...]:
     """One settlement per ask, in ask order."""
 
-    return tuple(_settle_ask(ask, needs_for(ask)) for ask in intent.asks)
-
-
-def _settle_ask(ask: Ask, needs: AskNeeds) -> Settlement:
-    return settle(frame_for(ask, needs))
+    return tuple(settle(frame_for(ask, needs_for(ask))) for ask in intent.asks)
 
 
 def settle(frame: Frame) -> Settlement:
