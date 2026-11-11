@@ -25,7 +25,12 @@ from dss.core.intent.models import (
     UnlistedScheme,
 )
 from dss.core.intent.service import classify_intent
-from dss.core.shared.models import ConversationMessage, TextQuery, UserTurn
+from dss.core.shared.models import (
+    ConversationMessage,
+    ProviderAction,
+    TextQuery,
+    UserTurn,
+)
 from dss.entrypoint.composition.root import _resolve_model
 from dss.observability.stages import Stage
 from tests.support.live_model import missing_model_key
@@ -184,3 +189,62 @@ async def test_an_unlisted_scheme_keeps_its_name() -> None:
     (ask,) = classification.asks
     assert ask.subject_categories is SubjectCategory.GRIEVANCE
     assert isinstance(ask.scheme, UnlistedScheme), f"{classification!r}"
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "There is a problem with my fasal bima claim",
+        "My PM-KISAN instalment has not reached my bank account",
+    ],
+)
+async def test_an_unclear_complaint_names_no_action(query: str) -> None:
+    """A guess costs too much either way: a second complaint for the same
+    problem, or a ticket number the farmer does not have. Neither query is an
+    example in the prompt."""
+
+    prompts = build_prompt_service(_REPO / "configs" / "prompts.yaml")
+    schemes = load_scheme_catalog(_CATALOG).schemes()
+
+    classification = await classify_intent(_turn(query), _live_llm(), prompts, schemes)
+
+    (ask,) = classification.asks
+    assert ask.action is None, f"{classification!r}"
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "I want to file a PMFBY grievance",
+        "Tell me how to lodge a complaint about my PMFBY claim",
+    ],
+)
+async def test_a_new_complaint_is_support(query: str) -> None:
+    """Asking how to complain is wanting to complain: the form is the how."""
+
+    prompts = build_prompt_service(_REPO / "configs" / "prompts.yaml")
+    schemes = load_scheme_catalog(_CATALOG).schemes()
+
+    classification = await classify_intent(_turn(query), _live_llm(), prompts, schemes)
+
+    (ask,) = classification.asks
+    assert ask.action is ProviderAction.SUPPORT, f"{classification!r}"
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "Is there any update on the PMFBY grievance I raised last month?",
+        "PMFBY ticket GRV-2026-004512",
+    ],
+)
+async def test_an_existing_complaint_is_status(query: str) -> None:
+    """A ticket number alone says a complaint exists."""
+
+    prompts = build_prompt_service(_REPO / "configs" / "prompts.yaml")
+    schemes = load_scheme_catalog(_CATALOG).schemes()
+
+    classification = await classify_intent(_turn(query), _live_llm(), prompts, schemes)
+
+    (ask,) = classification.asks
+    assert ask.action is ProviderAction.STATUS, f"{classification!r}"
