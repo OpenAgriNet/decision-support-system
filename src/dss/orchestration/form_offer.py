@@ -10,10 +10,11 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from dss.core.forms.models import FormContext, FormDefinition, ProviderAction
+from dss.core.forms.models import FormContext, FormDefinition
 from dss.core.forms.registry import FormLookup
 from dss.core.intent.models import Ask, Intent, InteractionType, Scheme, SubjectCategory
 from dss.core.provider_discovery.models import DiscoveryResult
+from dss.core.shared.models import ProviderAction
 
 # The pack's calls a form stands for. Advice is answered, never filed.
 _ACTION_BY_INTERACTION: Mapping[InteractionType, ProviderAction] = {

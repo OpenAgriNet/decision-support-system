@@ -11,11 +11,6 @@ from pydantic import BaseModel, ConfigDict
 from dss.core.shared.models import MessageReference, OutputBlock, Role, TurnInput
 
 
-class ProviderAction(StrEnum):
-    SUPPORT = "support"
-    STATUS = "status"
-
-
 class FormContext(BaseModel):
     """The form's type. Sent with the form, copied back with the submission."""
 

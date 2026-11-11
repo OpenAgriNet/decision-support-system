@@ -188,6 +188,15 @@ class TurnContext(BaseModel):
     sender_id: str
 
 
+class ProviderAction(StrEnum):
+    """What a form asks a provider to do: ``support`` files a new complaint,
+    ``status`` checks one already filed. Here, not with the forms: intent
+    reads it from the farmer's words, before any form exists."""
+
+    SUPPORT = "support"
+    STATUS = "status"
+
+
 class TurnStatus(StrEnum):
     """How a turn ended. One axis: `unavailable` is the execution-failure value,
     so no second field is needed to tell a refusal from a crash."""

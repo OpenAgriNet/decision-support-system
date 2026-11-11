@@ -14,7 +14,6 @@ from dss.core.forms.models import (
     FormContext,
     FormErrorBlock,
     FormSubmission,
-    ProviderAction,
 )
 from dss.core.forms.service import build_form_registry
 from dss.core.intent.models import Intent, InteractionType, Scheme, SubjectCategory
@@ -30,6 +29,7 @@ from dss.core.shared.models import (
     Cause,
     ClaimDelta,
     ConversationMessage,
+    ProviderAction,
     RefusalBlock,
     TextBlock,
     TurnContext,
