@@ -271,6 +271,13 @@
   `settled_intent`, far from where it was built. Make the field required.
 - **A named scheme with no form ends the ask.** Later, let the ask settle, so
   the planner answers what it can without a form.
+- **A guess is only confirmed where a form exists.** In a category with no
+  forms, a guessed scheme is never confirmed. The planner then gets the
+  farmer's words, not the official scheme name. Decide: use the guess there,
+  or confirm it.
+- **`scheme_confidence` counts as low when left out.** A model that always
+  leaves it out would confirm the same scheme forever. The live model fills
+  it every time today. Make the field required, or stop after one confirm.
 
 ## Transport
 
