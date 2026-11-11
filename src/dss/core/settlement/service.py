@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from dss.core.intent.models import Ask, Intent
-from dss.core.settlement.ask_slots import frame_for, needed_slots
+from dss.core.settlement.ask_slots import frame_for
 from dss.core.settlement.models import (
     AskNeeds,
     CannotServe,
@@ -23,7 +23,7 @@ def settle_asks(
 
 
 def _settle_ask(ask: Ask, needs: AskNeeds) -> Settlement:
-    return settle(frame_for(ask, needed=needed_slots(needs)))
+    return settle(frame_for(ask, needs))
 
 
 def settle(frame: Frame) -> Settlement:

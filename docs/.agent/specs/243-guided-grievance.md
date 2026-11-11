@@ -85,6 +85,8 @@ or ask.
   - Sure match: filled.
   - Close but unsure: confirm. "Do you mean PM Fasal Bima Yojana?"
   - No match: say so and ask again. No retry count; the farmer can leave.
+  - Named, but no form for it here: can't serve, no question. Asking again
+    would go in a circle.
 
 The model reads the action from what the farmer wants, not how they say
 it. "How do I file" is file. "How do I check the status" is status.

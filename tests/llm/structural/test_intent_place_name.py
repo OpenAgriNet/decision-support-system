@@ -39,8 +39,8 @@ from dss.core.intent.models import (
 from dss.core.intent.service import classify_intent
 from dss.core.location.service import resolve_places
 from dss.core.planner.models import AskEvidence, Evidence
-from dss.core.settlement.ask_slots import ask_slot_state
-from dss.core.settlement.models import AskSlot, NeedsClarification, Slot
+from dss.core.settlement.ask_slots import frame_for
+from dss.core.settlement.models import AskNeeds, NeedsClarification
 from dss.core.shared.models import ConversationMessage, TextQuery, UserTurn
 from dss.entrypoint.composition.root import _resolve_model
 from dss.observability.stages import Stage
@@ -472,9 +472,8 @@ async def _question_we_send(name: str) -> str:
         IntentClassification(asks=(ask,)), _turn("q"), lookup=LOOKUP
     )
     [resolved] = intent.asks
-    outcome = NeedsClarification(
-        open_slots=(Slot(AskSlot.PLACE, ask_slot_state(resolved, AskSlot.PLACE)),)
-    )
+    needs = AskNeeds(needs_place=True, schemes_with_a_form=frozenset())
+    outcome = NeedsClarification(open_slots=frame_for(resolved, needs).slots)
     evidence = Evidence(
         sources=(), ask_evidences=(AskEvidence(ask=resolved, outcome=outcome),)
     )

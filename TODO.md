@@ -269,6 +269,8 @@
   asks, but the field still has a default. A `TurnResult` built without
   settlements passes `is_every_ask_settled` and then fails in
   `settled_intent`, far from where it was built. Make the field required.
+- **A named scheme with no form ends the ask.** Later, let the ask settle, so
+  the planner answers what it can without a form.
 
 ## Transport
 

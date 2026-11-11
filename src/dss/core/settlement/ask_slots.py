@@ -22,6 +22,7 @@ from dss.core.settlement.models import (
     SlotState,
     Unresolved,
     UnresolvedReason,
+    Unservable,
 )
 
 
@@ -35,16 +36,20 @@ def needed_slots(needs: AskNeeds) -> tuple[AskSlot, ...]:
     return tuple(slot for slot, needed in is_needed.items() if needed)
 
 
-def frame_for(ask: Ask, *, needed: tuple[AskSlot, ...]) -> Frame:
-    return Frame(slots=tuple(Slot(slot, ask_slot_state(ask, slot)) for slot in needed))
+def frame_for(ask: Ask, needs: AskNeeds) -> Frame:
+    return Frame(
+        slots=tuple(
+            Slot(slot, ask_slot_state(ask, slot, needs)) for slot in needed_slots(needs)
+        )
+    )
 
 
-def ask_slot_state(ask: Ask, slot: AskSlot) -> SlotState:
+def ask_slot_state(ask: Ask, slot: AskSlot, needs: AskNeeds) -> SlotState:
     match slot:
         case AskSlot.PLACE:
             return _place_state(ask)
         case AskSlot.SCHEME:
-            return _scheme_state(ask)
+            return _scheme_state(ask, needs.schemes_with_a_form)
 
 
 def _place_state(ask: Ask) -> SlotState:
@@ -63,10 +68,14 @@ def _place_state(ask: Ask) -> SlotState:
             return Missing()
 
 
-def _scheme_state(ask: Ask) -> SlotState:
+def _scheme_state(ask: Ask, schemes_with_a_form: frozenset[str]) -> SlotState:
     match ask.scheme:
-        case Scheme() as scheme:
+        case Scheme(code=code) as scheme if code in schemes_with_a_form:
             return Resolved(scheme)
+        case Scheme(name=name):
+            # Not asked again: the farmer has no other scheme to name.
+            category = ask.subject_categories.value.lower()
+            return Unservable(reason=f"{name} has no {category} form.")
         case GuessedScheme(scheme=scheme):
             return Ambiguous(value=scheme.name, choices=(scheme,))
         case None:

@@ -25,6 +25,7 @@ from dss.core.settlement.models import (
     SlotState,
     Unresolved,
     UnresolvedReason,
+    Unservable,
 )
 from dss.core.shared.models import Geometry
 from dss.ports.area_lookup import AreaMatch
@@ -72,7 +73,8 @@ def _place_of(
         interaction_type=InteractionType.OBSERVE,
         place=place,
     )
-    return ask_slot_state(ask, AskSlot.PLACE)
+    needs = AskNeeds(needs_place=True, schemes_with_a_form=NO_FORMS)
+    return ask_slot_state(ask, AskSlot.PLACE, needs)
 
 
 def test_resolved_place() -> None:
@@ -134,19 +136,31 @@ def test_whole_state_is_too_broad() -> None:
 
 
 PMFBY = Scheme(code="PMFBY", name="Pradhan Mantri Fasal Bima Yojana")
+PM_KISAN = Scheme(code="PMKISAN", name="PM Kisan Samman Nidhi")
 
 
 def _scheme_of(scheme: Scheme | GuessedScheme | None) -> SlotState:
+    """Only PMFBY has a form."""
+
     ask = Ask(
         subject_categories=SubjectCategory.GRIEVANCE,
         interaction_type=InteractionType.ACT,
         scheme=scheme,
     )
-    return ask_slot_state(ask, AskSlot.SCHEME)
+    needs = AskNeeds(needs_place=False, schemes_with_a_form=frozenset({"PMFBY"}))
+    return ask_slot_state(ask, AskSlot.SCHEME, needs)
 
 
 def test_named_scheme() -> None:
     assert _scheme_of(PMFBY) == Resolved(PMFBY)
+
+
+def test_named_scheme_without_a_form() -> None:
+    """Asking again would go in a circle: the farmer has no other answer."""
+
+    assert _scheme_of(PM_KISAN) == Unservable(
+        reason="PM Kisan Samman Nidhi has no grievance form."
+    )
 
 
 def test_guessed_scheme_is_one_choice() -> None:
@@ -171,7 +185,9 @@ def _weather_at(place: ResolvedPlace | None) -> Ask:
 
 
 def test_frame_holds_each_needed_slot() -> None:
-    frame = frame_for(_weather_at(PUNE), needed=(AskSlot.PLACE,))
+    needs = AskNeeds(needs_place=True, schemes_with_a_form=NO_FORMS)
+
+    frame = frame_for(_weather_at(PUNE), needs)
 
     assert frame == Frame(slots=(Slot(AskSlot.PLACE, Resolved(PUNE)),))
 
@@ -179,4 +195,6 @@ def test_frame_holds_each_needed_slot() -> None:
 def test_frame_leaves_out_unneeded_slots() -> None:
     """A place said in passing is never asked about."""
 
-    assert frame_for(_weather_at(PUNE), needed=()) == Frame(slots=())
+    needs = AskNeeds(needs_place=False, schemes_with_a_form=NO_FORMS)
+
+    assert frame_for(_weather_at(PUNE), needs) == Frame(slots=())
