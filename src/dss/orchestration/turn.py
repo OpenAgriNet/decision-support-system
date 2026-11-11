@@ -59,6 +59,7 @@ from dss.core.shared.models import TextQuery, UserTurn
 from dss.observability.stages import Stage
 from dss.observability.trace_log import trace_component
 from dss.orchestration.discovery import DiscoverProviders
+from dss.orchestration.form_offer import form_action_for
 from dss.orchestration.stage_content import asks_text, discovery_text
 from dss.ports.area_lookup import AreaLookup
 from dss.ports.llm import LLMProvider
@@ -114,10 +115,14 @@ def _ask_needs(
     contexts_for: FormContextLookup,
 ) -> AskNeeds:
     pack_types = capability_types_for(ask, index)
+    # Only the forms for what this ask wants to do. Advice has none.
+    action = form_action_for(ask)
     contexts = contexts_for(ask.subject_categories.value)
     return AskNeeds(
         needs_place=is_place_needed(pack_types, place_bound_types),
-        schemes_with_a_form=frozenset(context.scheme for context in contexts),
+        schemes_with_a_form=frozenset(
+            context.scheme for context in contexts if context.action == action
+        ),
     )
 
 

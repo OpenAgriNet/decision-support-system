@@ -22,6 +22,7 @@ from dss.core.intent.models import (
     InteractionType,
     PlaceSource,
     ResolvedPlace,
+    Scheme,
     SubjectCategory,
 )
 from dss.core.moderation.models import Outcome, ReasonCode
@@ -38,12 +39,14 @@ from dss.core.provider_discovery.models import (
 )
 from dss.core.settlement.models import (
     AskSlot,
+    CannotServe,
     Frame,
     Missing,
     NeedsClarification,
     Settled,
     Settlement,
     Slot,
+    Unservable,
 )
 from dss.core.shared.models import Geometry, Location, TextQuery, UserTurn
 from dss.orchestration.turn import SettleAsks, build_settle_asks, run_turn
@@ -520,4 +523,44 @@ def test_settle_asks_for_the_scheme_of_a_form_category() -> None:
     assert settle(Intent(asks=(complaint, rain))) == (
         NeedsClarification(open_slots=(Slot(AskSlot.SCHEME, Missing()),)),
         _SETTLED,
+    )
+
+
+def test_advice_needs_no_scheme() -> None:
+    """Advice is answered, never filed. With no form to pick, no scheme is
+    asked for."""
+
+    pmfby_support = FormContext(scheme="PMFBY", category="Grievance", action="support")
+    forms = FormRegistry([ActionSchema(context=pmfby_support, must_send=())])
+    settle = build_settle_asks(_FakeIndex({}, frozenset()), forms.contexts_for)
+    how_to_complain = Ask(
+        subject_categories=SubjectCategory.GRIEVANCE,
+        interaction_type=InteractionType.ADVISE,
+    )
+
+    assert settle(Intent(asks=(how_to_complain,))) == (_SETTLED,)
+
+
+def _grievance_form(scheme: str, action: str) -> ActionSchema:
+    context = FormContext(scheme=scheme, category="Grievance", action=action)
+    return ActionSchema(context=context, must_send=())
+
+
+def test_a_form_for_another_action_does_not_count() -> None:
+    """PM-KISAN has a status form only, so a complaint about it cannot be
+    filed."""
+
+    forms = FormRegistry(
+        [_grievance_form("PMFBY", "support"), _grievance_form("PM-KISAN", "status")]
+    )
+    settle = build_settle_asks(_FakeIndex({}, frozenset()), forms.contexts_for)
+    complaint = Ask(
+        subject_categories=SubjectCategory.GRIEVANCE,
+        interaction_type=InteractionType.ACT,
+        scheme=Scheme(code="PM-KISAN", name="PM Kisan Samman Nidhi"),
+    )
+
+    no_form = Unservable(reason="PM Kisan Samman Nidhi has no grievance form.")
+    assert settle(Intent(asks=(complaint,))) == (
+        CannotServe(slot=Slot(AskSlot.SCHEME, no_form)),
     )
