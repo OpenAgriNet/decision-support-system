@@ -198,3 +198,34 @@ def test_a_grievance_is_offered_as_a_form_and_then_filed(
         assert channel["provider"]["id"] == PROVIDER_ID
         assert channel["applicantMobile"] == PHONE
         assert channel["grievance"]["description"] == VALUES["grievance.description"]
+
+
+def _text(text: str) -> dict[str, Any]:
+    return {"role": "user", "content": [{"type": "text", "text": text}]}
+
+
+def test_an_unclear_problem_is_asked_then_gets_its_form(live_app, a_body):
+    """The guided flow: we ask what the farmer wants, and their answer picks
+    the form. Only the shape of each reply is pinned, never its words."""
+
+    with TestClient(live_app) as client:
+        problem = _text("There is a problem with my fasal bima claim")
+
+        asked = _message(_post(client, a_body, [problem]))
+
+        assert asked["outcome"]["status"] == "requires_input", asked
+        assert [item["type"] for item in asked["content"]] == ["text"], asked
+
+        thread = [
+            problem,
+            {"role": "assistant", "content": asked["content"]},
+            _text("I want to raise a new one"),
+        ]
+
+        offered = _message(_post(client, a_body, thread))
+
+        assert offered["outcome"]["status"] == "requires_input", offered
+        forms = [item for item in offered["content"] if item["type"] == "form"]
+        assert [form["context"] for form in forms] == [
+            {"scheme": "PMFBY", "category": "Grievance", "action": "support"}
+        ], offered
