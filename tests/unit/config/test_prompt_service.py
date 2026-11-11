@@ -18,6 +18,7 @@ import pytest
 from jinja2 import UndefinedError
 
 from dss.config.prompt_service import build_prompt_service
+from dss.core.intent.models import SubjectCategory
 from dss.core.shared.language import ENGLISH, LanguageTag
 from dss.ports.prompts import PromptIdentifier
 
@@ -43,6 +44,7 @@ def _registry(
     more_overrides: tuple[tuple[str, str], ...] = (),
     placeholders: tuple[str, ...] = ("name",),
     en_skills: bool = False,
+    en_topics: tuple[tuple[str, str], ...] = (),
     include_en: bool = True,
     omit_component: str | None = None,
 ) -> Path:
@@ -66,6 +68,8 @@ def _registry(
         languages.append(language_tag)
     if en_skills:
         (prompt_dir / "skill.md").write_text(_SKILL, encoding="utf-8")
+    for topic, guidance in en_topics:
+        (prompt_dir / f"{topic}.md").write_text(guidance, encoding="utf-8")
 
     lines: list[str] = []
     for identifier in PromptIdentifier:
@@ -81,6 +85,11 @@ def _registry(
             ]
             if language_tag == "en" and en_skills:
                 lines += ["      skills:", "        - prompts/skill.md"]
+            if language_tag == "en" and en_topics:
+                lines += ["      topics:"]
+                lines += [
+                    f"        {topic}: prompts/{topic}.md" for topic, _ in en_topics
+                ]
     config = tmp_path / "configs" / "prompts.yaml"
     config.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return config
@@ -99,6 +108,7 @@ def test_the_configured_language_is_served() -> None:
             "persona": "p",
             "boundaries": "b",
             "target_lang": "hi",
+            "topic_guidance": "",
         },
     )
     assert "किसान" in prompt  # the Hindi demo, not the English fallback
@@ -298,3 +308,78 @@ def test_a_language_entry_without_skills_falls_back_to_english_skills(
 def test_a_component_without_skills_has_none(tmp_path: Path) -> None:
     service = build_prompt_service(_registry(tmp_path))
     assert service.get_skills(_PROBE, LanguageTag("en")) == ()
+
+
+# --- topic guidance ---------------------------------------------------------
+
+_MARKET_GUIDANCE = ("Market", "Name the market and the date.\n")
+_WEATHER_GUIDANCE = ("Weather", "Give the rain in millimetres.\n")
+
+
+def test_topic_guidance_is_served_for_the_categories_asked_about(
+    tmp_path: Path,
+) -> None:
+    service = build_prompt_service(
+        _registry(tmp_path, en_topics=(_MARKET_GUIDANCE, _WEATHER_GUIDANCE))
+    )
+
+    guidance = service.get_topic_guidance(
+        _PROBE, LanguageTag("en"), frozenset({SubjectCategory.MARKET})
+    )
+
+    assert guidance == "Name the market and the date."
+
+
+def test_guidance_for_several_topics_comes_in_configured_order(
+    tmp_path: Path,
+) -> None:
+    service = build_prompt_service(
+        _registry(tmp_path, en_topics=(_MARKET_GUIDANCE, _WEATHER_GUIDANCE))
+    )
+
+    guidance = service.get_topic_guidance(
+        _PROBE,
+        LanguageTag("en"),
+        frozenset({SubjectCategory.WEATHER, SubjectCategory.MARKET}),
+    )
+
+    assert guidance == (
+        "Name the market and the date.\n\nGive the rain in millimetres."
+    )
+
+
+def test_a_topic_with_no_guidance_adds_nothing(tmp_path: Path) -> None:
+    service = build_prompt_service(_registry(tmp_path, en_topics=(_MARKET_GUIDANCE,)))
+
+    guidance = service.get_topic_guidance(
+        _PROBE, LanguageTag("en"), frozenset({SubjectCategory.CROP})
+    )
+
+    assert guidance == ""
+
+
+def test_a_language_entry_without_topics_falls_back_to_english_topics(
+    tmp_path: Path,
+) -> None:
+    service = build_prompt_service(_registry(tmp_path, en_topics=(_MARKET_GUIDANCE,)))
+
+    guidance = service.get_topic_guidance(
+        _PROBE, LanguageTag("hi"), frozenset({SubjectCategory.MARKET})
+    )
+
+    assert guidance == "Name the market and the date."
+
+
+def test_a_topic_that_is_not_a_category_refuses_to_boot(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="Mandi"):
+        build_prompt_service(
+            _registry(tmp_path, en_topics=(("Mandi", "Name the market.\n"),))
+        )
+
+
+def test_a_named_topic_file_that_is_absent_refuses_to_boot(tmp_path: Path) -> None:
+    config = _registry(tmp_path, en_topics=(_MARKET_GUIDANCE,))
+    (tmp_path / "prompts" / "Market.md").unlink()
+
+    with pytest.raises(FileNotFoundError, match=r"Market\.md"):
+        build_prompt_service(config)
