@@ -32,7 +32,6 @@ from dss.core.intent.models import (
     Intent,
     IntentClassification,
     ResolvedPlace,
-    UnclearAction,
     UnresolvedPlace,
 )
 from dss.core.intent.service import classify_intent
@@ -56,7 +55,8 @@ from dss.core.provider_discovery.service import (
 from dss.core.schema_packs.service import is_place_needed
 from dss.core.settlement import service as settlement
 from dss.core.settlement.models import AskNeeds, Settled, Settlement
-from dss.core.shared.models import ProviderAction, TextQuery, UserTurn
+from dss.core.settlement.needs import build_ask_needs
+from dss.core.shared.models import TextQuery, UserTurn
 from dss.observability.stages import Stage
 from dss.observability.trace_log import trace_component
 from dss.orchestration.discovery import DiscoverProviders
@@ -115,28 +115,11 @@ def _ask_needs(
     contexts_for: FormContextLookup,
 ) -> AskNeeds:
     pack_types = capability_types_for(ask, index)
-    forms = _forms_for(ask, contexts_for)
-    # Until the action is known, a form for any action counts: the farmer's
-    # answer may still pick the one a scheme has.
-    is_open = ask.action is UnclearAction.UNCLEAR
-    counted = [form for form in forms if is_open or form.action == ask.action]
-    return AskNeeds(
+    return build_ask_needs(
+        ask,
         needs_place=is_place_needed(pack_types, place_bound_types),
-        schemes_with_a_form=frozenset(form.scheme for form in counted),
-        actions_with_a_form=frozenset(ProviderAction(form.action) for form in forms),
+        forms=contexts_for(ask.subject_categories.value),
     )
-
-
-def _forms_for(ask: Ask, contexts_for: FormContextLookup) -> list[FormContext]:
-    # An ask with no action wants an answer, not a form.
-    if ask.action is None:
-        return []
-    return [
-        context
-        for context in contexts_for(ask.subject_categories.value)
-        # A pack can declare a step, such as init, that no form files.
-        if context.action in ProviderAction
-    ]
 
 
 def place_attributes(

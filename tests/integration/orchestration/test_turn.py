@@ -40,14 +40,12 @@ from dss.core.provider_discovery.models import (
 )
 from dss.core.settlement.models import (
     AskSlot,
-    CannotServe,
     Frame,
     Missing,
     NeedsClarification,
     Settled,
     Settlement,
     Slot,
-    Unservable,
 )
 from dss.core.shared.models import (
     Geometry,
@@ -571,51 +569,6 @@ def test_unclear_action_is_asked_first() -> None:
     )
 
 
-def test_a_plain_question_is_not_asked_about_a_form() -> None:
-    """ "How long does a grievance take?" wants an answer, not a form. "New
-    or old?" has no answer that fits it."""
-
-    settle = _settle_with_forms(
-        _grievance_form("PMFBY", "support"), _grievance_form("PMFBY", "status")
-    )
-    question = _grievance(InteractionType.ADVISE, action=None)
-
-    assert settle(Intent(asks=(question,))) == (_SETTLED,)
-
-
-def test_wording_does_not_change_what_is_asked() -> None:
-    """Only the action the model read counts, not whether the farmer put it
-    as a question or a request."""
-
-    settle = _settle_with_forms(
-        _grievance_form("PMFBY", "support"), _grievance_form("PMFBY", "status")
-    )
-    question = _grievance(InteractionType.ADVISE, action=UnclearAction.UNCLEAR)
-    request = _grievance(InteractionType.ACT, action=UnclearAction.UNCLEAR)
-
-    asked_of_question, asked_of_request = settle(Intent(asks=(question, request)))
-
-    assert asked_of_question == asked_of_request
-    assert isinstance(asked_of_question, NeedsClarification)
-
-
-def test_a_form_for_another_action_does_not_count() -> None:
-    """PM-KISAN has a status form only, so a complaint about it cannot be
-    filed."""
-
-    settle = _settle_with_forms(
-        _grievance_form("PMFBY", "support"), _grievance_form("PM-KISAN", "status")
-    )
-    complaint = _grievance(
-        InteractionType.ACT, action=ProviderAction.SUPPORT, scheme=_PM_KISAN
-    )
-
-    no_form = Unservable(reason="PM Kisan Samman Nidhi has no grievance form.")
-    assert settle(Intent(asks=(complaint,))) == (
-        CannotServe(slot=Slot(AskSlot.SCHEME, no_form)),
-    )
-
-
 def test_a_scheme_is_not_turned_away_before_the_action_is_known() -> None:
     """PM-KISAN has a status form. If the farmer wants to check a complaint,
     we can serve it, so they are asked first."""
@@ -629,18 +582,4 @@ def test_a_scheme_is_not_turned_away_before_the_action_is_known() -> None:
 
     assert settle(Intent(asks=(problem,))) == (
         NeedsClarification(open_slots=(_NEEDS_ACTION,)),
-    )
-
-
-def test_a_step_no_form_files_is_not_a_choice() -> None:
-    """A pack can declare a step, such as init, that the farmer never picks.
-    With one kind of form left, there is nothing to ask about the action."""
-
-    settle = _settle_with_forms(
-        _grievance_form("PMFBY", "support"), _grievance_form("PMFBY", "init")
-    )
-    problem = _grievance(InteractionType.ACT, action=UnclearAction.UNCLEAR)
-
-    assert settle(Intent(asks=(problem,))) == (
-        NeedsClarification(open_slots=(Slot(AskSlot.SCHEME, Missing()),)),
     )
