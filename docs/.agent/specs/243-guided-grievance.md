@@ -308,12 +308,13 @@ plus any exact block code adds.
 4. Action slot: intent's `action`, the question when unclear, drop the
    interaction mapping. The scheme is `Unservable` only
    once the action is known.
-5. Intent examples config: loader, boot checks, cap, template. Should
-   steady the portal case: "I cannot log in to the PMFBY portal…" is read
-   as a Scheme question, not a Grievance, about 1 time in 6. When it is a
-   Grievance, its action is unclear and is asked. Also the fee case: "Is
-   there a fee for raising a crop insurance complaint?" is read as a new
-   complaint about 1 time in 10. It should be read as a plain question.
+5. **Not in this story.** Intent examples config (loader, boot checks,
+   cap, template) moves to its own story. The design notes above are its
+   starting point. It should steady two cases. The portal case: "I cannot
+   log in to the PMFBY portal…" is read as a Scheme question, not a
+   Grievance, about 1 time in 6. The fee case: "Is there a fee for raising
+   a crop insurance complaint?" is read as a new complaint about 1 time in
+   10.
 6. Composer writes the question; fallback to fixed text; exact parts after
    the prose.
 7. Docs: `DSS_ARCHITECTURE.md`, `AGENTS.md` tech
@@ -324,7 +325,7 @@ plus any exact block code adds.
 ## Test strategy
 
 - **Tier 1:** `settle` for each slot and state; outcome rules on
-  `Evidence`; examples loader and boot checks.
+  `Evidence`.
 - **Tier 3:** orchestrator stops on an unsettled ask before discovery;
   composer gets the question; fallback on composer failure.
 - **Tier 5:** intent picks Grievance for loose phrasing, the action, and
