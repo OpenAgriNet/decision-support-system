@@ -144,6 +144,13 @@ class SchemeConfidence(StrEnum):
     LOW = "low"
 
 
+class UnclearAction(StrEnum):
+    """The farmer wants something done, but their words do not say which.
+    Kept apart from `ProviderAction` so it can never name a form."""
+
+    UNCLEAR = "unclear"
+
+
 class SchemeEntry(BaseModel):
     """One catalog row, as the intent model is shown it: the scheme and every
     other way a farmer may name it."""
@@ -181,7 +188,7 @@ class Ask(BaseModel):
     interaction_type: InteractionType
     place: ResolvedPlace | AmbiguousPlace | UnresolvedPlace | None = None
     scheme: Scheme | GuessedScheme | UnlistedScheme | None = None
-    action: ProviderAction | None = None
+    action: ProviderAction | UnclearAction | None = None
 
 
 # The docstrings of ClassifiedAsk and IntentClassification go to the model as
@@ -222,7 +229,7 @@ class ClassifiedAsk(BaseModel):
     # Low when left out: a scheme the model did not vouch for is confirmed.
     scheme_confidence: SchemeConfidence = SchemeConfidence.LOW
     unlisted_scheme_name: str | None = None
-    action: ProviderAction | None = None
+    action: ProviderAction | UnclearAction | None = None
     # Set by `classify_intent` from the catalog, never by the model: hidden
     # from the schema it is shown, so a code it invents never becomes a scheme.
     scheme: SkipJsonSchema[Scheme | GuessedScheme | UnlistedScheme | None] = None

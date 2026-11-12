@@ -15,6 +15,7 @@ from dss.core.intent.models import (
     PlaceSource,
     ResolvedPlace,
     SubjectCategory,
+    UnclearAction,
     UnresolvedPlace,
 )
 from dss.core.shared.language import LanguageTag
@@ -200,6 +201,20 @@ def test_blank_unlisted_scheme_name_is_dropped() -> None:
         unlisted_scheme_name="  ",
     )
     assert ask.unlisted_scheme_name is None
+
+
+def test_unclear_is_an_action_the_model_can_give() -> None:
+    """Empty means nothing is to be done. "Something, but which?" needs its
+    own answer, or a plain question gets asked "new or old?"."""
+
+    ask = ClassifiedAsk.model_validate(
+        {
+            "subject_categories": "Grievance",
+            "interaction_type": "act",
+            "action": "unclear",
+        }
+    )
+    assert ask.action is UnclearAction.UNCLEAR
 
 
 @pytest.mark.parametrize(
