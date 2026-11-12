@@ -85,9 +85,10 @@ class Result(BaseModel):
 
     The design doc's ``Result.step_id`` names a ``Plan`` step; there is no
     ``Plan`` here. ``ask_index`` names what a result actually answers instead
-    — the position into ``Intent.asks`` — so ``assemble_evidence`` can file
-    it under its ask. No ``url`` here: it lives on the ``Source`` this
-    result's ``source_id`` points to.
+    — the position among the asks the planner was given — so
+    ``assemble_evidence`` can file it under its ask. Those are the settled
+    asks, not every ask of the turn. No ``url`` here: it lives on the
+    ``Source`` this result's ``source_id`` points to.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -100,8 +101,8 @@ class Result(BaseModel):
 class Failure(BaseModel):
     """An ask that did not produce a result.
 
-    ``ask_index`` names what the call was answering — the position into
-    ``Intent.asks`` — the same way ``Result.ask_index`` does, so
+    ``ask_index`` names what the call was answering — the position among the
+    asks the planner was given — the same way ``Result.ask_index`` does, so
     ``assemble_evidence`` can file it under its ask.
     """
 
@@ -204,7 +205,8 @@ class Evidence:
 
     @property
     def unserved_asks(self) -> tuple[AskEvidence, ...]:
-        """Attempted asks with no result: the gaps the farmer is told about."""
+        """Asks nobody answered, and asks we cannot serve: the gaps the farmer
+        is told about."""
 
         return tuple(
             entry for entry in self.ask_evidences if entry.outcome.is_unanswered

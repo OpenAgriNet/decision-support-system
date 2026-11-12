@@ -104,8 +104,8 @@ decides how many to ask (voice one, web all).
 **The composer writes the question.** It gets the missing slot as evidence
 and words the sentence in the farmer's language. Exact parts, such as a
 place pick list, are added by code after the prose, as form blocks are
-today. If the composer fails, we send the fixed English question through
-the localizer, as today.
+today. If the composer fails, the turn fails. A fixed English question
+through the localizer is the planned fallback. It is not in this story.
 
 **Intent examples are config.** `configs/intent-examples.yaml` holds
 example phrasings per category, in any language, with the action where it
@@ -205,8 +205,9 @@ Evidence
   (`ask_slot_state`). **Form fields** are named by the pack, and are filled
   by the form step later (voice).
 - **Which slots an ask needs** comes to settlement as an `AskRequirements`, one
-  per ask. The wiring (`orchestration/turn.py`) works it out each turn from
-  the current capability index, since the index can refresh. Settlement
+  per ask. The wiring (`orchestration/turn.py`) fetches the ask's packs and
+  forms each turn, since the index can refresh, and
+  `core/settlement/requirements.py` works out the slots from that. Settlement
   reads no pack and no registry, so a new slot adds a field, not a
   parameter. `AskRequirements` also says which kinds of form the category has, and
   which scheme codes count: those for the ask's action, or for any action
@@ -287,8 +288,9 @@ plus any exact block code adds.
 
 ## Failure modes
 
-- **Composer fails on a question turn.** Fixed English question plus the
-  localizer.
+- **Composer fails on a question turn.** The turn fails, as an answer turn
+  does. A fixed English question through the localizer is the planned
+  fallback. It is not in this story.
 - **Intent drops the grievance on the reply turn.** The reply is read
   fresh. One wasted turn. Covered by intent examples and a tier-5 test.
 - **Intent misreads its own question.** Wrong form, one extra turn. The

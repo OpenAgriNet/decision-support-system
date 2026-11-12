@@ -77,9 +77,10 @@ Do not duplicate architecture, domain model, or design-decision detail here — 
 - Settlement: right after intent, code checks that each ask has the facts it
   needs, before any provider is searched for (ADR-0022, proposed). Each fact
   is a slot: action, scheme, place. Which slots an ask needs comes from its
-  packs (place) and the form registry (scheme, action). A missing or unsure
-  slot ends the turn with one question, worded by the composer; a scheme
-  with no form here is not served. The intent model returns each ask's
+  packs (place) and the form registry (scheme, action). An ask with a
+  missing or unsure slot gets one question, worded by the composer, beside
+  the answers to the other asks; a scheme with no form here is not served.
+  The intent model returns each ask's
   `action`: `support`, `status`, `unclear` or nothing, and only `unclear` is
   asked. No state is kept: the reply comes back in the history.
 - Speed benchmark: `benchmarks/` CLI, real models with the mock network; load mode
