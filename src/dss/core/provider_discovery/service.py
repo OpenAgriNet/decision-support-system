@@ -32,7 +32,7 @@ from dss.core.provider_discovery.models import (
     ProviderQueryResult,
 )
 from dss.core.schema_packs.service import is_place_needed
-from dss.core.shared.models import UserTurn
+from dss.core.shared.models import ProviderAction, UserTurn
 from dss.ports.discovery import CapabilityDiscovery
 
 # The network's own horizontal axis is Knowledge/Service (network-specs'
@@ -47,9 +47,9 @@ _ACTION_TYPE_BY_INTERACTION = {
 
 
 def _action_type_of(ask: Ask) -> str:
-    # An ask with an action wants it done, however it is worded: "how do I
-    # file a complaint" is advice by its words and a filing by its aim.
-    if ask.action is not None:
+    # An ask with a known action wants it done, however it is worded: "how do
+    # I file a complaint" is advice by its words and a filing by its aim.
+    if isinstance(ask.action, ProviderAction):
         return "Service"
     return _ACTION_TYPE_BY_INTERACTION[ask.interaction_type]
 

@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from dss.core.intent.models import Ask, InteractionType, SubjectCategory
+from dss.core.intent.models import (
+    Ask,
+    InteractionType,
+    SubjectCategory,
+    UnclearAction,
+)
 from dss.core.provider_discovery.models import CapabilityUnresolved
 from dss.core.provider_discovery.service import (
     capability_types_for,
@@ -70,3 +75,20 @@ def test_an_ask_with_an_action_is_a_service_ask() -> None:
     )
 
     assert capability_types_for(how_to_file, index) == ("openagrinet:Grievance",)
+
+
+def test_an_unclear_action_leaves_the_wording_to_decide() -> None:
+    """ "There is a problem with my wheat" names nothing to do yet, so it is
+    still advice, and the advice packs can answer it."""
+
+    index = {
+        ("Crop", "Knowledge"): ("CropAdvisory",),
+        ("Crop", "Service"): ("CropService",),
+    }
+    problem = Ask(
+        subject_categories=SubjectCategory.CROP,
+        interaction_type=InteractionType.ADVISE,
+        action=UnclearAction.UNCLEAR,
+    )
+
+    assert capability_types_for(problem, index) == ("CropAdvisory",)
