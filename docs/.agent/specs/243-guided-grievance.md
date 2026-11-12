@@ -56,7 +56,7 @@ a later story, using the turn-level part of `Evidence` added here.
 |---|---|---|
 | place | the category's pack mentions a location (`needs_place`, #107) | intent's place name, resolved as today |
 | scheme | the form key for the category needs one | intent's scheme code, checked against the catalog |
-| action | the category has forms with more than one action | intent's action pick; no default |
+| action | the farmer wants something done, and the category has forms with more than one action | intent's action pick; no default |
 
 Where the index lists more than one pack for a category, a place is needed
 only if every pack mentions a location. So Crop and Livestock do not ask.
@@ -77,6 +77,8 @@ or ask.
   - Unclear ("my payment did not come"): "Do you want to raise a new
     complaint, or check one you already raised?" The question uses the
     farmer's words, never "file" or "status".
+  - Nothing to do ("how long does a complaint take"): not asked. The
+    question gets an answer.
 - **place:** as today: an open question, or a pick list of at most 5
   (ADR-0017).
 - **scheme:** never a list. "Which scheme is this about?" Only schemes we
@@ -227,11 +229,14 @@ Evidence
 - `ClassifiedAsk.unlisted_scheme_name`: the name the farmer said, when it
   is none of the listed schemes. The ask then carries an `UnlistedScheme`.
   Settlement ends the ask on it: we say so, with no question.
-- `ClassifiedAsk.action`: `support`, `status` or nothing. A closed set
-  (`ProviderAction`), so the model cannot return a value we do not know.
-  Each value already maps to one provider call in code.
-  - No confidence field. An unclear action is asked, never confirmed, so
-    "unsure" and "none" lead to the same question.
+- `ClassifiedAsk.action`: `support`, `status`, `unclear` or nothing. A
+  closed set, so the model cannot return a value we do not know. `support`
+  and `status` (`ProviderAction`) each map to one provider call in code.
+  - `unclear` means they want something done and did not say which: it is
+    asked. Nothing means they want an answer: it is not asked.
+  - `unclear` is its own type (`UnclearAction`), so it can never name a
+    form.
+  - No confidence field. An unclear action is asked, never confirmed.
   - The prompt names no category. The model reads the action for any ask.
     Code decides, from the form registry, whether it matters. When the
     network describes its actions, the prompt can be fed from that.
@@ -247,8 +252,9 @@ Evidence
 - `form_offer._ACTION_BY_INTERACTION`. The action is a slot now. Its
   reverse stays, for the ask a submitted form stands for: discovery still
   finds providers by the interaction type. For the same reason, the
-  provider search treats any ask with an action as a service ask, however
-  it is worded (`TODO.md`, "An ask can read advise…").
+  provider search treats any ask with a known action (`support` or
+  `status`) as a service ask, however it is worded (`TODO.md`, "An ask can
+  read advise…"). For `unclear` or none, the wording decides.
 - `_place_clarification`, `place_optional_asks` and the `trailing_question`
   path. Settlement and the composer take them over.
 
@@ -266,6 +272,8 @@ plus any exact block code adds.
   turn.
 - **"How do I file a complaint".** Action is file, so the file form comes.
 - **A ticket number in the message.** Action is status.
+- **A plain question about complaints** ("how long does a grievance
+  take"). No form question. It goes to the answer.
 - **Two asks, one unsettled.** The settled one is answered. The composer
   asks about the other in the same reply.
 - **Two asks need the same slot** (weather and mandi, no place). One
@@ -303,7 +311,9 @@ plus any exact block code adds.
 5. Intent examples config: loader, boot checks, cap, template. Should
    steady the portal case: "I cannot log in to the PMFBY portal…" is read
    as a Scheme question, not a Grievance, about 1 time in 6. When it is a
-   Grievance, its action is unclear and is asked.
+   Grievance, its action is unclear and is asked. Also the fee case: "Is
+   there a fee for raising a crop insurance complaint?" is read as a new
+   complaint about 1 time in 10. It should be read as a plain question.
 6. Composer writes the question; fallback to fixed text; exact parts after
    the prose.
 7. Docs: `DSS_ARCHITECTURE.md`, `AGENTS.md` tech
