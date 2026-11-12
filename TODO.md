@@ -284,6 +284,11 @@
   shows "advise" beside "support". The tidier end state: once a form serves
   the ask, relabel it `act` or `observe` before the search, as the form path
   already does for a submitted form.
+- **One kind of form and an unclear action gives no form.** A category with
+  only a filing form does not ask "new or old", since there is nothing to
+  choose. But the form step reads the action from the ask, finds none, and
+  shows no form. No such category exists today. Fix: with one kind of form,
+  that kind is the action.
 
 ## Transport
 
