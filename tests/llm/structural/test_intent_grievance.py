@@ -109,7 +109,6 @@ async def test_filing_a_scheme_complaint_is_a_grievance_act() -> None:
     [
         "I want to file a PMFBY grievance",
         "My fasal bima claim was rejected, I want to complain",
-        "I cannot log in to the PMFBY portal to see my Kharif 2026 enrolment",
     ],
 )
 async def test_filing_a_pmfby_complaint_is_grievance_pmfby_act(query: str) -> None:
@@ -123,6 +122,27 @@ async def test_filing_a_pmfby_complaint_is_grievance_pmfby_act(query: str) -> No
     assert ask.interaction_type is InteractionType.ACT
     assert isinstance(ask.scheme, Scheme), f"{classification!r}"
     assert ask.scheme.code == "PMFBY"
+
+
+async def test_a_portal_problem_is_never_a_status_check() -> None:
+    """The farmer has a problem and no ticket, so "check one you already
+    raised" is the one wrong reading. Whether it is a complaint at all is not
+    stable yet, so the category is not pinned here."""
+
+    prompts = build_prompt_service(_REPO / "configs" / "prompts.yaml")
+    schemes = load_scheme_catalog(_CATALOG).schemes()
+
+    classification = await classify_intent(
+        _turn("I cannot log in to the PMFBY portal to see my Kharif 2026 enrolment"),
+        _live_llm(),
+        prompts,
+        schemes,
+    )
+
+    (ask,) = classification.asks
+    assert isinstance(ask.scheme, Scheme), f"{classification!r}"
+    assert ask.scheme.code == "PMFBY"
+    assert ask.action is not ProviderAction.STATUS, f"{classification!r}"
 
 
 @pytest.mark.parametrize(

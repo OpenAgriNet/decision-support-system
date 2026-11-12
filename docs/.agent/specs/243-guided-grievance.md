@@ -287,10 +287,12 @@ plus any exact block code adds.
 3. Scheme slot: registry contexts by category, intent's
    `scheme_confidence`, confirm and no-match handling.
 4. Action slot: intent's `action` and `action_sure`, the question when
-   unclear, drop the interaction mapping. Covers the flaky portal case: "I
-   cannot log in to the PMFBY portal…" is read as advice about 4 times in
-   10 today. The scheme is `Unservable` only once the action is known.
-5. Intent examples config: loader, boot checks, cap, template.
+   unclear, drop the interaction mapping. The scheme is `Unservable` only
+   once the action is known.
+5. Intent examples config: loader, boot checks, cap, template. Should
+   steady the portal case: "I cannot log in to the PMFBY portal…" is read
+   as a Scheme question, not a Grievance, about 1 time in 6. When it is a
+   Grievance, its action is unclear and is asked.
 6. Composer writes the question; fallback to fixed text; exact parts after
    the prose.
 7. Docs: `DSS_ARCHITECTURE.md`, `AGENTS.md` tech
