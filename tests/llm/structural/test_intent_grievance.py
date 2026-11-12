@@ -220,6 +220,18 @@ async def test_an_unclear_complaint_is_marked_unclear(query: str) -> None:
     assert ask.action is UnclearAction.UNCLEAR, f"{classification!r}"
 
 
+async def test_a_plain_question_names_no_action() -> None:
+    """The farmer wants an answer, so "new or old?" has no reply that fits.
+    The query is not an example in the prompt."""
+
+    classification = await _classify(
+        "How long does a PMFBY grievance usually take to resolve?"
+    )
+
+    (ask,) = classification.asks
+    assert ask.action is None, f"{classification!r}"
+
+
 @pytest.mark.parametrize(
     "query",
     [
