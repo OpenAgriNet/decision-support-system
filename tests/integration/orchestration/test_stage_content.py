@@ -11,6 +11,7 @@ from dss.core.intent.models import (
     UnlistedScheme,
 )
 from dss.core.planner.models import Evidence, Source, SourceKind
+from dss.core.shared.models import ProviderAction
 from dss.orchestration.stage_content import asks_text, cited_sources_text
 from tests.support.evidence import build_evidence
 
@@ -59,3 +60,16 @@ def test_unlisted_scheme_is_marked_in_the_trace() -> None:
     assert asks_text((ask,)) == (
         "1. Grievance/act: crop insurance [not listed: XYZ Yojana]"
     )
+
+
+def test_the_action_is_shown_in_the_trace() -> None:
+    """ "advise" beside a filing form explains nothing. The action does."""
+
+    ask = Ask(
+        agriculture_subjects="crop insurance",
+        subject_categories=SubjectCategory.GRIEVANCE,
+        interaction_type=InteractionType.ADVISE,
+        action=ProviderAction.SUPPORT,
+    )
+
+    assert asks_text((ask,)) == "1. Grievance/advise: crop insurance -> support"

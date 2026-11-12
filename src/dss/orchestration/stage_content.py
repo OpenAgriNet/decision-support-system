@@ -28,15 +28,20 @@ def asks_text(asks: Sequence[Ask | ClassifiedAsk]) -> str:
     """`market/observe: wheat @ Pune`, one line per ask. A scheme the intent
     model named shows its code, `[PMFBY]`: a wrong match is read here. A
     guess shows `[PMFBY?]`, and a name the catalog does not hold shows
-    `[not listed: XYZ Yojana]`."""
+    `[not listed: XYZ Yojana]`. The action the model read comes last,
+    `-> support`: it picks the form, whatever the interaction says."""
 
     if not asks:
         return "no asks"
     return "\n".join(
         f"{i + 1}. {ask.subject_categories.value}/{ask.interaction_type.value}: "
-        f"{ask.agriculture_subjects or '-'}{_scheme(ask)}{_place(ask)}"
+        f"{ask.agriculture_subjects or '-'}{_scheme(ask)}{_place(ask)}{_action(ask)}"
         for i, ask in enumerate(asks)
     )
+
+
+def _action(ask: Ask | ClassifiedAsk) -> str:
+    return f" -> {ask.action.value}" if ask.action else ""
 
 
 def _scheme(ask: Ask | ClassifiedAsk) -> str:
