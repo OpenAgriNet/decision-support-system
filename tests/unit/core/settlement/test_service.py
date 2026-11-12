@@ -5,7 +5,7 @@ from __future__ import annotations
 from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
 from dss.core.settlement.models import (
     Ambiguous,
-    AskNeeds,
+    AskRequirements,
     AskSlot,
     CannotServe,
     Frame,
@@ -90,7 +90,7 @@ def test_each_ask_settles_on_its_own() -> None:
 
     settlements = settle_asks(
         Intent(asks=(weather, grievance)),
-        needs_for=lambda ask: AskNeeds(
+        requirements_for=lambda ask: AskRequirements(
             needs_place=ask is weather,
             schemes_with_a_form=frozenset(),
             actions_with_a_form=frozenset(),

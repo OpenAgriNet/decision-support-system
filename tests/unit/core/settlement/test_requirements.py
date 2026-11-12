@@ -1,4 +1,4 @@
-"""Tier 1 — which facts an ask needs, from its category's forms."""
+"""Tier 1 — what an ask requires, from its category's forms."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from dss.core.intent.models import (
     SubjectCategory,
     UnclearAction,
 )
-from dss.core.settlement.needs import build_ask_needs
+from dss.core.settlement.requirements import build_ask_requirements
 from dss.core.shared.models import ProviderAction
 
 SUPPORT = ProviderAction.SUPPORT
@@ -37,12 +37,12 @@ def test_an_unclear_action_counts_every_form() -> None:
 
     forms = [_form("PMFBY", "support"), _form("PM-KISAN", "status")]
 
-    needs = build_ask_needs(
+    requirements = build_ask_requirements(
         _grievance(UnclearAction.UNCLEAR), needs_place=False, forms=forms
     )
 
-    assert needs.schemes_with_a_form == {"PMFBY", "PM-KISAN"}
-    assert needs.actions_with_a_form == {SUPPORT, STATUS}
+    assert requirements.schemes_with_a_form == {"PMFBY", "PM-KISAN"}
+    assert requirements.actions_with_a_form == {SUPPORT, STATUS}
 
 
 def test_a_known_action_counts_only_its_forms() -> None:
@@ -51,10 +51,12 @@ def test_a_known_action_counts_only_its_forms() -> None:
 
     forms = [_form("PMFBY", "support"), _form("PM-KISAN", "status")]
 
-    needs = build_ask_needs(_grievance(SUPPORT), needs_place=False, forms=forms)
+    requirements = build_ask_requirements(
+        _grievance(SUPPORT), needs_place=False, forms=forms
+    )
 
-    assert needs.schemes_with_a_form == {"PMFBY"}
-    assert needs.actions_with_a_form == {SUPPORT, STATUS}
+    assert requirements.schemes_with_a_form == {"PMFBY"}
+    assert requirements.actions_with_a_form == {SUPPORT, STATUS}
 
 
 def test_a_plain_question_needs_no_form() -> None:
@@ -63,12 +65,12 @@ def test_a_plain_question_needs_no_form() -> None:
 
     forms = [_form("PMFBY", "support"), _form("PMFBY", "status")]
 
-    needs = build_ask_needs(
+    requirements = build_ask_requirements(
         _grievance(None, InteractionType.ADVISE), needs_place=False, forms=forms
     )
 
-    assert needs.schemes_with_a_form == frozenset()
-    assert needs.actions_with_a_form == frozenset()
+    assert requirements.schemes_with_a_form == frozenset()
+    assert requirements.actions_with_a_form == frozenset()
 
 
 def test_a_step_no_form_files_is_not_a_choice() -> None:
@@ -76,24 +78,24 @@ def test_a_step_no_form_files_is_not_a_choice() -> None:
 
     forms = [_form("PMFBY", "support"), _form("PM-KISAN", "init")]
 
-    needs = build_ask_needs(
+    requirements = build_ask_requirements(
         _grievance(UnclearAction.UNCLEAR), needs_place=False, forms=forms
     )
 
-    assert needs.schemes_with_a_form == {"PMFBY"}
-    assert needs.actions_with_a_form == {SUPPORT}
+    assert requirements.schemes_with_a_form == {"PMFBY"}
+    assert requirements.actions_with_a_form == {SUPPORT}
 
 
-def test_wording_does_not_change_what_is_needed() -> None:
+def test_wording_does_not_change_what_is_required() -> None:
     """Only the action the model read counts, not whether the farmer put it
     as a question or a request."""
 
     forms = [_form("PMFBY", "support"), _form("PMFBY", "status")]
 
-    asked_as_a_question = build_ask_needs(
+    asked_as_a_question = build_ask_requirements(
         _grievance(SUPPORT, InteractionType.ADVISE), needs_place=True, forms=forms
     )
-    asked_as_a_request = build_ask_needs(
+    asked_as_a_request = build_ask_requirements(
         _grievance(SUPPORT, InteractionType.ACT), needs_place=True, forms=forms
     )
 

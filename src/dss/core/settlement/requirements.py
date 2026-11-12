@@ -1,4 +1,4 @@
-"""Which facts an ask needs, worked out from plain data about its category.
+"""What an ask requires, worked out from plain data about its category.
 The caller fetches that data, so settlement reads no pack and no registry."""
 
 from __future__ import annotations
@@ -7,13 +7,13 @@ from collections.abc import Iterable
 
 from dss.core.forms.models import FormContext
 from dss.core.intent.models import Ask, UnclearAction
-from dss.core.settlement.models import AskNeeds
+from dss.core.settlement.models import AskRequirements
 from dss.core.shared.models import ProviderAction
 
 
-def build_ask_needs(
+def build_ask_requirements(
     ask: Ask, *, needs_place: bool, forms: Iterable[FormContext]
-) -> AskNeeds:
+) -> AskRequirements:
     """`forms` are every form of the ask's category."""
 
     fileable = _fileable_forms(ask, forms)
@@ -21,7 +21,7 @@ def build_ask_needs(
     # answer may still pick the one a scheme has.
     is_open = ask.action is UnclearAction.UNCLEAR
     counted = [form for form in fileable if is_open or form.action == ask.action]
-    return AskNeeds(
+    return AskRequirements(
         needs_place=needs_place,
         schemes_with_a_form=frozenset(form.scheme for form in counted),
         actions_with_a_form=frozenset(ProviderAction(form.action) for form in fileable),

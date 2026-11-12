@@ -16,7 +16,7 @@ from dss.core.intent.models import (
 )
 from dss.core.settlement.models import (
     Ambiguous,
-    AskNeeds,
+    AskRequirements,
     AskSlot,
     Frame,
     Missing,
@@ -29,32 +29,33 @@ from dss.core.settlement.models import (
 )
 
 
-def needed_slots(needs: AskNeeds) -> tuple[AskSlot, ...]:
+def needed_slots(requirements: AskRequirements) -> tuple[AskSlot, ...]:
     """In the order they are asked."""
 
     is_needed = {
         # One kind of form leaves nothing to choose.
-        AskSlot.ACTION: len(needs.actions_with_a_form) > 1,
-        AskSlot.SCHEME: bool(needs.schemes_with_a_form),
-        AskSlot.PLACE: needs.needs_place,
+        AskSlot.ACTION: len(requirements.actions_with_a_form) > 1,
+        AskSlot.SCHEME: bool(requirements.schemes_with_a_form),
+        AskSlot.PLACE: requirements.needs_place,
     }
     return tuple(slot for slot, needed in is_needed.items() if needed)
 
 
-def frame_for(ask: Ask, needs: AskNeeds) -> Frame:
+def frame_for(ask: Ask, requirements: AskRequirements) -> Frame:
     return Frame(
         slots=tuple(
-            Slot(slot, ask_slot_state(ask, slot, needs)) for slot in needed_slots(needs)
+            Slot(slot, ask_slot_state(ask, slot, requirements))
+            for slot in needed_slots(requirements)
         )
     )
 
 
-def ask_slot_state(ask: Ask, slot: AskSlot, needs: AskNeeds) -> SlotState:
+def ask_slot_state(ask: Ask, slot: AskSlot, requirements: AskRequirements) -> SlotState:
     match slot:
         case AskSlot.PLACE:
             return _place_state(ask)
         case AskSlot.SCHEME:
-            return _scheme_state(ask, needs.schemes_with_a_form)
+            return _scheme_state(ask, requirements.schemes_with_a_form)
         case AskSlot.ACTION:
             return _action_state(ask)
         case unknown:

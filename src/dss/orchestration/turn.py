@@ -54,8 +54,8 @@ from dss.core.provider_discovery.service import (
 )
 from dss.core.schema_packs.service import is_place_needed
 from dss.core.settlement import service as settlement
-from dss.core.settlement.models import AskNeeds, Settled, Settlement
-from dss.core.settlement.needs import build_ask_needs
+from dss.core.settlement.models import AskRequirements, Settled, Settlement
+from dss.core.settlement.requirements import build_ask_requirements
 from dss.core.shared.models import TextQuery, UserTurn
 from dss.observability.stages import Stage
 from dss.observability.trace_log import trace_component
@@ -96,26 +96,26 @@ def build_settle_asks(
     """Reads the index on every turn. It can refresh while the app runs."""
 
     def settle(intent: Intent) -> tuple[Settlement, ...]:
-        needs_for = partial(
-            _ask_needs,
+        requirements_for = partial(
+            _read_ask_requirements,
             index=index.current(),
             place_bound_types=index.place_bound_types(),
             contexts_for=contexts_for,
         )
-        return settlement.settle_asks(intent, needs_for=needs_for)
+        return settlement.settle_asks(intent, requirements_for=requirements_for)
 
     return settle
 
 
-def _ask_needs(
+def _read_ask_requirements(
     ask: Ask,
     *,
     index: CapabilityIndex,
     place_bound_types: Collection[NetworkSchemaType],
     contexts_for: FormContextLookup,
-) -> AskNeeds:
+) -> AskRequirements:
     pack_types = capability_types_for(ask, index)
-    return build_ask_needs(
+    return build_ask_requirements(
         ask,
         needs_place=is_place_needed(pack_types, place_bound_types),
         forms=contexts_for(ask.subject_categories.value),

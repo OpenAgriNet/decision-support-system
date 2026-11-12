@@ -204,11 +204,11 @@ Evidence
 - **Ask slots** are a fixed `AskSlot` enum, read from the ask's own fields
   (`ask_slot_state`). **Form fields** are named by the pack, and are filled
   by the form step later (voice).
-- **Which slots an ask needs** comes to settlement as an `AskNeeds`, one
+- **Which slots an ask needs** comes to settlement as an `AskRequirements`, one
   per ask. The wiring (`orchestration/turn.py`) works it out each turn from
   the current capability index, since the index can refresh. Settlement
   reads no pack and no registry, so a new slot adds a field, not a
-  parameter. `AskNeeds` also says which kinds of form the category has, and
+  parameter. `AskRequirements` also says which kinds of form the category has, and
   which scheme codes count: those for the ask's action, or for any action
   while it is still open. So a scheme is never turned away before the
   farmer has said what they want.

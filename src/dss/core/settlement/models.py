@@ -20,9 +20,9 @@ class AskSlot(StrEnum):
 
 
 @dataclass(frozen=True)
-class AskNeeds:
-    """Built from data the caller fetches (`build_ask_needs`), so settlement
-    reads no pack and no registry."""
+class AskRequirements:
+    """Built from data the caller fetches (`build_ask_requirements`), so
+    settlement reads no pack and no registry."""
 
     needs_place: bool
     # By Scheme code.

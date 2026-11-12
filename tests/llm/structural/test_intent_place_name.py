@@ -40,7 +40,7 @@ from dss.core.intent.service import classify_intent
 from dss.core.location.service import resolve_places
 from dss.core.planner.models import AskEvidence, Evidence
 from dss.core.settlement.ask_slots import frame_for
-from dss.core.settlement.models import AskNeeds, NeedsClarification
+from dss.core.settlement.models import AskRequirements, NeedsClarification
 from dss.core.shared.models import ConversationMessage, TextQuery, UserTurn
 from dss.entrypoint.composition.root import _resolve_model
 from dss.observability.stages import Stage
@@ -478,12 +478,12 @@ async def _pick_list_we_send(name: str) -> str:
         IntentClassification(asks=(ask,)), _turn("q"), lookup=LOOKUP
     )
     [resolved] = intent.asks
-    needs = AskNeeds(
+    requirements = AskRequirements(
         needs_place=True,
         schemes_with_a_form=frozenset(),
         actions_with_a_form=frozenset(),
     )
-    outcome = NeedsClarification(open_slots=frame_for(resolved, needs).slots)
+    outcome = NeedsClarification(open_slots=frame_for(resolved, requirements).slots)
     evidence = Evidence(
         sources=(), ask_evidences=(AskEvidence(ask=resolved, outcome=outcome),)
     )
