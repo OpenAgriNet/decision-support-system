@@ -15,6 +15,7 @@ from dss.core.intent.models import (
     ResolvedPlace,
     Scheme,
     SubjectCategory,
+    UnclearAction,
     UnlistedScheme,
     UnresolvedPlace,
 )
@@ -218,7 +219,7 @@ def test_no_scheme_given() -> None:
     assert _scheme_of(None) == Missing()
 
 
-def _action_of(action: ProviderAction | None) -> SlotState:
+def _action_of(action: ProviderAction | UnclearAction | None) -> SlotState:
     ask = Ask(
         subject_categories=SubjectCategory.GRIEVANCE,
         interaction_type=InteractionType.ACT,
@@ -235,7 +236,7 @@ def test_unclear_action_is_asked() -> None:
     """Never guessed: a wrong guess files a second complaint, or asks for a
     ticket the farmer does not have."""
 
-    assert _action_of(None) == Missing()
+    assert _action_of(UnclearAction.UNCLEAR) == Missing()
 
 
 def test_unknown_slot_fails_at_once() -> None:
