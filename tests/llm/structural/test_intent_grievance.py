@@ -19,6 +19,7 @@ from dss.adapters.scheme_catalog.csv_file import load_scheme_catalog
 from dss.config.prompt_service import build_prompt_service
 from dss.config.settings import Settings
 from dss.core.intent.models import (
+    IntentClassification,
     InteractionType,
     Scheme,
     SubjectCategory,
@@ -88,6 +89,16 @@ def _turn(
     )
 
 
+async def _classify(
+    query: str, *, history: list[ConversationMessage] | None = None
+) -> IntentClassification:
+    prompts = build_prompt_service(_REPO / "configs" / "prompts.yaml")
+    schemes = load_scheme_catalog(_CATALOG).schemes()
+    return await classify_intent(
+        _turn(query, history=history), _live_llm(), prompts, schemes
+    )
+
+
 async def test_filing_a_scheme_complaint_is_a_grievance_act() -> None:
     prompts = build_prompt_service(_REPO / "configs" / "prompts.yaml")
 
@@ -112,10 +123,7 @@ async def test_filing_a_scheme_complaint_is_a_grievance_act() -> None:
     ],
 )
 async def test_filing_a_pmfby_complaint_is_grievance_pmfby_act(query: str) -> None:
-    prompts = build_prompt_service(_REPO / "configs" / "prompts.yaml")
-    schemes = load_scheme_catalog(_CATALOG).schemes()
-
-    classification = await classify_intent(_turn(query), _live_llm(), prompts, schemes)
+    classification = await _classify(query)
 
     (ask,) = classification.asks
     assert ask.subject_categories is SubjectCategory.GRIEVANCE
@@ -129,14 +137,8 @@ async def test_a_portal_problem_is_never_a_status_check() -> None:
     raised" is the one wrong reading. Whether it is a complaint at all is not
     stable yet, so the category is not pinned here."""
 
-    prompts = build_prompt_service(_REPO / "configs" / "prompts.yaml")
-    schemes = load_scheme_catalog(_CATALOG).schemes()
-
-    classification = await classify_intent(
-        _turn("I cannot log in to the PMFBY portal to see my Kharif 2026 enrolment"),
-        _live_llm(),
-        prompts,
-        schemes,
+    classification = await _classify(
+        "I cannot log in to the PMFBY portal to see my Kharif 2026 enrolment"
     )
 
     (ask,) = classification.asks
@@ -155,10 +157,7 @@ async def test_a_portal_problem_is_never_a_status_check() -> None:
 async def test_checking_a_pmfby_complaint_is_grievance_pmfby_observe(
     query: str,
 ) -> None:
-    prompts = build_prompt_service(_REPO / "configs" / "prompts.yaml")
-    schemes = load_scheme_catalog(_CATALOG).schemes()
-
-    classification = await classify_intent(_turn(query), _live_llm(), prompts, schemes)
+    classification = await _classify(query)
 
     (ask,) = classification.asks
     assert ask.subject_categories is SubjectCategory.GRIEVANCE
@@ -170,8 +169,6 @@ async def test_checking_a_pmfby_complaint_is_grievance_pmfby_observe(
 async def test_yes_to_the_confirm_names_the_scheme() -> None:
     """A yes read as a guess would be confirmed again, in a circle."""
 
-    prompts = build_prompt_service(_REPO / "configs" / "prompts.yaml")
-    schemes = load_scheme_catalog(_CATALOG).schemes()
     history = [
         ConversationMessage(
             role="user",
@@ -182,9 +179,7 @@ async def test_yes_to_the_confirm_names_the_scheme() -> None:
         ),
     ]
 
-    classification = await classify_intent(
-        _turn("yes", history=history), _live_llm(), prompts, schemes
-    )
+    classification = await _classify("yes", history=history)
 
     (ask,) = classification.asks
     assert ask.subject_categories is SubjectCategory.GRIEVANCE
@@ -196,14 +191,8 @@ async def test_an_unlisted_scheme_keeps_its_name() -> None:
     """Without the name, the farmer cannot be told which scheme we could
     not find."""
 
-    prompts = build_prompt_service(_REPO / "configs" / "prompts.yaml")
-    schemes = load_scheme_catalog(_CATALOG).schemes()
-
-    classification = await classify_intent(
-        _turn("I want to file a complaint about my Kisan Credit Card"),
-        _live_llm(),
-        prompts,
-        schemes,
+    classification = await _classify(
+        "I want to file a complaint about my Kisan Credit Card"
     )
 
     (ask,) = classification.asks
@@ -223,10 +212,7 @@ async def test_an_unclear_complaint_names_no_action(query: str) -> None:
     problem, or a ticket number the farmer does not have. Neither query is an
     example in the prompt."""
 
-    prompts = build_prompt_service(_REPO / "configs" / "prompts.yaml")
-    schemes = load_scheme_catalog(_CATALOG).schemes()
-
-    classification = await classify_intent(_turn(query), _live_llm(), prompts, schemes)
+    classification = await _classify(query)
 
     (ask,) = classification.asks
     assert ask.action is None, f"{classification!r}"
@@ -242,10 +228,7 @@ async def test_an_unclear_complaint_names_no_action(query: str) -> None:
 async def test_a_new_complaint_is_support(query: str) -> None:
     """Asking how to complain is wanting to complain: the form is the how."""
 
-    prompts = build_prompt_service(_REPO / "configs" / "prompts.yaml")
-    schemes = load_scheme_catalog(_CATALOG).schemes()
-
-    classification = await classify_intent(_turn(query), _live_llm(), prompts, schemes)
+    classification = await _classify(query)
 
     (ask,) = classification.asks
     assert ask.action is ProviderAction.SUPPORT, f"{classification!r}"
@@ -261,10 +244,7 @@ async def test_a_new_complaint_is_support(query: str) -> None:
 async def test_an_existing_complaint_is_status(query: str) -> None:
     """A ticket number alone says a complaint exists."""
 
-    prompts = build_prompt_service(_REPO / "configs" / "prompts.yaml")
-    schemes = load_scheme_catalog(_CATALOG).schemes()
-
-    classification = await classify_intent(_turn(query), _live_llm(), prompts, schemes)
+    classification = await _classify(query)
 
     (ask,) = classification.asks
     assert ask.action is ProviderAction.STATUS, f"{classification!r}"
