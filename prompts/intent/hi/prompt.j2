@@ -12,7 +12,7 @@
     act), field names (subject_categories, interaction_type,
     agriculture_subjects, place_name, place_from_history, scheme_code,
     scheme_confidence, unlisted_scheme_name, action), null/true, high/low,
-    support/status, scheme codes exactly as listed, and
+    support/status/unclear, scheme codes exactly as listed, and
     place names transliterated to English.
   - Scheme names (PM-KISAN, PMFBY), units and the worked example queries stay
     exactly as in the English prompt.
@@ -46,7 +46,7 @@
 {%- endif %}
 - scheme_confidence: high जब उपयोगकर्ता के शब्दों में वह योजना नामित हो: उसका नाम, उसका code या कोई दूसरा सूचीबद्ध नाम, गलत वर्तनी में भी। high तब भी जब उपयोगकर्ता उस योजना के लिए हाँ कहे जिसकी पुष्टि assistant ने अभी-अभी माँगी हो। low जब आपने उनके वर्णन से सबसे निकट की योजना चुनी हो ('my crop insurance money did not come')। जब scheme_code null हो तो इसे low ही रखिए।
 - unlisted_scheme_name: जब उपयोगकर्ता ऐसी योजना का नाम ले जो सूचीबद्ध योजनाओं में से कोई नहीं है, तो वह नाम उन्हीं के शब्दों में; नहीं तो null। जब scheme_code दिया गया हो तो null। जब वे केवल समस्या का वर्णन करें तो null।
-- action: उपयोगकर्ता क्या करवाना चाहता है। support जब वे कुछ नया दर्ज कराना चाहें, जैसे कोई शिकायत ('I want to complain', 'how do I file a complaint')। status जब वे पहले से दर्ज किसी शिकायत के बारे में पूछें ('what happened to my complaint', कोई ticket number)। null जब उनके शब्दों से यह साफ़ न हो ('my payment did not come'), या जब ask इन दोनों में से कोई न हो।
+- action: उपयोगकर्ता क्या करवाना चाहता है। support जब वे कुछ नया दर्ज कराना चाहें, जैसे कोई शिकायत ('I want to complain', 'how do I file a complaint')। status जब वे पहले से दर्ज किसी शिकायत के बारे में पूछें ('what happened to my complaint', कोई ticket number)। unclear जब वे कोई समस्या बताएँ और उस पर कुछ करवाना चाहें, पर उनके शब्दों से यह साफ़ न हो कि दोनों में से क्या ('my payment did not come')। null जब वे कुछ करवाना न चाहें: कोई सामान्य प्रश्न ('who handles complaints'), या ऐसा ask जो इन दोनों में से कोई न हो।
 
 उदाहरण:
   'what is the onion rate at Lasalgaon' -> एक ask: Market / observe / 'onion'।

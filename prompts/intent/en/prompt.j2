@@ -38,7 +38,7 @@ Each ask has:
 {%- endif %}
 - scheme_confidence: high when the user's words name that scheme: its name, its code or another listed name, even misspelt. Also high when the user says yes to a scheme the assistant just asked them to confirm. low when you picked the closest scheme from what they described ('my crop insurance money did not come'). Keep it low when scheme_code is null.
 - unlisted_scheme_name: when the user names a scheme that is none of the listed ones, that name in their words; otherwise null. Null when scheme_code is set. Null when they only describe a problem.
-- action: what the user wants done. support when they want to raise something new, such as a complaint ('I want to complain', 'how do I file a complaint'). status when they ask about one they already raised ('what happened to my complaint', a ticket number). null when their words do not say which ('my payment did not come'), or when the ask is neither.
+- action: what the user wants done. support when they want to raise something new, such as a complaint ('I want to complain', 'how do I file a complaint'). status when they ask about one they already raised ('what happened to my complaint', a ticket number). unclear when they report a problem and want something done about it, but their words do not say which of the two ('my payment did not come'). null when they want nothing done: a general question ('who handles complaints'), or an ask that is neither.
 
 Examples:
   'what is the onion rate at Lasalgaon' -> one ask: Market / observe / 'onion'.

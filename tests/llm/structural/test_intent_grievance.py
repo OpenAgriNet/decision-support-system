@@ -23,6 +23,7 @@ from dss.core.intent.models import (
     InteractionType,
     Scheme,
     SubjectCategory,
+    UnclearAction,
     UnlistedScheme,
 )
 from dss.core.intent.service import classify_intent
@@ -207,15 +208,16 @@ async def test_an_unlisted_scheme_keeps_its_name() -> None:
         "My PM-KISAN instalment has not reached my bank account",
     ],
 )
-async def test_an_unclear_complaint_names_no_action(query: str) -> None:
+async def test_an_unclear_complaint_is_marked_unclear(query: str) -> None:
     """A guess costs too much either way: a second complaint for the same
-    problem, or a ticket number the farmer does not have. Neither query is an
-    example in the prompt."""
+    problem, or a ticket number the farmer does not have. Left empty, the
+    farmer would not be asked which. Neither query is an example in the
+    prompt."""
 
     classification = await _classify(query)
 
     (ask,) = classification.asks
-    assert ask.action is None, f"{classification!r}"
+    assert ask.action is UnclearAction.UNCLEAR, f"{classification!r}"
 
 
 @pytest.mark.parametrize(

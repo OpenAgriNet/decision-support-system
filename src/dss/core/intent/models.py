@@ -216,9 +216,9 @@ class ClassifiedAsk(BaseModel):
     ``unlisted_scheme_name`` is the scheme the user named, in their words,
     when it is none of the listed schemes. Null otherwise.
 
-    ``action`` is what the user wants done about a complaint: support to
-    raise a new one, status to check one already raised. Null when their
-    words do not say which, or the ask is not a complaint.
+    ``action`` is what the user wants done: support to raise something new,
+    status to check one already raised, unclear when they want something
+    done but their words do not say which. Null when they want nothing done.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
