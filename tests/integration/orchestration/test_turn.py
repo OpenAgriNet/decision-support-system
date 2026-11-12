@@ -24,6 +24,7 @@ from dss.core.intent.models import (
     ResolvedPlace,
     Scheme,
     SubjectCategory,
+    UnclearAction,
 )
 from dss.core.moderation.models import Outcome, ReasonCode
 from dss.core.policy.models import (
@@ -520,6 +521,7 @@ def test_settle_asks_for_the_scheme_of_a_form_category() -> None:
     complaint = Ask(
         subject_categories=SubjectCategory.GRIEVANCE,
         interaction_type=InteractionType.ACT,
+        action=UnclearAction.UNCLEAR,
     )
     rain = Ask(
         subject_categories=SubjectCategory.WEATHER,
@@ -540,7 +542,7 @@ def _grievance_form(scheme: str, action: str) -> ActionSchema:
 def _grievance(
     interaction: InteractionType,
     *,
-    action: ProviderAction | None = None,
+    action: ProviderAction | UnclearAction | None,
     scheme: Scheme | None = None,
 ) -> Ask:
     return Ask(
@@ -560,11 +562,24 @@ def test_unclear_action_is_asked_first() -> None:
         [_grievance_form("PMFBY", "support"), _grievance_form("PMFBY", "status")]
     )
     settle = build_settle_asks(_FakeIndex({}, frozenset()), forms.contexts_for)
-    problem = _grievance(InteractionType.ACT)
+    problem = _grievance(InteractionType.ACT, action=UnclearAction.UNCLEAR)
 
     assert settle(Intent(asks=(problem,))) == (
         NeedsClarification(open_slots=(_NEEDS_ACTION, Slot(AskSlot.SCHEME, Missing()))),
     )
+
+
+def test_a_plain_question_is_not_asked_about_a_form() -> None:
+    """ "How long does a grievance take?" wants an answer, not a form. "New
+    or old?" has no answer that fits it."""
+
+    forms = FormRegistry(
+        [_grievance_form("PMFBY", "support"), _grievance_form("PMFBY", "status")]
+    )
+    settle = build_settle_asks(_FakeIndex({}, frozenset()), forms.contexts_for)
+    question = _grievance(InteractionType.ADVISE, action=None)
+
+    assert settle(Intent(asks=(question,))) == (_SETTLED,)
 
 
 def test_wording_does_not_change_what_is_asked() -> None:
@@ -575,8 +590,8 @@ def test_wording_does_not_change_what_is_asked() -> None:
         [_grievance_form("PMFBY", "support"), _grievance_form("PMFBY", "status")]
     )
     settle = build_settle_asks(_FakeIndex({}, frozenset()), forms.contexts_for)
-    question = _grievance(InteractionType.ADVISE)
-    request = _grievance(InteractionType.ACT)
+    question = _grievance(InteractionType.ADVISE, action=UnclearAction.UNCLEAR)
+    request = _grievance(InteractionType.ACT, action=UnclearAction.UNCLEAR)
 
     asked_of_question, asked_of_request = settle(Intent(asks=(question, request)))
 
@@ -610,7 +625,9 @@ def test_a_scheme_is_not_turned_away_before_the_action_is_known() -> None:
         [_grievance_form("PMFBY", "support"), _grievance_form("PM-KISAN", "status")]
     )
     settle = build_settle_asks(_FakeIndex({}, frozenset()), forms.contexts_for)
-    problem = _grievance(InteractionType.ACT, scheme=_PM_KISAN)
+    problem = _grievance(
+        InteractionType.ACT, action=UnclearAction.UNCLEAR, scheme=_PM_KISAN
+    )
 
     assert settle(Intent(asks=(problem,))) == (
         NeedsClarification(open_slots=(_NEEDS_ACTION,)),
@@ -625,7 +642,7 @@ def test_a_step_no_form_files_is_not_a_choice() -> None:
         [_grievance_form("PMFBY", "support"), _grievance_form("PMFBY", "init")]
     )
     settle = build_settle_asks(_FakeIndex({}, frozenset()), forms.contexts_for)
-    problem = _grievance(InteractionType.ACT)
+    problem = _grievance(InteractionType.ACT, action=UnclearAction.UNCLEAR)
 
     assert settle(Intent(asks=(problem,))) == (
         NeedsClarification(open_slots=(Slot(AskSlot.SCHEME, Missing()),)),

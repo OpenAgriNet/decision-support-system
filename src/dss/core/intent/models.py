@@ -177,8 +177,9 @@ class Ask(BaseModel):
     holds. A ``GuessedScheme`` must be confirmed with the farmer before it is
     used. An ``UnlistedScheme`` is a name we could not find.
 
-    ``action`` is ``None`` when the farmer's words do not say which, or the
-    ask is not one a form serves.
+    ``action`` is ``None`` when the farmer wants an answer and nothing done.
+    It is ``UnclearAction`` when they want something done and did not say
+    which: only then are they asked.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)

@@ -32,6 +32,7 @@ from dss.core.intent.models import (
     Intent,
     IntentClassification,
     ResolvedPlace,
+    UnclearAction,
     UnresolvedPlace,
 )
 from dss.core.intent.service import classify_intent
@@ -114,20 +115,28 @@ def _ask_needs(
     contexts_for: FormContextLookup,
 ) -> AskNeeds:
     pack_types = capability_types_for(ask, index)
-    forms = [
-        context
-        for context in contexts_for(ask.subject_categories.value)
-        # A pack can declare a step, such as init, that no form files.
-        if context.action in ProviderAction
-    ]
+    forms = _forms_for(ask, contexts_for)
     # Until the action is known, a form for any action counts: the farmer's
     # answer may still pick the one a scheme has.
-    counted = [form for form in forms if ask.action in (None, form.action)]
+    is_open = ask.action is UnclearAction.UNCLEAR
+    counted = [form for form in forms if is_open or form.action == ask.action]
     return AskNeeds(
         needs_place=is_place_needed(pack_types, place_bound_types),
         schemes_with_a_form=frozenset(form.scheme for form in counted),
         actions_with_a_form=frozenset(ProviderAction(form.action) for form in forms),
     )
+
+
+def _forms_for(ask: Ask, contexts_for: FormContextLookup) -> list[FormContext]:
+    # An ask with no action wants an answer, not a form.
+    if ask.action is None:
+        return []
+    return [
+        context
+        for context in contexts_for(ask.subject_categories.value)
+        # A pack can declare a step, such as init, that no form files.
+        if context.action in ProviderAction
+    ]
 
 
 def place_attributes(
