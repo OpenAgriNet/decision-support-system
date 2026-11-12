@@ -27,7 +27,6 @@ from dss.core.settlement.models import (
     UnresolvedReason,
     Unservable,
 )
-from dss.core.shared.models import ProviderAction
 
 
 def needed_slots(needs: AskNeeds) -> tuple[AskSlot, ...]:
@@ -63,8 +62,8 @@ def ask_slot_state(ask: Ask, slot: AskSlot, needs: AskNeeds) -> SlotState:
 
 
 def _action_state(ask: Ask) -> SlotState:
-    is_known = isinstance(ask.action, ProviderAction)
-    return Resolved(ask.action) if is_known else Missing()
+    action = ask.known_action
+    return Resolved(action) if action else Missing()
 
 
 def _place_state(ask: Ask) -> SlotState:

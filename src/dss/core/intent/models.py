@@ -191,6 +191,10 @@ class Ask(BaseModel):
     scheme: Scheme | GuessedScheme | UnlistedScheme | None = None
     action: ProviderAction | UnclearAction | None = None
 
+    @property
+    def known_action(self) -> ProviderAction | None:
+        return self.action if isinstance(self.action, ProviderAction) else None
+
 
 # The docstrings of ClassifiedAsk and IntentClassification go to the model as
 # the tool description. Write them for the model; notes for us go in comments.
