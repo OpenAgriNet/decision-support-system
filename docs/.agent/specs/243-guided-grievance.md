@@ -315,8 +315,8 @@ plus any exact block code adds.
    Grievance, about 1 time in 6. The fee case: "Is there a fee for raising
    a crop insurance complaint?" is read as a new complaint about 1 time in
    10.
-6. Composer writes the question; fallback to fixed text; exact parts after
-   the prose.
+6. Composer writes the question; exact parts after the prose. The fallback
+   to fixed text is not in this story.
 7. Docs: `DSS_ARCHITECTURE.md`, `AGENTS.md` tech
    stack, changelog. Update #243's criteria: no scheme list, a confirm
    when unsure, and the action asked when unclear (criteria 1, 2 and 4,
@@ -327,7 +327,7 @@ plus any exact block code adds.
 - **Tier 1:** `settle` for each slot and state; outcome rules on
   `Evidence`.
 - **Tier 3:** orchestrator stops on an unsettled ask before discovery;
-  composer gets the question; fallback on composer failure.
+  composer gets the question.
 - **Tier 5:** intent picks Grievance for loose phrasing, the action, and
   `scheme_confidence`. Structure only.
 - **Tier 7:** one smoke: scheme problem, "which scheme", reply, form.
