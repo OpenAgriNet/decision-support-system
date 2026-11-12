@@ -514,10 +514,18 @@ def test_settle_reads_the_index_each_turn() -> None:
     assert settle(Intent(asks=(rain,))) == (_NEEDS_PLACE,)
 
 
+def _grievance_form(scheme: str, action: str) -> ActionSchema:
+    context = FormContext(scheme=scheme, category="Grievance", action=action)
+    return ActionSchema(context=context, must_send=())
+
+
+def _settle_with_forms(*forms: ActionSchema) -> SettleAsks:
+    registry = FormRegistry(forms)
+    return build_settle_asks(_FakeIndex({}, frozenset()), registry.contexts_for)
+
+
 def test_settle_asks_for_the_scheme_of_a_form_category() -> None:
-    pmfby_support = FormContext(scheme="PMFBY", category="Grievance", action="support")
-    forms = FormRegistry([ActionSchema(context=pmfby_support, must_send=())])
-    settle = build_settle_asks(_FakeIndex({}, frozenset()), forms.contexts_for)
+    settle = _settle_with_forms(_grievance_form("PMFBY", "support"))
     complaint = Ask(
         subject_categories=SubjectCategory.GRIEVANCE,
         interaction_type=InteractionType.ACT,
@@ -532,11 +540,6 @@ def test_settle_asks_for_the_scheme_of_a_form_category() -> None:
         NeedsClarification(open_slots=(Slot(AskSlot.SCHEME, Missing()),)),
         _SETTLED,
     )
-
-
-def _grievance_form(scheme: str, action: str) -> ActionSchema:
-    context = FormContext(scheme=scheme, category="Grievance", action=action)
-    return ActionSchema(context=context, must_send=())
 
 
 def _grievance(
@@ -558,10 +561,9 @@ _NEEDS_ACTION = Slot(AskSlot.ACTION, Missing())
 
 
 def test_unclear_action_is_asked_first() -> None:
-    forms = FormRegistry(
-        [_grievance_form("PMFBY", "support"), _grievance_form("PMFBY", "status")]
+    settle = _settle_with_forms(
+        _grievance_form("PMFBY", "support"), _grievance_form("PMFBY", "status")
     )
-    settle = build_settle_asks(_FakeIndex({}, frozenset()), forms.contexts_for)
     problem = _grievance(InteractionType.ACT, action=UnclearAction.UNCLEAR)
 
     assert settle(Intent(asks=(problem,))) == (
@@ -573,10 +575,9 @@ def test_a_plain_question_is_not_asked_about_a_form() -> None:
     """ "How long does a grievance take?" wants an answer, not a form. "New
     or old?" has no answer that fits it."""
 
-    forms = FormRegistry(
-        [_grievance_form("PMFBY", "support"), _grievance_form("PMFBY", "status")]
+    settle = _settle_with_forms(
+        _grievance_form("PMFBY", "support"), _grievance_form("PMFBY", "status")
     )
-    settle = build_settle_asks(_FakeIndex({}, frozenset()), forms.contexts_for)
     question = _grievance(InteractionType.ADVISE, action=None)
 
     assert settle(Intent(asks=(question,))) == (_SETTLED,)
@@ -586,10 +587,9 @@ def test_wording_does_not_change_what_is_asked() -> None:
     """Only the action the model read counts, not whether the farmer put it
     as a question or a request."""
 
-    forms = FormRegistry(
-        [_grievance_form("PMFBY", "support"), _grievance_form("PMFBY", "status")]
+    settle = _settle_with_forms(
+        _grievance_form("PMFBY", "support"), _grievance_form("PMFBY", "status")
     )
-    settle = build_settle_asks(_FakeIndex({}, frozenset()), forms.contexts_for)
     question = _grievance(InteractionType.ADVISE, action=UnclearAction.UNCLEAR)
     request = _grievance(InteractionType.ACT, action=UnclearAction.UNCLEAR)
 
@@ -603,10 +603,9 @@ def test_a_form_for_another_action_does_not_count() -> None:
     """PM-KISAN has a status form only, so a complaint about it cannot be
     filed."""
 
-    forms = FormRegistry(
-        [_grievance_form("PMFBY", "support"), _grievance_form("PM-KISAN", "status")]
+    settle = _settle_with_forms(
+        _grievance_form("PMFBY", "support"), _grievance_form("PM-KISAN", "status")
     )
-    settle = build_settle_asks(_FakeIndex({}, frozenset()), forms.contexts_for)
     complaint = _grievance(
         InteractionType.ACT, action=ProviderAction.SUPPORT, scheme=_PM_KISAN
     )
@@ -621,10 +620,9 @@ def test_a_scheme_is_not_turned_away_before_the_action_is_known() -> None:
     """PM-KISAN has a status form. If the farmer wants to check a complaint,
     we can serve it, so they are asked first."""
 
-    forms = FormRegistry(
-        [_grievance_form("PMFBY", "support"), _grievance_form("PM-KISAN", "status")]
+    settle = _settle_with_forms(
+        _grievance_form("PMFBY", "support"), _grievance_form("PM-KISAN", "status")
     )
-    settle = build_settle_asks(_FakeIndex({}, frozenset()), forms.contexts_for)
     problem = _grievance(
         InteractionType.ACT, action=UnclearAction.UNCLEAR, scheme=_PM_KISAN
     )
@@ -638,10 +636,9 @@ def test_a_step_no_form_files_is_not_a_choice() -> None:
     """A pack can declare a step, such as init, that the farmer never picks.
     With one kind of form left, there is nothing to ask about the action."""
 
-    forms = FormRegistry(
-        [_grievance_form("PMFBY", "support"), _grievance_form("PMFBY", "init")]
+    settle = _settle_with_forms(
+        _grievance_form("PMFBY", "support"), _grievance_form("PMFBY", "init")
     )
-    settle = build_settle_asks(_FakeIndex({}, frozenset()), forms.contexts_for)
     problem = _grievance(InteractionType.ACT, action=UnclearAction.UNCLEAR)
 
     assert settle(Intent(asks=(problem,))) == (
