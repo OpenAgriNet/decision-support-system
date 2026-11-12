@@ -206,7 +206,10 @@ Evidence
   per ask. The wiring (`orchestration/turn.py`) works it out each turn from
   the current capability index, since the index can refresh. Settlement
   reads no pack and no registry, so a new slot adds a field, not a
-  parameter.
+  parameter. `AskNeeds` also says which kinds of form the category has, and
+  which scheme codes count: those for the ask's action, or for any action
+  while it is still open. So a scheme is never turned away before the
+  farmer has said what they want.
 - **Branch and merge:** `run_turn` settles each ask, then runs only the
   settled asks as their own `Intent`. `merge_unsettled` puts their evidence
   back beside the unsettled asks, in the farmer's order. Passing the ask
@@ -224,9 +227,14 @@ Evidence
 - `ClassifiedAsk.unlisted_scheme_name`: the name the farmer said, when it
   is none of the listed schemes. The ask then carries an `UnlistedScheme`.
   Settlement ends the ask on it: we say so, with no question.
-- `ClassifiedAsk.action: str | None` and `action_sure: bool`. Picked from
-  the category's form actions shown in the prompt. Checked against the
-  registry; unknown is dropped and the action is asked.
+- `ClassifiedAsk.action`: `support`, `status` or nothing. A closed set
+  (`ProviderAction`), so the model cannot return a value we do not know.
+  Each value already maps to one provider call in code.
+  - No confidence field. An unclear action is asked, never confirmed, so
+    "unsure" and "none" lead to the same question.
+  - The prompt names no category. The model reads the action for any ask.
+    Code decides, from the form registry, whether it matters. When the
+    network describes its actions, the prompt can be fed from that.
 - `IntentExample`: text, category, action (optional). Loaded from config.
 
 ### Forms (`core/forms/registry.py`)
@@ -236,8 +244,11 @@ Evidence
 
 ### Removed
 
-- `form_offer._ACTION_BY_INTERACTION` and its reverse. The action is a
-  slot now.
+- `form_offer._ACTION_BY_INTERACTION`. The action is a slot now. Its
+  reverse stays, for the ask a submitted form stands for: discovery still
+  finds providers by the interaction type. For the same reason, the
+  provider search treats any ask with an action as a service ask, however
+  it is worded (`TODO.md`, "An ask can read advise…").
 - `_place_clarification`, `place_optional_asks` and the `trailing_question`
   path. Settlement and the composer take them over.
 
@@ -286,8 +297,8 @@ plus any exact block code adds.
    unchanged, except a place we cannot find is asked again.
 3. Scheme slot: registry contexts by category, intent's
    `scheme_confidence`, confirm and no-match handling.
-4. Action slot: intent's `action` and `action_sure`, the question when
-   unclear, drop the interaction mapping. The scheme is `Unservable` only
+4. Action slot: intent's `action`, the question when unclear, drop the
+   interaction mapping. The scheme is `Unservable` only
    once the action is known.
 5. Intent examples config: loader, boot checks, cap, template. Should
    steady the portal case: "I cannot log in to the PMFBY portal…" is read
