@@ -13,6 +13,7 @@ from dss.core.intent.models import (
     Scheme,
     SchemeConfidence,
     SubjectCategory,
+    UnclearAction,
 )
 from dss.core.provider_discovery.models import DiscoveryResult, ProviderCapability
 from dss.core.shared.models import ProviderAction, TurnStatus
@@ -69,7 +70,7 @@ def _discovery(
 
 
 def _grievance_ask(
-    action: ProviderAction | None = ProviderAction.SUPPORT,
+    action: ProviderAction | UnclearAction | None = ProviderAction.SUPPORT,
     *,
     scheme: Scheme | GuessedScheme | None = PMFBY,
     interaction: InteractionType = InteractionType.ACT,
@@ -108,6 +109,12 @@ def test_a_lookup_names_the_status_form() -> None:
 
 def test_an_ask_without_an_action_names_no_form() -> None:
     assert form_context_for(_grievance_ask(None)) is None
+
+
+def test_an_unclear_action_names_no_form() -> None:
+    """ "unclear" is not a kind of form, and must not be looked up as one."""
+
+    assert form_context_for(_grievance_ask(UnclearAction.UNCLEAR)) is None
 
 
 def test_an_ask_without_a_scheme_names_no_form() -> None:

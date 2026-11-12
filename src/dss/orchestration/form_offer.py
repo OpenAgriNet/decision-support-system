@@ -43,7 +43,9 @@ def ask_for_form(context: FormContext, *, scheme: Scheme) -> Ask | None:
 
 def form_context_for(ask: Ask) -> FormContext | None:
     # A guessed scheme gets no form: it could file against the wrong scheme.
-    if not isinstance(ask.scheme, Scheme) or ask.action is None:
+    if not isinstance(ask.scheme, Scheme):
+        return None
+    if not isinstance(ask.action, ProviderAction):
         return None
     return FormContext(
         scheme=ask.scheme.code,
