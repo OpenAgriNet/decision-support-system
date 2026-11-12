@@ -342,7 +342,7 @@ def test_a_form_for_an_ask_the_turn_lacks_is_refused() -> None:
 
 def test_a_failure_for_an_ask_the_turn_lacks_is_refused() -> None:
     failure = Failure(
-        ask_index=2, capability=None, reason="Xyzzy: place not found", retryable=False
+        ask_index=2, capability="MandiPrice", reason="timeout", retryable=True
     )
 
     with pytest.raises(ValueError, match="ask 2 "):

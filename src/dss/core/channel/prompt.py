@@ -279,8 +279,4 @@ def _slot_brief(slot: Slot) -> str:
 
 
 def _failure_lead(failure: Failure) -> str:
-    # No capability means no call was made: the ask's place failed. Blaming a
-    # provider would have the composer tell the farmer a service is down.
-    if not failure.is_provider_failure:
-        return "Nothing searched"
     return f"Could not reach a provider for {failure.capability}"

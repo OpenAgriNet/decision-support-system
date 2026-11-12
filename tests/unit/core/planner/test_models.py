@@ -113,16 +113,6 @@ _RESULT = Result(ask_index=0, source_id="1", data={"modal_price": "2100"})
 _PROVIDER_FAILURE = Failure(
     ask_index=0, capability="MandiPrice", reason="timeout", retryable=True
 )
-_PLACE_FAILURE = Failure(
-    ask_index=0, capability=None, reason="Xyzzy: place not found", retryable=False
-)
-
-
-def test_a_place_failure_is_not_a_provider_failure() -> None:
-    """No provider was called, so none can be blamed."""
-
-    assert _PROVIDER_FAILURE.is_provider_failure is True
-    assert _PLACE_FAILURE.is_provider_failure is False
 
 
 def _attempted_ask(
@@ -139,12 +129,9 @@ def test_an_ask_with_no_result_is_not_served() -> None:
     assert _attempted_ask(failures=(_PROVIDER_FAILURE,)).is_served is False
 
 
-def test_an_ask_has_a_provider_failure_only_when_a_provider_was_called() -> None:
-    place_only = _attempted_ask(failures=(_PLACE_FAILURE,))
-    both = _attempted_ask(failures=(_PLACE_FAILURE, _PROVIDER_FAILURE))
-
-    assert place_only.has_provider_failure is False
-    assert both.has_provider_failure is True
+def test_an_ask_has_a_provider_failure_only_when_a_call_failed() -> None:
+    assert _attempted_ask().has_provider_failure is False
+    assert _attempted_ask(failures=(_PROVIDER_FAILURE,)).has_provider_failure is True
 
 
 def test_ask_evidence_is_frozen() -> None:
@@ -155,7 +142,6 @@ def test_ask_evidence_is_frozen() -> None:
 
 _SERVED = _attempted_ask((_RESULT,))
 _UNSERVED = _attempted_ask()
-_PLACE_FAILED = _attempted_ask(failures=(_PLACE_FAILURE,))
 _PROVIDER_FAILED = _attempted_ask(failures=(_PROVIDER_FAILURE,))
 _NEEDS_PLACE = AskEvidence(
     ask=_ASK,
@@ -208,9 +194,9 @@ def test_nothing_served_reports_every_ask() -> None:
     """Every ask is a gap — distinct from a turn with no asks, which has
     nothing to report."""
 
-    evidence = _evidence(_UNSERVED, _PLACE_FAILED)
+    evidence = _evidence(_UNSERVED, _PROVIDER_FAILED)
 
-    assert evidence.unserved_asks == (_UNSERVED, _PLACE_FAILED)
+    assert evidence.unserved_asks == (_UNSERVED, _PROVIDER_FAILED)
     assert _evidence().unserved_asks == ()
 
 
@@ -219,12 +205,12 @@ def test_any_served_ask_is_a_result() -> None:
     assert _evidence(_UNSERVED, _PROVIDER_FAILED).has_any_result is False
 
 
-def test_a_turn_has_a_provider_failure_only_when_a_provider_was_called() -> None:
-    """A place failure called no provider, so it is not an outage and must not
-    tell the farmer to retry."""
+def test_a_turn_has_a_provider_failure_only_when_a_call_failed() -> None:
+    """An ask nobody answered is not an outage, and must not tell the farmer
+    to retry."""
 
-    assert _evidence(_SERVED, _PLACE_FAILED).has_provider_failure is False
-    assert _evidence(_PLACE_FAILED, _PROVIDER_FAILED).has_provider_failure is True
+    assert _evidence(_SERVED, _UNSERVED).has_provider_failure is False
+    assert _evidence(_UNSERVED, _PROVIDER_FAILED).has_provider_failure is True
 
 
 def test_evidence_carries_sources_and_each_asks_evidence() -> None:

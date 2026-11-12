@@ -108,16 +108,11 @@ class Failure(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     ask_index: int
-    # None: no provider was called, e.g. the ask's place failed to resolve.
-    capability: str | None
+    capability: str
     reason: str
     retryable: bool
     # The provider's own `Retry-After`, when it sent one on a failed filing.
     retry_after_seconds: int | None = None
-
-    @property
-    def is_provider_failure(self) -> bool:
-        return self.capability is not None
 
 
 class Identity(BaseModel):
@@ -151,7 +146,7 @@ class Attempted:
 
     @property
     def has_provider_failure(self) -> bool:
-        return any(failure.is_provider_failure for failure in self.failures)
+        return bool(self.failures)
 
 
 @dataclass(frozen=True)

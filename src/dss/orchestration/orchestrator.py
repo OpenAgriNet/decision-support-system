@@ -708,7 +708,7 @@ def _status_for(evidence: Evidence) -> tuple[TurnStatus, Cause | None]:
       not be reached: `unavailable`, which the transport reports as a
       retryable error.
     - no results, no provider failures → nobody served it after all:
-      `no_match`. A place failure called no provider, so it lands here.
+      `no_match`.
     - some asks unserved → `partially_answered` (design v2 §6.2).
     - every ask served → `answered`.
     """

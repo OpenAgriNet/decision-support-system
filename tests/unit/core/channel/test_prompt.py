@@ -355,30 +355,6 @@ def test_an_ask_we_cannot_serve_says_why() -> None:
     assert "PMFBY has no complaint form" in rendered
 
 
-def test_a_place_failure_does_not_blame_a_provider() -> None:
-    """No provider was called for Xyzzy. "Could not reach a provider" would
-    have the composer tell the farmer a service is down."""
-
-    evidence = build_evidence(
-        asks=(_ask(_place("Pune")), _ask()),
-        sources=(),
-        results=(),
-        failures=(
-            Failure(
-                ask_index=1,
-                capability=None,
-                reason="Xyzzy: place not found",
-                retryable=False,
-            ),
-        ),
-    )
-
-    rendered = render_evidence(evidence)
-
-    assert "Xyzzy: place not found" in rendered
-    assert "Could not reach a provider" not in rendered
-
-
 def test_a_device_point_with_no_name_labels_nothing() -> None:
     """A device point with no area has no name. "about " with nothing after it
     is noise the composer might try to fill."""
