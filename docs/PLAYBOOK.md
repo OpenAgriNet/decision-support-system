@@ -423,8 +423,10 @@ Things worth knowing when you look at the output:
 - **How many frames you get is not how many tokens the model wrote.** Pieces are
   grouped in 100ms windows, because every frame repeats the whole response
   envelope.
-- **No deltas on a refusal, a no-match, or a "which place are you asking about?".**
-  Those are fixed replies, not written by the model. If you are seeing no
+- **No deltas on a refusal or a no-match.**
+  Those are fixed replies, not written by the model. A question to the
+  farmer, such as which place, is written by the composer and does stream.
+  If you are seeing no
   `claim.delta`, check `outcome.status` on the terminal frame before assuming
   streaming is broken — an unwired network gives `no_match`, which never reaches
   the composer.

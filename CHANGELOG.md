@@ -3,6 +3,16 @@
 ## [Unreleased]
 
 ### Changed
+- Each ask is settled right after intent, before discovery: code checks it
+  has the place, the scheme and the action it needs. A missing or unsure one
+  ends the turn with one question, written by the composer (#243, ADR-0022)
+- The fixed place questions are gone from `clarification-text.yaml`:
+  `needs_place`, `unknown_place`, `unknown_place_in`, `region_place`,
+  `ambiguous_place_header` and `grouped_place_header`. An override file must
+  drop them, or the boot fails (#243)
+- "How do I file a complaint" now finds the grievance provider and shows the
+  form. An ask with a known action is searched as a service, however it is
+  worded (#243)
 - A select, support or status call is addressed to the catalog's BPP:
   `receiverId` is the catalog's `bppId` and the context carries its `bppUri`. A catalog
   that names neither is dropped from discovery, logged, and reported as a
@@ -17,6 +27,15 @@
   (#206)
 
 ### Added
+- A farmer with a scheme problem is guided to the grievance form. When their
+  words do not say, the DSS asks whether they want to raise a new complaint
+  or check one they already raised, then which scheme, then shows the form.
+  A scheme it is unsure of is confirmed first. A scheme with no form is
+  turned away with the reason, and a plain question about complaints gets an
+  answer with no form question (#243)
+- The intent model returns each ask's `action` (`support`, `status`,
+  `unclear` or nothing) and how sure it is of the scheme
+  (`scheme_confidence`) (#243)
 - A farmer can check a PMFBY grievance's status. The status form they send
   back is read at the desk's `/status` through the planner's new `status`
   tool, and the reply says where the case stands, when it was filed and for
