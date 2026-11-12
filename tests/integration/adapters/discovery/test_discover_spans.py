@@ -11,16 +11,24 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import httpx
 import pytest
+from opentelemetry.sdk._logs import LoggerProvider
+from opentelemetry.sdk._logs.export import (
+    InMemoryLogRecordExporter,
+    SimpleLogRecordProcessor,
+)
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import StatusCode
 
 from dss.adapters.discovery.client import HttpCapabilityDiscovery
+from dss.adapters.observability.logs import configure_logs, reset_logs
 from dss.core.provider_discovery.models import ProviderQuery
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -69,34 +77,47 @@ def _discovery(handler) -> HttpCapabilityDiscovery:
     )
 
 
-async def test_both_log_lines_for_one_call_carry_the_same_span(spans, caplog) -> None:
+async def test_both_log_lines_for_one_call_carry_the_same_span(spans) -> None:
     """`span_id` is what joins a log line to a span without a search, and the
     request line is the one naming what was sent. If the two halves of a call
-    report different spans, clicking the failed span and grepping its id finds
-    the outcome but not the request that caused it."""
+    report different spans, clicking the failed span finds the outcome but not
+    the request that caused it."""
 
     def unavailable(request: httpx.Request) -> httpx.Response:
         return httpx.Response(503, json={"error": "simulated"})
 
-    with caplog.at_level(logging.INFO, logger="dss.trace"):
+    with _exported_logs() as logs:
         await _discovery(unavailable).discover(QUERY, "txn-1")
 
-    lines = [ln for ln in caplog.text.splitlines() if "external=discovery" in ln]
-    span_ids = {
-        field.removeprefix("span_id=")
-        for line in lines
-        for field in line.split()
-        if field.startswith("span_id=")
-    }
+    records = [
+        r.log_record
+        for r in logs.get_finished_logs()
+        if (r.log_record.attributes or {}).get("external") == "discovery"
+    ]
+    events = {r.attributes["event"] for r in records if r.attributes}
+    span_ids = {r.span_id for r in records}
 
-    assert [ln for ln in lines if "event=request" in ln]
-    assert [ln for ln in lines if "event=response" in ln]
-    # One id, and a real one — two lines both reporting `-` would agree while
-    # joining nothing.
-    assert len(span_ids) == 1
-    assert span_ids != {"-"}
+    assert events == {"request", "response"}
     (span,) = spans.get_finished_spans()
-    assert span_ids == {format(span.context.span_id, "016x")}
+    assert span_ids == {span.context.span_id}
+
+
+@contextmanager
+def _exported_logs() -> Iterator[InMemoryLogRecordExporter]:
+    """The real log bridge, so the span id is the one it stamps on export."""
+
+    exporter = InMemoryLogRecordExporter()
+    provider = LoggerProvider()
+    provider.add_log_record_processor(SimpleLogRecordProcessor(exporter))
+    trace_logger = logging.getLogger("dss.trace")
+    level_before = trace_logger.level
+    trace_logger.setLevel(logging.INFO)
+    configure_logs(logger_provider=provider)
+    try:
+        yield exporter
+    finally:
+        reset_logs()
+        trace_logger.setLevel(level_before)
 
 
 async def test_a_capability_with_no_schema_context_does_not_raise(spans) -> None:
