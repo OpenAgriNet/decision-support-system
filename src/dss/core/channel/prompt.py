@@ -8,10 +8,10 @@ grounded in belongs.
 
 The system prompt's *text* lives under ``prompts/composer/``, one version per
 language (configs/prompts.yaml), served through the ``PromptProvider`` port;
-this module decides what the template is told — the identity and the turn's
-target language. The evidence layout below stays code: it is structure the
-model reads, built from network-supplied values, not prose a language reviewer
-rewrites.
+this module decides what the template is told — the identity, the turn's
+target language, and the guidance for the topics intent found in the turn.
+The evidence layout below stays code: it is structure the model reads, built
+from network-supplied values, not prose a language reviewer rewrites.
 
 Framework-free: plain strings in, plain strings out. Nothing here knows the
 answer arrives in pieces.
@@ -40,8 +40,15 @@ _HISTORY_WINDOW = 3
 
 
 def system_prompt(
-    identity: Identity, *, turn: UserTurn, prompts: PromptProvider
+    identity: Identity,
+    *,
+    turn: UserTurn,
+    prompts: PromptProvider,
+    evidence: Evidence,
 ) -> str:
+    asked_about = {
+        ask_evidence.ask.subject_categories for ask_evidence in evidence.ask_evidences
+    }
     return prompts.get_prompt(
         PromptIdentifier.COMPOSER,
         lang=turn.target_lang,
@@ -50,6 +57,9 @@ def system_prompt(
             "persona": identity.persona,
             "boundaries": identity.boundaries,
             "target_lang": turn.target_lang,
+            "topic_guidance": prompts.get_topic_guidance(
+                PromptIdentifier.COMPOSER, turn.target_lang, asked_about
+            ),
         },
     )
 

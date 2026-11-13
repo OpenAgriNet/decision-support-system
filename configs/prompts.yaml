@@ -65,17 +65,25 @@ planner:
       skills:
         - prompts/planner/hi/skills/provider-invocation.md
 
+# `topics` adds guidance for one intent category, only on a turn intent found
+# asking about it — so the prompt stays general, and a topic's rules ride
+# along only when needed. Keys are intent categories (Market, Weather, ...).
 composer:
   placeholders:
     - name
     - persona
     - boundaries
     - target_lang
+    - topic_guidance
   language_prompts:
     en:
       system_prompt: prompts/composer/en/prompt.j2
+      topics:
+        Market: prompts/composer/en/topics/market.md
     hi:
       system_prompt: prompts/composer/hi/prompt.j2
+      topics:
+        Market: prompts/composer/hi/topics/market.md
 
 # Renders system-authored text — refusals, clarification questions, the
 # no-provider answers — in the turn's target language (ADR-0018). English

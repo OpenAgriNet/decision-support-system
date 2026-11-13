@@ -22,10 +22,11 @@ depend on this Protocol the same way it depends on ``LLMProvider``.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from enum import StrEnum
 from typing import Any, Protocol, runtime_checkable
 
+from dss.core.intent.models import SubjectCategory
 from dss.core.planner.models import Skill
 from dss.core.shared.language import LanguageTag
 
@@ -66,4 +67,15 @@ class PromptProvider(Protocol):
     ) -> tuple[Skill, ...]:
         """The skills configured beside that prompt, with the same language
         fallback. Empty for components that declare none."""
+        ...
+
+    def get_topic_guidance(
+        self,
+        prompt_identifier: PromptIdentifier,
+        lang: LanguageTag,
+        categories: Collection[SubjectCategory],
+    ) -> str:
+        """The guidance configured for those intent categories beside that
+        prompt, with the same language fallback. Empty when none of them has
+        any — a prompt carries a topic's rules only on a turn about it."""
         ...

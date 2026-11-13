@@ -22,7 +22,11 @@ from dss.core.intent.models import (
 from dss.core.moderation.models import Outcome
 from dss.core.planner.describe_capability import render_candidates_as_markdown
 from dss.core.planner.lookup import find_capability
-from dss.core.planner.markdown import render_answers_as_markdown
+from dss.core.planner.mandi_prices import (
+    MarketPrices,
+    pick_market_prices,
+    render_market_prices,
+)
 from dss.core.planner.models import Failure, Skill, Verdict
 from dss.core.planner.resource_attributes import build_resource_attributes
 from dss.core.planner.skills import tool_names_for
@@ -175,8 +179,8 @@ async def _select(
             declared=tuple(schema.field_types),
             # TODO(#55): remove with the pack fix.
             #
-            # Always today. Nothing reads a date out of the question yet, so a
-            # farmer asking about yesterday still gets today's window —
+            # The week up to today. Nothing reads a date out of the question
+            # yet, so a farmer asking about last month still gets this week —
             # `arrivalDate` is filterable and is where that will come from.
             priced_on=deps.today(),
         )
@@ -189,8 +193,23 @@ async def _select(
         return _nothing_came_back(deps, ask_index=ask_index, consulted=consulted)
 
     deps.next_choices.hold_after(ask_index, consulted=consulted, chosen=chosen)
-    deps.raw_answers.extend((ask_index, answer) for answer in chosen.answers)
-    return render_answers_as_markdown(chosen.answers)
+    prices = _pick_prices(deps, ask_index=ask_index, used=chosen)
+    deps.raw_answers.extend((ask_index, answer) for answer in prices.answers)
+    return render_market_prices(prices, asked=chosen.capability)
+
+
+def _pick_prices(deps: PlannerDeps, *, ask_index: int, used: Consulted) -> MarketPrices:
+    prices = pick_market_prices(used.answers, asked=used.capability)
+    if not prices.is_from_asked_market:
+        log_event(
+            "planner",
+            deps.turn.transaction_id,
+            event="other_markets_used",
+            ask_index=ask_index,
+            resource_id=used.capability.resource_id,
+            results=len(prices.answers),
+        )
+    return prices
 
 
 async def _select_next(ctx: RunContext[PlannerDeps], ask_index: int) -> str:
@@ -203,9 +222,10 @@ async def _select_next(ctx: RunContext[PlannerDeps], ask_index: int) -> str:
     if chosen is None:
         return no_next_choice(ask_index)
 
-    _replace_answers(deps, ask_index=ask_index, answers=chosen.answers)
+    prices = _pick_prices(deps, ask_index=ask_index, used=chosen)
+    _replace_answers(deps, ask_index=ask_index, answers=prices.answers)
     _log_next_provider_used(deps, ask_index=ask_index, used=chosen)
-    return render_answers_as_markdown(chosen.answers)
+    return render_market_prices(prices, asked=chosen.capability)
 
 
 def _log_next_provider_used(
