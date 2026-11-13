@@ -8,12 +8,13 @@ transport streams, and the fixed no-match reply.
 
 from __future__ import annotations
 
-from collections.abc import Collection, Sequence
+from collections.abc import Iterable, Sequence
 
 from dss.core.channel.models import ClarificationText, ComposedAnswer
-from dss.core.intent.models import AmbiguousPlace, Ask, ResolvedPlace, UnresolvedPlace
-from dss.core.planner.models import Evidence
+from dss.core.intent.models import Ask, ResolvedPlace
+from dss.core.planner.models import AskOutcome, Evidence
 from dss.core.planner.models import Source as EvidenceSource
+from dss.core.settlement.models import Ambiguous, AskSlot, NeedsClarification, Slot
 from dss.core.shared.models import Source, SourceKind, TextBlock
 from dss.core.stream_response.citations import CitationNumbers
 from dss.ports.area_lookup import AreaMatch
@@ -49,13 +50,7 @@ def answer_for_unserved_asks(
     new schema needs no new text.
     """
 
-    # An ask whose place is still in question gets no line: the place question
-    # that follows is its answer.
-    lines = [
-        _no_provider_line(ask, text)
-        for ask in asks
-        if ask.place is None or isinstance(ask.place, ResolvedPlace)
-    ]
+    lines = [_no_provider_line(ask, text) for ask in asks]
     # Two asks on one place are one thing for the farmer to act on.
     unique = dict.fromkeys(lines)
     return ComposedAnswer(content=(TextBlock(text="\n".join(unique)),))
@@ -122,115 +117,46 @@ def _group_lines(
     return _candidate_lines(candidates)
 
 
-def _ambiguous_paragraph(place: AmbiguousPlace, text: ClarificationText) -> str:
-    """The "which one?" question, then its options, one per line."""
+def pick_lists(evidence: Evidence, text: ClarificationText) -> tuple[TextBlock, ...]:
+    """The numbered choices for each pick the farmer has to make. Asks stuck
+    on the same choices share one list. The composer asks the question."""
 
-    name = place.unresolved_name
-    if len(place.candidates) > text.max_choices:
-        lines = [
-            text.grouped_place_header.format(name=name),
-            *_group_lines(name, place.candidates, text),
-        ]
-    else:
-        lines = [
-            text.ambiguous_place_header.format(name=name),
-            *_candidate_lines(place.candidates),
-        ]
-    return "\n".join(lines)
+    pick_per_ask = (_place_pick(entry.outcome) for entry in evidence.ask_evidences)
+    return tuple(
+        TextBlock(text="\n".join(_place_choice_lines(pick, text)))
+        for pick in _distinct(pick_per_ask)
+        if pick is not None
+    )
 
 
-def _not_found_line(name: str, text: ClarificationText) -> str:
-    """ "Aurangabad, Maharashtra" reads as "I could not find Aurangabad in
-    Maharashtra": a farmer may not read the comma as "in"."""
-
-    place, comma, part = name.rpartition(",")
-    if not comma:
-        return text.unknown_place.format(name=name)
-    return text.unknown_place_in.format(name=place.strip(), part=part.strip())
-
-
-def question_for_unplaced_asks(
-    asks: Sequence[Ask],
-    text: ClarificationText,
-    *,
-    place_optional: Collection[int] = (),
-) -> str | None:
-    """The closing block for the asks whose place is still missing, on a turn
-    where other asks were answered: "which one?" for a name that matched
-    several, the plain question for an ask that named nowhere and needed a
-    place. `None` if nothing is missing.
-
-    `place_optional` means the same as in `answer_for_unplaced_asks`.
-    """
-
-    paragraphs: list[str] = []
-    reported: list[AmbiguousPlace] = []
-    needs_place = False
-    for index, ask in enumerate(asks):
-        if isinstance(ask.place, AmbiguousPlace) and ask.place not in reported:
-            reported.append(ask.place)
-            paragraphs.append(_ambiguous_paragraph(ask.place, text))
-        elif ask.place is None and index not in place_optional:
-            needs_place = True
-    if needs_place:
-        paragraphs.append(text.needs_place)
-    return _join_paragraphs(paragraphs) or None
+def _distinct[T](items: Iterable[T]) -> list[T]:
+    # By equality, not a set: a place's geometry holds a list and cannot hash.
+    distinct: list[T] = []
+    for item in items:
+        if item not in distinct:
+            distinct.append(item)
+    return distinct
 
 
-def answer_for_unplaced_asks(
-    asks: Sequence[Ask],
-    text: ClarificationText,
-    *,
-    place_optional: Collection[int] = (),
-) -> ComposedAnswer | None:
-    """What the farmer reads when no ask has a place it needs. `None` if any
-    ask can be answered; the rest travel on as failures, so the answerable
-    ones still get answered.
+def _place_pick(outcome: AskOutcome) -> Ambiguous[AreaMatch] | None:
+    """The place choices the ask waits on first, if that is what it waits on."""
 
-    `place_optional` names the asks (by position) that have no place and need
-    none — the pack serves them from nowhere (`core/planner/place.py`). They
-    count as answerable, not as missing a place.
-
-    Reports every failing ask, not just one, so fixing all of them takes one
-    reply. Plain `None` asks share one question, asked once.
-    """
-
-    if any(
-        isinstance(ask.place, ResolvedPlace)
-        or (ask.place is None and index in place_optional)
-        for index, ask in enumerate(asks)
-    ):
-        return None
-
-    paragraphs: list[str] = []
-    needs_place = False
-    # A list, not a set: a place's geometry holds a list, so it cannot hash.
-    reported: list[AmbiguousPlace | UnresolvedPlace] = []
-    for ask in asks:
-        if isinstance(ask.place, AmbiguousPlace | UnresolvedPlace):
-            # Two asks failing on one name are one thing for the farmer to fix.
-            if ask.place in reported:
-                continue
-            reported.append(ask.place)
-        if isinstance(ask.place, AmbiguousPlace):
-            paragraphs.append(_ambiguous_paragraph(ask.place, text))
-        elif isinstance(ask.place, UnresolvedPlace) and ask.place.region:
-            paragraphs.append(text.region_place.format(name=ask.place.region))
-        elif isinstance(ask.place, UnresolvedPlace):
-            paragraphs.append(_not_found_line(ask.place.unresolved_name, text))
-        else:
-            needs_place = True
-
-    if needs_place:
-        paragraphs.append(text.needs_place)
-    if not paragraphs:
-        return None
-    return ComposedAnswer(content=(TextBlock(text=_join_paragraphs(paragraphs)),))
+    match outcome:
+        case NeedsClarification(
+            open_slots=(Slot(name=AskSlot.PLACE, state=Ambiguous() as pick), *_)
+        ):
+            return pick
+    return None
 
 
-def _join_paragraphs(paragraphs: Sequence[str]) -> str:
-    # A blank line ends a numbered list, so Markdown starts the next at 1.
-    return "\n\n".join(paragraphs)
+def _place_choice_lines(
+    pick: Ambiguous[AreaMatch], text: ClarificationText
+) -> list[str]:
+    if len(pick.choices) > text.max_choices:
+        # The choices may each have their own name. Only the typed one fits
+        # every group.
+        return _group_lines(pick.value, pick.choices, text)
+    return _candidate_lines(pick.choices)
 
 
 def _to_wire_source(source: EvidenceSource) -> Source:

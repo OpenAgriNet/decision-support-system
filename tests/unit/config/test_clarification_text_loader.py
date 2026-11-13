@@ -11,9 +11,9 @@ from dss.config.clarification_text_loader import load_clarification_text
 
 def test_default_clarification_text_loads_and_validates() -> None:
     text = load_clarification_text()
-    assert text.needs_place
-    assert text.unknown_place
-    assert text.ambiguous_place_header
+    assert text.more_places_hint
+    assert text.no_provider
+    assert text.unknown_form
 
 
 def test_set_but_missing_path_raises(tmp_path: Path) -> None:

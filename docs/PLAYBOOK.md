@@ -423,8 +423,10 @@ Things worth knowing when you look at the output:
 - **How many frames you get is not how many tokens the model wrote.** Pieces are
   grouped in 100ms windows, because every frame repeats the whole response
   envelope.
-- **No deltas on a refusal, a no-match, or a "which place are you asking about?".**
-  Those are fixed replies, not written by the model. If you are seeing no
+- **No deltas on a refusal or a no-match.**
+  Those are fixed replies, not written by the model. A question to the
+  farmer, such as which place, is written by the composer and does stream.
+  If you are seeing no
   `claim.delta`, check `outcome.status` on the terminal frame before assuming
   streaming is broken — an unwired network gives `no_match`, which never reaches
   the composer.
@@ -894,8 +896,7 @@ How it behaves:
   middle of the state. If the platform says where the user is, and that is in
   Maharashtra, the answer is for there, and it names the place. Otherwise the
   user is asked for a district or village in it.
-  This works the same with the area file alone. If you override the
-  clarification text, add a `region_place` line, or the DSS will not start.
+  This works the same with the area file alone.
 - **A name the file has only inside a longer one.** "Kanha" is not in the file,
   but "Kanha Chatti" starts with it and may be far away. That is only a guess.
   Photon gets the chance to find the exact name first. Otherwise the guess is
@@ -1290,7 +1291,7 @@ is the only runner, and `core/channel/service.py` now just shapes the answer
 (`answer_from_evidence`, `no_match_answer`).
 
 Swapping any of them is a one-line change in
-`src/dss/entrypoint/composition.py` — the only file that names concrete classes.
+`src/dss/entrypoint/composition/` — the only package that names concrete classes.
 
 ## Tests
 

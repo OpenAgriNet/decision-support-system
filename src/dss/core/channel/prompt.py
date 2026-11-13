@@ -22,15 +22,36 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping, Sequence
 
-from dss.core.forms.models import FormDefinition, FormSubmission
-from dss.core.intent.models import Ask, ResolvedPlace
+from dss.core.forms.models import FormSubmission
+from dss.core.intent.models import Ask, ResolvedPlace, Scheme
 from dss.core.planner.markers import (
     CONVERSATION,
     QUESTION,
     RETRIEVED_DATA,
     wrap_as_data,
 )
-from dss.core.planner.models import AskEvidence, Evidence, Failure, Identity, Result
+from dss.core.planner.models import (
+    AskEvidence,
+    Attempted,
+    AwaitingInput,
+    Evidence,
+    Failure,
+    Identity,
+    Result,
+)
+from dss.core.settlement.models import (
+    Ambiguous,
+    AskSlot,
+    CannotServe,
+    Missing,
+    NeedsClarification,
+    Resolved,
+    Slot,
+    SlotName,
+    Unresolved,
+    UnresolvedReason,
+    Unservable,
+)
 from dss.core.shared.models import TextQuery, UserTurn
 from dss.ports.prompts import PromptIdentifier, PromptProvider
 
@@ -132,9 +153,10 @@ def render_evidence(evidence: Evidence) -> str:
         block for entry in evidence.ask_evidences for block in _render_failures(entry)
     ]
     blocks += [
-        _render_awaiting(entry.ask, entry.awaiting)
-        for entry in evidence.ask_evidences
-        if entry.awaiting
+        block for entry in evidence.ask_evidences for block in _render_awaiting(entry)
+    ]
+    blocks += [
+        block for entry in evidence.ask_evidences for block in _render_unsettled(entry)
     ]
 
     if not blocks:
@@ -147,12 +169,18 @@ def _render_results(
 ) -> list[str]:
     """One block per source that answered this ask, in first-seen order."""
 
-    label = _place_label(ask_evidence.ask)
-    return [
-        f"Question {position} — [{source_id}] {name_by_id.get(source_id, 'unknown')}"
-        f"{label}\n{_render_payloads(payloads)}"
-        for source_id, payloads in _payloads_by_source(ask_evidence.results).items()
-    ]
+    match ask_evidence.outcome:
+        case Attempted(results=results):
+            label = _place_label(ask_evidence.ask)
+            return [
+                (
+                    f"Question {position} — [{source_id}] "
+                    f"{name_by_id.get(source_id, 'unknown')}"
+                    f"{label}\n{_render_payloads(payloads)}"
+                )
+                for source_id, payloads in _payloads_by_source(results).items()
+            ]
+    return []
 
 
 def _payloads_by_source(results: Sequence[Result]) -> dict[str, list[dict]]:
@@ -176,24 +204,79 @@ def _render_failures(ask_evidence: AskEvidence) -> list[str]:
     composer saw only results and rendered both as "Nothing was retrieved."
     """
 
-    label = _place_label(ask_evidence.ask)
-    return [
-        f"{_failure_lead(failure)}{label}: {failure.reason}"
-        for failure in ask_evidence.failures
-    ]
+    match ask_evidence.outcome:
+        case Attempted(failures=failures):
+            label = _place_label(ask_evidence.ask)
+            return [
+                f"{_failure_lead(failure)}{label}: {failure.reason}"
+                for failure in failures
+            ]
+    return []
 
 
-def _render_awaiting(ask: Ask, form: FormDefinition) -> str:
-    scheme = ask.scheme.name if ask.scheme else form.context.scheme
-    return (
-        f"Awaits a form{_place_label(ask)}: the farmer fills in the {scheme} "
-        f"{form.context.category.lower()} form shown below this reply."
-    )
+def _render_awaiting(ask_evidence: AskEvidence) -> list[str]:
+    match ask_evidence.outcome:
+        case AwaitingInput(form=form):
+            ask = ask_evidence.ask
+            named = ask.scheme
+            scheme = named.name if isinstance(named, Scheme) else form.context.scheme
+            category = form.context.category.lower()
+            return [
+                (
+                    f"Awaits a form{_place_label(ask)}: the farmer fills in the "
+                    f"{scheme} {category} form shown below this reply."
+                )
+            ]
+    return []
+
+
+def _render_unsettled(ask_evidence: AskEvidence) -> list[str]:
+    """Only the first open slot: the farmer is asked one thing per turn."""
+
+    category = ask_evidence.ask.subject_categories.value
+    match ask_evidence.outcome:
+        case NeedsClarification(open_slots=(first, *_)):
+            return [f"Ask the farmer ({category}): {_slot_brief(first)}"]
+        case CannotServe(slot=Slot(state=Unservable(reason=reason))):
+            return [f"Cannot serve this ({category}): {reason}"]
+    return []
+
+
+_UNRESOLVED_BRIEFS: Mapping[UnresolvedReason, str] = {
+    UnresolvedReason.NOT_FOUND: "Which {slot}? We could not find {value!r}. Ask again.",
+    UnresolvedReason.TOO_BROAD: (
+        "Which {slot}? {value!r} is too big. Ask for a smaller one inside it."
+    ),
+}
+
+
+# For a slot whose name means nothing to a farmer. No category is named: the
+# line's own label says what the "something" is.
+_MISSING_BRIEFS: Mapping[SlotName, str] = {
+    AskSlot.ACTION: (
+        "Do they want to raise something new, or check on one they already "
+        "raised? Their words did not say."
+    ),
+}
+
+
+def _slot_brief(slot: Slot) -> str:
+    match slot.state:
+        case Missing():
+            asked_by_name = f"Which {slot.name}? None was given."
+            return _MISSING_BRIEFS.get(slot.name, asked_by_name)
+        case Ambiguous(value=value, choices=(_,)):
+            return f"Do they mean {value!r}? Ask them to confirm."
+        case Ambiguous():
+            return (
+                f"Which {slot.name}? It matched more than one. "
+                "Ask them to pick one from the list below this reply."
+            )
+        case Unresolved(value=value, reason=reason):
+            return _UNRESOLVED_BRIEFS[reason].format(slot=slot.name, value=value)
+        case Resolved() | Unservable():
+            raise ValueError(f"{slot.name} is not waiting on the farmer")
 
 
 def _failure_lead(failure: Failure) -> str:
-    # No capability means no call was made: the ask's place failed. Blaming a
-    # provider would have the composer tell the farmer a service is down.
-    if not failure.is_provider_failure:
-        return "Nothing searched"
     return f"Could not reach a provider for {failure.capability}"

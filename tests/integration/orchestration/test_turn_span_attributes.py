@@ -33,6 +33,7 @@ from dss.observability.trace_log import set_stage_span_opener
 from dss.orchestration.turn import run_turn
 from dss.ports.area_lookup import AreaMatch
 from tests.support.fakes import FakeAreaLookup, FakePromptProvider
+from tests.support.settlement import settles_every_ask
 
 from .test_orchestrator import (
     _ANSWERED_EVIDENCE,
@@ -245,6 +246,7 @@ async def test_the_location_stage_says_what_became_of_each_place(spans) -> None:
         prompts=FakePromptProvider(),
         policies=[],
         discover_providers=_FakeDiscovery(),
+        settle_asks=settles_every_ask,
         area_lookup=lookup,
     )
 

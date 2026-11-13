@@ -20,6 +20,9 @@ from dss.core.provider_preferences.models import AskPriority
 # in `core/shared/network.py`: it buys the name, not a runtime check.
 NetworkSchemaType = str
 
+# The pack types for each (subject category, action type) pair.
+type CapabilityIndex = Mapping[tuple[str, str], tuple[NetworkSchemaType, ...]]
+
 
 @dataclass(frozen=True)
 class Coverage:

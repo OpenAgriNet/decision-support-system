@@ -3,13 +3,9 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Protocol
 
-from dss.core.forms.models import (
-    ActionSchema,
-    FormContext,
-    FormDefinition,
-    ProviderAction,
-)
+from dss.core.forms.models import ActionSchema, FormContext, FormDefinition
 from dss.core.schema_packs.models import SchemaPackSkipped
+from dss.core.shared.models import ProviderAction
 
 
 class FormLookup(Protocol):
@@ -49,6 +45,9 @@ class FormRegistry:
 
     def action_schema(self, context: FormContext) -> ActionSchema | None:
         return self._schemas.get(context)
+
+    def contexts_for(self, category: str) -> tuple[FormContext, ...]:
+        return tuple(context for context in self._forms if context.category == category)
 
     def __len__(self) -> int:
         return len(self._schemas)

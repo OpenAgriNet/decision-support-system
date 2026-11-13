@@ -25,7 +25,7 @@ from dss.adapters.area_lookup.csv_lookup import CsvAreaLookup
 from dss.adapters.llm.pydantic_ai_provider import PydanticAILLMProvider
 from dss.config.clarification_text_loader import load_clarification_text
 from dss.config.settings import DEFAULT_AREA_CSV, Settings
-from dss.core.channel.service import answer_for_unplaced_asks
+from dss.core.channel.service import pick_lists
 from dss.core.intent.models import (
     AmbiguousPlace,
     ClassifiedAsk,
@@ -38,8 +38,11 @@ from dss.core.intent.models import (
 )
 from dss.core.intent.service import classify_intent
 from dss.core.location.service import resolve_places
+from dss.core.planner.models import AskEvidence, Evidence
+from dss.core.settlement.ask_slots import frame_for
+from dss.core.settlement.models import AskRequirements, NeedsClarification
 from dss.core.shared.models import ConversationMessage, TextQuery, UserTurn
-from dss.entrypoint.composition import _resolve_model
+from dss.entrypoint.composition.root import _resolve_model
 from dss.observability.stages import Stage
 from tests.support.live_model import missing_model_key
 
@@ -457,7 +460,14 @@ async def test_a_reply_that_picks_nothing_listed_is_not_turned_into_a_pick(
 
 
 async def _question_we_send(name: str) -> str:
-    """The question our code sends for `name`, built from the real place list."""
+    """The question the farmer reads for `name`: the composer's "which one?",
+    then the pick list code adds."""
+
+    return f"Which {name}?\n{await _pick_list_we_send(name)}"
+
+
+async def _pick_list_we_send(name: str) -> str:
+    """Built from the real place list."""
 
     ask = ClassifiedAsk(
         subject_categories=SubjectCategory.WEATHER,
@@ -467,9 +477,19 @@ async def _question_we_send(name: str) -> str:
     intent = await resolve_places(
         IntentClassification(asks=(ask,)), _turn("q"), lookup=LOOKUP
     )
-    answer = answer_for_unplaced_asks(intent.asks, load_clarification_text())
-    assert answer is not None, f"{name} is not ambiguous in the place list"
-    return answer.content[0].text
+    [resolved] = intent.asks
+    requirements = AskRequirements(
+        needs_place=True,
+        schemes_with_a_form=frozenset(),
+        actions_with_a_form=frozenset(),
+    )
+    outcome = NeedsClarification(open_slots=frame_for(resolved, requirements).slots)
+    evidence = Evidence(
+        sources=(), ask_evidences=(AskEvidence(ask=resolved, outcome=outcome),)
+    )
+    lists = pick_lists(evidence, load_clarification_text())
+    assert lists, f"{name} is not ambiguous in the place list"
+    return lists[0].text
 
 
 async def _place_for_reply(name: str, reply: str) -> ResolvedPlace:
@@ -515,3 +535,21 @@ async def test_reply_to_not_in_list_hint() -> None:
     place = await _place_for_reply("Narayanpur", "Telangana")
 
     assert "Telangana" in place.within
+
+
+async def test_yes_to_a_lone_place_guess_names_that_place() -> None:
+    """The place list holds "Kanha" only as the start of "Kanha Chatti", so
+    we ask "Do you mean Kanha Chatti?". A yes read as a new question about
+    "Kanha" would get the same question again."""
+
+    asked = f"Do you mean Kanha Chatti?\n{await _pick_list_we_send('Kanha')}"
+    history = [
+        ConversationMessage(role="user", text="What is the weather in Kanha?"),
+        ConversationMessage(role="assistant", text=asked),
+    ]
+
+    intent, classification = await _resolve(_turn("yes", history=history))
+
+    (ask,) = intent.asks
+    assert isinstance(ask.place, ResolvedPlace), f"{asked!r} -> {classification!r}"
+    assert ask.place.name == "Kanha Chatti"

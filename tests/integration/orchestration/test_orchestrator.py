@@ -25,7 +25,6 @@ from dss.core.intent.models import (
 )
 from dss.core.moderation.models import Outcome
 from dss.core.planner.models import Evidence, Failure, Result, Source, SourceKind
-from dss.core.planner.validation import DomainSchema
 from dss.core.policy.models import (
     Checkpoint,
     EvaluationKind,
@@ -35,6 +34,18 @@ from dss.core.policy.models import (
 )
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.provider_preferences.models import AskPriority
+from dss.core.settlement.models import (
+    Ambiguous,
+    AskSlot,
+    CannotServe,
+    Frame,
+    Missing,
+    NeedsClarification,
+    Settled,
+    Settlement,
+    Slot,
+    Unservable,
+)
 from dss.core.shared.models import (
     Claim,
     ClaimDelta,
@@ -61,6 +72,7 @@ from dss.orchestration.orchestrator import (
 )
 from dss.orchestration.plan import Plan
 from dss.orchestration.redaction import RedactTexts, pass_through
+from dss.orchestration.turn import SettleAsks
 from dss.ports.area_lookup import AreaMatch
 from tests.support.evidence import ANY_ASK, build_evidence
 from tests.support.fakes import (
@@ -70,6 +82,7 @@ from tests.support.fakes import (
     FakeSchemeCatalog,
 )
 from tests.support.providers import build_capability
+from tests.support.settlement import settles_every_ask
 from tests.support.turn_events import assert_well_formed
 
 DELETE_COMMAND = LlmPolicy(
@@ -206,6 +219,7 @@ class _FakePlan:
         self, turn, *, intent, discovery, verdict, visibility, awaiting=None
     ) -> Evidence:
         self.calls += 1
+        self.intent = intent
         self.awaiting = dict(awaiting or {})
         self.verdict_was_set = verdict.is_set()
         self.turn = turn
@@ -272,17 +286,16 @@ def _build(
     policies=(),
     area_lookup: FakeAreaLookup | None = None,
     redact: RedactTexts = pass_through,
+    settle_asks: SettleAsks = settles_every_ask,
     intent_llm=None,
     moderation_llm=None,
     localize: FakeLocalizer | None = None,
-    schemas: dict[str, DomainSchema] | None = None,
     edge_translation: EdgeTranslation | None = None,
     forms: FormLookup | None = None,
     scheme_catalog: FakeSchemeCatalog | None = None,
 ) -> tuple[Orchestrator, MemoryTurnSink]:
     turns = MemoryTurnSink()
     text_path = TextPath(
-        schemas=schemas or {},
         intent_llm=intent_llm or _FakeIntentLLM(intent),
         moderation_llm=moderation_llm or _FakeModerationLLM(violated=violated),
         prompts=FakePromptProvider(),
@@ -302,6 +315,7 @@ def _build(
         clarification_text=load_clarification_text(),
         edge_translation=edge_translation or EdgeTranslation(routes={}),
         forms=forms or FormRegistry(),
+        settle_asks=settle_asks,
     )
     return Orchestrator(paths={TextQuery: text_path}), turns
 
@@ -463,34 +477,9 @@ async def test_no_asks_is_no_match_with_a_message() -> None:
     assert plan.calls == 0 and compose.calls == 0
 
 
-async def test_an_unlocated_turn_asks_for_a_place() -> None:
-    """No coordinates, no area, and the classifier found no place name: there is
-    nowhere to search, so ask the farmer instead of discovering, planning and
-    composing an answer that could not be local to them. The question asks for
-    a place, not a district: a block answers too.
-    """
-
-    plan = _FakePlan(_ANSWERED_EVIDENCE)
-    compose = _FakeCompose("unused")
-    orch, _ = _build(
-        intent=_one_ask(), discovery=_served_discovery(), plan=plan, compose=compose
-    )
-
-    events = await _collect(orch, _turn(location=None))
-
-    finished = events[-1]
-    assert finished.outcome.status is TurnStatus.REQUIRES_INPUT
-    assert "place" in finished.content[0].text.lower()
-    # discovery ran and was discarded — read-only and cheap, and it already
-    # starts before moderation clears the turn. What matters is that the planner
-    # and composer, which cost real model calls, never ran.
-    assert plan.calls == 0 and compose.calls == 0
-
-
 async def test_an_unlocated_advisory_ask_is_answered() -> None:
-    """ "How do I grow potatoes" names nowhere, and the advisory pack indexes
-    no location: the turn goes on to the planner and composer instead of
-    stopping to ask for a place it does not need."""
+    """ "How do I grow potatoes" names nowhere. Settled, it goes on to the
+    planner and composer. Whether it needs a place is settlement's rule."""
 
     advisory = build_capability(
         provider_id="kvk",
@@ -517,85 +506,12 @@ async def test_an_unlocated_advisory_ask_is_answered() -> None:
         ),
         plan=plan,
         compose=compose,
-        schemas={
-            "openagrinet:KnowledgeAdvisory": DomainSchema(
-                type="KnowledgeAdvisory", filterable=()
-            )
-        },
     )
 
     events = await _collect(orch, _turn("how do I grow potatoes", location=None))
 
     assert events[-1].outcome.status is TurnStatus.ANSWERED
     assert plan.calls == 1 and compose.calls == 1
-
-
-async def test_mixed_turn_answers_then_asks_place() -> None:
-    """ "How do I grow potato, and will it rain?" with nothing named: the
-    potato advice is written, and the answer ends by asking for the place the
-    weather ask still needs."""
-
-    advisory = build_capability(
-        provider_id="kvk",
-        provider_name="KVK",
-        capability="openagrinet:KnowledgeAdvisory",
-        resource_id="res:kvk:potato",
-        observed_categories=("Crop",),
-    )
-    weather = build_capability(
-        provider_id="imd",
-        provider_name="IMD",
-        capability="openagrinet:WeatherObservation",
-        resource_id="res:imd:forecast",
-        observed_categories=("Weather",),
-    )
-    plan = _FakePlan(
-        _evidence(
-            results=(Result(ask_index=0, source_id="1", data={"sow": "October"}),),
-            ask_count=2,
-        )
-    )
-    orch, _ = _build(
-        intent=IntentClassification(
-            asks=(
-                ClassifiedAsk(
-                    agriculture_subjects="potato",
-                    subject_categories=SubjectCategory.CROP,
-                    interaction_type=InteractionType.ADVISE,
-                ),
-                ClassifiedAsk(
-                    subject_categories=SubjectCategory.WEATHER,
-                    interaction_type=InteractionType.OBSERVE,
-                ),
-            ),
-            confidence=0.9,
-        ),
-        discovery=DiscoveryResult(
-            answers={},
-            capabilities={0: (advisory,), 1: (weather,)},
-            failures={},
-            events=(),
-        ),
-        plan=plan,
-        compose=_FakeCompose("Sow in October [1]."),
-        schemas={
-            "openagrinet:KnowledgeAdvisory": DomainSchema(
-                type="KnowledgeAdvisory", filterable=()
-            ),
-            "openagrinet:WeatherObservation": DomainSchema(
-                type="WeatherObservation", filterable=(), needs_place=True
-            ),
-        },
-    )
-
-    events = await _collect(
-        orch, _turn("how do I grow potato, and will it rain?", location=None)
-    )
-
-    question = load_clarification_text().needs_place
-    deltas = [e.text for e in events if isinstance(e, ClaimDelta)]
-    assert deltas[-1] == f"\n\n{question}"
-    assert events[-1].outcome.status is TurnStatus.PARTIALLY_ANSWERED
 
 
 async def test_an_ask_awaiting_a_form_ends_the_turn_on_the_form() -> None:
@@ -635,142 +551,6 @@ async def test_some_asks_unserved_is_partial() -> None:
     assert events[-1].outcome.status is TurnStatus.PARTIALLY_ANSWERED
 
 
-async def test_one_place_not_found_still_answers_the_other() -> None:
-    """ "Weather in Pune and Xyzzy": stopping to ask about Xyzzy would leave
-    Pune unanswered. Pune is answered; Xyzzy reaches the composer as a
-    failure."""
-
-    def weather_in(place_name: str) -> ClassifiedAsk:
-        return ClassifiedAsk(
-            subject_categories=SubjectCategory.WEATHER,
-            interaction_type=InteractionType.OBSERVE,
-            place_name=place_name,
-        )
-
-    plan = _FakePlan(
-        _evidence(
-            results=(Result(ask_index=0, source_id="1", data={"rain": "none"}),),
-            ask_count=2,
-        )
-    )
-    compose = _FakeCompose("No rain in Pune [1]. I could not find Xyzzy.")
-    orch, _ = _build(
-        intent=IntentClassification(
-            asks=(weather_in("Pune"), weather_in("Xyzzy")), confidence=0.9
-        ),
-        discovery=_served_discovery(),
-        plan=plan,
-        compose=compose,
-    )
-
-    events = await _collect(orch, _turn("weather in Pune and Xyzzy", location=None))
-
-    assert plan.calls == 1
-    assert events[-1].outcome.status is TurnStatus.PARTIALLY_ANSWERED
-
-
-async def test_an_ambiguous_place_is_asked_after_the_answer_for_the_other() -> None:
-    """ "Weather in Pune and Aurangabad": Pune is answered, and the farmer is
-    still asked which Aurangabad, so the reply can finish the question."""
-
-    def weather_in(place_name: str) -> ClassifiedAsk:
-        return ClassifiedAsk(
-            subject_categories=SubjectCategory.WEATHER,
-            interaction_type=InteractionType.OBSERVE,
-            place_name=place_name,
-        )
-
-    def aurangabad(state: str) -> AreaMatch:
-        return AreaMatch(
-            name="Aurangabad",
-            region="IN-XX",
-            within=("India", state),
-            geometry=Geometry(coordinates=[75.3, 19.9]),
-        )
-
-    plan = _FakePlan(
-        _evidence(
-            results=(Result(ask_index=0, source_id="1", data={"rain": "none"}),),
-            ask_count=2,
-        )
-    )
-    orch, _ = _build(
-        intent=IntentClassification(
-            asks=(weather_in("Pune"), weather_in("Aurangabad")), confidence=0.9
-        ),
-        discovery=_served_discovery(),
-        plan=plan,
-        compose=_FakeCompose("No rain in Pune [1]."),
-        area_lookup=FakeAreaLookup(
-            {
-                "pune": [_PUNE_MATCH],
-                "aurangabad": [aurangabad("Maharashtra"), aurangabad("Bihar")],
-            }
-        ),
-    )
-
-    events = await _collect(
-        orch, _turn("weather in Pune and Aurangabad", location=None)
-    )
-
-    # One bubble: the question is the last piece of the same streamed answer.
-    question = "Which Aurangabad?\n1. Aurangabad, Maharashtra\n2. Aurangabad, Bihar"
-    deltas = [e.text for e in events if isinstance(e, ClaimDelta)]
-    claims = [e for e in events if isinstance(e, Claim)]
-    assert deltas[-1] == f"\n\n{question}"
-    assert [c.content.text for c in claims] == [f"No rain in Pune [1].\n\n{question}"]
-    assert "".join(deltas) == claims[0].content.text
-    finished = events[-1]
-    assert finished.outcome.status is TurnStatus.PARTIALLY_ANSWERED
-    assert [b.text for b in finished.content] == [claims[0].content.text]
-
-
-async def test_no_provider_still_asks_which_place() -> None:
-    """Nobody serves the Pune ask, and Rampur matches several. The farmer must
-    still be asked which Rampur, or a reply can never finish it."""
-
-    def weather_in(place_name: str) -> ClassifiedAsk:
-        return ClassifiedAsk(
-            subject_categories=SubjectCategory.WEATHER,
-            interaction_type=InteractionType.OBSERVE,
-            place_name=place_name,
-        )
-
-    def rampur(state: str) -> AreaMatch:
-        return AreaMatch(
-            name="Rampur",
-            region="IN-XX",
-            within=("India", state),
-            geometry=Geometry(coordinates=[79.0, 28.8]),
-        )
-
-    plan = _FakePlan(_ANSWERED_EVIDENCE)
-    nobody = DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
-    orch, _ = _build(
-        intent=IntentClassification(
-            asks=(weather_in("Pune"), weather_in("Rampur")), confidence=0.9
-        ),
-        discovery=nobody,
-        plan=plan,
-        compose=_FakeCompose("unused"),
-        area_lookup=FakeAreaLookup(
-            {
-                "pune": [_PUNE_MATCH],
-                "rampur": [rampur("Uttar Pradesh"), rampur("Himachal Pradesh")],
-            }
-        ),
-    )
-
-    events = await _collect(orch, _turn("weather in Pune and Rampur", location=None))
-
-    finished = events[-1]
-    assert finished.outcome.status is TurnStatus.REQUIRES_INPUT
-    assert finished.content[-1].text == (
-        "Which Rampur?\n1. Rampur, Uttar Pradesh\n2. Rampur, Himachal Pradesh"
-    )
-    assert plan.calls == 0
-
-
 async def test_all_calls_failing_is_unavailable() -> None:
     plan = _FakePlan(
         _evidence(
@@ -800,27 +580,14 @@ async def test_all_calls_failing_is_unavailable() -> None:
     )
 
 
-async def test_a_place_failure_alone_is_not_an_outage() -> None:
-    """Pune's provider had nothing, and Xyzzy was never searched. No service
-    was down, so the farmer must not be told to retry one."""
+async def test_nothing_found_is_not_an_outage() -> None:
+    """The provider was reached and had nothing. No service was down, so the
+    farmer must not be told to retry one."""
 
-    plan = _FakePlan(
-        _evidence(
-            results=(),
-            failures=(
-                Failure(
-                    ask_index=1,
-                    capability=None,
-                    reason="Xyzzy: place not found",
-                    retryable=False,
-                ),
-            ),
-            ask_count=2,
-        )
-    )
-    compose = _FakeCompose("No weather for Pune today. I could not find Xyzzy.")
+    plan = _FakePlan(_evidence(results=()))
+    compose = _FakeCompose("No weather for Pune today.")
     orch, _ = _build(
-        intent=_one_ask(2), discovery=_served_discovery(), plan=plan, compose=compose
+        intent=_one_ask(), discovery=_served_discovery(), plan=plan, compose=compose
     )
 
     events = await _collect(orch)
@@ -889,3 +656,132 @@ def test_unrouted_kinds_lists_the_kind_without_a_path() -> None:
     kinds = [TextQuery, _OtpReply]
 
     assert unrouted_kinds({TextQuery: _FakePath()}, kinds) == [_OtpReply]
+
+
+_NEEDS_PLACE = NeedsClarification(open_slots=(Slot(AskSlot.PLACE, Missing()),))
+_SETTLED = Settled(Frame(slots=()))
+
+
+def _settle_with(*settlements: Settlement) -> SettleAsks:
+    def settle(intent):
+        return settlements
+
+    return settle
+
+
+async def test_an_unsettled_ask_is_asked_by_the_composer() -> None:
+    plan = _FakePlan(_ANSWERED_EVIDENCE)
+    compose = _FakeCompose("Which district?")
+    orch, _ = _build(
+        intent=_one_ask(),
+        discovery=_served_discovery(),
+        plan=plan,
+        compose=compose,
+        settle_asks=_settle_with(_NEEDS_PLACE),
+    )
+
+    events = await _collect(orch)
+
+    assert plan.calls == 0
+    [entry] = compose.evidence.ask_evidences
+    assert entry.outcome == _NEEDS_PLACE
+    assert events[-1].outcome.status is TurnStatus.REQUIRES_INPUT
+
+
+async def test_a_settled_ask_is_served_beside_a_question() -> None:
+    """The settled ask is planned on its own; the composer gets both asks,
+    in the farmer's order."""
+
+    plan = _FakePlan(_ANSWERED_EVIDENCE)
+    compose = _FakeCompose("Wheat is 2,275 Rs [1]. Which district for the rain?")
+    orch, _ = _build(
+        intent=_one_ask(2),
+        discovery=_served_discovery(),
+        plan=plan,
+        compose=compose,
+        settle_asks=_settle_with(_NEEDS_PLACE, _SETTLED),
+    )
+
+    events = await _collect(orch)
+
+    assert len(plan.intent.asks) == 1
+    question, answer = compose.evidence.ask_evidences
+    assert question.outcome == _NEEDS_PLACE
+    assert answer == _ANSWERED_EVIDENCE.ask_evidences[0]
+    assert events[-1].outcome.status is TurnStatus.REQUIRES_INPUT
+
+
+async def test_nobody_serving_beside_a_question_reaches_the_composer() -> None:
+    """The fixed "nobody serves" reply would drop the question, so the
+    composer writes both."""
+
+    plan = _FakePlan(_ANSWERED_EVIDENCE)
+    compose = _FakeCompose("No onion prices found. Which district for the rain?")
+    nobody = DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
+    orch, _ = _build(
+        intent=_one_ask(2),
+        discovery=nobody,
+        plan=plan,
+        compose=compose,
+        settle_asks=_settle_with(_SETTLED, _NEEDS_PLACE),
+    )
+
+    events = await _collect(orch)
+
+    assert plan.calls == 0
+    unanswered, question = compose.evidence.ask_evidences
+    assert unanswered.outcome.is_unanswered is True
+    assert question.outcome == _NEEDS_PLACE
+    assert events[-1].outcome.status is TurnStatus.REQUIRES_INPUT
+
+
+async def test_an_ask_we_cannot_serve_ends_the_turn() -> None:
+    """The composer says why. No question is asked, so the turn does not
+    wait on the farmer."""
+
+    cannot_serve = CannotServe(
+        slot=Slot(
+            AskSlot.SCHEME,
+            Unservable(reason="PM Kisan Samman Nidhi has no grievance form."),
+        )
+    )
+    plan = _FakePlan(_ANSWERED_EVIDENCE)
+    compose = _FakeCompose("We cannot take a PM Kisan complaint here.")
+    orch, _ = _build(
+        intent=_one_ask(),
+        discovery=_served_discovery(),
+        plan=plan,
+        compose=compose,
+        settle_asks=_settle_with(cannot_serve),
+    )
+
+    events = await _collect(orch)
+
+    assert plan.calls == 0
+    [entry] = compose.evidence.ask_evidences
+    assert entry.outcome == cannot_serve
+    assert events[-1].outcome.status is TurnStatus.NO_MATCH
+
+
+async def test_the_pick_list_follows_the_question() -> None:
+    """The composer asks which one. Code lists the choices after it."""
+
+    other_pune = _PUNE_MATCH.model_copy(update={"within": ("India", "Telangana")})
+    which_pune = NeedsClarification(
+        open_slots=(Slot(AskSlot.PLACE, Ambiguous("Pune", (_PUNE_MATCH, other_pune))),)
+    )
+    orch, _ = _build(
+        intent=_one_ask(),
+        discovery=_served_discovery(),
+        plan=_FakePlan(_ANSWERED_EVIDENCE),
+        compose=_FakeCompose("Which Pune do you mean?"),
+        settle_asks=_settle_with(which_pune),
+    )
+
+    events = await _collect(orch)
+
+    question, choices = events[-1].content
+    assert isinstance(question, TextBlock)
+    assert question.text == "Which Pune do you mean?"
+    assert isinstance(choices, TextBlock)
+    assert choices.text == "1. Pune, Maharashtra\n2. Pune, Telangana"

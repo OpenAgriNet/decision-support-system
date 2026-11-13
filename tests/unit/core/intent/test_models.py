@@ -15,10 +15,11 @@ from dss.core.intent.models import (
     PlaceSource,
     ResolvedPlace,
     SubjectCategory,
+    UnclearAction,
     UnresolvedPlace,
 )
 from dss.core.shared.language import LanguageTag
-from dss.core.shared.models import Geometry, TextQuery, UserTurn
+from dss.core.shared.models import Geometry, ProviderAction, TextQuery, UserTurn
 from dss.ports.area_lookup import AreaMatch
 
 
@@ -189,6 +190,54 @@ def test_classified_ask_keeps_punctuation_inside_the_place_name() -> None:
         place_name="St. Thomas",
     )
     assert ask.place_name == "St. Thomas"
+
+
+def test_blank_unlisted_scheme_name_is_dropped() -> None:
+    """A blank name would have the farmer told "we could not find ' '"."""
+
+    ask = ClassifiedAsk(
+        subject_categories=SubjectCategory.GRIEVANCE,
+        interaction_type=InteractionType.ACT,
+        unlisted_scheme_name="  ",
+    )
+    assert ask.unlisted_scheme_name is None
+
+
+def test_unclear_is_an_action_the_model_can_give() -> None:
+    """Empty means nothing is to be done. "Something, but which?" needs its
+    own answer, or a plain question gets asked "new or old?"."""
+
+    ask = ClassifiedAsk.model_validate(
+        {
+            "subject_categories": "Grievance",
+            "interaction_type": "act",
+            "action": "unclear",
+        }
+    )
+    assert ask.action is UnclearAction.UNCLEAR
+
+
+def test_init_is_not_an_action_the_model_can_give() -> None:
+    """Init is a step inside filing or checking, such as the OTP. The farmer
+    never asks for it by itself."""
+
+    with pytest.raises(ValidationError):
+        ClassifiedAsk.model_validate(
+            {
+                "subject_categories": "Grievance",
+                "interaction_type": "act",
+                "action": "init",
+            }
+        )
+
+
+def test_the_models_json_action_is_read_as_the_provider_action() -> None:
+    ask = ClassifiedAsk.model_validate_json(
+        '{"subject_categories": "Grievance", "interaction_type": "act",'
+        ' "action": "support"}'
+    )
+
+    assert ask.action is ProviderAction.SUPPORT
 
 
 @pytest.mark.parametrize(

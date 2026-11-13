@@ -188,6 +188,26 @@ class TurnContext(BaseModel):
     sender_id: str
 
 
+class ProviderAction(StrEnum):
+    """What a form asks a provider to do: ``support`` files a new complaint,
+    ``status`` checks one already filed. Here, not with the forms: intent
+    reads it from the farmer's words, before any form exists."""
+
+    SUPPORT = "support"
+    STATUS = "status"
+    # The call a scheme makes first when its actions have init fields, e.g. to
+    # send the farmer an OTP.
+    INIT = "init"
+
+
+# What a user can ask for. ``init`` is a step inside filing or checking, never
+# a choice of its own.
+type RequestedAction = Literal[ProviderAction.SUPPORT, ProviderAction.STATUS]
+REQUESTABLE_ACTIONS: frozenset[ProviderAction] = frozenset(
+    {ProviderAction.SUPPORT, ProviderAction.STATUS}
+)
+
+
 class TurnStatus(StrEnum):
     """How a turn ended. One axis: `unavailable` is the execution-failure value,
     so no second field is needed to tell a refusal from a crash."""

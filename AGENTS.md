@@ -31,7 +31,7 @@ Do not duplicate architecture, domain model, or design-decision detail here — 
   `PromptProvider` port for its system prompt in the turn's target language;
   a language with no version falls back to English and the gap is traced. `en`
   is required per component and placeholders are validated at boot. Hindi
-  ships as a marked demo. System-authored text (refusals, clarifications,
+  ships as a marked demo. System-authored text (refusals, place pick lists,
   no-provider answers) stays English in code and is rendered in the turn's
   target language on the way out by the `localizer` prompt on the composer's
   binding — English skips the call, failures fall back to English.
@@ -74,6 +74,15 @@ Do not duplicate architecture, domain model, or design-decision detail here — 
   `default` together (the registry's `or` filter), and a lookup failure costs
   the ranking, never the turn. Unset
   (the default), no ranking applies anywhere.
+- Settlement: right after intent, code checks that each ask has the facts it
+  needs, before any provider is searched for (ADR-0023, proposed). Each fact
+  is a slot: action, scheme, place. Which slots an ask needs comes from its
+  packs (place) and the form registry (scheme, action). An ask with a
+  missing or unsure slot gets one question, worded by the composer, beside
+  the answers to the other asks; a scheme with no form here is not served.
+  The intent model returns each ask's
+  `action`: `support`, `status`, `unclear` or nothing, and only `unclear` is
+  asked. Settlement keeps no state: the reply comes back in the history.
 - Session state: Redis (ADR-0022), through `redis` (redis-py). A `SessionStore`
   (orchestration) over a plain `KeyValueStore` port: `get`, `set` with a time
   to live, and redis-py's single-server lock (not Redlock), ownerless, with

@@ -29,7 +29,7 @@ from dss.core.planner.models import (
 )
 from dss.core.shared.models import Geometry, TextQuery, UserTurn
 from dss.core.stream_response.service import stream_response
-from tests.support.evidence import build_evidence
+from tests.support.evidence import attempted, build_evidence
 from tests.support.fakes import FakePromptProvider
 
 IDENTITY = Identity(
@@ -221,7 +221,7 @@ async def test_the_asks_resolved_place_reaches_the_model() -> None:
 
     [paddy] = EVIDENCE.ask_evidences
     evidence = build_evidence(
-        sources=EVIDENCE.sources, results=paddy.results, asks=(_ask(PUNE),)
+        sources=EVIDENCE.sources, results=attempted(paddy).results, asks=(_ask(PUNE),)
     )
 
     await _collect(llm, evidence)

@@ -19,16 +19,23 @@ import pytest
 from dss.adapters.provider_preferences.registry import RegistryProviderPreferences
 from dss.config.settings import Settings
 from dss.core.forms.models import FormContext
-from dss.core.forms.registry import FormLookup
+from dss.core.forms.registry import FormLookup, FormRegistry
+from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
 from dss.core.schema_packs.models import SchemaPackFiles
+from dss.core.settlement.models import Frame, Settled
 from dss.core.shared.models import TextQuery
-from dss.entrypoint.composition import (
+from dss.entrypoint.composition.root import (
     _aclose_for,
     _discovers_nothing,
+    _Network,
     _network,
     _NoRankings,
-    _planner_schemas,
+    _settle_asks,
     build_runner,
+)
+from dss.entrypoint.composition.schema_packs import (
+    load_schema_packs,
+    planner_schemas,
 )
 from dss.orchestration.orchestrator import Orchestrator
 from dss.ports.turn import TurnRunner
@@ -54,6 +61,16 @@ def _no_preferences():
     return _NoRankings()
 
 
+def _wire(settings: Settings, **fetch) -> _Network:
+    """The network as `build_runner` builds it: the packs first."""
+
+    return _network(
+        settings,
+        packs=load_schema_packs(settings, **fetch),
+        preferences=_no_preferences(),
+    )
+
+
 def test_build_runner_returns_a_turn_runner(tmp_path: Path) -> None:
     runner = build_runner(_settings(tmp_path))
 
@@ -62,7 +79,7 @@ def test_build_runner_returns_a_turn_runner(tmp_path: Path) -> None:
 
 
 def test_unwired_network_discovers_nothing(tmp_path: Path) -> None:
-    network = _network(_settings(tmp_path), preferences=_no_preferences())
+    network = _wire(_settings(tmp_path))
 
     # the seam is the single unwired function, and the planner's dicts are empty
     assert network.discover is _discovers_nothing
@@ -71,7 +88,7 @@ def test_unwired_network_discovers_nothing(tmp_path: Path) -> None:
     assert network.client is None
 
 
-def test_wired_network_builds_the_planner_schemas(tmp_path: Path) -> None:
+def test_wired_network_builds_theplanner_schemas(tmp_path: Path) -> None:
     settings = _settings(
         tmp_path,
         discovery_base_url="https://discovery.example/oan",
@@ -80,7 +97,7 @@ def test_wired_network_builds_the_planner_schemas(tmp_path: Path) -> None:
     )
     assert settings.network_enabled
 
-    network = _network(settings, preferences=_no_preferences())
+    network = _wire(settings)
 
     # the real client replaced the unwired stand-in...
     assert network.discover is not _discovers_nothing
@@ -93,6 +110,18 @@ def test_wired_network_builds_the_planner_schemas(tmp_path: Path) -> None:
     # a Direct-answer pack with no `filterable_paths`, so it is (correctly) left
     # out of `schemas` while still resolvable through the context index.
     assert set(network.schemas) <= set(network.schema_context_index)
+
+
+def test_with_no_packs_every_ask_settles(tmp_path: Path) -> None:
+    """Unwired there are no packs, so nothing says an ask needs anything."""
+
+    settle = _settle_asks(load_schema_packs(_settings(tmp_path)), FormRegistry())
+    rain = Ask(
+        subject_categories=SubjectCategory.WEATHER,
+        interaction_type=InteractionType.OBSERVE,
+    )
+
+    assert settle(Intent(asks=(rain,))) == (Settled(Frame(slots=())),)
 
 
 def test_the_network_refuses_to_boot_with_no_packs(tmp_path: Path) -> None:
@@ -120,7 +149,21 @@ def test_the_network_refuses_to_boot_with_no_packs(tmp_path: Path) -> None:
         return ()
 
     with pytest.raises(ValueError, match="fetch_schema_packs"):
-        _network(settings, fetch=fetches_nothing, preferences=_no_preferences())
+        load_schema_packs(settings, fetch=fetches_nothing)
+
+
+def test_the_network_refuses_to_boot_with_no_pack_folder(tmp_path: Path) -> None:
+    """No folder means forms are off. Discovery cannot run without one."""
+
+    settings = _settings(
+        tmp_path,
+        discovery_base_url="https://discovery.example/oan",
+        invocation_base_url="https://select.example/oan",
+        schema_pack_dir=None,
+    )
+
+    with pytest.raises(ValueError, match="DSS_SCHEMA_PACK_DIR"):
+        load_schema_packs(settings)
 
 
 async def test_the_runner_builds_inside_a_running_event_loop(tmp_path: Path) -> None:
@@ -167,9 +210,7 @@ def test_packs_already_on_disk_are_not_re_fetched(tmp_path: Path) -> None:
     def must_not_be_called(**_kwargs) -> tuple[str, ...]:
         raise AssertionError("fetched with packs already on disk")
 
-    network = _network(
-        settings, fetch=must_not_be_called, preferences=_no_preferences()
-    )
+    network = _wire(settings, fetch=must_not_be_called)
 
     assert network.discover is not _discovers_nothing
     assert "openagrinet:MandiPrice" in network.schema_context_index
@@ -178,7 +219,7 @@ def test_packs_already_on_disk_are_not_re_fetched(tmp_path: Path) -> None:
 def test_build_runner_passes_the_fetch_through(tmp_path: Path) -> None:
     """`build_runner` is what `create_app` calls, so the seam has to reach it.
 
-    Testing `_network` alone would leave the wiring untested: a fake on one
+    Testing `load_schema_packs` alone would leave the wiring untested: a fake on one
     side and a call that never forwards the argument on the other both pass,
     and the refusal would never fire in the process that matters.
     """
@@ -227,7 +268,7 @@ def test_a_pack_missing_its_x_jsonld_block_does_not_crash_the_boot() -> None:
     # raising (see provider_discovery/index.py's `PACK_DEFECTS`). The
     # planner's schema dict must degrade the same way, not take down
     # `build_runner` for every other capability over one bad pack.
-    schemas = _planner_schemas((_pack_missing_x_jsonld(),))
+    schemas = planner_schemas((_pack_missing_x_jsonld(),))
 
     assert schemas == {}
 
@@ -253,7 +294,7 @@ components:
 
 
 def test_a_pack_with_a_non_dict_profile_does_not_crash_the_boot() -> None:
-    schemas = _planner_schemas((_pack_with_non_dict_profile(),))
+    schemas = planner_schemas((_pack_with_non_dict_profile(),))
 
     assert schemas == {}
 
@@ -273,7 +314,7 @@ def test_an_api_pack_is_not_a_planner_schema() -> None:
         examples_json=(),
     )
 
-    assert _planner_schemas((grievance,)) == {}
+    assert planner_schemas((grievance,)) == {}
 
 
 def _write_good_pack(root: Path) -> None:
@@ -322,7 +363,7 @@ def test_a_skipped_pack_is_logged_for_an_operator_to_see(
     )
 
     with caplog.at_level("WARNING"):
-        _network(settings, preferences=_no_preferences())
+        load_schema_packs(settings)
 
     # `SchemaPackSkipped.pack_name` and `.reason` both reach the log — an
     # operator reading it can tell which pack and why, not just "something
@@ -363,14 +404,14 @@ identifiers:
 
 
 async def test_redaction_off_passes_the_turn_through(tmp_path: Path) -> None:
-    from dss.entrypoint.composition import _redaction
+    from dss.entrypoint.composition.root import _redaction
     from dss.orchestration.redaction import pass_through
 
     assert _redaction(_settings(tmp_path)) is pass_through
 
 
 async def test_redaction_on_redacts_with_the_rules_file(tmp_path: Path) -> None:
-    from dss.entrypoint.composition import _redaction
+    from dss.entrypoint.composition.root import _redaction
 
     rules = tmp_path / "redaction-rules.yaml"
     rules.write_text(_REGEX_ONLY)
@@ -385,7 +426,7 @@ async def test_redaction_on_redacts_with_the_rules_file(tmp_path: Path) -> None:
 
 
 def test_an_identifier_that_cannot_be_built_stops_the_boot(tmp_path: Path) -> None:
-    from dss.entrypoint.composition import _redaction
+    from dss.entrypoint.composition.root import _redaction
     from dss.ports.pii_identifier import IdentifierUnavailableError
 
     rules = tmp_path / "redaction-rules.yaml"
@@ -409,7 +450,7 @@ def _prompts():
 
 
 def test_no_translation_path_builds_no_routes(tmp_path: Path) -> None:
-    from dss.entrypoint.composition import _build_translation_routes
+    from dss.entrypoint.composition.root import _build_translation_routes
 
     assert _build_translation_routes(_settings(tmp_path), prompts=_prompts()) == {}
 
@@ -427,7 +468,7 @@ def azure_placeholders(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_an_llm_entry_builds_an_llm_route(tmp_path: Path) -> None:
     from dss.adapters.translator.llm import LLMTranslator
     from dss.core.shared.language import ENGLISH
-    from dss.entrypoint.composition import _build_translation_routes
+    from dss.entrypoint.composition.root import _build_translation_routes
 
     routes = _build_translation_routes(
         Settings(evidence_dir=tmp_path, edge_translation_config_path=_TRANSLATION),
@@ -440,7 +481,7 @@ def test_an_llm_entry_builds_an_llm_route(tmp_path: Path) -> None:
 
 
 def test_an_llm_route_with_a_model_uses_its_own(tmp_path: Path) -> None:
-    from dss.entrypoint.composition import _build_translation_routes
+    from dss.entrypoint.composition.root import _build_translation_routes
 
     config = tmp_path / "edge-translation.yaml"
     config.write_text(
@@ -458,7 +499,7 @@ def test_an_llm_route_with_a_model_uses_its_own(tmp_path: Path) -> None:
 
 @pytest.mark.usefixtures("azure_placeholders")
 def test_an_llm_route_times_each_direction_as_its_own_stage(tmp_path: Path) -> None:
-    from dss.entrypoint.composition import _build_translation_routes
+    from dss.entrypoint.composition.root import _build_translation_routes
     from dss.observability.stages import Stage
 
     routes = _build_translation_routes(
@@ -475,7 +516,7 @@ def test_stubbed_models_put_every_route_on_the_stub(tmp_path: Path) -> None:
     """`DSS_STUB_LLM` means no model is called, translation included."""
 
     from dss.adapters.translator.stub import StubTranslator
-    from dss.entrypoint.composition import _build_translation_routes
+    from dss.entrypoint.composition.root import _build_translation_routes
 
     routes = _build_translation_routes(
         _settings(tmp_path, edge_translation_config_path=_TRANSLATION),
@@ -585,7 +626,7 @@ def test_a_registry_url_swaps_the_registry_adapter_in(tmp_path: Path) -> None:
         provider_preferences_base_url="https://registry.example",
     )
 
-    network = _network(settings, preferences=_no_preferences())
+    network = _wire(settings)
 
     assert isinstance(network.preferences, RegistryProviderPreferences)
 
@@ -747,7 +788,7 @@ def test_a_wired_network_indexes_grievance_but_plans_no_filters_for_it(
         schema_pack_dir=pack_root,
     )
 
-    network = _network(settings, preferences=_no_preferences())
+    network = _wire(settings)
 
     assert "openagrinet:Grievance" in network.schema_context_index
     assert "openagrinet:MandiPrice" in network.schema_context_index

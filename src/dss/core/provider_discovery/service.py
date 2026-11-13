@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
 
@@ -19,15 +20,18 @@ from dss.core.intent.models import (
 )
 from dss.core.provider_discovery.models import (
     AsksToBeDiscovered,
+    CapabilityIndex,
     CapabilityUnresolved,
     CategoryMappingDiverged,
     Coverage,
     DiscoveredAsk,
     DiscoveredAsks,
     DiscoveryResult,
+    NetworkSchemaType,
     ProviderQuery,
     ProviderQueryResult,
 )
+from dss.core.schema_packs.service import is_place_needed
 from dss.core.shared.models import UserTurn
 from dss.ports.discovery import CapabilityDiscovery
 
@@ -40,6 +44,14 @@ _ACTION_TYPE_BY_INTERACTION = {
     InteractionType.OBSERVE: "Service",
     InteractionType.ACT: "Service",
 }
+
+
+def _action_type_of(ask: Ask) -> str:
+    # An ask with a known action wants it done, however it is worded: "how do
+    # I file a complaint" is advice by its words and a filing by its aim.
+    if ask.known_action is not None:
+        return "Service"
+    return _ACTION_TYPE_BY_INTERACTION[ask.interaction_type]
 
 
 class CapabilityIndexSource(Protocol):
@@ -57,6 +69,14 @@ def resolve_capability_type(
     if not types:
         return (), CapabilityUnresolved(subject_category, action_type)
     return types, None
+
+
+def capability_types_for(
+    ask: Ask, index: CapabilityIndex
+) -> tuple[NetworkSchemaType, ...]:
+    """The pack types discovery would search for this ask."""
+
+    return index.get((ask.subject_categories.value, _action_type_of(ask)), ())
 
 
 def coverage_for_ask(ask: Ask, *, radius_m: int) -> Coverage | None:
@@ -84,38 +104,66 @@ def coverage_for_ask(ask: Ask, *, radius_m: int) -> Coverage | None:
 _DISCOVERABLE_WITHOUT_CAPABILITY_TYPE = frozenset({SubjectCategory.SCHEME})
 
 
-def _is_searched_by_place(
-    types: tuple[str, ...], place_bound_types: frozenset[str]
-) -> bool:
-    """A spatial filter drops every resource with no coverage area, so one
-    placeless @type in the query is enough to send none. A query with no @type
-    (a scheme ask) has no pack to say, and keeps the filter."""
-
-    return all(capability in place_bound_types for capability in types)
-
-
 def _query_for_ask(
     ask: Ask,
     languages: tuple[str, ...],
     coverage: Coverage | None,
     index: Mapping[tuple[str, str], tuple[str, ...]],
     place_bound_types: frozenset[str],
-) -> tuple[ProviderQuery | None, CapabilityUnresolved | None]:
-    action_type = _ACTION_TYPE_BY_INTERACTION[ask.interaction_type]
+) -> ProviderQuery | CapabilityUnresolved:
     types, event = resolve_capability_type(
-        ask.subject_categories.value, action_type, index
+        ask.subject_categories.value, _action_type_of(ask), index
     )
     if (
-        not types
+        event is not None
         and ask.subject_categories not in _DISCOVERABLE_WITHOUT_CAPABILITY_TYPE
     ):
-        return None, event
+        return event
     return ProviderQuery(
         capabilities=types,
         subject_category=ask.subject_categories.value,
         languages=languages,
-        coverage=coverage if _is_searched_by_place(types, place_bound_types) else None,
-    ), None
+        coverage=coverage if is_place_needed(types, place_bound_types) else None,
+    )
+
+
+@dataclass(frozen=True)
+class _NoPlaceToSearch:
+    """The ask names a place we cannot use, and its search is filtered by
+    place."""
+
+
+_NO_PLACE_TO_SEARCH = _NoPlaceToSearch()
+
+
+def _search_for(
+    ask: Ask,
+    languages: tuple[str, ...],
+    radius_m: int,
+    index: CapabilityIndex,
+    place_bound_types: frozenset[NetworkSchemaType],
+) -> ProviderQuery | CapabilityUnresolved | _NoPlaceToSearch:
+    """What to search for this ask, or why it cannot be searched."""
+
+    coverage = coverage_for_ask(ask, radius_m=radius_m)
+    query = _query_for_ask(ask, languages, coverage, index, place_bound_types)
+    if _lacks_a_needed_place(ask, query, place_bound_types):
+        return _NO_PLACE_TO_SEARCH
+    return query
+
+
+def _lacks_a_needed_place(
+    ask: Ask,
+    query: ProviderQuery | CapabilityUnresolved,
+    place_bound_types: frozenset[NetworkSchemaType],
+) -> bool:
+    # A safety net. Settlement asks for a needed place first. Without one,
+    # the search has no place and could answer for some other place.
+    if not isinstance(ask.place, AmbiguousPlace | UnresolvedPlace):
+        return False
+    return isinstance(query, CapabilityUnresolved) or is_place_needed(
+        query.capabilities, place_bound_types
+    )
 
 
 def _expected_categories(
@@ -145,36 +193,33 @@ def _find_asks_to_discover(
     intent: Intent,
     languages: tuple[str, ...],
     radius_m: int,
-    index: Mapping[tuple[str, str], tuple[str, ...]],
-    place_bound_types: frozenset[str],
+    index: CapabilityIndex,
+    place_bound_types: frozenset[NetworkSchemaType],
 ) -> AsksToBeDiscovered:
     """Coverage is computed per ask: each ask carries its own resolved place
     (or none), so a turn asking about two places issues two spatially
     different discover calls rather than one shared coordinate."""
 
-    queries_by_ask: dict[int, ProviderQuery] = {}
-    unsearchable_asks: set[int] = set()
-    events: list[CapabilityUnresolved] = []
-    for ask_index, ask in enumerate(intent.asks):
-        # Nowhere to search: an unfiltered discover would bring back answers
-        # for some other place. The place failure is reported downstream.
-        if isinstance(ask.place, AmbiguousPlace | UnresolvedPlace):
-            unsearchable_asks.add(ask_index)
-            continue
-        coverage = coverage_for_ask(ask, radius_m=radius_m)
-        query, event = _query_for_ask(
-            ask, languages, coverage, index, place_bound_types
-        )
-        if query is None:
-            assert event is not None  # noqa: S101 - type narrowing only
-            events.append(event)
-            unsearchable_asks.add(ask_index)
-            continue
-        queries_by_ask[ask_index] = query
+    outcomes = {
+        ask_index: _search_for(ask, languages, radius_m, index, place_bound_types)
+        for ask_index, ask in enumerate(intent.asks)
+    }
     return AsksToBeDiscovered(
-        queries_by_ask=queries_by_ask,
-        unsearchable_asks=frozenset(unsearchable_asks),
-        events=tuple(events),
+        queries_by_ask={
+            i: outcome
+            for i, outcome in outcomes.items()
+            if isinstance(outcome, ProviderQuery)
+        },
+        unsearchable_asks=frozenset(
+            i
+            for i, outcome in outcomes.items()
+            if not isinstance(outcome, ProviderQuery)
+        ),
+        events=tuple(
+            outcome
+            for outcome in outcomes.values()
+            if isinstance(outcome, CapabilityUnresolved)
+        ),
     )
 
 

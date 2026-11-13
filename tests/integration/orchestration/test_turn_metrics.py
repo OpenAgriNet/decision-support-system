@@ -15,6 +15,7 @@ from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 
 from dss.adapters.observability.metrics import configure_metrics, reset_metrics
+from dss.core.planner.models import Result
 from dss.core.shared.models import TurnFinished
 
 from .test_orchestrator import (
@@ -23,12 +24,15 @@ from .test_orchestrator import (
     _build,
     _collect,
     _ctx,
+    _evidence,
     _FakeCompose,
     _FakePlan,
     _one_ask,
     _served_discovery,
     _turn,
 )
+
+_WHEAT_PRICE = Result(ask_index=0, source_id="1", data={"modal": 2275})
 
 
 @pytest.fixture
@@ -259,7 +263,7 @@ async def test_each_ask_is_counted_by_category_and_interaction(reader) -> None:
     orch, _ = _build(
         intent=_one_ask(2),
         discovery=_served_discovery(),
-        plan=_FakePlan(_ANSWERED_EVIDENCE),
+        plan=_FakePlan(_evidence(results=(_WHEAT_PRICE,), ask_count=2)),
         compose=_FakeCompose("Wheat is 2,275 Rs [1]."),
     )
 

@@ -14,7 +14,7 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.json_schema import SkipJsonSchema
 
-from dss.core.shared.models import Geometry
+from dss.core.shared.models import Geometry, ProviderAction, RequestedAction
 from dss.ports.area_lookup import AreaMatch
 
 # What a model leaves around a name it copied out of a sentence or a quoted
@@ -123,6 +123,34 @@ class Scheme(BaseModel):
     name: str
 
 
+class GuessedScheme(BaseModel):
+    """The closest listed scheme, when the farmer did not clearly name one."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    scheme: Scheme
+
+
+class UnlistedScheme(BaseModel):
+    """A scheme the farmer named that the catalog does not hold."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    name: str
+
+
+class SchemeConfidence(StrEnum):
+    HIGH = "high"
+    LOW = "low"
+
+
+class UnclearAction(StrEnum):
+    """The farmer wants something done, but their words do not say which.
+    Kept apart from `ProviderAction` so it can never name a form."""
+
+    UNCLEAR = "unclear"
+
+
 class SchemeEntry(BaseModel):
     """One catalog row, as the intent model is shown it: the scheme and every
     other way a farmer may name it."""
@@ -145,7 +173,13 @@ class Ask(BaseModel):
     (``AmbiguousPlace``/``UnresolvedPlace``) when a name was actually given
     and the lookup could not turn it into one place.
 
-    ``scheme`` is set when the intent model named a scheme the catalog holds.
+    ``scheme`` is a ``Scheme`` only when the farmer named one the catalog
+    holds. A ``GuessedScheme`` must be confirmed with the farmer before it is
+    used. An ``UnlistedScheme`` is a name we could not find.
+
+    ``action`` is ``None`` when the farmer wants an answer and nothing done.
+    It is ``UnclearAction`` when they want something done and did not say
+    which: only then are they asked.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -154,7 +188,12 @@ class Ask(BaseModel):
     subject_categories: SubjectCategory
     interaction_type: InteractionType
     place: ResolvedPlace | AmbiguousPlace | UnresolvedPlace | None = None
-    scheme: Scheme | None = None
+    scheme: Scheme | GuessedScheme | UnlistedScheme | None = None
+    action: RequestedAction | UnclearAction | None = None
+
+    @property
+    def known_action(self) -> RequestedAction | None:
+        return self.action if isinstance(self.action, ProviderAction) else None
 
 
 # The docstrings of ClassifiedAsk and IntentClassification go to the model as
@@ -169,6 +208,17 @@ class ClassifiedAsk(BaseModel):
 
     ``scheme_code`` is the code of the listed scheme this ask is about, or
     null when it names none of them.
+
+    ``scheme_confidence`` is high when the user's words name that scheme: its
+    name, its code or another listed name, even misspelt. It is low when you
+    only picked the closest one.
+
+    ``unlisted_scheme_name`` is the scheme the user named, in their words,
+    when it is none of the listed schemes. Null otherwise.
+
+    ``action`` is what the user wants done: support to raise something new,
+    status to check one already raised, unclear when they want something
+    done but their words do not say which. Null when they want nothing done.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -181,9 +231,13 @@ class ClassifiedAsk(BaseModel):
     # Only the model can tell: it read both, in whatever language they were.
     place_from_history: bool = False
     scheme_code: str | None = None
+    # Low when left out: a scheme the model did not vouch for is confirmed.
+    scheme_confidence: SchemeConfidence = SchemeConfidence.LOW
+    unlisted_scheme_name: str | None = None
+    action: RequestedAction | UnclearAction | None = None
     # Set by `classify_intent` from the catalog, never by the model: hidden
     # from the schema it is shown, so a code it invents never becomes a scheme.
-    scheme: SkipJsonSchema[Scheme | None] = None
+    scheme: SkipJsonSchema[Scheme | GuessedScheme | UnlistedScheme | None] = None
 
     @field_validator("place_name")
     @classmethod
@@ -192,6 +246,11 @@ class ClassifiedAsk(BaseModel):
             return None
         trimmed = _LINE_NUMBER.sub("", value.strip(_PLACE_NAME_EDGE_JUNK))
         return trimmed.strip(_PLACE_NAME_EDGE_JUNK) or None
+
+    @field_validator("unlisted_scheme_name")
+    @classmethod
+    def _drop_blank_scheme_name(cls, value: str | None) -> str | None:
+        return (value or "").strip() or None
 
 
 # The raw model output. resolve_places turns it into an Intent, below.

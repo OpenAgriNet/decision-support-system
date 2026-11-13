@@ -8,14 +8,17 @@ from dss.core.forms.models import FormContext, FormDefinition
 from dss.core.intent.models import (
     Ask,
     ClassifiedAsk,
+    GuessedScheme,
     Intent,
     IntentClassification,
     InteractionType,
     Scheme,
+    SchemeConfidence,
     SubjectCategory,
+    UnclearAction,
 )
 from dss.core.provider_discovery.models import DiscoveryResult, ProviderCapability
-from dss.core.shared.models import TurnStatus
+from dss.core.shared.models import ProviderAction, TurnStatus
 from dss.orchestration.form_offer import ask_for_form, find_forms, form_context_for
 from tests.integration.orchestration.test_orchestrator import (
     _build,
@@ -73,17 +76,32 @@ def _discovery(
     )
 
 
-def _grievance_ask(interaction: InteractionType, scheme: Scheme | None = PMFBY) -> Ask:
+def _grievance_ask(
+    action: ProviderAction | UnclearAction | None = ProviderAction.SUPPORT,
+    *,
+    scheme: Scheme | GuessedScheme | None = PMFBY,
+    interaction: InteractionType = InteractionType.ACT,
+) -> Ask:
     return Ask(
         agriculture_subjects=PMFBY.name,
         subject_categories=SubjectCategory.GRIEVANCE,
         interaction_type=interaction,
         scheme=scheme,
+        action=action,
     )
 
 
+def test_the_form_follows_the_action_not_the_wording() -> None:
+    """ "How do I file a complaint" is worded as a question, and still wants
+    the filing form."""
+
+    ask = _grievance_ask(ProviderAction.SUPPORT, interaction=InteractionType.ADVISE)
+
+    assert form_context_for(ask) == PMFBY_SUPPORT
+
+
 def test_filing_names_the_support_form() -> None:
-    context = form_context_for(_grievance_ask(InteractionType.ACT))
+    context = form_context_for(_grievance_ask(ProviderAction.SUPPORT))
 
     assert context == FormContext(
         scheme="PMFBY", category="Grievance", action="support"
@@ -91,21 +109,36 @@ def test_filing_names_the_support_form() -> None:
 
 
 def test_a_lookup_names_the_status_form() -> None:
-    context = form_context_for(_grievance_ask(InteractionType.OBSERVE))
+    context = form_context_for(_grievance_ask(ProviderAction.STATUS))
 
     assert context == FormContext(scheme="PMFBY", category="Grievance", action="status")
 
 
-def test_advice_names_no_form() -> None:
-    assert form_context_for(_grievance_ask(InteractionType.ADVISE)) is None
+def test_an_ask_without_an_action_names_no_form() -> None:
+    assert form_context_for(_grievance_ask(None)) is None
+
+
+def test_an_unclear_action_names_no_form() -> None:
+    """ "unclear" is not a kind of form, and must not be looked up as one."""
+
+    assert form_context_for(_grievance_ask(UnclearAction.UNCLEAR)) is None
 
 
 def test_an_ask_without_a_scheme_names_no_form() -> None:
-    assert form_context_for(_grievance_ask(InteractionType.ACT, scheme=None)) is None
+    assert form_context_for(_grievance_ask(scheme=None)) is None
+
+
+def test_a_guessed_scheme_names_no_form() -> None:
+    """A guess may be the wrong scheme, and its form would file the complaint
+    against that one."""
+
+    guess = GuessedScheme(scheme=PMFBY)
+
+    assert form_context_for(_grievance_ask(scheme=guess)) is None
 
 
 def test_a_served_ask_the_registry_knows_gets_its_form() -> None:
-    intent = Intent(asks=(_grievance_ask(InteractionType.ACT),), confidence=0.9)
+    intent = Intent(asks=(_grievance_ask(),), confidence=0.9)
     forms = _FakeForms({PMFBY_SUPPORT: GRIEVANCE_FORM})
 
     awaiting = find_forms(intent, _discovery({0: (GRIEVANCE_DESK,)}), forms)
@@ -124,13 +157,16 @@ PMKISAN_PROVIDER = build_capability(
 
 
 @pytest.mark.parametrize(
-    ("interaction", "context"),
-    [(InteractionType.ACT, PMKISAN_SUPPORT), (InteractionType.OBSERVE, PMKISAN_STATUS)],
+    ("action", "context"),
+    [
+        (ProviderAction.SUPPORT, PMKISAN_SUPPORT),
+        (ProviderAction.STATUS, PMKISAN_STATUS),
+    ],
 )
 def test_a_pmkisan_ask_gets_its_form_without_the_otp(
-    interaction: InteractionType, context: FormContext
+    action: ProviderAction, context: FormContext
 ) -> None:
-    intent = Intent(asks=(_grievance_ask(interaction, scheme=PMKISAN),), confidence=0.9)
+    intent = Intent(asks=(_grievance_ask(action, scheme=PMKISAN),), confidence=0.9)
 
     awaiting = find_forms(
         intent, _discovery({0: (PMKISAN_PROVIDER,)}), build_grievance_forms()
@@ -145,7 +181,7 @@ def test_an_ask_nobody_serves_gets_no_form() -> None:
     """No desk on this network: the unserved message, as for any other ask.
     The registry is not even asked."""
 
-    intent = Intent(asks=(_grievance_ask(InteractionType.ACT),), confidence=0.9)
+    intent = Intent(asks=(_grievance_ask(),), confidence=0.9)
     forms = _FakeForms({PMFBY_SUPPORT: GRIEVANCE_FORM})
 
     awaiting = find_forms(intent, _discovery(), forms)
@@ -155,7 +191,7 @@ def test_an_ask_nobody_serves_gets_no_form() -> None:
 
 
 def test_a_served_ask_without_a_registry_form_is_the_planners() -> None:
-    intent = Intent(asks=(_grievance_ask(InteractionType.ACT),), confidence=0.9)
+    intent = Intent(asks=(_grievance_ask(),), confidence=0.9)
 
     awaiting = find_forms(intent, _discovery({0: (GRIEVANCE_DESK,)}), _FakeForms({}))
 
@@ -166,9 +202,7 @@ def test_only_the_form_ask_is_taken_from_a_mixed_turn() -> None:
     """ "What's the weather, and file my PMFBY grievance": the weather ask
     stays the planner's, the grievance ask is the form's."""
 
-    intent = Intent(
-        asks=(WEATHER_ASK, _grievance_ask(InteractionType.ACT)), confidence=0.9
-    )
+    intent = Intent(asks=(WEATHER_ASK, _grievance_ask()), confidence=0.9)
     discovery = _discovery({0: (WEATHER_DESK,), 1: (GRIEVANCE_DESK,)})
 
     awaiting = find_forms(
@@ -186,6 +220,8 @@ def _grievance_classification() -> IntentClassification:
                 subject_categories=SubjectCategory.GRIEVANCE,
                 interaction_type=InteractionType.ACT,
                 scheme_code="PMFBY",
+                scheme_confidence=SchemeConfidence.HIGH,
+                action=ProviderAction.SUPPORT,
             ),
         ),
         confidence=0.9,
@@ -222,6 +258,7 @@ def test_a_submission_ask_names_the_form_it_came_from() -> None:
 
     assert ask.subject_categories is SubjectCategory.GRIEVANCE
     assert ask.interaction_type is InteractionType.ACT
+    assert ask.action is ProviderAction.SUPPORT
     assert ask.scheme == PMFBY
     assert ask.place is None
     assert form_context_for(ask) == PMFBY_SUPPORT
@@ -231,3 +268,11 @@ def test_an_action_the_path_cannot_file_yields_no_ask() -> None:
     advice = FormContext(scheme="PMFBY", category="Grievance", action="advice")
 
     assert ask_for_form(advice, scheme=PMFBY) is None
+
+
+def test_an_init_form_yields_no_ask() -> None:
+    """Init is a step inside filing or checking. Nothing is searched for it."""
+
+    init = FormContext(scheme="PM-KISAN", category="Grievance", action="init")
+
+    assert ask_for_form(init, scheme=PMKISAN) is None

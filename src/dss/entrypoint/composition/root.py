@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import logging
 import os
-import threading
 import warnings
 from collections.abc import Awaitable, Callable
 from contextlib import AsyncExitStack
@@ -30,7 +29,6 @@ from datetime import datetime
 from functools import partial
 from typing import Never
 
-import anyio
 import httpx
 
 from dss.adapters.area_lookup.cache import CachedAreaLookup
@@ -47,10 +45,6 @@ from dss.adapters.llm.pydantic_ai_provider import (
 from dss.adapters.llm.stub import StubLLM
 from dss.adapters.pii_identifier.factory import build_identifiers
 from dss.adapters.provider_preferences.registry import RegistryProviderPreferences
-from dss.adapters.schema_packs.filesystem import (
-    FilesystemSchemaPackSource,
-    has_packs,
-)
 from dss.adapters.scheme_catalog.csv_file import load_scheme_catalog
 from dss.adapters.sinks.file import FileTelemetrySink, FileTurnSink
 from dss.adapters.translator.llm import LLMTranslator
@@ -67,8 +61,6 @@ from dss.config.policy_loader import load_policy_pack
 from dss.config.prompt_service import build_prompt_service
 from dss.config.redaction_loader import load_redaction_config
 from dss.config.schema_pack_fetch import (
-    PUBLISHED_REF,
-    SchemaPackFetchFailedError,
     fetch_packs,
 )
 from dss.config.settings import Settings
@@ -76,26 +68,29 @@ from dss.core.channel.localize import build_localizer
 from dss.core.channel.models import ClarificationText
 from dss.core.forms.models import FormSubmission
 from dss.core.forms.registry import FormRegistry
-from dss.core.forms.service import build_form_registry
 from dss.core.intent.models import Intent
 from dss.core.planner.models import Identity
-from dss.core.planner.validation import DomainSchema, parse_domain_schema
+from dss.core.planner.validation import DomainSchema
 from dss.core.policy.models import Checkpoint, Policy
-from dss.core.provider_discovery.models import DiscoveryResult, ProviderCapability
-from dss.core.provider_discovery.schema_pack_cache import SchemaPackCache
+from dss.core.provider_discovery.models import (
+    CapabilityIndex,
+    DiscoveryResult,
+    ProviderCapability,
+)
 from dss.core.provider_preferences.models import NO_PREFERENCE, SenderPreference
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
-from dss.core.schema_packs.models import SchemaPackFiles
-from dss.core.schema_packs.service import (
-    PACK_DEFECTS,
-    extract_type_const,
-    is_api_pack,
-)
 from dss.core.shared.models import TextQuery, TurnInput, UserTurn
 from dss.core.shared.network import NetworkTransactionID
 from dss.core.stream_response.service import build_stream_response
 from dss.core.translation.models import TranslationRoute
 from dss.core.translation.service import EdgeTranslation
+from dss.entrypoint.composition.schema_packs import (
+    FetchPacks,
+    SchemaPacks,
+    boot_forms,
+    load_schema_packs,
+    planner_schemas,
+)
 from dss.observability.stages import Stage
 from dss.orchestration.discovery import (
     DiscoverProviders,
@@ -117,6 +112,7 @@ from dss.orchestration.orchestrator import (
 )
 from dss.orchestration.plan import InvocationFor, build_plan
 from dss.orchestration.redaction import RedactTexts, pass_through, redact_texts
+from dss.orchestration.turn import SettleAsks, build_settle_asks
 from dss.ports.area_lookup import AreaLookup
 from dss.ports.discovery import CapabilityDiscovery
 from dss.ports.invocation import CapabilityInvocation
@@ -129,11 +125,6 @@ from dss.ports.translator import Translator
 from dss.ports.turn import TurnRunner
 
 logger = logging.getLogger(__name__)
-
-# The startup fetch, as a seam. Injected so a test can supply one that writes
-# fixture packs or asserts it was never called — nothing here should reach
-# GitHub from a test run.
-FetchPacks = Callable[..., tuple[str, ...]]
 
 UNWIRED_URL = (
     "DSS_EVIDENCE_URL is set but posting evidence to an external endpoint is not "
@@ -172,13 +163,15 @@ def build_runner_with_lifecycle(
     # Before the network, like the rest of the boot config: the area file is
     # checked in, so an unreadable one is a broken build either way.
     area_lookup, area_aclose = build_area_lookup(settings)
-    network = _network(settings, fetch=fetch, preferences=boot.preferences)
-    # Forms (#205) work with the network off too. After `_network`, because
-    # its startup fetch is what fills the folder they are read from.
-    forms = _boot_forms(settings)
+    packs = load_schema_packs(settings, fetch=fetch)
+    network = _network(settings, packs=packs, preferences=boot.preferences)
+    # Forms (#205) work with the network off too. After `load_schema_packs`,
+    # because its startup fetch is what fills the folder they are read from.
+    forms = boot_forms(settings)
     wiring = _Wiring(
         boot=boot,
         network=network,
+        settle_asks=_settle_asks(packs, forms),
         components=_build_components(settings, boot, network),
         area_lookup=area_lookup,
         forms=forms,
@@ -288,6 +281,7 @@ class _Wiring:
 
     boot: _BootConfig
     network: _Network
+    settle_asks: SettleAsks
     components: Components
     area_lookup: AreaLookup
     forms: FormRegistry
@@ -310,9 +304,9 @@ def _build_text_path(settings: Settings, wiring: _Wiring) -> TextPath:
         telemetry=wiring.telemetry,
         area_lookup=wiring.area_lookup,
         clarification_text=boot.clarification_text,
-        schemas=wiring.network.schemas,
         edge_translation=EdgeTranslation(routes=boot.translation_routes),
         forms=wiring.forms,
+        settle_asks=wiring.settle_asks,
     )
 
 
@@ -577,11 +571,26 @@ class _Network:
     preferences: ProviderPreferences
 
 
+class _NoPacks:
+    """An empty capability index. No pack says an ask needs a place."""
+
+    def current(self) -> CapabilityIndex:
+        return {}
+
+    def place_bound_types(self) -> frozenset[str]:
+        return frozenset()
+
+
+def _settle_asks(packs: SchemaPacks | None, forms: FormRegistry) -> SettleAsks:
+    index = _NoPacks() if packs is None else packs.cache
+    return build_settle_asks(index, forms.contexts_for)
+
+
 def _network(
     settings: Settings,
     *,
+    packs: SchemaPacks | None,
     preferences: ProviderPreferences,
-    fetch: FetchPacks = fetch_packs,
 ) -> _Network:
     """Wire discovery + invocation, or return the unwired stand-ins. The
     registry ranking adapter rides the network's client (ADR-0020), so
@@ -589,7 +598,7 @@ def _network(
     discovery finds nobody — all harmless, because the planner is never
     reached."""
 
-    if not settings.network_enabled:
+    if packs is None:
         if settings.provider_preferences_base_url is not None:
             # Harmless — an unwired run calls no provider for a ranking to
             # order — but said out loud, so a half-configured deployment reads
@@ -607,23 +616,11 @@ def _network(
             preferences=preferences,
         )
 
-    _ensure_schema_packs(settings, fetch=fetch)
-
-    # The client is constructed here, not in the loop below: it is used later
-    # from uvicorn's loop for real requests, so binding it to the throwaway
-    # startup loop would break the first one.
+    # Built here, not during the pack read: it is used later from uvicorn's
+    # loop for real requests, so binding it to the throwaway startup loop
+    # would break the first one.
     client = httpx.AsyncClient(timeout=settings.select_timeout_seconds)
-    source = FilesystemSchemaPackSource(root=settings.schema_pack_dir)
-    cache, packs = _run_on_fresh_loop(_load_schema_packs, source)
-    if not packs:
-        raise ValueError(
-            f"the network is configured but no schema packs loaded from "
-            f"{settings.schema_pack_dir} — refusing to boot, because every turn "
-            f"would come back no_match and look like 'no provider serves this'. "
-            f"Run: uv run python scripts/fetch_schema_packs.py "
-            f"--ref {PUBLISHED_REF}"
-        )
-
+    cache = packs.cache
     sender_for = _network_sender_for(settings)
 
     def discovery_for(turn: UserTurn) -> CapabilityDiscovery:
@@ -664,18 +661,10 @@ def _network(
         preferences=preferences,
     )
 
-    for skip in cache.skipped_packs():
-        logger.warning(
-            "schema pack %r left out of the capability index: %s",
-            skip.pack_name,
-            skip.reason,
-        )
-    skipped = {skip.pack_name for skip in cache.skipped_packs()}
-    good = tuple(pack for pack in packs if pack.pack_name not in skipped)
     return _Network(
         discover=discover,
         invocation_for=invocation_for,
-        schemas=_planner_schemas(good),
+        schemas=planner_schemas(packs.packs),
         schema_context_index=cache.current_schema_context(),
         client=client,
         preferences=preferences,
@@ -702,134 +691,6 @@ def _aclose_for(
         await client.aclose()
 
     return aclose
-
-
-def _ensure_schema_packs(settings: Settings, *, fetch: FetchPacks) -> None:
-    """Fetch the packs once if none are on disk.
-
-    Deliberately no on/off flag. Packs present means no network call at all;
-    packs absent means the run cannot work, so there is no third behaviour to
-    configure. A deployment that mounts them never reaches the fetch.
-
-    The emptiness test mirrors `FilesystemSchemaPackSource._is_pack` rather
-    than asking whether the directory has any entries: a stray `.DS_Store`
-    would read as non-empty, the fetch would be skipped, and the refusal below
-    would then tell you to run the fetch that was skipped.
-
-    A failed fetch is not raised here. The refusal below covers it, and says
-    which directory is empty as well as what to run — more use than a bare
-    HTTP error.
-    """
-
-    directory = settings.schema_pack_dir
-    if directory is None or has_packs(directory):
-        return
-
-    try:
-        fetch(ref=settings.schema_pack_ref, dest=directory)
-    except SchemaPackFetchFailedError as failure:
-        logger.warning("schema pack fetch found nothing: %s", failure)
-
-
-def _planner_schemas(packs: tuple[SchemaPackFiles, ...]) -> dict[str, DomainSchema]:
-    """The filter surface the planner validates a `select` against, keyed by the
-    advertised @type — not the pack folder name, which differs: the planner
-    looks a capability up by `capability.capability` (the @type).
-
-    A pack with no `filterable_paths`, or one whose `@type` cannot be read at
-    all, is left out rather than fatal: `provider_discovery.index` already
-    treats a malformed pack this way (`PACK_DEFECTS`), because network-specs
-    is an external checkout and one bad pack must not blind every other
-    capability. `extract_type_const` is the same reader that builds the
-    capability index, so the two never disagree on what a pack's @type is.
-
-    An API pack is left out: its calls become forms, not filters to check."""
-
-    schemas: dict[str, DomainSchema] = {}
-    for pack in packs:
-        try:
-            if is_api_pack(pack):
-                continue
-            schema = parse_domain_schema(pack)
-            type_const = extract_type_const(pack.attributes_yaml, pack.pack_name)
-        except PACK_DEFECTS as exc:
-            logger.warning(
-                "skipping malformed schema pack %r for the planner: %r",
-                pack.pack_name,
-                exc,
-            )
-            continue
-        schemas[type_const] = schema
-    return schemas
-
-
-async def _load_schema_packs(
-    source: FilesystemSchemaPackSource,
-) -> tuple[SchemaPackCache, tuple[SchemaPackFiles, ...]]:
-    cache = SchemaPackCache(source)
-    await cache.refresh()
-    packs = await source.fetch_packs()
-    return cache, packs
-
-
-def _run_on_fresh_loop[T, *Ts](read: Callable[[*Ts], Awaitable[T]], *args: *Ts) -> T:
-    """Run a one-time async startup read from `build_runner`'s sync context.
-
-    `uvicorn --factory` calls the app factory from *inside* its event loop, so
-    `anyio.run` here would raise "Already running asyncio in this thread".
-    Running it on a fresh thread gives the read its own loop without touching
-    the caller's. Only plain data may come back: nothing bound to that loop
-    can outlive the thread."""
-
-    box: dict[str, T] = {}
-    error: dict[str, BaseException] = {}
-
-    def _run() -> None:
-        try:
-            box["result"] = anyio.run(read, *args)
-        except BaseException as exc:  # noqa: BLE001 - re-raised on the caller's thread
-            error["error"] = exc
-
-    thread = threading.Thread(target=_run, name="dss-boot-read")
-    thread.start()
-    thread.join()
-    if error:
-        raise error["error"]
-    return box["result"]
-
-
-def _boot_forms(settings: Settings) -> FormRegistry:
-    """The forms the farmer can be offered, built once from the API packs.
-    No packs is an empty registry and a log line, never a failed boot."""
-
-    directory = settings.schema_pack_dir
-    if directory is None:
-        logger.info("DSS_SCHEMA_PACK_DIR is not set, so forms are off")
-        return FormRegistry()
-    if not has_packs(directory):
-        logger.warning(
-            "no schema packs in %s, so no forms will be offered. Run: "
-            "uv run python scripts/fetch_schema_packs.py --ref %s",
-            directory,
-            PUBLISHED_REF,
-        )
-        return FormRegistry()
-
-    source = FilesystemSchemaPackSource(root=directory)
-    registry = build_form_registry(_run_on_fresh_loop(source.fetch_packs))
-    for skip in source.skipped_packs():
-        logger.warning("pack %r unreadable: %s", skip.pack_name, skip.reason)
-    for skip in registry.skipped:
-        logger.warning("form left out of pack %r: %s", skip.pack_name, skip.reason)
-    if not registry:
-        # A folder from an older fetch has catalog packs but no API pack.
-        logger.warning(
-            "no API schema pack in %s, so no forms will be offered. Delete the "
-            "folder and run: uv run python scripts/fetch_schema_packs.py --ref %s",
-            directory,
-            PUBLISHED_REF,
-        )
-    return registry
 
 
 def _resolve_model(model: str, settings: Settings) -> ModelBinding:

@@ -13,12 +13,7 @@ import anyio
 from pydantic_ai import Agent, ModelRetry, RunContext
 from pydantic_ai.models import Model
 
-from dss.core.intent.models import (
-    AmbiguousPlace,
-    Intent,
-    ResolvedPlace,
-    UnresolvedPlace,
-)
+from dss.core.intent.models import Intent, ResolvedPlace
 from dss.core.moderation.models import Outcome
 from dss.core.planner.describe_capability import render_candidates_as_markdown
 from dss.core.planner.lookup import find_capability
@@ -134,14 +129,10 @@ async def _select(
             f"that this ask has no answer."
         )
 
-    # No call without a place the pack needs: it would go out with no
-    # location and could come back for somewhere else. An ask naming nowhere
-    # is fine for a pack that indexes no location (an advisory), and the
-    # schema is what says which. `plan()` records the failure.
+    # A safety net. Settlement asks for a needed place first. Without one, the
+    # call has no location and could answer for some other place.
     # Not a ModelRetry: retrying cannot fix the place.
-    if isinstance(ask.place, AmbiguousPlace | UnresolvedPlace) or (
-        ask.place is None and schema.needs_place
-    ):
+    if schema.needs_place and not isinstance(ask.place, ResolvedPlace):
         return (
             f"Ask {ask_index} has no place to search. Do not call select for "
             f"it; report that this ask has no answer."
