@@ -22,7 +22,7 @@ from dss.adapters.observability.tracing import configure_telemetry, tracing_enab
 from dss.config.settings import Settings
 from dss.entrypoint.composition import build_runner_with_lifecycle
 from dss.observability.log_format import KeyValueFormatter
-from dss.observability.trace_log import TurnIdsFilter
+from dss.observability.trace_log import TurnFilter
 from dss.ports.turn import TurnRunner
 
 TITLE = "Decision Support System"
@@ -138,7 +138,7 @@ def _configure_logging() -> None:
         handler.setFormatter(
             KeyValueFormatter("%(asctime)s %(levelname)s %(name)s %(message)s")
         )
-        handler.addFilter(TurnIdsFilter())
+        handler.addFilter(TurnFilter())
         handler._dss_handler = True  # type: ignore[attr-defined]
         dss_logger.addHandler(handler)
     dss_logger.propagate = False

@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from dss.observability.trace_log import TurnIdsFilter
+from dss.observability.trace_log import TurnFilter
 
 if TYPE_CHECKING:
     from opentelemetry.sdk._logs import LoggerProvider
@@ -55,7 +55,7 @@ def configure_logs(*, logger_provider: LoggerProvider | None = None) -> None:
 
     # On the handler, not the logger: DEBUG still prints locally, never exports.
     handler = LoggingHandler(level=logging.INFO, logger_provider=logger_provider)
-    handler.addFilter(TurnIdsFilter())
+    handler.addFilter(TurnFilter())
     setattr(handler, _MARKER, True)
     logging.getLogger(_DSS_LOGGER).addHandler(handler)
 
