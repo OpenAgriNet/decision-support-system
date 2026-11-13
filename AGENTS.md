@@ -75,14 +75,21 @@ Do not duplicate architecture, domain model, or design-decision detail here — 
   the ranking, never the turn. Unset
   (the default), no ranking applies anywhere.
 - Settlement: right after intent, code checks that each ask has the facts it
-  needs, before any provider is searched for (ADR-0022, proposed). Each fact
+  needs, before any provider is searched for (ADR-0023, proposed). Each fact
   is a slot: action, scheme, place. Which slots an ask needs comes from its
   packs (place) and the form registry (scheme, action). An ask with a
   missing or unsure slot gets one question, worded by the composer, beside
   the answers to the other asks; a scheme with no form here is not served.
   The intent model returns each ask's
   `action`: `support`, `status`, `unclear` or nothing, and only `unclear` is
-  asked. No state is kept: the reply comes back in the history.
+  asked. Settlement keeps no state: the reply comes back in the history.
+- Session state: Redis (ADR-0022), through `redis` (redis-py). A `SessionStore`
+  (orchestration) over a plain `KeyValueStore` port: `get`, `set` with a time
+  to live, and redis-py's single-server lock (not Redlock), ownerless, with
+  required `lease_seconds` and `acquire_timeout_seconds`. Only form turns use it,
+  keyed by `sender_id:session_id`, 180 seconds per entry. It reverses "the DSS
+  never owns session state" for form flows only. Its own Redis: password, TLS,
+  no saving to disk. Tests run a real Redis with `testcontainers`, Ryuk off.
 - Speed benchmark: `benchmarks/` CLI, real models with the mock network; load mode
   runs the DSS in a 1 CPU / 1 GiB container (ADR-0013).
 

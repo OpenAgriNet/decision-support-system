@@ -1,4 +1,4 @@
-# ADR-0022: Settle Each Ask Before Serving It
+# ADR-0023: Settle Each Ask Before Serving It
 
 - **Status:** PROPOSED
 - **Date:** 2026-11-05

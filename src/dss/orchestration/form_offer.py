@@ -14,11 +14,11 @@ from dss.core.forms.models import FormContext, FormDefinition
 from dss.core.forms.registry import FormLookup
 from dss.core.intent.models import Ask, Intent, InteractionType, Scheme, SubjectCategory
 from dss.core.provider_discovery.models import DiscoveryResult
-from dss.core.shared.models import ProviderAction
+from dss.core.shared.models import ProviderAction, RequestedAction
 
 # Discovery finds a provider by the interaction type, so the ask a submitted
 # form stands for needs one.
-_INTERACTION_BY_ACTION: Mapping[ProviderAction, InteractionType] = {
+_INTERACTION_BY_ACTION: Mapping[RequestedAction, InteractionType] = {
     ProviderAction.SUPPORT: InteractionType.ACT,
     ProviderAction.STATUS: InteractionType.OBSERVE,
 }
@@ -30,14 +30,21 @@ def ask_for_form(context: FormContext, *, scheme: Scheme) -> Ask | None:
     only the two above can be filed. No place: the form carries what its
     call needs."""
 
-    if context.action not in ProviderAction or context.category not in SubjectCategory:
+    action = _requested_action(context.action)
+    if action is None or context.category not in SubjectCategory:
         return None
-    action = ProviderAction(context.action)
     return Ask(
         subject_categories=SubjectCategory(context.category),
         interaction_type=_INTERACTION_BY_ACTION[action],
         scheme=scheme,
         action=action,
+    )
+
+
+def _requested_action(context_action: str) -> RequestedAction | None:
+    return next(
+        (action for action in _INTERACTION_BY_ACTION if action == context_action),
+        None,
     )
 
 

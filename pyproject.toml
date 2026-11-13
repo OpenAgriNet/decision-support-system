@@ -1,6 +1,6 @@
 [project]
 name = "decision-support-system"
-version = "0.1.0"
+version = "0.2.0"
 description = "Decision Support System — reasoning runtime for the OpenAgriNet Experience Layer"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -52,6 +52,9 @@ dependencies = [
     # a prompt needs loops (history, policies) and a missing variable must
     # raise, not pass through silently.
     "jinja2>=3.1.0",
+    # The session state store (ADR-0022): key-value with a TTL, and its one-server
+    # lock, so the DSS does not hand-roll locking.
+    "redis>=8.1",
 ]
 
 [build-system]
@@ -72,6 +75,9 @@ dev = [
     "ruff>=0.16.4",
     "jsonschema>=4.26.0",
     "pytest-httpserver>=1.1.5",
+    # A real Redis for the key-value store tests: the lock is tested against the
+    # server, not an emulation.
+    "testcontainers[redis]>=4.15.0",
 ]
 
 # ---------------------------------------------------------------------------

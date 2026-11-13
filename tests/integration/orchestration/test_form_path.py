@@ -250,10 +250,10 @@ async def test_the_record_holds_names_and_references_never_a_value() -> None:
 
 
 async def test_a_form_the_registry_does_not_have_is_unknown() -> None:
-    kisan = FormContext(scheme="PM-KISAN", category="Grievance", action="support")
+    unserved = FormContext(scheme="NO-SUCH", category="Grievance", action="support")
     orch, _ = _build_orchestrator_and_turn_sink()
 
-    events = await _collect(orch, _form_turn(_VALUES, context=kisan))
+    events = await _collect(orch, _form_turn(_VALUES, context=unserved))
 
     finished = events[-1]
     assert finished.outcome.status is TurnStatus.REQUIRES_INPUT

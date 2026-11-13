@@ -14,7 +14,7 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.json_schema import SkipJsonSchema
 
-from dss.core.shared.models import Geometry, ProviderAction
+from dss.core.shared.models import Geometry, ProviderAction, RequestedAction
 from dss.ports.area_lookup import AreaMatch
 
 # What a model leaves around a name it copied out of a sentence or a quoted
@@ -189,10 +189,10 @@ class Ask(BaseModel):
     interaction_type: InteractionType
     place: ResolvedPlace | AmbiguousPlace | UnresolvedPlace | None = None
     scheme: Scheme | GuessedScheme | UnlistedScheme | None = None
-    action: ProviderAction | UnclearAction | None = None
+    action: RequestedAction | UnclearAction | None = None
 
     @property
-    def known_action(self) -> ProviderAction | None:
+    def known_action(self) -> RequestedAction | None:
         return self.action if isinstance(self.action, ProviderAction) else None
 
 
@@ -234,7 +234,7 @@ class ClassifiedAsk(BaseModel):
     # Low when left out: a scheme the model did not vouch for is confirmed.
     scheme_confidence: SchemeConfidence = SchemeConfidence.LOW
     unlisted_scheme_name: str | None = None
-    action: ProviderAction | UnclearAction | None = None
+    action: RequestedAction | UnclearAction | None = None
     # Set by `classify_intent` from the catalog, never by the model: hidden
     # from the schema it is shown, so a code it invents never becomes a scheme.
     scheme: SkipJsonSchema[Scheme | GuessedScheme | UnlistedScheme | None] = None

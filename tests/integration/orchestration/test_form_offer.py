@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from dss.core.forms.models import FormContext, FormDefinition
 from dss.core.intent.models import (
     Ask,
@@ -27,6 +29,11 @@ from tests.integration.orchestration.test_orchestrator import (
     _turn,
 )
 from tests.support.fakes import FakeSchemeCatalog
+from tests.support.grievance_pack import (
+    PMKISAN_STATUS,
+    PMKISAN_SUPPORT,
+    build_grievance_forms,
+)
 from tests.support.providers import build_capability
 
 PMFBY = Scheme(code="PMFBY", name="Pradhan Mantri Fasal Bima Yojana")
@@ -139,6 +146,37 @@ def test_a_served_ask_the_registry_knows_gets_its_form() -> None:
     assert awaiting == {0: GRIEVANCE_FORM}
 
 
+PMKISAN = Scheme(code="PM-KISAN", name="Pradhan Mantri Kisan Samman Nidhi")
+PMKISAN_PROVIDER = build_capability(
+    provider_id="pmkisan",
+    provider_name="PM-KISAN provider",
+    capability="openagrinet:Grievance",
+    resource_id="res:pmkisan:grievance",
+    observed_categories=("Grievance",),
+)
+
+
+@pytest.mark.parametrize(
+    ("action", "context"),
+    [
+        (ProviderAction.SUPPORT, PMKISAN_SUPPORT),
+        (ProviderAction.STATUS, PMKISAN_STATUS),
+    ],
+)
+def test_a_pmkisan_ask_gets_its_form_without_the_otp(
+    action: ProviderAction, context: FormContext
+) -> None:
+    intent = Intent(asks=(_grievance_ask(action, scheme=PMKISAN),), confidence=0.9)
+
+    awaiting = find_forms(
+        intent, _discovery({0: (PMKISAN_PROVIDER,)}), build_grievance_forms()
+    )
+
+    form = awaiting[0]
+    assert form.context == context
+    assert "challenge.response.value" not in {field.name for field in form.fields}
+
+
 def test_an_ask_nobody_serves_gets_no_form() -> None:
     """No desk on this network: the unserved message, as for any other ask.
     The registry is not even asked."""
@@ -230,3 +268,11 @@ def test_an_action_the_path_cannot_file_yields_no_ask() -> None:
     advice = FormContext(scheme="PMFBY", category="Grievance", action="advice")
 
     assert ask_for_form(advice, scheme=PMFBY) is None
+
+
+def test_an_init_form_yields_no_ask() -> None:
+    """Init is a step inside filing or checking. Nothing is searched for it."""
+
+    init = FormContext(scheme="PM-KISAN", category="Grievance", action="init")
+
+    assert ask_for_form(init, scheme=PMKISAN) is None

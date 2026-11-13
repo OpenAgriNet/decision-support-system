@@ -1,57 +1,46 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 import yaml
 
-from dss.core.forms.models import ActionSchema, FormContext, FormDefinition
+from dss.core.forms.models import (
+    ActionSchema,
+    FieldKind,
+    FormContext,
+    FormDefinition,
+)
 from dss.core.forms.registry import FormLookup, FormRegistry
 from dss.core.forms.service import build_form_registry
-from dss.core.schema_packs.models import SchemaPackFiles, SchemaPackSkipped
-
-_GRIEVANCE_YAML = (
-    Path(__file__).parents[3] / "fixtures" / "api_packs" / "grievance_attributes.yaml"
-).read_text(encoding="utf-8")
-
-_PMFBY_SUPPORT = FormContext(scheme="PMFBY", category="Grievance", action="support")
-_PMFBY_STATUS = FormContext(scheme="PMFBY", category="Grievance", action="status")
-_API_PROFILE = '{"semantic_model": "provider-api"}'
-
-
-def _pack(
-    attributes_yaml: str,
-    *,
-    pack_name: str = "Grievance",
-    profile_json: str = _API_PROFILE,
-) -> SchemaPackFiles:
-    return SchemaPackFiles(
-        pack_name=pack_name,
-        version="v0.1",
-        profile_json=profile_json,
-        attributes_yaml=attributes_yaml,
-        examples_json=(),
-    )
+from dss.core.schema_packs.models import SchemaPackSkipped
+from tests.support.grievance_pack import (
+    GRIEVANCE_YAML,
+    PMFBY_STATUS,
+    PMFBY_SUPPORT,
+    PMKISAN_INIT,
+    PMKISAN_STATUS,
+    PMKISAN_SUPPORT,
+    build_grievance_pack,
+)
 
 
 def test_registry_finds_a_form_by_its_context() -> None:
-    schema = ActionSchema(context=_PMFBY_SUPPORT, must_send=())
+    schema = ActionSchema(context=PMFBY_SUPPORT, must_send=())
 
     registry = FormRegistry([schema])
 
-    assert registry.find(_PMFBY_SUPPORT) == FormDefinition(
-        context=_PMFBY_SUPPORT, fields=()
+    assert registry.find(PMFBY_SUPPORT) == FormDefinition(
+        context=PMFBY_SUPPORT, fields=()
     )
-    assert registry.find(_PMFBY_STATUS) is None
+    assert registry.find(PMFBY_STATUS) is None
 
 
 def test_an_empty_registry_finds_nothing() -> None:
-    assert FormRegistry().find(_PMFBY_SUPPORT) is None
+    assert FormRegistry().find(PMFBY_SUPPORT) is None
     assert FormRegistry().skipped == ()
 
 
 def test_registry_counts_its_forms() -> None:
-    schema = ActionSchema(context=_PMFBY_SUPPORT, must_send=())
+    schema = ActionSchema(context=PMFBY_SUPPORT, must_send=())
 
     assert len(FormRegistry([schema])) == 1
     assert len(FormRegistry()) == 0
@@ -61,22 +50,22 @@ def test_registry_lists_a_category_contexts() -> None:
     scheme_enrolment = FormContext(scheme="PMFBY", category="Scheme", action="init")
     registry = FormRegistry(
         ActionSchema(context=context, must_send=())
-        for context in (_PMFBY_SUPPORT, scheme_enrolment, _PMFBY_STATUS)
+        for context in (PMFBY_SUPPORT, scheme_enrolment, PMFBY_STATUS)
     )
 
-    assert set(registry.contexts_for("Grievance")) == {_PMFBY_SUPPORT, _PMFBY_STATUS}
+    assert set(registry.contexts_for("Grievance")) == {PMFBY_SUPPORT, PMFBY_STATUS}
 
 
 def test_registry_satisfies_the_lookup_the_orchestrator_takes() -> None:
     lookup: FormLookup = FormRegistry()
 
-    assert lookup.find(_PMFBY_SUPPORT) is None
+    assert lookup.find(PMFBY_SUPPORT) is None
 
 
 def test_the_grievance_pack_serves_pmfby_filing_and_status() -> None:
-    registry = build_form_registry([_pack(_GRIEVANCE_YAML)])
+    registry = build_form_registry([build_grievance_pack(GRIEVANCE_YAML)])
 
-    support = registry.find(_PMFBY_SUPPORT)
+    support = registry.find(PMFBY_SUPPORT)
 
     assert support is not None
     assert [field.name for field in support.fields] == [
@@ -86,35 +75,68 @@ def test_the_grievance_pack_serves_pmfby_filing_and_status() -> None:
         "season",
         "grievance.description",
     ]
-    assert registry.find(_PMFBY_STATUS) is not None
+    assert registry.find(PMFBY_STATUS) is not None
 
 
-def test_a_scheme_that_needs_an_init_step_is_left_out_and_named() -> None:
-    """PM-KISAN files only after the OTP that `init` starts, which the DSS lacks."""
-    registry = build_form_registry([_pack(_GRIEVANCE_YAML)])
+@pytest.mark.parametrize("context", [PMFBY_SUPPORT, PMFBY_STATUS])
+def test_each_form_is_built_from_its_request_fields(context: FormContext) -> None:
+    registry = build_form_registry([build_grievance_pack()])
 
-    for action in ("init", "status", "support"):
-        kisan = FormContext(scheme="PM-KISAN", category="Grievance", action=action)
-        assert registry.find(kisan) is None
-    assert {skip.pack_name for skip in registry.skipped} == {"Grievance"}
-    assert len(registry.skipped) == 3
+    schema = registry.action_schema(context)
+
+    assert schema is not None
+    assert registry.find(context) == FormDefinition.from_fields(
+        context, schema.request_fields()
+    )
 
 
-def test_an_init_in_one_pack_rules_out_the_scheme_in_another() -> None:
-    """The rule is per scheme, not per file: `init` and `support` may ship apart."""
-    attributes = yaml.safe_load(_GRIEVANCE_YAML)
-    schemas = attributes["components"]["schemas"]
-    schemas["Grievance"]["x-oan-schema-by-action"] = {"init": "GrievanceInit"}
-    schemas["GrievanceInit"]["oneOf"] = [{"$ref": "#/components/schemas/PMFBYStatus"}]
-    init_only = _pack(yaml.safe_dump(attributes), pack_name="PmfbyInit")
+def test_every_action_of_the_pack_is_registered() -> None:
+    every_action = (
+        PMFBY_SUPPORT,
+        PMFBY_STATUS,
+        PMKISAN_INIT,
+        PMKISAN_SUPPORT,
+        PMKISAN_STATUS,
+    )
 
-    registry = build_form_registry([init_only, _pack(_GRIEVANCE_YAML)])
+    registry = build_form_registry([build_grievance_pack()])
 
-    assert registry.find(_PMFBY_SUPPORT) is None
+    assert registry.skipped == ()
+    assert len(registry) == len(every_action)
+    assert all(registry.action_schema(context) for context in every_action)
+
+
+@pytest.mark.parametrize("context", [PMKISAN_SUPPORT, PMKISAN_STATUS])
+def test_an_action_that_answers_an_init_gets_a_form(context: FormContext) -> None:
+    registry = build_form_registry([build_grievance_pack()])
+
+    form = registry.find(context)
+
+    assert form is not None
+    assert "challenge.response.value" not in {field.name for field in form.fields}
+
+
+def test_the_init_form_asks_only_for_what_waits_for_init() -> None:
+    registry = build_form_registry([build_grievance_pack()])
+
+    form = registry.find(PMKISAN_INIT)
+
+    assert form is not None
+    [otp] = form.fields
+    assert otp.name == "challenge.response.value"
+    assert otp.kind is FieldKind.SECRET
+    assert otp.rules.pattern == "^[0-9]{4}$"
+
+
+def test_a_scheme_with_no_init_has_no_init_form() -> None:
+    registry = build_form_registry([build_grievance_pack()])
+
+    pmfby_init = PMFBY_SUPPORT.model_copy(update={"action": "init"})
+    assert registry.find(pmfby_init) is None
 
 
 def test_two_forms_for_one_context_are_refused() -> None:
-    schema = ActionSchema(context=_PMFBY_SUPPORT, must_send=())
+    schema = ActionSchema(context=PMFBY_SUPPORT, must_send=())
 
     with pytest.raises(ValueError, match="PMFBY/Grievance/support"):
         FormRegistry([schema, schema])
@@ -135,22 +157,25 @@ def test_two_forms_for_one_context_are_refused() -> None:
 )
 def test_a_pack_that_cannot_be_read_is_skipped_not_raised(broken_yaml: str) -> None:
     registry = build_form_registry(
-        [_pack(broken_yaml, pack_name="Broken"), _pack(_GRIEVANCE_YAML)]
+        [
+            build_grievance_pack(broken_yaml, pack_name="Broken"),
+            build_grievance_pack(GRIEVANCE_YAML),
+        ]
     )
 
-    assert registry.find(_PMFBY_SUPPORT) is not None
+    assert registry.find(PMFBY_SUPPORT) is not None
     assert "Broken" in {skip.pack_name for skip in registry.skipped}
 
 
 def test_a_second_form_for_a_taken_context_is_skipped() -> None:
-    attributes = yaml.safe_load(_GRIEVANCE_YAML)
+    attributes = yaml.safe_load(GRIEVANCE_YAML)
     leaf = attributes["components"]["schemas"]["PMFBYSupport"]
     leaf["x-oan-fields"]["mustSend"].remove("cropYear")
-    second = _pack(yaml.safe_dump(attributes), pack_name="GrievanceCopy")
+    second = build_grievance_pack(yaml.safe_dump(attributes), pack_name="GrievanceCopy")
 
-    registry = build_form_registry([_pack(_GRIEVANCE_YAML), second])
+    registry = build_form_registry([build_grievance_pack(GRIEVANCE_YAML), second])
 
-    support = registry.find(_PMFBY_SUPPORT)
+    support = registry.find(PMFBY_SUPPORT)
     assert support is not None
     assert support.field("cropYear") is not None
     assert (
@@ -163,15 +188,15 @@ def test_a_second_form_for_a_taken_context_is_skipped() -> None:
 
 def test_a_catalog_pack_beside_the_api_packs_is_not_a_form_source() -> None:
     """Both kinds share one folder; only `profile.json` tells them apart."""
-    catalog = _pack(
+    catalog = build_grievance_pack(
         "components: {schemas: {MandiPrice: {}}}",
         pack_name="MandiPrice",
         profile_json='{"semantic_model": "generalised"}',
     )
 
-    registry = build_form_registry([catalog, _pack(_GRIEVANCE_YAML)])
+    registry = build_form_registry([catalog, build_grievance_pack(GRIEVANCE_YAML)])
 
-    assert registry.find(_PMFBY_SUPPORT) is not None
+    assert registry.find(PMFBY_SUPPORT) is not None
     assert "MandiPrice" not in {skip.pack_name for skip in registry.skipped}
 
 
@@ -183,18 +208,20 @@ def test_a_catalog_pack_beside_the_api_packs_is_not_a_form_source() -> None:
     ],
 )
 def test_a_pack_whose_kind_cannot_be_read_is_skipped(profile_json: str) -> None:
-    unknown = _pack(_GRIEVANCE_YAML, pack_name="Unknown", profile_json=profile_json)
+    unknown = build_grievance_pack(
+        GRIEVANCE_YAML, pack_name="Unknown", profile_json=profile_json
+    )
 
     registry = build_form_registry([unknown])
 
-    assert registry.find(_PMFBY_SUPPORT) is None
+    assert registry.find(PMFBY_SUPPORT) is None
     assert [skip.pack_name for skip in registry.skipped] == ["Unknown"]
 
 
 def test_the_registry_keeps_the_schema_the_form_was_cut_from() -> None:
-    registry = build_form_registry([_pack(_GRIEVANCE_YAML)])
+    registry = build_form_registry([build_grievance_pack(GRIEVANCE_YAML)])
 
-    schema = registry.action_schema(_PMFBY_SUPPORT)
+    schema = registry.action_schema(PMFBY_SUPPORT)
 
     assert schema is not None
     assert [field.path for field in schema.must_send] == [
@@ -208,5 +235,5 @@ def test_the_registry_keeps_the_schema_the_form_was_cut_from() -> None:
         "season",
         "grievance.description",
     ]
-    assert registry.action_schema(_PMFBY_STATUS) is not None
-    assert FormRegistry().action_schema(_PMFBY_SUPPORT) is None
+    assert registry.action_schema(PMFBY_STATUS) is not None
+    assert FormRegistry().action_schema(PMFBY_SUPPORT) is None

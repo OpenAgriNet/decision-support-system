@@ -19,7 +19,7 @@ from dss.core.intent.models import (
     UnresolvedPlace,
 )
 from dss.core.shared.language import LanguageTag
-from dss.core.shared.models import Geometry, TextQuery, UserTurn
+from dss.core.shared.models import Geometry, ProviderAction, TextQuery, UserTurn
 from dss.ports.area_lookup import AreaMatch
 
 
@@ -215,6 +215,29 @@ def test_unclear_is_an_action_the_model_can_give() -> None:
         }
     )
     assert ask.action is UnclearAction.UNCLEAR
+
+
+def test_init_is_not_an_action_the_model_can_give() -> None:
+    """Init is a step inside filing or checking, such as the OTP. The farmer
+    never asks for it by itself."""
+
+    with pytest.raises(ValidationError):
+        ClassifiedAsk.model_validate(
+            {
+                "subject_categories": "Grievance",
+                "interaction_type": "act",
+                "action": "init",
+            }
+        )
+
+
+def test_the_models_json_action_is_read_as_the_provider_action() -> None:
+    ask = ClassifiedAsk.model_validate_json(
+        '{"subject_categories": "Grievance", "interaction_type": "act",'
+        ' "action": "support"}'
+    )
+
+    assert ask.action is ProviderAction.SUPPORT
 
 
 @pytest.mark.parametrize(

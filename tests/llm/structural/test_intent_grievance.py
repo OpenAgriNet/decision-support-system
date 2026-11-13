@@ -262,3 +262,39 @@ async def test_an_existing_complaint_is_status(query: str) -> None:
 
     (ask,) = classification.asks
     assert ask.action is ProviderAction.STATUS, f"{classification!r}"
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "I want to file a PM-KISAN grievance",
+        "My PM Kisan installment has not come, I want to complain",
+    ],
+)
+async def test_filing_a_pmkisan_complaint_is_grievance_pmkisan_act(query: str) -> None:
+    classification = await _classify(query)
+
+    (ask,) = classification.asks
+    assert ask.subject_categories is SubjectCategory.GRIEVANCE
+    assert ask.interaction_type is InteractionType.ACT
+    assert isinstance(ask.scheme, Scheme), f"{classification!r}"
+    assert ask.scheme.code == "PM-KISAN"
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "What happened to my PM-KISAN complaint?",
+        "What is the status of my PMKisan grievance?",
+    ],
+)
+async def test_checking_a_pmkisan_complaint_is_grievance_pmkisan_observe(
+    query: str,
+) -> None:
+    classification = await _classify(query)
+
+    (ask,) = classification.asks
+    assert ask.subject_categories is SubjectCategory.GRIEVANCE
+    assert ask.interaction_type is InteractionType.OBSERVE
+    assert isinstance(ask.scheme, Scheme), f"{classification!r}"
+    assert ask.scheme.code == "PM-KISAN"

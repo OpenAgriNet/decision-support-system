@@ -195,6 +195,17 @@ class ProviderAction(StrEnum):
 
     SUPPORT = "support"
     STATUS = "status"
+    # The call a scheme makes first when its actions have init fields, e.g. to
+    # send the farmer an OTP.
+    INIT = "init"
+
+
+# What a user can ask for. ``init`` is a step inside filing or checking, never
+# a choice of its own.
+type RequestedAction = Literal[ProviderAction.SUPPORT, ProviderAction.STATUS]
+REQUESTABLE_ACTIONS: frozenset[ProviderAction] = frozenset(
+    {ProviderAction.SUPPORT, ProviderAction.STATUS}
+)
 
 
 class TurnStatus(StrEnum):

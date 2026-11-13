@@ -8,7 +8,7 @@ from collections.abc import Iterable
 from dss.core.forms.models import FormContext
 from dss.core.intent.models import Ask, UnclearAction
 from dss.core.settlement.models import AskRequirements
-from dss.core.shared.models import ProviderAction
+from dss.core.shared.models import REQUESTABLE_ACTIONS, ProviderAction
 
 
 def build_ask_requirements(
@@ -32,5 +32,5 @@ def _fileable_forms(ask: Ask, forms: Iterable[FormContext]) -> list[FormContext]
     # An ask with no action wants an answer, not a form.
     if ask.action is None:
         return []
-    # A pack can declare a step, such as init, that no form files.
-    return [form for form in forms if form.action in ProviderAction]
+    # Init is a step inside filing or checking, never a choice of its own.
+    return [form for form in forms if form.action in REQUESTABLE_ACTIONS]

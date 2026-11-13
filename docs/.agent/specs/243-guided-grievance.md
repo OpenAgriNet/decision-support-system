@@ -2,7 +2,7 @@
 
 Story: https://github.com/OpenAgriNet/engineering-tracker/issues/243
 Epic: #204
-ADR: [ADR-0022](../../ADR/0022-settle-each-ask-before-serving-it.md), settle
+ADR: [ADR-0023](../../ADR/0023-settle-each-ask-before-serving-it.md), settle
 each ask before serving it.
 
 ## Approach

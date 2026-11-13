@@ -700,11 +700,18 @@ def test_a_form_left_out_is_logged_for_an_operator_to_see(
     tmp_path: Path, caplog
 ) -> None:
     pack_root = _write_grievance_pack(tmp_path / "schema")
+    copy = pack_root / "GrievanceCopy" / "v0.1"
+    copy.mkdir(parents=True)
+    for name in ("attributes.yaml", "profile.json"):
+        (copy / name).write_text(
+            (pack_root / "Grievance" / "v0.1" / name).read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
 
     with caplog.at_level("WARNING"):
         build_runner(_settings(tmp_path, schema_pack_dir=pack_root))
 
-    assert any("PM-KISAN/Grievance/support" in r.message for r in caplog.records)
+    assert any("PMFBY/Grievance/support" in r.message for r in caplog.records)
 
 
 def test_a_malformed_api_pack_does_not_stop_the_boot(tmp_path: Path, caplog) -> None:
