@@ -53,7 +53,7 @@ from dss.core.forms.service import (
     is_auth_refused,
     is_done,
     validate_submission,
-    with_call_filed,
+    with_form_done,
     withhold_values,
 )
 from dss.core.intent.models import Intent, Scheme
@@ -284,9 +284,7 @@ class FormPath:
                 form_turn,
             )
         # Before the answer streams: a closed screen must still leave it done.
-        session.update_forms(
-            with_call_filed(session.forms, form.details, form_turn.turn.input)
-        )
+        session.update_forms(with_form_done(session.forms, form_turn.turn.input))
         return self._stream_provider_answer(response, form.intent, redacted, form_turn)
 
     async def _handle_init_response(
@@ -337,7 +335,7 @@ class FormPath:
             form_turn,
             flow.details,
             flow.action,
-            provider=flow.provider,
+            provider=flow.entry.provider,
             visibility=redacted.visibility,
             init_values=checked.values,
         )

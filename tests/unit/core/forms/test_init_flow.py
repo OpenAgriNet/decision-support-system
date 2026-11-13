@@ -30,13 +30,13 @@ from dss.core.forms.models import (
     FieldErrorEntry,
     FieldValue,
     FlowEnding,
+    FormAwaitingInit,
     FormBlock,
     FormContext,
     FormDefinition,
-    FormEntry,
+    FormDone,
     FormErrorBlock,
     FormRecords,
-    FormStatus,
     FormSubmission,
     ValidSubmission,
 )
@@ -257,15 +257,9 @@ def test_a_session_that_is_not_kept_ends_before_init() -> None:
 
 def _waiting(
     details: FormSubmission = _DETAILS, *, awaited_at: datetime = _AWAITED_AT
-) -> FormEntry:
-    definition = _FORMS.find(details.context)
-    assert definition is not None
-    return FormEntry(
-        definition=definition,
-        submission=details,
-        status=FormStatus.AWAITING_INIT,
-        provider=_PROVIDER,
-        awaited_at=awaited_at,
+) -> FormAwaitingInit:
+    return FormAwaitingInit(
+        submission=details, provider=_PROVIDER, awaited_at=awaited_at
     )
 
 
@@ -284,7 +278,7 @@ def _sent_init(forms: FormRecords) -> FlowSettled:
 
 
 def test_a_sent_init_leaves_the_details_waiting_with_their_provider() -> None:
-    done = _waiting().model_copy(update={"status": FormStatus.DONE})
+    done = FormDone(submission=_DETAILS.model_copy(update={"form_id": "filed"}))
 
     settled = _sent_init({"filed": done})
 
@@ -319,12 +313,7 @@ def test_an_init_response_finds_the_flow_waiting_for_it() -> None:
     flow = find_waiting_flow(forms, PMKISAN_INIT, _FORMS, intent_for=_intent_for)
 
     assert flow == WaitingFlow(
-        details_form_id="offer-1",
-        entry=entry,
-        details=_valid(_DETAILS),
-        action=action,
-        intent=_INTENT,
-        provider=_PROVIDER,
+        entry=entry, details=_valid(_DETAILS), action=action, intent=_INTENT
     )
 
 
@@ -332,7 +321,7 @@ def test_an_init_response_finds_the_flow_waiting_for_it() -> None:
     "forms",
     [
         {},
-        {"offer-1": _waiting().model_copy(update={"status": FormStatus.DONE})},
+        {"offer-1": FormDone(submission=_DETAILS)},
     ],
     ids=["nothing-saved", "only-done"],
 )
@@ -369,13 +358,12 @@ class _WithoutSupport(_WithoutInit):
             _intent_for,
         ),
         (_waiting(), _WithoutSupport(), _intent_for),
-        (_waiting().model_copy(update={"provider": None}), _FORMS, _intent_for),
         (_waiting(), _FORMS, _no_intent),
     ],
-    ids=["details-invalid", "action-dropped", "no-provider", "no-evidence-intent"],
+    ids=["details-invalid", "action-dropped", "no-evidence-intent"],
 )
 def test_saved_details_the_flow_cannot_use_are_unusable(
-    entry: FormEntry, forms: _WithoutInit, intent_for
+    entry: FormAwaitingInit, forms: _WithoutInit, intent_for
 ) -> None:
     flow = find_waiting_flow(
         {"offer-1": entry}, PMKISAN_INIT, forms, intent_for=intent_for
@@ -468,7 +456,7 @@ def _awaiting_again() -> FormRecords:
 def test_a_filed_init_response_leaves_the_details_done() -> None:
     forms = with_init_response_filed({}, _flow())
 
-    assert forms["offer-1"].status is FormStatus.DONE
+    assert isinstance(forms["offer-1"], FormDone)
 
 
 @pytest.mark.parametrize("status_code", [400, 404, 422])

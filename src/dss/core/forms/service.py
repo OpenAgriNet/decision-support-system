@@ -24,14 +24,14 @@ from dss.core.forms.models import (
     FieldSource,
     FieldValue,
     FlowEnding,
+    FormAwaitingInit,
     FormBlock,
     FormContext,
     FormDefinition,
-    FormEntry,
+    FormDone,
     FormErrorBlock,
     FormErrors,
     FormRecords,
-    FormStatus,
     FormSubmission,
     JsonScalar,
     PiiClass,
@@ -727,24 +727,26 @@ def clear_awaiting_init_record(forms: FormRecords) -> FormRecords:
     return {
         form_id: entry
         for form_id, entry in forms.items()
-        if entry.status is not FormStatus.AWAITING_INIT
+        if not isinstance(entry, FormAwaitingInit)
     }
 
 
-def awaiting_init_for(forms: FormRecords, init_context: FormContext) -> str | None:
+def find_awaiting_init(
+    forms: FormRecords, init_context: FormContext
+) -> FormAwaitingInit | None:
     return next(
         (
-            form_id
-            for form_id, entry in forms.items()
-            if entry.status is FormStatus.AWAITING_INIT
+            entry
+            for entry in forms.values()
+            if isinstance(entry, FormAwaitingInit)
             and _is_same_flow(entry, init_context)
         ),
         None,
     )
 
 
-def _is_same_flow(entry: FormEntry, init_context: FormContext) -> bool:
-    details_context = entry.definition.context
+def _is_same_flow(entry: FormAwaitingInit, init_context: FormContext) -> bool:
+    details_context = entry.submission.context
     return (details_context.scheme, details_context.category) == (
         init_context.scheme,
         init_context.category,
@@ -752,45 +754,20 @@ def _is_same_flow(entry: FormEntry, init_context: FormContext) -> bool:
 
 
 def is_done(forms: FormRecords, form_id: str) -> bool:
-    entry = forms.get(form_id)
-    return entry is not None and entry.status is FormStatus.DONE
+    return isinstance(forms.get(form_id), FormDone)
 
 
-def with_form_done(
+def with_form_done(forms: FormRecords, submission: FormSubmission) -> FormRecords:
+    done = FormDone(submission=withhold_values(submission))
+    return {**forms, submission.form_id: done}
+
+
+def with_init_awaited(
     forms: FormRecords,
-    form_id: str,
-    definition: FormDefinition,
-    submission: FormSubmission,
-) -> FormRecords:
-    # Values withheld: a done form is only ever looked up, never sent again.
-    done = FormEntry(
-        definition=definition,
-        submission=withhold_values(submission),
-        status=FormStatus.DONE,
-    )
-    return {**forms, form_id: done}
-
-
-def with_call_filed(
-    forms: FormRecords, details: ValidSubmission, submission: FormSubmission
-) -> FormRecords:
-    return with_form_done(forms, submission.form_id, details.definition, submission)
-
-
-def with_init_awaited(  # noqa: PLR0913
-    forms: FormRecords,
-    form_id: str,
-    definition: FormDefinition,
     submission: FormSubmission,
     *,
     provider: ProviderCapability,
     now: datetime,
 ) -> FormRecords:
-    waiting = FormEntry(
-        definition=definition,
-        submission=submission,
-        status=FormStatus.AWAITING_INIT,
-        provider=provider,
-        awaited_at=now,
-    )
-    return {**forms, form_id: waiting}
+    waiting = FormAwaitingInit(submission=submission, provider=provider, awaited_at=now)
+    return {**forms, submission.form_id: waiting}

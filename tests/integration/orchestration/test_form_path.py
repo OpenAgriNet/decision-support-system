@@ -17,8 +17,10 @@ from dss.core.forms.models import (
     ActionReply,
     FieldErrorEntry,
     FieldValue,
+    FormAwaitingInit,
     FormBlock,
     FormContext,
+    FormDone,
     FormErrorBlock,
     FormStatus,
     FormSubmission,
@@ -48,8 +50,8 @@ from dss.core.shared.models import (
     UserDetails,
     UserTurn,
 )
-from dss.core.shared.session_state import SessionState
 from dss.core.shared.network import NetworkTransactionID
+from dss.core.shared.session_state import SessionState
 from dss.orchestration.form_path import FormPath, FormPathComponents
 from dss.orchestration.orchestrator import Orchestrator
 from dss.orchestration.redaction import RedactTexts, pass_through, redact_texts
@@ -64,7 +66,6 @@ from tests.support.fakes import (
     FakeSchemeCatalog,
     RecordingActionInvocation,
 )
-from tests.support.grievance_pack import build_grievance_forms
 from tests.support.key_value import FakeKeyValueStore, UnreachableStore
 from tests.support.providers import grievance_provider
 from tests.support.turn_events import assert_well_formed
@@ -702,8 +703,8 @@ async def test_a_filed_form_is_kept_done_without_its_values() -> None:
     await _collect(orch, _form_turn(_VALUES))
 
     entry = _stored_state(store).forms["offer-1"]
-    assert entry.status is FormStatus.DONE
-    assert entry.definition.context == _PMFBY_SUPPORT
+    assert isinstance(entry, FormDone)
+    assert entry.submission.context == _PMFBY_SUPPORT
     assert {value.value for value in entry.submission.values} == {WITHHELD}
 
 
@@ -790,14 +791,10 @@ def _save_waiting(
     context: FormContext = _PMKISAN_SUPPORT,
     values: Mapping[str, str] = _KISAN_VALUES,
 ) -> None:
-    definition = build_grievance_forms().find(context)
-    assert definition is not None
     details = _form_turn(values, context=context, form_id=form_id).input
     assert isinstance(details, FormSubmission)
     waiting = with_init_awaited(
         _stored_state(store).forms,
-        form_id,
-        definition,
         details,
         provider=_KISAN_PROVIDER,
         now=datetime(2026, 11, 10, 9, 30, tzinfo=UTC),
@@ -845,9 +842,9 @@ async def test_after_init_the_details_form_waits_with_its_provider() -> None:
     await _collect(orch, _kisan_details_turn())
 
     entry = _stored_state(store).forms["offer-1"]
-    assert entry.status is FormStatus.AWAITING_INIT
+    assert isinstance(entry, FormAwaitingInit)
     assert entry.provider == _KISAN_PROVIDER
-    assert entry.definition.context == _PMKISAN_SUPPORT
+    assert entry.submission.context == _PMKISAN_SUPPORT
 
 
 @pytest.mark.parametrize(
@@ -1135,7 +1132,7 @@ async def test_a_refused_init_response_hands_the_init_form_back_and_waits() -> N
         finished, load_clarification_text().init_response_refused
     )
     entry = _stored_state(store).forms["offer-1"]
-    assert entry.status is FormStatus.AWAITING_INIT
+    assert isinstance(entry, FormAwaitingInit)
     assert entry.provider == _KISAN_PROVIDER
     assert store.set_calls == ["c1:s1"]
 

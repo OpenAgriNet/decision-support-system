@@ -5,9 +5,9 @@ import re
 from collections.abc import Iterable, Mapping
 from datetime import datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from dss.core.channel.models import ComposedAnswer
 from dss.core.provider_discovery.models import ProviderCapability
@@ -361,17 +361,26 @@ class FormStatus(StrEnum):
     DONE = "done"  # filed or read; nothing more expected
 
 
-class FormEntry(BaseModel):
+class FormAwaitingInit(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    definition: FormDefinition  # the details form
+    status: Literal[FormStatus.AWAITING_INIT] = FormStatus.AWAITING_INIT
     submission: FormSubmission  # raw; validated again on read
-    status: FormStatus
-    # Where init went; set with AWAITING_INIT.
-    provider: ProviderCapability | None = None
+    provider: ProviderCapability  # where init went
     # Set each time the entry waits for init again, so the session is saved
     # and its time to live starts over.
-    awaited_at: datetime | None = None
+    awaited_at: datetime
+
+
+class FormDone(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    status: Literal[FormStatus.DONE] = FormStatus.DONE
+    # Values withheld: a done form is only ever looked up, never sent again.
+    submission: FormSubmission
+
+
+type FormEntry = Annotated[FormAwaitingInit | FormDone, Field(discriminator="status")]
 
 
 # Details forms by form_id; DONE entries stay until the TTL.

@@ -23,9 +23,8 @@ from dss.core.forms.models import (
     FormBlock,
     FormContext,
     FormDefinition,
-    FormEntry,
+    FormDone,
     FormRecords,
-    FormStatus,
     FormSubmission,
 )
 from dss.core.forms.registry import FormLookup, FormRegistry
@@ -88,10 +87,10 @@ from tests.support.fakes import (
 )
 from tests.support.key_value import (
     FailingReadStore,
-    HangingReadStore,
     FailingReleaseStore,
     FailingSaveStore,
     FakeKeyValueStore,
+    HangingReadStore,
     HangingReleaseStore,
     HangingSaveStore,
     HangingStore,
@@ -958,12 +957,7 @@ def _form_ctx(sender_id: str = "c1", session_id: str = "s1") -> TurnContext:
 
 
 def _state_with(form_id: str) -> SessionState:
-    entry = FormEntry(
-        definition=FormDefinition(context=_GRIEVANCE, fields=()),
-        submission=_form_turn().input,
-        status=FormStatus.DONE,
-    )
-    return SessionState(forms={form_id: entry})
+    return SessionState(forms={form_id: FormDone(submission=_form_turn().input)})
 
 
 def _forms_with(form_id: str) -> FormRecords:

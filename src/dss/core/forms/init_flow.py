@@ -11,9 +11,9 @@ from dss.core.forms.models import (
     FailedCallOutcome,
     FieldErrorEntry,
     FlowEnding,
+    FormAwaitingInit,
     FormContext,
     FormDefinition,
-    FormEntry,
     FormErrorBlock,
     FormRecords,
     FormSubmission,
@@ -25,9 +25,9 @@ from dss.core.forms.service import (
     TextChoice,
     answer_for_init_form,
     answer_with_text,
-    awaiting_init_for,
     clear_awaiting_init_record,
     end_for_call_cause,
+    find_awaiting_init,
     is_auth_refused,
     validate_submission,
     with_form_done,
@@ -146,14 +146,7 @@ def settle_sent_init(  # noqa: PLR0913
     now: datetime,
 ) -> FlowSettled:
     return FlowSettled(
-        forms=with_init_awaited(
-            forms,
-            submission.form_id,
-            details.definition,
-            submission,
-            provider=provider,
-            now=now,
-        ),
+        forms=with_init_awaited(forms, submission, provider=provider, now=now),
         ending=FlowEnding(
             status=TurnStatus.REQUIRES_INPUT,
             cause=None,
@@ -223,12 +216,10 @@ class SavedDetailsUnusable:
 
 @dataclass(frozen=True)
 class WaitingFlow:
-    details_form_id: str
-    entry: FormEntry
+    entry: FormAwaitingInit
     details: ValidSubmission
     action: ActionSchema
     intent: Intent
-    provider: ProviderCapability
 
 
 def find_waiting_flow(
@@ -238,29 +229,16 @@ def find_waiting_flow(
     *,
     intent_for: IntentFor,
 ) -> NoInitPending | SavedDetailsUnusable | WaitingFlow:
-    details_form_id = awaiting_init_for(forms, init_context)
-    if details_form_id is None:
+    entry = find_awaiting_init(forms, init_context)
+    if entry is None:
         return NoInitPending()
-    entry = forms[details_form_id]
     details = validate_submission(entry.submission, form_lookup)
     # The pack may have changed since the details were saved.
-    action = form_lookup.action_schema(entry.definition.context)
-    intent = intent_for(entry.definition.context)
-    if (
-        not isinstance(details, ValidSubmission)
-        or action is None
-        or intent is None
-        or entry.provider is None
-    ):
-        return SavedDetailsUnusable(details_form_id)
-    return WaitingFlow(
-        details_form_id=details_form_id,
-        entry=entry,
-        details=details,
-        action=action,
-        intent=intent,
-        provider=entry.provider,
-    )
+    action = form_lookup.action_schema(entry.submission.context)
+    intent = intent_for(entry.submission.context)
+    if not isinstance(details, ValidSubmission) or action is None or intent is None:
+        return SavedDetailsUnusable(entry.submission.form_id)
+    return WaitingFlow(entry=entry, details=details, action=action, intent=intent)
 
 
 def settle_no_waiting_flow(
@@ -290,9 +268,7 @@ def settle_no_waiting_flow(
 
 
 def with_init_response_filed(forms: FormRecords, flow: WaitingFlow) -> FormRecords:
-    return with_form_done(
-        forms, flow.details_form_id, flow.entry.definition, flow.entry.submission
-    )
+    return with_form_done(forms, flow.entry.submission)
 
 
 def settle_failed_init_response(  # noqa: PLR0913
@@ -312,12 +288,7 @@ def settle_failed_init_response(  # noqa: PLR0913
         return FlowSettled(forms=forms, ending=_ended_for_good(exit_for_failure, text))
     return FlowSettled(
         forms=with_init_awaited(
-            forms,
-            flow.details_form_id,
-            flow.entry.definition,
-            flow.entry.submission,
-            provider=flow.provider,
-            now=now,
+            forms, flow.entry.submission, provider=flow.entry.provider, now=now
         ),
         ending=_ended_with_init_form_back(
             exit_for_failure, failure, init_response, init_form, text

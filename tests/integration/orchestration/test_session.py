@@ -1,12 +1,6 @@
 from __future__ import annotations
 
-from dss.core.forms.models import (
-    FormContext,
-    FormDefinition,
-    FormEntry,
-    FormStatus,
-    FormSubmission,
-)
+from dss.core.forms.models import FormContext, FormDone, FormSubmission
 from dss.core.shared.session_state import SessionState
 from dss.orchestration.session import Session
 
@@ -18,13 +12,11 @@ class _StateWithLocation(SessionState):
     farmer_location: str = ""
 
 
-def _done_entry() -> FormEntry:
-    return FormEntry(
-        definition=FormDefinition(context=_GRIEVANCE, fields=()),
+def _done_entry() -> FormDone:
+    return FormDone(
         submission=FormSubmission(
             form_id="f1", context=_GRIEVANCE, submission_id="s1", values=()
-        ),
-        status=FormStatus.DONE,
+        )
     )
 
 
