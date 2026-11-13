@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import contextvars
 import logging
 from collections.abc import Iterator
 
@@ -19,6 +20,7 @@ from opentelemetry.sdk._logs.export import (
 from opentelemetry.sdk.trace import TracerProvider
 
 from dss.adapters.observability.logs import _DSS_LOGGER, configure_logs, reset_logs
+from dss.observability.trace_log import bind_turn_ids, log_event
 
 
 @pytest.fixture(autouse=True)
@@ -86,6 +88,36 @@ def test_record_carries_the_enclosing_span_ids(
     record = exporter.get_finished_logs()[0].log_record
     assert record.trace_id == expected.trace_id
     assert record.span_id == expected.span_id
+
+
+def test_trace_fields_are_exported_as_attributes(
+    exporter: InMemoryLogRecordExporter,
+) -> None:
+    # Attributes, not body text, are what a log search can filter on.
+    log_event("discovery", "txn-1", event="ask_routed", ask_index=0)
+
+    record = exporter.get_finished_logs()[0].log_record
+    assert record.body == "discovery ask_routed"
+    assert record.attributes is not None
+    assert record.attributes["request_id"] == "txn-1"
+    assert record.attributes["component"] == "discovery"
+    assert record.attributes["ask_index"] == 0
+
+
+def test_any_dss_line_is_exported_with_the_turns_ids(
+    exporter: InMemoryLogRecordExporter,
+) -> None:
+    # Bound once by the route; no helper has to pass them on.
+    def log_in_a_turn() -> None:
+        bind_turn_ids("txn-1", message_id="msg-1", session_id="ses-1")
+        logging.getLogger("dss.adapters.http").error("turn failed")
+
+    contextvars.Context().run(log_in_a_turn)
+
+    attributes = exporter.get_finished_logs()[0].log_record.attributes or {}
+    assert attributes["request_id"] == "txn-1"
+    assert attributes["message_id"] == "msg-1"
+    assert attributes["session_id"] == "ses-1"
 
 
 def test_reset_detaches_the_handler(exporter: InMemoryLogRecordExporter) -> None:

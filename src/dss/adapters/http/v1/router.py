@@ -48,6 +48,7 @@ from dss.core.shared.models import (
     TurnStatus,
     UserTurn,
 )
+from dss.observability.trace_log import bind_turn_ids
 from dss.ports.turn import TurnRunner
 
 logger = logging.getLogger(__name__)
@@ -169,6 +170,7 @@ async def _run(
     ctx = mapping.to_turn_context(
         admitted.body, message_id=_minted_id(), network_sender_id=network_sender_id
     )
+    bind_turn_ids(ctx.trace_id, message_id=ctx.message_id, session_id=ctx.session_id)
     try:
         turn = mapping.to_user_turn(admitted.body)
     except ValueError as exc:
@@ -259,10 +261,8 @@ async def _frames(
         # than being turned into a frame written to a closed socket.
         #
         # Logging matters because otherwise the crash reaches the caller as a
-        # generic "could not be reached" and reaches nobody else at all. The
-        # trace id goes in the message, not only in `extra` — the default
-        # formatter drops extras, so an operator would never see it.
-        logger.exception("turn failed mid-stream (trace_id=%s)", ctx.trace_id)
+        # generic "could not be reached" and reaches nobody else at all.
+        logger.exception("turn failed mid-stream")
         yield stream.frame(_internal_failure())
 
 
@@ -291,7 +291,7 @@ async def _single(
                     finished = event
     except Exception:
         # See `_frames` — a cancellation is BaseException-derived and propagates.
-        logger.exception("turn failed (trace_id=%s)", ctx.trace_id)
+        logger.exception("turn failed")
         finished = _internal_failure()
 
     if finished is None:

@@ -27,6 +27,7 @@ from dss.core.shared.models import (
     TurnStatus,
 )
 from dss.entrypoint.app import build_app
+from dss.observability.trace_log import TurnFilter
 
 JSON = "application/json"
 
@@ -79,21 +80,22 @@ def test_a_crash_mid_stream_becomes_a_terminal_event(a_body):
     assert "turn.failed" in response.text
 
 
-def test_a_crash_is_logged_with_the_trace_id(a_body, caplog):
+def test_a_crash_is_logged_with_the_turns_ids(a_body, caplog):
     """A crash that only reaches the caller as "could not be reached" is
-    invisible to whoever has to fix it. The trace id is what joins the log line
-    to the evidence files."""
+    invisible to whoever has to fix it. The ids are what join the log line to
+    the turn. Streamed, so the ids the route binds must reach the stream."""
 
+    caplog.handler.addFilter(TurnFilter())
     with caplog.at_level(logging.ERROR):
         _client(ExplodingRunner()).post(
             "/v1/turns", json=a_body(), headers={"Accept": "text/event-stream"}
         )
 
-    assert any(r.levelno >= logging.ERROR for r in caplog.records), "nothing logged"
+    [crash] = [r for r in caplog.records if r.levelno >= logging.ERROR]
     assert "the runner fell over" in caplog.text, "the traceback is missing"
-    # In the message, not only in `extra`: the default formatter drops extras, so
-    # a trace id passed that way is invisible to whoever reads the logs.
-    assert "9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44" in caplog.text
+    assert crash.request_id == "9f2c1a8e-4b70-4d31-9c55-6f2e0b1d7a44"
+    assert crash.message_id == "msg_mandi_wheat_01"
+    assert crash.session_id == "conv_8f3a1c"
 
 
 def test_a_crash_in_json_mode_is_logged_too(a_body, caplog):
