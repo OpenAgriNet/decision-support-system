@@ -31,11 +31,10 @@ logger to tune verbosity without touching the rest of the app. Bodies can be
 large and may contain farmer-facing content — see CONVENTIONS.md on PII before
 shipping these lines to a broad-retention sink.
 
-``request_id`` need not be passed everywhere: it is stashed in a context
-variable at the top of the turn (``bind_turn_ids``), so an adapter with no
-``transaction_id`` in hand (the LLM provider port takes none) still tags its
-line correctly. Anyio copies the context into each child task, so the id set
-before the intent/moderation task group reaches both branches.
+``request_id`` need not be passed anywhere: the route stashes the turn's ids
+in context variables (``bind_turn_ids``), and ``TurnIdsFilter`` on each log
+handler copies them onto every ``dss`` line — like a Java MDC. Anyio copies
+the context into each child task, so the ids reach every branch of a turn.
 """
 
 from __future__ import annotations
@@ -126,12 +125,9 @@ def bind_turn_ids(
     session_id: str | None = None,
 ) -> None:
     """Make this turn's ids ambient for everything downstream in its context
-    (and its child tasks). Called once at the top of a turn.
+    (and its child tasks). The route calls it once, right after parsing.
 
-    ``request_id`` is the turn's ``transactionId``. ``message_id`` and
-    ``session_id`` are the other two the caller filters on; they are keyword
-    arguments and default to absent because only the orchestrator holds a
-    ``TurnContext`` carrying all three.
+    ``request_id`` is the turn's ``transactionId``.
     """
 
     _request_id.set(request_id)
@@ -157,10 +153,6 @@ def current_session_id() -> str | None:
     return None if session_id == _ABSENT else session_id
 
 
-def _rid(request_id: str | None) -> str:
-    return request_id if request_id is not None else _request_id.get()
-
-
 def current_otel_ids() -> tuple[str, str]:
     """The active span's trace and span ids, as the hex Langfuse displays.
 
@@ -184,19 +176,34 @@ def current_otel_ids() -> tuple[str, str]:
     return format(context.trace_id, "032x"), format(context.span_id, "016x")
 
 
-def _turn_ids(request_id: str | None) -> dict[str, str]:
-    """The turn's ids, minus any that are absent.
+class TurnIdsFilter(logging.Filter):
+    """Copies the bound turn ids onto every record its handler writes.
 
-    No trace or span id: the log bridge stamps both on the record from the
-    active span, and the console formatter prints them.
+    - On the handlers, not the `dss` logger: a logger's filter skips its children.
+    - An id the line passed itself wins; an absent one is left out.
+    - No trace or span id: the log bridge stamps both from the active span.
     """
 
+    def filter(self, record: logging.LogRecord) -> bool:
+        for key, value in _bound_turn_ids().items():
+            if not hasattr(record, key):
+                setattr(record, key, value)
+        return True
+
+
+def _bound_turn_ids() -> dict[str, str]:
     ids = {
-        "request_id": _rid(request_id),
+        "request_id": _request_id.get(),
         "message_id": _message_id.get(),
         "session_id": _session_id.get(),
     }
     return {key: value for key, value in ids.items() if value != _ABSENT}
+
+
+def _given_request_id(request_id: str | None) -> dict[str, str]:
+    """A request id passed by hand, which overrides the bound one."""
+
+    return {} if request_id is None else {"request_id": request_id}
 
 
 def _log(level: int, message: str, **fields: Any) -> None:
@@ -240,7 +247,7 @@ def trace_component(
     _log(
         logging.INFO,
         f"{stage} enter",
-        **_turn_ids(request_id),
+        **_given_request_id(request_id),
         component=stage.value,
         event="enter",
     )
@@ -256,7 +263,7 @@ def trace_component(
         _log(
             logging.INFO,
             f"{stage} exit",
-            **_turn_ids(request_id),
+            **_given_request_id(request_id),
             component=stage.value,
             event="exit",
             status=status,
@@ -286,7 +293,7 @@ def log_event(
     _log(
         logging.INFO,
         f"{component} {event}",
-        **_turn_ids(request_id),
+        **_given_request_id(request_id),
         component=component,
         event=event,
         **fields,
@@ -348,7 +355,7 @@ def _log_external(
 ) -> None:
     """The INFO line, then the body on its own DEBUG line so it never exports."""
 
-    ids = _turn_ids(request_id)
+    ids = _given_request_id(request_id)
     _log(
         logging.INFO,
         f"{service} {event}",

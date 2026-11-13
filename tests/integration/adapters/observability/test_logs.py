@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import contextvars
 import logging
 from collections.abc import Iterator
 
@@ -19,7 +20,7 @@ from opentelemetry.sdk._logs.export import (
 from opentelemetry.sdk.trace import TracerProvider
 
 from dss.adapters.observability.logs import _DSS_LOGGER, configure_logs, reset_logs
-from dss.observability.trace_log import log_event
+from dss.observability.trace_log import bind_turn_ids, log_event
 
 
 @pytest.fixture(autouse=True)
@@ -101,6 +102,22 @@ def test_trace_fields_are_exported_as_attributes(
     assert record.attributes["request_id"] == "txn-1"
     assert record.attributes["component"] == "discovery"
     assert record.attributes["ask_index"] == 0
+
+
+def test_any_dss_line_is_exported_with_the_turns_ids(
+    exporter: InMemoryLogRecordExporter,
+) -> None:
+    # Bound once by the route; no helper has to pass them on.
+    def log_in_a_turn() -> None:
+        bind_turn_ids("txn-1", message_id="msg-1", session_id="ses-1")
+        logging.getLogger("dss.adapters.http").error("turn failed")
+
+    contextvars.Context().run(log_in_a_turn)
+
+    attributes = exporter.get_finished_logs()[0].log_record.attributes or {}
+    assert attributes["request_id"] == "txn-1"
+    assert attributes["message_id"] == "msg-1"
+    assert attributes["session_id"] == "ses-1"
 
 
 def test_reset_detaches_the_handler(exporter: InMemoryLogRecordExporter) -> None:
