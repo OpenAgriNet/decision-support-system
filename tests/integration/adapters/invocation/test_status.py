@@ -62,6 +62,7 @@ def test_the_attributes_ride_on_the_first_commitment() -> None:
             "id": "c0ffee00-0000-4000-8000-000000000001",
             "commitments": [
                 {
+                    "status": {"descriptor": {"code": "DRAFT", "name": "Draft"}},
                     "resources": [
                         {"id": "res:pmfby:grievance", "quantity": {"count": 1}}
                     ],
