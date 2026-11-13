@@ -18,7 +18,11 @@ from typing import Protocol
 from pydantic_ai.models import Model
 from pydantic_ai.usage import RunUsage
 
-from dss.adapters.observability.metrics import model_that_ran, record_agent_run
+from dss.adapters.observability.metrics import (
+    configured_model_name,
+    model_that_ran,
+    record_agent_run,
+)
 from dss.core.forms.models import FormDefinition
 from dss.core.intent.models import Intent
 from dss.core.planner.evidence import assemble_evidence, place_failures
@@ -35,7 +39,7 @@ from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import TextQuery, TurnInput, UserTurn
 from dss.observability.stages import Stage
-from dss.observability.trace_log import log_external_response
+from dss.observability.trace_log import log_external_response, trace_agent_call
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
 from dss.ports.invocation import CapabilityInvocation
 from dss.ports.prompts import PromptIdentifier, PromptProvider
@@ -153,20 +157,27 @@ def build_plan(  # noqa: PLR0913
         # still reports them.
         usage = RunUsage()
         result = None
-        try:
-            # The enriched query and the history go in the user message, wrapped
-            # in markers — the model resolves a subject named in an earlier turn
-            # from here (see the provider-invocation skill's guidance).
-            result = await agent.run(
-                build_user_message(query=_query_of(turn), history=turn.history),
-                deps=deps,
-                model_settings=model_settings,
-                usage=usage,
-            )
-        finally:
-            record_agent_run(
-                stage=Stage.PLANNER, usage=usage, model=model_that_ran(result, model)
-            )
+        with trace_agent_call(
+            agent.name or Stage.PLANNER.value,
+            model=configured_model_name(model),
+            usage=usage,
+        ):
+            try:
+                # The enriched query and the history go in the user message,
+                # wrapped in markers — the model resolves a subject named in an
+                # earlier turn from here (see the provider-invocation skill).
+                result = await agent.run(
+                    build_user_message(query=_query_of(turn), history=turn.history),
+                    deps=deps,
+                    model_settings=model_settings,
+                    usage=usage,
+                )
+            finally:
+                record_agent_run(
+                    stage=Stage.PLANNER,
+                    usage=usage,
+                    model=model_that_ran(result, model),
+                )
         # The planner's own prose is discarded downstream (the composer writes
         # the answer), but log it so the model's final say is visible next to
         # the provider calls its `select` tool made.

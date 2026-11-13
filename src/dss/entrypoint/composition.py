@@ -640,6 +640,7 @@ def _network(
             client=client,
             base_url=settings.invocation_base_url,
             sender_id=sender_for(turn),
+            network_id=settings.network_host_id,
             attempts=settings.select_attempts,
             backoff_seconds=settings.select_backoff_seconds,
         )

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterator
 
 import pytest
@@ -184,3 +185,21 @@ async def test_a_failed_source_falls_to_the_next() -> None:
     chain = ChainedAreaLookup([("photon", _Down()), ("other", second)])
 
     assert await chain.resolve("Pune") == [_PUNE]
+
+
+async def test_a_failed_source_is_logged_without_the_place(caplog) -> None:
+    class _TimedOut:
+        async def resolve(self, name: str, region: str | None = None) -> list:
+            raise AreaLookupUnavailableError(f"timeout looking up {name}") from (
+                TimeoutError()
+            )
+
+    chain = ChainedAreaLookup([("photon", _TimedOut()), ("other", FakeAreaLookup({}))])
+
+    with caplog.at_level(logging.WARNING, logger="dss.trace"):
+        await chain.resolve("Pune")
+
+    [line] = caplog.records
+    assert line.levelno == logging.WARNING
+    assert (line.source, line.error_type) == ("photon", "TimeoutError")
+    assert "Pune" not in str(vars(line))

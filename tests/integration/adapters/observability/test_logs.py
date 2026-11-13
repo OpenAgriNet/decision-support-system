@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterator
+from contextvars import Context
 
 import pytest
 from opentelemetry.sdk._logs import LoggerProvider
@@ -19,6 +20,7 @@ from opentelemetry.sdk._logs.export import (
 from opentelemetry.sdk.trace import TracerProvider
 
 from dss.adapters.observability.logs import _DSS_LOGGER, configure_logs, reset_logs
+from dss.observability.log_fields import bind_turn_ids
 
 
 @pytest.fixture(autouse=True)
@@ -132,3 +134,27 @@ def test_only_the_dss_logger_is_bridged(exporter: InMemoryLogRecordExporter) -> 
     logging.getLogger("httpx").info("HTTP Request: POST /select 200 OK")
 
     assert messages(exporter) == []
+
+
+def test_record_carries_the_turn_ids_as_attributes(
+    exporter: InMemoryLogRecordExporter,
+) -> None:
+    # Attributes, not text: HyperDX filters on attributes and only searches text.
+    def log_inside_a_turn() -> None:
+        bind_turn_ids(
+            transaction_id="txn-1",
+            turn_message_id="msg-1",
+            session_id="sess-1",
+            sender_id="farmer-app",
+        )
+        logging.getLogger("dss.trace").info(
+            "intent enter", extra={"component": "intent"}
+        )
+
+    Context().run(log_inside_a_turn)
+
+    attributes = exporter.get_finished_logs()[0].log_record.attributes
+    assert attributes["transaction_id"] == "txn-1"
+    assert attributes["turn_message_id"] == "msg-1"
+    assert attributes["sender_id"] == "farmer-app"
+    assert attributes["component"] == "intent"

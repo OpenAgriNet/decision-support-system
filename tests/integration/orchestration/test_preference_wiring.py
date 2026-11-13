@@ -208,11 +208,11 @@ async def test_what_the_ranking_dropped_is_logged(
         )
 
     line = next(
-        record.message
+        record
         for record in caplog.records
-        if "event=ranking_applied" in record.message
+        if getattr(record, "event", None) == "ranking_applied"
     )
-    assert "sender_id=kisan-mitra-web" in line
-    assert "capability=Weather" in line
-    assert "dropped=unvetted,mausamgram" in line
-    assert "nashik" not in line.lower()
+    assert line.sender_id == "kisan-mitra-web"
+    assert line.capability == "Weather"
+    assert line.dropped == "unvetted,mausamgram"
+    assert "nashik" not in str(vars(line)).lower()

@@ -11,6 +11,8 @@ one failure.
 
 from __future__ import annotations
 
+import logging
+
 import httpx
 import pytest
 
@@ -71,6 +73,7 @@ def _invocation(handler: _CountingHandler, **kwargs) -> HttpCapabilityInvocation
         client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
         base_url="https://provider-network-vistaar.da.gov.in/oan",
         sender_id="seeker-network-vistaar.da.gov.in",
+        network_id="host.oan",
         backoff_seconds=0.0,  # keep the test fast; spacing is tested separately
         **kwargs,
     )
@@ -113,3 +116,23 @@ async def test_a_defect_is_not_retried() -> None:
         await _invocation(handler).select(CAPABILITY, {}, "txn-1")
 
     assert handler.calls == 1
+
+
+async def test_giving_up_is_logged_as_a_warning(caplog) -> None:
+    """The planner answers around a failed provider, so this line is the only
+    place that says why one went quiet."""
+
+    handler = _CountingHandler(429, fail_times=99)
+
+    with (
+        caplog.at_level(logging.WARNING, logger="dss.trace"),
+        pytest.raises(SelectFailedError),
+    ):
+        await _invocation(handler).select(CAPABILITY, {}, "txn-1")
+
+    [line] = [
+        r for r in caplog.records if getattr(r, "event", "") == "provider_call_failed"
+    ]
+    assert line.levelno == logging.WARNING
+    assert line.provider_id == "mausamgram"
+    assert (line.status_code, line.attempts) == (429, 3)

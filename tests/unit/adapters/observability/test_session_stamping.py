@@ -16,7 +16,7 @@ from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from dss.adapters.observability.tracing import TurnIdSpanProcessor, configure_telemetry
-from dss.observability.trace_log import bind_turn_ids
+from dss.observability.log_fields import bind_turn_ids
 
 
 @pytest.fixture
@@ -63,7 +63,12 @@ def test_configuring_tracing_registers_the_processor(monkeypatch) -> None:
 
     # Asserted through a span rather than by reading the provider's processor
     # list, which is private to the SDK.
-    bind_turn_ids("txn-1", message_id="msg-1", session_id="my-session-42")
+    bind_turn_ids(
+        transaction_id="txn-1",
+        turn_message_id="msg-1",
+        session_id="my-session-42",
+        sender_id="farmer-app",
+    )
     with trace.get_tracer("t").start_as_current_span("anything"):
         pass
 
@@ -75,7 +80,12 @@ def test_a_nested_span_carries_the_turns_session(spans) -> None:
     """The case that was broken. An agent run nests under `dss.turn`, and
     needs the session on itself rather than only above it."""
 
-    bind_turn_ids("txn-1", message_id="msg-1", session_id="my-session-42")
+    bind_turn_ids(
+        transaction_id="txn-1",
+        turn_message_id="msg-1",
+        session_id="my-session-42",
+        sender_id="farmer-app",
+    )
     tracer = trace.get_tracer("t")
 
     with tracer.start_as_current_span("dss.turn"):
@@ -97,7 +107,12 @@ def test_a_span_carries_the_session_under_the_sdks_key_too(spans) -> None:
     deployment the Sessions page did not list a session sent only as
     `langfuse.session.id`, though the observation filter found it."""
 
-    bind_turn_ids("txn-1", message_id="msg-1", session_id="my-session-42")
+    bind_turn_ids(
+        transaction_id="txn-1",
+        turn_message_id="msg-1",
+        session_id="my-session-42",
+        sender_id="farmer-app",
+    )
 
     with trace.get_tracer("t").start_as_current_span("planner run"):
         pass

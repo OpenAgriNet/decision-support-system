@@ -15,12 +15,18 @@ from pathlib import Path
 
 import httpx
 import pytest
+from opentelemetry.sdk._logs import LoggerProvider
+from opentelemetry.sdk._logs.export import (
+    InMemoryLogRecordExporter,
+    SimpleLogRecordProcessor,
+)
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import StatusCode
 
 from dss.adapters.discovery.client import HttpCapabilityDiscovery
+from dss.adapters.observability.logs import configure_logs, reset_logs
 from dss.core.provider_discovery.models import ProviderQuery
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -69,34 +75,35 @@ def _discovery(handler) -> HttpCapabilityDiscovery:
     )
 
 
-async def test_both_log_lines_for_one_call_carry_the_same_span(spans, caplog) -> None:
-    """`span_id` is what joins a log line to a span without a search, and the
-    request line is the one naming what was sent. If the two halves of a call
-    report different spans, clicking the failed span and grepping its id finds
-    the outcome but not the request that caused it."""
+async def test_both_log_lines_for_one_call_carry_the_same_span(spans) -> None:
+    """The span id joins an exported log line to its span. If the two halves
+    of a call report different spans, the failed span leads to the outcome
+    but not to the request that caused it."""
 
     def unavailable(request: httpx.Request) -> httpx.Response:
         return httpx.Response(503, json={"error": "simulated"})
 
-    with caplog.at_level(logging.INFO, logger="dss.trace"):
+    exported = InMemoryLogRecordExporter()
+    provider = LoggerProvider()
+    provider.add_log_record_processor(SimpleLogRecordProcessor(exported))
+    configure_logs(logger_provider=provider)
+    dss_logger = logging.getLogger("dss")
+    level_before = dss_logger.level
+    dss_logger.setLevel(logging.INFO)
+    try:
         await _discovery(unavailable).discover(QUERY, "txn-1")
+    finally:
+        dss_logger.setLevel(level_before)
+        reset_logs()
 
-    lines = [ln for ln in caplog.text.splitlines() if "external=discovery" in ln]
-    span_ids = {
-        field.removeprefix("span_id=")
-        for line in lines
-        for field in line.split()
-        if field.startswith("span_id=")
-    }
-
-    assert [ln for ln in lines if "event=request" in ln]
-    assert [ln for ln in lines if "event=response" in ln]
-    # One id, and a real one — two lines both reporting `-` would agree while
-    # joining nothing.
-    assert len(span_ids) == 1
-    assert span_ids != {"-"}
+    lines = [
+        record.log_record
+        for record in exported.get_finished_logs()
+        if record.log_record.attributes.get("external") == "discovery"
+    ]
+    assert {line.attributes["event"] for line in lines} == {"request", "response"}
     (span,) = spans.get_finished_spans()
-    assert span_ids == {format(span.context.span_id, "016x")}
+    assert {line.span_id for line in lines} == {span.context.span_id}
 
 
 async def test_a_capability_with_no_schema_context_does_not_raise(spans) -> None:
