@@ -13,6 +13,7 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 
+from dss.core.planner.markdown import render_answers_as_markdown
 from dss.core.provider_discovery.models import DiscoveredAnswer, ProviderCapability
 
 _MANDI_PRICE = "openagrinet:MandiPrice"
@@ -44,6 +45,21 @@ def pick_market_prices(
     return MarketPrices(
         answers=_latest_day_per_market(own or answers),
         is_from_asked_market=bool(own),
+    )
+
+
+def render_market_prices(prices: MarketPrices, *, asked: ProviderCapability) -> str:
+    """The prices as the planner's model reads them. When they are other
+    markets', the model is told they still answer the ask — otherwise it reads
+    them as data about the wrong place and reaches for `select_next`."""
+
+    data = render_answers_as_markdown(prices.answers)
+    if prices.is_from_asked_market:
+        return data
+    return (
+        f"{market_name(asked)} has no price in this window. These are other "
+        f"markets' latest prices for the same crop, and they answer the ask. "
+        f"Report them with each market's name and date.\n\n{data}"
     )
 
 

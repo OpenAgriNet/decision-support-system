@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from dss.core.planner.mandi_prices import market_name, pick_market_prices
+from dss.core.planner.mandi_prices import (
+    market_name,
+    pick_market_prices,
+    render_market_prices,
+)
 from dss.core.provider_discovery.models import DiscoveredAnswer, ProviderCapability
 from tests.support.providers import build_capability
 
@@ -139,3 +143,25 @@ def test_a_market_with_no_name_falls_back_to_its_resource() -> None:
     nameless = build_capability(resource_id="resource:mandi-price:market:1")
 
     assert market_name(nameless) == "resource:mandi-price:market:1"
+
+
+def test_the_asked_market_s_prices_are_shown_as_they_are() -> None:
+    prices = pick_market_prices((_price("APMC Rahuri ", "2026-11-05"),), asked=_asked())
+
+    shown = render_market_prices(prices, asked=_asked())
+
+    assert "has no price" not in shown
+    assert "APMC Rahuri" in shown
+
+
+def test_other_markets_prices_say_the_asked_market_had_none() -> None:
+    """Without this the model reads them as the wrong place's data."""
+
+    prices = pick_market_prices(
+        (_price("APMC Sangamner ", "2026-11-05"),), asked=_asked()
+    )
+
+    shown = render_market_prices(prices, asked=_asked())
+
+    assert shown.startswith("Rahuri APMC has no price in this window.")
+    assert "APMC Sangamner" in shown

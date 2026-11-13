@@ -24,10 +24,9 @@ from dss.core.planner.describe_capability import render_candidates_as_markdown
 from dss.core.planner.lookup import find_capability
 from dss.core.planner.mandi_prices import (
     MarketPrices,
-    market_name,
     pick_market_prices,
+    render_market_prices,
 )
-from dss.core.planner.markdown import render_answers_as_markdown
 from dss.core.planner.models import Failure, Skill, Verdict
 from dss.core.planner.resource_attributes import build_resource_attributes
 from dss.core.planner.skills import tool_names_for
@@ -196,7 +195,7 @@ async def _select(
     deps.next_choices.hold_after(ask_index, consulted=consulted, chosen=chosen)
     prices = _pick_prices(deps, ask_index=ask_index, used=chosen)
     deps.raw_answers.extend((ask_index, answer) for answer in prices.answers)
-    return _render_prices(prices, used=chosen)
+    return render_market_prices(prices, asked=chosen.capability)
 
 
 def _pick_prices(deps: PlannerDeps, *, ask_index: int, used: Consulted) -> MarketPrices:
@@ -213,21 +212,6 @@ def _pick_prices(deps: PlannerDeps, *, ask_index: int, used: Consulted) -> Marke
     return prices
 
 
-def _render_prices(prices: MarketPrices, *, used: Consulted) -> str:
-    """The data as the model reads it. When it is other markets' prices, the
-    model is told they still answer the ask — otherwise it reads them as data
-    about the wrong place and reaches for `select_next`."""
-
-    data = render_answers_as_markdown(prices.answers)
-    if prices.is_from_asked_market:
-        return data
-    return (
-        f"{market_name(used.capability)} has no price in this window. These "
-        f"are other markets' latest prices for the same crop, and they answer "
-        f"the ask. Report them with each market's name and date.\n\n{data}"
-    )
-
-
 async def _select_next(ctx: RunContext[PlannerDeps], ask_index: int) -> str:
     """Answer an ask from the next preferred provider instead, when the data
     `select` returned cannot answer it. Calls nobody: `select` already
@@ -241,7 +225,7 @@ async def _select_next(ctx: RunContext[PlannerDeps], ask_index: int) -> str:
     prices = _pick_prices(deps, ask_index=ask_index, used=chosen)
     _replace_answers(deps, ask_index=ask_index, answers=prices.answers)
     _log_next_provider_used(deps, ask_index=ask_index, used=chosen)
-    return _render_prices(prices, used=chosen)
+    return render_market_prices(prices, asked=chosen.capability)
 
 
 def _log_next_provider_used(
