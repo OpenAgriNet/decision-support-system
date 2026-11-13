@@ -27,7 +27,7 @@ from dss.core.shared.models import (
     TurnStatus,
 )
 from dss.entrypoint.app import build_app
-from dss.observability.trace_log import TurnIdsFilter
+from dss.observability.trace_log import TurnFilter
 
 JSON = "application/json"
 
@@ -85,7 +85,7 @@ def test_a_crash_is_logged_with_the_turns_ids(a_body, caplog):
     invisible to whoever has to fix it. The ids are what join the log line to
     the turn. Streamed, so the ids the route binds must reach the stream."""
 
-    caplog.handler.addFilter(TurnIdsFilter())
+    caplog.handler.addFilter(TurnFilter())
     with caplog.at_level(logging.ERROR):
         _client(ExplodingRunner()).post(
             "/v1/turns", json=a_body(), headers={"Accept": "text/event-stream"}

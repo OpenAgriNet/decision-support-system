@@ -32,7 +32,7 @@ large and may contain farmer-facing content — see CONVENTIONS.md on PII before
 shipping these lines to a broad-retention sink.
 
 ``request_id`` need not be passed anywhere: the route stashes the turn's ids
-in context variables (``bind_turn_ids``), and ``TurnIdsFilter`` on each log
+in context variables (``bind_turn_ids``), and ``TurnFilter`` on each log
 handler copies them onto every ``dss`` line — like a Java MDC. Anyio copies
 the context into each child task, so the ids reach every branch of a turn.
 """
@@ -176,7 +176,7 @@ def current_otel_ids() -> tuple[str, str]:
     return format(context.trace_id, "032x"), format(context.span_id, "016x")
 
 
-class TurnIdsFilter(logging.Filter):
+class TurnFilter(logging.Filter):
     """Copies the bound turn ids onto every record its handler writes.
 
     - On the handlers, not the `dss` logger: a logger's filter skips its children.

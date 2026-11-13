@@ -10,7 +10,7 @@ import contextvars
 import logging
 
 from dss.observability.trace_log import (
-    TurnIdsFilter,
+    TurnFilter,
     bind_turn_ids,
     log_event,
     log_external_request,
@@ -86,7 +86,7 @@ def test_non_primitive_values_become_text(caplog):
 
 
 def _filtered(record: logging.LogRecord) -> logging.LogRecord:
-    TurnIdsFilter().filter(record)
+    TurnFilter().filter(record)
     return record
 
 
