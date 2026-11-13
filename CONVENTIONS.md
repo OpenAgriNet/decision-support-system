@@ -155,7 +155,7 @@ Rebase merge only. Each commit lands individually on `main` — individual commi
 ## Logging
 Always include `request_id`. Never log raw PII.
 Fields go in attributes, not in the message, so a log search can filter on them.
-Use `log_event` (`dss/observability/trace_log.py`) — it adds the turn's ids for you.
+Don't pass the turn's ids: the route binds them once, and a filter on each log handler adds them to every `dss` line (like a Java MDC).
 ```python
 # Good
 log_event("moderation", event="classified", moderation_category=category)
