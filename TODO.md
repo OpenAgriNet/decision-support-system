@@ -265,10 +265,15 @@
 
 ## Settlement (#243)
 
-- **`TurnResult.settlements` defaults to empty.** Every turn now settles its
-  asks, but the field still has a default. A `TurnResult` built without
-  settlements passes `is_every_ask_settled` and then fails in
-  `settled_intent`, far from where it was built. Make the field required.
+- **An ask and its settlement are matched by position.** `TurnResult` holds
+  the asks and the settlements as two lists. One built with a missing or
+  short settlements list passes `is_every_ask_settled` and then fails in
+  `settled_intent`, far from where it was built. Pair them in one type,
+  `AskSettlement` (an ask with its settlement), as `AskEvidence` pairs an ask
+  with its outcome. `settle_asks` returns the pairs, `TurnResult` holds only
+  the pairs and the confidence, and `intent` is read from them. The three
+  `zip(strict=True)` calls go, and `merge_unsettled` no longer takes the
+  intent. Its own PR.
 - **A named scheme with no form ends the ask.** Later, let the ask settle, so
   the planner answers what it can without a form.
 - **A guess is only confirmed where a form exists.** In a category with no
