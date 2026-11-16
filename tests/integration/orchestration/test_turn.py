@@ -450,6 +450,21 @@ async def test_discovery_searches_only_settled_asks() -> None:
     assert result.settlements == (_SETTLED, _NEEDS_PLACE)
 
 
+async def test_the_settled_asks_are_built_once() -> None:
+    result = await run_turn(
+        _turn("potato price, and will it rain?"),
+        intent_llm=_FakeIntentLLM(IntentClassification(asks=(_POTATO, _RAIN))),
+        moderation_llm=_FakeModerationLLM(),
+        prompts=FakePromptProvider(),
+        policies=[],
+        discover_providers=_FakeDiscovery(),
+        area_lookup=FakeAreaLookup(),
+        settle_asks=_settle_with(_SETTLED, _NEEDS_PLACE),
+    )
+
+    assert result.settled_intent is result.settled_intent
+
+
 async def test_nothing_settled_skips_discovery() -> None:
     discovery = _FakeDiscovery()
 

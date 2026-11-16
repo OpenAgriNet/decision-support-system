@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from functools import cached_property
 from typing import assert_never
 
 import anyio
@@ -210,7 +211,7 @@ class TurnResult(BaseModel):
     # Of `settled_intent`'s asks, numbered as that intent numbers them.
     discovery: DiscoveryResult
 
-    @property
+    @cached_property
     def settled_intent(self) -> Intent:
         """Only the settled asks: the ones discovery and the planner work on."""
 
