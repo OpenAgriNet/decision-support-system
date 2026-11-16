@@ -156,16 +156,54 @@ def test_a_failing_component_exits_at_warning(caplog):
     assert (enter.levelno, leave.levelno) == (logging.INFO, logging.WARNING)
 
 
-def test_a_caught_failure_is_a_warning_with_its_type(caplog):
+def _caught(error: BaseException) -> BaseException:
+    try:
+        raise error
+    except BaseException as caught:  # noqa: BLE001
+        return caught
+
+
+def _wrapped(cause: Exception) -> Exception:
+    try:
+        try:
+            raise cause
+        except Exception as inner:
+            raise RuntimeError("wrapper") from inner
+    except RuntimeError as outer:
+        return outer
+
+
+def test_a_caught_failure_is_a_warning_with_its_type_only(caplog):
     with caplog.at_level(logging.INFO, logger="dss.trace"):
         log_failure(
-            "area_lookup", event="source_unavailable", error_type="TimeoutError"
+            "area_lookup",
+            _caught(TimeoutError("timeout looking up Pune")),
+            event="source_unavailable",
         )
 
     [line] = _records(caplog, event="source_unavailable")
     assert line.levelno == logging.WARNING
     assert line.error_type == "TimeoutError"
     assert line.exc_info is None
+    assert "Pune" not in str(vars(line))
+
+
+def test_a_caught_failure_names_the_error_behind_a_wrapper(caplog):
+    with caplog.at_level(logging.INFO, logger="dss.trace"):
+        log_failure("area_lookup", _wrapped(TimeoutError()), event="unavailable")
+
+    [line] = _records(caplog, event="unavailable")
+    assert line.error_type == "TimeoutError"
+
+
+def test_a_caught_failure_names_the_first_error_in_a_task_group(caplog):
+    group = ExceptionGroup("task group", [KeyError("x"), ValueError("y")])
+
+    with caplog.at_level(logging.INFO, logger="dss.trace"):
+        log_failure("redaction", group, event="identifier_failed")
+
+    [line] = _records(caplog, event="identifier_failed")
+    assert line.error_type == "KeyError"
 
 
 def test_a_closed_stream_is_cancelled_not_a_failure(caplog):

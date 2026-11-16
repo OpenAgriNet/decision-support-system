@@ -738,8 +738,8 @@ def _log_given_up(
 
     log_failure(
         "invocation",
+        failure,
         event="provider_call_failed",
-        error_type=type(failure).__name__,
         provider_id=capability.provider_id,
         capability=capability.capability,
         status_code=failure.status_code,

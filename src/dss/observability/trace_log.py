@@ -173,16 +173,16 @@ def log_event(
 
 def log_failure(
     component: str,
+    error: BaseException,
     transaction_id: str | None = None,
     *,
     event: str,
-    error_type: str,
     **fields: Any,
 ) -> None:
     """Log a failure the DSS caught and answered around, at WARNING.
 
-    The error's type, never its message by default: a message can quote the
-    farmer. Pass a concealed one as a field when it helps.
+    Names the root error's type, never its message or stack: a message can
+    quote the farmer. Pass a concealed one as a field when it helps.
     """
 
     _log(
@@ -191,9 +191,20 @@ def log_failure(
         transaction_id,
         component=component,
         event=event,
-        error_type=error_type,
+        error_type=_name_root_error(error),
         **fields,
     )
+
+
+def _name_root_error(error: BaseException) -> str:
+    """Past a task group's wrapper and any error raised `from` another, since
+    neither wrapper says what went wrong."""
+
+    while isinstance(error, BaseExceptionGroup) and error.exceptions:
+        error = error.exceptions[0]
+    while error.__cause__ is not None:
+        error = error.__cause__
+    return type(error).__name__
 
 
 def log_external_request(
