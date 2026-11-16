@@ -11,8 +11,6 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
 
 import httpx
@@ -78,46 +76,34 @@ def _discovery(handler) -> HttpCapabilityDiscovery:
 
 
 async def test_both_log_lines_for_one_call_carry_the_same_span(spans) -> None:
-    """`span_id` is what joins a log line to a span without a search, and the
-    request line is the one naming what was sent. If the two halves of a call
-    report different spans, clicking the failed span finds the outcome but not
-    the request that caused it."""
+    """The span id joins an exported log line to its span. If the two halves
+    of a call report different spans, the failed span leads to the outcome
+    but not to the request that caused it."""
 
     def unavailable(request: httpx.Request) -> httpx.Response:
         return httpx.Response(503, json={"error": "simulated"})
 
-    with _exported_logs() as logs:
-        await _discovery(unavailable).discover(QUERY, "txn-1")
-
-    records = [
-        r.log_record
-        for r in logs.get_finished_logs()
-        if (r.log_record.attributes or {}).get("external") == "discovery"
-    ]
-    events = {r.attributes["event"] for r in records if r.attributes}
-    span_ids = {r.span_id for r in records}
-
-    assert events == {"request", "response"}
-    (span,) = spans.get_finished_spans()
-    assert span_ids == {span.context.span_id}
-
-
-@contextmanager
-def _exported_logs() -> Iterator[InMemoryLogRecordExporter]:
-    """The real log bridge, so the span id is the one it stamps on export."""
-
-    exporter = InMemoryLogRecordExporter()
+    exported = InMemoryLogRecordExporter()
     provider = LoggerProvider()
-    provider.add_log_record_processor(SimpleLogRecordProcessor(exporter))
-    trace_logger = logging.getLogger("dss.trace")
-    level_before = trace_logger.level
-    trace_logger.setLevel(logging.INFO)
+    provider.add_log_record_processor(SimpleLogRecordProcessor(exported))
     configure_logs(logger_provider=provider)
+    dss_logger = logging.getLogger("dss")
+    level_before = dss_logger.level
+    dss_logger.setLevel(logging.INFO)
     try:
-        yield exporter
+        await _discovery(unavailable).discover(QUERY, "txn-1")
     finally:
+        dss_logger.setLevel(level_before)
         reset_logs()
-        trace_logger.setLevel(level_before)
+
+    lines = [
+        record.log_record
+        for record in exported.get_finished_logs()
+        if record.log_record.attributes.get("external") == "discovery"
+    ]
+    assert {line.attributes["event"] for line in lines} == {"request", "response"}
+    (span,) = spans.get_finished_spans()
+    assert {line.span_id for line in lines} == {span.context.span_id}
 
 
 async def test_a_capability_with_no_schema_context_does_not_raise(spans) -> None:

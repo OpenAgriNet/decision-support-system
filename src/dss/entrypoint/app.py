@@ -16,13 +16,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from starlette.types import Lifespan
 
+from dss.adapters.http.access_log import AccessLogMiddleware
 from dss.adapters.http.v1 import schema
 from dss.adapters.http.v1.router import turn_router
 from dss.adapters.observability.tracing import configure_telemetry, tracing_enabled
 from dss.config.settings import Settings
 from dss.entrypoint.composition import build_runner_with_lifecycle
-from dss.observability.log_format import KeyValueFormatter
-from dss.observability.trace_log import TurnFilter
+from dss.observability.log_fields import KeyValueFormatter, TurnFilter
 from dss.ports.turn import TurnRunner
 
 TITLE = "Decision Support System"
@@ -54,6 +54,7 @@ def build_app(
         # services reach this port.
     )
     app.include_router(turn_router(runner=runner, settings=settings))
+    app.add_middleware(AccessLogMiddleware)
     _publish_wire_schemas(app)
     _instrument_http(app)
     return app

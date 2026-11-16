@@ -153,18 +153,17 @@ Rebase merge only. Each commit lands individually on `main` — individual commi
 - If a PR is squash-merged by accident: the PR title and `Relates to #issue` still preserve traceability and changelog correctness; only intra-PR commit granularity is lost.
 
 ## Logging
-Always include `request_id`. Never log raw PII.
-Fields go in attributes, not in the message, so a log search can filter on them.
-Don't pass the turn's ids: the route binds them once, and a filter on each log handler adds them to every `dss` line (like a Java MDC).
+Facts go in `extra` as attributes, never in the message text, so HyperDX can filter on them (ADR-0023). Don't pass the turn's ids (`transaction_id`, `turn_message_id`, `session_id`, `sender_id`): the route binds them once, and a filter on each log handler adds them to every `dss` line. An absent id is left off. Use snake_case names shared across services. Never log raw PII.
 ```python
 # Good
 log_event("moderation", event="classified", moderation_category=category)
+logger.warning("pretranslation failed", extra={"error_type": type(exc).__name__})
 
 # Bad — the fields are text inside the message, so nothing can filter on them
-logger.info("request_id=%s moderation_category=%s", request_id, category)
+logger.info("transaction_id=%s moderation_category=%s", transaction_id, category)
 ```
 The console still prints each attribute as `key=value`, so greps keep working.
-Levels: `DEBUG` internal state · `INFO` turn lifecycle · `WARNING` recoverable failure · `ERROR` unrecoverable failure.
+Levels: `DEBUG` internal state and bodies (never exported) · `INFO` turn lifecycle · `WARNING` a failure the turn answers around, type only, no stack · `ERROR` an uncaught failure, with its stack.
 
 ## Linting & Formatting
 One tool across all repos: **ruff**. Replaces black, flake8, and isort — one tool, one config, consistent across every repo.

@@ -1,6 +1,7 @@
 """Sends the app's log lines to the same endpoint as spans and metrics.
 
 - Ids as fields, not text, so a dashboard can join a log line to its span.
+- Every line gets the turn's ids, so HyperDX can filter a turn or a sender.
 - The handler's INFO level is the PII guard: DEBUG lines hold farmer words.
 - logfire builds no logger provider, so this module builds one (same OTLP env).
 """
@@ -10,7 +11,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from dss.observability.trace_log import TurnFilter
+from dss.observability.log_fields import TurnFilter
 
 if TYPE_CHECKING:
     from opentelemetry.sdk._logs import LoggerProvider

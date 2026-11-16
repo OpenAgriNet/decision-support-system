@@ -48,7 +48,7 @@ from dss.core.shared.models import (
     TurnStatus,
     UserTurn,
 )
-from dss.observability.trace_log import bind_turn_ids
+from dss.observability.log_fields import bind_turn_ids
 from dss.ports.turn import TurnRunner
 
 logger = logging.getLogger(__name__)
@@ -170,7 +170,12 @@ async def _run(
     ctx = mapping.to_turn_context(
         admitted.body, message_id=_minted_id(), network_sender_id=network_sender_id
     )
-    bind_turn_ids(ctx.trace_id, message_id=ctx.message_id, session_id=ctx.session_id)
+    bind_turn_ids(
+        transaction_id=ctx.trace_id,
+        turn_message_id=ctx.message_id,
+        session_id=ctx.session_id,
+        sender_id=ctx.sender_id,
+    )
     try:
         turn = mapping.to_user_turn(admitted.body)
     except ValueError as exc:
