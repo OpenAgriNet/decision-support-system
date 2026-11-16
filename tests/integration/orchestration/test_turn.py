@@ -22,7 +22,6 @@ from dss.core.intent.models import (
     InteractionType,
     PlaceSource,
     ResolvedPlace,
-    Scheme,
     SubjectCategory,
     UnclearAction,
 )
@@ -50,7 +49,6 @@ from dss.core.settlement.models import (
 from dss.core.shared.models import (
     Geometry,
     Location,
-    ProviderAction,
     TextQuery,
     UserTurn,
 )
@@ -538,7 +536,10 @@ def _settle_with_forms(*forms: ActionSchema) -> SettleAsks:
     return build_settle_asks(_FakeIndex({}, frozenset()), registry.contexts_for)
 
 
-def test_settle_asks_for_the_scheme_of_a_form_category() -> None:
+def test_the_registrys_forms_reach_settlement() -> None:
+    """Wiring: the registry is asked for each ask's own category. The rules
+    for what is then asked are tested in `tests/unit/core/settlement`."""
+
     settle = _settle_with_forms(_grievance_form("PMFBY", "support"))
     complaint = Ask(
         subject_categories=SubjectCategory.GRIEVANCE,
@@ -553,49 +554,4 @@ def test_settle_asks_for_the_scheme_of_a_form_category() -> None:
     assert settle(Intent(asks=(complaint, rain))) == (
         NeedsClarification(open_slots=(Slot(AskSlot.SCHEME, Missing()),)),
         _SETTLED,
-    )
-
-
-def _grievance(
-    interaction: InteractionType,
-    *,
-    action: ProviderAction | UnclearAction | None,
-    scheme: Scheme | None = None,
-) -> Ask:
-    return Ask(
-        subject_categories=SubjectCategory.GRIEVANCE,
-        interaction_type=interaction,
-        action=action,
-        scheme=scheme,
-    )
-
-
-_PM_KISAN = Scheme(code="PM-KISAN", name="PM Kisan Samman Nidhi")
-_NEEDS_ACTION = Slot(AskSlot.ACTION, Missing())
-
-
-def test_unclear_action_is_asked_first() -> None:
-    settle = _settle_with_forms(
-        _grievance_form("PMFBY", "support"), _grievance_form("PMFBY", "status")
-    )
-    problem = _grievance(InteractionType.ACT, action=UnclearAction.UNCLEAR)
-
-    assert settle(Intent(asks=(problem,))) == (
-        NeedsClarification(open_slots=(_NEEDS_ACTION, Slot(AskSlot.SCHEME, Missing()))),
-    )
-
-
-def test_a_scheme_is_not_turned_away_before_the_action_is_known() -> None:
-    """PM-KISAN has a status form. If the farmer wants to check a complaint,
-    we can serve it, so they are asked first."""
-
-    settle = _settle_with_forms(
-        _grievance_form("PMFBY", "support"), _grievance_form("PM-KISAN", "status")
-    )
-    problem = _grievance(
-        InteractionType.ACT, action=UnclearAction.UNCLEAR, scheme=_PM_KISAN
-    )
-
-    assert settle(Intent(asks=(problem,))) == (
-        NeedsClarification(open_slots=(_NEEDS_ACTION,)),
     )

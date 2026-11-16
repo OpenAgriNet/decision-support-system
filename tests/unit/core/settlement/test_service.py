@@ -2,7 +2,15 @@
 
 from __future__ import annotations
 
-from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
+from dss.core.forms.models import FormContext
+from dss.core.intent.models import (
+    Ask,
+    Intent,
+    InteractionType,
+    Scheme,
+    SubjectCategory,
+    UnclearAction,
+)
 from dss.core.settlement.models import (
     Ambiguous,
     AskRequirements,
@@ -19,6 +27,7 @@ from dss.core.settlement.models import (
     Unservable,
     UnservableReason,
 )
+from dss.core.settlement.requirements import build_ask_requirements
 from dss.core.settlement.service import settle, settle_asks
 
 PLACE = AskSlot.PLACE
@@ -101,4 +110,32 @@ def test_each_ask_settles_on_its_own() -> None:
     assert settlements == (
         NeedsClarification(open_slots=(Slot(PLACE, Missing()),)),
         Settled(Frame(slots=())),
+    )
+
+
+def test_a_scheme_is_not_turned_away_before_the_action_is_known() -> None:
+    """PM-KISAN has a status form. If the farmer wants to check a complaint,
+    we can serve it, so they are asked first."""
+
+    pm_kisan = Scheme(code="PM-KISAN", name="PM Kisan Samman Nidhi")
+    problem = Ask(
+        subject_categories=SubjectCategory.GRIEVANCE,
+        interaction_type=InteractionType.ACT,
+        action=UnclearAction.UNCLEAR,
+        scheme=pm_kisan,
+    )
+    forms = [
+        FormContext(scheme="PMFBY", category="Grievance", action="support"),
+        FormContext(scheme="PM-KISAN", category="Grievance", action="status"),
+    ]
+
+    settlements = settle_asks(
+        Intent(asks=(problem,)),
+        requirements_for=lambda ask: build_ask_requirements(
+            ask, needs_place=False, forms=forms
+        ),
+    )
+
+    assert settlements == (
+        NeedsClarification(open_slots=(Slot(AskSlot.ACTION, Missing()),)),
     )
