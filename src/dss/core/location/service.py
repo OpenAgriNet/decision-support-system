@@ -300,7 +300,8 @@ async def _own_place_in_a_state(
 ) -> ResolvedPlace | None:
     # A user in Srinagar who says "Kashmir" means where they are, even when a
     # village of that name exists in another state.
-    for state in (choice for choice in choices if choice.is_region):
+    states = [choice for choice in choices if choice.is_region]
+    for state in states:
         own = await _user_own_place(state, user_location, lookup, max_km)
         if own is not None:
             return own

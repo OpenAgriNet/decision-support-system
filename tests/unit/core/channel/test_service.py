@@ -211,6 +211,44 @@ def test_each_choice_stops_where_it_stands_apart_from_every_other() -> None:
     assert "3. Akbarpur, Ambedkar Nagar" in text
 
 
+def test_a_state_among_the_choices_has_its_own_line() -> None:
+    """ "Kashmir" is two villages and a word in a state. The state is listed
+    by its full name, so the farmer can pick it."""
+
+    def kashmir(*within: str) -> AreaMatch:
+        return AreaMatch(
+            name="Kashmir",
+            region="IN",
+            within=("India", *within),
+            geometry=Geometry(coordinates=[75.0, 30.0]),
+        )
+
+    place = AmbiguousPlace(
+        unresolved_name="Kashmir",
+        candidates=(
+            kashmir("Rajasthan", "Sheo Tehsil"),
+            kashmir("Himachal Pradesh", "Karsog"),
+            AreaMatch(
+                name="Jammu and Kashmir",
+                region="IN",
+                within=("India",),
+                geometry=Geometry(coordinates=[75.16, 33.66]),
+                is_region=True,
+            ),
+        ),
+    )
+
+    answer = answer_for_unplaced_asks((_ask(place=place),), _TEXT)
+
+    assert answer is not None
+    assert answer.content[0].text.splitlines() == [
+        "Which Kashmir?",
+        "1. Kashmir, Rajasthan",
+        "2. Kashmir, Himachal Pradesh",
+        "3. Jammu and Kashmir, India",
+    ]
+
+
 def test_a_long_list_is_grouped_one_level_up() -> None:
     """Six Rampurs, two in each of three states. Six lines are too many to
     read; the farmer picks a state first, and the next turn narrows further."""

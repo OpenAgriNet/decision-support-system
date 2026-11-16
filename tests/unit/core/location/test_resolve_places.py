@@ -685,6 +685,25 @@ async def test_a_state_left_alone_is_not_the_place() -> None:
     )
 
 
+async def test_a_part_after_the_comma_rules_the_state_out() -> None:
+    """ "Kashmir, Rajasthan" is the village. Jammu and Kashmir is not in
+    Rajasthan, so there is nothing to ask."""
+
+    classification = IntentClassification(asks=(_weather_ask("Kashmir, Rajasthan"),))
+    lookup = _FakeLookup(
+        {"kashmir": [_KASHMIR_IN_RAJASTHAN, _KASHMIR_IN_HIMACHAL, _JAMMU_AND_KASHMIR]}
+    )
+
+    intent = await resolve_places(classification, _turn(), lookup=lookup)
+
+    assert intent.asks[0].place == ResolvedPlace(
+        name="Kashmir",
+        within=("India", "Rajasthan", "Sheo Tehsil"),
+        geometry=_KASHMIR_IN_RAJASTHAN.geometry,
+        source=PlaceSource.NAMED,
+    )
+
+
 _SRINAGAR = AreaMatch(
     name="Srinagar",
     region="IN-JK",
