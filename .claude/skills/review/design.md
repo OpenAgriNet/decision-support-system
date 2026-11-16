@@ -9,7 +9,7 @@ this file is the checklist. Bugs belong to the correctness pass — skip them.
 - `core/` imports Pydantic AI, pydantic-graph, an SDK, or an adapter.
 - `core/` opens a span or logs a provider body.
 - A vendor type leaks out of `adapters/` into `core/` or a port.
-- Logs contain raw PII or pass the turn's ids by hand (`TurnFilter` adds them).
+- Logs contain raw PII or miss `request_id`.
 
 ### Design
 - **Single responsibility** — a function or module that does two jobs. Signal: "and" in its description, or two unrelated groups of parameters.
