@@ -53,6 +53,7 @@ from dss.core.forms.service import (
     free_text_of,
     is_auth_refused,
     is_done,
+    mask_pii_fields,
     validate_submission,
     with_form_done,
     withhold_values,
@@ -70,7 +71,7 @@ from dss.core.provider_discovery.models import (
     ProviderCapability,
 )
 from dss.core.redaction.turn import surrounding_texts_of, with_surrounding_texts
-from dss.core.redaction.visibility import Visibility
+from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import (
     TurnContext,
     TurnEvent,
@@ -132,7 +133,7 @@ class _RedactedTexts:
 @dataclass(frozen=True)
 class _Redacted:
     turn: UserTurn[FormSubmission]  # for the record: values withheld
-    # The submitted form; one that failed its checks as is.
+    # The submitted form, PII fields masked; one that failed its checks as is.
     form: ValidSubmission | FormErrors | UnknownForm
     free_text: str
     # The real values behind the tags, for the provider call only.
@@ -207,7 +208,7 @@ class FormPath:
     async def _handle_details_form(  # noqa: PLR0911
         self, form_turn: _FormTurn, session: Session
     ) -> _Reply:
-        # Raw values are checked first: a tagged phone fails its own pattern.
+        # Validated before masking: a tagged value would fail its own pattern.
         redaction: _Redacted = await self._redact_form(
             form_turn, validate_submission(form_turn.turn.input, self._forms)
         )
@@ -217,7 +218,7 @@ class FormPath:
 
         submission = redaction.turn.input  # values withheld: ids only
 
-        details = redaction.form
+        details = redaction.form  # PII fields masked
         action = self._forms.action_schema(submission.context)
         intent = self._intent_for(submission.context)
 
@@ -300,7 +301,7 @@ class FormPath:
     async def _handle_init_response(
         self, form_turn: _FormTurn, session: Session
     ) -> _Reply:
-        # Redacted like any form (the history and phone tagged),
+        # Redacted like any form (the history, and the init response masked),
         # but never moderated: it has no free text. Discovery and the done
         # check ran when the details form was sent.
         flow = find_waiting_flow(
@@ -342,13 +343,25 @@ class FormPath:
                 end_for_invalid_form(init_response, self._clarification_text),
                 form_turn,
             )
+        # The saved details are a second form: masked too, and their tags held
+        # with the turn's, so the answer can reveal what the provider echoes.
+        details = mask_pii_fields(flow.details)
+        held = redaction.visibility
+        redaction = replace(
+            redaction,
+            visibility=Visibility(
+                values={**held.values, **details.visibility.values},
+                never_concealed=held.never_concealed
+                | details.visibility.never_concealed,
+            ),
+        )
         # Removed before the call: a crash after it must not leave a response
         # that may have reached the provider open to be used again. A failure
         # the provider never took puts it back (`decide_after_failed_init_response`).
         session.update_forms(clear_awaiting_init_record(session.forms))
         response = await self._call_provider_action(
             form_turn,
-            flow.details,
+            details.submission,
             flow.action,
             provider=flow.entry.provider,
             visibility=redaction.visibility,
@@ -448,8 +461,9 @@ class FormPath:
                 form_turn,
             )
         return await self._update_forms_and_end(
-            # The details are kept as typed: the call after the init response
-            # needs the real values. A done form keeps none.
+            # The details are kept as typed, not masked: the call after the init
+            # response needs the real values, and the tags last one turn. A done
+            # form keeps none.
             decide_after_sent_init(
                 session.forms,
                 form_turn.turn.input,
@@ -555,12 +569,23 @@ class FormPath:
         form_turn: _FormTurn,
         validated_form: ValidSubmission | FormErrors | UnknownForm,
     ) -> _Redacted:
-        texts = await self._redact_texts(form_turn, _free_text_of(validated_form))
+        masked_form = None
+        form = validated_form
+
+        if isinstance(validated_form, ValidSubmission):
+            masked_form = mask_pii_fields(validated_form)
+            form = masked_form.submission
+
+        texts = await self._redact_texts(form_turn, _free_text_of(form))
+        held = masked_form.visibility if masked_form is not None else NOTHING_HELD
         return _Redacted(
             turn=texts.turn,
-            form=validated_form,
+            form=form,
             free_text=texts.free_text,
-            visibility=texts.visibility,
+            visibility=Visibility(
+                values={**texts.visibility.values, **held.values},
+                never_concealed=texts.visibility.never_concealed | held.never_concealed,
+            ),
         )
 
     async def _redact_texts(

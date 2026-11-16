@@ -279,6 +279,10 @@ class ActionCall:
     transaction_id: NetworkTransactionID
     visibility: Visibility
 
+    def sent(self) -> dict:
+        # What the provider receives: the client reveals the tags at the POST.
+        return self.visibility.reveal(self.attributes)
+
 
 class RecordingActionInvocation:
     # `replies` and `failures` by action override `reply` and `failure`, so

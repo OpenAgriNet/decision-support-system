@@ -362,22 +362,16 @@ async def test_a_complaint_the_policy_rejects_ends_the_turn_refused() -> None:
     assert turns.records["t1"].finished == finished
 
 
-async def test_the_moderation_model_sees_the_complaint_tagged() -> None:
-    redact = partial(
-        redact_texts, identifiers=[_FindsValues(phone=PHONE)], policy=POLICY
-    )
+async def test_moderation_sees_only_typed_fields_the_pack_leaves_unmarked() -> None:
     moderation_llm = _RecordingModerationLLM()
     orch, _ = _build_orchestrator_and_turn_sink(
-        redact=redact, moderation_llm=moderation_llm, policies=[DELETE_COMMAND]
+        moderation_llm=moderation_llm, policies=[DELETE_COMMAND]
     )
-    complaint = {
-        **_VALUES,
-        "grievance.description": f"No payment yet, call me on {PHONE}.",
-    }
 
-    await _collect(orch, _form_turn(complaint))
+    await _collect(orch, _form_turn(_VALUES))
 
-    assert moderation_llm.judged == ["No payment yet, call me on «phone_1»."]
+    # The description and the phone are marked PII, the season is a select.
+    assert moderation_llm.judged == [_VALUES["cropYear"]]
 
 
 async def test_a_moderation_model_down_fails_closed() -> None:
@@ -392,13 +386,15 @@ async def test_a_moderation_model_down_fails_closed() -> None:
     assert finished.outcome.cause is Cause.MODERATION_UNAVAILABLE
 
 
-async def test_a_form_with_no_free_text_is_not_moderated() -> None:
+async def test_a_form_whose_typed_fields_are_all_marked_is_not_moderated() -> None:
     moderation_llm = _RecordingModerationLLM()
-    orch, _ = _build_orchestrator_and_turn_sink(
-        moderation_llm=moderation_llm, policies=[DELETE_COMMAND]
+    orch, _, _ = _build_kisan_orchestrator(
+        RecordingActionInvocation(_CHALLENGE),
+        moderation_llm=moderation_llm,
+        policies=[DELETE_COMMAND],
     )
 
-    await _collect(orch, _form_turn(_LOOKUP, context=_PMFBY_STATUS))
+    await _collect(orch, _kisan_details_turn())
 
     assert moderation_llm.judged == []
 
@@ -480,7 +476,7 @@ async def test_the_first_ranked_provider_for_the_forms_scheme_is_called() -> Non
     (call,) = invocation.calls
     assert call.action is ProviderAction.SUPPORT
     assert call.provider.provider_id == "pmfby-provider"
-    assert call.attributes["enrolmentId"] == _VALUES["enrolmentId"]
+    assert call.sent()["enrolmentId"] == _VALUES["enrolmentId"]
 
 
 async def test_a_status_form_is_sent_with_status() -> None:
@@ -828,7 +824,7 @@ async def test_a_form_needing_init_sends_init_once_with_only_its_paths() -> None
     (call,) = invocation.calls
     assert call.action is ProviderAction.INIT
     assert call.provider == _KISAN_PROVIDER
-    assert call.attributes["enrolmentId"] == _KISAN_VALUES["enrolmentId"]
+    assert call.sent()["enrolmentId"] == _KISAN_VALUES["enrolmentId"]
     assert call.attributes["scheme"] == {"code": "PM-KISAN"}
     assert "grievance" not in call.attributes
     assert "challenge" not in call.attributes
@@ -894,7 +890,10 @@ async def test_a_refused_complaint_never_sends_init_and_keeps_the_open_flow() ->
     )
     _save_waiting(store, "offer-1")
 
-    events = await _collect(orch, _kisan_details_turn("offer-2"))
+    # Its enrolment id is marked PII; the filing date is what moderation reads.
+    status_check = _form_turn(_KISAN_LOOKUP, context=_PMKISAN_STATUS, form_id="offer-2")
+
+    events = await _collect(orch, status_check)
 
     assert _finished(events).outcome.status is TurnStatus.REJECTED
     assert invocation.calls == []
@@ -1032,10 +1031,8 @@ async def test_an_init_response_files_the_waiting_form_with_its_provider() -> No
     (call,) = invocation.calls
     assert call.action is ProviderAction.SUPPORT
     assert call.provider == _KISAN_PROVIDER
-    assert call.attributes["enrolmentId"] == _KISAN_VALUES["enrolmentId"]
-    assert call.attributes["challenge"] == {
-        "response": {"method": "OTP", "value": _OTP}
-    }
+    assert call.sent()["enrolmentId"] == _KISAN_VALUES["enrolmentId"]
+    assert call.sent()["challenge"] == {"response": {"method": "OTP", "value": _OTP}}
     assert discovery.intents == []
     assert _stored_state(store).forms["offer-1"].status is FormStatus.DONE
 
@@ -1274,6 +1271,31 @@ async def test_a_crash_in_redaction_on_an_init_response_keeps_the_flow_open() ->
     assert _stored_state(store).forms["offer-1"].status is FormStatus.AWAITING_INIT
 
 
+async def test_no_call_body_holds_a_marked_value_but_the_provider_gets_each() -> None:
+    invocation = RecordingActionInvocation(
+        replies={ProviderAction.INIT: _CHALLENGE, ProviderAction.SUPPORT: _TICKET}
+    )
+    orch, _, _ = _build_kisan_orchestrator(invocation)
+    await _collect(orch, _kisan_details_turn())
+
+    await _collect(orch, _init_response_turn())
+
+    marked = (
+        _KISAN_VALUES["enrolmentId"],
+        _KISAN_VALUES["grievance.description"],
+        _OTP,
+    )
+    init, support = invocation.calls
+    for call in (init, support):
+        assert not any(value in str(call.attributes) for value in marked)
+    assert support.sent()["enrolmentId"] == _KISAN_VALUES["enrolmentId"]
+    assert (
+        support.sent()["grievance"]["description"]
+        == (_KISAN_VALUES["grievance.description"])
+    )
+    assert support.sent()["challenge"]["response"]["value"] == _OTP
+
+
 async def test_the_init_response_never_reaches_state_record_trace_or_logs(
     spans, monkeypatch, caplog
 ) -> None:
@@ -1291,7 +1313,8 @@ async def test_the_init_response_never_reaches_state_record_trace_or_logs(
 
     await _collect(orch, _init_response_turn({"challenge.response.value": otp}))
 
-    assert invocation.calls[-1].attributes["challenge"]["response"]["value"] == otp
+    assert invocation.calls[-1].sent()["challenge"]["response"]["value"] == otp
+    assert otp not in str(invocation.calls[-1].attributes)
     assert otp not in store.values["c1:s1"]
     record = turns.records["t1"]
     assert record.turn is not None and record.finished is not None
@@ -1348,5 +1371,5 @@ async def test_a_pm_kisan_status_is_read_over_two_form_turns() -> None:
     assert init.action is ProviderAction.INIT
     assert status.action is ProviderAction.STATUS
     assert status.attributes["case"] == {"filedOn": "2026-10-29"}
-    assert status.attributes["challenge"]["response"]["value"] == _OTP
+    assert status.sent()["challenge"]["response"]["value"] == _OTP
     assert _stored_state(store).forms["offer-1"].status is FormStatus.DONE

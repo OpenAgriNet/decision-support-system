@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from typing import Annotated, Literal
@@ -11,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from dss.core.channel.models import ComposedAnswer
 from dss.core.provider_discovery.models import ProviderCapability
+from dss.core.redaction.visibility import Visibility
 from dss.core.shared.models import (
     Cause,
     MessageReference,
@@ -318,6 +320,12 @@ class FlowEnding(BaseModel):
     cause: Cause | None
     answer: ComposedAnswer
     retry_after_seconds: int | None = None
+
+
+@dataclass(frozen=True)
+class MaskedSubmission:
+    submission: ValidSubmission  # every PII field's value swapped for its tag
+    visibility: Visibility  # tag → real value
 
 
 class ActionReply(BaseModel):

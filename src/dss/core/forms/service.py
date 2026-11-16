@@ -20,6 +20,7 @@ from dss.core.forms.models import (
     FieldError,
     FieldErrorCode,
     FieldErrorEntry,
+    FieldKind,
     FieldRules,
     FieldSource,
     FieldValue,
@@ -34,6 +35,7 @@ from dss.core.forms.models import (
     FormRecords,
     FormSubmission,
     JsonScalar,
+    MaskedSubmission,
     PiiClass,
     ProviderAction,
     UnknownForm,
@@ -43,6 +45,7 @@ from dss.core.forms.registry import FormLookup, FormRegistry
 from dss.core.intent.models import Intent
 from dss.core.planner.models import Failure
 from dss.core.provider_discovery.models import DiscoveryResult, ProviderCapability
+from dss.core.redaction.visibility import Visibility
 from dss.core.schema_packs.models import SchemaPackFiles, SchemaPackSkipped
 from dss.core.schema_packs.service import PACK_DEFECTS, is_api_pack
 from dss.core.shared.models import Cause, TextBlock, TurnStatus
@@ -384,20 +387,58 @@ def _first_broken_rule(field: FieldDefinition, value: str | None) -> FieldError 
     )
 
 
-def free_text_of(valid: ValidSubmission) -> tuple[str, ...]:
-    """What a farmer wrote in prose, in field order: the part of a form that
-    is moderated like a question."""
+# Select values are the pack's own options: nothing in them to moderate.
+_TYPED_KINDS = frozenset({FieldKind.TEXT, FieldKind.TEXTAREA})
 
+
+def free_text_of(valid: ValidSubmission) -> tuple[str, ...]:
     return tuple(
         valid.values[field.name]
         for field in valid.definition.fields
-        if field.pii_class == PiiClass.FREETEXT and field.name in valid.values
+        if field.pii_class is None
+        and field.kind in _TYPED_KINDS
+        and field.name in valid.values
     )
 
 
+def mask_pii_fields(valid: ValidSubmission) -> MaskedSubmission:
+    pii_fields = {
+        position: field
+        for position, field in enumerate(valid.definition.fields, start=1)
+        if field.pii_class is not None and field.name in valid.values
+    }
+    tags = {
+        field.name: _pii_tag_for(valid.definition.context, field.name, position)
+        for position, field in pii_fields.items()
+    }
+    credentials = frozenset(
+        tags[field.name]
+        for field in pii_fields.values()
+        if field.pii_class == PiiClass.CREDENTIAL
+    )
+    return MaskedSubmission(
+        submission=valid.model_copy(update={"values": {**valid.values, **tags}}),
+        visibility=Visibility(
+            values={tag: valid.values[name] for name, tag in tags.items()},
+            never_concealed=credentials,
+        ),
+    )
+
+
+_CAMEL_BREAK = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
+_NOT_TAG_CHARACTER = re.compile(r"[^a-z0-9]+")
+
+
+def _pii_tag_for(context: FormContext, field_name: str, position: int) -> str:
+    # Named after the form's action and the field, so a log shows which field
+    # a tag hides, and a details form and its init form never share one.
+    # Numbered by the field's place, so two names that read alike still differ.
+    words = _CAMEL_BREAK.sub("_", field_name).lower()
+    name = _NOT_TAG_CHARACTER.sub("_", words).strip("_")
+    return f"«form_{context.action}_{name}_{position}»"
+
+
 # What the audit record and the trace hold in place of a farmer's value.
-# Values are withheld, not tagged: tagging a form by the pack's PII mark is
-# its own story. Only the free text is tagged, and only to be moderated.
 WITHHELD = "[withheld]"
 
 
