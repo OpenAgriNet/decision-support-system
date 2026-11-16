@@ -1,0 +1,137 @@
+{
+    "type": "FeatureCollection",
+    "features": [
+        {
+            "type": "Feature",
+            "properties": {
+                "osm_type": "N",
+                "osm_id": 7316926457,
+                "osm_key": "place",
+                "osm_value": "village",
+                "type": "city",
+                "name": "Kashmir",
+                "county": "Sheo Tehsil",
+                "state": "Rajasthan",
+                "country": "India",
+                "countrycode": "IN"
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    71.6027498,
+                    26.2644203
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "osm_type": "N",
+                "osm_id": 8002985191,
+                "osm_key": "place",
+                "osm_value": "hamlet",
+                "type": "district",
+                "name": "Kashmir",
+                "city": "Churag",
+                "county": "Karsog",
+                "state": "Himachal Pradesh",
+                "country": "India",
+                "postcode": "175010",
+                "countrycode": "IN"
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    77.1751356,
+                    31.3368504
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "osm_type": "R",
+                "osm_id": 3914495,
+                "osm_key": "boundary",
+                "osm_value": "administrative",
+                "type": "district",
+                "name": "Kashmiri Bagh",
+                "city": "Delhi",
+                "county": "Old Delhi",
+                "state": "Delhi",
+                "country": "India",
+                "countrycode": "IN",
+                "extra": {
+                    "admin_level": "10"
+                },
+                "extent": [
+                    77.1934854,
+                    28.6659114,
+                    77.1955764,
+                    28.6648575
+                ]
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    77.1943138,
+                    28.6654893
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "osm_type": "R",
+                "osm_id": 1943188,
+                "osm_key": "place",
+                "osm_value": "state",
+                "type": "state",
+                "name": "Jammu and Kashmir",
+                "country": "India",
+                "countrycode": "IN",
+                "extra": {
+                    "admin_level": "4"
+                },
+                "extent": [
+                    73.7500338,
+                    34.7871414,
+                    76.7803165,
+                    32.2763569
+                ]
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    75.1629584,
+                    33.6649297
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "osm_type": "N",
+                "osm_id": 1389513202,
+                "osm_key": "place",
+                "osm_value": "locality",
+                "type": "locality",
+                "name": "Chota Kashmir",
+                "district": "P/S Ward",
+                "city": "Mumbai",
+                "county": "Mumbai Suburban District",
+                "state": "Maharashtra",
+                "country": "India",
+                "postcode": "400063",
+                "countrycode": "IN"
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    72.8722666,
+                    19.1626968
+                ]
+            }
+        }
+    ]
+}

@@ -188,6 +188,31 @@ async def test_a_near_name_is_not_a_match() -> None:
     assert await photon.resolve("Eldor") == []
 
 
+async def test_a_state_matches_by_a_word() -> None:
+    """A farmer says "Kashmir" for Jammu and Kashmir. The state is kept next
+    to the two villages named exactly so; "Kashmiri Bagh" and "Chota Kashmir"
+    are not states and stay out."""
+
+    photon = _photon_returning("photon_kashmir.json", ("IN",))
+
+    matches = await photon.resolve("Kashmir")
+
+    assert [(m.name, m.within, m.is_region) for m in matches] == [
+        ("Kashmir", ("India", "Rajasthan", "Sheo Tehsil"), False),
+        ("Kashmir", ("India", "Himachal Pradesh", "Karsog"), False),
+        ("Jammu and Kashmir", ("India",), True),
+    ]
+
+
+async def test_a_word_in_many_states_matches_none() -> None:
+    """ "Pradesh" is a word in five states. It points at none of them, so the
+    farmer is not asked to pick among states they never named."""
+
+    photon = _photon_returning("photon_pradesh.json", ("IN",))
+
+    assert await photon.resolve("Pradesh") == []
+
+
 async def test_a_whole_region_is_marked_as_one() -> None:
     """Photon's `state` layer is a region: a state in India, a region in
     Uganda and Ghana. Core must never search around one point for it."""
