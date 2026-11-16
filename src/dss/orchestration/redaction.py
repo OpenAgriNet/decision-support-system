@@ -68,12 +68,11 @@ async def redact_texts(
                 for text_index, text in enumerate(texts):
                     group.start_soon(one, text_index, text)
         except Exception as exc:  # noqa: BLE001 — any identifier failure is survivable
-            # The type only: an exception message could quote the farmer's text.
             log_failure(
                 "redaction",
+                exc,
                 transaction_id,
                 event="identifier_failed",
-                error_type=_first_error(exc),
                 identifier=identifier.name,
             )
             failed.append(identifier.name)
@@ -92,14 +91,6 @@ async def redact_texts(
 
     result = redact(texts, merged, policy)
     return replace(result, failed=tuple(sorted(failed))) if failed else result
-
-
-def _first_error(exc: BaseException) -> str:
-    """The type of the first real error, past the task group's wrapper."""
-
-    while isinstance(exc, BaseExceptionGroup) and exc.exceptions:
-        exc = exc.exceptions[0]
-    return type(exc).__name__
 
 
 def _check(span: PiiSpan, text: str) -> None:

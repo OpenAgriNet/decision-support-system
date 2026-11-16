@@ -66,12 +66,4 @@ class ChainedAreaLookup:
 
 
 def _log_unavailable(source: str, unavailable: AreaLookupUnavailableError) -> None:
-    """The cause's type only: its message can carry the place the farmer named."""
-
-    cause = unavailable.__cause__ or unavailable
-    log_failure(
-        "area_lookup",
-        event="source_unavailable",
-        error_type=type(cause).__name__,
-        source=source,
-    )
+    log_failure("area_lookup", unavailable, event="source_unavailable", source=source)
