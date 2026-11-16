@@ -274,6 +274,12 @@
   the pairs and the confidence, and `intent` is read from them. The three
   `zip(strict=True)` calls go, and `merge_unsettled` no longer takes the
   intent. Its own PR.
+- **A type for scheme codes.** A scheme's code and its name are both plain
+  strings, so one can be passed where the other is wanted. Add
+  `SchemeCode = NewType("SchemeCode", str)` for `Scheme.code`,
+  `FormContext.scheme`, `AskRequirements.scheme_codes_with_a_form` and the
+  intent model's `scheme_code`. That last one changes the schema the intent
+  model sees, so check it against a live model.
 - **Intent examples as config.** Planned in #243, not built. Example
   phrasings per category in `configs/intent-examples.yaml`, in any language,
   with the action where it applies. At most 5 per category

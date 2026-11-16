@@ -41,7 +41,7 @@ def test_an_unclear_action_counts_every_form() -> None:
         _grievance(UnclearAction.UNCLEAR), needs_place=False, forms=forms
     )
 
-    assert requirements.schemes_with_a_form == {"PMFBY", "PM-KISAN"}
+    assert requirements.scheme_codes_with_a_form == {"PMFBY", "PM-KISAN"}
     assert requirements.actions_with_a_form == {SUPPORT, STATUS}
 
 
@@ -55,7 +55,7 @@ def test_a_known_action_counts_only_its_forms() -> None:
         _grievance(SUPPORT), needs_place=False, forms=forms
     )
 
-    assert requirements.schemes_with_a_form == {"PMFBY"}
+    assert requirements.scheme_codes_with_a_form == {"PMFBY"}
     assert requirements.actions_with_a_form == {SUPPORT, STATUS}
 
 
@@ -69,7 +69,7 @@ def test_a_plain_question_needs_no_form() -> None:
         _grievance(None, InteractionType.ADVISE), needs_place=False, forms=forms
     )
 
-    assert requirements.schemes_with_a_form == frozenset()
+    assert requirements.scheme_codes_with_a_form == frozenset()
     assert requirements.actions_with_a_form == frozenset()
 
 
@@ -82,7 +82,7 @@ def test_a_step_no_form_files_is_not_a_choice() -> None:
         _grievance(UnclearAction.UNCLEAR), needs_place=False, forms=forms
     )
 
-    assert requirements.schemes_with_a_form == {"PMFBY"}
+    assert requirements.scheme_codes_with_a_form == {"PMFBY"}
     assert requirements.actions_with_a_form == {SUPPORT}
 
 

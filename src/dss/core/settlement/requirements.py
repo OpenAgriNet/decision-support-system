@@ -23,7 +23,7 @@ def build_ask_requirements(
     counted = [form for form in fileable if is_open or form.action == ask.action]
     return AskRequirements(
         needs_place=needs_place,
-        schemes_with_a_form=frozenset(form.scheme for form in counted),
+        scheme_codes_with_a_form=frozenset(form.scheme for form in counted),
         actions_with_a_form=frozenset(
             action
             for form in fileable

@@ -480,7 +480,7 @@ async def _pick_list_we_send(name: str) -> str:
     [resolved] = intent.asks
     requirements = AskRequirements(
         needs_place=True,
-        schemes_with_a_form=frozenset(),
+        scheme_codes_with_a_form=frozenset(),
         actions_with_a_form=frozenset(),
     )
     outcome = NeedsClarification(open_slots=frame_for(resolved, requirements).slots)

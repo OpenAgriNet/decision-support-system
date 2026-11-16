@@ -25,8 +25,7 @@ class AskRequirements:
     settlement reads no pack and no registry."""
 
     needs_place: bool
-    # By Scheme code.
-    schemes_with_a_form: frozenset[str]
+    scheme_codes_with_a_form: frozenset[str]
     actions_with_a_form: frozenset[ProviderAction]
 
 

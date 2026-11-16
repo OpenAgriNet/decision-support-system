@@ -37,7 +37,7 @@ def needed_slots(requirements: AskRequirements) -> tuple[AskSlot, ...]:
     is_needed = {
         # One kind of form leaves nothing to choose.
         AskSlot.ACTION: len(requirements.actions_with_a_form) > 1,
-        AskSlot.SCHEME: bool(requirements.schemes_with_a_form),
+        AskSlot.SCHEME: bool(requirements.scheme_codes_with_a_form),
         AskSlot.PLACE: requirements.needs_place,
     }
     return tuple(slot for slot, needed in is_needed.items() if needed)
@@ -57,7 +57,7 @@ def ask_slot_state(ask: Ask, slot: AskSlot, requirements: AskRequirements) -> Sl
         case AskSlot.PLACE:
             return _place_state(ask)
         case AskSlot.SCHEME:
-            return _scheme_state(ask, requirements.schemes_with_a_form)
+            return _scheme_state(ask, requirements.scheme_codes_with_a_form)
         case AskSlot.ACTION:
             return _action_state(ask)
         case unknown:
@@ -93,9 +93,9 @@ def _name_with_parent(place: AreaMatch) -> str:
     return ", ".join((place.name, *place.within[-1:]))
 
 
-def _scheme_state(ask: Ask, schemes_with_a_form: frozenset[str]) -> SlotState:
+def _scheme_state(ask: Ask, scheme_codes_with_a_form: frozenset[str]) -> SlotState:
     match ask.scheme:
-        case Scheme(code=code) as scheme if code in schemes_with_a_form:
+        case Scheme(code=code) as scheme if code in scheme_codes_with_a_form:
             return Resolved(scheme)
         # The next two are not asked again: the farmer has no other scheme
         # to name.
@@ -103,7 +103,7 @@ def _scheme_state(ask: Ask, schemes_with_a_form: frozenset[str]) -> SlotState:
             return Unservable(value=name, reason=UnservableReason.NO_FORM)
         case UnlistedScheme(name=name):
             return Unservable(value=name, reason=UnservableReason.UNLISTED)
-        case GuessedScheme(scheme=scheme) if scheme.code in schemes_with_a_form:
+        case GuessedScheme(scheme=scheme) if scheme.code in scheme_codes_with_a_form:
             return Ambiguous(value=scheme.name, choices=(scheme,))
         # A guess without a form is not confirmed: a yes could not be served.
         case GuessedScheme() | None:

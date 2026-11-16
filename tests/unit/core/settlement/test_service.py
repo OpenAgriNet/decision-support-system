@@ -102,7 +102,7 @@ def test_each_ask_settles_on_its_own() -> None:
         Intent(asks=(weather, grievance)),
         requirements_for=lambda ask: AskRequirements(
             needs_place=ask is weather,
-            schemes_with_a_form=frozenset(),
+            scheme_codes_with_a_form=frozenset(),
             actions_with_a_form=frozenset(),
         ),
     )
