@@ -8,7 +8,7 @@ from collections.abc import Iterable
 from dss.core.forms.models import FormContext
 from dss.core.intent.models import Ask, UnclearAction
 from dss.core.settlement.models import AskRequirements
-from dss.core.shared.models import REQUESTABLE_ACTIONS, ProviderAction
+from dss.core.shared.models import as_requested_action
 
 
 def build_ask_requirements(
@@ -24,7 +24,11 @@ def build_ask_requirements(
     return AskRequirements(
         needs_place=needs_place,
         schemes_with_a_form=frozenset(form.scheme for form in counted),
-        actions_with_a_form=frozenset(ProviderAction(form.action) for form in fileable),
+        actions_with_a_form=frozenset(
+            action
+            for form in fileable
+            if (action := as_requested_action(form.action)) is not None
+        ),
     )
 
 
@@ -33,4 +37,4 @@ def _fileable_forms(ask: Ask, forms: Iterable[FormContext]) -> list[FormContext]
     if ask.action is None:
         return []
     # Init is a step inside filing or checking, never a choice of its own.
-    return [form for form in forms if form.action in REQUESTABLE_ACTIONS]
+    return [form for form in forms if as_requested_action(form.action) is not None]

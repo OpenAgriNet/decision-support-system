@@ -14,7 +14,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from datetime import datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, SerializeAsAny
 
@@ -203,9 +203,15 @@ class ProviderAction(StrEnum):
 # What a user can ask for. ``init`` is a step inside filing or checking, never
 # a choice of its own.
 type RequestedAction = Literal[ProviderAction.SUPPORT, ProviderAction.STATUS]
-REQUESTABLE_ACTIONS: frozenset[ProviderAction] = frozenset(
-    {ProviderAction.SUPPORT, ProviderAction.STATUS}
+# Read off the type, so the two cannot disagree. A type hint is not there at
+# run time, and a check on raw text needs a real set.
+REQUESTABLE_ACTIONS: frozenset[RequestedAction] = frozenset(
+    get_args(RequestedAction.__value__)
 )
+
+
+def as_requested_action(raw: str) -> RequestedAction | None:
+    return next((action for action in REQUESTABLE_ACTIONS if action == raw), None)
 
 
 class TurnStatus(StrEnum):

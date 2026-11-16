@@ -18,7 +18,7 @@ from dss.core.intent.models import (
     UnclearAction,
 )
 from dss.core.provider_discovery.models import DiscoveryResult, ProviderCapability
-from dss.core.shared.models import ProviderAction, TurnStatus
+from dss.core.shared.models import REQUESTABLE_ACTIONS, ProviderAction, TurnStatus
 from dss.orchestration.form_offer import ask_for_form, find_forms, form_context_for
 from tests.integration.orchestration.test_orchestrator import (
     _build,
@@ -262,6 +262,16 @@ def test_a_submission_ask_names_the_form_it_came_from() -> None:
     assert ask.scheme == PMFBY
     assert ask.place is None
     assert form_context_for(ask) == PMFBY_SUPPORT
+
+
+@pytest.mark.parametrize("action", sorted(REQUESTABLE_ACTIONS))
+def test_every_requestable_action_yields_an_ask(action: ProviderAction) -> None:
+    """An action added to the type but not to the mapping would crash a
+    live turn."""
+
+    context = FormContext(scheme="PMFBY", category="Grievance", action=action)
+
+    assert ask_for_form(context, scheme=PMFBY) is not None
 
 
 def test_an_action_the_path_cannot_file_yields_no_ask() -> None:
