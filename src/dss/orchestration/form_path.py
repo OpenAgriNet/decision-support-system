@@ -14,21 +14,21 @@ from dss.adapters.observability.tracing import (
 from dss.core.channel.localize import LocalizeText, localize_answer
 from dss.core.channel.models import ClarificationText, ComposedAnswer
 from dss.core.forms.init_flow import (
-    FlowSettled,
+    FlowDecision,
     InitCall,
-    NoInitChallenge,
+    InitReplyWithoutChallenge,
     NoInitPending,
     SavedDetailsUnusable,
     WaitingFlow,
+    decide_after_failed_init_response,
+    decide_after_sent_init,
+    decide_with_no_waiting_flow,
     end_for_failed_init,
     end_for_session_not_kept,
     find_init_call,
     find_init_failure,
     find_waiting_flow,
-    settle_failed_init_response,
-    settle_no_waiting_flow,
-    settle_sent_init,
-    with_init_response_filed,
+    with_details_form_done,
 )
 from dss.core.forms.models import (
     ActionSchema,
@@ -187,14 +187,14 @@ class FormPath:
         handle = (
             self._handle_init_response
             if submission.context.action == ProviderAction.INIT
-            else self._handle_action_form
+            else self._handle_details_form
         )
         reply = await handle(form_turn, session)
         async with aclosing(_events_of(reply)) as events:
             async for event in events:
                 yield event
 
-    async def _handle_action_form(
+    async def _handle_details_form(
         self, form_turn: _FormTurn, session: Session
     ) -> _Reply:
         # Raw values are checked first: a tagged phone fails its own pattern.
@@ -208,20 +208,20 @@ class FormPath:
             return await self._refuse(decision, form_turn)
         provider = await self._find_form_provider(form.intent, form_turn)
         if provider is None:
-            return await self._end(
+            return await self._finish_turn(
                 end_for_no_provider(form.intent, self._clarification_text), form_turn
             )
         # One form waits for init at a time: this form's call replaces any other.
         session.update_forms(clear_awaiting_init_record(session.forms))
         if form.action.needs_init():
-            return await self._send_init(
+            return await self._send_init_and_await_response(
                 form_turn,
                 form.details,
                 provider=provider,
                 visibility=redacted.visibility,
                 session=session,
             )
-        return await self._call_and_compose(
+        return await self._send_form_and_stream_answer(
             form_turn, form, provider, redacted, session
         )
 
@@ -233,11 +233,11 @@ class FormPath:
     ) -> _CheckedForm | TurnFinished:
         submission = form_turn.turn.input
         if is_done(session.forms, submission.form_id):
-            return await self._end(
+            return await self._finish_turn(
                 end_for_already_filed(self._clarification_text), form_turn
             )
         if not isinstance(checked, ValidSubmission):
-            return await self._end(
+            return await self._finish_turn(
                 end_for_invalid_form(checked, self._clarification_text), form_turn
             )
         # Before moderation: a form that cannot be sent is not worth a model call.
@@ -247,17 +247,17 @@ class FormPath:
         # registry builds each form from its schema, so a missing action should
         # not happen; link the two so it cannot, then drop that check.
         if intent is None or action is None:
-            return await self._end(
+            return await self._finish_turn(
                 end_for_unknown_form(self._clarification_text), form_turn
             )
         # Before init: an init response could never find this form again.
         if action.needs_init() and not session.is_kept:
-            return await self._end(
+            return await self._finish_turn(
                 end_for_session_not_kept(self._clarification_text), form_turn
             )
         return _CheckedForm(details=checked, intent=intent, action=action)
 
-    async def _call_and_compose(
+    async def _send_form_and_stream_answer(
         self,
         form_turn: _FormTurn,
         form: _CheckedForm,
@@ -274,7 +274,7 @@ class FormPath:
         )
         if isinstance(response, Failure):
             _warn_if_auth_refused(response, form_turn.ctx)
-            return await self._end(
+            return await self._finish_turn(
                 end_for_failed_call(
                     form_turn.turn.input,
                     response,
@@ -307,8 +307,8 @@ class FormPath:
                     form_turn, flow, redacted, session
                 )
             case NoInitPending() | SavedDetailsUnusable():
-                return await self._save_and_end(
-                    settle_no_waiting_flow(
+                return await self._update_forms_and_end(
+                    decide_with_no_waiting_flow(
                         session.forms, flow, self._clarification_text
                     ),
                     session,
@@ -325,7 +325,7 @@ class FormPath:
         init_response = form_turn.turn.input
         checked = validate_submission(init_response, self._forms)
         if not isinstance(checked, ValidSubmission):
-            return await self._end(
+            return await self._finish_turn(
                 end_for_invalid_form(checked, self._clarification_text), form_turn
             )
         # Removed before the call: a crash after it must not leave a response
@@ -341,8 +341,8 @@ class FormPath:
         )
         if isinstance(response, Failure):
             _warn_if_auth_refused(response, form_turn.ctx)
-            return await self._save_and_end(
-                settle_failed_init_response(
+            return await self._update_forms_and_end(
+                decide_after_failed_init_response(
                     session.forms,
                     flow,
                     response,
@@ -354,7 +354,7 @@ class FormPath:
                 session,
                 form_turn,
             )
-        session.update_forms(with_init_response_filed(session.forms, flow))
+        session.update_forms(with_details_form_done(session.forms, flow))
         return self._stream_provider_answer(response, flow.intent, redacted, form_turn)
 
     def _stream_provider_answer(
@@ -398,7 +398,7 @@ class FormPath:
             async for event in farmer_events:
                 yield event
 
-    async def _send_init(
+    async def _send_init_and_await_response(
         self,
         form_turn: _FormTurn,
         details: ValidSubmission,
@@ -410,7 +410,7 @@ class FormPath:
         submission = form_turn.turn.input
         init = find_init_call(details, self._forms)
         if not isinstance(init, InitCall):
-            return await self._end(
+            return await self._finish_turn(
                 end_for_failed_init(
                     init, details=submission, text=self._clarification_text
                 ),
@@ -422,14 +422,14 @@ class FormPath:
         failure = find_init_failure(reply)
         if failure is not None:
             _warn_if_auth_refused(failure, form_turn.ctx)
-            return await self._end(
+            return await self._finish_turn(
                 end_for_failed_init(
                     failure, details=submission, text=self._clarification_text
                 ),
                 form_turn,
             )
-        return await self._save_and_end(
-            settle_sent_init(
+        return await self._update_forms_and_end(
+            decide_after_sent_init(
                 session.forms,
                 details,
                 submission,
@@ -442,19 +442,21 @@ class FormPath:
             form_turn,
         )
 
-    async def _save_and_end(
-        self, settled: FlowSettled, session: Session, form_turn: _FormTurn
+    async def _update_forms_and_end(
+        self, decision: FlowDecision, session: Session, form_turn: _FormTurn
     ) -> TurnFinished:
-        session.update_forms(settled.forms)
-        return await self._end(settled.ending, form_turn)
+        session.update_forms(decision.forms)
+        return await self._finish_turn(decision.ending, form_turn)
 
-    async def _end(self, ending: FlowEnding, form_turn: _FormTurn) -> TurnFinished:
+    async def _finish_turn(
+        self, ending: FlowEnding, form_turn: _FormTurn
+    ) -> TurnFinished:
         outcome = outcome_for(
             ending.status,
             ending.cause,
             retry_after_seconds=ending.retry_after_seconds,
         )
-        return await self._finish(outcome, ending.answer, form_turn)
+        return await self._finish_with_outcome(outcome, ending.answer, form_turn)
 
     async def _call_provider_action(  # noqa: PLR0913
         self,
@@ -570,11 +572,11 @@ class FormPath:
     async def _refuse(
         self, decision: ModerationDecision, form_turn: _FormTurn
     ) -> TurnFinished:
-        # On _finish, not _end: TextPath shares refusal_for, which builds the outcome.
+        # Not _finish_turn: TextPath shares refusal_for, which builds the outcome.
         outcome, refusal = refusal_for(decision)
-        return await self._finish(outcome, refusal, form_turn)
+        return await self._finish_with_outcome(outcome, refusal, form_turn)
 
-    async def _finish(
+    async def _finish_with_outcome(
         self, outcome: TurnOutcome, answer: ComposedAnswer, form_turn: _FormTurn
     ) -> TurnFinished:
         answer = await localize_answer(
@@ -608,7 +610,9 @@ def _free_text_of(
     return free_text_of(checked) if isinstance(checked, ValidSubmission) else ()
 
 
-def _warn_if_auth_refused(failure: Failure | NoInitChallenge, ctx: TurnContext) -> None:
+def _warn_if_auth_refused(
+    failure: Failure | InitReplyWithoutChallenge, ctx: TurnContext
+) -> None:
     if isinstance(failure, Failure) and is_auth_refused(failure):
         warn_auth_refused(failure, request_id=ctx.trace_id)
 

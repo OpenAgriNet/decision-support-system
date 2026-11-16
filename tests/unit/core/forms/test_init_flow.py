@@ -6,23 +6,23 @@ import pytest
 
 from dss.config.clarification_text_loader import load_clarification_text
 from dss.core.forms.init_flow import (
-    FlowSettled,
+    FlowDecision,
     InitCall,
     InitNotConfigured,
-    NoInitChallenge,
+    InitReplyWithoutChallenge,
     NoInitPending,
     SavedDetailsUnusable,
     WaitingFlow,
+    decide_after_failed_init_response,
+    decide_after_sent_init,
+    decide_with_no_waiting_flow,
     end_for_failed_init,
     end_for_session_not_kept,
     find_init_call,
     find_init_failure,
     find_waiting_flow,
     outcome_of_failed_call,
-    settle_failed_init_response,
-    settle_no_waiting_flow,
-    settle_sent_init,
-    with_init_response_filed,
+    with_details_form_done,
 )
 from dss.core.forms.models import (
     ActionSchema,
@@ -177,7 +177,7 @@ def test_an_init_reply_with_a_challenge_is_no_failure() -> None:
     [{}, {"challenge": {}}, {"challenge": "OTP"}, {"enrolmentId": "x"}],
 )
 def test_an_init_reply_without_a_challenge_is_a_failure(attributes: dict) -> None:
-    assert isinstance(find_init_failure(_reply(attributes)), NoInitChallenge)
+    assert isinstance(find_init_failure(_reply(attributes)), InitReplyWithoutChallenge)
 
 
 def test_a_failed_init_call_is_its_own_failure() -> None:
@@ -224,7 +224,9 @@ def test_a_failed_init_hands_the_details_form_back(
 
 
 def test_an_init_reply_without_a_challenge_reads_as_refused() -> None:
-    ending = end_for_failed_init(NoInitChallenge(), details=_DETAILS, text=_TEXT)
+    ending = end_for_failed_init(
+        InitReplyWithoutChallenge(), details=_DETAILS, text=_TEXT
+    )
 
     assert ending.status is TurnStatus.UNAVAILABLE
     assert ending.cause is Cause.PROVIDER_REJECTED
@@ -263,10 +265,10 @@ def _waiting(
     )
 
 
-def _sent_init(forms: FormRecords) -> FlowSettled:
+def _sent_init(forms: FormRecords) -> FlowDecision:
     init = find_init_call(_valid(_DETAILS), _FORMS)
     assert isinstance(init, InitCall)
-    return settle_sent_init(
+    return decide_after_sent_init(
         forms,
         _valid(_DETAILS),
         _DETAILS,
@@ -280,17 +282,17 @@ def _sent_init(forms: FormRecords) -> FlowSettled:
 def test_a_sent_init_leaves_the_details_waiting_with_their_provider() -> None:
     done = FormDone(submission=_DETAILS.model_copy(update={"form_id": "filed"}))
 
-    settled = _sent_init({"filed": done})
+    decision = _sent_init({"filed": done})
 
-    assert settled.forms == {"filed": done, "offer-1": _waiting(awaited_at=_NOW)}
+    assert decision.forms == {"filed": done, "offer-1": _waiting(awaited_at=_NOW)}
 
 
 def test_a_sent_init_asks_for_the_init_form() -> None:
-    settled = _sent_init({})
+    decision = _sent_init({})
 
-    assert settled.ending.status is TurnStatus.REQUIRES_INPUT
-    assert settled.ending.cause is None
-    told, offered = settled.ending.answer.content
+    assert decision.ending.status is TurnStatus.REQUIRES_INPUT
+    assert decision.ending.cause is None
+    told, offered = decision.ending.answer.content
     assert told == TextBlock(text=_TEXT.init_response_needed)
     assert isinstance(offered, FormBlock)
     assert offered.form == _FORMS.find(PMKISAN_INIT)
@@ -375,23 +377,25 @@ def test_saved_details_the_flow_cannot_use_are_unusable(
 def test_nothing_pending_asks_for_the_details_again_and_keeps_the_forms() -> None:
     forms = {"offer-1": _waiting()}
 
-    settled = settle_no_waiting_flow(forms, NoInitPending(), _TEXT)
+    decision = decide_with_no_waiting_flow(forms, NoInitPending(), _TEXT)
 
-    assert settled.forms == forms
-    assert settled.ending.status is TurnStatus.REQUIRES_INPUT
-    assert settled.ending.cause is Cause.NO_INIT_PENDING
-    assert settled.ending.answer.content == (TextBlock(text=_TEXT.no_init_pending),)
+    assert decision.forms == forms
+    assert decision.ending.status is TurnStatus.REQUIRES_INPUT
+    assert decision.ending.cause is Cause.NO_INIT_PENDING
+    assert decision.ending.answer.content == (TextBlock(text=_TEXT.no_init_pending),)
 
 
 def test_unusable_saved_details_end_the_flow_as_our_fault() -> None:
     forms = {"offer-1": _waiting()}
 
-    settled = settle_no_waiting_flow(forms, SavedDetailsUnusable("offer-1"), _TEXT)
+    decision = decide_with_no_waiting_flow(
+        forms, SavedDetailsUnusable("offer-1"), _TEXT
+    )
 
-    assert settled.forms == {}
-    assert settled.ending.status is TurnStatus.UNAVAILABLE
-    assert settled.ending.cause is Cause.INTERNAL
-    assert settled.ending.answer.content == (
+    assert decision.forms == {}
+    assert decision.ending.status is TurnStatus.UNAVAILABLE
+    assert decision.ending.cause is Cause.INTERNAL
+    assert decision.ending.answer.content == (
         TextBlock(text=_TEXT.saved_details_unusable),
     )
 
@@ -412,15 +416,15 @@ _INIT_RESPONSE = _submission(
 )
 
 
-def _settle(
+def _decide(
     status_code: int | None,
     *,
     details: FormSubmission = _DETAILS,
     retry_after_seconds: int | None = None,
-) -> FlowSettled:
+) -> FlowDecision:
     init_form = _FORMS.find(PMKISAN_INIT)
     assert init_form is not None
-    return settle_failed_init_response(
+    return decide_after_failed_init_response(
         {},
         _flow(details),
         _failure(status_code, retry_after_seconds=retry_after_seconds),
@@ -454,7 +458,7 @@ def _awaiting_again() -> FormRecords:
 
 
 def test_a_filed_init_response_leaves_the_details_done() -> None:
-    forms = with_init_response_filed({}, _flow())
+    forms = with_details_form_done({}, _flow())
 
     assert isinstance(forms["offer-1"], FormDone)
 
@@ -463,55 +467,55 @@ def test_a_filed_init_response_leaves_the_details_done() -> None:
 def test_a_refused_response_hands_the_init_form_back_and_waits(
     status_code: int,
 ) -> None:
-    settled = _settle(status_code)
+    decision = _decide(status_code)
 
-    assert settled.ending.status is TurnStatus.REQUIRES_INPUT
-    assert settled.ending.cause is Cause.INIT_RESPONSE_REFUSED
-    assert settled.ending.answer.content == _init_form_handed_back(
+    assert decision.ending.status is TurnStatus.REQUIRES_INPUT
+    assert decision.ending.cause is Cause.INIT_RESPONSE_REFUSED
+    assert decision.ending.answer.content == _init_form_handed_back(
         _TEXT.init_response_refused
     )
-    assert settled.forms == _awaiting_again()
+    assert decision.forms == _awaiting_again()
 
 
 @pytest.mark.parametrize("status_code", [408, 429, None])
 def test_a_response_never_taken_in_hands_the_init_form_back_and_waits(
     status_code: int | None,
 ) -> None:
-    settled = _settle(status_code, retry_after_seconds=30)
+    decision = _decide(status_code, retry_after_seconds=30)
 
-    assert settled.ending.status is TurnStatus.UNAVAILABLE
-    assert settled.ending.cause is Cause.PROVIDER_UNAVAILABLE
-    assert settled.ending.retry_after_seconds == 30
-    assert settled.ending.answer.content == _init_form_handed_back(
+    assert decision.ending.status is TurnStatus.UNAVAILABLE
+    assert decision.ending.cause is Cause.PROVIDER_UNAVAILABLE
+    assert decision.ending.retry_after_seconds == 30
+    assert decision.ending.answer.content == _init_form_handed_back(
         _TEXT.init_response_not_sent
     )
-    assert settled.forms == _awaiting_again()
+    assert decision.forms == _awaiting_again()
 
 
 @pytest.mark.parametrize("status_code", [500, 503, NO_READABLE_REPLY])
 def test_a_response_that_may_have_gone_through_ends_the_flow_text_only(
     status_code: int,
 ) -> None:
-    settled = _settle(status_code, retry_after_seconds=30)
+    decision = _decide(status_code, retry_after_seconds=30)
 
-    assert settled.ending == FlowEnding(
+    assert decision.ending == FlowEnding(
         status=TurnStatus.UNAVAILABLE,
         cause=Cause.PROVIDER_OUTCOME_UNKNOWN,
-        answer=settled.ending.answer,
+        answer=decision.ending.answer,
         retry_after_seconds=None,
     )
-    assert settled.ending.answer.content == (TextBlock(text=_TEXT.outcome_unknown),)
-    assert settled.forms == {}
+    assert decision.ending.answer.content == (TextBlock(text=_TEXT.outcome_unknown),)
+    assert decision.forms == {}
 
 
 @pytest.mark.parametrize("status_code", [401, 403])
 def test_our_credentials_refused_end_the_flow_as_our_fault(status_code: int) -> None:
-    settled = _settle(status_code)
+    decision = _decide(status_code)
 
-    assert settled.ending.status is TurnStatus.UNAVAILABLE
-    assert settled.ending.cause is Cause.INTERNAL
-    assert settled.ending.answer.content == (TextBlock(text=_TEXT.went_wrong),)
-    assert settled.forms == {}
+    assert decision.ending.status is TurnStatus.UNAVAILABLE
+    assert decision.ending.cause is Cause.INTERNAL
+    assert decision.ending.answer.content == (TextBlock(text=_TEXT.went_wrong),)
+    assert decision.forms == {}
 
 
 _STATUS_DETAILS = _submission(PMKISAN_STATUS, _KISAN_LOOKUP)
@@ -521,20 +525,20 @@ _STATUS_DETAILS = _submission(PMKISAN_STATUS, _KISAN_LOOKUP)
 def test_a_refused_status_check_ends_the_flow_with_no_such_case(
     status_code: int,
 ) -> None:
-    settled = _settle(status_code, details=_STATUS_DETAILS)
+    decision = _decide(status_code, details=_STATUS_DETAILS)
 
-    assert settled.ending.status is TurnStatus.UNAVAILABLE
-    assert settled.ending.cause is Cause.PROVIDER_REJECTED
-    assert settled.ending.answer.content == (TextBlock(text=_TEXT.case_not_found),)
-    assert settled.forms == {}
+    assert decision.ending.status is TurnStatus.UNAVAILABLE
+    assert decision.ending.cause is Cause.PROVIDER_REJECTED
+    assert decision.ending.answer.content == (TextBlock(text=_TEXT.case_not_found),)
+    assert decision.forms == {}
 
 
 @pytest.mark.parametrize("status_code", [429, 503, 401])
 def test_a_status_check_reads_every_other_failure_as_support_does(
     status_code: int,
 ) -> None:
-    support = _settle(status_code, retry_after_seconds=30)
+    support = _decide(status_code, retry_after_seconds=30)
 
-    status = _settle(status_code, details=_STATUS_DETAILS, retry_after_seconds=30)
+    status = _decide(status_code, details=_STATUS_DETAILS, retry_after_seconds=30)
 
     assert status.ending == support.ending

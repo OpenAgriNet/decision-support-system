@@ -46,7 +46,7 @@ type IntentFor = Callable[[FormContext], Intent | None]
 
 
 @dataclass(frozen=True)
-class FlowSettled:
+class FlowDecision:
     forms: FormRecords
     ending: FlowEnding
 
@@ -63,11 +63,11 @@ class InitNotConfigured:
 
 
 @dataclass(frozen=True)
-class NoInitChallenge:
+class InitReplyWithoutChallenge:
     pass
 
 
-type InitFailure = Failure | NoInitChallenge | InitNotConfigured
+type InitFailure = Failure | InitReplyWithoutChallenge | InitNotConfigured
 
 
 def find_init_call(
@@ -96,11 +96,11 @@ def _has_values_for(schema: ActionSchema, values: Mapping[str, str]) -> bool:
 
 def find_init_failure(
     reply: DiscoveredAnswer | Failure,
-) -> Failure | NoInitChallenge | None:
+) -> Failure | InitReplyWithoutChallenge | None:
     if isinstance(reply, Failure):
         return reply
     if not _has_init_challenge(reply.attributes):
-        return NoInitChallenge()
+        return InitReplyWithoutChallenge()
     return None
 
 
@@ -119,7 +119,7 @@ def end_for_failed_init(
     match failure:
         case InitNotConfigured():
             return _ended_by_our_fault(text)
-        case NoInitChallenge():
+        case InitReplyWithoutChallenge():
             return end_for_call_cause(
                 details, Cause.PROVIDER_REJECTED, text, action=ProviderAction.INIT
             )
@@ -135,7 +135,7 @@ def end_for_failed_init(
             )
 
 
-def settle_sent_init(  # noqa: PLR0913
+def decide_after_sent_init(  # noqa: PLR0913
     forms: FormRecords,
     details: ValidSubmission,
     submission: FormSubmission,
@@ -144,8 +144,8 @@ def settle_sent_init(  # noqa: PLR0913
     init: InitCall,
     text: ClarificationText,
     now: datetime,
-) -> FlowSettled:
-    return FlowSettled(
+) -> FlowDecision:
+    return FlowDecision(
         forms=with_init_awaited(forms, submission, provider=provider, now=now),
         ending=FlowEnding(
             status=TurnStatus.REQUIRES_INPUT,
@@ -241,14 +241,14 @@ def find_waiting_flow(
     return WaitingFlow(entry=entry, details=details, action=action, intent=intent)
 
 
-def settle_no_waiting_flow(
+def decide_with_no_waiting_flow(
     forms: FormRecords,
     flow: NoInitPending | SavedDetailsUnusable,
     text: ClarificationText,
-) -> FlowSettled:
+) -> FlowDecision:
     match flow:
         case NoInitPending():
-            return FlowSettled(
+            return FlowDecision(
                 forms=forms,
                 ending=FlowEnding(
                     status=TurnStatus.REQUIRES_INPUT,
@@ -257,7 +257,7 @@ def settle_no_waiting_flow(
                 ),
             )
         case SavedDetailsUnusable():
-            return FlowSettled(
+            return FlowDecision(
                 forms=clear_awaiting_init_record(forms),
                 ending=FlowEnding(
                     status=TurnStatus.UNAVAILABLE,
@@ -267,11 +267,11 @@ def settle_no_waiting_flow(
             )
 
 
-def with_init_response_filed(forms: FormRecords, flow: WaitingFlow) -> FormRecords:
+def with_details_form_done(forms: FormRecords, flow: WaitingFlow) -> FormRecords:
     return with_form_done(forms, flow.entry.submission)
 
 
-def settle_failed_init_response(  # noqa: PLR0913
+def decide_after_failed_init_response(  # noqa: PLR0913
     forms: FormRecords,
     flow: WaitingFlow,
     failure: Failure,
@@ -280,13 +280,13 @@ def settle_failed_init_response(  # noqa: PLR0913
     init_form: FormDefinition,
     text: ClarificationText,
     now: datetime,
-) -> FlowSettled:
+) -> FlowDecision:
     exit_for_failure = _init_response_exit_for(
         failure, ProviderAction(flow.action.context.action)
     )
     if not exit_for_failure.should_await_init:
-        return FlowSettled(forms=forms, ending=_ended_for_good(exit_for_failure, text))
-    return FlowSettled(
+        return FlowDecision(forms=forms, ending=_ended_for_good(exit_for_failure, text))
+    return FlowDecision(
         forms=with_init_awaited(
             forms, flow.entry.submission, provider=flow.entry.provider, now=now
         ),
