@@ -11,8 +11,12 @@
   state, never a value (#243)
 - The fixed place questions are gone from `clarification-text.yaml`:
   `needs_place`, `unknown_place`, `unknown_place_in`, `region_place`,
-  `ambiguous_place_header` and `grouped_place_header`. An override file must
-  drop them, or the boot fails (#243)
+  `ambiguous_place_header` and `grouped_place_header`. No setting loads an
+  override file today, so this only matters to code that calls
+  `load_clarification_text(path)` with its own file: that file must drop
+  them, or loading fails (#243)
+- An ask with no schema pack, such as a scheme ask, is searched with no
+  place filter. It used to carry one (#243)
 - "How do I file a complaint" now finds the grievance provider and shows the
   form. An ask with a known action is searched as a service, however it is
   worded (#243)

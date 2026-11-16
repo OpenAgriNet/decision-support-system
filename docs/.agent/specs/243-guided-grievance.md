@@ -107,12 +107,6 @@ place pick list, are added by code after the prose, as form blocks are
 today. If the composer fails, the turn fails. A fixed English question
 through the localizer is the planned fallback. It is not in this story.
 
-**Intent examples are config.** `configs/intent-examples.yaml` holds
-example phrasings per category, in any language, with the action where it
-applies. At most 5 per category (`DSS_INTENT_EXAMPLES_MAX`, default 5). An
-unknown category, an unknown action, or too many lines fails at boot. The
-template renders them; the wording stays in `prompts/intent/`.
-
 **Rejected**
 
 - *The agent asks* (an `ask_farmer` tool for the planner). Can't promise

@@ -274,6 +274,12 @@
   the pairs and the confidence, and `intent` is read from them. The three
   `zip(strict=True)` calls go, and `merge_unsettled` no longer takes the
   intent. Its own PR.
+- **Intent examples as config.** Planned in #243, not built. Example
+  phrasings per category in `configs/intent-examples.yaml`, in any language,
+  with the action where it applies. At most 5 per category
+  (`DSS_INTENT_EXAMPLES_MAX`). An unknown category, an unknown action or too
+  many lines fails at boot. The template renders them; the wording stays in
+  `prompts/intent/`.
 - **One composer rule for every line our code writes.** The composer
   template has a rule for each kind of line: "Awaits a form", "Ask the
   farmer", "Cannot serve this". The words are typed in code and again in

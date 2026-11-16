@@ -428,8 +428,8 @@ Things worth knowing when you look at the output:
   farmer, such as which place, is written by the composer and does stream.
   If you are seeing no
   `claim.delta`, check `outcome.status` on the terminal frame before assuming
-  streaming is broken — an unwired network gives `no_match`, which never reaches
-  the composer.
+  streaming is broken — an unwired network gives `no_match` for an ask that
+  needs no question, and that reply never reaches the composer.
 
 Note also that once the first byte is written the status cannot change, so a
 failure after `turn.created` arrives as a `turn.failed` event inside a `200`.

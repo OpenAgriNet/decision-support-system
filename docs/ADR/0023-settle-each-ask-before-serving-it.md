@@ -44,8 +44,6 @@ Chosen option: **1.**
 - The action is asked when unclear, never guessed. A guess risks a
   duplicate complaint or a status check with no ticket.
 - The history holds our question, as in ADR-0017.
-- Intent examples per category live in `configs/intent-examples.yaml`,
-  at most 5 each (`DSS_INTENT_EXAMPLES_MAX`), checked at boot.
 
 Option 2 cannot promise it never asks for a place, and calls a model
 every turn. Option 3 cannot see what a pack needs. Option 4 needs

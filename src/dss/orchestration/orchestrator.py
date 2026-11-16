@@ -17,6 +17,9 @@ that knows the sequence. Order is code, not config.
       (gate on the verdict — the barrier)
           │  proceed
           ▼
+      settle each ask         only a settled ask is searched (ADR-0023)
+          │
+          ▼
       provider discovery      read-only; may cross the barrier (see `turn.py`)
           │
           ▼
@@ -28,11 +31,11 @@ that knows the sequence. Order is code, not config.
           ▼
       TurnFinished
 
-The understand phase (intent ∥ moderation ∥ discovery, and the barrier) is
-delegated to `turn.py:run_turn`, which already owns that concurrency and is
-tested there. This runner adds what the transport needs on top: the planner
-and composer, the event stream, the evidence writes, and the mapping from a
-turn's findings to a contract outcome.
+The understand phase (intent ∥ moderation, settlement, discovery, and the
+barrier) is delegated to `turn.py:run_turn`, which already owns that
+concurrency and is tested there. This runner adds what the transport needs
+on top: the planner and composer, the event stream, the evidence writes, and
+the mapping from a turn's findings to a contract outcome.
 
 `Orchestrator.run` opens the turn's span and hands the turn to the path for
 its input kind. `TextPath` is the path for a sentence, in three layers: `run`
