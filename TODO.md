@@ -274,6 +274,14 @@
   the pairs and the confidence, and `intent` is read from them. The three
   `zip(strict=True)` calls go, and `merge_unsettled` no longer takes the
   intent. Its own PR.
+- **One composer rule for every line our code writes.** The composer
+  template has a rule for each kind of line: "Awaits a form", "Ask the
+  farmer", "Cannot serve this". The words are typed in code and again in
+  each language's template, so they can drift, and a new kind needs a
+  template change in every language. Give every such line one lead, and the
+  template one rule: a line with that lead is ours, not a provider's, so do
+  what it says. Code then writes each line in full. It rewords rules that
+  work today, so check it against a live model.
 - **Two pick lists in one reply both start at 1.** With two asks that each
   wait on a place, the farmer gets two numbered lists. A reply of "2" does
   not say which list it means. Decide: one question per turn, or numbers
