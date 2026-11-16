@@ -19,7 +19,12 @@ from opentelemetry.sdk._logs.export import (
 )
 from opentelemetry.sdk.trace import TracerProvider
 
-from dss.adapters.observability.logs import _DSS_LOGGER, configure_logs, reset_logs
+from dss.adapters.observability.logs import (
+    _DSS_LOGGER,
+    SpanIdsFilter,
+    configure_logs,
+    reset_logs,
+)
 from dss.observability.log_fields import bind_turn_ids
 
 
@@ -158,3 +163,28 @@ def test_record_carries_the_turn_ids_as_attributes(
     assert attributes["turn_message_id"] == "msg-1"
     assert attributes["sender_id"] == "farmer-app"
     assert attributes["component"] == "intent"
+
+
+def _a_record() -> logging.LogRecord:
+    return logging.LogRecord("dss.test", logging.INFO, __file__, 1, "hi", None, None)
+
+
+def test_console_line_carries_the_span_ids_langfuse_shows() -> None:
+    # Pastes straight into Langfuse's search, with no conversion.
+    record = _a_record()
+    tracer = TracerProvider().get_tracer("test")
+    with tracer.start_as_current_span("dss.turn") as span:
+        expected = span.get_span_context()
+        SpanIdsFilter().filter(record)
+
+    assert record.trace_id == format(expected.trace_id, "032x")
+    assert record.span_id == format(expected.span_id, "016x")
+
+
+def test_console_line_outside_a_span_leaves_the_span_ids_off() -> None:
+    record = _a_record()
+
+    SpanIdsFilter().filter(record)
+
+    assert not hasattr(record, "trace_id")
+    assert not hasattr(record, "span_id")

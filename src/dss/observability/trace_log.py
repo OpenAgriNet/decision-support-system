@@ -94,7 +94,7 @@ def trace_component(
     span_context = nullcontext() if opener is None else opener(f"dss.stage.{stage}")
 
     start = time.monotonic()
-    _info(f"{stage} enter", transaction_id, component=stage.value, event="enter")
+    _log_info(f"{stage} enter", transaction_id, component=stage.value, event="enter")
     status = "ok"
     try:
         with span_context:
@@ -120,8 +120,6 @@ def trace_component(
 
 
 class TokenUsage(Protocol):
-    """A run's token counter, filled in while the run goes."""
-
     input_tokens: int
     output_tokens: int
 
@@ -134,7 +132,7 @@ def trace_agent_call(agent: str, *, model: str, usage: TokenUsage) -> Iterator[N
     """
 
     start = time.monotonic()
-    _info(f"{agent} call", agent=agent, event="agent_call", model=model)
+    _log_info(f"{agent} call", agent=agent, event="agent_call", model=model)
     status = "ok"
     try:
         yield
@@ -164,7 +162,7 @@ def log_event(
 ) -> None:
     """Log one thing a component decided. INFO only, so never the farmer's words."""
 
-    _info(
+    _log_info(
         f"{component} {event}",
         transaction_id,
         component=component,
@@ -207,7 +205,7 @@ def log_external_request(
 ) -> None:
     """Log one request on its way out to an outside service; its body at DEBUG."""
 
-    _info(
+    _log_info(
         f"{service} request",
         transaction_id,
         external=service,
@@ -243,7 +241,7 @@ def log_external_response(
     _debug_body(service, transaction_id, event="response_body", body=body)
 
 
-def _info(message: str, transaction_id: str | None = None, **fields: Any) -> None:
+def _log_info(message: str, transaction_id: str | None = None, **fields: Any) -> None:
     _log(logging.INFO, message, transaction_id, **fields)
 
 

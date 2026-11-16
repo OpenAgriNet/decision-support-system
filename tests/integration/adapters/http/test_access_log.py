@@ -138,3 +138,16 @@ async def test_a_client_that_left_is_logged_as_cancelled(caplog):
     [line] = _access_lines(caplog)
     assert line.levelno == logging.INFO
     assert line.__dict__["http.response.status_code"] == 499
+
+
+async def test_an_interrupt_is_not_logged_as_a_client_that_left(caplog):
+    async def interrupted_app(scope, receive, send):
+        raise KeyboardInterrupt
+
+    middleware = AccessLogMiddleware(interrupted_app)
+    scope = {"type": "http", "method": "POST", "path": "/v1/turns"}
+
+    with caplog.at_level(logging.INFO, logger=LOGGER), pytest.raises(KeyboardInterrupt):
+        await middleware(scope, None, None)
+
+    assert _access_lines(caplog) == []

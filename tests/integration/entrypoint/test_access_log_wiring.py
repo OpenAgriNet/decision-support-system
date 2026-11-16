@@ -7,6 +7,7 @@ import logging
 import pytest
 from fastapi.testclient import TestClient
 
+from dss.adapters.observability.logs import SpanIdsFilter
 from dss.config.settings import Settings
 from dss.entrypoint.app import _configure_logging, build_app
 from dss.observability.log_fields import KeyValueFormatter, TurnFilter
@@ -48,3 +49,4 @@ def test_stderr_prints_the_turns_ids_as_fields():
 
     assert isinstance(handler.formatter, KeyValueFormatter)
     assert any(isinstance(f, TurnFilter) for f in handler.filters)
+    assert any(isinstance(f, SpanIdsFilter) for f in handler.filters)

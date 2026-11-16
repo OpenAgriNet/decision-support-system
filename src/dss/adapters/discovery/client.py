@@ -201,14 +201,12 @@ def map_discover_response(response: dict[str, Any]) -> ProviderQueryResult:
     )
 
 
-def _network_fields(request_body: dict[str, Any]) -> dict[str, str]:
-    """The network message id and network id this call went out with."""
-
+def _read_network_ids(request_body: dict[str, Any]) -> dict[str, str]:
     context = request_body["context"]
     return {"message_id": context["messageId"], "network_id": context["networkId"]}
 
 
-def _provider_ids_in(query_result: ProviderQueryResult) -> list[str]:
+def _collect_provider_ids(query_result: ProviderQueryResult) -> list[str]:
     """Every provider that answered, offered a capability or failed, once each."""
 
     return sorted(
@@ -405,7 +403,7 @@ class HttpCapabilityDiscovery:
                 span.set_status(Status(StatusCode.ERROR, f"unbuildable: {exc!r}"))
                 return _malformed_result(query, f"unbuildable request: {exc!r}")
             network_fields = {
-                **_network_fields(request_body),
+                **_read_network_ids(request_body),
                 "capabilities": ",".join(query.capabilities),
             }
             log_external_request(
@@ -454,7 +452,7 @@ class HttpCapabilityDiscovery:
                 )
                 span.set_status(Status(StatusCode.ERROR, f"malformed: {exc!r}"))
                 return _malformed_result(query, f"malformed response: {exc!r}")
-            provider_ids = _provider_ids_in(query_result)
+            provider_ids = _collect_provider_ids(query_result)
             log_external_response(
                 "discovery",
                 transaction_id,
