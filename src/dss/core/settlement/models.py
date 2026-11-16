@@ -71,12 +71,18 @@ class Unresolved:
     ends_ask = False
 
 
+class UnservableReason(StrEnum):
+    NO_FORM = "no_form"
+    UNLISTED = "unlisted"
+
+
 @dataclass(frozen=True)
 class Unservable:
     """Only when no earlier slot's answer could change it: settle ends the
     ask on this without asking them."""
 
-    reason: str
+    value: str
+    reason: UnservableReason
     is_settled = False
     ends_ask = True
 

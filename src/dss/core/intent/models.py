@@ -249,8 +249,10 @@ class ClassifiedAsk(BaseModel):
 
     @field_validator("unlisted_scheme_name")
     @classmethod
-    def _drop_blank_scheme_name(cls, value: str | None) -> str | None:
-        return (value or "").strip() or None
+    def _keep_scheme_name_on_one_line(cls, value: str | None) -> str | None:
+        # The composer reads its data line by line: a line break in the
+        # farmer's words would start a line of their own.
+        return " ".join((value or "").split()) or None
 
 
 # The raw model output. resolve_places turns it into an Intent, below.

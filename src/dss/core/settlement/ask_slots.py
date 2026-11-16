@@ -26,6 +26,7 @@ from dss.core.settlement.models import (
     Unresolved,
     UnresolvedReason,
     Unservable,
+    UnservableReason,
 )
 
 
@@ -92,10 +93,9 @@ def _scheme_state(ask: Ask, schemes_with_a_form: frozenset[str]) -> SlotState:
         # The next two are not asked again: the farmer has no other scheme
         # to name.
         case Scheme(name=name):
-            category = ask.subject_categories.value.lower()
-            return Unservable(reason=f"{name} has no {category} form.")
+            return Unservable(value=name, reason=UnservableReason.NO_FORM)
         case UnlistedScheme(name=name):
-            return Unservable(reason=f"{name} is not a scheme we know.")
+            return Unservable(value=name, reason=UnservableReason.UNLISTED)
         case GuessedScheme(scheme=scheme) if scheme.code in schemes_with_a_form:
             return Ambiguous(value=scheme.name, choices=(scheme,))
         # A guess without a form is not confirmed: a yes could not be served.

@@ -45,6 +45,7 @@ from dss.core.settlement.models import (
     Settlement,
     Slot,
     Unservable,
+    UnservableReason,
 )
 from dss.core.shared.models import (
     Claim,
@@ -742,7 +743,7 @@ async def test_an_ask_we_cannot_serve_ends_the_turn() -> None:
     cannot_serve = CannotServe(
         slot=Slot(
             AskSlot.SCHEME,
-            Unservable(reason="PM Kisan Samman Nidhi has no grievance form."),
+            Unservable("PM Kisan Samman Nidhi", UnservableReason.NO_FORM),
         )
     )
     plan = _FakePlan(_ANSWERED_EVIDENCE)

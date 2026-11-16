@@ -17,6 +17,7 @@ from dss.core.settlement.models import (
     Unresolved,
     UnresolvedReason,
     Unservable,
+    UnservableReason,
 )
 from dss.core.settlement.service import settle, settle_asks
 
@@ -73,7 +74,7 @@ def test_unservable_slot_beats_open_ones() -> None:
     """Asking first would make the farmer answer for nothing."""
 
     phone = Slot(name=PHONE, state=Missing())
-    village = Slot(name=VILLAGE, state=Unservable(reason="farmer declined"))
+    village = Slot(name=VILLAGE, state=Unservable("Rampur", UnservableReason.NO_FORM))
 
     assert settle(Frame(slots=(phone, village))) == CannotServe(slot=village)
 

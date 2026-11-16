@@ -26,6 +26,7 @@ from dss.core.settlement.models import (
     NeedsClarification,
     Slot,
     Unservable,
+    UnservableReason,
 )
 
 
@@ -150,7 +151,7 @@ _NEEDS_PLACE = AskEvidence(
 _CANNOT_SERVE = AskEvidence(
     ask=_ASK,
     outcome=CannotServe(
-        slot=Slot("scheme", Unservable(reason="no complaint form for PMFBY"))
+        slot=Slot("scheme", Unservable("PMFBY", UnservableReason.NO_FORM))
     ),
 )
 

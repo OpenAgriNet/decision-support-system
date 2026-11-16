@@ -51,6 +51,7 @@ from dss.core.settlement.models import (
     Unresolved,
     UnresolvedReason,
     Unservable,
+    UnservableReason,
 )
 from dss.core.shared.models import TextQuery, UserTurn
 from dss.ports.prompts import PromptIdentifier, PromptProvider
@@ -237,9 +238,20 @@ def _render_unsettled(ask_evidence: AskEvidence) -> list[str]:
     match ask_evidence.outcome:
         case NeedsClarification(open_slots=(first, *_)):
             return [f"Ask the farmer ({category}): {_slot_brief(first)}"]
-        case CannotServe(slot=Slot(state=Unservable(reason=reason))):
-            return [f"Cannot serve this ({category}): {reason}"]
+        case CannotServe(slot=Slot(state=Unservable(value=value, reason=reason))):
+            why = _UNSERVABLE_BRIEFS[reason].format(
+                value=value, category=category.lower()
+            )
+            return [f"Cannot serve this ({category}): {why}"]
     return []
+
+
+# `!r` quotes the value and escapes a line break: these are the farmer's own
+# words, and must not start a line the composer would read as ours.
+_UNSERVABLE_BRIEFS: Mapping[UnservableReason, str] = {
+    UnservableReason.NO_FORM: "{value!r} has no {category} form.",
+    UnservableReason.UNLISTED: "{value!r} is not a scheme we know.",
+}
 
 
 _UNRESOLVED_BRIEFS: Mapping[UnresolvedReason, str] = {

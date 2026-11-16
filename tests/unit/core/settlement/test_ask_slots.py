@@ -32,6 +32,7 @@ from dss.core.settlement.models import (
     Unresolved,
     UnresolvedReason,
     Unservable,
+    UnservableReason,
 )
 from dss.core.shared.models import Geometry, ProviderAction
 from dss.ports.area_lookup import AreaMatch
@@ -191,7 +192,7 @@ def test_named_scheme_without_a_form() -> None:
     """Asking again would go in a circle: the farmer has no other answer."""
 
     assert _scheme_of(PM_KISAN) == Unservable(
-        reason="PM Kisan Samman Nidhi has no grievance form."
+        value="PM Kisan Samman Nidhi", reason=UnservableReason.NO_FORM
     )
 
 
@@ -215,7 +216,7 @@ def test_unlisted_scheme_ends_the_ask() -> None:
     """Asking again would go in a circle: the farmer has no other answer."""
 
     assert _scheme_of(UnlistedScheme(name="XYZ Yojana")) == Unservable(
-        reason="XYZ Yojana is not a scheme we know."
+        value="XYZ Yojana", reason=UnservableReason.UNLISTED
     )
 
 
