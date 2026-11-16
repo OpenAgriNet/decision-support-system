@@ -17,6 +17,7 @@ from __future__ import annotations
 from collections.abc import Callable, Collection, Iterable, Sequence
 from datetime import UTC, datetime
 from functools import partial
+from typing import assert_never
 
 import anyio
 from pydantic import BaseModel, ConfigDict
@@ -54,7 +55,16 @@ from dss.core.provider_discovery.service import (
 )
 from dss.core.schema_packs.service import is_place_needed
 from dss.core.settlement import service as settlement
-from dss.core.settlement.models import AskRequirements, Settled, Settlement
+from dss.core.settlement.models import (
+    AskRequirements,
+    CannotServe,
+    NeedsClarification,
+    Settled,
+    Settlement,
+    Slot,
+    Unresolved,
+    Unservable,
+)
 from dss.core.settlement.requirements import build_ask_requirements
 from dss.core.shared.models import TextQuery, UserTurn
 from dss.observability.stages import Stage
@@ -168,6 +178,50 @@ def place_attributes(
     }
 
 
+def settlement_attributes(
+    intent: Intent, settlements: Sequence[Settlement]
+) -> dict[str, str | int]:
+    """Slot names and states only, never a value: a value is the farmer's own
+    words, and `dss.` keys reach the shared database."""
+
+    waits = [
+        f"ask {number} ({ask.subject_categories.value}): {_wait_of(settlement)}"
+        for number, (ask, settlement) in enumerate(
+            zip(intent.asks, settlements, strict=True), start=1
+        )
+    ]
+
+    def count(kind: type[Settlement]) -> int:
+        return sum(isinstance(settlement, kind) for settlement in settlements)
+
+    return {
+        "dss.settlement.settled": count(Settled),
+        "dss.settlement.needs_clarification": count(NeedsClarification),
+        "dss.settlement.cannot_serve": count(CannotServe),
+        "dss.settlement.asks": "; ".join(waits),
+    }
+
+
+def _wait_of(settlement: Settlement) -> str:
+    match settlement:
+        case Settled():
+            return "settled"
+        case NeedsClarification(open_slots=slots):
+            return ", ".join(_slot_state(slot) for slot in slots)
+        case CannotServe(slot=slot):
+            return _slot_state(slot)
+        case unknown:
+            assert_never(unknown)
+
+
+def _slot_state(slot: Slot) -> str:
+    match slot.state:
+        case Unresolved(reason=reason) | Unservable(reason=reason):
+            return f"{slot.name} {reason.value}"
+        case state:
+            return f"{slot.name} {type(state).__name__.lower()}"
+
+
 def moderation_attributes(decision: ModerationDecision) -> dict[str, str]:
     """Why moderation decided as it did, for the `moderation` span.
 
@@ -278,7 +332,7 @@ async def run_turn(  # noqa: PLR0913
         intent = await _resolve_places(
             classification, turn, lookup=area_lookup, nearest_max_km=nearest_max_km
         )
-        settlements = settle_asks(intent)
+        settlements = _settle(intent, turn, settle_asks=settle_asks)
         discovery = await _discover(
             _settled_only(intent, settlements),
             turn,
@@ -345,6 +399,15 @@ async def _resolve_places(
         )
         set_current_span_attributes(**place_attributes(classification, intent))
     return intent
+
+
+def _settle(
+    intent: Intent, turn: UserTurn[TextQuery], *, settle_asks: SettleAsks
+) -> tuple[Settlement, ...]:
+    with trace_component(Stage.SETTLEMENT, turn.transaction_id):
+        settlements = settle_asks(intent)
+        set_current_span_attributes(**settlement_attributes(intent, settlements))
+    return settlements
 
 
 async def _discover(

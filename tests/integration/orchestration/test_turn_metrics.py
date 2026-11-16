@@ -189,6 +189,7 @@ async def test_every_stage_publishes_its_duration(reader) -> None:
         "redaction",
         "intent",
         "location",
+        "settlement",
         "moderation",
         "discovery",
         "planner",

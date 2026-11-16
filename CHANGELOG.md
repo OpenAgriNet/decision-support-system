@@ -6,6 +6,9 @@
 - Each ask is settled right after intent, before discovery: code checks it
   has the place, the scheme and the action it needs. An ask with a missing
   or unsure one gets one question, written by the composer (#243, ADR-0023)
+- A `settlement` stage in traces and `dss.stage.duration`. Its span says how
+  many asks settled and what each of the others waits on, by slot name and
+  state, never a value (#243)
 - The fixed place questions are gone from `clarification-text.yaml`:
   `needs_place`, `unknown_place`, `unknown_place_in`, `region_place`,
   `ambiguous_place_header` and `grouped_place_header`. An override file must
