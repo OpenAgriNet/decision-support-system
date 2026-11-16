@@ -14,9 +14,8 @@ intent and moderation can use different models.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Collection, Iterable, Sequence
+from collections.abc import Sequence
 from datetime import UTC, datetime
-from functools import partial
 from typing import assert_never
 
 import anyio
@@ -26,10 +25,8 @@ from dss.adapters.observability.tracing import (
     set_current_span_attributes,
     set_current_span_content,
 )
-from dss.core.forms.models import FormContext
 from dss.core.intent.models import (
     AmbiguousPlace,
-    Ask,
     Intent,
     IntentClassification,
     ResolvedPlace,
@@ -44,19 +41,8 @@ from dss.core.moderation.models import (
 )
 from dss.core.moderation.service import moderate
 from dss.core.policy.models import Policy
-from dss.core.provider_discovery.models import (
-    CapabilityIndex,
-    DiscoveryResult,
-    NetworkSchemaType,
-)
-from dss.core.provider_discovery.service import (
-    CapabilityIndexSource,
-    capability_types_for,
-)
-from dss.core.schema_packs.service import is_place_needed
-from dss.core.settlement import service as settlement
+from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.settlement.models import (
-    AskRequirements,
     CannotServe,
     NeedsClarification,
     Settled,
@@ -65,11 +51,11 @@ from dss.core.settlement.models import (
     Unresolved,
     Unservable,
 )
-from dss.core.settlement.requirements import build_ask_requirements
 from dss.core.shared.models import TextQuery, UserTurn
 from dss.observability.stages import Stage
 from dss.observability.trace_log import trace_component
 from dss.orchestration.discovery import DiscoverProviders
+from dss.orchestration.settlement import SettleAsks
 from dss.orchestration.stage_content import asks_text, discovery_text
 from dss.ports.area_lookup import AreaLookup
 from dss.ports.llm import LLMProvider
@@ -90,46 +76,6 @@ def _nothing_discovered() -> DiscoveryResult:
     """
 
     return DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
-
-
-# One settlement per ask, in ask order.
-type SettleAsks = Callable[[Intent], tuple[Settlement, ...]]
-
-
-# A category's forms.
-type FormContextLookup = Callable[[str], Iterable[FormContext]]
-
-
-def build_settle_asks(
-    index: CapabilityIndexSource, contexts_for: FormContextLookup
-) -> SettleAsks:
-    """Reads the index on every turn. It can refresh while the app runs."""
-
-    def settle(intent: Intent) -> tuple[Settlement, ...]:
-        requirements_for = partial(
-            _read_ask_requirements,
-            index=index.current(),
-            place_bound_types=index.place_bound_types(),
-            contexts_for=contexts_for,
-        )
-        return settlement.settle_asks(intent, requirements_for=requirements_for)
-
-    return settle
-
-
-def _read_ask_requirements(
-    ask: Ask,
-    *,
-    index: CapabilityIndex,
-    place_bound_types: Collection[NetworkSchemaType],
-    contexts_for: FormContextLookup,
-) -> AskRequirements:
-    pack_types = capability_types_for(ask, index)
-    return build_ask_requirements(
-        ask,
-        needs_place=is_place_needed(pack_types, place_bound_types),
-        forms=contexts_for(ask.subject_categories.value),
-    )
 
 
 def place_attributes(

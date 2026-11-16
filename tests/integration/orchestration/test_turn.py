@@ -54,7 +54,8 @@ from dss.core.shared.models import (
     TextQuery,
     UserTurn,
 )
-from dss.orchestration.turn import SettleAsks, build_settle_asks, run_turn
+from dss.orchestration.settlement import SettleAsks, build_settle_asks
+from dss.orchestration.turn import run_turn
 from dss.ports.area_lookup import AreaMatch
 from tests.support.fakes import FakeAreaLookup, FakePromptProvider
 from tests.support.providers import build_capability

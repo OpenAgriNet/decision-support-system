@@ -45,8 +45,8 @@ from dss.observability.trace_log import set_stage_span_opener
 from dss.orchestration.orchestrator import Orchestrator, outcome_for
 from dss.orchestration.plan import Plan
 from dss.orchestration.redaction import RedactTexts, pass_through
+from dss.orchestration.settlement import SettleAsks
 from dss.orchestration.translation import translate_out
-from dss.orchestration.turn import SettleAsks
 from tests.support.fakes import FakeAreaLookup, FakeLocalizer, FakeTranslator
 from tests.support.settlement import settles_every_ask
 from tests.support.turn_events import assert_well_formed
