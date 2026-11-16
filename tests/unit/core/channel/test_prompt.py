@@ -47,7 +47,13 @@ from dss.core.settlement.models import (
     UnservableReason,
 )
 from dss.core.shared.language import LanguageTag
-from dss.core.shared.models import ConversationMessage, Geometry, TextQuery, UserTurn
+from dss.core.shared.models import (
+    ConversationMessage,
+    Geometry,
+    ProviderAction,
+    TextQuery,
+    UserTurn,
+)
 from dss.ports.prompts import PromptIdentifier
 from tests.support.evidence import build_evidence
 from tests.support.fakes import FakePromptProvider
@@ -353,6 +359,27 @@ def test_an_ask_we_cannot_serve_says_why() -> None:
     rendered = render_evidence(evidence)
 
     assert "Cannot serve this (Grievance): 'PMFBY' has no grievance form" in rendered
+
+
+def test_a_missing_form_names_the_action() -> None:
+    """The scheme may have a form for the other action: "has no form" alone
+    would be untrue."""
+
+    status_check = Ask(
+        subject_categories=SubjectCategory.GRIEVANCE,
+        interaction_type=InteractionType.ACT,
+        action=ProviderAction.STATUS,
+    )
+    outcome = CannotServe(
+        slot=Slot("scheme", Unservable("PMFBY", UnservableReason.NO_FORM))
+    )
+    evidence = Evidence(
+        sources=(), ask_evidences=(AskEvidence(ask=status_check, outcome=outcome),)
+    )
+
+    rendered = render_evidence(evidence)
+
+    assert "'PMFBY' has no form to check on a grievance" in rendered
 
 
 def test_a_scheme_name_cannot_forge_a_line() -> None:

@@ -53,7 +53,7 @@ from dss.core.settlement.models import (
     Unservable,
     UnservableReason,
 )
-from dss.core.shared.models import TextQuery, UserTurn
+from dss.core.shared.models import ProviderAction, TextQuery, UserTurn
 from dss.ports.prompts import PromptIdentifier, PromptProvider
 
 # A reply like "2" means nothing without the question it answers. Three
@@ -240,7 +240,7 @@ def _render_unsettled(ask_evidence: AskEvidence) -> list[str]:
             return [f"Ask the farmer ({category}): {_slot_brief(first)}"]
         case CannotServe(slot=Slot(state=Unservable(value=value, reason=reason))):
             why = _UNSERVABLE_BRIEFS[reason].format(
-                value=value, category=category.lower()
+                value=value, form=_wanted_form(ask_evidence.ask)
             )
             return [f"Cannot serve this ({category}): {why}"]
     return []
@@ -249,9 +249,22 @@ def _render_unsettled(ask_evidence: AskEvidence) -> list[str]:
 # `!r` quotes the value and escapes a line break: these are the farmer's own
 # words, and must not start a line the composer would read as ours.
 _UNSERVABLE_BRIEFS: Mapping[UnservableReason, str] = {
-    UnservableReason.NO_FORM: "{value!r} has no {category} form.",
+    UnservableReason.NO_FORM: "{value!r} has no {form}.",
     UnservableReason.UNLISTED: "{value!r} is not a scheme we know.",
 }
+
+# Named by action: the scheme may well have a form for the other one.
+_FORM_BY_ACTION: Mapping[ProviderAction, str] = {
+    ProviderAction.SUPPORT: "form to raise a new {category}",
+    ProviderAction.STATUS: "form to check on a {category}",
+}
+
+
+def _wanted_form(ask: Ask) -> str:
+    category = ask.subject_categories.value.lower()
+    action = ask.known_action
+    form = _FORM_BY_ACTION[action] if action else "{category} form"
+    return form.format(category=category)
 
 
 _UNRESOLVED_BRIEFS: Mapping[UnresolvedReason, str] = {
