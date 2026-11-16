@@ -189,8 +189,8 @@ Evidence
   (the value is the name the question is about: what the farmer typed when
   they pick, our one guess when they confirm),
   `Unresolved(value, reason)` (not found, too broad), `Missing`,
-  `Unservable(reason)`. A new slot needs no new state. `Skipped` comes with
-  voice forms.
+  `Unservable(value, reason)` (no form, unlisted). A new slot needs no new
+  state. `Skipped` comes with voice forms.
 - `settle(frame) -> Settled | NeedsClarification | CannotServe`. Pure, and
   reads only each state's `is_settled` and `ends_ask`. Any slot that ends
   the ask → can't serve; else open slots → needs clarification; else
@@ -199,8 +199,8 @@ Evidence
   (`ask_slot_state`). **Form fields** are named by the pack, and are filled
   by the form step later (voice).
 - **Which slots an ask needs** comes to settlement as an `AskRequirements`, one
-  per ask. The wiring (`orchestration/turn.py`) fetches the ask's packs and
-  forms each turn, since the index can refresh, and
+  per ask. The wiring (`orchestration/settlement.py`) fetches the ask's packs
+  and forms each turn, since the index can refresh, and
   `core/settlement/requirements.py` works out the slots from that. Settlement
   reads no pack and no registry, so a new slot adds a field, not a
   parameter. `AskRequirements` also says which kinds of form the category has, and
