@@ -284,9 +284,13 @@ def model_that_ran(result, configured) -> str | None:  # noqa: ANN001
     """
 
     response = getattr(result, "response", None)
-    return getattr(response, "model_name", None) or getattr(
-        configured, "model_name", configured
-    )
+    return getattr(response, "model_name", None) or configured_model_name(configured)
+
+
+def configured_model_name(configured) -> str:  # noqa: ANN001
+    """The name a binding was configured with, before any response names one."""
+
+    return str(getattr(configured, "model_name", configured))
 
 
 def record_first_delta(elapsed_ms: float) -> None:

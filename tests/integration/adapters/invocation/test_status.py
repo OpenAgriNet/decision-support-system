@@ -168,6 +168,7 @@ def _invocation(handler: _Replies) -> HttpCapabilityInvocation:
         client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
         base_url="https://provider-network-vistaar.da.gov.in/oan",
         sender_id=SENDER_ID,
+        network_id="host.oan",
         backoff_seconds=0.0,
     )
 
