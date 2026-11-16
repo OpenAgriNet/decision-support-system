@@ -11,7 +11,7 @@ from collections.abc import AsyncIterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from dss.core.forms.models import ActionReply, ProviderAction
+from dss.core.forms.models import ActionReply
 from dss.core.intent.models import Scheme, SchemeEntry
 from dss.core.planner.models import Skill
 from dss.core.provider_discovery.models import ProviderCapability
@@ -19,7 +19,13 @@ from dss.core.provider_preferences.models import PreferenceBook, capability_key
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.errors import ProviderUnavailableError, TranslationError
 from dss.core.shared.language import LanguageTag
-from dss.core.shared.models import Geometry, TurnContext, TurnEvent, UserTurn
+from dss.core.shared.models import (
+    Geometry,
+    ProviderAction,
+    TurnContext,
+    TurnEvent,
+    UserTurn,
+)
 from dss.core.shared.network import NetworkTransactionID
 from dss.ports.area_lookup import AreaMatch
 from dss.ports.invocation import ProviderCallFailedError

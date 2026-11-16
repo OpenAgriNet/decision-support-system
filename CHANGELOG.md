@@ -2,6 +2,36 @@
 
 ## [Unreleased]
 
+### Changed
+- Each ask is settled right after intent, before discovery: code checks it
+  has the place, the scheme and the action it needs. An ask with a missing
+  or unsure one gets one question, written by the composer (#243, ADR-0023)
+- A `settlement` stage in traces and `dss.stage.duration`. Its span says how
+  many asks settled and what each of the others waits on, by slot name and
+  state, never a value (#243)
+- The fixed place questions are gone from `clarification-text.yaml`:
+  `needs_place`, `unknown_place`, `unknown_place_in`, `region_place`,
+  `ambiguous_place_header` and `grouped_place_header`. No setting loads an
+  override file today, so this only matters to code that calls
+  `load_clarification_text(path)` with its own file: that file must drop
+  them, or loading fails (#243)
+- An ask with no schema pack, such as a scheme ask, is searched with no
+  place filter. It used to carry one (#243)
+- "How do I file a complaint" now finds the grievance provider and shows the
+  form. An ask with a known action is searched as a service, however it is
+  worded (#243)
+
+### Added
+- A farmer with a scheme problem is guided to the grievance form. When their
+  words do not say, the DSS asks whether they want to raise a new complaint
+  or check one they already raised, then which scheme, then shows the form.
+  A scheme it is unsure of is confirmed first. A scheme with no form is
+  turned away with the reason, and a plain question about complaints gets an
+  answer with no form question (#243)
+- The intent model returns each ask's `action` (`support`, `status`,
+  `unclear` or nothing) and how sure it is of the scheme
+  (`scheme_confidence`) (#243)
+
 ## [0.2.0] - 2026-11-05
 
 ### Changed

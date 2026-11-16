@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict
 from dss.core.forms.models import FormDefinition
 from dss.core.intent.models import Ask
 from dss.core.moderation.models import ModerationDecision
+from dss.core.settlement.models import CannotServe, NeedsClarification
 
 
 class Verdict:
@@ -84,9 +85,10 @@ class Result(BaseModel):
 
     The design doc's ``Result.step_id`` names a ``Plan`` step; there is no
     ``Plan`` here. ``ask_index`` names what a result actually answers instead
-    — the position into ``Intent.asks`` — so ``assemble_evidence`` can file
-    it under its ask. No ``url`` here: it lives on the ``Source`` this
-    result's ``source_id`` points to.
+    — the position among the asks the planner was given — so
+    ``assemble_evidence`` can file it under its ask. Those are the settled
+    asks, not every ask of the turn. No ``url`` here: it lives on the
+    ``Source`` this result's ``source_id`` points to.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -99,24 +101,19 @@ class Result(BaseModel):
 class Failure(BaseModel):
     """An ask that did not produce a result.
 
-    ``ask_index`` names what the call was answering — the position into
-    ``Intent.asks`` — the same way ``Result.ask_index`` does, so
+    ``ask_index`` names what the call was answering — the position among the
+    asks the planner was given — the same way ``Result.ask_index`` does, so
     ``assemble_evidence`` can file it under its ask.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     ask_index: int
-    # None: no provider was called, e.g. the ask's place failed to resolve.
-    capability: str | None
+    capability: str
     reason: str
     retryable: bool
     # The provider's own `Retry-After`, when it sent one on a failed filing.
     retry_after_seconds: int | None = None
-
-    @property
-    def is_provider_failure(self) -> bool:
-        return self.capability is not None
 
 
 class Identity(BaseModel):
@@ -134,22 +131,60 @@ class Identity(BaseModel):
 
 
 @dataclass(frozen=True)
-class AskEvidence:
-    """What the turn gathered for one ask: its results and its failures, or
-    the form the farmer fills in before any provider is called."""
+class Attempted:
+    """What the providers returned. No results is a gap, not an error."""
 
-    ask: Ask
     results: tuple[Result, ...]
     failures: tuple[Failure, ...]
-    awaiting: FormDefinition | None = None
 
     @property
     def is_served(self) -> bool:
         return bool(self.results)
 
     @property
+    def is_unanswered(self) -> bool:
+        return not self.is_served
+
+    @property
     def has_provider_failure(self) -> bool:
-        return any(failure.is_provider_failure for failure in self.failures)
+        return bool(self.failures)
+
+
+@dataclass(frozen=True)
+class AwaitingInput:
+    form: FormDefinition
+
+    is_served = False
+    is_unanswered = False
+    has_provider_failure = False
+
+
+# Every outcome answers is_served, is_unanswered and has_provider_failure,
+# so readers never need isinstance to ask them.
+type AskOutcome = Attempted | AwaitingInput | NeedsClarification | CannotServe
+
+
+@dataclass(frozen=True)
+class TurnNote:
+    """A fact about the whole message, not one ask: a refusal, or nothing
+    understood. Each kind extends this."""
+
+
+@dataclass(frozen=True)
+class AskEvidence:
+    """One ask and how it ended. One outcome, so an ask can never both wait
+    on the farmer and carry results."""
+
+    ask: Ask
+    outcome: AskOutcome
+
+    @property
+    def is_served(self) -> bool:
+        return self.outcome.is_served
+
+    @property
+    def has_provider_failure(self) -> bool:
+        return self.outcome.has_provider_failure
 
 
 @dataclass(frozen=True)
@@ -164,22 +199,35 @@ class Evidence:
 
     sources: tuple[Source, ...]
     ask_evidences: tuple[AskEvidence, ...]
+    # Always empty for now: refusal and no-match fill it once they reach the
+    # composer. Added early so they add a kind of note, not a new shape.
+    turn_note: TurnNote | None = None
 
     @property
     def unserved_asks(self) -> tuple[AskEvidence, ...]:
-        """Asks with no result and no form: the gaps the farmer is told about."""
+        """Asks nobody answered, and asks we cannot serve: the gaps the farmer
+        is told about."""
 
         return tuple(
-            entry
-            for entry in self.ask_evidences
-            if not entry.is_served and entry.awaiting is None
+            entry for entry in self.ask_evidences if entry.outcome.is_unanswered
         )
 
     @property
     def awaiting_forms(self) -> tuple[FormDefinition, ...]:
         """In ask order: the reply carries one form block per entry."""
 
-        return tuple(entry.awaiting for entry in self.ask_evidences if entry.awaiting)
+        return tuple(
+            outcome.form
+            for entry in self.ask_evidences
+            if isinstance(outcome := entry.outcome, AwaitingInput)
+        )
+
+    @property
+    def needs_clarification(self) -> bool:
+        return any(
+            isinstance(entry.outcome, NeedsClarification)
+            for entry in self.ask_evidences
+        )
 
     @property
     def has_any_result(self) -> bool:

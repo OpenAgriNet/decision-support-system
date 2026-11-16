@@ -14,7 +14,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from datetime import datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, SerializeAsAny
 
@@ -186,6 +186,32 @@ class TurnContext(BaseModel):
     message_id: str
     session_id: str
     sender_id: str
+
+
+class ProviderAction(StrEnum):
+    """What a form asks a provider to do: ``support`` files a new complaint,
+    ``status`` checks one already filed. Here, not with the forms: intent
+    reads it from the farmer's words, before any form exists."""
+
+    SUPPORT = "support"
+    STATUS = "status"
+    # The call a scheme makes first when its actions have init fields, e.g. to
+    # send the farmer an OTP.
+    INIT = "init"
+
+
+# What a user can ask for. ``init`` is a step inside filing or checking, never
+# a choice of its own.
+type RequestedAction = Literal[ProviderAction.SUPPORT, ProviderAction.STATUS]
+# Read off the type, so the two cannot disagree. A type hint is not there at
+# run time, and a check on raw text needs a real set.
+REQUESTABLE_ACTIONS: frozenset[RequestedAction] = frozenset(
+    get_args(RequestedAction.__value__)
+)
+
+
+def as_requested_action(raw: str) -> RequestedAction | None:
+    return next((action for action in REQUESTABLE_ACTIONS if action == raw), None)
 
 
 class TurnStatus(StrEnum):

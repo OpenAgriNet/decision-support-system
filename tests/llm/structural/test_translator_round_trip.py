@@ -16,7 +16,7 @@ from dotenv import dotenv_values
 from dss.config.prompt_service import build_prompt_service
 from dss.config.settings import Settings
 from dss.core.shared.language import ENGLISH, LanguageTag
-from dss.entrypoint.composition import _build_translation_routes
+from dss.entrypoint.composition.root import _build_translation_routes
 from dss.ports.translator import Translator
 from tests.support.live_model import missing_model_key
 

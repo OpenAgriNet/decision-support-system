@@ -15,7 +15,13 @@ from dss.core.intent.models import (
     UnresolvedPlace,
 )
 from dss.core.location.service import resolve_places
-from dss.core.shared.models import Geometry, Location, TextQuery, UserTurn
+from dss.core.shared.models import (
+    Geometry,
+    Location,
+    ProviderAction,
+    TextQuery,
+    UserTurn,
+)
 from dss.ports.area_lookup import AreaMatch
 
 
@@ -983,3 +989,17 @@ async def test_the_scheme_on_a_classified_ask_reaches_the_ask() -> None:
     )
 
     assert intent.asks[0].scheme == pmfby
+
+
+async def test_the_action_on_a_classified_ask_reaches_the_ask() -> None:
+    classified = ClassifiedAsk(
+        subject_categories=SubjectCategory.GRIEVANCE,
+        interaction_type=InteractionType.ADVISE,
+        action=ProviderAction.SUPPORT,
+    )
+
+    intent = await resolve_places(
+        IntentClassification(asks=(classified,)), _turn(), lookup=_FakeLookup({})
+    )
+
+    assert intent.asks[0].action is ProviderAction.SUPPORT

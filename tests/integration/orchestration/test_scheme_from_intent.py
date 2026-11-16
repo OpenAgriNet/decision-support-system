@@ -15,12 +15,14 @@ from dss.core.intent.models import (
     IntentClassification,
     InteractionType,
     Scheme,
+    SchemeConfidence,
     SubjectCategory,
 )
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.shared.models import TextQuery, UserTurn
 from dss.orchestration.turn import run_turn
 from tests.support.fakes import FakeAreaLookup, FakePromptProvider, FakeSchemeCatalog
+from tests.support.settlement import settles_every_ask
 
 PMFBY = Scheme(code="PMFBY", name="Pradhan Mantri Fasal Bima Yojana")
 
@@ -45,6 +47,7 @@ def _grievance(scheme_code: str | None) -> IntentClassification:
                 subject_categories=SubjectCategory.GRIEVANCE,
                 interaction_type=InteractionType.ACT,
                 scheme_code=scheme_code,
+                scheme_confidence=SchemeConfidence.HIGH,
             ),
         ),
         confidence=0.9,
@@ -83,6 +86,7 @@ async def _run(classification: IntentClassification, *, catalog):
         prompts=prompts,
         policies=[],
         discover_providers=discovery,
+        settle_asks=settles_every_ask,
         area_lookup=FakeAreaLookup(),
         scheme_catalog=catalog,
         now=datetime.now(UTC),

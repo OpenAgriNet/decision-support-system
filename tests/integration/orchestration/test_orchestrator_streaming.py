@@ -53,6 +53,7 @@ from tests.support.fakes import (
     FakePromptProvider,
     FakeSchemeCatalog,
 )
+from tests.support.settlement import settles_every_ask
 from tests.support.turn_events import assert_well_formed
 
 CHUNKS = ("Wheat is ", "2,2", "75 Rs [1].")
@@ -83,9 +84,9 @@ def _build(
         telemetry=_Telemetry(),
         area_lookup=FakeAreaLookup({"pune": [_PUNE_MATCH]}),
         clarification_text=load_clarification_text(),
-        schemas={},
         edge_translation=EdgeTranslation(routes={}),
         forms=FormRegistry(),
+        settle_asks=settles_every_ask,
     )
     orch = Orchestrator(paths={TextQuery: text_path})
     return orch, turns
@@ -213,9 +214,9 @@ async def test_the_real_component_streams_through_the_runner() -> None:
         telemetry=_Telemetry(),
         area_lookup=FakeAreaLookup({"pune": [_PUNE_MATCH]}),
         clarification_text=load_clarification_text(),
-        schemas={},
         edge_translation=EdgeTranslation(routes={}),
         forms=FormRegistry(),
+        settle_asks=settles_every_ask,
     )
     orch = Orchestrator(paths={TextQuery: text_path})
 
