@@ -292,9 +292,9 @@ def _slot_brief(slot: Slot) -> str:
             return _MISSING_BRIEFS.get(slot.name, asked_by_name)
         case Ambiguous(value=value, needs_confirmation=True):
             return f"Do they mean {value!r}? Ask them to confirm."
-        case Ambiguous():
+        case Ambiguous(value=value):
             return (
-                f"Which {slot.name}? It matched more than one. "
+                f"Which {slot.name}? {value!r} matched more than one. "
                 "Ask them to pick one from the list below this reply."
             )
         case Unresolved(value=value, reason=reason):

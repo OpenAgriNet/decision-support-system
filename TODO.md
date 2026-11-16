@@ -274,6 +274,10 @@
   the pairs and the confidence, and `intent` is read from them. The three
   `zip(strict=True)` calls go, and `merge_unsettled` no longer takes the
   intent. Its own PR.
+- **Two pick lists in one reply both start at 1.** With two asks that each
+  wait on a place, the farmer gets two numbered lists. A reply of "2" does
+  not say which list it means. Decide: one question per turn, or numbers
+  that run on across the lists.
 - **A named scheme with no form ends the ask.** Later, let the ask settle, so
   the planner answers what it can without a form.
 - **A guess is only confirmed where a form exists.** In a category with no

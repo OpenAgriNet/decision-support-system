@@ -303,6 +303,19 @@ def test_an_ambiguous_slot_points_at_the_choices() -> None:
     assert "Aurangabad MH" not in rendered
 
 
+def test_an_ambiguous_slot_names_what_the_farmer_typed() -> None:
+    """Two asks can each wait on a place. Without the names the composer
+    could only ask "which place?" twice."""
+
+    choices = ("Aurangabad MH", "Aurangabad BR")
+
+    rendered = render_evidence(
+        _waiting_on(Slot(AskSlot.PLACE, Ambiguous("Aurangabad", choices)))
+    )
+
+    assert "Which place? 'Aurangabad' matched more than one." in rendered
+
+
 def test_one_choice_is_a_confirm() -> None:
     """No list follows one choice, so the brief must not point at one."""
 
