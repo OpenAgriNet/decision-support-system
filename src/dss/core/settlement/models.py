@@ -55,6 +55,10 @@ class Ambiguous[T]:
     is_settled = False
     ends_ask = False
 
+    @property
+    def needs_confirmation(self) -> bool:
+        return len(self.choices) == 1
+
 
 class UnresolvedReason(StrEnum):
     NOT_FOUND = "not_found"

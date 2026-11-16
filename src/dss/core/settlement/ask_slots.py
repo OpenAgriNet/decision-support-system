@@ -28,6 +28,7 @@ from dss.core.settlement.models import (
     Unservable,
     UnservableReason,
 )
+from dss.ports.area_lookup import AreaMatch
 
 
 def needed_slots(requirements: AskRequirements) -> tuple[AskSlot, ...]:
@@ -72,8 +73,10 @@ def _place_state(ask: Ask) -> SlotState:
     match ask.place:
         case ResolvedPlace() as place:
             return Resolved(place)
+        # A guess may be far from the place meant, and a confirm has no list
+        # to say which one it is.
         case AmbiguousPlace(candidates=(guess,)):
-            return Ambiguous(value=guess.name, choices=(guess,))
+            return Ambiguous(value=_name_with_parent(guess), choices=(guess,))
         case AmbiguousPlace(unresolved_name=name, candidates=candidates):
             return Ambiguous(value=name, choices=candidates)
         case UnresolvedPlace(region=str(region)):
@@ -84,6 +87,10 @@ def _place_state(ask: Ask) -> SlotState:
             return Missing()
         case unknown:
             assert_never(unknown)
+
+
+def _name_with_parent(place: AreaMatch) -> str:
+    return ", ".join((place.name, *place.within[-1:]))
 
 
 def _scheme_state(ask: Ask, schemes_with_a_form: frozenset[str]) -> SlotState:

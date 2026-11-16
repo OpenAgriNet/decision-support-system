@@ -4,7 +4,19 @@ from __future__ import annotations
 
 import pytest
 
-from dss.core.settlement.models import AskSlot, Frame, Missing, Resolved, Slot
+from dss.core.settlement.models import (
+    Ambiguous,
+    AskSlot,
+    Frame,
+    Missing,
+    Resolved,
+    Slot,
+)
+
+
+def test_one_choice_needs_confirmation() -> None:
+    assert Ambiguous("Pune", ("Pune",)).needs_confirmation
+    assert not Ambiguous("Rampur", ("Rampur, UP", "Rampur, HP")).needs_confirmation
 
 
 def test_frame_refuses_repeated_slot() -> None:

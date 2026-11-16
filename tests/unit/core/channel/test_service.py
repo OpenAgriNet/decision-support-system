@@ -137,13 +137,15 @@ def test_each_choice_shows_the_part_of_its_chain_that_differs() -> None:
     ) == ["1. Ashti, Wardha", "2. Ashti, Beed"]
 
 
-def test_a_single_choice_shows_the_place_it_sits_in() -> None:
-    """With one choice there is nothing to tell it apart from. "Kanha Chatti,
-    India" helps nobody. The district does."""
+def test_a_single_guess_gets_no_list() -> None:
+    """One choice is a yes or no. The composer's question names it."""
 
-    assert _pick_list(_place("Kanha Chatti", "Jharkhand", "Chatra")) == [
-        "1. Kanha Chatti, Chatra"
-    ]
+    guess = _place("Kanha Chatti", "Jharkhand", "Chatra")
+    evidence = _waiting_on(
+        Slot(AskSlot.PLACE, Ambiguous("Kanha Chatti, Chatra", (guess,)))
+    )
+
+    assert pick_lists(evidence, _TEXT) == ()
 
 
 def test_each_choice_stops_where_it_stands_apart_from_every_other() -> None:

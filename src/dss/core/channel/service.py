@@ -63,11 +63,8 @@ def _no_provider_line(ask: Ask, text: ClarificationText) -> str:
 
 
 def _standout_part(within: tuple[str, ...], others: list[tuple[str, ...]]) -> str:
-    """The first part of the chain where no other choice matches it any more.
-    With no other choice, the place directly above it: "Chatra", not "India"."""
+    """The first part of the chain where no other choice matches it any more."""
 
-    if not others:
-        return within[-1] if within else ""
     for depth in range(len(within)):
         if not any(other[: depth + 1] == within[: depth + 1] for other in others):
             return within[depth]
@@ -143,7 +140,13 @@ def _place_pick(outcome: AskOutcome) -> Ambiguous[AreaMatch] | None:
 
     match outcome:
         case NeedsClarification(
-            open_slots=(Slot(name=AskSlot.PLACE, state=Ambiguous() as pick), *_)
+            open_slots=(
+                Slot(
+                    name=AskSlot.PLACE,
+                    state=Ambiguous(needs_confirmation=False) as pick,
+                ),
+                *_,
+            )
         ):
             return pick
     return None

@@ -290,7 +290,7 @@ def _slot_brief(slot: Slot) -> str:
         case Missing():
             asked_by_name = f"Which {slot.name}? None was given."
             return _MISSING_BRIEFS.get(slot.name, asked_by_name)
-        case Ambiguous(value=value, choices=(_,)):
+        case Ambiguous(value=value, needs_confirmation=True):
             return f"Do they mean {value!r}? Ask them to confirm."
         case Ambiguous():
             return (
