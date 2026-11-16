@@ -54,6 +54,9 @@ class _Down:
     async def resolve(self, name: str, region: str | None = None) -> list[AreaMatch]:
         raise AreaLookupUnavailableError("down")
 
+    async def nearest(self, point: Geometry, max_km: float) -> AreaMatch | None:
+        raise AreaLookupUnavailableError("down")
+
 
 def test_two_sources_with_one_name_refuse_to_start() -> None:
     """A name is the dashboard's label for a source. Two sources sharing one
@@ -203,3 +206,22 @@ async def test_a_failed_source_is_logged_without_the_place(caplog) -> None:
     assert line.levelno == logging.WARNING
     assert (line.source, line.error_type) == ("photon", "TimeoutError")
     assert "Pune" not in str(vars(line))
+
+
+async def test_a_failed_source_falls_to_the_next_for_nearest(caplog) -> None:
+    chain = ChainedAreaLookup(
+        [("photon", _Down()), ("csv", FakeAreaLookup(nearest=_PUNE))]
+    )
+
+    with caplog.at_level(logging.WARNING, logger="dss.trace"):
+        match = await chain.nearest(Geometry(coordinates=[73.86, 18.53]), 50)
+
+    assert match == _PUNE
+    [line] = caplog.records
+    assert (line.source, line.error_type) == ("photon", "AreaLookupUnavailableError")
+
+
+async def test_no_source_knows_the_nearest_place() -> None:
+    chain = ChainedAreaLookup([("csv", FakeAreaLookup()), ("photon", _Down())])
+
+    assert await chain.nearest(Geometry(coordinates=[73.86, 18.53]), 50) is None
