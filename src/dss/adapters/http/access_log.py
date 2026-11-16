@@ -14,6 +14,7 @@ import logging
 import time
 from typing import Any
 
+import anyio
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from dss.observability.log_fields import watch_request_turn_ids
@@ -48,28 +49,34 @@ class AccessLogMiddleware:
                 status_code = message["status"]
             await send(message)
 
-        def fields(status: int) -> dict[str, Any]:
-            return _request_fields(scope, status, start, request_turn_ids.ids.known())
+        def build_line_fields(status: int) -> dict[str, Any]:
+            return _build_request_fields(
+                scope, status, start, request_turn_ids.ids.known()
+            )
 
         try:
             await self._app(scope, receive, send_and_note_status)
         except Exception:
-            logger.exception("request failed", extra=fields(_UNHANDLED_STATUS))
+            logger.exception(
+                "request failed", extra=build_line_fields(_UNHANDLED_STATUS)
+            )
             raise
-        except BaseException:
-            # Cancellation: the client left, often mid-stream. Not a failure.
-            logger.info("request cancelled", extra=fields(_CLIENT_CLOSED_STATUS))
+        except anyio.get_cancelled_exc_class():
+            # The client left, often mid-stream. Not a failure.
+            logger.info(
+                "request cancelled", extra=build_line_fields(_CLIENT_CLOSED_STATUS)
+            )
             raise
         if _is_quiet_probe(scope, status_code):
             return
-        logger.info("request done", extra=fields(status_code))
+        logger.info("request done", extra=build_line_fields(status_code))
 
 
 def _is_quiet_probe(scope: Scope, status_code: int) -> bool:
     return scope["path"] == HEALTH_PROBE_PATH and status_code < _UNHANDLED_STATUS
 
 
-def _request_fields(
+def _build_request_fields(
     scope: Scope, status_code: int, start: float, turn_ids: dict[str, str]
 ) -> dict[str, Any]:
     """OpenTelemetry's HTTP names, which HyperDX already knows; the turn's ids

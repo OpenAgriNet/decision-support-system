@@ -19,6 +19,7 @@ from starlette.types import Lifespan
 from dss.adapters.http.access_log import AccessLogMiddleware
 from dss.adapters.http.v1 import schema
 from dss.adapters.http.v1.router import turn_router
+from dss.adapters.observability.logs import SpanIdsFilter
 from dss.adapters.observability.tracing import configure_telemetry, tracing_enabled
 from dss.config.settings import Settings
 from dss.entrypoint.composition import build_runner_with_lifecycle
@@ -140,6 +141,7 @@ def _configure_logging() -> None:
             KeyValueFormatter("%(asctime)s %(levelname)s %(name)s %(message)s")
         )
         handler.addFilter(TurnFilter())
+        handler.addFilter(SpanIdsFilter())
         handler._dss_handler = True  # type: ignore[attr-defined]
         dss_logger.addHandler(handler)
     dss_logger.propagate = False

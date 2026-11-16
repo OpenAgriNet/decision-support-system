@@ -56,7 +56,7 @@ Do not duplicate architecture, domain model, or design-decision detail here — 
   (ADR-0023): pass them as `extra`, or through `observability/trace_log.py`.
   A filter adds the turn's ids (`transaction_id`, `turn_message_id`,
   `session_id`, `sender_id`) to every line; stderr prints them as `key=value`.
-  One access line per HTTP request, skipping the `/openapi.json` health probe.
+  One access line per HTTP request; the `/openapi.json` health probe only when it fails.
 - Place sources: an ordered chain behind `AreaLookup`. The area CSV first, then
   Photon (an OpenStreetMap place search) over HTTP when `DSS_PHOTON_BASE_URL` is
   set. An optional cache on `async-lru`, off by default. Counted in
