@@ -613,6 +613,112 @@ async def test_a_whole_state_is_not_used_as_the_place() -> None:
     )
 
 
+_KASHMIR_IN_RAJASTHAN = AreaMatch(
+    name="Kashmir",
+    region="IN",
+    within=("India", "Rajasthan", "Sheo Tehsil"),
+    geometry=Geometry(coordinates=[71.6, 26.26]),
+)
+_KASHMIR_IN_HIMACHAL = AreaMatch(
+    name="Kashmir",
+    region="IN",
+    within=("India", "Himachal Pradesh", "Karsog"),
+    geometry=Geometry(coordinates=[77.18, 31.34]),
+)
+_JAMMU_AND_KASHMIR = AreaMatch(
+    name="Jammu and Kashmir",
+    region="IN",
+    within=("India",),
+    geometry=Geometry(coordinates=[75.16, 33.66]),
+    is_region=True,
+)
+
+
+async def test_a_state_is_offered_beside_places_outside_it() -> None:
+    """ "Kashmir" names two villages and is a word in Jammu and Kashmir.
+    Neither village is in that state, so the state is a third real choice."""
+
+    classification = IntentClassification(asks=(_weather_ask("Kashmir"),))
+    lookup = _FakeLookup(
+        {"kashmir": [_KASHMIR_IN_RAJASTHAN, _KASHMIR_IN_HIMACHAL, _JAMMU_AND_KASHMIR]}
+    )
+
+    intent = await resolve_places(classification, _turn(), lookup=lookup)
+
+    assert intent.asks[0].place == AmbiguousPlace(
+        unresolved_name="Kashmir",
+        candidates=(_KASHMIR_IN_RAJASTHAN, _KASHMIR_IN_HIMACHAL, _JAMMU_AND_KASHMIR),
+    )
+
+
+async def test_a_state_near_the_user_is_not_the_place() -> None:
+    """The user stands at the state's middle point. Nearness picks among
+    places only: a state is too big to search around one point."""
+
+    classification = IntentClassification(asks=(_weather_ask("Kashmir"),))
+    turn = _turn(geometry=_JAMMU_AND_KASHMIR.geometry)
+    lookup = _FakeLookup(
+        {"kashmir": [_KASHMIR_IN_RAJASTHAN, _KASHMIR_IN_HIMACHAL, _JAMMU_AND_KASHMIR]}
+    )
+
+    intent = await resolve_places(classification, turn, lookup=lookup)
+
+    assert intent.asks[0].place == AmbiguousPlace(
+        unresolved_name="Kashmir",
+        candidates=(_KASHMIR_IN_RAJASTHAN, _KASHMIR_IN_HIMACHAL, _JAMMU_AND_KASHMIR),
+    )
+
+
+async def test_a_state_left_alone_is_not_the_place() -> None:
+    """The user's region keeps only the state. It is still too big to be the
+    place, so the user is asked for a place inside it."""
+
+    classification = IntentClassification(asks=(_weather_ask("Kashmir"),))
+    village = _KASHMIR_IN_RAJASTHAN.model_copy(update={"region": "IN-RJ"})
+    state = _JAMMU_AND_KASHMIR.model_copy(update={"region": "IN-JK"})
+    lookup = _FakeLookup({"kashmir": [village, state]})
+
+    intent = await resolve_places(classification, _turn(region="IN-JK"), lookup=lookup)
+
+    assert intent.asks[0].place == UnresolvedPlace(
+        unresolved_name="Kashmir", region="Jammu and Kashmir"
+    )
+
+
+_SRINAGAR = AreaMatch(
+    name="Srinagar",
+    region="IN-JK",
+    within=("India", "Jammu And Kashmir"),
+    geometry=Geometry(coordinates=[74.8, 34.08]),
+)
+
+
+async def test_a_user_inside_an_offered_state_gets_their_own_place() -> None:
+    """A user in Srinagar who says "Kashmir" means where they are. They are
+    not asked to pick against a village in Rajasthan."""
+
+    classification = IntentClassification(asks=(_weather_ask("Kashmir"),))
+    lookup = _FakeLookup(
+        {
+            "kashmir": [
+                _KASHMIR_IN_RAJASTHAN,
+                _KASHMIR_IN_HIMACHAL,
+                _JAMMU_AND_KASHMIR,
+            ],
+            "srinagar": [_SRINAGAR],
+        }
+    )
+
+    intent = await resolve_places(classification, _turn(area="Srinagar"), lookup=lookup)
+
+    assert intent.asks[0].place == ResolvedPlace(
+        name="Srinagar",
+        within=("India", "Jammu And Kashmir"),
+        geometry=_SRINAGAR.geometry,
+        source=PlaceSource.NEAR_USER,
+    )
+
+
 _RAJASTHAN = AreaMatch(
     name="Rajasthan",
     region="IN-RJ",
