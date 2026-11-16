@@ -270,7 +270,6 @@ def _sent_init(forms: FormRecords) -> FlowDecision:
     assert isinstance(init, InitCall)
     return decide_after_sent_init(
         forms,
-        _valid(_DETAILS),
         _DETAILS,
         provider=_PROVIDER,
         init=init,

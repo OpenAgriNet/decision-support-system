@@ -46,6 +46,7 @@ from dss.core.forms.service import (
     discovery_for_scheme,
     end_for_already_filed,
     end_for_failed_call,
+    end_for_form_errors,
     end_for_invalid_form,
     end_for_no_provider,
     end_for_unknown_form,
@@ -115,18 +116,27 @@ _FREE_TEXT_SEPARATOR = "\n\n"
 
 
 @dataclass(frozen=True)
-class _Redacted:
+class _FormToSend:
+    details: ValidSubmission
+    intent: Intent
+    action: ActionSchema
+
+
+@dataclass(frozen=True)
+class _RedactedTexts:
     turn: UserTurn[FormSubmission]
     free_text: str
-    # The real values behind the tags, for the provider call only.
     visibility: Visibility
 
 
 @dataclass(frozen=True)
-class _CheckedForm:
-    details: ValidSubmission
-    intent: Intent
-    action: ActionSchema
+class _Redacted:
+    turn: UserTurn[FormSubmission]  # for the record: values withheld
+    # The submitted form; one that failed its checks as is.
+    form: ValidSubmission | FormErrors | UnknownForm
+    free_text: str
+    # The real values behind the tags, for the provider call only.
+    visibility: Visibility
 
 
 # Which turn this is; the session is apart, since it changes during the turn.
@@ -194,16 +204,45 @@ class FormPath:
             async for event in events:
                 yield event
 
-    async def _handle_details_form(
+    async def _handle_details_form(  # noqa: PLR0911
         self, form_turn: _FormTurn, session: Session
     ) -> _Reply:
         # Raw values are checked first: a tagged phone fails its own pattern.
-        checked = validate_submission(form_turn.turn.input, self._forms)
-        redacted = await self._redact_for_the_record(form_turn, _free_text_of(checked))
-        form = await self._check_before_moderation(form_turn, checked, session)
-        if isinstance(form, TurnFinished):
-            return form
-        decision = await self._moderate(redacted, form_turn)
+        redaction: _Redacted = await self._redact_form(
+            form_turn, validate_submission(form_turn.turn.input, self._forms)
+        )
+        # Opened before any check: every exit writes the record. It holds the
+        # history and phone tagged and the form's values withheld.
+        self._turns.opened(form_turn.ctx, redaction.turn)
+
+        submission = redaction.turn.input  # values withheld: ids only
+
+        details = redaction.form
+        action = self._forms.action_schema(submission.context)
+        intent = self._intent_for(submission.context)
+
+        if isinstance(details, UnknownForm) or action is None or intent is None:
+            return await self._finish_turn(
+                end_for_unknown_form(self._clarification_text), form_turn
+            )
+
+        if is_done(session.forms, submission.form_id):
+            return await self._finish_turn(
+                end_for_already_filed(self._clarification_text), form_turn
+            )
+
+        if isinstance(details, FormErrors):
+            return await self._finish_turn(
+                end_for_form_errors(details, self._clarification_text), form_turn
+            )
+        # Before init: an init response could never find this form again.
+        if action.needs_init() and not session.is_kept:
+            return await self._finish_turn(
+                end_for_session_not_kept(self._clarification_text), form_turn
+            )
+
+        form = _FormToSend(details=details, intent=intent, action=action)
+        decision = await self._moderate(redaction, form_turn)
         if decision.outcome is not Outcome.PROCEED:
             return await self._refuse(decision, form_turn)
         provider = await self._find_form_provider(form.intent, form_turn)
@@ -211,58 +250,29 @@ class FormPath:
             return await self._finish_turn(
                 end_for_no_provider(form.intent, self._clarification_text), form_turn
             )
-        # One form waits for init at a time: this form's call replaces any other.
+        # One form waits for init at a time: this form's call replaces any
+        # other, even another scheme's, and even when this form needs no init.
         session.update_forms(clear_awaiting_init_record(session.forms))
+        # Checked above for the session; here it picks the call: init first,
+        # and the form itself is sent once the init response comes back.
         if form.action.needs_init():
             return await self._send_init_and_await_response(
                 form_turn,
                 form.details,
                 provider=provider,
-                visibility=redacted.visibility,
+                redaction=redaction,
                 session=session,
             )
         return await self._send_form_and_stream_answer(
-            form_turn, form, provider, redacted, session
+            form_turn, form, provider, redaction, session
         )
-
-    async def _check_before_moderation(
-        self,
-        form_turn: _FormTurn,
-        checked: ValidSubmission | FormErrors | UnknownForm,
-        session: Session,
-    ) -> _CheckedForm | TurnFinished:
-        submission = form_turn.turn.input
-        if is_done(session.forms, submission.form_id):
-            return await self._finish_turn(
-                end_for_already_filed(self._clarification_text), form_turn
-            )
-        if not isinstance(checked, ValidSubmission):
-            return await self._finish_turn(
-                end_for_invalid_form(checked, self._clarification_text), form_turn
-            )
-        # Before moderation: a form that cannot be sent is not worth a model call.
-        intent = self._intent_for(submission.context)
-        action = self._forms.action_schema(submission.context)
-        # A known form, but not an action the DSS can file. shortcut: the
-        # registry builds each form from its schema, so a missing action should
-        # not happen; link the two so it cannot, then drop that check.
-        if intent is None or action is None:
-            return await self._finish_turn(
-                end_for_unknown_form(self._clarification_text), form_turn
-            )
-        # Before init: an init response could never find this form again.
-        if action.needs_init() and not session.is_kept:
-            return await self._finish_turn(
-                end_for_session_not_kept(self._clarification_text), form_turn
-            )
-        return _CheckedForm(details=checked, intent=intent, action=action)
 
     async def _send_form_and_stream_answer(
         self,
         form_turn: _FormTurn,
-        form: _CheckedForm,
+        form: _FormToSend,
         provider: ProviderCapability,
-        redacted: _Redacted,
+        redaction: _Redacted,
         session: Session,
     ) -> _Reply:
         response = await self._call_provider_action(
@@ -270,13 +280,13 @@ class FormPath:
             form.details,
             form.action,
             provider=provider,
-            visibility=redacted.visibility,
+            visibility=redaction.visibility,
         )
         if isinstance(response, Failure):
             _warn_if_auth_refused(response, form_turn.ctx)
             return await self._finish_turn(
                 end_for_failed_call(
-                    form_turn.turn.input,
+                    redaction.turn.input,
                     response,
                     self._clarification_text,
                     action=form.action,
@@ -284,27 +294,31 @@ class FormPath:
                 form_turn,
             )
         # Before the answer streams: a closed screen must still leave it done.
-        session.update_forms(with_form_done(session.forms, form_turn.turn.input))
-        return self._stream_provider_answer(response, form.intent, redacted, form_turn)
+        session.update_forms(with_form_done(session.forms, redaction.turn.input))
+        return self._stream_provider_answer(response, form.intent, redaction, form_turn)
 
     async def _handle_init_response(
         self, form_turn: _FormTurn, session: Session
     ) -> _Reply:
+        # Redacted like any form (the history and phone tagged),
+        # but never moderated: it has no free text. Discovery and the done
+        # check ran when the details form was sent.
         flow = find_waiting_flow(
             session.forms,
             form_turn.turn.input.context,
             self._forms,
             intent_for=self._intent_for,
         )
-        # The record and the composer only ever get the tagged turn, so
-        # every exit below waits for this.
-        redacted = await self._redact_for_the_record(
-            form_turn, _free_text_of_flow(flow)
+        redaction = await self._redact_form(
+            form_turn, validate_submission(form_turn.turn.input, self._forms)
         )
+        # Opened before any check: every exit writes the record. It holds the
+        # history and phone tagged and the form's values withheld.
+        self._turns.opened(form_turn.ctx, redaction.turn)
         match flow:
             case WaitingFlow():
                 return await self._send_init_response(
-                    form_turn, flow, redacted, session
+                    form_turn, flow, redaction, session
                 )
             case NoInitPending() | SavedDetailsUnusable():
                 return await self._update_forms_and_end(
@@ -319,25 +333,26 @@ class FormPath:
         self,
         form_turn: _FormTurn,
         flow: WaitingFlow,
-        redacted: _Redacted,
+        redaction: _Redacted,
         session: Session,
     ) -> _Reply:
-        init_response = form_turn.turn.input
-        checked = validate_submission(init_response, self._forms)
-        if not isinstance(checked, ValidSubmission):
+        init_response = redaction.form
+        if not isinstance(init_response, ValidSubmission):
             return await self._finish_turn(
-                end_for_invalid_form(checked, self._clarification_text), form_turn
+                end_for_invalid_form(init_response, self._clarification_text),
+                form_turn,
             )
         # Removed before the call: a crash after it must not leave a response
-        # that may have reached the provider open to be used again.
+        # that may have reached the provider open to be used again. A failure
+        # the provider never took puts it back (`decide_after_failed_init_response`).
         session.update_forms(clear_awaiting_init_record(session.forms))
         response = await self._call_provider_action(
             form_turn,
             flow.details,
             flow.action,
             provider=flow.entry.provider,
-            visibility=redacted.visibility,
-            init_values=checked.values,
+            visibility=redaction.visibility,
+            init_values=init_response.values,
         )
         if isinstance(response, Failure):
             _warn_if_auth_refused(response, form_turn.ctx)
@@ -346,8 +361,8 @@ class FormPath:
                     session.forms,
                     flow,
                     response,
-                    init_response=init_response,
-                    init_form=checked.definition,
+                    init_response=redaction.turn.input,
+                    init_form=init_response.definition,
                     text=self._clarification_text,
                     now=datetime.now(UTC),
                 ),
@@ -355,30 +370,30 @@ class FormPath:
                 form_turn,
             )
         session.update_forms(with_details_form_done(session.forms, flow))
-        return self._stream_provider_answer(response, flow.intent, redacted, form_turn)
+        return self._stream_provider_answer(response, flow.intent, redaction, form_turn)
 
     def _stream_provider_answer(
         self,
         response: DiscoveredAnswer,
         intent: Intent,
-        redacted: _Redacted,
+        redaction: _Redacted,
         form_turn: _FormTurn,
     ) -> AsyncGenerator[TurnEvent]:
         evidence = assemble_evidence([(FORM_ASK_INDEX, response)], intent=intent)
-        return self._stream_answer(evidence, redacted, form_turn)
+        return self._stream_answer(evidence, redaction, form_turn)
 
     async def _stream_answer(
-        self, evidence: Evidence, redacted: _Redacted, form_turn: _FormTurn
+        self, evidence: Evidence, redaction: _Redacted, form_turn: _FormTurn
     ) -> AsyncGenerator[TurnEvent]:
         # The record only ever sees the tagged turn.
-        recorded = replace(form_turn, turn=redacted.turn)
+        recorded = replace(form_turn, turn=redaction.turn)
         # `aclosing` each layer: closing an async generator does not reach the
         # one it reads from, and a closed screen must close the model stream.
         async with (
             aclosing(
                 compose_answer(
                     evidence,
-                    turn=redacted.turn,
+                    turn=redaction.turn,
                     compose=self._components.compose,
                     localize=self._components.localize,
                     question=None,
@@ -389,7 +404,7 @@ class FormPath:
             aclosing(
                 reveal_to_farmer(
                     core_events,
-                    visibility=redacted.visibility,
+                    visibility=redaction.visibility,
                     recorder=form_turn.recorder,
                     on_finished=partial(self._record, form_turn=recorded),
                 )
@@ -404,10 +419,10 @@ class FormPath:
         details: ValidSubmission,
         *,
         provider: ProviderCapability,
-        visibility: Visibility,
+        redaction: _Redacted,
         session: Session,
     ) -> TurnFinished:
-        submission = form_turn.turn.input
+        submission = redaction.turn.input
         init = find_init_call(details, self._forms)
         if not isinstance(init, InitCall):
             return await self._finish_turn(
@@ -416,8 +431,12 @@ class FormPath:
                 ),
                 form_turn,
             )
-        reply = await self._call_provider_action(
-            form_turn, details, init.action, provider=provider, visibility=visibility
+        reply: DiscoveredAnswer | Failure = await self._call_provider_action(
+            form_turn,
+            details,
+            init.action,
+            provider=provider,
+            visibility=redaction.visibility,
         )
         failure = find_init_failure(reply)
         if failure is not None:
@@ -429,10 +448,11 @@ class FormPath:
                 form_turn,
             )
         return await self._update_forms_and_end(
+            # The details are kept as typed: the call after the init response
+            # needs the real values. A done form keeps none.
             decide_after_sent_init(
                 session.forms,
-                details,
-                submission,
+                form_turn.turn.input,
                 provider=provider,
                 init=init,
                 text=self._clarification_text,
@@ -530,9 +550,22 @@ class FormPath:
             )
         return providers
 
-    async def _redact_for_the_record(
-        self, form_turn: _FormTurn, free_text: Sequence[str]
+    async def _redact_form(
+        self,
+        form_turn: _FormTurn,
+        validated_form: ValidSubmission | FormErrors | UnknownForm,
     ) -> _Redacted:
+        texts = await self._redact_texts(form_turn, _free_text_of(validated_form))
+        return _Redacted(
+            turn=texts.turn,
+            form=validated_form,
+            free_text=texts.free_text,
+            visibility=texts.visibility,
+        )
+
+    async def _redact_texts(
+        self, form_turn: _FormTurn, free_text: Sequence[str]
+    ) -> _RedactedTexts:
         turn, ctx = form_turn.turn, form_turn.ctx
         surroundings = surrounding_texts_of(turn)
         with trace_component(Stage.REDACTION, ctx.trace_id):
@@ -542,30 +575,28 @@ class FormPath:
         form_turn.recorder.redacted(found=redaction.found, failed=redaction.failed)
         tagged_surroundings = redaction.texts[: len(surroundings)]
         tagged_free_text = redaction.texts[len(surroundings) :]
-        redacted = _Redacted(
+        return _RedactedTexts(
             turn=_with_values_withheld(
                 with_surrounding_texts(turn, tagged_surroundings)
             ),
             free_text=_FREE_TEXT_SEPARATOR.join(tagged_free_text),
             visibility=redaction.visibility,
         )
-        self._turns.opened(ctx, redacted.turn)
-        return redacted
 
     async def _moderate(
-        self, redacted: _Redacted, form_turn: _FormTurn
+        self, redaction: _Redacted, form_turn: _FormTurn
     ) -> ModerationDecision:
         decision = ModerationDecision(outcome=Outcome.PROCEED)
-        if redacted.free_text:
+        if redaction.free_text:
             with trace_component(Stage.MODERATION, form_turn.ctx.trace_id):
                 decision = await moderate(
-                    ModerationContext.for_text(redacted.turn, redacted.free_text),
+                    ModerationContext.for_text(redaction.turn, redaction.free_text),
                     self._policies,
                     self._moderation_llm,
                     self._prompts,
                 )
                 set_current_span_attributes(**moderation_attributes(decision))
-                set_current_span_content(input=redacted.free_text)
+                set_current_span_content(input=redaction.free_text)
         note_stage(self._telemetry, "moderation", form_turn.ctx, decision.outcome.value)
         return decision
 
@@ -605,9 +636,9 @@ async def _events_of(reply: _Reply) -> AsyncGenerator[TurnEvent]:
 
 
 def _free_text_of(
-    checked: ValidSubmission | FormErrors | UnknownForm,
+    form: ValidSubmission | FormErrors | UnknownForm,
 ) -> tuple[str, ...]:
-    return free_text_of(checked) if isinstance(checked, ValidSubmission) else ()
+    return free_text_of(form) if isinstance(form, ValidSubmission) else ()
 
 
 def _warn_if_auth_refused(
@@ -615,12 +646,6 @@ def _warn_if_auth_refused(
 ) -> None:
     if isinstance(failure, Failure) and is_auth_refused(failure):
         warn_auth_refused(failure, request_id=ctx.trace_id)
-
-
-def _free_text_of_flow(
-    flow: NoInitPending | SavedDetailsUnusable | WaitingFlow,
-) -> tuple[str, ...]:
-    return free_text_of(flow.details) if isinstance(flow, WaitingFlow) else ()
 
 
 def _count(discovery: DiscoveryResult) -> int:

@@ -137,7 +137,6 @@ def end_for_failed_init(
 
 def decide_after_sent_init(  # noqa: PLR0913
     forms: FormRecords,
-    details: ValidSubmission,
     submission: FormSubmission,
     *,
     provider: ProviderCapability,

@@ -727,6 +727,19 @@ async def test_a_form_sent_again_after_filing_is_already_filed() -> None:
     assert turns.records["t1"].finished == finished
 
 
+async def test_a_filed_form_id_sent_with_an_unknown_form_is_unknown() -> None:
+    _, sessions = _with_a_store()
+    orch, _ = _build_orchestrator_and_turn_sink(
+        invocation=RecordingActionInvocation(_TICKET), sessions=sessions
+    )
+    await _collect(orch, _form_turn(_VALUES))
+    unserved = FormContext(scheme="NO-SUCH", category="Grievance", action="support")
+
+    events = await _collect(orch, _form_turn(_VALUES, context=unserved))
+
+    assert _finished(events).outcome.cause is Cause.INVALID_INPUT
+
+
 async def test_a_form_the_provider_did_not_take_can_be_sent_again() -> None:
     store, sessions = _with_a_store()
     invocation = _support_unavailable()
