@@ -32,7 +32,7 @@ from dss.core.planner.models import (
     SourceKind,
 )
 from dss.core.provider_discovery.models import DiscoveredAnswer
-from dss.core.settlement.models import Settled, Settlement
+from dss.core.settlement.models import AskSettlement, Settled
 
 
 def assemble_evidence(
@@ -143,7 +143,7 @@ def group_by_ask(
 
 
 def merge_unsettled(
-    intent: Intent, settlements: Sequence[Settlement], *, settled: Evidence
+    settlements: Sequence[AskSettlement], *, settled: Evidence
 ) -> Evidence:
     """Every ask in the farmer's order. A settled ask gets its evidence.
     An unsettled ask gets its settlement.
@@ -151,7 +151,7 @@ def merge_unsettled(
     Raises ValueError if the settled evidence does not match the settled asks.
     """
 
-    settled_count = sum(isinstance(s, Settled) for s in settlements)
+    settled_count = sum(ask_settlement.is_settled for ask_settlement in settlements)
     if len(settled.ask_evidences) != settled_count:
         raise ValueError(
             f"{len(settled.ask_evidences)} evidence entries for "
@@ -160,9 +160,9 @@ def merge_unsettled(
     settled_evidences = iter(settled.ask_evidences)
     ask_evidences = tuple(
         next(settled_evidences)
-        if isinstance(settlement, Settled)
-        else AskEvidence(ask=ask, outcome=settlement)
-        for ask, settlement in zip(intent.asks, settlements, strict=True)
+        if isinstance(ask_settlement.settlement, Settled)
+        else AskEvidence(ask=ask_settlement.ask, outcome=ask_settlement.settlement)
+        for ask_settlement in settlements
     )
     return replace(settled, ask_evidences=ask_evidences)
 

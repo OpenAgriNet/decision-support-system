@@ -14,6 +14,7 @@ from dss.core.intent.models import (
 from dss.core.settlement.models import (
     Ambiguous,
     AskRequirements,
+    AskSettlement,
     AskSlot,
     CannotServe,
     Frame,
@@ -111,8 +112,10 @@ def test_each_ask_settles_on_its_own() -> None:
     )
 
     assert settlements == (
-        NeedsClarification(open_slots=(Slot(PLACE, Missing()),)),
-        Settled(Frame(slots=())),
+        AskSettlement(
+            weather, NeedsClarification(open_slots=(Slot(PLACE, Missing()),))
+        ),
+        AskSettlement(grievance, Settled(Frame(slots=()))),
     )
 
 
@@ -140,5 +143,7 @@ def test_a_scheme_is_not_turned_away_before_the_action_is_known() -> None:
     )
 
     assert settlements == (
-        NeedsClarification(open_slots=(Slot(AskSlot.ACTION, Missing()),)),
+        AskSettlement(
+            problem, NeedsClarification(open_slots=(Slot(AskSlot.ACTION, Missing()),))
+        ),
     )

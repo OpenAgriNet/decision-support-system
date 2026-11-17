@@ -6,6 +6,7 @@ from dss.core.intent.models import Ask, Intent
 from dss.core.settlement.ask_slots import frame_for
 from dss.core.settlement.models import (
     AskRequirements,
+    AskSettlement,
     CannotServe,
     Frame,
     NeedsClarification,
@@ -16,10 +17,13 @@ from dss.core.settlement.models import (
 
 def settle_asks(
     intent: Intent, *, requirements_for: Callable[[Ask], AskRequirements]
-) -> tuple[Settlement, ...]:
-    """One settlement per ask, in ask order."""
+) -> tuple[AskSettlement, ...]:
+    """One per ask, in ask order."""
 
-    return tuple(settle(frame_for(ask, requirements_for(ask))) for ask in intent.asks)
+    return tuple(
+        AskSettlement(ask, settle(frame_for(ask, requirements_for(ask))))
+        for ask in intent.asks
+    )
 
 
 def settle(frame: Frame) -> Settlement:

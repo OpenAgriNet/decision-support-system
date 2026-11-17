@@ -22,7 +22,7 @@ from dss.core.forms.models import FormContext
 from dss.core.forms.registry import FormLookup, FormRegistry
 from dss.core.intent.models import Intent, InteractionType, SubjectCategory
 from dss.core.schema_packs.models import SchemaPackFiles
-from dss.core.settlement.models import Frame, Settled
+from dss.core.settlement.models import AskSettlement, Frame, Settled
 from dss.core.shared.models import TextQuery
 from dss.entrypoint.composition.root import (
     _aclose_for,
@@ -122,7 +122,9 @@ def test_with_no_packs_every_ask_settles(tmp_path: Path) -> None:
         interaction_type=InteractionType.OBSERVE,
     )
 
-    assert settle(Intent(asks=(rain,))) == (Settled(Frame(slots=())),)
+    assert settle(Intent(asks=(rain,))) == (
+        AskSettlement(rain, Settled(Frame(slots=()))),
+    )
 
 
 def test_the_network_refuses_to_boot_with_no_packs(tmp_path: Path) -> None:

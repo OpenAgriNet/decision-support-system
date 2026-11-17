@@ -46,7 +46,7 @@ from dss.observability.trace_log import set_stage_span_opener
 from dss.orchestration.turn import run_turn
 from dss.ports.area_lookup import AreaMatch
 from tests.support.fakes import FakeAreaLookup, FakePromptProvider
-from tests.support.settlement import settles_every_ask
+from tests.support.settlement import settles_every_ask, settles_with
 
 from .test_orchestrator import (
     _ANSWERED_EVIDENCE,
@@ -64,7 +64,6 @@ from .test_turn import (
     _FakeDiscovery,
     _FakeIntentLLM,
     _FakeModerationLLM,
-    _settle_with,
 )
 
 
@@ -319,7 +318,7 @@ async def test_the_settlement_stage_says_what_each_ask_waits_on(spans) -> None:
         prompts=FakePromptProvider(),
         policies=[],
         discover_providers=_FakeDiscovery(),
-        settle_asks=_settle_with(waits_on_two, unlisted, Settled(Frame(slots=()))),
+        settle_asks=settles_with(waits_on_two, unlisted, Settled(Frame(slots=()))),
         area_lookup=FakeAreaLookup(),
     )
 

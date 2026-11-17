@@ -34,6 +34,7 @@ from tests.integration.orchestration.test_orchestrator import (
     _turn,
 )
 from tests.support.fakes import FakeLocalizer
+from tests.support.settlement import settles_with
 
 
 def _hindi(turn):
@@ -99,7 +100,7 @@ async def test_the_pick_list_is_localized() -> None:
         plan=_FakePlan(_ANSWERED_EVIDENCE),
         compose=_FakeCompose("पुणे कौन सा?"),
         localize=localize,
-        settle_asks=lambda intent: (which_pune,),
+        settle_asks=settles_with(which_pune),
     )
 
     events = await _collect(orch, _hindi(_turn()))

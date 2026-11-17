@@ -440,9 +440,7 @@ class TextPath:
             turn, result, ctx=ctx, visibility=visibility, awaiting=awaiting
         )
         if not result.is_every_ask_settled:
-            evidence = merge_unsettled(
-                result.intent, result.settlements, settled=evidence
-            )
+            evidence = merge_unsettled(result.settlements, settled=evidence)
         # `aclosing`: closing this generator does not reach the composer's.
         async with aclosing(
             compose_answer(

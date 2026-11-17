@@ -53,7 +53,6 @@ from dss.core.settlement.models import (
     Missing,
     NeedsClarification,
     Settled,
-    Settlement,
     Slot,
     Unservable,
     UnservableReason,
@@ -110,7 +109,7 @@ from tests.support.key_value import (
     UnreachableStore,
 )
 from tests.support.providers import build_capability
-from tests.support.settlement import settles_every_ask
+from tests.support.settlement import settles_every_ask, settles_with
 from tests.support.turn_events import assert_well_formed
 
 DELETE_COMMAND = LlmPolicy(
@@ -1055,13 +1054,6 @@ _NEEDS_PLACE = NeedsClarification(open_slots=(Slot(AskSlot.PLACE, Missing()),))
 _SETTLED = Settled(Frame(slots=()))
 
 
-def _settle_with(*settlements: Settlement) -> SettleAsks:
-    def settle(intent):
-        return settlements
-
-    return settle
-
-
 async def test_an_unsettled_ask_is_asked_by_the_composer() -> None:
     plan = _FakePlan(_ANSWERED_EVIDENCE)
     compose = _FakeCompose("Which district?")
@@ -1070,7 +1062,7 @@ async def test_an_unsettled_ask_is_asked_by_the_composer() -> None:
         discovery=_served_discovery(),
         plan=plan,
         compose=compose,
-        settle_asks=_settle_with(_NEEDS_PLACE),
+        settle_asks=settles_with(_NEEDS_PLACE),
     )
 
     events = await _collect(orch)
@@ -1092,7 +1084,7 @@ async def test_a_settled_ask_is_served_beside_a_question() -> None:
         discovery=_served_discovery(),
         plan=plan,
         compose=compose,
-        settle_asks=_settle_with(_NEEDS_PLACE, _SETTLED),
+        settle_asks=settles_with(_NEEDS_PLACE, _SETTLED),
     )
 
     events = await _collect(orch)
@@ -1116,7 +1108,7 @@ async def test_nobody_serving_beside_a_question_reaches_the_composer() -> None:
         discovery=nobody,
         plan=plan,
         compose=compose,
-        settle_asks=_settle_with(_SETTLED, _NEEDS_PLACE),
+        settle_asks=settles_with(_SETTLED, _NEEDS_PLACE),
     )
 
     events = await _collect(orch)
@@ -1145,7 +1137,7 @@ async def test_an_ask_we_cannot_serve_ends_the_turn() -> None:
         discovery=_served_discovery(),
         plan=plan,
         compose=compose,
-        settle_asks=_settle_with(cannot_serve),
+        settle_asks=settles_with(cannot_serve),
     )
 
     events = await _collect(orch)
@@ -1168,7 +1160,7 @@ async def test_the_pick_list_follows_the_question() -> None:
         discovery=_served_discovery(),
         plan=_FakePlan(_ANSWERED_EVIDENCE),
         compose=_FakeCompose("Which Pune do you mean?"),
-        settle_asks=_settle_with(which_pune),
+        settle_asks=settles_with(which_pune),
     )
 
     events = await _collect(orch)

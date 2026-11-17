@@ -18,6 +18,7 @@ from dss.core.planner.models import (
 )
 from dss.core.provider_discovery.models import DiscoveredAnswer
 from dss.core.settlement.models import (
+    AskSettlement,
     AskSlot,
     Frame,
     Missing,
@@ -497,6 +498,10 @@ _POTATO = an_ask(
 )
 _NEEDS_PLACE = NeedsClarification(open_slots=(Slot(AskSlot.PLACE, Missing()),))
 _SETTLED = Settled(Frame(slots=()))
+_RAIN_WAITS_POTATO_SETTLED = (
+    AskSettlement(_RAIN, _NEEDS_PLACE),
+    AskSettlement(_POTATO, _SETTLED),
+)
 
 
 def test_merge_keeps_the_farmers_order() -> None:
@@ -508,9 +513,7 @@ def test_merge_keeps_the_farmers_order() -> None:
     )
     settled = Evidence(sources=(), ask_evidences=(potato_evidence,))
 
-    merged = merge_unsettled(
-        _intent(_RAIN, _POTATO), (_NEEDS_PLACE, _SETTLED), settled=settled
-    )
+    merged = merge_unsettled(_RAIN_WAITS_POTATO_SETTLED, settled=settled)
 
     assert merged.ask_evidences == (
         AskEvidence(ask=_RAIN, outcome=_NEEDS_PLACE),
@@ -525,6 +528,4 @@ def test_merge_refuses_mismatched_evidence() -> None:
     settled = Evidence(sources=(), ask_evidences=(entry, entry))
 
     with pytest.raises(ValueError, match="settled"):
-        merge_unsettled(
-            _intent(_RAIN, _POTATO), (_NEEDS_PLACE, _SETTLED), settled=settled
-        )
+        merge_unsettled(_RAIN_WAITS_POTATO_SETTLED, settled=settled)
