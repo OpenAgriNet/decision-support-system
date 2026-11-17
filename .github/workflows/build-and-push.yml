@@ -100,8 +100,18 @@ jobs:
       - name: Set image owner
         run: echo "OWNER=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
 
+      # A push to main is tagged with its commit (sha-<7 chars>), so every merge
+      # is its own image: Argo CD Image Updater picks the newest one up on dev,
+      # and a running pod names the exact commit it came from. Release tags and
+      # PRs keep the ref name.
       - name: Set image tag
-        run: echo "TAG=$(echo '${{ github.ref_name }}' | tr '/' '-')" >> "$GITHUB_ENV"
+        run: |
+          if [ "$GITHUB_REF" = "refs/heads/main" ]; then
+            TAG="sha-${GITHUB_SHA::7}"
+          else
+            TAG="$(echo "$GITHUB_REF_NAME" | tr '/' '-')"
+          fi
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
 
       # Load locally so Trivy scans the exact image before push.
       - name: Build (local, unpushed)
@@ -149,15 +159,30 @@ jobs:
       - name: Set image owner
         run: echo "OWNER=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
 
+      # A push to main is tagged with its commit (sha-<7 chars>), so every merge
+      # is its own image: Argo CD Image Updater picks the newest one up on dev,
+      # and a running pod names the exact commit it came from. Release tags and
+      # PRs keep the ref name.
       - name: Set image tag
-        run: echo "TAG=$(echo '${{ github.ref_name }}' | tr '/' '-')" >> "$GITHUB_ENV"
+        run: |
+          if [ "$GITHUB_REF" = "refs/heads/main" ]; then
+            TAG="sha-${GITHUB_SHA::7}"
+          else
+            TAG="$(echo "$GITHUB_REF_NAME" | tr '/' '-')"
+          fi
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
 
       # Combines both arch images into one manifest.
+      # main also moves the `main` tag, which pointed at the latest merge before
+      # merges were tagged by commit.
       - name: Create multi-arch manifest
         run: |
           BASE="ghcr.io/${OWNER}/decision-support-system"
+          EXTRA=()
+          if [ "$GITHUB_REF" = "refs/heads/main" ]; then EXTRA=(-t "${BASE}:main"); fi
           docker buildx imagetools create \
             -t "${BASE}:${TAG}" \
             -t "${BASE}:latest" \
+            "${EXTRA[@]}" \
             "${BASE}:${TAG}-amd64" \
             "${BASE}:${TAG}-arm64"
