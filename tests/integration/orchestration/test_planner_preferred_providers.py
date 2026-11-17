@@ -194,7 +194,7 @@ def _asks_for(resource_id: str, replies: list[str] | None = None):
                     ToolCallPart(
                         tool_name="select",
                         args={
-                            "ask_index": 0,
+                            "ask_id": 0,
                             "resource_id": resource_id,
                             "resource_attributes": {},
                         },
@@ -365,7 +365,7 @@ async def test_an_ask_nobody_could_be_reached_for_is_recorded_as_a_failure() -> 
     )
 
     assert deps.raw_answers == []
-    assert [failure.ask_index for failure in deps.failures] == [0, 0]
+    assert [failure.ask_id for failure in deps.failures] == [0, 0]
     assert all(failure.retryable for failure in deps.failures)
 
 
@@ -469,12 +469,12 @@ def _asks_for_then_next(replies: list[str]):
             1: ToolCallPart(
                 tool_name="select",
                 args={
-                    "ask_index": 0,
+                    "ask_id": 0,
                     "resource_id": "res:maharashtra-vistaar:forecast",
                     "resource_attributes": {},
                 },
             ),
-            3: ToolCallPart(tool_name="select_next", args={"ask_index": 0}),
+            3: ToolCallPart(tool_name="select_next", args={"ask_id": 0}),
         }
         call = calls.get(len(messages))
         if call is None:
@@ -602,11 +602,11 @@ async def test_select_next_on_one_ask_leaves_the_other_ask_alone() -> None:
     deps.discovery.capabilities[1] = (VISTAAR, MAUSAMGRAM)
     deps.discovery.priorities[1] = _ranked("maharashtra-vistaar", "mausamgram")[0]
 
-    def select(ask_index: int) -> ToolCallPart:
+    def select(ask_id: int) -> ToolCallPart:
         return ToolCallPart(
             tool_name="select",
             args={
-                "ask_index": ask_index,
+                "ask_id": ask_id,
                 "resource_id": "res:maharashtra-vistaar:forecast",
                 "resource_attributes": {},
             },
@@ -614,7 +614,7 @@ async def test_select_next_on_one_ask_leaves_the_other_ask_alone() -> None:
 
     calls = {
         1: [select(0), select(1)],
-        3: [ToolCallPart(tool_name="select_next", args={"ask_index": 0})],
+        3: [ToolCallPart(tool_name="select_next", args={"ask_id": 0})],
     }
 
     def model(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:

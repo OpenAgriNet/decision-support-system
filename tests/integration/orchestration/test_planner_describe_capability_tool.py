@@ -98,7 +98,7 @@ def _calls_describe_capability_then_answers(
 ) -> ModelResponse:
     if len(messages) == 1:
         return ModelResponse(
-            parts=[ToolCallPart(tool_name="describe_capability", args={"ask_index": 0})]
+            parts=[ToolCallPart(tool_name="describe_capability", args={"ask_id": 0})]
         )
     return ModelResponse(parts=[TextPart(content="seen it")])
 

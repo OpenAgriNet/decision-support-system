@@ -20,7 +20,7 @@ from dss.core.intent.models import (
 from dss.core.provider_discovery.models import DiscoveryResult, ProviderCapability
 from dss.core.shared.models import REQUESTABLE_ACTIONS, ProviderAction, TurnStatus
 from dss.orchestration.form_offer import ask_for_form, find_forms, form_context_for
-from dss.orchestration.provider_action import FORM_ASK_INDEX
+from dss.orchestration.provider_action import FORM_ASK_ID
 from tests.integration.orchestration.test_orchestrator import (
     _build,
     _ctx,
@@ -29,7 +29,7 @@ from tests.integration.orchestration.test_orchestrator import (
     _FakePlan,
     _turn,
 )
-from tests.support.asks import an_ask, numbered
+from tests.support.asks import an_ask
 from tests.support.fakes import FakeSchemeCatalog
 from tests.support.grievance_pack import (
     PMKISAN_STATUS,
@@ -202,16 +202,18 @@ def test_a_served_ask_without_a_registry_form_is_the_planners() -> None:
 
 def test_only_the_form_ask_is_taken_from_a_mixed_turn() -> None:
     """ "What's the weather, and file my PMFBY grievance": the weather ask
-    stays the planner's, the grievance ask is the form's."""
+    stays the planner's, the grievance ask is the form's. The grievance is
+    ask 2: the ask between the two was not passed on."""
 
-    intent = Intent(asks=numbered(WEATHER_ASK, _grievance_ask()), confidence=0.9)
-    discovery = _discovery({0: (WEATHER_DESK,), 1: (GRIEVANCE_DESK,)})
+    grievance = _grievance_ask().model_copy(update={"id": 2})
+    intent = Intent(asks=(WEATHER_ASK, grievance), confidence=0.9)
+    discovery = _discovery({0: (WEATHER_DESK,), 2: (GRIEVANCE_DESK,)})
 
     awaiting = find_forms(
         intent, discovery, _FakeForms({PMFBY_SUPPORT: GRIEVANCE_FORM})
     )
 
-    assert awaiting == {1: GRIEVANCE_FORM}
+    assert awaiting == {2: GRIEVANCE_FORM}
 
 
 def _grievance_classification() -> IntentClassification:
@@ -271,7 +273,7 @@ def test_a_submission_ask_has_the_form_paths_id() -> None:
 
     ask = ask_for_form(PMFBY_SUPPORT, scheme=PMFBY)
 
-    assert ask.id == FORM_ASK_INDEX
+    assert ask.id == FORM_ASK_ID
 
 
 @pytest.mark.parametrize("action", sorted(REQUESTABLE_ACTIONS))

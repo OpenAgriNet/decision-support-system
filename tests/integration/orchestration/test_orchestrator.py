@@ -90,6 +90,7 @@ from dss.orchestration.redaction import RedactTexts, pass_through
 from dss.orchestration.session import NoSessionStore, Sessions, SessionStore
 from dss.orchestration.settlement import SettleAsks
 from dss.ports.area_lookup import AreaMatch
+from tests.support.asks import numbered
 from tests.support.evidence import ANY_ASK, build_evidence
 from tests.support.fakes import (
     FakeAreaLookup,
@@ -197,7 +198,7 @@ def _evidence(
         results=results,
         failures=failures,
         awaiting=awaiting,
-        asks=(ANY_ASK,) * ask_count,
+        asks=numbered(*(ANY_ASK,) * ask_count),
     )
 
 
@@ -208,7 +209,7 @@ _GRIEVANCE_FORM = FormDefinition(
 
 
 _ANSWERED_EVIDENCE = _evidence(
-    results=(Result(ask_index=0, source_id="1", data={"modal": 2275}),),
+    results=(Result(ask_id=0, source_id="1", data={"modal": 2275}),),
 )
 
 
@@ -576,7 +577,7 @@ async def test_an_ask_awaiting_a_form_ends_the_turn_on_the_form() -> None:
 async def test_some_asks_unserved_is_partial() -> None:
     plan = _FakePlan(
         _evidence(
-            results=(Result(ask_index=0, source_id="1", data={"modal": 2275}),),
+            results=(Result(ask_id=0, source_id="1", data={"modal": 2275}),),
             ask_count=2,
         )
     )
@@ -596,7 +597,7 @@ async def test_all_calls_failing_is_unavailable() -> None:
             results=(),
             failures=(
                 Failure(
-                    ask_index=0,
+                    ask_id=0,
                     capability="openagrinet:MandiPrice",
                     reason="502",
                     retryable=True,
@@ -661,8 +662,8 @@ async def test_the_one_source_cited_reaches_the_farmer_as_one() -> None:
             Source(id="2", name="KAU Mango Guide", kind=SourceKind.PROVIDER, url=None),
         ),
         results=(
-            Result(ask_index=0, source_id="1", data={"v": 1}),
-            Result(ask_index=0, source_id="2", data={"v": 2}),
+            Result(ask_id=0, source_id="1", data={"v": 1}),
+            Result(ask_id=0, source_id="2", data={"v": 2}),
         ),
     )
     orch, _ = _build(

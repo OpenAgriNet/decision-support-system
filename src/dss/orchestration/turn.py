@@ -71,7 +71,7 @@ def _nothing_discovered() -> DiscoveryResult:
     A factory rather than a module constant: ``DiscoveryResult`` is frozen,
     but its ``answers``/``capabilities``/``failures`` are plain dicts, and
     frozen stops you reassigning a field, not mutating the dict inside it.
-    ``_apply_expiry_filter`` writes ``answers[ask_index]`` in place on
+    ``_apply_expiry_filter`` writes ``answers[ask_id]`` in place on
     whatever result it is handed. Nothing routes this one there today, but a
     single shared object means one such write would corrupt every subsequent
     rejected turn in the process.

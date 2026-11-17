@@ -32,7 +32,7 @@ from .test_orchestrator import (
     _turn,
 )
 
-_WHEAT_PRICE = Result(ask_index=0, source_id="1", data={"modal": 2275})
+_WHEAT_PRICE = Result(ask_id=0, source_id="1", data={"modal": 2275})
 
 
 @pytest.fixture

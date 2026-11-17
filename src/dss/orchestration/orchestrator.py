@@ -80,7 +80,7 @@ from dss.core.channel.service import (
 from dss.core.forms.models import FormDefinition
 from dss.core.forms.registry import FormLookup
 from dss.core.forms.service import offer_form
-from dss.core.intent.models import Intent
+from dss.core.intent.models import AskId, Intent
 from dss.core.moderation.messages import messages_for
 from dss.core.moderation.models import ModerationDecision, Outcome
 from dss.core.planner.evidence import group_by_ask, merge_unsettled
@@ -515,7 +515,7 @@ class TextPath:
         *,
         ctx: TurnContext,
         visibility: Visibility,
-        awaiting: Mapping[int, FormDefinition],
+        awaiting: Mapping[AskId, FormDefinition],
     ) -> Evidence:
         """The planner's evidence for the settled asks. With none to plan, or
         nobody to serve them, the planner is not called."""
@@ -537,7 +537,7 @@ class TextPath:
         *,
         ctx: TurnContext,
         visibility: Visibility,
-        awaiting: Mapping[int, FormDefinition],
+        awaiting: Mapping[AskId, FormDefinition],
     ) -> Evidence:
         """Past the barrier: the decision cleared, so the planner's `select`
         tool is free to call providers. The `Verdict` is how that clearance

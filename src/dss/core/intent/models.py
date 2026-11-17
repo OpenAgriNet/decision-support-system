@@ -296,3 +296,6 @@ class Intent(BaseModel):
         if len(set(ids)) != len(ids):
             raise ValueError(f"two asks share an id: {sorted(ids)}")
         return asks
+
+    def find_ask(self, ask_id: AskId) -> Ask | None:
+        return next((ask for ask in self.asks if ask.id == ask_id), None)

@@ -94,7 +94,7 @@ from dss.orchestration.orchestrator import (
     spoken_text,
 )
 from dss.orchestration.provider_action import (
-    FORM_ASK_INDEX,
+    FORM_ASK_ID,
     call_provider_action,
     warn_auth_refused,
 )
@@ -392,7 +392,7 @@ class FormPath:
         redaction: _Redacted,
         form_turn: _FormTurn,
     ) -> AsyncGenerator[TurnEvent]:
-        evidence = assemble_evidence([(FORM_ASK_INDEX, response)], intent=intent)
+        evidence = assemble_evidence([(FORM_ASK_ID, response)], intent=intent)
         return self._stream_answer(evidence, redaction, form_turn)
 
     async def _stream_answer(
@@ -539,7 +539,7 @@ class FormPath:
             intent, form_turn, scheme_code=form_turn.turn.input.context.scheme
         )
         # form's action needs a provider to call and not a direct answer
-        providers = discovery.capabilities.get(FORM_ASK_INDEX)
+        providers = discovery.capabilities.get(FORM_ASK_ID)
         return providers[0] if providers else None
 
     async def _find_providers(

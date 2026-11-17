@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict
 
+from dss.core.intent.models import AskId
 from dss.core.shared.models import Refused
 
 
@@ -64,13 +65,13 @@ class Step(BaseModel):
 
 
 class Plan(BaseModel):
-    """What to run for a turn. ``serves`` is the index of each ask this plan
+    """What to run for a turn. ``serves`` is the id of each ask this plan
     covers; ``refused`` is carried through from moderation; ``missing`` are inputs
     that could not be filled."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     steps: tuple[Step, ...] = ()
-    serves: tuple[int, ...] = ()
+    serves: tuple[AskId, ...] = ()
     refused: tuple[Refused, ...] = ()
     missing: tuple[MissingInput, ...] = ()

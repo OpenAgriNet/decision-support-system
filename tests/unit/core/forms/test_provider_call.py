@@ -233,7 +233,7 @@ def test_only_401_and_403_say_our_own_credentials_were_refused(
     status_code: int | None, expected: bool
 ) -> None:
     failure = Failure(
-        ask_index=0,
+        ask_id=0,
         capability="openagrinet:Grievance",
         reason="call failed",
         retryable=False,

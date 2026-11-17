@@ -171,13 +171,14 @@ def test_one_answer_becomes_one_source_and_one_result(
     assert source.url == answer.source_url
 
     [result] = _results(evidence)
-    assert result.ask_index == 0
+    assert result.ask_id == 0
     assert result.source_id == "1"
     assert result.data == answer.attributes
 
 
+# The turn's third ask. The second was not passed on, so no ask has id 1.
 ADVISORY_ASK = an_ask(
-    id=1,
+    id=2,
     agriculture_subjects="paddy",
     subject_categories=SubjectCategory.CROP,
     interaction_type=InteractionType.ADVISE,
@@ -198,13 +199,13 @@ def test_one_provider_answering_two_asks_is_one_source() -> None:
     )
 
     evidence = assemble_evidence(
-        [(0, MANDI_PRICE), (1, second_ask_answer)],
+        [(0, MANDI_PRICE), (2, second_ask_answer)],
         intent=_intent(PRICE_ASK, ADVISORY_ASK),
     )
 
     assert [source.id for source in evidence.sources] == ["1"]
     assert [result.source_id for result in _results(evidence)] == ["1", "1"]
-    assert [result.ask_index for result in _results(evidence)] == [0, 1]
+    assert [result.ask_id for result in _results(evidence)] == [0, 2]
 
 
 def test_two_providers_are_numbered_in_first_seen_order() -> None:
@@ -212,7 +213,7 @@ def test_two_providers_are_numbered_in_first_seen_order() -> None:
     came back, not provider id or name."""
 
     evidence = assemble_evidence(
-        [(0, MANDI_PRICE), (1, KNOWLEDGE_ADVISORY)],
+        [(0, MANDI_PRICE), (2, KNOWLEDGE_ADVISORY)],
         intent=_intent(PRICE_ASK, ADVISORY_ASK),
     )
 
@@ -254,7 +255,7 @@ def test_every_ask_gets_its_own_evidence_in_ask_order() -> None:
     again in the intent."""
 
     evidence = assemble_evidence(
-        [(1, MANDI_PRICE)], intent=_intent(PRICE_ASK, ADVISORY_ASK)
+        [(2, MANDI_PRICE)], intent=_intent(PRICE_ASK, ADVISORY_ASK)
     )
 
     assert [entry.ask for entry in evidence.ask_evidences] == [
@@ -266,31 +267,31 @@ def test_every_ask_gets_its_own_evidence_in_ask_order() -> None:
 
 def test_results_and_failures_sit_under_the_ask_they_are_about() -> None:
     failure = Failure(
-        ask_index=0,
+        ask_id=0,
         capability="openagrinet:MandiPrice",
         reason="too many requests",
         retryable=True,
     )
 
     evidence = assemble_evidence(
-        [(1, MANDI_PRICE)],
+        [(2, MANDI_PRICE)],
         failures=[failure],
         intent=_intent(PRICE_ASK, ADVISORY_ASK),
     )
 
     price, advisory = map(attempted, evidence.ask_evidences)
     assert price == Attempted(results=(), failures=(failure,))
-    assert [result.ask_index for result in advisory.results] == [1]
+    assert [result.ask_id for result in advisory.results] == [2]
     assert advisory.failures == ()
 
 
-@pytest.mark.parametrize("ask_index", [1, -1])
-def test_a_result_for_an_ask_the_turn_lacks_is_refused(ask_index: int) -> None:
+@pytest.mark.parametrize("ask_id", [1, -1])
+def test_a_result_for_an_ask_the_turn_lacks_is_refused(ask_id: int) -> None:
     """Every producer keeps the index in range, so one outside it is a bug.
     Dropping the result instead would quietly turn the turn into no_match."""
 
-    with pytest.raises(ValueError, match=f"ask {ask_index} "):
-        assemble_evidence([(ask_index, MANDI_PRICE)], intent=_intent(PRICE_ASK))
+    with pytest.raises(ValueError, match=f"ask {ask_id} "):
+        assemble_evidence([(ask_id, MANDI_PRICE)], intent=_intent(PRICE_ASK))
 
 
 GRIEVANCE_FORM = FormDefinition(
@@ -345,7 +346,7 @@ def test_a_form_for_an_ask_the_turn_lacks_is_refused() -> None:
 
 def test_a_failure_for_an_ask_the_turn_lacks_is_refused() -> None:
     failure = Failure(
-        ask_index=2, capability="MandiPrice", reason="timeout", retryable=True
+        ask_id=2, capability="MandiPrice", reason="timeout", retryable=True
     )
 
     with pytest.raises(ValueError, match="ask 2 "):
@@ -357,13 +358,13 @@ def test_a_direct_answer_and_a_selected_one_share_a_source() -> None:
     one source — the same rule as two selected answers."""
 
     evidence = assemble_evidence(
-        [(1, MANDI_PRICE)],
+        [(2, MANDI_PRICE)],
         direct_answers={0: (MANDI_PRICE,)},
         intent=_intent(PRICE_ASK, ADVISORY_ASK),
     )
 
     assert [source.id for source in evidence.sources] == ["1"]
-    assert [result.ask_index for result in _results(evidence)] == [0, 1]
+    assert [result.ask_id for result in _results(evidence)] == [0, 2]
 
 
 def test_failures_are_carried_onto_the_evidence() -> None:
@@ -372,7 +373,7 @@ def test_failures_are_carried_onto_the_evidence() -> None:
     things to tell a farmer."""
 
     failure = Failure(
-        ask_index=0,
+        ask_id=0,
         capability="openagrinet:MandiPrice",
         reason="too many requests",
         retryable=True,
@@ -397,7 +398,7 @@ def test_the_originator_outranks_the_provider_that_served_it() -> None:
 
 def test_a_source_uri_becomes_the_citation_url() -> None:
     evidence = assemble_evidence(
-        [(0, KNOWLEDGE_ADVISORY)], intent=_intent(ADVISORY_ASK)
+        [(ADVISORY_ASK.id, KNOWLEDGE_ADVISORY)], intent=_intent(ADVISORY_ASK)
     )
 
     assert evidence.sources[0].url == "https://knowledge.example.org"
@@ -429,7 +430,7 @@ def test_one_provider_relaying_two_originators_is_two_sources() -> None:
     )
 
     evidence = assemble_evidence(
-        [(0, WEATHER_OBSERVATION), (1, relayed)],
+        [(0, WEATHER_OBSERVATION), (2, relayed)],
         intent=_intent(PRICE_ASK, ADVISORY_ASK),
     )
 
@@ -457,7 +458,7 @@ def test_two_providers_relaying_one_originator_stay_two_sources() -> None:
     )
 
     evidence = assemble_evidence(
-        [(0, WEATHER_OBSERVATION), (1, other_provider)],
+        [(0, WEATHER_OBSERVATION), (2, other_provider)],
         intent=_intent(PRICE_ASK, ADVISORY_ASK),
     )
 
@@ -478,7 +479,7 @@ def test_the_same_originator_twice_from_one_provider_is_one_source() -> None:
     )
 
     evidence = assemble_evidence(
-        [(0, WEATHER_OBSERVATION), (1, second)],
+        [(0, WEATHER_OBSERVATION), (2, second)],
         intent=_intent(PRICE_ASK, ADVISORY_ASK),
     )
 

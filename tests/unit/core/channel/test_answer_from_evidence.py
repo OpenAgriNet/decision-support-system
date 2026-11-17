@@ -15,9 +15,7 @@ from tests.support.evidence import build_evidence
 def _evidence(*sources: Source) -> Evidence:
     return build_evidence(
         sources=tuple(sources),
-        results=tuple(
-            Result(ask_index=0, source_id=s.id, data={"v": 1}) for s in sources
-        ),
+        results=tuple(Result(ask_id=0, source_id=s.id, data={"v": 1}) for s in sources),
     )
 
 

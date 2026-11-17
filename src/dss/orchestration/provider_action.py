@@ -5,6 +5,7 @@ from collections.abc import Awaitable, Callable, Mapping
 
 from dss.core.forms.models import ActionReply, ActionSchema
 from dss.core.forms.service import build_action_attributes, without_farmer_values
+from dss.core.intent.models import AskId
 from dss.core.planner.models import Failure
 from dss.core.provider_discovery.models import (
     DiscoveredAnswer,
@@ -19,7 +20,7 @@ from dss.ports.invocation import ProviderActionInvocation, ProviderCallFailedErr
 logger = logging.getLogger(__name__)
 
 # A form turn has one ask: the form's.
-FORM_ASK_INDEX = 0
+FORM_ASK_ID = AskId(0)
 
 type InvocationCall = Callable[..., Awaitable[ActionReply]]
 
@@ -59,7 +60,7 @@ def _invocation_call_for(
 def _as_failure(failed: ProviderCallFailedError, action: ActionSchema) -> Failure:
     # No provider text: the farmer is told in the DSS's own words.
     return Failure(
-        ask_index=FORM_ASK_INDEX,
+        ask_id=FORM_ASK_ID,
         capability=failed.capability,
         reason=f"{action.context.action} failed with status {failed.status_code}",
         retryable=failed.failure_class is FailureClass.TRANSIENT,

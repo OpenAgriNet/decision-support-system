@@ -14,21 +14,21 @@ orchestrator wiring can be exercised while the real agent is built by the team.
 
 from __future__ import annotations
 
-from dss.core.intent.models import Intent
+from dss.core.intent.models import AskId, Intent
 from dss.core.moderation.models import ModerationDecision
 from dss.core.planning.models import Plan, Step
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.shared.models import UserTurn
 
 
-def _capability_for(discovered: DiscoveryResult, ask_index: int) -> str | None:
+def _capability_for(discovered: DiscoveryResult, ask_id: AskId) -> str | None:
     """The @type this ask can be served by, if any — a Direct answer or an
     OnDemand capability. ``None`` means nobody serves the ask (no step, no_match)."""
 
-    answers = discovered.answers.get(ask_index, ())
+    answers = discovered.answers.get(ask_id, ())
     if answers:
         return answers[0].capability
-    capabilities = discovered.capabilities.get(ask_index, ())
+    capabilities = discovered.capabilities.get(ask_id, ())
     if capabilities:
         return capabilities[0].capability
     return None
@@ -41,16 +41,15 @@ async def plan_turn(
     decision: ModerationDecision,
 ) -> Plan:
     steps: list[Step] = []
-    serves: list[int] = []
-    for ask_index in range(len(intent.asks)):
-        capability = _capability_for(discovered, ask_index)
+    serves: list[AskId] = []
+    for ask in intent.asks:
+        capability = _capability_for(discovered, ask.id)
         if capability is None:
             continue  # an ask nobody can answer gets no step (design v2 §6.4)
-        ask = intent.asks[ask_index]
         inputs = (
             {"subject": ask.agriculture_subjects} if ask.agriculture_subjects else {}
         )
         steps.append(Step(id=len(steps) + 1, capability=capability, inputs=inputs))
-        serves.append(ask_index)
+        serves.append(ask.id)
 
     return Plan(steps=tuple(steps), serves=tuple(serves), refused=(), missing=())

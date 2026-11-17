@@ -138,7 +138,7 @@ def _calls_select_then_answers(
                 ToolCallPart(
                     tool_name="select",
                     args={
-                        "ask_index": 0,
+                        "ask_id": 0,
                         "resource_id": "res:agmarknet:daily-price",
                         "resource_attributes": {"commodity": {"code": "PADDY"}},
                     },
@@ -326,7 +326,8 @@ def _must_not_run(messages: list[ModelMessage], info: AgentInfo) -> ModelRespons
 
 async def test_a_turn_with_only_form_asks_never_runs_the_agent() -> None:
     """Nothing is left to call, so a model round-trip would only cost time.
-    The form still reaches the evidence."""
+    The form still reaches the evidence. The grievance is the turn's third
+    ask: the others were not passed on."""
 
     plan = build_plan(
         schemas=SCHEMAS,
@@ -339,12 +340,14 @@ async def test_a_turn_with_only_form_asks_never_runs_the_agent() -> None:
 
     evidence = await plan(
         _turn(),
-        intent=Intent(asks=(GRIEVANCE_ASK,), confidence=0.9),
+        intent=Intent(
+            asks=(GRIEVANCE_ASK.model_copy(update={"id": 2}),), confidence=0.9
+        ),
         discovery=DiscoveryResult(
-            answers={}, capabilities={0: (CAPABILITY,)}, failures={}, events=()
+            answers={}, capabilities={2: (CAPABILITY,)}, failures={}, events=()
         ),
         verdict=_cleared_verdict(),
-        awaiting={0: GRIEVANCE_FORM},
+        awaiting={2: GRIEVANCE_FORM},
     )
 
     assert evidence.awaiting_forms == (GRIEVANCE_FORM,)
@@ -360,7 +363,7 @@ def _calls_select_for_ask_0_then_answers(
                 ToolCallPart(
                     tool_name="select",
                     args={
-                        "ask_index": 0,
+                        "ask_id": 0,
                         "resource_id": CAPABILITY.resource_id,
                         "resource_attributes": {},
                     },

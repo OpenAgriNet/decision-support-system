@@ -85,8 +85,8 @@ def test_one_sources_passages_are_gathered_under_one_heading() -> None:
     ones."""
 
     evidence = _evidence(
-        Result(ask_index=0, source_id="1", data={"passage": "a"}),
-        Result(ask_index=0, source_id="1", data={"passage": "b"}),
+        Result(ask_id=0, source_id="1", data={"passage": "a"}),
+        Result(ask_id=0, source_id="1", data={"passage": "b"}),
         sources=(PULSES,),
     )
 
@@ -102,8 +102,8 @@ def test_each_source_answering_one_question_is_its_own_block() -> None:
     where one stops and the next starts."""
 
     evidence = _evidence(
-        Result(ask_index=0, source_id="1", data={"passage": "a"}),
-        Result(ask_index=0, source_id="2", data={"passage": "b"}),
+        Result(ask_id=0, source_id="1", data={"passage": "a"}),
+        Result(ask_id=0, source_id="2", data={"passage": "b"}),
         sources=(PULSES, ICAR),
     )
 
@@ -119,8 +119,8 @@ def test_results_are_grouped_by_the_question_they_answer() -> None:
     is served by two providers and says so."""
 
     evidence = _evidence(
-        Result(ask_index=0, source_id="1", data={"passage": "a"}),
-        Result(ask_index=1, source_id="3", data={"modal": 2200}),
+        Result(ask_id=0, source_id="1", data={"passage": "a"}),
+        Result(ask_id=1, source_id="3", data={"modal": 2200}),
         sources=(PULSES, AGMARKNET),
     )
 
@@ -139,7 +139,7 @@ def test_a_result_is_labelled_with_its_asks_resolved_place() -> None:
     evidence = build_evidence(
         asks=(an_ask(place=_place("Pune")),),
         sources=(Source(id="1", name="Agmarknet", kind=SourceKind.PROVIDER, url=None),),
-        results=(Result(ask_index=0, source_id="1", data={"modal": 2200}),),
+        results=(Result(ask_id=0, source_id="1", data={"modal": 2200}),),
     )
 
     rendered = render_evidence(evidence)
@@ -157,7 +157,7 @@ def test_the_label_names_the_place_above_so_two_rampurs_are_told_apart() -> None
     evidence = build_evidence(
         asks=(an_ask(place=rampur),),
         sources=(Source(id="1", name="IMD", kind=SourceKind.PROVIDER, url=None),),
-        results=(Result(ask_index=0, source_id="1", data={"rain": 2}),),
+        results=(Result(ask_id=0, source_id="1", data={"rain": 2}),),
     )
 
     rendered = render_evidence(evidence)
@@ -177,7 +177,7 @@ def test_a_place_with_nothing_above_it_is_labelled_with_its_name_alone() -> None
     evidence = build_evidence(
         asks=(an_ask(place=anand),),
         sources=(Source(id="1", name="IMD", kind=SourceKind.PROVIDER, url=None),),
-        results=(Result(ask_index=0, source_id="1", data={"rain": 2}),),
+        results=(Result(ask_id=0, source_id="1", data={"rain": 2}),),
     )
 
     rendered = render_evidence(evidence)
@@ -192,7 +192,7 @@ def test_a_failure_is_labelled_with_its_asks_resolved_place() -> None:
         results=(),
         failures=(
             Failure(
-                ask_index=0,
+                ask_id=0,
                 capability="openagrinet:WeatherObservation",
                 reason="timeout",
                 retryable=True,
@@ -415,7 +415,7 @@ def test_a_device_point_with_no_name_labels_nothing() -> None:
     evidence = build_evidence(
         asks=(an_ask(place=_place("")),),
         sources=(Source(id="1", name="IMD", kind=SourceKind.PROVIDER, url=None),),
-        results=(Result(ask_index=0, source_id="1", data={"rain": "none"}),),
+        results=(Result(ask_id=0, source_id="1", data={"rain": "none"}),),
     )
 
     assert "about" not in render_evidence(evidence)
@@ -428,7 +428,7 @@ def test_no_place_resolved_labels_nothing() -> None:
     evidence = build_evidence(
         asks=(an_ask(),),
         sources=(Source(id="1", name="Agmarknet", kind=SourceKind.PROVIDER, url=None),),
-        results=(Result(ask_index=0, source_id="1", data={"modal": 2200}),),
+        results=(Result(ask_id=0, source_id="1", data={"modal": 2200}),),
     )
 
     rendered = render_evidence(evidence)

@@ -125,7 +125,7 @@ def test_a_failed_call_is_rejected_unless_trying_again_may_work(
     is_retryable: bool, cause: Cause
 ) -> None:
     failure = Failure(
-        ask_index=0,
+        ask_id=0,
         capability="openagrinet:Grievance",
         reason="-",
         retryable=is_retryable,

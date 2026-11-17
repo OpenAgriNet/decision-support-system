@@ -13,7 +13,7 @@ import anyio
 from pydantic_ai import Agent, ModelRetry, RunContext
 from pydantic_ai.models import Model
 
-from dss.core.intent.models import Intent, ResolvedPlace
+from dss.core.intent.models import AskId, Intent, ResolvedPlace
 from dss.core.moderation.models import Outcome
 from dss.core.planner.describe_capability import render_candidates_as_markdown
 from dss.core.planner.lookup import find_capability
@@ -53,7 +53,7 @@ class PlannerDeps:
     to ``agent.run(deps=...)`` — tools read it via ``RunContext.deps``."""
 
     turn: UserTurn
-    # The ask an `ask_index` names, so `select` can state the category that was
+    # The ask an `ask_id` names, so `select` can state the category that was
     # asked about rather than the one the provider advertised.
     intent: Intent
     discovery: DiscoveryResult
@@ -72,18 +72,18 @@ class PlannerDeps:
     # exception in `build_resource_attributes` reads this. Injected rather
     # than called inside core so a test can fix the day.
     today: Callable[[], date] = lambda: datetime.now(UTC).date()
-    raw_answers: list[tuple[int, DiscoveredAnswer]] = field(default_factory=list)
+    raw_answers: list[tuple[AskId, DiscoveredAnswer]] = field(default_factory=list)
     failures: list[Failure] = field(default_factory=list)
     next_choices: NextChoices = field(default_factory=NextChoices)
 
 
 async def _select(
     ctx: RunContext[PlannerDeps],
-    ask_index: int,
+    ask_id: AskId,
     resource_id: str,
     resource_attributes: dict,
 ) -> str:
-    """Read a chosen capability's data. ``ask_index`` and ``resource_id``
+    """Read a chosen capability's data. ``ask_id`` and ``resource_id``
     together pick one candidate from discovery; ``resource_attributes``
     carries only what the model resolves or authors (a governed code, free
     text) — structural fields are assembled here, not by the model.
@@ -103,17 +103,17 @@ async def _select(
         # Not a ModelRetry: retrying cannot clear a moderation rejection.
         return "This turn was not cleared to call providers. Do not retry."
 
-    capability = find_capability(
-        deps.discovery, ask_index=ask_index, resource_id=resource_id
-    )
+    capability = find_capability(deps.discovery, ask_id=ask_id, resource_id=resource_id)
     if capability is None:
         raise ModelRetry(
-            f"resource_id {resource_id!r} is not one of ask {ask_index}'s candidates"
+            f"resource_id {resource_id!r} is not one of ask {ask_id}'s candidates"
         )
 
-    # Safe by here: `find_capability` has already matched `ask_index` against
-    # discovery, which is keyed off these same asks.
-    ask = deps.intent.asks[ask_index]
+    # Discovery is keyed off these same asks, so a candidate found above means
+    # the ask is here. A retry, not a crash, if the two ever disagree.
+    ask = deps.intent.find_ask(ask_id)
+    if ask is None:
+        raise ModelRetry(f"ask {ask_id} is not one of this turn's asks")
 
     # A ModelRetry, not a KeyError. Discovery reports what the network
     # offers; the schema index is built from the packs on disk, and the two
@@ -125,7 +125,7 @@ async def _select(
     if schema is None:
         raise ModelRetry(
             f"no schema is loaded for {capability.capability}, so it cannot be "
-            f"called. Pick another candidate for ask {ask_index}, or report "
+            f"called. Pick another candidate for ask {ask_id}, or report "
             f"that this ask has no answer."
         )
 
@@ -134,7 +134,7 @@ async def _select(
     # Not a ModelRetry: retrying cannot fix the place.
     if schema.needs_place and not isinstance(ask.place, ResolvedPlace):
         return (
-            f"Ask {ask_index} has no place to search. Do not call select for "
+            f"Ask {ask_id} has no place to search. Do not call select for "
             f"it; report that this ask has no answer."
         )
 
@@ -146,7 +146,7 @@ async def _select(
     # Who this one call consults. With a client ranking in force that is
     # every ranked provider for the ask, best first; without one it is the
     # single candidate the model named, exactly as before (ADR-0019).
-    consulting = _consulting(deps, ask_index=ask_index, capability=capability)
+    consulting = _consulting(deps, ask_id=ask_id, capability=capability)
 
     # Built per provider, not once and reused: `build_resource_attributes`
     # echoes each capability's own advertised values back into the request,
@@ -174,39 +174,39 @@ async def _select(
 
     consulted = await _consult_all(deps, consulting, attributes_for=attributes_for)
     chosen = next((one for one in consulted if one.answers), None)
-    _log_consultation(deps, ask_index=ask_index, consulted=consulted, chosen=chosen)
+    _log_consultation(deps, ask_id=ask_id, consulted=consulted, chosen=chosen)
 
     if chosen is None:
-        return _nothing_came_back(deps, ask_index=ask_index, consulted=consulted)
+        return _nothing_came_back(deps, ask_id=ask_id, consulted=consulted)
 
-    deps.next_choices.hold_after(ask_index, consulted=consulted, chosen=chosen)
-    deps.raw_answers.extend((ask_index, answer) for answer in chosen.answers)
+    deps.next_choices.hold_after(ask_id, consulted=consulted, chosen=chosen)
+    deps.raw_answers.extend((ask_id, answer) for answer in chosen.answers)
     return render_answers_as_markdown(chosen.answers)
 
 
-async def _select_next(ctx: RunContext[PlannerDeps], ask_index: int) -> str:
+async def _select_next(ctx: RunContext[PlannerDeps], ask_id: AskId) -> str:
     """Answer an ask from the next preferred provider instead, when the data
     `select` returned cannot answer it. Calls nobody: `select` already
     consulted every ranked provider."""
 
     deps = ctx.deps
-    chosen = deps.next_choices.take(ask_index)
+    chosen = deps.next_choices.take(ask_id)
     if chosen is None:
-        return no_next_choice(ask_index)
+        return no_next_choice(ask_id)
 
-    _replace_answers(deps, ask_index=ask_index, answers=chosen.answers)
-    _log_next_provider_used(deps, ask_index=ask_index, used=chosen)
+    _replace_answers(deps, ask_id=ask_id, answers=chosen.answers)
+    _log_next_provider_used(deps, ask_id=ask_id, used=chosen)
     return render_answers_as_markdown(chosen.answers)
 
 
 def _log_next_provider_used(
-    deps: PlannerDeps, *, ask_index: int, used: Consulted
+    deps: PlannerDeps, *, ask_id: AskId, used: Consulted
 ) -> None:
     log_event(
         "provider_preferences",
         deps.turn.transaction_id,
         event="next_provider_used",
-        ask_index=ask_index,
+        ask_id=ask_id,
         provider_id=used.capability.provider_id,
         resource_id=used.capability.resource_id,
         results=len(used.answers),
@@ -214,19 +214,21 @@ def _log_next_provider_used(
 
 
 def _replace_answers(
-    deps: PlannerDeps, *, ask_index: int, answers: tuple[DiscoveredAnswer, ...]
+    deps: PlannerDeps, *, ask_id: AskId, answers: tuple[DiscoveredAnswer, ...]
 ) -> None:
     """One ask is still answered by one provider: the next choice's data
     replaces the first's, never joins it."""
 
     deps.raw_answers[:] = [
-        (index, answer) for index, answer in deps.raw_answers if index != ask_index
+        (answered_ask_id, answer)
+        for answered_ask_id, answer in deps.raw_answers
+        if answered_ask_id != ask_id
     ]
-    deps.raw_answers.extend((ask_index, answer) for answer in answers)
+    deps.raw_answers.extend((ask_id, answer) for answer in answers)
 
 
 def _consulting(
-    deps: PlannerDeps, *, ask_index: int, capability: ProviderCapability
+    deps: PlannerDeps, *, ask_id: AskId, capability: ProviderCapability
 ) -> tuple[ProviderCapability, ...]:
     """The candidates this call will consult, in the order it will use them.
 
@@ -242,11 +244,11 @@ def _consulting(
     a provider's own resources answers better.
     """
 
-    if priority_for_ask(deps.discovery, ask_id=ask_index) is None:
+    if priority_for_ask(deps.discovery, ask_id=ask_id) is None:
         return (capability,)
     return tuple(
         candidate
-        for candidate in deps.discovery.capabilities.get(ask_index, ())
+        for candidate in deps.discovery.capabilities.get(ask_id, ())
         if candidate.capability == capability.capability
     )
 
@@ -303,7 +305,7 @@ async def _consult_all(
 def _log_consultation(
     deps: PlannerDeps,
     *,
-    ask_index: int,
+    ask_id: AskId,
     consulted: tuple[Consulted, ...],
     chosen: Consulted | None,
 ) -> None:
@@ -324,7 +326,7 @@ def _log_consultation(
             "provider_preferences",
             deps.turn.transaction_id,
             event="provider_consulted",
-            ask_index=ask_index,
+            ask_id=ask_id,
             rank=position,
             provider_id=one.capability.provider_id,
             resource_id=one.capability.resource_id,
@@ -342,7 +344,7 @@ def _detail(failure: SelectFailedError | None) -> str:
 
 
 def _nothing_came_back(
-    deps: PlannerDeps, *, ask_index: int, consulted: tuple[Consulted, ...]
+    deps: PlannerDeps, *, ask_id: AskId, consulted: tuple[Consulted, ...]
 ) -> str:
     """What the model is told when no consulted provider had an answer.
 
@@ -365,7 +367,7 @@ def _nothing_came_back(
             continue
         deps.failures.append(
             Failure(
-                ask_index=ask_index,
+                ask_id=ask_id,
                 capability=one.failure.capability,
                 reason=_detail(one.failure),
                 retryable=one.failure.failure_class is FailureClass.TRANSIENT,
@@ -377,14 +379,13 @@ def _nothing_came_back(
     reached = sum(1 for one in consulted if one.failure is None)
     if reached:
         outcome = (
-            f"No data for ask {ask_index}: {names} were consulted and none "
-            f"had an answer."
+            f"No data for ask {ask_id}: {names} were consulted and none had an answer."
         )
     else:
-        outcome = f"Could not reach any provider for ask {ask_index} ({names})."
-    if _unconsulted(deps, ask_index=ask_index, consulted=consulted):
+        outcome = f"Could not reach any provider for ask {ask_id} ({names})."
+    if _unconsulted(deps, ask_id=ask_id, consulted=consulted):
         return (
-            f"{outcome} Try another candidate for ask {ask_index}, or report "
+            f"{outcome} Try another candidate for ask {ask_id}, or report "
             f"that this ask has no answer."
         )
     return (
@@ -394,22 +395,22 @@ def _nothing_came_back(
 
 
 def _unconsulted(
-    deps: PlannerDeps, *, ask_index: int, consulted: tuple[Consulted, ...]
+    deps: PlannerDeps, *, ask_id: AskId, consulted: tuple[Consulted, ...]
 ) -> bool:
     """Whether the ask still has candidates this call did not reach."""
 
     tried = {one.capability.resource_id for one in consulted}
     return any(
         candidate.resource_id not in tried
-        for candidate in deps.discovery.capabilities.get(ask_index, ())
+        for candidate in deps.discovery.capabilities.get(ask_id, ())
     )
 
 
-async def _describe_capability(ctx: RunContext[PlannerDeps], ask_index: int) -> str:
+async def _describe_capability(ctx: RunContext[PlannerDeps], ask_id: AskId) -> str:
     """Show an ask's candidates and each one's filterable fields, so the
     model knows what it may set before calling ``select``."""
 
-    candidates = ctx.deps.discovery.capabilities.get(ask_index, ())
+    candidates = ctx.deps.discovery.capabilities.get(ask_id, ())
     return render_candidates_as_markdown(candidates, schemas=ctx.deps.schemas)
 
 

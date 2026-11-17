@@ -6,13 +6,14 @@ unambiguous identifier when several candidates share the same @type.
 
 from __future__ import annotations
 
+from dss.core.intent.models import AskId
 from dss.core.provider_discovery.models import DiscoveryResult, ProviderCapability
 
 
 def find_capability(
-    discovery: DiscoveryResult, *, ask_index: int, resource_id: str
+    discovery: DiscoveryResult, *, ask_id: AskId, resource_id: str
 ) -> ProviderCapability | None:
-    for capability in discovery.capabilities.get(ask_index, ()):
+    for capability in discovery.capabilities.get(ask_id, ()):
         if capability.resource_id == resource_id:
             return capability
     return None

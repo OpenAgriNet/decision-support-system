@@ -133,7 +133,7 @@ def _calls_select_then_answers(
                 ToolCallPart(
                     tool_name="select",
                     args={
-                        "ask_index": 0,
+                        "ask_id": 0,
                         "resource_id": "res:agmarknet:daily-price",
                         "resource_attributes": {"commodity": {"code": "PADDY"}},
                     },
@@ -169,7 +169,7 @@ async def test_the_failure_is_recorded_for_the_evidence() -> None:
         await agent.run("price of paddy", deps=deps)
 
     [failure] = deps.failures
-    assert failure.ask_index == 0
+    assert failure.ask_id == 0
     assert failure.capability == "openagrinet:MandiPrice"
     assert failure.retryable is True
     assert failure.status_code == 429
@@ -184,7 +184,7 @@ def _calls_unindexed_then_answers(
                 ToolCallPart(
                     tool_name="select",
                     args={
-                        "ask_index": 0,
+                        "ask_id": 0,
                         "resource_id": "res:gj-agri:facility",
                         "resource_attributes": {},
                     },

@@ -141,7 +141,7 @@ def _calls_select_then_answers(
                 ToolCallPart(
                     tool_name="select",
                     args={
-                        "ask_index": 0,
+                        "ask_id": 0,
                         "resource_id": "res:agmarknet:daily-price",
                         "resource_attributes": {"commodity": {"code": "PADDY"}},
                     },
@@ -199,7 +199,7 @@ def _calls_select_twice_then_answers(
                 ToolCallPart(
                     tool_name="select",
                     args={
-                        "ask_index": 0,
+                        "ask_id": 0,
                         "resource_id": "res:agmarknet:daily-price",
                         "resource_attributes": {"commodity": {"code": code}},
                     },
@@ -238,7 +238,7 @@ def _calls_describe_then_answers(
 ) -> ModelResponse:
     if len(messages) == 1:
         return ModelResponse(
-            parts=[ToolCallPart(tool_name="describe_capability", args={"ask_index": 0})]
+            parts=[ToolCallPart(tool_name="describe_capability", args={"ask_id": 0})]
         )
     return ModelResponse(parts=[TextPart(content="described")])
 

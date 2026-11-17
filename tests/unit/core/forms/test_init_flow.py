@@ -91,7 +91,7 @@ def _failure(
 ) -> Failure:
     # retryable says a 404 is worth retrying; the init rules read the status alone.
     return Failure(
-        ask_index=0,
+        ask_id=0,
         capability="openagrinet:Grievance",
         reason="call failed",
         retryable=True,

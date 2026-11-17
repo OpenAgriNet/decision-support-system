@@ -19,7 +19,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import replace
 
 from dss.core.forms.models import FormDefinition
-from dss.core.intent.models import Ask, Intent
+from dss.core.intent.models import Ask, AskId, Intent
 from dss.core.planner.models import (
     AskEvidence,
     AskOutcome,
@@ -36,12 +36,12 @@ from dss.core.settlement.models import AskSettlement, Settled
 
 
 def assemble_evidence(
-    raw_answers: Sequence[tuple[int, DiscoveredAnswer]],
+    raw_answers: Sequence[tuple[AskId, DiscoveredAnswer]],
     *,
     intent: Intent,
-    direct_answers: Mapping[int, tuple[DiscoveredAnswer, ...]] | None = None,
+    direct_answers: Mapping[AskId, tuple[DiscoveredAnswer, ...]] | None = None,
     failures: Sequence[Failure] = (),
-    awaiting: Mapping[int, FormDefinition] | None = None,
+    awaiting: Mapping[AskId, FormDefinition] | None = None,
 ) -> Evidence:
     """Turn everything the turn gathered into ``Evidence``.
 
@@ -77,12 +77,12 @@ def assemble_evidence(
     results: list[Result] = []
 
     direct = [
-        (ask_index, answer)
-        for ask_index, ask_answers in (direct_answers or {}).items()
+        (ask_id, answer)
+        for ask_id, ask_answers in (direct_answers or {}).items()
         for answer in ask_answers
     ]
 
-    for ask_index, answer in [*direct, *raw_answers]:
+    for ask_id, answer in [*direct, *raw_answers]:
         origin = (answer.provider_id, answer.source_id)
         source_id = source_id_by_origin.get(origin)
         if source_id is None:
@@ -98,7 +98,7 @@ def assemble_evidence(
             )
         results.append(
             Result(
-                ask_index=ask_index,
+                ask_id=ask_id,
                 source_id=source_id,
                 data=dict(answer.attributes),
             )
@@ -117,7 +117,7 @@ def group_by_ask(
     *,
     results: Sequence[Result],
     failures: Sequence[Failure],
-    awaiting: Mapping[int, FormDefinition] | None = None,
+    awaiting: Mapping[AskId, FormDefinition] | None = None,
 ) -> tuple[AskEvidence, ...]:
     """One entry per ask, in ask order: the form it awaits, or else its
     results and failures.
@@ -127,18 +127,16 @@ def group_by_ask(
     """
 
     awaiting = awaiting or {}
-    _reject_stray_ask_indexes(
-        len(asks), results=results, failures=failures, awaiting=awaiting
-    )
+    _reject_stray_ask_ids(asks, results=results, failures=failures, awaiting=awaiting)
     _reject_attempted_form_asks(results=results, failures=failures, awaiting=awaiting)
     return tuple(
         AskEvidence(
             ask=ask,
             outcome=_outcome_for(
-                index, results=results, failures=failures, awaiting=awaiting
+                ask.id, results=results, failures=failures, awaiting=awaiting
             ),
         )
-        for index, ask in enumerate(asks)
+        for ask in asks
     )
 
 
@@ -168,46 +166,45 @@ def merge_unsettled(
 
 
 def _outcome_for(
-    ask_index: int,
+    ask_id: AskId,
     *,
     results: Sequence[Result],
     failures: Sequence[Failure],
-    awaiting: Mapping[int, FormDefinition],
+    awaiting: Mapping[AskId, FormDefinition],
 ) -> AskOutcome:
-    form = awaiting.get(ask_index)
+    form = awaiting.get(ask_id)
     if form is not None:
         return AwaitingInput(form=form)
     return Attempted(
-        results=tuple(result for result in results if result.ask_index == ask_index),
-        failures=tuple(
-            failure for failure in failures if failure.ask_index == ask_index
-        ),
+        results=tuple(result for result in results if result.ask_id == ask_id),
+        failures=tuple(failure for failure in failures if failure.ask_id == ask_id),
     )
 
 
-def _reject_stray_ask_indexes(
-    ask_count: int,
+def _reject_stray_ask_ids(
+    asks: Sequence[Ask],
     *,
     results: Sequence[Result],
     failures: Sequence[Failure],
-    awaiting: Mapping[int, FormDefinition],
+    awaiting: Mapping[AskId, FormDefinition],
 ) -> None:
-    # Every producer keeps the index in range, so a stray one is a bug. Dropping
-    # the part instead would quietly turn the turn into no_match.
-    named = [*(part.ask_index for part in (*results, *failures)), *awaiting]
-    stray = [index for index in named if not 0 <= index < ask_count]
+    # Every producer names one of the asks it was given, so a stray id is a
+    # bug. Dropping the part instead would quietly turn the turn into no_match.
+    known = {ask.id for ask in asks}
+    named = [*(part.ask_id for part in (*results, *failures)), *awaiting]
+    stray = [ask_id for ask_id in named if ask_id not in known]
     if stray:
-        raise ValueError(f"ask {stray[0]} is not one of the turn's {ask_count} asks")
+        raise ValueError(f"ask {stray[0]} is not one of the asks {sorted(known)}")
 
 
 def _reject_attempted_form_asks(
     *,
     results: Sequence[Result],
     failures: Sequence[Failure],
-    awaiting: Mapping[int, FormDefinition],
+    awaiting: Mapping[AskId, FormDefinition],
 ) -> None:
     # An ask has one outcome. A form ask with a result would lose one of them.
-    attempted = {part.ask_index for part in (*results, *failures)}
+    attempted = {part.ask_id for part in (*results, *failures)}
     both = sorted(attempted & awaiting.keys())
     if both:
         raise ValueError(f"ask {both[0]} awaits a form and was also attempted")

@@ -748,8 +748,8 @@ def discovery_for_scheme(
     return replace(
         discovery,
         capabilities={
-            position: candidates_for_scheme(candidates, scheme_code)
-            for position, candidates in discovery.capabilities.items()
+            ask_id: candidates_for_scheme(candidates, scheme_code)
+            for ask_id, candidates in discovery.capabilities.items()
         },
     )
 

@@ -37,7 +37,7 @@ from dss.core.provider_discovery.models import (
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import Geometry, TextQuery, UserTurn
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
-from tests.support.asks import an_ask, numbered
+from tests.support.asks import an_ask
 from tests.support.providers import build_capability
 
 CAPABILITY = build_capability(
@@ -152,7 +152,7 @@ def _calls_select_then_answers(
                 ToolCallPart(
                     tool_name="select",
                     args={
-                        "ask_index": 0,
+                        "ask_id": 0,
                         "resource_id": "res:agmarknet:daily-price",
                         "resource_attributes": {"commodity": {"code": "PADDY"}},
                     },
@@ -184,8 +184,8 @@ async def test_the_raw_answer_is_accumulated_on_deps() -> None:
         await agent.run("price of paddy", deps=deps)
 
     assert len(deps.raw_answers) == 1
-    ask_index, answer = deps.raw_answers[0]
-    assert ask_index == 0
+    ask_id, answer = deps.raw_answers[0]
+    assert ask_id == 0
     assert answer.attributes == {"prices": {"modal": 2200}}
 
 
@@ -203,7 +203,7 @@ def _calls_select_with_invented_field(
                 ToolCallPart(
                     tool_name="select",
                     args={
-                        "ask_index": 0,
+                        "ask_id": 0,
                         "resource_id": "res:agmarknet:daily-price",
                         "resource_attributes": {"commodity": {"code": "PADDY"}},
                     },
@@ -216,7 +216,7 @@ def _calls_select_with_invented_field(
                 ToolCallPart(
                     tool_name="select",
                     args={
-                        "ask_index": 0,
+                        "ask_id": 0,
                         "resource_id": "res:agmarknet:daily-price",
                         "resource_attributes": {"cropVariety": "Basmati"},
                     },
@@ -308,7 +308,7 @@ async def test_a_facility_select_carries_the_search_origin() -> None:
                     ToolCallPart(
                         tool_name="select",
                         args={
-                            "ask_index": 0,
+                            "ask_id": 0,
                             "resource_id": facility.resource_id,
                             "resource_attributes": {
                                 "facilityType": "KrishiVigyanKendra"
@@ -330,11 +330,14 @@ async def test_a_facility_select_carries_the_search_origin() -> None:
 
 
 async def test_each_select_carries_its_own_asks_place() -> None:
-    """The seam: `_select` must read the place off the ask `ask_index` names.
+    """The seam: `_select` must read the place off the ask `ask_id` names.
 
     "Weather in Pune and Mumbai" is two asks with two places. A tool that took
     the first ask's place, or one place per turn, would fetch Pune twice and
     answer for Mumbai with Pune's weather.
+
+    Mumbai is ask 2, not ask 1: the ask between them was not passed on. A
+    tool that read the asks by position would not find it.
     """
 
     weather = build_capability(
@@ -347,8 +350,9 @@ async def test_each_select_carries_its_own_asks_place() -> None:
     pune = Geometry(coordinates=[73.8567, 18.5204])
     mumbai = Geometry(coordinates=[72.8777, 19.0760])
 
-    def weather_ask(name: str, geometry: Geometry) -> Ask:
+    def weather_ask(ask_id: int, name: str, geometry: Geometry) -> Ask:
         return an_ask(
+            id=ask_id,
             subject_categories=SubjectCategory.WEATHER,
             interaction_type=InteractionType.OBSERVE,
             place=ResolvedPlace(
@@ -362,7 +366,7 @@ async def test_each_select_carries_its_own_asks_place() -> None:
     invocation = _FakeInvocation()
     deps = _deps(invocation)
     deps.discovery = DiscoveryResult(
-        answers={}, capabilities={0: (weather,), 1: (weather,)}, failures={}, events=()
+        answers={}, capabilities={0: (weather,), 2: (weather,)}, failures={}, events=()
     )
     deps.schemas = {
         "openagrinet:WeatherForecast": DomainSchema(
@@ -373,7 +377,7 @@ async def test_each_select_carries_its_own_asks_place() -> None:
         "openagrinet:WeatherForecast": "https://example.test/context.jsonld"
     }
     deps.intent = Intent(
-        asks=numbered(weather_ask("Pune", pune), weather_ask("Mumbai", mumbai)),
+        asks=(weather_ask(0, "Pune", pune), weather_ask(2, "Mumbai", mumbai)),
         confidence=1.0,
     )
 
@@ -384,12 +388,12 @@ async def test_each_select_carries_its_own_asks_place() -> None:
                     ToolCallPart(
                         tool_name="select",
                         args={
-                            "ask_index": index,
+                            "ask_id": index,
                             "resource_id": weather.resource_id,
                             "resource_attributes": {},
                         },
                     )
-                    for index in (0, 1)
+                    for index in (0, 2)
                 ]
             )
         return ModelResponse(parts=[TextPart(content="Both forecasts.")])
@@ -474,7 +478,7 @@ async def test_no_call_without_needed_place() -> None:
 
 
 async def test_select_states_the_ask_category_not_the_advertised_one() -> None:
-    """The seam again: `_select` has to find the ask behind `ask_index`.
+    """The seam again: `_select` has to find the ask behind `ask_id`.
 
     A unit test hands `build_resource_attributes` a category by hand and so
     agrees with whatever it was given. Driving the real tool is what catches

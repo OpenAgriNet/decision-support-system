@@ -103,15 +103,17 @@ def test_no_direct_answers_leaves_no_empty_section() -> None:
 
 
 def test_asks_section_lists_each_ask() -> None:
-    """The tools take an ``ask_index``, so the model has to know which asks
-    exist. Without this, gemma 4 gave up on a question that named no place."""
+    """The tools take an ``ask_id``, so the model has to know which asks
+    exist. Without this, gemma 4 gave up on a question that named no place.
+    The only ask here is the turn's third: the other two were not passed on."""
 
     ask = an_ask(
+        id=2,
         subject_categories=SubjectCategory.WEATHER,
         interaction_type=InteractionType.OBSERVE,
     )
 
-    assert "ask 0: Weather (observe)" in asks_section((ask,))
+    assert "ask 2: Weather (observe)" in asks_section((ask,))
 
 
 def test_an_ask_awaiting_a_form_is_marked() -> None:
@@ -119,13 +121,14 @@ def test_an_ask_awaiting_a_form_is_marked() -> None:
     know not to call a provider for it."""
 
     ask = an_ask(
+        id=2,
         subject_categories=SubjectCategory.GRIEVANCE,
         interaction_type=InteractionType.ACT,
     )
 
-    section = asks_section((ask,), awaiting=frozenset({0}))
+    section = asks_section((ask,), awaiting=frozenset({2}))
 
-    assert "ask 0: Grievance (act), awaits a form" in section
+    assert "ask 2: Grievance (act), awaits a form" in section
 
 
 def test_no_asks_leaves_no_section() -> None:
