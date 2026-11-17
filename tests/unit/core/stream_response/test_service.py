@@ -29,6 +29,7 @@ from dss.core.planner.models import (
 )
 from dss.core.shared.models import Geometry, TextQuery, UserTurn
 from dss.core.stream_response.service import stream_response
+from tests.support.asks import an_ask
 from tests.support.evidence import attempted, build_evidence
 from tests.support.fakes import FakePromptProvider
 
@@ -67,7 +68,7 @@ UNREACHABLE = build_evidence(
 
 
 def _ask(place: ResolvedPlace | None = None) -> Ask:
-    return Ask(
+    return an_ask(
         subject_categories=SubjectCategory.MARKET,
         interaction_type=InteractionType.OBSERVE,
         place=place,

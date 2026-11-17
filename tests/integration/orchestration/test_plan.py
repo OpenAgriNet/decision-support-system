@@ -24,7 +24,7 @@ from dss.core.forms.models import (
     FormContext,
     FormDefinition,
 )
-from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
+from dss.core.intent.models import Intent, InteractionType, SubjectCategory
 from dss.core.moderation.models import ModerationDecision, Outcome, ReasonCode
 from dss.core.planner.models import AwaitingInput, Identity, Skill, Verdict
 from dss.core.planner.validation import DomainSchema
@@ -36,6 +36,7 @@ from dss.core.provider_discovery.models import (
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import ConversationMessage, TextQuery, UserTurn
 from dss.orchestration.plan import build_plan
+from tests.support.asks import an_ask
 from tests.support.evidence import attempted
 from tests.support.fakes import FakePromptProvider
 from tests.support.providers import build_capability
@@ -68,12 +69,12 @@ SKILL = Skill(
     tool_names=("select",),
 )
 
-PRICE_ASK = Ask(
+PRICE_ASK = an_ask(
     agriculture_subjects="paddy",
     subject_categories=SubjectCategory.MARKET,
     interaction_type=InteractionType.OBSERVE,
 )
-GRIEVANCE_ASK = Ask(
+GRIEVANCE_ASK = an_ask(
     agriculture_subjects="PMFBY",
     subject_categories=SubjectCategory.GRIEVANCE,
     interaction_type=InteractionType.ACT,

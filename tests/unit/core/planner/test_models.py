@@ -7,7 +7,7 @@ from dataclasses import FrozenInstanceError
 import pytest
 from pydantic import ValidationError
 
-from dss.core.intent.models import Ask, InteractionType, SubjectCategory
+from dss.core.intent.models import InteractionType, SubjectCategory
 from dss.core.planner.models import (
     AskEvidence,
     Attempted,
@@ -28,6 +28,7 @@ from dss.core.settlement.models import (
     Unservable,
     UnservableReason,
 )
+from tests.support.asks import an_ask
 
 
 def test_source_carries_provenance() -> None:
@@ -107,7 +108,7 @@ def test_failure_is_frozen() -> None:
         failure.retryable = False
 
 
-_ASK = Ask(
+_ASK = an_ask(
     subject_categories=SubjectCategory.MARKET, interaction_type=InteractionType.OBSERVE
 )
 _RESULT = Result(ask_index=0, source_id="1", data={"modal_price": "2100"})

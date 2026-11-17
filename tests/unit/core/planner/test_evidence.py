@@ -25,6 +25,7 @@ from dss.core.settlement.models import (
     Settled,
     Slot,
 )
+from tests.support.asks import an_ask
 from tests.support.evidence import attempted
 
 
@@ -136,7 +137,7 @@ AGRICULTURE_FACILITY = DiscoveredAnswer(
     source_name="Agriculture Common Services Provider",
 )
 
-PRICE_ASK = Ask(
+PRICE_ASK = an_ask(
     agriculture_subjects="paddy",
     subject_categories=SubjectCategory.MARKET,
     interaction_type=InteractionType.OBSERVE,
@@ -174,7 +175,7 @@ def test_one_answer_becomes_one_source_and_one_result(
     assert result.data == answer.attributes
 
 
-ADVISORY_ASK = Ask(
+ADVISORY_ASK = an_ask(
     agriculture_subjects="paddy",
     subject_categories=SubjectCategory.CROP,
     interaction_type=InteractionType.ADVISE,
@@ -483,11 +484,11 @@ def test_the_same_originator_twice_from_one_provider_is_one_source() -> None:
     assert [result.source_id for result in _results(evidence)] == ["1", "1"]
 
 
-_RAIN = Ask(
+_RAIN = an_ask(
     subject_categories=SubjectCategory.WEATHER,
     interaction_type=InteractionType.OBSERVE,
 )
-_POTATO = Ask(
+_POTATO = an_ask(
     subject_categories=SubjectCategory.CROP,
     interaction_type=InteractionType.ADVISE,
     agriculture_subjects="potato",

@@ -16,7 +16,7 @@ from pydantic_ai.messages import (
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from dss.adapters.invocation.client import SelectFailedError
-from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
+from dss.core.intent.models import Intent, InteractionType, SubjectCategory
 from dss.core.moderation.models import ModerationDecision, Outcome
 from dss.core.planner.models import Skill, Verdict
 from dss.core.planner.validation import DomainSchema
@@ -29,6 +29,7 @@ from dss.core.provider_discovery.models import (
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import TextQuery, UserTurn
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
+from tests.support.asks import an_ask
 from tests.support.providers import build_capability
 
 CAPABILITY = build_capability(
@@ -90,7 +91,7 @@ def _intent(category: SubjectCategory = SubjectCategory.MARKET) -> Intent:
 
     return Intent(
         asks=(
-            Ask(
+            an_ask(
                 agriculture_subjects="paddy",
                 subject_categories=category,
                 interaction_type=InteractionType.OBSERVE,

@@ -17,7 +17,6 @@ from dss.core.forms.models import (
     FormSubmission,
 )
 from dss.core.intent.models import (
-    Ask,
     GuessedScheme,
     InteractionType,
     PlaceSource,
@@ -55,6 +54,7 @@ from dss.core.shared.models import (
     UserTurn,
 )
 from dss.ports.prompts import PromptIdentifier
+from tests.support.asks import an_ask
 from tests.support.evidence import build_evidence
 from tests.support.fakes import FakePromptProvider
 
@@ -69,14 +69,6 @@ def _place(name: str) -> ResolvedPlace:
         within=("IN-MH",),
         geometry=Geometry(coordinates=[73.85, 18.52]),
         source=PlaceSource.NAMED,
-    )
-
-
-def _ask(place: ResolvedPlace | None = None) -> Ask:
-    return Ask(
-        subject_categories=SubjectCategory.WEATHER,
-        interaction_type=InteractionType.OBSERVE,
-        place=place,
     )
 
 
@@ -145,7 +137,7 @@ def test_nothing_retrieved_still_says_so() -> None:
 
 def test_a_result_is_labelled_with_its_asks_resolved_place() -> None:
     evidence = build_evidence(
-        asks=(_ask(_place("Pune")),),
+        asks=(an_ask(place=_place("Pune")),),
         sources=(Source(id="1", name="Agmarknet", kind=SourceKind.PROVIDER, url=None),),
         results=(Result(ask_index=0, source_id="1", data={"modal": 2200}),),
     )
@@ -163,7 +155,7 @@ def test_the_label_names_the_place_above_so_two_rampurs_are_told_apart() -> None
         source=PlaceSource.NAMED,
     )
     evidence = build_evidence(
-        asks=(_ask(rampur),),
+        asks=(an_ask(place=rampur),),
         sources=(Source(id="1", name="IMD", kind=SourceKind.PROVIDER, url=None),),
         results=(Result(ask_index=0, source_id="1", data={"rain": 2}),),
     )
@@ -183,7 +175,7 @@ def test_a_place_with_nothing_above_it_is_labelled_with_its_name_alone() -> None
         source=PlaceSource.ASSERTED_GEOMETRY,
     )
     evidence = build_evidence(
-        asks=(_ask(anand),),
+        asks=(an_ask(place=anand),),
         sources=(Source(id="1", name="IMD", kind=SourceKind.PROVIDER, url=None),),
         results=(Result(ask_index=0, source_id="1", data={"rain": 2}),),
     )
@@ -195,7 +187,7 @@ def test_a_place_with_nothing_above_it_is_labelled_with_its_name_alone() -> None
 
 def test_a_failure_is_labelled_with_its_asks_resolved_place() -> None:
     evidence = build_evidence(
-        asks=(_ask(_place("Anand")),),
+        asks=(an_ask(place=_place("Anand")),),
         sources=(),
         results=(),
         failures=(
@@ -218,7 +210,7 @@ def test_an_ask_awaiting_a_form_is_rendered_as_such() -> None:
     apologise for it."""
 
     pmfby = Scheme(code="PMFBY", name="Pradhan Mantri Fasal Bima Yojana")
-    ask = Ask(
+    ask = an_ask(
         agriculture_subjects=pmfby.name,
         subject_categories=SubjectCategory.GRIEVANCE,
         interaction_type=InteractionType.ACT,
@@ -241,7 +233,7 @@ def test_a_form_beside_a_guess_names_the_forms_scheme() -> None:
     one we are sure of."""
 
     pmfby = Scheme(code="PMFBY", name="Pradhan Mantri Fasal Bima Yojana")
-    ask = Ask(
+    ask = an_ask(
         subject_categories=SubjectCategory.GRIEVANCE,
         interaction_type=InteractionType.ACT,
         scheme=GuessedScheme(scheme=pmfby),
@@ -257,7 +249,7 @@ def test_a_form_beside_a_guess_names_the_forms_scheme() -> None:
 
 
 def _waiting_on(*open_slots: Slot) -> Evidence:
-    rain = Ask(
+    rain = an_ask(
         subject_categories=SubjectCategory.WEATHER,
         interaction_type=InteractionType.OBSERVE,
     )
@@ -358,7 +350,7 @@ def test_a_too_broad_value_asks_for_a_smaller_one() -> None:
 
 
 def test_an_ask_we_cannot_serve_says_why() -> None:
-    complaint = Ask(
+    complaint = an_ask(
         subject_categories=SubjectCategory.GRIEVANCE,
         interaction_type=InteractionType.ACT,
     )
@@ -378,7 +370,7 @@ def test_a_missing_form_names_the_action() -> None:
     """The scheme may have a form for the other action: "has no form" alone
     would be untrue."""
 
-    status_check = Ask(
+    status_check = an_ask(
         subject_categories=SubjectCategory.GRIEVANCE,
         interaction_type=InteractionType.ACT,
         action=ProviderAction.STATUS,
@@ -399,7 +391,7 @@ def test_a_scheme_name_cannot_forge_a_line() -> None:
     """The name is the farmer's own words. A line break in it would read
     as an instruction of ours."""
 
-    complaint = Ask(
+    complaint = an_ask(
         subject_categories=SubjectCategory.GRIEVANCE,
         interaction_type=InteractionType.ACT,
     )
@@ -421,7 +413,7 @@ def test_a_device_point_with_no_name_labels_nothing() -> None:
     is noise the composer might try to fill."""
 
     evidence = build_evidence(
-        asks=(_ask(_place("")),),
+        asks=(an_ask(place=_place("")),),
         sources=(Source(id="1", name="IMD", kind=SourceKind.PROVIDER, url=None),),
         results=(Result(ask_index=0, source_id="1", data={"rain": "none"}),),
     )
@@ -434,7 +426,7 @@ def test_no_place_resolved_labels_nothing() -> None:
     is not a fact worth stating, so no label is added."""
 
     evidence = build_evidence(
-        asks=(_ask(place=None),),
+        asks=(an_ask(),),
         sources=(Source(id="1", name="Agmarknet", kind=SourceKind.PROVIDER, url=None),),
         results=(Result(ask_index=0, source_id="1", data={"modal": 2200}),),
     )

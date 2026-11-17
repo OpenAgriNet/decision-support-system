@@ -22,7 +22,6 @@ from pydantic_ai.messages import (
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from dss.core.intent.models import (
-    Ask,
     Intent,
     InteractionType,
     PlaceSource,
@@ -43,6 +42,7 @@ from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import Geometry, TextQuery, UserTurn
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
 from dss.ports.invocation import SelectFailedError
+from tests.support.asks import an_ask
 from tests.support.providers import build_capability
 
 WEATHER = "openagrinet:WeatherObservation"
@@ -115,7 +115,7 @@ def _unreachable() -> SelectFailedError:
 def _intent() -> Intent:
     return Intent(
         asks=(
-            Ask(
+            an_ask(
                 agriculture_subjects="rain",
                 subject_categories=SubjectCategory.WEATHER,
                 interaction_type=InteractionType.OBSERVE,

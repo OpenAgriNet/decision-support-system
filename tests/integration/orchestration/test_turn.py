@@ -15,7 +15,6 @@ import anyio
 from dss.core.forms.models import ActionSchema, FormContext
 from dss.core.forms.registry import FormRegistry
 from dss.core.intent.models import (
-    Ask,
     ClassifiedAsk,
     Intent,
     IntentClassification,
@@ -55,6 +54,7 @@ from dss.core.shared.models import (
 from dss.orchestration.settlement import SettleAsks, build_settle_asks
 from dss.orchestration.turn import run_turn
 from dss.ports.area_lookup import AreaMatch
+from tests.support.asks import an_ask
 from tests.support.fakes import FakeAreaLookup, FakePromptProvider
 from tests.support.providers import build_capability
 from tests.support.settlement import settles_every_ask
@@ -204,7 +204,7 @@ async def test_discovery_runs_on_the_classified_intent() -> None:
     )
     resolved_intent = Intent(
         asks=(
-            Ask(
+            an_ask(
                 agriculture_subjects="potato",
                 subject_categories=SubjectCategory.MARKET,
                 interaction_type=InteractionType.OBSERVE,
@@ -251,7 +251,7 @@ async def test_run_turn_returns_both_intent_and_decision() -> None:
     )
     expected_intent = Intent(
         asks=(
-            Ask(
+            an_ask(
                 agriculture_subjects="potato",
                 subject_categories=SubjectCategory.MARKET,
                 interaction_type=InteractionType.OBSERVE,
@@ -514,7 +514,7 @@ def test_settle_reads_the_index_each_turn() -> None:
     weather_pack = "openagrinet:WeatherObservation"
     index = _FakeIndex({("Weather", "Service"): (weather_pack,)}, frozenset())
     settle = build_settle_asks(index, FormRegistry().contexts_for)
-    rain = Ask(
+    rain = an_ask(
         subject_categories=SubjectCategory.WEATHER,
         interaction_type=InteractionType.OBSERVE,
     )
@@ -541,12 +541,12 @@ def test_the_registrys_forms_reach_settlement() -> None:
     for what is then asked are tested in `tests/unit/core/settlement`."""
 
     settle = _settle_with_forms(_grievance_form("PMFBY", "support"))
-    complaint = Ask(
+    complaint = an_ask(
         subject_categories=SubjectCategory.GRIEVANCE,
         interaction_type=InteractionType.ACT,
         action=UnclearAction.UNCLEAR,
     )
-    rain = Ask(
+    rain = an_ask(
         subject_categories=SubjectCategory.WEATHER,
         interaction_type=InteractionType.OBSERVE,
     )

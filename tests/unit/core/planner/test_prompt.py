@@ -18,7 +18,7 @@ those through the ``select`` tool's own ``RunContext.deps``, wired in
 from __future__ import annotations
 
 from dss.core.forms.models import FormContext, FormReference
-from dss.core.intent.models import Ask, InteractionType, SubjectCategory
+from dss.core.intent.models import InteractionType, SubjectCategory
 from dss.core.planner.markers import RETRIEVED_DATA
 from dss.core.planner.models import Skill
 from dss.core.planner.prompt import (
@@ -29,6 +29,7 @@ from dss.core.planner.prompt import (
 )
 from dss.core.provider_discovery.models import DiscoveredAnswer
 from dss.core.shared.models import ConversationMessage
+from tests.support.asks import an_ask
 
 
 def _skill() -> Skill:
@@ -105,7 +106,7 @@ def test_asks_section_lists_each_ask() -> None:
     """The tools take an ``ask_index``, so the model has to know which asks
     exist. Without this, gemma 4 gave up on a question that named no place."""
 
-    ask = Ask(
+    ask = an_ask(
         subject_categories=SubjectCategory.WEATHER,
         interaction_type=InteractionType.OBSERVE,
     )
@@ -117,7 +118,7 @@ def test_an_ask_awaiting_a_form_is_marked() -> None:
     """The form step settled that ask before the planner ran; the model must
     know not to call a provider for it."""
 
-    ask = Ask(
+    ask = an_ask(
         subject_categories=SubjectCategory.GRIEVANCE,
         interaction_type=InteractionType.ACT,
     )

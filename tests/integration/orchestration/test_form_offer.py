@@ -28,6 +28,7 @@ from tests.integration.orchestration.test_orchestrator import (
     _FakePlan,
     _turn,
 )
+from tests.support.asks import an_ask
 from tests.support.fakes import FakeSchemeCatalog
 from tests.support.grievance_pack import (
     PMKISAN_STATUS,
@@ -38,7 +39,7 @@ from tests.support.providers import build_capability
 
 PMFBY = Scheme(code="PMFBY", name="Pradhan Mantri Fasal Bima Yojana")
 PMFBY_SUPPORT = FormContext(scheme="PMFBY", category="Grievance", action="support")
-WEATHER_ASK = Ask(
+WEATHER_ASK = an_ask(
     subject_categories=SubjectCategory.WEATHER, interaction_type=InteractionType.OBSERVE
 )
 WEATHER_DESK = build_capability(
@@ -82,7 +83,7 @@ def _grievance_ask(
     scheme: Scheme | GuessedScheme | None = PMFBY,
     interaction: InteractionType = InteractionType.ACT,
 ) -> Ask:
-    return Ask(
+    return an_ask(
         agriculture_subjects=PMFBY.name,
         subject_categories=SubjectCategory.GRIEVANCE,
         interaction_type=interaction,

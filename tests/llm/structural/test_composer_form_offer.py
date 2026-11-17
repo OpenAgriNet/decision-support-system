@@ -21,10 +21,11 @@ from dss.core.forms.models import (
     FormContext,
     FormDefinition,
 )
-from dss.core.intent.models import Ask, InteractionType, Scheme, SubjectCategory
+from dss.core.intent.models import InteractionType, Scheme, SubjectCategory
 from dss.core.shared.models import TextQuery, UserTurn
 from dss.core.stream_response.service import stream_response
 from dss.entrypoint.composition.root import _composer_llm
+from tests.support.asks import an_ask
 from tests.support.evidence import build_evidence
 from tests.support.live_model import missing_model_key
 
@@ -70,7 +71,7 @@ _GRIEVANCE_FORM = FormDefinition(
 
 
 async def test_the_reply_points_at_the_form_and_names_no_field() -> None:
-    ask = Ask(
+    ask = an_ask(
         agriculture_subjects=_PMFBY.name,
         subject_categories=SubjectCategory.GRIEVANCE,
         interaction_type=InteractionType.ACT,

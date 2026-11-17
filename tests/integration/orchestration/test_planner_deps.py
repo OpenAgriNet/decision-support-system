@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
+from dss.core.intent.models import Intent, InteractionType, SubjectCategory
 from dss.core.planner.models import Verdict
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.shared.models import TextQuery, UserTurn
 from dss.orchestration.planner import PlannerDeps
+from tests.support.asks import an_ask
 
 
 def _turn() -> UserTurn:
@@ -39,7 +40,7 @@ def _intent(category: SubjectCategory = SubjectCategory.MARKET) -> Intent:
 
     return Intent(
         asks=(
-            Ask(
+            an_ask(
                 agriculture_subjects="paddy",
                 subject_categories=category,
                 interaction_type=InteractionType.OBSERVE,

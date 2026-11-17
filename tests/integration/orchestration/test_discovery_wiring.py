@@ -15,7 +15,6 @@ from opentelemetry.trace import StatusCode
 from dss.adapters.observability.tracing import open_span
 from dss.adapters.schema_packs.filesystem import FilesystemSchemaPackSource
 from dss.core.intent.models import (
-    Ask,
     ClassifiedAsk,
     Intent,
     IntentClassification,
@@ -31,6 +30,7 @@ from dss.orchestration.discovery import (
     build_discover_providers,
 )
 from dss.orchestration.turn import run_turn
+from tests.support.asks import an_ask
 from tests.support.fakes import NO_PREFERENCES, FakeAreaLookup, FakePromptProvider
 from tests.support.settlement import settles_every_ask
 
@@ -105,7 +105,7 @@ async def test_the_wired_discover_providers_bakes_in_radius() -> None:
             radius_m=25000,
             preferences=NO_PREFERENCES,
         )
-        ask = Ask(
+        ask = an_ask(
             subject_categories=SubjectCategory.MARKET,
             interaction_type=InteractionType.OBSERVE,
         )
@@ -160,7 +160,7 @@ async def test_the_fan_out_runs_inside_a_span(monkeypatch) -> None:
             50_000,
             NO_PREFERENCES,
         )
-        ask = Ask(
+        ask = an_ask(
             subject_categories=SubjectCategory.MARKET,
             interaction_type=InteractionType.OBSERVE,
         )
@@ -231,7 +231,7 @@ async def test_the_fan_out_span_counts_how_many_asks_went_unanswered(
             50_000,
             NO_PREFERENCES,
         )
-        ask = Ask(
+        ask = an_ask(
             subject_categories=SubjectCategory.MARKET,
             interaction_type=InteractionType.OBSERVE,
         )

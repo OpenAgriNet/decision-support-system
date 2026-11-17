@@ -29,6 +29,7 @@ from dss.core.settlement.models import (
 )
 from dss.core.settlement.requirements import build_ask_requirements
 from dss.core.settlement.service import settle, settle_asks
+from tests.support.asks import an_ask
 
 PLACE = AskSlot.PLACE
 # Form field names: settle works on any frame, not only an ask's.
@@ -89,7 +90,7 @@ def test_unservable_slot_beats_open_ones() -> None:
 
 
 def _ask(category: SubjectCategory, interaction: InteractionType) -> Ask:
-    return Ask(subject_categories=category, interaction_type=interaction)
+    return an_ask(subject_categories=category, interaction_type=interaction)
 
 
 def test_each_ask_settles_on_its_own() -> None:
@@ -118,7 +119,7 @@ def test_a_scheme_is_not_turned_away_before_the_action_is_known() -> None:
     we can serve it, so they are asked first."""
 
     pm_kisan = Scheme(code="PM-KISAN", name="PM Kisan Samman Nidhi")
-    problem = Ask(
+    problem = an_ask(
         subject_categories=SubjectCategory.GRIEVANCE,
         interaction_type=InteractionType.ACT,
         action=UnclearAction.UNCLEAR,

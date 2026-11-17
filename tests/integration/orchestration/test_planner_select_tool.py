@@ -37,6 +37,7 @@ from dss.core.provider_discovery.models import (
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import Geometry, TextQuery, UserTurn
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
+from tests.support.asks import an_ask
 from tests.support.providers import build_capability
 
 CAPABILITY = build_capability(
@@ -107,7 +108,7 @@ def _intent(category: SubjectCategory = SubjectCategory.MARKET) -> Intent:
 
     return Intent(
         asks=(
-            Ask(
+            an_ask(
                 agriculture_subjects="paddy",
                 subject_categories=category,
                 interaction_type=InteractionType.OBSERVE,
@@ -286,7 +287,7 @@ async def test_a_facility_select_carries_the_search_origin() -> None:
     }
     deps.intent = Intent(
         asks=(
-            Ask(
+            an_ask(
                 subject_categories=SubjectCategory.FACILITY,
                 interaction_type=InteractionType.OBSERVE,
                 place=ResolvedPlace(
@@ -347,7 +348,7 @@ async def test_each_select_carries_its_own_asks_place() -> None:
     mumbai = Geometry(coordinates=[72.8777, 19.0760])
 
     def weather_ask(name: str, geometry: Geometry) -> Ask:
-        return Ask(
+        return an_ask(
             subject_categories=SubjectCategory.WEATHER,
             interaction_type=InteractionType.OBSERVE,
             place=ResolvedPlace(
@@ -404,7 +405,7 @@ async def test_each_select_carries_its_own_asks_place() -> None:
 def _paddy_in_xyzzy() -> Intent:
     return Intent(
         asks=(
-            Ask(
+            an_ask(
                 agriculture_subjects="paddy",
                 subject_categories=SubjectCategory.MARKET,
                 interaction_type=InteractionType.OBSERVE,

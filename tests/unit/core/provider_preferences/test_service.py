@@ -7,7 +7,7 @@ here rather than through the planner.
 
 from __future__ import annotations
 
-from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
+from dss.core.intent.models import Intent, InteractionType, SubjectCategory
 from dss.core.provider_discovery.models import (
     DiscoveredAnswer,
     DiscoveryResult,
@@ -15,6 +15,7 @@ from dss.core.provider_discovery.models import (
 )
 from dss.core.provider_preferences.models import NO_PREFERENCE, PreferenceBook
 from dss.core.provider_preferences.service import prioritise, priority_for_ask
+from tests.support.asks import an_ask
 from tests.support.providers import build_capability
 
 WEATHER = "openagrinet:WeatherObservation"
@@ -43,7 +44,9 @@ def _answer(provider: str) -> DiscoveredAnswer:
 def _intent(*categories: SubjectCategory) -> Intent:
     return Intent(
         asks=tuple(
-            Ask(subject_categories=category, interaction_type=InteractionType.OBSERVE)
+            an_ask(
+                subject_categories=category, interaction_type=InteractionType.OBSERVE
+            )
             for category in (categories or (SubjectCategory.WEATHER,))
         ),
         confidence=1.0,
