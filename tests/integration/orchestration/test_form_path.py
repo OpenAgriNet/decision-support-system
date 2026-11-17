@@ -1258,7 +1258,7 @@ async def test_a_crash_in_the_provider_call_leaves_the_flow_removed() -> None:
 
 
 async def test_a_crash_in_redaction_on_an_init_response_keeps_the_flow_open() -> None:
-    async def broken_redact(texts, *, request_id):
+    async def broken_redact(texts, *, transaction_id):
         raise RuntimeError("redaction down")
 
     orch, store, _ = _build_kisan_orchestrator(
