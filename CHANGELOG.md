@@ -44,6 +44,10 @@
   the request, message and session ids can be filtered on. Every `dss`
   log line carries the turn's ids. The console still prints `key=value`
   (#241)
+- A form field the pack marks `x-oan-pii` is masked whole: logs, traces and
+  the audit record see a tag, and the provider gets the real value. Only
+  unmarked typed fields are moderated, so the grievance description, which
+  the pack marks, is no longer moderated (#207)
 
 ### Added
 - A farmer with a scheme problem is guided to the grievance form. When their
