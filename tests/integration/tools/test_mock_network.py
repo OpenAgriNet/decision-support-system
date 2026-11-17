@@ -40,6 +40,7 @@ from dss.ports.invocation import (
     StatusFailedError,
     SupportFailedError,
 )
+from tests.support.pack_schema import FIXTURE_PACK_ROOT, validate_resource_attributes
 from tests.support.providers import build_capability
 from tools.mock_network.app import DEFAULT_QUESTIONS, MOCK_OTP, build_mock_app
 from tools.mock_network.generators import (
@@ -288,19 +289,20 @@ async def test_a_query_naming_two_capabilities_gets_both(
     }
 
 
-async def test_grievance_discover_finds_the_pmfby_and_pm_kisan_desks(
+async def test_grievance_discover_finds_the_pmfby_and_pm_kisan_providers(
     discovery: HttpCapabilityDiscovery,
 ) -> None:
     result = await _discover(discovery, _GRIEVANCE, subject_category="Grievance")
 
-    desks = {desk.provider_id: desk for desk in result.capabilities}
-    assert set(desks) == {"pmfby", "pmkisan"}
-    assert desks["pmfby"].resource_id == "res:pmfby:grievance"
-    assert desks["pmkisan"].resource_id == "res:pmkisan:grievance"
-    assert all(desk.observed_categories == ("Grievance",) for desk in desks.values())
+    providers = {
+        capability.provider_id: capability for capability in result.capabilities
+    }
+    assert set(providers) == {"pmfby", "pmkisan"}
+    assert providers["pmfby"].resource_id == "res:pmfby:grievance"
+    assert providers["pmkisan"].resource_id == "res:pmkisan:grievance"
 
 
-async def test_only_the_pm_kisan_desk_advertises_an_otp_challenge(
+async def test_only_the_pm_kisan_provider_advertises_an_otp_challenge(
     discovery: HttpCapabilityDiscovery,
 ) -> None:
     """The form flow reads `challenge` to know it must ask for an OTP first."""
@@ -308,11 +310,37 @@ async def test_only_the_pm_kisan_desk_advertises_an_otp_challenge(
     result = await _discover(discovery, _GRIEVANCE, subject_category="Grievance")
 
     challenged = {
-        desk.provider_id
-        for desk in result.capabilities
-        if "challenge" in desk.advertised
+        provider.provider_id
+        for provider in result.capabilities
+        if "challenge" in provider.advertised
     }
     assert challenged == {"pmkisan"}
+
+
+async def test_the_grievance_catalog_passes_the_pack(pack_dir: Path) -> None:
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=build_mock_app(pack_dir=pack_dir)),
+        base_url="http://mock.test",
+    ) as client:
+        response = await client.post(
+            "/discover",
+            json={"context": {"schemaContext": [f"grievance.jsonld#{_GRIEVANCE}"]}},
+        )
+
+    # `pack_dir` is a stub; the fixture packs are the full Grievance pack.
+    errors_by_resource = {
+        resource["id"]: validate_resource_attributes(
+            resource["resourceAttributes"],
+            root=FIXTURE_PACK_ROOT,
+            pack_name="Grievance",
+        ).errors
+        for catalog in response.json()["message"]["catalogs"]
+        for resource in catalog["resources"]
+    }
+    assert errors_by_resource == {
+        "res:pmfby:grievance": (),
+        "res:pmkisan:grievance": (),
+    }
 
 
 async def test_select_returns_the_values_the_composer_will_quote(

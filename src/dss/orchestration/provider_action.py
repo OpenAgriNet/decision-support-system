@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Awaitable, Callable, Mapping
 
 from dss.core.forms.models import ActionReply, ActionSchema
@@ -15,6 +16,8 @@ from dss.core.shared.models import ProviderAction
 from dss.core.shared.network import NetworkTransactionID
 from dss.ports.invocation import ProviderActionInvocation, ProviderCallFailedError
 
+logger = logging.getLogger(__name__)
+
 # A form turn has one ask: the form's.
 FORM_ASK_INDEX = 0
 
@@ -29,9 +32,10 @@ async def call_provider_action(  # noqa: PLR0913
     invocation: ProviderActionInvocation,
     transaction_id: NetworkTransactionID,
     visibility: Visibility,
+    init_values: Mapping[str, str] | None = None,
 ) -> DiscoveredAnswer | Failure:
     invocation_call = _invocation_call_for(action, invocation)
-    body = build_action_attributes(action, provider, values)
+    body = build_action_attributes(action, provider, values, init_values=init_values)
     try:
         reply = await invocation_call(
             provider, body, transaction_id, visibility=visibility
@@ -75,4 +79,14 @@ def _as_answer(
         resource_id=provider.resource_id,
         attributes=without_farmer_values(reply.attributes, action),
         validity=None,
+    )
+
+
+# For an operator: the farmer is not told our credentials were refused. The
+# status alone, never the body.
+def warn_auth_refused(failure: Failure, *, request_id: str) -> None:
+    logger.warning(
+        "request_id=%s provider_auth_refused status_code=%s",
+        request_id,
+        failure.status_code,
     )

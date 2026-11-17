@@ -52,6 +52,19 @@ _TEXT = ClarificationText(
     status_not_checked="We could not check your complaint's status right now.",
     status_not_found="No complaint was found for that ticket number and phone.",
     session_busy="Another message from you is still being handled. Try again.",
+    already_filed="This form was already sent.",
+    no_init_pending="Nothing is waiting for this response.",
+    init_not_sent="We could not reach the provider to start this.",
+    init_rejected="The provider did not accept these details.",
+    init_response_needed="Enter the one-time password the provider sent you.",
+    went_wrong="Something went wrong on our side.",
+    form_cannot_complete="This form cannot be completed right now.",
+    saved_details_unusable="We could not use your saved details.",
+    field_recheck="Check this value.",
+    init_response_refused="The provider did not accept that response.",
+    init_response_not_sent="Nothing was sent. Try the same response again.",
+    outcome_unknown="We could not confirm whether this went through.",
+    case_not_found="No case was found for these details.",
 )
 
 

@@ -386,6 +386,17 @@
   files today; each needs an explicit `case _:`. Until then, a `match` on a
   `Settlement` ends with `assert_never`.
 
+## Forms and init (#207) — deferred
+
+- **`FormStatus.AWAITING_INIT` should go once forms run as a workflow.**
+  Today the session marks a form as waiting for init by hand. A workflow
+  that can pause and resume (an interrupt) would hold that wait itself, and
+  the status could be removed.
+- **More form states only when a story needs them.** Suggested: `PENDING`
+  (a form was offered, not yet sent back) and `FAILED` (sent back with
+  errors). Neither is written today: the DSS keeps no record of an offered
+  form, nor of a submission that failed its checks.
+
 ## Stubs pending real implementations
 
 - **STUB(#83) — `adapters/llm/stub_llm.py`.** Delete this module once a real

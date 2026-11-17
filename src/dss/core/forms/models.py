@@ -3,13 +3,24 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
+from datetime import datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
+from dss.core.channel.models import ComposedAnswer
 from dss.core.provider_discovery.models import ProviderCapability
-from dss.core.shared.models import MessageReference, OutputBlock, Role, TurnInput
+from dss.core.redaction.visibility import Visibility
+from dss.core.shared.models import (
+    Cause,
+    MessageReference,
+    OutputBlock,
+    Role,
+    TurnInput,
+    TurnStatus,
+)
 
 
 class FormContext(BaseModel):
@@ -287,11 +298,26 @@ class FormErrorBlock(OutputBlock):
 
 
 class FailedCallOutcome(StrEnum):
-    ANSWERED = "answered"
     REFUSED = "refused"
     NOT_SENT = "not_sent"
     # It may have reached the provider, so sending it again might file twice.
     OUTCOME_UNKNOWN = "outcome_unknown"
+
+
+# How a form flow's turn ends when no answer is composed from evidence.
+class FlowEnding(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    status: TurnStatus
+    cause: Cause | None
+    answer: ComposedAnswer
+    retry_after_seconds: int | None = None
+
+
+@dataclass(frozen=True)
+class MaskedSubmission:
+    submission: ValidSubmission  # every PII field's value swapped for its tag
+    visibility: Visibility  # tag → real value
 
 
 class ActionReply(BaseModel):
@@ -335,14 +361,26 @@ class FormStatus(StrEnum):
     DONE = "done"  # filed or read; nothing more expected
 
 
-class FormEntry(BaseModel):
+class FormAwaitingInit(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    definition: FormDefinition  # the details form
+    status: Literal[FormStatus.AWAITING_INIT] = FormStatus.AWAITING_INIT
     submission: FormSubmission  # raw; validated again on read
-    status: FormStatus
-    # Where init went; set with AWAITING_INIT.
-    provider: ProviderCapability | None = None
+    provider: ProviderCapability  # where init went
+    # Set each time the entry waits for init again, so the session is saved
+    # and its time to live starts over.
+    awaited_at: datetime
+
+
+class FormDone(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    status: Literal[FormStatus.DONE] = FormStatus.DONE
+    # Values withheld: a done form is only ever looked up, never sent again.
+    submission: FormSubmission
+
+
+type FormEntry = Annotated[FormAwaitingInit | FormDone, Field(discriminator="status")]
 
 
 # Details forms by form_id; DONE entries stay until the TTL.
