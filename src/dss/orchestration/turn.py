@@ -57,7 +57,11 @@ from dss.observability.stages import Stage
 from dss.observability.trace_log import trace_component
 from dss.orchestration.discovery import DiscoverProviders
 from dss.orchestration.settlement import SettleAsks
-from dss.orchestration.stage_content import asks_text, discovery_text
+from dss.orchestration.stage_content import (
+    asks_text,
+    asks_without_place,
+    discovery_text,
+)
 from dss.ports.area_lookup import AreaLookup
 from dss.ports.llm import LLMProvider
 from dss.ports.prompts import PromptProvider
@@ -320,13 +324,14 @@ async def _classify(
     prompts: PromptProvider,
     scheme_catalog: SchemeCatalog | None,
 ) -> IntentClassification:
-    with trace_component(Stage.INTENT, turn.transaction_id):
+    with trace_component(Stage.INTENT, turn.transaction_id) as exit_fields:
         classification = await classify_intent(
             turn,
             llm,
             prompts,
             scheme_catalog.schemes() if scheme_catalog is not None else (),
         )
+        exit_fields["asks"] = asks_without_place(classification.asks)
         set_current_span_content(
             input=turn.input.text, output=asks_text(classification.asks)
         )

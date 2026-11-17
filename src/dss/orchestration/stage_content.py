@@ -34,9 +34,22 @@ def asks_text(asks: Sequence[Ask | ClassifiedAsk]) -> str:
     if not asks:
         return "no asks"
     return "\n".join(
-        f"{i + 1}. {ask.subject_categories.value}/{ask.interaction_type.value}: "
-        f"{ask.agriculture_subjects or '-'}{_scheme(ask)}{_place(ask)}{_action(ask)}"
+        f"{i + 1}. {_describe_ask(ask, place=_place(ask))}"
         for i, ask in enumerate(asks)
+    )
+
+
+def asks_without_place(asks: Sequence[Ask | ClassifiedAsk]) -> tuple[str, ...]:
+    """`asks_text` for the log, which is exported unfiltered: a place can
+    single a farmer out, so it is left off."""
+
+    return tuple(_describe_ask(ask, place="") for ask in asks)
+
+
+def _describe_ask(ask: Ask | ClassifiedAsk, *, place: str) -> str:
+    return (
+        f"{ask.subject_categories.value}/{ask.interaction_type.value}: "
+        f"{ask.agriculture_subjects or '-'}{_scheme(ask)}{place}{_action(ask)}"
     )
 
 
