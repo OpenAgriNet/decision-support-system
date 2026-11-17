@@ -12,13 +12,21 @@ from collections.abc import Mapping
 
 from dss.core.forms.models import FormContext, FormDefinition
 from dss.core.forms.registry import FormLookup
-from dss.core.intent.models import Ask, Intent, InteractionType, Scheme, SubjectCategory
+from dss.core.intent.models import (
+    Ask,
+    AskId,
+    Intent,
+    InteractionType,
+    Scheme,
+    SubjectCategory,
+)
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.shared.models import (
     ProviderAction,
     RequestedAction,
     as_requested_action,
 )
+from dss.orchestration.provider_action import FORM_ASK_INDEX
 
 # Discovery finds a provider by the interaction type, so the ask a submitted
 # form stands for needs one.
@@ -38,6 +46,7 @@ def ask_for_form(context: FormContext, *, scheme: Scheme) -> Ask | None:
     if action is None or context.category not in SubjectCategory:
         return None
     return Ask(
+        id=AskId(FORM_ASK_INDEX),
         subject_categories=SubjectCategory(context.category),
         interaction_type=_INTERACTION_BY_ACTION[action],
         scheme=scheme,

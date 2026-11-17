@@ -54,7 +54,7 @@ from dss.core.shared.models import (
 from dss.orchestration.settlement import SettleAsks, build_settle_asks
 from dss.orchestration.turn import run_turn
 from dss.ports.area_lookup import AreaMatch
-from tests.support.asks import an_ask
+from tests.support.asks import an_ask, numbered
 from tests.support.fakes import FakeAreaLookup, FakePromptProvider
 from tests.support.providers import build_capability
 from tests.support.settlement import settles_every_ask
@@ -551,7 +551,7 @@ def test_the_registrys_forms_reach_settlement() -> None:
         interaction_type=InteractionType.OBSERVE,
     )
 
-    assert settle(Intent(asks=(complaint, rain))) == (
+    assert settle(Intent(asks=numbered(complaint, rain))) == (
         NeedsClarification(open_slots=(Slot(AskSlot.SCHEME, Missing()),)),
         _SETTLED,
     )

@@ -96,6 +96,21 @@ def _weather_ask(place_name: str | None = None) -> ClassifiedAsk:
     )
 
 
+async def test_asks_are_numbered_in_the_users_order() -> None:
+    classification = IntentClassification(
+        asks=(_weather_ask("Pune"), _weather_ask("Anand"), _weather_ask("Pune"))
+    )
+    lookup = _FakeLookup({"pune": [_PUNE], "anand": [_ANAND]})
+
+    intent = await resolve_places(classification, _turn(), lookup=lookup)
+
+    assert [(ask.id, ask.place.name) for ask in intent.asks] == [
+        (0, "Pune"),
+        (1, "Anand"),
+        (2, "Pune"),
+    ]
+
+
 async def test_named_place_beats_device_geometry() -> None:
     """The headline test: today's bug. A farmer in Anand asking about Pune
     must get Pune, not the device's own location."""

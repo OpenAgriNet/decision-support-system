@@ -29,7 +29,7 @@ from dss.core.settlement.models import (
 )
 from dss.core.settlement.requirements import build_ask_requirements
 from dss.core.settlement.service import settle, settle_asks
-from tests.support.asks import an_ask
+from tests.support.asks import an_ask, numbered
 
 PLACE = AskSlot.PLACE
 # Form field names: settle works on any frame, not only an ask's.
@@ -96,8 +96,10 @@ def _ask(category: SubjectCategory, interaction: InteractionType) -> Ask:
 def test_each_ask_settles_on_its_own() -> None:
     """Weather needs a place and none was given; a grievance needs none."""
 
-    weather = _ask(SubjectCategory.WEATHER, InteractionType.OBSERVE)
-    grievance = _ask(SubjectCategory.GRIEVANCE, InteractionType.ACT)
+    weather, grievance = numbered(
+        _ask(SubjectCategory.WEATHER, InteractionType.OBSERVE),
+        _ask(SubjectCategory.GRIEVANCE, InteractionType.ACT),
+    )
 
     settlements = settle_asks(
         Intent(asks=(weather, grievance)),

@@ -176,6 +176,7 @@ def test_one_answer_becomes_one_source_and_one_result(
 
 
 ADVISORY_ASK = an_ask(
+    id=1,
     agriculture_subjects="paddy",
     subject_categories=SubjectCategory.CROP,
     interaction_type=InteractionType.ADVISE,
@@ -489,6 +490,7 @@ _RAIN = an_ask(
     interaction_type=InteractionType.OBSERVE,
 )
 _POTATO = an_ask(
+    id=1,
     subject_categories=SubjectCategory.CROP,
     interaction_type=InteractionType.ADVISE,
     agriculture_subjects="potato",

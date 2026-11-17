@@ -20,6 +20,7 @@ from dss.core.intent.models import (
 from dss.core.provider_discovery.models import DiscoveryResult, ProviderCapability
 from dss.core.shared.models import REQUESTABLE_ACTIONS, ProviderAction, TurnStatus
 from dss.orchestration.form_offer import ask_for_form, find_forms, form_context_for
+from dss.orchestration.provider_action import FORM_ASK_INDEX
 from tests.integration.orchestration.test_orchestrator import (
     _build,
     _ctx,
@@ -28,7 +29,7 @@ from tests.integration.orchestration.test_orchestrator import (
     _FakePlan,
     _turn,
 )
-from tests.support.asks import an_ask
+from tests.support.asks import an_ask, numbered
 from tests.support.fakes import FakeSchemeCatalog
 from tests.support.grievance_pack import (
     PMKISAN_STATUS,
@@ -203,7 +204,7 @@ def test_only_the_form_ask_is_taken_from_a_mixed_turn() -> None:
     """ "What's the weather, and file my PMFBY grievance": the weather ask
     stays the planner's, the grievance ask is the form's."""
 
-    intent = Intent(asks=(WEATHER_ASK, _grievance_ask()), confidence=0.9)
+    intent = Intent(asks=numbered(WEATHER_ASK, _grievance_ask()), confidence=0.9)
     discovery = _discovery({0: (WEATHER_DESK,), 1: (GRIEVANCE_DESK,)})
 
     awaiting = find_forms(
@@ -263,6 +264,14 @@ def test_a_submission_ask_names_the_form_it_came_from() -> None:
     assert ask.scheme == PMFBY
     assert ask.place is None
     assert form_context_for(ask) == PMFBY_SUPPORT
+
+
+def test_a_submission_ask_has_the_form_paths_id() -> None:
+    """The form path reads discovery by this id, so the two must agree."""
+
+    ask = ask_for_form(PMFBY_SUPPORT, scheme=PMFBY)
+
+    assert ask.id == FORM_ASK_INDEX
 
 
 @pytest.mark.parametrize("action", sorted(REQUESTABLE_ACTIONS))

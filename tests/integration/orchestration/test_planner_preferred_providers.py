@@ -42,7 +42,7 @@ from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import Geometry, TextQuery, UserTurn
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
 from dss.ports.invocation import SelectFailedError
-from tests.support.asks import an_ask
+from tests.support.asks import an_ask, numbered
 from tests.support.providers import build_capability
 
 WEATHER = "openagrinet:WeatherObservation"
@@ -597,7 +597,7 @@ async def test_select_next_on_one_ask_leaves_the_other_ask_alone() -> None:
         candidates=(VISTAAR, MAUSAMGRAM),
         priorities=_ranked("maharashtra-vistaar", "mausamgram"),
     )
-    two_asks = (*deps.intent.asks, *deps.intent.asks)
+    two_asks = numbered(*deps.intent.asks, *deps.intent.asks)
     deps.intent = Intent(asks=two_asks, confidence=1.0)
     deps.discovery.capabilities[1] = (VISTAAR, MAUSAMGRAM)
     deps.discovery.priorities[1] = _ranked("maharashtra-vistaar", "mausamgram")[0]

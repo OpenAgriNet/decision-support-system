@@ -36,7 +36,7 @@ from dss.core.provider_discovery.models import (
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import ConversationMessage, TextQuery, UserTurn
 from dss.orchestration.plan import build_plan
-from tests.support.asks import an_ask
+from tests.support.asks import an_ask, numbered
 from tests.support.evidence import attempted
 from tests.support.fakes import FakePromptProvider
 from tests.support.providers import build_capability
@@ -390,7 +390,7 @@ async def test_a_model_that_still_selects_for_a_form_ask_reaches_no_provider() -
 
     evidence = await plan(
         _turn(),
-        intent=Intent(asks=(GRIEVANCE_ASK, PRICE_ASK), confidence=0.9),
+        intent=Intent(asks=numbered(GRIEVANCE_ASK, PRICE_ASK), confidence=0.9),
         discovery=DiscoveryResult(
             answers={},
             capabilities={0: (grievance_desk,), 1: (CAPABILITY,)},

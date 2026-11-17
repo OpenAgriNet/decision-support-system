@@ -36,7 +36,7 @@ from dss.core.provider_discovery.models import (
 )
 from dss.core.provider_discovery.service import discover_providers
 from dss.core.shared.models import Geometry, ProviderAction, TextQuery, UserTurn
-from tests.support.asks import an_ask
+from tests.support.asks import an_ask, numbered
 from tests.support.providers import build_capability
 
 NOW = datetime(2026, 8, 26, 12, 0, 0, tzinfo=UTC)
@@ -305,7 +305,7 @@ async def test_a_failing_query_does_not_prevent_a_sibling_from_succeeding() -> N
         subject_categories=SubjectCategory.MARKET,
         interaction_type=InteractionType.OBSERVE,
     )
-    intent = Intent(asks=(weather_ask, market_ask), confidence=0.8)
+    intent = Intent(asks=numbered(weather_ask, market_ask), confidence=0.8)
     turn = _turn()
     schema_pack_cache = _FakeSchemaPackCache(
         {
@@ -371,6 +371,7 @@ async def test_an_adapter_that_raises_takes_the_whole_turn_down() -> None:
                 interaction_type=InteractionType.OBSERVE,
             ),
             an_ask(
+                id=1,
                 subject_categories=SubjectCategory.MARKET,
                 interaction_type=InteractionType.OBSERVE,
             ),
@@ -401,7 +402,7 @@ async def test_two_asks_sharing_a_pair_dedupe_to_one_query() -> None:
         subject_categories=SubjectCategory.MARKET,
         interaction_type=InteractionType.OBSERVE,
     )
-    intent = Intent(asks=(ask, ask), confidence=0.8)
+    intent = Intent(asks=numbered(ask, ask), confidence=0.8)
     turn = _turn()
     schema_pack_cache = _FakeSchemaPackCache(
         {("Market", "Service"): ("openagrinet:MandiPrice",)}
@@ -1032,7 +1033,7 @@ _NASHIK = _PUNE.model_copy(
 
 async def _discover_with(discovery: _NetworkDiscovery, *asks: Ask) -> DiscoveryResult:
     return await discover_providers(
-        Intent(asks=asks, confidence=0.9),
+        Intent(asks=numbered(*asks), confidence=0.9),
         _turn(),
         discovery=discovery,
         schema_pack_cache=_MARKET_AND_WEATHER_INDEX,

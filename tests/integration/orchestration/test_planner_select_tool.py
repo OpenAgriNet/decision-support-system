@@ -37,7 +37,7 @@ from dss.core.provider_discovery.models import (
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import Geometry, TextQuery, UserTurn
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
-from tests.support.asks import an_ask
+from tests.support.asks import an_ask, numbered
 from tests.support.providers import build_capability
 
 CAPABILITY = build_capability(
@@ -373,7 +373,7 @@ async def test_each_select_carries_its_own_asks_place() -> None:
         "openagrinet:WeatherForecast": "https://example.test/context.jsonld"
     }
     deps.intent = Intent(
-        asks=(weather_ask("Pune", pune), weather_ask("Mumbai", mumbai)),
+        asks=numbered(weather_ask("Pune", pune), weather_ask("Mumbai", mumbai)),
         confidence=1.0,
     )
 

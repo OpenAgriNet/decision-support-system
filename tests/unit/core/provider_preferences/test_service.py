@@ -45,9 +45,13 @@ def _intent(*categories: SubjectCategory) -> Intent:
     return Intent(
         asks=tuple(
             an_ask(
-                subject_categories=category, interaction_type=InteractionType.OBSERVE
+                id=position,
+                subject_categories=category,
+                interaction_type=InteractionType.OBSERVE,
             )
-            for category in (categories or (SubjectCategory.WEATHER,))
+            for position, category in enumerate(
+                categories or (SubjectCategory.WEATHER,)
+            )
         ),
         confidence=1.0,
     )
