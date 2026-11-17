@@ -423,11 +423,13 @@ Things worth knowing when you look at the output:
 - **How many frames you get is not how many tokens the model wrote.** Pieces are
   grouped in 100ms windows, because every frame repeats the whole response
   envelope.
-- **No deltas on a refusal, a no-match, or a "which place are you asking about?".**
-  Those are fixed replies, not written by the model. If you are seeing no
+- **No deltas on a refusal or a no-match.**
+  Those are fixed replies, not written by the model. A question to the
+  farmer, such as which place, is written by the composer and does stream.
+  If you are seeing no
   `claim.delta`, check `outcome.status` on the terminal frame before assuming
-  streaming is broken — an unwired network gives `no_match`, which never reaches
-  the composer.
+  streaming is broken — an unwired network gives `no_match` for an ask that
+  needs no question, and that reply never reaches the composer.
 
 Note also that once the first byte is written the status cannot change, so a
 failure after `turn.created` arrives as a `turn.failed` event inside a `200`.
@@ -700,12 +702,10 @@ Three things to know before editing a sender's row:
   subject categories (`Crop`, `Livestock`, `Weather`, `Market`, `Scheme`,
   `Facility`) is logged — it can never match an ask.
 
-To see what a ranking did to a turn, grep the server's log output for the
-turn's `transactionId`:
-
-```
-request_id=<txn> component=provider_preferences event=...
-```
+To see what a ranking did to a turn, filter the logs on
+`request_id=<txn>` and `component=provider_preferences`. These are log
+attributes in HyperDX; on the console they print as `key=value`, so grep works
+too.
 
 `event=ranking_applied` says what was ranked and what was dropped;
 `event=provider_consulted` gives one line per provider the ask actually
@@ -900,8 +900,7 @@ How it behaves:
   not inside it: "Which Kashmir?" lists two villages and Jammu and Kashmir. If
   the user is inside that state, the answer is for where they are, with no
   question.
-  This works the same with the area file alone. If you override the
-  clarification text, add a `region_place` line, or the DSS will not start.
+  This works the same with the area file alone.
 - **A name the file has only inside a longer one.** "Kanha" is not in the file,
   but "Kanha Chatti" starts with it and may be far away. That is only a guess.
   Photon gets the chance to find the exact name first. Otherwise the guess is
@@ -1296,7 +1295,7 @@ is the only runner, and `core/channel/service.py` now just shapes the answer
 (`answer_from_evidence`, `no_match_answer`).
 
 Swapping any of them is a one-line change in
-`src/dss/entrypoint/composition.py` — the only file that names concrete classes.
+`src/dss/entrypoint/composition/` — the only package that names concrete classes.
 
 ## Tests
 

@@ -15,6 +15,7 @@ only it has paths.
 from __future__ import annotations
 
 import json
+from collections.abc import Collection
 
 import yaml
 
@@ -50,6 +51,21 @@ def pack_needs_place(pack: SchemaPackFiles) -> bool:
     return any(
         _LOCATION_SEGMENT in path.split(".")
         for path in profile.get("indexable_paths", ())
+    )
+
+
+def is_place_needed(
+    pack_types: Collection[str], place_bound_types: Collection[str]
+) -> bool:
+    """True when every pack type serves a place. One placeless type is enough
+    for False: a place filter drops every resource that has no coverage area.
+    With no pack type, no pack asks for a place.
+
+    Settlement and discovery both read this, so an ask is never asked for a
+    place its search would not use."""
+
+    return bool(pack_types) and all(
+        pack_type in place_bound_types for pack_type in pack_types
     )
 
 

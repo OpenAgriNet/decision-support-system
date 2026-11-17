@@ -5,11 +5,11 @@ from dss.core.forms.models import (
     ActionSchema,
     FieldSource,
     FormContext,
-    ProviderAction,
 )
 from dss.core.planner.models import Failure
 from dss.core.provider_discovery.models import DiscoveredAnswer, FailureClass
 from dss.core.redaction.visibility import NOTHING_HELD
+from dss.core.shared.models import ProviderAction
 from dss.orchestration.provider_action import call_provider_action
 from dss.ports.invocation import StatusFailedError, SupportFailedError
 from tests.support.fakes import RecordingActionInvocation

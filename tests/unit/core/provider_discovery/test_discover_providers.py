@@ -35,7 +35,7 @@ from dss.core.provider_discovery.models import (
     Validity,
 )
 from dss.core.provider_discovery.service import discover_providers
-from dss.core.shared.models import Geometry, TextQuery, UserTurn
+from dss.core.shared.models import Geometry, ProviderAction, TextQuery, UserTurn
 from tests.support.providers import build_capability
 
 NOW = datetime(2026, 8, 26, 12, 0, 0, tzinfo=UTC)
@@ -165,32 +165,98 @@ async def test_an_unresolved_ask_never_calls_discover() -> None:
     assert result.events == (CapabilityUnresolved("Facility", "Service"),)
 
 
-async def test_an_ask_whose_place_failed_is_never_discovered() -> None:
-    """Xyzzy has nowhere to search. Discovering anyway sends no location
-    filter, and a Direct answer from any place in the network comes back as
-    if it were Xyzzy's."""
-
+async def _discover_in_xyzzy(
+    category: SubjectCategory, pack: str, *, place_bound: bool
+) -> tuple[_FakeDiscovery, DiscoveryResult]:
     ask = Ask(
-        subject_categories=SubjectCategory.MARKET,
+        subject_categories=category,
         interaction_type=InteractionType.OBSERVE,
         place=UnresolvedPlace(unresolved_name="Xyzzy"),
     )
     discovery = _FakeDiscovery(_query_result())
-
     result = await discover_providers(
         Intent(asks=(ask,), confidence=0.9),
         _turn(),
         discovery=discovery,
         schema_pack_cache=_FakeSchemaPackCache(
-            {("Market", "Service"): ("openagrinet:MandiPrice",)}
+            {(category.value, "Service"): (pack,)},
+            place_bound_types=frozenset({pack}) if place_bound else frozenset(),
         ),
         radius_m=25000,
         now=NOW,
+    )
+    return discovery, result
+
+
+async def test_an_ask_whose_place_failed_is_never_discovered() -> None:
+    """Xyzzy has nowhere to search, and the pack is searched by place. An
+    unfiltered search would bring back answers for some other place."""
+
+    discovery, result = await _discover_in_xyzzy(
+        SubjectCategory.MARKET, "openagrinet:MandiPrice", place_bound=True
     )
 
     assert discovery.calls == []
     assert result.answers == {0: ()}
     assert result.capabilities == {0: ()}
+
+
+async def test_an_unclear_place_does_not_stop_a_placeless_search() -> None:
+    """A complaint names Xyzzy in passing. Its pack needs no place, so the
+    search goes out."""
+
+    discovery, _ = await _discover_in_xyzzy(
+        SubjectCategory.GRIEVANCE, "openagrinet:Grievance", place_bound=False
+    )
+
+    assert len(discovery.calls) == 1
+
+
+async def test_a_how_to_with_an_action_is_searched_as_a_service() -> None:
+    """Searched by its wording, "how do I file a complaint" would look among
+    the advice packs and never find the desk."""
+
+    how_to_file = Ask(
+        subject_categories=SubjectCategory.GRIEVANCE,
+        interaction_type=InteractionType.ADVISE,
+        action=ProviderAction.SUPPORT,
+    )
+    discovery = _FakeDiscovery(_query_result())
+
+    await discover_providers(
+        Intent(asks=(how_to_file,), confidence=0.9),
+        _turn(),
+        discovery=discovery,
+        schema_pack_cache=_FakeSchemaPackCache(
+            {("Grievance", "Service"): ("openagrinet:Grievance",)}
+        ),
+        radius_m=25000,
+        now=NOW,
+    )
+
+    assert len(discovery.calls) == 1
+
+
+async def test_scheme_ask_ignores_unclear_place() -> None:
+    """No pack serves a scheme ask, so none says it needs a place."""
+
+    ask = Ask(
+        subject_categories=SubjectCategory.SCHEME,
+        interaction_type=InteractionType.ADVISE,
+        place=UnresolvedPlace(unresolved_name="Xyzzy"),
+    )
+    discovery = _FakeDiscovery(_query_result())
+
+    await discover_providers(
+        Intent(asks=(ask,), confidence=0.9),
+        _turn(),
+        discovery=discovery,
+        schema_pack_cache=_FakeSchemaPackCache({}),
+        radius_m=25000,
+        now=NOW,
+    )
+
+    assert len(discovery.calls) == 1
 
 
 class _PartiallyFailingDiscovery:
@@ -1175,6 +1241,29 @@ async def test_a_placeless_pack_is_searched_everywhere() -> None:
         schema_pack_cache=_FakeSchemaPackCache(
             {("Grievance", "Service"): ("openagrinet:Grievance",)}
         ),
+        radius_m=25000,
+        now=NOW,
+    )
+
+    assert discovery.calls[0].coverage is None
+
+
+async def test_scheme_ask_is_searched_everywhere() -> None:
+    """Only a pack can ask for a place, and no pack serves a scheme ask. So
+    even a clear place is not sent."""
+
+    discovery = _NetworkDiscovery({})
+    scheme_ask = Ask(
+        subject_categories=SubjectCategory.SCHEME,
+        interaction_type=InteractionType.ADVISE,
+        place=_PUNE,
+    )
+
+    await discover_providers(
+        Intent(asks=(scheme_ask,), confidence=0.9),
+        _turn(),
+        discovery=discovery,
+        schema_pack_cache=_FakeSchemaPackCache({}),
         radius_m=25000,
         now=NOW,
     )

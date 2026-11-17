@@ -28,7 +28,6 @@ from dss.core.forms.models import (
     FormSubmission,
     JsonScalar,
     PiiClass,
-    ProviderAction,
     UnknownForm,
     ValidSubmission,
 )
@@ -37,7 +36,7 @@ from dss.core.planner.models import Failure
 from dss.core.provider_discovery.models import ProviderCapability
 from dss.core.schema_packs.models import SchemaPackFiles, SchemaPackSkipped
 from dss.core.schema_packs.service import PACK_DEFECTS, is_api_pack
-from dss.core.shared.models import Cause, TextBlock
+from dss.core.shared.models import Cause, ProviderAction, TextBlock
 from dss.core.shared.schema import resolve_schema
 
 _ACTION_MAP = "x-oan-schema-by-action"

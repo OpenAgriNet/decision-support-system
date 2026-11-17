@@ -1,9 +1,11 @@
 """Trace logging: component entry/exit and external-service responses.
 
-One place so the format is uniform and greppable. Every line carries a
-``request_id`` — the turn's ``transactionId``, which is also its ``traceId`` —
-so a whole turn's path across components and services joins on one key
-(``grep "request_id=<id>"``).
+One place so the format is uniform. Each line is a short message, like
+``discovery exit``, and its fields ride on the record as attributes. A log
+search such as HyperDX filters on them, and the console prints them as
+``key=value`` (`log_format.py`). Every line carries a ``request_id`` — the
+turn's ``transactionId``, which is also its ``traceId`` — so a whole turn's path
+joins on one key.
 
 Three things get logged:
 
@@ -29,11 +31,10 @@ logger to tune verbosity without touching the rest of the app. Bodies can be
 large and may contain farmer-facing content — see CONVENTIONS.md on PII before
 shipping these lines to a broad-retention sink.
 
-``request_id`` need not be passed everywhere: it is stashed in a context
-variable at the top of the turn (``bind_turn_ids``), so an adapter with no
-``transaction_id`` in hand (the LLM provider port takes none) still tags its
-line correctly. Anyio copies the context into each child task, so the id set
-before the intent/moderation task group reaches both branches.
+``request_id`` need not be passed anywhere: the route stashes the turn's ids
+in context variables (``bind_turn_ids``), and ``TurnFilter`` on each log
+handler copies them onto every ``dss`` line — like a Java MDC. Anyio copies
+the context into each child task, so the ids reach every branch of a turn.
 """
 
 from __future__ import annotations
@@ -124,12 +125,9 @@ def bind_turn_ids(
     session_id: str | None = None,
 ) -> None:
     """Make this turn's ids ambient for everything downstream in its context
-    (and its child tasks). Called once at the top of a turn.
+    (and its child tasks). The route calls it once, right after parsing.
 
-    ``request_id`` is the turn's ``transactionId``. ``message_id`` and
-    ``session_id`` are the other two the caller filters on; they are keyword
-    arguments and default to absent because only the orchestrator holds a
-    ``TurnContext`` carrying all three.
+    ``request_id`` is the turn's ``transactionId``.
     """
 
     _request_id.set(request_id)
@@ -155,10 +153,6 @@ def current_session_id() -> str | None:
     return None if session_id == _ABSENT else session_id
 
 
-def _rid(request_id: str | None) -> str:
-    return request_id if request_id is not None else _request_id.get()
-
-
 def current_otel_ids() -> tuple[str, str]:
     """The active span's trace and span ids, as the hex Langfuse displays.
 
@@ -168,7 +162,7 @@ def current_otel_ids() -> tuple[str, str]:
     reports the `select` span, and clicking it in Langfuse lands on the call.
     A `trace_component` line carries the span its stage runs *inside* rather
     than the stage's own: both lines are written outside the stage span, so
-    `enter` and `exit` agree with each other and keep their old format.
+    `enter` and `exit` agree with each other.
 
     `trace_id` is exact on every line either way.
 
@@ -182,21 +176,48 @@ def current_otel_ids() -> tuple[str, str]:
     return format(context.trace_id, "032x"), format(context.span_id, "016x")
 
 
-def _ids(request_id: str | None = None) -> str:
-    """The id prefix every trace line opens with.
+class TurnFilter(logging.Filter):
+    """Copies the bound turn ids onto every record its handler writes.
 
-    ``request_id`` stays first and keeps its meaning, so greps written against
-    the old format still match. The rest are appended: ``trace_id`` and
-    ``span_id`` are the OpenTelemetry hex ids, the same strings Langfuse shows,
-    so one line joins a log to a span without a search.
+    - On the handlers, not the `dss` logger: a logger's filter skips its children.
+    - An id the line passed itself wins; an absent one is left out.
+    - No trace or span id: the log bridge stamps both from the active span.
     """
 
-    trace_id, span_id = current_otel_ids()
-    return (
-        f"request_id={_rid(request_id)} "
-        f"trace_id={trace_id} span_id={span_id} "
-        f"message_id={_message_id.get()} session_id={_session_id.get()}"
+    def filter(self, record: logging.LogRecord) -> bool:
+        for key, value in _bound_turn_ids().items():
+            if not hasattr(record, key):
+                setattr(record, key, value)
+        return True
+
+
+def _bound_turn_ids() -> dict[str, str]:
+    ids = {
+        "request_id": _request_id.get(),
+        "message_id": _message_id.get(),
+        "session_id": _session_id.get(),
+    }
+    return {key: value for key, value in ids.items() if value != _ABSENT}
+
+
+def _given_request_id(request_id: str | None) -> dict[str, str]:
+    """A request id passed by hand, which overrides the bound one."""
+
+    return {} if request_id is None else {"request_id": request_id}
+
+
+def _log(level: int, message: str, **fields: Any) -> None:
+    logger.log(
+        level,
+        message,
+        extra={key: _as_attribute(value) for key, value in fields.items()},
     )
+
+
+def _as_attribute(value: Any) -> str | int | float | bool:
+    """An OpenTelemetry attribute takes only primitives; anything else is dropped."""
+
+    return value if isinstance(value, (str, int, float, bool)) else str(value)
 
 
 @contextmanager
@@ -223,7 +244,13 @@ def trace_component(
     span_context = nullcontext() if opener is None else opener(f"dss.stage.{stage}")
 
     start = time.monotonic()
-    logger.info("%s component=%s event=enter", _ids(request_id), stage)
+    _log(
+        logging.INFO,
+        f"{stage} enter",
+        **_given_request_id(request_id),
+        component=stage.value,
+        event="enter",
+    )
     status = "ok"
     try:
         with span_context:
@@ -233,15 +260,14 @@ def trace_component(
         raise
     finally:
         elapsed_ms = (time.monotonic() - start) * 1000
-        # Rendered again rather than reused from the enter line: the ids are
-        # read from the *current* span, and the wrapped work may have opened
-        # and closed one of its own. Exit belongs to the span it exits into.
-        logger.info(
-            "%s component=%s event=exit status=%s elapsed_ms=%.1f",
-            _ids(request_id),
-            stage,
-            status,
-            elapsed_ms,
+        _log(
+            logging.INFO,
+            f"{stage} exit",
+            **_given_request_id(request_id),
+            component=stage.value,
+            event="exit",
+            status=status,
+            elapsed_ms=round(elapsed_ms, 1),
         )
         recorder = _stage_metric_recorder
         if recorder is not None:
@@ -264,13 +290,14 @@ def log_event(
     values, never the farmer's words (CONVENTIONS.md).
     """
 
-    parts = [
-        f"request_id={_rid(request_id)}",
-        f"component={component}",
-        f"event={event}",
-    ]
-    parts.extend(f"{key}={value}" for key, value in fields.items())
-    logger.info(" ".join(parts))
+    _log(
+        logging.INFO,
+        f"{component} {event}",
+        **_given_request_id(request_id),
+        component=component,
+        event=event,
+        **fields,
+    )
 
 
 def log_external_request(
@@ -294,16 +321,7 @@ def log_external_request(
     logger.
     """
 
-    parts = [_ids(request_id), f"external={service}", "event=request"]
-    parts.extend(f"{key}={value}" for key, value in fields.items())
-    logger.info(" ".join(parts))
-    if body is not None:
-        logger.debug(
-            "%s external=%s event=request_body body=%s",
-            _ids(request_id),
-            service,
-            _as_text(body),
-        )
+    _log_external(service, request_id, event="request", body=body, **fields)
 
 
 def log_external_response(
@@ -318,21 +336,42 @@ def log_external_response(
 
     ``service`` names it (``llm``, ``llm.planner``, ``discovery``,
     ``invocation``); ``status`` is an HTTP code or a short tag; ``body`` is the
-    payload, rendered to text and clipped. Extra ``**fields`` are appended as
-    ``key=value`` for anything worth pinning next to it (schema, capability).
+    payload, rendered to text and clipped. Extra ``**fields`` become attributes
+    for anything worth pinning next to it (schema, capability).
     """
 
-    parts = [_ids(request_id), f"external={service}", "event=response"]
     if status is not None:
-        parts.append(f"status={status}")
-    parts.extend(f"{key}={value}" for key, value in fields.items())
-    logger.info(" ".join(parts))
+        fields["status"] = status
+    _log_external(service, request_id, event="response", body=body, **fields)
+
+
+def _log_external(
+    service: str,
+    request_id: str | None,
+    *,
+    event: str,
+    body: Any,
+    **fields: Any,
+) -> None:
+    """The INFO line, then the body on its own DEBUG line so it never exports."""
+
+    ids = _given_request_id(request_id)
+    _log(
+        logging.INFO,
+        f"{service} {event}",
+        **ids,
+        external=service,
+        event=event,
+        **fields,
+    )
     if body is not None:
-        logger.debug(
-            "%s external=%s event=response_body body=%s",
-            _ids(request_id),
-            service,
-            _as_text(body),
+        _log(
+            logging.DEBUG,
+            f"{service} {event}_body",
+            **ids,
+            external=service,
+            event=f"{event}_body",
+            body=_as_text(body),
         )
 
 

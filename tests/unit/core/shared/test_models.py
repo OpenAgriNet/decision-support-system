@@ -4,7 +4,30 @@ import pytest
 
 from dss.core.forms.models import FormContext, FormReference
 from dss.core.shared.language import ENGLISH
-from dss.core.shared.models import ConversationMessage, TextQuery, TurnInput, UserTurn
+from dss.core.shared.models import (
+    ConversationMessage,
+    ProviderAction,
+    TextQuery,
+    TurnInput,
+    UserTurn,
+    as_requested_action,
+)
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("support", ProviderAction.SUPPORT),
+        ("status", ProviderAction.STATUS),
+        # A step inside filing or checking, never a choice of its own.
+        ("init", None),
+        ("cancel", None),
+    ],
+)
+def test_only_a_users_choice_is_a_requested_action(
+    raw: str, expected: ProviderAction | None
+) -> None:
+    assert as_requested_action(raw) is expected
 
 
 @pytest.mark.parametrize(

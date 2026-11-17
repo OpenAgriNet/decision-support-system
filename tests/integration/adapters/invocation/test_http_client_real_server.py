@@ -97,9 +97,10 @@ async def test_the_outbound_request_is_logged(httpserver: HTTPServer, caplog) ->
                 transaction_id="txn-test",
             )
 
-    assert "external=invocation event=request" in caplog.text
-    assert "/select" in caplog.text
-    assert "request_id=txn-test" in caplog.text
+    (request,) = [r for r in caplog.records if getattr(r, "event", None) == "request"]
+    assert request.external == "invocation"
+    assert "/select" in request.endpoint
+    assert request.request_id == "txn-test"
 
 
 async def test_select_names_the_discovered_resource_id(httpserver: HTTPServer) -> None:

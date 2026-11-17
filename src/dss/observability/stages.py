@@ -22,6 +22,7 @@ class Stage(StrEnum):
     TRANSLATION_OUT = "translation_out"
     INTENT = "intent"
     LOCATION = "location"
+    SETTLEMENT = "settlement"
     MODERATION = "moderation"
     DISCOVERY = "discovery"
     PLANNER = "planner"

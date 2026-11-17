@@ -14,28 +14,46 @@ from dss.core.intent.models import (
     AmbiguousPlace,
     Ask,
     ClassifiedAsk,
+    GuessedScheme,
     ResolvedPlace,
+    Scheme,
+    UnlistedScheme,
     UnresolvedPlace,
 )
-from dss.core.planner.models import Evidence, Failure
+from dss.core.planner.models import AskEvidence, Attempted, Evidence, Failure
 from dss.core.provider_discovery.models import DiscoveredAnswer, DiscoveryResult
 
 
 def asks_text(asks: Sequence[Ask | ClassifiedAsk]) -> str:
     """`market/observe: wheat @ Pune`, one line per ask. A scheme the intent
-    model named shows its code, `[PMFBY]`: a wrong match is read here."""
+    model named shows its code, `[PMFBY]`: a wrong match is read here. A
+    guess shows `[PMFBY?]`, and a name the catalog does not hold shows
+    `[not listed: XYZ Yojana]`. The action the model read comes last,
+    `-> support`: it picks the form, whatever the interaction says."""
 
     if not asks:
         return "no asks"
     return "\n".join(
         f"{i + 1}. {ask.subject_categories.value}/{ask.interaction_type.value}: "
-        f"{ask.agriculture_subjects or '-'}{_scheme(ask)}{_place(ask)}"
+        f"{ask.agriculture_subjects or '-'}{_scheme(ask)}{_place(ask)}{_action(ask)}"
         for i, ask in enumerate(asks)
     )
 
 
+def _action(ask: Ask | ClassifiedAsk) -> str:
+    return f" -> {ask.action.value}" if ask.action else ""
+
+
 def _scheme(ask: Ask | ClassifiedAsk) -> str:
-    return f" [{ask.scheme.code}]" if ask.scheme is not None else ""
+    match ask.scheme:
+        case Scheme(code=code):
+            return f" [{code}]"
+        case GuessedScheme(scheme=Scheme(code=code)):
+            return f" [{code}?]"
+        case UnlistedScheme(name=name):
+            return f" [not listed: {name}]"
+        case None:
+            return ""
 
 
 def _place(ask: Ask | ClassifiedAsk) -> str:
@@ -106,9 +124,16 @@ def evidence_text(evidence: Evidence) -> str:
     lines += [
         f"failed ask {number}: {failure.capability or '-'}: {failure.reason}"
         for number, entry in numbered
-        for failure in entry.failures
+        for failure in _failures_of(entry)
     ]
     return "\n".join(lines)
+
+
+def _failures_of(ask_evidence: AskEvidence) -> tuple[Failure, ...]:
+    match ask_evidence.outcome:
+        case Attempted(failures=failures):
+            return failures
+    return ()
 
 
 def provider_response_text(response: DiscoveredAnswer | Failure) -> str:

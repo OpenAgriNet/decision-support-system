@@ -154,11 +154,16 @@ Rebase merge only. Each commit lands individually on `main` — individual commi
 
 ## Logging
 Always include `request_id`. Never log raw PII.
+Fields go in attributes, not in the message, so a log search can filter on them.
+Don't pass the turn's ids: the route binds them once, and a filter on each log handler adds them to every `dss` line (like a Java MDC).
 ```python
 # Good
+log_event("moderation", event="classified", moderation_category=category)
+
+# Bad — the fields are text inside the message, so nothing can filter on them
 logger.info("request_id=%s moderation_category=%s", request_id, category)
-logger.warning("request_id=%s pretranslation_failed=True falling_back=True", request_id)
 ```
+The console still prints each attribute as `key=value`, so greps keep working.
 Levels: `DEBUG` internal state · `INFO` turn lifecycle · `WARNING` recoverable failure · `ERROR` unrecoverable failure.
 
 ## Linting & Formatting

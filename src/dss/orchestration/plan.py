@@ -21,9 +21,8 @@ from pydantic_ai.usage import RunUsage
 from dss.adapters.observability.metrics import model_that_ran, record_agent_run
 from dss.core.forms.models import FormDefinition
 from dss.core.intent.models import Intent
-from dss.core.planner.evidence import assemble_evidence, place_failures
+from dss.core.planner.evidence import assemble_evidence
 from dss.core.planner.models import Evidence, Identity, Verdict
-from dss.core.planner.place import place_optional_asks
 from dss.core.planner.prompt import (
     answers_section,
     asks_section,
@@ -99,14 +98,6 @@ def build_plan(  # noqa: PLR0913
         awaiting: Mapping[int, FormDefinition] | None = None,
     ) -> Evidence:
         awaiting = awaiting or {}
-        # A place failure is known before the run and no tool reads it, so it
-        # skips the deps. An ask with no place at all only fails when every
-        # option found for it needs one — the pack decides. An offered form's
-        # ask needs none: the form carries what its call needs.
-        place_optional = place_optional_asks(
-            intent, discovery, schemas, awaiting=frozenset(awaiting)
-        )
-        unplaced = place_failures(intent, place_optional=place_optional)
         # Nothing left to call when every ask is a form's: a run would only
         # cost a model round-trip.
         actionable = [i for i in range(len(intent.asks)) if i not in awaiting]
@@ -115,7 +106,6 @@ def build_plan(  # noqa: PLR0913
                 [],
                 intent=intent,
                 direct_answers=discovery.answers,
-                failures=unplaced,
                 awaiting=awaiting,
             )
 
@@ -178,7 +168,7 @@ def build_plan(  # noqa: PLR0913
             deps.raw_answers,
             intent=intent,
             direct_answers=discovery.answers,
-            failures=[*unplaced, *deps.failures],
+            failures=deps.failures,
             awaiting=awaiting,
         )
 

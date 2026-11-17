@@ -164,6 +164,23 @@
   dereferences either at runtime, so this is fixture/reality drift rather than
   a live fault.
 
+- **Use `CapabilityIndex` everywhere.** The alias exists in
+  `provider_discovery/models.py`, but `Mapping[tuple[str, str], tuple[str,
+  ...]]` (and its `dict` form) is still written out by hand in several places. Swap them for the alias.
+  Its key, `tuple[str, str]`, is (subject category, action type) with
+  nothing to stop the two being swapped. Make it a frozen `CapabilityKey`
+  with named fields in the same change.
+
+- **One pack per category in the index.** The index lists a pack under every
+  category its examples name, so Crop lists both the advisory pack and the
+  facility pack. Crop should map to the advisory pack only, and Facility to
+  the facility pack. Until then `is_place_needed`
+  (`core/schema_packs/service.py`) says a place is needed only when *every*
+  pack of the category needs one. So a Crop ask that only the facility pack
+  can answer is never asked for its place. When the mapping is fixed, change
+  the rule in the same change: with one pack per category it is just "the
+  pack needs a place".
+
 ## Place resolution (#130) — deferred to separate PRs
 
 - **An ask has no type of its own after discovery.** Its options, place
@@ -222,6 +239,85 @@
   `network-adapter/tools/area-lookups/README.md`), which is a decision for
   whoever owns that pipeline, not something regenerating from the current
   snapshot can fix.
+
+## Ask identity
+
+- **Pass the ask itself, not its index.** Results, failures, forms,
+  discovery and the planner's tools all name an ask by its position in
+  `intent.asks`, so any step that branches has to keep positions lined up by
+  hand. #243 works around it by running only the settled asks through
+  discovery and the planner as their own `Intent`, then merging their
+  evidence back with the unsettled asks. Direction: each stage's output
+  carries its ask, as `AskEvidence` already does, so a step can pass on just
+  the asks it means and the merge goes.
+
+- **`ask_index` is wrong after the merge.** `merge_unsettled` puts every ask
+  back in the farmer's order. But a `Result` or `Failure` keeps the number it
+  had among the settled asks only. With the asks [needs a place, settled],
+  the settled ask's result says `ask_index == 0`, which is the other ask.
+  Nothing reads the number after the merge today. The item above removes it.
+
+- **Give `Evidence` its own package.** It lives in `core/planner/` because
+  the planner was its first producer, but the form step and settlement add
+  outcomes to it too. Move `Evidence`, `AskEvidence`, `AskOutcome`,
+  `group_by_ask` and `merge_unsettled` to `core/evidence/`, so no stage
+  looks like the owner.
+
+## Settlement (#243)
+
+- **An ask and its settlement are matched by position.** `TurnResult` holds
+  the asks and the settlements as two lists. One built with a missing or
+  short settlements list passes `is_every_ask_settled` and then fails in
+  `settled_intent`, far from where it was built. Pair them in one type,
+  `AskSettlement` (an ask with its settlement), as `AskEvidence` pairs an ask
+  with its outcome. `settle_asks` returns the pairs, `TurnResult` holds only
+  the pairs and the confidence, and `intent` is read from them. The three
+  `zip(strict=True)` calls go, and `merge_unsettled` no longer takes the
+  intent. Its own PR.
+- **A type for scheme codes.** A scheme's code and its name are both plain
+  strings, so one can be passed where the other is wanted. Add
+  `SchemeCode = NewType("SchemeCode", str)` for `Scheme.code`,
+  `FormContext.scheme`, `AskRequirements.scheme_codes_with_a_form` and the
+  intent model's `scheme_code`. That last one changes the schema the intent
+  model sees, so check it against a live model.
+- **Intent examples as config.** Planned in #243, not built. Example
+  phrasings per category in `configs/intent-examples.yaml`, in any language,
+  with the action where it applies. At most 5 per category
+  (`DSS_INTENT_EXAMPLES_MAX`). An unknown category, an unknown action or too
+  many lines fails at boot. The template renders them; the wording stays in
+  `prompts/intent/`.
+- **One composer rule for every line our code writes.** The composer
+  template has a rule for each kind of line: "Awaits a form", "Ask the
+  farmer", "Cannot serve this". The words are typed in code and again in
+  each language's template, so they can drift, and a new kind needs a
+  template change in every language. Give every such line one lead, and the
+  template one rule: a line with that lead is ours, not a provider's, so do
+  what it says. Code then writes each line in full. It rewords rules that
+  work today, so check it against a live model.
+- **Two pick lists in one reply both start at 1.** With two asks that each
+  wait on a place, the farmer gets two numbered lists. A reply of "2" does
+  not say which list it means. Decide: one question per turn, or numbers
+  that run on across the lists.
+- **A named scheme with no form ends the ask.** Later, let the ask settle, so
+  the planner answers what it can without a form.
+- **A guess is only confirmed where a form exists.** In a category with no
+  forms, a guessed scheme is never confirmed. The planner then gets the
+  farmer's words, not the official scheme name. Decide: use the guess there,
+  or confirm it.
+- **`scheme_confidence` counts as low when left out.** A model that always
+  leaves it out would confirm the same scheme forever. The live model fills
+  it every time today. Make the field required, or stop after one confirm.
+- **An ask can read "advise" and still want a form filed.** "How do I file a
+  complaint" is advice by its words. The provider search treats any ask with
+  an action as a service ask, but the ask keeps the model's label, so a trace
+  shows "advise" beside "support". The tidier end state: once a form serves
+  the ask, relabel it `act` or `observe` before the search, as the form path
+  already does for a submitted form.
+- **One kind of form and an unclear action gives no form.** A category with
+  only a filing form does not ask "new or old", since there is nothing to
+  choose. But the form step reads the action from the ask, finds none, and
+  shows no form. No such category exists today. Fix: with one kind of form,
+  that kind is the action.
 
 ## Transport
 
@@ -282,6 +378,13 @@
   caveat, so anyone copying it gets a silently skipped test. Also
   `OPENAI_ENDPOINT` is not a name any SDK reads — the OpenAI SDK reads
   `OPENAI_BASE_URL`.
+
+- **Run pyright in CI, then check every `match`.** CI runs no type check,
+  and `src/` has about 53 pyright errors. Fix those, add pyright to CI, then
+  set `reportMatchNotExhaustive = true` so a `match` on a union must cover
+  every case, as a sealed type would. Turning it on flags 10 matches in 7
+  files today; each needs an explicit `case _:`. Until then, a `match` on a
+  `Settlement` ends with `assert_never`.
 
 ## Stubs pending real implementations
 
