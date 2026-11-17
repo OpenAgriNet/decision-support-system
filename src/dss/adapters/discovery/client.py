@@ -409,6 +409,7 @@ class HttpCapabilityDiscovery:
             log_external_request(
                 "discovery",
                 transaction_id,
+                labels=query.capabilities,
                 endpoint=f"{self._base_url}/discover",
                 body=request_body,
                 **network_fields,
@@ -421,6 +422,7 @@ class HttpCapabilityDiscovery:
                 log_external_response(
                     "discovery",
                     transaction_id,
+                    labels=query.capabilities,
                     status="transport_error",
                     error_type=type(exc).__name__,
                     **network_fields,
@@ -431,6 +433,7 @@ class HttpCapabilityDiscovery:
                 log_external_response(
                     "discovery",
                     transaction_id,
+                    labels=query.capabilities,
                     status=response.status_code,
                     body=response.text,
                     **network_fields,
@@ -445,6 +448,7 @@ class HttpCapabilityDiscovery:
                 log_external_response(
                     "discovery",
                     transaction_id,
+                    labels=query.capabilities,
                     status="malformed",
                     error_type=type(exc).__name__,
                     body=response.text,
@@ -456,6 +460,7 @@ class HttpCapabilityDiscovery:
             log_external_response(
                 "discovery",
                 transaction_id,
+                labels=query.capabilities,
                 status=response.status_code,
                 provider_ids=provider_ids,
                 provider_count=len(provider_ids),

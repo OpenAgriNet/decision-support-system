@@ -15,7 +15,7 @@ import asyncio
 import json
 import logging
 import time
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from typing import Any, Protocol
 
@@ -82,11 +82,12 @@ _MAX_BODY = 8000
 @contextmanager
 def trace_component(
     component: Stage | str, transaction_id: str | None = None
-) -> Iterator[None]:
+) -> Iterator[dict[str, Any]]:
     """Log `enter` and `exit` around a stage, open its span, and publish its time.
 
-    A stage that raises still logs `exit` and its duration, with the error type
-    as its status, then re-raises unchanged.
+    Yields the exit line's extra fields, for what the stage found. A stage that
+    raises still logs `exit` and its duration, with the error type as its
+    status, then re-raises unchanged.
     """
 
     stage = Stage(component)
@@ -96,9 +97,10 @@ def trace_component(
     start = time.monotonic()
     _log_info(f"{stage} enter", transaction_id, component=stage.value, event="enter")
     status = "ok"
+    exit_fields: dict[str, Any] = {}
     try:
         with span_context:
-            yield
+            yield exit_fields
     except BaseException as exc:  # re-raised; we only record how it ended
         status = _error_status(exc)
         raise
@@ -112,6 +114,7 @@ def trace_component(
             event="exit",
             status=status,
             elapsed_ms=elapsed_ms,
+            **exit_fields,
         )
         recorder = _stage_metric_recorder
         if recorder is not None:
@@ -211,13 +214,18 @@ def log_external_request(
     service: str,
     transaction_id: str | None = None,
     *,
+    labels: Sequence[str] = (),
     body: Any = None,
     **fields: Any,
 ) -> None:
-    """Log one request on its way out to an outside service; its body at DEBUG."""
+    """Log one request on its way out to an outside service; its body at DEBUG.
+
+    `labels` go into the message, after the service, so a reader scanning
+    lines sees what the call was about.
+    """
 
     _log_info(
-        f"{service} request",
+        _external_message(service, "request", labels),
         transaction_id,
         external=service,
         event="request",
@@ -230,6 +238,7 @@ def log_external_response(
     service: str,
     transaction_id: str | None = None,
     *,
+    labels: Sequence[str] = (),
     status: Any = None,
     body: Any = None,
     **fields: Any,
@@ -237,19 +246,24 @@ def log_external_response(
     """Log one response from an outside service; its body at DEBUG.
 
     `status` is an HTTP code or a short tag such as `transport_error`.
+    `labels` go into the message, as on the request.
     """
 
     if status is not None:
         fields["status"] = status
     _log(
         _level_for(status),
-        f"{service} response",
+        _external_message(service, "response", labels),
         transaction_id,
         external=service,
         event="response",
         **fields,
     )
     _debug_body(service, transaction_id, event="response_body", body=body)
+
+
+def _external_message(service: str, event: str, labels: Sequence[str]) -> str:
+    return " - ".join((f"{service} {event}", *labels))
 
 
 def _log_info(message: str, transaction_id: str | None = None, **fields: Any) -> None:

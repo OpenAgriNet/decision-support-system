@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dss.core.intent.models import (
     Ask,
+    ClassifiedAsk,
     GuessedScheme,
     InteractionType,
     Scheme,
@@ -12,7 +13,11 @@ from dss.core.intent.models import (
 )
 from dss.core.planner.models import Evidence, Source, SourceKind
 from dss.core.shared.models import ProviderAction
-from dss.orchestration.stage_content import asks_text, cited_sources_text
+from dss.orchestration.stage_content import (
+    asks_text,
+    asks_without_place,
+    cited_sources_text,
+)
 from tests.support.evidence import build_evidence
 
 
@@ -73,3 +78,17 @@ def test_the_action_is_shown_in_the_trace() -> None:
     )
 
     assert asks_text((ask,)) == "1. Grievance/advise: crop insurance -> support"
+
+
+def test_asks_for_the_log_leave_out_the_place() -> None:
+    """The log is exported unfiltered, and a place can single a farmer out."""
+
+    ask = ClassifiedAsk(
+        agriculture_subjects="rain",
+        subject_categories=SubjectCategory.WEATHER,
+        interaction_type=InteractionType.OBSERVE,
+        place_name="Kanha Chatti",
+        action=ProviderAction.SUPPORT,
+    )
+
+    assert asks_without_place((ask,)) == ("Weather/observe: rain -> support",)

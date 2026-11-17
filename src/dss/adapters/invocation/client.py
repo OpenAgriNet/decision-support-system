@@ -689,6 +689,7 @@ class HttpCapabilityInvocation:
         log_external_request(
             "invocation",
             transaction_id,
+            labels=(capability.capability, capability.provider_id),
             endpoint=endpoint,
             body=request_body,
             **call_fields,
@@ -701,6 +702,7 @@ class HttpCapabilityInvocation:
             log_external_response(
                 "invocation",
                 transaction_id,
+                labels=(capability.capability, capability.provider_id),
                 status=response.status_code,
                 body=visibility.conceal(response.text),
                 **call_fields,
@@ -717,6 +719,7 @@ class HttpCapabilityInvocation:
             log_external_response(
                 "invocation",
                 transaction_id,
+                labels=(capability.capability, capability.provider_id),
                 status="transport_error",
                 error_type=type(exc).__name__,
                 error=visibility.conceal(str(exc)),

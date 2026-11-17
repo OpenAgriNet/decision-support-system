@@ -216,3 +216,43 @@ def test_a_closed_stream_is_cancelled_not_a_failure(caplog):
 
     [after] = _records(caplog, event="agent_done")
     assert (after.status, after.levelno) == ("cancelled", logging.INFO)
+
+
+def test_a_request_line_names_what_it_is_about(caplog):
+    with caplog.at_level(logging.INFO, logger="dss.trace"):
+        log_external_request(
+            "invocation",
+            "txn-1",
+            labels=("openagrinet:WeatherObservation", "mausamgram"),
+            provider_id="mausamgram",
+        )
+
+    [line] = _records(caplog, event="request")
+    assert line.getMessage() == (
+        "invocation request - openagrinet:WeatherObservation - mausamgram"
+    )
+    assert line.provider_id == "mausamgram"
+
+
+def test_a_response_line_names_what_it_is_about(caplog):
+    with caplog.at_level(logging.INFO, logger="dss.trace"):
+        log_external_response(
+            "discovery",
+            "txn-1",
+            labels=("openagrinet:WeatherObservation",),
+            status=200,
+        )
+
+    [line] = _records(caplog, event="response")
+    assert line.getMessage() == "discovery response - openagrinet:WeatherObservation"
+
+
+def test_a_component_adds_what_it_found_to_its_exit(caplog):
+    with (
+        caplog.at_level(logging.INFO, logger="dss.trace"),
+        trace_component("intent", "txn-1") as exit_fields,
+    ):
+        exit_fields["asks"] = ("Weather/observe: rain",)
+
+    [leave] = _records(caplog, component="intent", event="exit")
+    assert leave.asks == ("Weather/observe: rain",)
