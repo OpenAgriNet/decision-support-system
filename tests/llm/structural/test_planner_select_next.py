@@ -149,7 +149,7 @@ def _ranked_discovery() -> DiscoveryResult:
         events=(),
         priorities={
             0: AskPriority(
-                ask_index=0,
+                ask_id=0,
                 capability="Crop",
                 sender_id="kisan-mitra-web",
                 source="sender",

@@ -63,7 +63,7 @@ def test_a_result_has_an_entry_per_ask_in_ask_order() -> None:
     discovered = DiscoveredAsks(
         asks=(
             DiscoveredAsk(
-                index=1,
+                ask_id=1,
                 query=_MARKET_QUERY,
                 query_result=ProviderQueryResult(
                     answers=(answer,), capabilities=(), failures=()
@@ -81,7 +81,7 @@ def test_a_result_has_an_entry_per_ask_in_ask_order() -> None:
 
 
 def test_a_searched_ask_with_nothing_found_is_unservable() -> None:
-    searched = DiscoveredAsk(index=0, query=_MARKET_QUERY, query_result=_NOTHING_FOUND)
+    searched = DiscoveredAsk(ask_id=0, query=_MARKET_QUERY, query_result=_NOTHING_FOUND)
 
     assert searched.build_outcome_events() == (
         AskUnservable(0, ("openagrinet:MandiPrice",)),
@@ -93,7 +93,7 @@ def test_within_validity_returns_a_new_ask_without_the_answers_outside_it() -> N
         Validity(starts_at=NOW - timedelta(days=2), ends_at=NOW - timedelta(days=1))
     )
     ask = DiscoveredAsk(
-        index=0,
+        ask_id=0,
         query=_MARKET_QUERY,
         query_result=ProviderQueryResult(
             answers=(stale,), capabilities=(), failures=()

@@ -211,7 +211,7 @@ class TurnResult(BaseModel):
     decision: ModerationDecision
     # One per ask in `intent`, same order.
     settlements: tuple[AskSettlement, ...] = ()
-    # Of `settled_intent`'s asks, numbered as that intent numbers them.
+    # Of `settled_intent`'s asks only, keyed by ask id.
     discovery: DiscoveryResult
 
     @cached_property

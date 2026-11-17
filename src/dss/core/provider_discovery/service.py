@@ -201,18 +201,18 @@ def _find_asks_to_discover(
     different discover calls rather than one shared coordinate."""
 
     outcomes = {
-        ask_index: _search_for(ask, languages, radius_m, index, place_bound_types)
-        for ask_index, ask in enumerate(intent.asks)
+        ask.id: _search_for(ask, languages, radius_m, index, place_bound_types)
+        for ask in intent.asks
     }
     return AsksToBeDiscovered(
         queries_by_ask={
-            i: outcome
-            for i, outcome in outcomes.items()
+            ask_id: outcome
+            for ask_id, outcome in outcomes.items()
             if isinstance(outcome, ProviderQuery)
         },
         unsearchable_asks=frozenset(
-            i
-            for i, outcome in outcomes.items()
+            ask_id
+            for ask_id, outcome in outcomes.items()
             if not isinstance(outcome, ProviderQuery)
         ),
         events=tuple(
@@ -242,12 +242,12 @@ async def _send_queries(
             task_group.start_soon(_send, query)
 
     searched = (
-        DiscoveredAsk(index=index, query=query, query_result=replies[query])
+        DiscoveredAsk(ask_id=ask_id, query=query, query_result=replies[query])
         for query in unique_queries
-        for index in to_discover.find_asks_sharing(query)
+        for ask_id in to_discover.find_asks_sharing(query)
     )
     return DiscoveredAsks(
-        asks=tuple(sorted(searched, key=lambda ask: ask.index)),
+        asks=tuple(sorted(searched, key=lambda ask: ask.ask_id)),
         unsearchable_asks=to_discover.unsearchable_asks,
     )
 

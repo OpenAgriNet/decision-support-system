@@ -23,7 +23,7 @@ from collections.abc import Sequence
 from dataclasses import replace
 from typing import Protocol
 
-from dss.core.intent.models import Ask, Intent
+from dss.core.intent.models import Ask, AskId, Intent
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.provider_preferences.models import (
     AskPriority,
@@ -69,25 +69,25 @@ def prioritise(
     """
 
     priorities = {
-        index: _priority(index, ask, discovery=discovery, preference=preference)
-        for index, ask in enumerate(intent.asks)
+        ask.id: _priority(ask, discovery=discovery, preference=preference)
+        for ask in intent.asks
     }
     rankings = {
-        index: priority.ranking
-        for index, priority in priorities.items()
+        ask_id: priority.ranking
+        for ask_id, priority in priorities.items()
         if priority.applied
     }
     capabilities = {
-        index: _ordered(found, rankings[index]) if index in rankings else found
-        for index, found in discovery.capabilities.items()
+        ask_id: _ordered(found, rankings[ask_id]) if ask_id in rankings else found
+        for ask_id, found in discovery.capabilities.items()
     }
     answers = {
-        index: (
-            _best_provider_only(_ordered(found, rankings[index]))
-            if index in rankings
+        ask_id: (
+            _best_provider_only(_ordered(found, rankings[ask_id]))
+            if ask_id in rankings
             else found
         )
-        for index, found in discovery.answers.items()
+        for ask_id, found in discovery.answers.items()
     }
 
     return replace(
@@ -96,7 +96,7 @@ def prioritise(
 
 
 def _priority(
-    index: int, ask: Ask, *, discovery: DiscoveryResult, preference: SenderPreference
+    ask: Ask, *, discovery: DiscoveryResult, preference: SenderPreference
 ) -> AskPriority:
     """What the sender's ranking means for this one ask — the record alone,
     before anything is reordered by it."""
@@ -104,11 +104,11 @@ def _priority(
     capability = ask.subject_categories.value
     ranking = preference.ranking_for(capability)
     found = (
-        *discovery.capabilities.get(index, ()),
-        *discovery.answers.get(index, ()),
+        *discovery.capabilities.get(ask.id, ()),
+        *discovery.answers.get(ask.id, ()),
     )
     return AskPriority(
-        ask_index=index,
+        ask_id=ask.id,
         capability=capability,
         sender_id=preference.sender_id,
         source=preference.source_for(capability) if ranking else None,
@@ -183,7 +183,7 @@ def _dropped(
 
 
 def priority_for_ask(
-    discovery: DiscoveryResult, *, ask_index: int
+    discovery: DiscoveryResult, *, ask_id: AskId
 ) -> AskPriority | None:
     """The priority record of the ranking that governed this ask, or ``None``
     if none did.
@@ -196,7 +196,7 @@ def priority_for_ask(
     directly would have to spell all three out.
     """
 
-    priority = discovery.priorities.get(ask_index)
+    priority = discovery.priorities.get(ask_id)
     if priority is None or not priority.applied:
         return None
     return priority

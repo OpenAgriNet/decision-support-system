@@ -242,7 +242,7 @@ def _consulting(
     a provider's own resources answers better.
     """
 
-    if priority_for_ask(deps.discovery, ask_index=ask_index) is None:
+    if priority_for_ask(deps.discovery, ask_id=ask_index) is None:
         return (capability,)
     return tuple(
         candidate

@@ -11,6 +11,7 @@ from dataclasses import field as dataclass_field
 from datetime import datetime
 from enum import Enum
 
+from dss.core.intent.models import AskId
 from dss.core.provider_preferences.models import AskPriority
 
 # A resource's `@type`, as a prefixed CURIE: `openagrinet:MandiPrice`. An open
@@ -145,8 +146,8 @@ class CapabilityUnresolved:
 
 @dataclass(frozen=True)
 class AsksToBeDiscovered:
-    queries_by_ask: Mapping[int, ProviderQuery]  # only asks that can be searched
-    unsearchable_asks: frozenset[int]  # a failed place, or no @type for the ask
+    queries_by_ask: Mapping[AskId, ProviderQuery]  # only asks that can be searched
+    unsearchable_asks: frozenset[AskId]  # a failed place, or no @type for the ask
     events: tuple[CapabilityUnresolved, ...]
 
     def find_unique_queries(self) -> tuple[ProviderQuery, ...]:
@@ -154,12 +155,15 @@ class AsksToBeDiscovered:
 
         return tuple(dict.fromkeys(query for _, query in self._in_ask_order()))
 
-    def find_asks_sharing(self, query: ProviderQuery) -> tuple[int, ...]:
+    def find_asks_sharing(self, query: ProviderQuery) -> tuple[AskId, ...]:
         """In ask order."""
 
-        return tuple(index for index, shared in self._in_ask_order() if shared == query)
+        return tuple(
+            ask_id for ask_id, shared in self._in_ask_order() if shared == query
+        )
 
-    def _in_ask_order(self) -> list[tuple[int, ProviderQuery]]:
+    def _in_ask_order(self) -> list[tuple[AskId, ProviderQuery]]:
+        # Ids are given in the user's order, so sorting by id is ask order.
         return sorted(self.queries_by_ask.items(), key=lambda item: item[0])
 
 
@@ -204,7 +208,7 @@ class ExpiredAnswerDropped:
 class AskDiscoveryFailed:
     """A discovery call failed for one ask — mirrors the DiscoveryFailure."""
 
-    ask_index: int
+    ask_id: AskId
     capability: NetworkSchemaType
     failure_class: FailureClass
     status_code: int
@@ -214,7 +218,7 @@ class AskDiscoveryFailed:
 class AskUnservable:
     """An ask ended with no answer and no capability — the normal no_match path."""
 
-    ask_index: int
+    ask_id: AskId
     capabilities: tuple[str, ...]  # the @type values the query carried, for context
 
 
@@ -237,12 +241,12 @@ type DiscoveryEvent = (
 
 @dataclass(frozen=True)
 class DiscoveryResult:
-    answers: dict[int, tuple[DiscoveredAnswer, ...]]
-    capabilities: dict[int, tuple[ProviderCapability, ...]]
-    failures: dict[int, tuple[DiscoveryFailure, ...]]
+    answers: dict[AskId, tuple[DiscoveredAnswer, ...]]
+    capabilities: dict[AskId, tuple[ProviderCapability, ...]]
+    failures: dict[AskId, tuple[DiscoveryFailure, ...]]
     events: tuple[DiscoveryEvent, ...]
     # What the calling client's provider ranking did to each ask, keyed by ask
-    # index (ADR-0019). Filled by `core.provider_preferences.prioritise`, which
+    # id (ADR-0019). Filled by `core.provider_preferences.prioritise`, which
     # runs over this result before anything downstream reads it.
     #
     # Here rather than alongside, because the ordering above *is* the thing it
@@ -250,13 +254,13 @@ class DiscoveryResult:
     # provider serves this" or "the client ranked the other two out", and
     # nothing else can tell those apart. Defaulted, so every existing
     # construction — and an unwired deployment — stays valid.
-    priorities: dict[int, AskPriority] = dataclass_field(default_factory=dict)
+    priorities: dict[AskId, AskPriority] = dataclass_field(default_factory=dict)
 
-    def serves(self, position: int) -> bool:
-        """Whether anyone was found for the ask at ``position``: a Direct
-        answer in ``answers`` or an OnDemand capability in ``capabilities``."""
+    def serves(self, ask_id: AskId) -> bool:
+        """Whether anyone was found for the ask: a Direct answer in
+        ``answers`` or an OnDemand capability in ``capabilities``."""
 
-        return bool(self.answers.get(position) or self.capabilities.get(position))
+        return bool(self.answers.get(ask_id) or self.capabilities.get(ask_id))
 
     @property
     def serves_any_ask(self) -> bool:
@@ -268,7 +272,7 @@ _NOTHING_FOUND = ProviderQueryResult(answers=(), capabilities=(), failures=())
 
 @dataclass(frozen=True)
 class DiscoveredAsk:
-    index: int
+    ask_id: AskId
     query: ProviderQuery
     query_result: ProviderQueryResult
 
@@ -298,7 +302,7 @@ class DiscoveredAsk:
         if self.query_result.failures:
             return tuple(
                 AskDiscoveryFailed(
-                    ask_index=self.index,
+                    ask_id=self.ask_id,
                     capability=failure.capability,
                     failure_class=failure.failure_class,
                     status_code=failure.status_code,
@@ -307,9 +311,7 @@ class DiscoveredAsk:
             )
         if not self.query_result.answers and not self.query_result.capabilities:
             return (
-                AskUnservable(
-                    ask_index=self.index, capabilities=self.query.capabilities
-                ),
+                AskUnservable(ask_id=self.ask_id, capabilities=self.query.capabilities),
             )
         return ()
 
@@ -317,7 +319,7 @@ class DiscoveredAsk:
 @dataclass(frozen=True)
 class DiscoveredAsks:
     asks: tuple[DiscoveredAsk, ...]  # the searched asks, in ask order
-    unsearchable_asks: frozenset[int]  # never searched
+    unsearchable_asks: frozenset[AskId]  # never searched
 
     def within_validity(self, now: datetime) -> DiscoveredAsks:
         return replace(self, asks=tuple(ask.within_validity(now) for ask in self.asks))
@@ -337,15 +339,15 @@ class DiscoveredAsks:
 
         results = self._find_query_results_by_ask()
         return DiscoveryResult(
-            answers={index: result.answers for index, result in results.items()},
+            answers={ask_id: result.answers for ask_id, result in results.items()},
             capabilities={
-                index: result.capabilities for index, result in results.items()
+                ask_id: result.capabilities for ask_id, result in results.items()
             },
-            failures={index: result.failures for index, result in results.items()},
+            failures={ask_id: result.failures for ask_id, result in results.items()},
             events=tuple(events),
         )
 
-    def _find_query_results_by_ask(self) -> dict[int, ProviderQueryResult]:
-        searched = {ask.index: ask.query_result for ask in self.asks}
+    def _find_query_results_by_ask(self) -> dict[AskId, ProviderQueryResult]:
+        searched = {ask.ask_id: ask.query_result for ask in self.asks}
         never_searched = dict.fromkeys(self.unsearchable_asks, _NOTHING_FOUND)
         return dict(sorted((searched | never_searched).items()))

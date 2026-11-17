@@ -420,8 +420,8 @@ _SETTLED = Settled(Frame(slots=()))
 
 
 async def test_discovery_searches_only_settled_asks() -> None:
-    """The unsettled ask is never searched, and the settled one is searched
-    as its own intent, so discovery's numbering is its own."""
+    """The unsettled ask is never searched. The settled one is searched as
+    its own intent."""
 
     discovery = _FakeDiscovery()
 

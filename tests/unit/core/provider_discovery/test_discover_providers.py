@@ -331,7 +331,7 @@ async def test_a_failing_query_does_not_prevent_a_sibling_from_succeeding() -> N
     assert result.capabilities[0] == ()
     assert result.events == (
         AskDiscoveryFailed(
-            ask_index=0,
+            ask_id=0,
             capability="openagrinet:WeatherObservation",
             failure_class=FailureClass.TRANSIENT,
             status_code=500,
@@ -464,7 +464,7 @@ async def test_an_expired_answer_with_no_fallback_is_dropped() -> None:
             resource_id="r1",
             had_fallback=False,
         ),
-        AskUnservable(ask_index=0, capabilities=("openagrinet:MandiPrice",)),
+        AskUnservable(ask_id=0, capabilities=("openagrinet:MandiPrice",)),
     )
 
 
@@ -817,7 +817,7 @@ async def test_an_empty_catalog_result_emits_ask_unservable() -> None:
     )
 
     assert result.events == (
-        AskUnservable(ask_index=0, capabilities=("openagrinet:MandiPrice",)),
+        AskUnservable(ask_id=0, capabilities=("openagrinet:MandiPrice",)),
     )
 
 
@@ -854,7 +854,7 @@ async def test_a_failed_ask_emits_ask_discovery_failed_not_unservable() -> None:
 
     assert result.events == (
         AskDiscoveryFailed(
-            ask_index=0,
+            ask_id=0,
             capability="openagrinet:MandiPrice",
             failure_class=FailureClass.TRANSIENT,
             status_code=500,
@@ -1031,9 +1031,22 @@ _NASHIK = _PUNE.model_copy(
 )
 
 
-async def _discover_with(discovery: _NetworkDiscovery, *asks: Ask) -> DiscoveryResult:
+async def _discover_with(
+    discovery: _NetworkDiscovery, *asks: Ask, ids: tuple[int, ...] | None = None
+) -> DiscoveryResult:
+    """``ids`` gives the asks those ids, for a turn where some asks were not
+    passed on. Left out, they are 0, 1, 2."""
+
+    asks_with_ids = (
+        numbered(*asks)
+        if ids is None
+        else tuple(
+            ask.model_copy(update={"id": ask_id})
+            for ask, ask_id in zip(asks, ids, strict=True)
+        )
+    )
     return await discover_providers(
-        Intent(asks=numbered(*asks), confidence=0.9),
+        Intent(asks=asks_with_ids, confidence=0.9),
         _turn(),
         discovery=discovery,
         schema_pack_cache=_MARKET_AND_WEATHER_INDEX,
@@ -1087,12 +1100,12 @@ async def test_a_failing_shared_query_fails_every_ask_that_shared_it() -> None:
         {"openagrinet:MandiPrice": _query_result(failures=(failure,))}
     )
 
-    result = await _discover_with(discovery, _MARKET_ASK, _MARKET_ASK)
+    result = await _discover_with(discovery, _MARKET_ASK, _MARKET_ASK, ids=(0, 2))
 
-    assert result.failures == {0: (failure,), 1: (failure,)}
+    assert result.failures == {0: (failure,), 2: (failure,)}
     assert result.events == (
         AskDiscoveryFailed(0, "openagrinet:MandiPrice", FailureClass.TRANSIENT, 500),
-        AskDiscoveryFailed(1, "openagrinet:MandiPrice", FailureClass.TRANSIENT, 500),
+        AskDiscoveryFailed(2, "openagrinet:MandiPrice", FailureClass.TRANSIENT, 500),
     )
 
 
@@ -1113,11 +1126,13 @@ async def test_asks_get_only_their_own_query_reply() -> None:
         }
     )
 
-    result = await _discover_with(discovery, _MARKET_ASK, _WEATHER_ASK, _MARKET_ASK)
+    result = await _discover_with(
+        discovery, _MARKET_ASK, _WEATHER_ASK, _MARKET_ASK, ids=(0, 2, 5)
+    )
 
     assert len(discovery.calls) == 2
-    assert result.answers == {0: (market_answer,), 1: (), 2: (market_answer,)}
-    assert result.capabilities == {0: (), 1: (weather_capability,), 2: ()}
+    assert result.answers == {0: (market_answer,), 2: (), 5: (market_answer,)}
+    assert result.capabilities == {0: (), 2: (weather_capability,), 5: ()}
 
 
 async def test_an_unplaced_ask_gets_an_empty_entry_beside_a_searched_one() -> None:

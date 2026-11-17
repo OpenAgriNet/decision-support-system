@@ -471,7 +471,7 @@ async def test_an_ask_whose_every_provider_the_client_ruled_out_is_no_match() ->
         events=(),
         priorities={
             0: AskPriority(
-                ask_index=0,
+                ask_id=0,
                 capability="Market",
                 sender_id="vistaar-whatsapp",
                 source="sender",
