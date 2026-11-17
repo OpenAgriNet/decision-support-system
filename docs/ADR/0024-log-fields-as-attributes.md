@@ -1,4 +1,4 @@
-# ADR-0023: Log Fields as Attributes
+# ADR-0024: Log Fields as Attributes
 
 - **Status:** ACCEPTED
 - **Date:** 2026-11-06

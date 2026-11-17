@@ -153,7 +153,7 @@ Rebase merge only. Each commit lands individually on `main` — individual commi
 - If a PR is squash-merged by accident: the PR title and `Relates to #issue` still preserve traceability and changelog correctness; only intra-PR commit granularity is lost.
 
 ## Logging
-Facts go in `extra` as attributes, never in the message text, so HyperDX can filter on them (ADR-0023). Don't pass the turn's ids (`transaction_id`, `turn_message_id`, `session_id`, `sender_id`): the route binds them once, and a filter on each log handler adds them to every `dss` line. An absent id is left off. Use snake_case names shared across services. Never log raw PII.
+Facts go in `extra` as attributes, never in the message text, so HyperDX can filter on them (ADR-0024). Don't pass the turn's ids (`transaction_id`, `turn_message_id`, `session_id`, `sender_id`): the route binds them once, and a filter on each log handler adds them to every `dss` line. An absent id is left off. Use snake_case names shared across services. Never log raw PII.
 ```python
 # Good
 log_event("moderation", event="classified", moderation_category=category)
