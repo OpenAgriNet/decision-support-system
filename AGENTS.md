@@ -172,6 +172,7 @@ src/dss/
 
 **Hard rules:**
 - One behavior → one tier. If a test needs two tiers' doubles at once, split it.
+- Change a test before adding one. When a contract changes, update the test that already owns that behavior. Add a new test only for a new rule: one that can fail for a reason no existing test can.
 - Tier 1 must outnumber every other tier combined. If it doesn't, you're testing at the wrong layer.
 - Never assert exact LLM-generated text anywhere except tier 4 (where the cassette makes it deterministic).
 - Tier 6 (eval) is diagnostic, not a gate — wire it to a schedule/dashboard, not to merge checks.
