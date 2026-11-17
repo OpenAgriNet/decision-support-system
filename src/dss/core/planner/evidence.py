@@ -146,23 +146,29 @@ def merge_unsettled(
     """Every ask in the farmer's order. A settled ask gets its evidence.
     An unsettled ask gets its settlement.
 
-    Raises ValueError if the settled evidence does not match the settled asks.
+    Raises ValueError if a settled ask has no evidence.
     """
 
-    settled_count = sum(ask_settlement.is_settled for ask_settlement in settlements)
-    if len(settled.ask_evidences) != settled_count:
-        raise ValueError(
-            f"{len(settled.ask_evidences)} evidence entries for "
-            f"{settled_count} settled asks"
-        )
-    settled_evidences = iter(settled.ask_evidences)
+    evidence_by_ask_id = {
+        ask_evidence.ask.id: ask_evidence for ask_evidence in settled.ask_evidences
+    }
     ask_evidences = tuple(
-        next(settled_evidences)
-        if isinstance(ask_settlement.settlement, Settled)
-        else AskEvidence(ask=ask_settlement.ask, outcome=ask_settlement.settlement)
+        _evidence_for(ask_settlement, evidence_by_ask_id)
         for ask_settlement in settlements
     )
     return replace(settled, ask_evidences=ask_evidences)
+
+
+def _evidence_for(
+    ask_settlement: AskSettlement, evidence_by_ask_id: Mapping[AskId, AskEvidence]
+) -> AskEvidence:
+    ask, settlement = ask_settlement.ask, ask_settlement.settlement
+    if not isinstance(settlement, Settled):
+        return AskEvidence(ask=ask, outcome=settlement)
+    evidence = evidence_by_ask_id.get(ask.id)
+    if evidence is None:
+        raise ValueError(f"no evidence for settled ask {ask.id}")
+    return evidence
 
 
 def _outcome_for(

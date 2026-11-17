@@ -90,7 +90,7 @@ from dss.orchestration.redaction import RedactTexts, pass_through
 from dss.orchestration.session import NoSessionStore, Sessions, SessionStore
 from dss.orchestration.settlement import SettleAsks
 from dss.ports.area_lookup import AreaMatch
-from tests.support.asks import numbered
+from tests.support.asks import an_ask, numbered
 from tests.support.evidence import ANY_ASK, build_evidence
 from tests.support.fakes import (
     FakeAreaLookup,
@@ -1078,7 +1078,12 @@ async def test_a_settled_ask_is_served_beside_a_question() -> None:
     """The settled ask is planned on its own; the composer gets both asks,
     in the farmer's order."""
 
-    plan = _FakePlan(_ANSWERED_EVIDENCE)
+    wheat_evidence = build_evidence(
+        asks=(an_ask(id=1),),
+        sources=_ANSWERED_EVIDENCE.sources,
+        results=(Result(ask_id=1, source_id="1", data={"modal": 2275}),),
+    )
+    plan = _FakePlan(wheat_evidence)
     compose = _FakeCompose("Wheat is 2,275 Rs [1]. Which district for the rain?")
     orch, _ = _build(
         intent=_one_ask(2),
@@ -1093,7 +1098,7 @@ async def test_a_settled_ask_is_served_beside_a_question() -> None:
     assert len(plan.intent.asks) == 1
     question, answer = compose.evidence.ask_evidences
     assert question.outcome == _NEEDS_PLACE
-    assert answer == _ANSWERED_EVIDENCE.ask_evidences[0]
+    assert answer == wheat_evidence.ask_evidences[0]
     assert events[-1].outcome.status is TurnStatus.REQUIRES_INPUT
 
 

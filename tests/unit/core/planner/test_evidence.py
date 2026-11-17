@@ -507,26 +507,33 @@ _RAIN_WAITS_POTATO_SETTLED = (
 
 def test_merge_keeps_the_farmers_order() -> None:
     """The settled asks were worked on as their own intent; each comes back
-    beside the unsettled ones, where the farmer put it."""
+    beside the unsettled ones, where the farmer put it, whatever order the
+    evidence arrives in."""
 
+    onion = an_ask(id=2, subject_categories=SubjectCategory.MARKET)
     potato_evidence = AskEvidence(
         ask=_POTATO, outcome=Attempted(results=(), failures=())
     )
-    settled = Evidence(sources=(), ask_evidences=(potato_evidence,))
+    onion_evidence = AskEvidence(ask=onion, outcome=Attempted(results=(), failures=()))
+    settled = Evidence(sources=(), ask_evidences=(onion_evidence, potato_evidence))
 
-    merged = merge_unsettled(_RAIN_WAITS_POTATO_SETTLED, settled=settled)
+    merged = merge_unsettled(
+        (*_RAIN_WAITS_POTATO_SETTLED, AskSettlement(onion, _SETTLED)),
+        settled=settled,
+    )
 
     assert merged.ask_evidences == (
         AskEvidence(ask=_RAIN, outcome=_NEEDS_PLACE),
         potato_evidence,
+        onion_evidence,
     )
 
 
-def test_merge_refuses_mismatched_evidence() -> None:
-    """One settled ask, two evidence entries: one would be lost."""
+def test_merge_refuses_a_settled_ask_without_evidence() -> None:
+    """The only evidence is for another ask: potato would get no answer."""
 
-    entry = AskEvidence(ask=_POTATO, outcome=Attempted(results=(), failures=()))
-    settled = Evidence(sources=(), ask_evidences=(entry, entry))
+    rain_evidence = AskEvidence(ask=_RAIN, outcome=Attempted(results=(), failures=()))
+    settled = Evidence(sources=(), ask_evidences=(rain_evidence,))
 
-    with pytest.raises(ValueError, match="settled"):
+    with pytest.raises(ValueError, match="no evidence for settled ask 1"):
         merge_unsettled(_RAIN_WAITS_POTATO_SETTLED, settled=settled)
