@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Awaitable, Callable, Mapping
 
-from dss.core.forms.models import ActionReply, ActionSchema, ProviderAction
+from dss.core.forms.models import ActionReply, ActionSchema
 from dss.core.forms.service import build_action_attributes, without_farmer_values
 from dss.core.planner.models import Failure
 from dss.core.provider_discovery.models import (
@@ -12,6 +12,7 @@ from dss.core.provider_discovery.models import (
     ProviderCapability,
 )
 from dss.core.redaction.visibility import Visibility
+from dss.core.shared.models import ProviderAction
 from dss.core.shared.network import NetworkTransactionID
 from dss.ports.invocation import ProviderActionInvocation, ProviderCallFailedError
 

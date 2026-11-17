@@ -37,7 +37,6 @@ from dss.core.forms.models import (
     JsonScalar,
     MaskedSubmission,
     PiiClass,
-    ProviderAction,
     UnknownForm,
     ValidSubmission,
 )
@@ -48,7 +47,7 @@ from dss.core.provider_discovery.models import DiscoveryResult, ProviderCapabili
 from dss.core.redaction.visibility import Visibility
 from dss.core.schema_packs.models import SchemaPackFiles, SchemaPackSkipped
 from dss.core.schema_packs.service import PACK_DEFECTS, is_api_pack
-from dss.core.shared.models import Cause, TextBlock, TurnStatus
+from dss.core.shared.models import Cause, ProviderAction, TextBlock, TurnStatus
 from dss.core.shared.schema import resolve_schema
 
 _ACTION_MAP = "x-oan-schema-by-action"

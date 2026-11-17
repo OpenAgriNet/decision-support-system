@@ -1,35 +1,23 @@
-"""The orchestrator — it holds the turn and calls each component in order
-(design doc §4). Components never call each other; every one takes plain
-objects and returns plain objects.
+"""The understand phase of a turn: intent, the place lookup, settlement and
+discovery, next to moderation.
 
-Order is code, not config. What this function does *is* the sequence.
+Order is code, not config. What this function does is the sequence.
 
-Four components so far: intent, place resolution, moderation, provider
-discovery. ``classify_intent`` returns a ``IntentClassification`` — words
-only, no geometry, plus the scheme each ask names from the catalog
-(ADR-0021) — and place resolution (``core.location.resolve_places``) is what
-turns that into the domain ``Intent``, filling each ask's ``place``. Intent
-and moderation are independent — moderation judges harm on the raw query,
-intent classifies capability need, and neither consumes the other's output —
-so they run concurrently (ADR-0003) and the turn's latency is the slower of
-the two rather than their sum. Discovery
-needs ``Intent.asks``, so it chains off intent, through location resolution.
+Intent and moderation run at the same time (ADR-0003), so the turn waits only
+for the slower one. The rest follows intent. The place lookup fills each ask's
+place. Settlement decides which asks have what they need. Discovery searches
+only those. The planner and composer come after, in the orchestrator.
 
-Still to come, in order: the planner agent (returns ``Evidence``), then the
-composer (turns ``Evidence`` into text). So ``TurnResult`` is a staging shape
-— the design's orchestrator hands a composed response back to the API, not a
-bag of intermediate findings. It grows a field per component until the
-composer lands.
-
-Each component is bound to its own model via the ``LLMProvider`` it is handed
-(see ``config/settings.py``), so a deployment can point intent and moderation at
-different models.
+Each component gets its own ``LLMProvider`` (see ``config/settings.py``), so
+intent and moderation can use different models.
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from functools import cached_property
+from typing import assert_never
 
 import anyio
 from pydantic import BaseModel, ConfigDict
@@ -55,10 +43,20 @@ from dss.core.moderation.models import (
 from dss.core.moderation.service import moderate
 from dss.core.policy.models import Policy
 from dss.core.provider_discovery.models import DiscoveryResult
+from dss.core.settlement.models import (
+    CannotServe,
+    NeedsClarification,
+    Settled,
+    Settlement,
+    Slot,
+    Unresolved,
+    Unservable,
+)
 from dss.core.shared.models import TextQuery, UserTurn
 from dss.observability.stages import Stage
 from dss.observability.trace_log import trace_component
 from dss.orchestration.discovery import DiscoverProviders
+from dss.orchestration.settlement import SettleAsks
 from dss.orchestration.stage_content import asks_text, discovery_text
 from dss.ports.area_lookup import AreaLookup
 from dss.ports.llm import LLMProvider
@@ -127,6 +125,50 @@ def place_attributes(
     }
 
 
+def settlement_attributes(
+    intent: Intent, settlements: Sequence[Settlement]
+) -> dict[str, str | int]:
+    """Slot names and states only, never a value: a value is the farmer's own
+    words, and `dss.` keys reach the shared database."""
+
+    waits = [
+        f"ask {number} ({ask.subject_categories.value}): {_wait_of(settlement)}"
+        for number, (ask, settlement) in enumerate(
+            zip(intent.asks, settlements, strict=True), start=1
+        )
+    ]
+
+    def count(kind: type[Settlement]) -> int:
+        return sum(isinstance(settlement, kind) for settlement in settlements)
+
+    return {
+        "dss.settlement.settled": count(Settled),
+        "dss.settlement.needs_clarification": count(NeedsClarification),
+        "dss.settlement.cannot_serve": count(CannotServe),
+        "dss.settlement.asks": "; ".join(waits),
+    }
+
+
+def _wait_of(settlement: Settlement) -> str:
+    match settlement:
+        case Settled():
+            return "settled"
+        case NeedsClarification(open_slots=slots):
+            return ", ".join(_slot_state(slot) for slot in slots)
+        case CannotServe(slot=slot):
+            return _slot_state(slot)
+        case unknown:
+            assert_never(unknown)
+
+
+def _slot_state(slot: Slot) -> str:
+    match slot.state:
+        case Unresolved(reason=reason) | Unservable(reason=reason):
+            return f"{slot.name} {reason.value}"
+        case state:
+            return f"{slot.name} {type(state).__name__.lower()}"
+
+
 def moderation_attributes(decision: ModerationDecision) -> dict[str, str]:
     """Why moderation decided as it did, for the `moderation` span.
 
@@ -164,7 +206,31 @@ class TurnResult(BaseModel):
 
     intent: Intent
     decision: ModerationDecision
+    # One per ask in `intent`, same order.
+    settlements: tuple[Settlement, ...] = ()
+    # Of `settled_intent`'s asks, numbered as that intent numbers them.
     discovery: DiscoveryResult
+
+    @cached_property
+    def settled_intent(self) -> Intent:
+        """Only the settled asks: the ones discovery and the planner work on."""
+
+        return _settled_only(self.intent, self.settlements)
+
+    @property
+    def is_every_ask_settled(self) -> bool:
+        return all(isinstance(s, Settled) for s in self.settlements)
+
+
+def _settled_only(intent: Intent, settlements: tuple[Settlement, ...]) -> Intent:
+    return Intent(
+        asks=tuple(
+            ask
+            for ask, settlement in zip(intent.asks, settlements, strict=True)
+            if isinstance(settlement, Settled)
+        ),
+        confidence=intent.confidence,
+    )
 
 
 async def run_turn(  # noqa: PLR0913
@@ -175,12 +241,14 @@ async def run_turn(  # noqa: PLR0913
     prompts: PromptProvider,
     policies: Sequence[Policy],
     discover_providers: DiscoverProviders,
+    settle_asks: SettleAsks,
     area_lookup: AreaLookup,
     scheme_catalog: SchemeCatalog | None = None,
     nearest_max_km: float = DEFAULT_NEAREST_MAX_KM,
     now: datetime | None = None,
 ) -> TurnResult:
-    """Classify intent, moderate the turn, and find who can answer it.
+    """Classify intent, moderate the turn, settle each ask, and find who can
+    answer the settled ones.
 
     Intent and moderation run concurrently. Discovery chains off intent and
     starts as soon as intent lands, *without* waiting for moderation: a
@@ -194,48 +262,36 @@ async def run_turn(  # noqa: PLR0913
 
     Moderation still gates the result: if the turn does not proceed, both the
     classified intent and whatever discovery found are discarded.
+
+    An unsettled ask is never searched. It waits for the farmer's answer.
     """
 
     intent = Intent()
+    settlements: tuple[Settlement, ...] = ()
     discovery = _nothing_discovered()
     decision: ModerationDecision | None = None
 
     async def classify_then_discover() -> None:
-        nonlocal intent, discovery
-        with trace_component(Stage.INTENT, turn.transaction_id):
-            classification = await classify_intent(
-                turn,
-                intent_llm,
-                prompts,
-                scheme_catalog.schemes() if scheme_catalog is not None else (),
-            )
-            set_current_span_content(
-                input=turn.input.text, output=asks_text(classification.asks)
-            )
-        with trace_component(Stage.LOCATION, turn.transaction_id):
-            intent = await resolve_places(
-                classification,
-                turn,
-                lookup=area_lookup,
-                nearest_max_km=nearest_max_km,
-            )
-            set_current_span_attributes(**place_attributes(classification, intent))
-        with trace_component(Stage.DISCOVERY, turn.transaction_id):
-            discovery = await discover_providers(
-                intent, turn, now=now or datetime.now(UTC)
-            )
-            set_current_span_content(
-                input=asks_text(intent.asks), output=discovery_text(discovery)
-            )
+        nonlocal intent, settlements, discovery
+        classification = await _classify(
+            turn, llm=intent_llm, prompts=prompts, scheme_catalog=scheme_catalog
+        )
+        intent = await _resolve_places(
+            classification, turn, lookup=area_lookup, nearest_max_km=nearest_max_km
+        )
+        settlements = _settle(intent, turn, settle_asks=settle_asks)
+        discovery = await _discover(
+            _settled_only(intent, settlements),
+            turn,
+            discover_providers=discover_providers,
+            now=now or datetime.now(UTC),
+        )
 
     async def run_moderation() -> None:
         nonlocal decision
-        with trace_component(Stage.MODERATION, turn.transaction_id):
-            decision = await moderate(
-                ModerationContext(turn=turn), policies, moderation_llm, prompts
-            )
-            set_current_span_attributes(**moderation_attributes(decision))
-            set_current_span_content(input=turn.input.text)
+        decision = await _moderate(
+            turn, policies=policies, llm=moderation_llm, prompts=prompts
+        )
 
     async with anyio.create_task_group() as task_group:
         task_group.start_soon(run_moderation)
@@ -249,4 +305,86 @@ async def run_turn(  # noqa: PLR0913
         return TurnResult(
             intent=Intent(), decision=decision, discovery=_nothing_discovered()
         )
-    return TurnResult(intent=intent, decision=decision, discovery=discovery)
+    return TurnResult(
+        intent=intent,
+        decision=decision,
+        settlements=settlements,
+        discovery=discovery,
+    )
+
+
+async def _classify(
+    turn: UserTurn[TextQuery],
+    *,
+    llm: LLMProvider,
+    prompts: PromptProvider,
+    scheme_catalog: SchemeCatalog | None,
+) -> IntentClassification:
+    with trace_component(Stage.INTENT, turn.transaction_id):
+        classification = await classify_intent(
+            turn,
+            llm,
+            prompts,
+            scheme_catalog.schemes() if scheme_catalog is not None else (),
+        )
+        set_current_span_content(
+            input=turn.input.text, output=asks_text(classification.asks)
+        )
+    return classification
+
+
+async def _resolve_places(
+    classification: IntentClassification,
+    turn: UserTurn[TextQuery],
+    *,
+    lookup: AreaLookup,
+    nearest_max_km: float,
+) -> Intent:
+    with trace_component(Stage.LOCATION, turn.transaction_id):
+        intent = await resolve_places(
+            classification, turn, lookup=lookup, nearest_max_km=nearest_max_km
+        )
+        set_current_span_attributes(**place_attributes(classification, intent))
+    return intent
+
+
+def _settle(
+    intent: Intent, turn: UserTurn[TextQuery], *, settle_asks: SettleAsks
+) -> tuple[Settlement, ...]:
+    with trace_component(Stage.SETTLEMENT, turn.transaction_id):
+        settlements = settle_asks(intent)
+        set_current_span_attributes(**settlement_attributes(intent, settlements))
+    return settlements
+
+
+async def _discover(
+    settled: Intent,
+    turn: UserTurn[TextQuery],
+    *,
+    discover_providers: DiscoverProviders,
+    now: datetime,
+) -> DiscoveryResult:
+    """Nothing settled means nothing to search."""
+
+    if not settled.asks:
+        return _nothing_discovered()
+    with trace_component(Stage.DISCOVERY, turn.transaction_id):
+        discovery = await discover_providers(settled, turn, now=now)
+        set_current_span_content(
+            input=asks_text(settled.asks), output=discovery_text(discovery)
+        )
+    return discovery
+
+
+async def _moderate(
+    turn: UserTurn[TextQuery],
+    *,
+    policies: Sequence[Policy],
+    llm: LLMProvider,
+    prompts: PromptProvider,
+) -> ModerationDecision:
+    with trace_component(Stage.MODERATION, turn.transaction_id):
+        decision = await moderate(ModerationContext(turn=turn), policies, llm, prompts)
+        set_current_span_attributes(**moderation_attributes(decision))
+        set_current_span_content(input=turn.input.text)
+    return decision

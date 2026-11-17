@@ -17,6 +17,7 @@ def test_values_are_the_names_the_spans_already_use():
         "translation_out",
         "intent",
         "location",
+        "settlement",
         "moderation",
         "discovery",
         "planner",
@@ -30,7 +31,7 @@ def test_a_stage_renders_as_its_own_name():
 
 
 def test_only_the_four_agent_stages_are_model_backed():
-    # Location and discovery run no model, so `dss.stage.duration`
+    # Location, settlement and discovery run no model, so `dss.stage.duration`
     # carries no `model` label for them.
     assert MODEL_BACKED_STAGES == frozenset(
         {Stage.INTENT, Stage.MODERATION, Stage.PLANNER, Stage.COMPOSER}

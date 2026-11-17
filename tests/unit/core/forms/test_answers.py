@@ -14,7 +14,6 @@ from dss.core.forms.models import (
     FormErrorBlock,
     FormErrors,
     FormSubmission,
-    ProviderAction,
     UnknownForm,
 )
 from dss.core.forms.service import (
@@ -34,7 +33,7 @@ from dss.core.forms.service import (
 )
 from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
 from dss.core.planner.models import Failure
-from dss.core.shared.models import Cause, TextBlock, TurnStatus
+from dss.core.shared.models import Cause, ProviderAction, TextBlock, TurnStatus
 from tests.support.grievance_pack import (
     PMFBY_SUPPORT,
     PMKISAN_INIT,

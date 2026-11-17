@@ -23,14 +23,6 @@ from dss.core.shared.models import (
 )
 
 
-class ProviderAction(StrEnum):
-    SUPPORT = "support"
-    STATUS = "status"
-    # The call a scheme makes first when its actions have init fields, e.g. to
-    # send the farmer an OTP.
-    INIT = "init"
-
-
 class FormContext(BaseModel):
     """The form's type. Sent with the form, copied back with the submission."""
 

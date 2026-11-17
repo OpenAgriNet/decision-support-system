@@ -36,7 +36,6 @@ from dss.core.forms.models import (
     FormContext,
     FormErrors,
     FormSubmission,
-    ProviderAction,
     UnknownForm,
     ValidSubmission,
 )
@@ -73,6 +72,7 @@ from dss.core.provider_discovery.models import (
 from dss.core.redaction.turn import surrounding_texts_of, with_surrounding_texts
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import (
+    ProviderAction,
     TurnContext,
     TurnEvent,
     TurnFinished,
@@ -409,7 +409,6 @@ class FormPath:
                     turn=redaction.turn,
                     compose=self._components.compose,
                     localize=self._components.localize,
-                    question=None,
                     ctx=form_turn.ctx,
                     recorder=form_turn.recorder,
                 )

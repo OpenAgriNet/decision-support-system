@@ -21,24 +21,14 @@ class ComposedAnswer(BaseModel):
 
 
 class ClarificationText(BaseModel):
-    """Fixed questions a farmer reads when a turn needs more from them.
-    Loaded from config, like `Identity`.
-
-    `unknown_place` and `ambiguous_place_header` are `str.format` templates —
-    e.g. `"I could not find {name}."`.
+    """Fixed text a farmer reads that the composer does not write. Loaded from
+    config, like `Identity`. Some lines are `str.format` templates, such as
+    `no_provider_for`.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    needs_place: str
-    unknown_place: str
-    # For "Aurangabad, Maharashtra": a farmer may not read a comma as "in".
-    unknown_place_in: str
-    # A whole state or region was named: it exists, it is just too big.
-    region_place: str
-    ambiguous_place_header: str
-    grouped_place_header: str
-    # Closes a grouped list that was cut at `max_choices`.
+    # Closes a pick list of places that was cut at `max_choices`.
     more_places_hint: str
     # Nobody on the network serves the ask. A device point can have no name,
     # so the second one names no place.

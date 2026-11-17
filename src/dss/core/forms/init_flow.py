@@ -17,7 +17,6 @@ from dss.core.forms.models import (
     FormErrorBlock,
     FormRecords,
     FormSubmission,
-    ProviderAction,
     ValidSubmission,
 )
 from dss.core.forms.registry import FormLookup
@@ -36,7 +35,7 @@ from dss.core.forms.service import (
 from dss.core.intent.models import Intent
 from dss.core.planner.models import NO_READABLE_REPLY, Failure
 from dss.core.provider_discovery.models import DiscoveredAnswer, ProviderCapability
-from dss.core.shared.models import Cause, TextBlock, TurnStatus
+from dss.core.shared.models import Cause, ProviderAction, TextBlock, TurnStatus
 
 # The pack does not say what init returns yet; v2 packs will. Until then:
 # what the init form answers is issued under `challenge.issued`.

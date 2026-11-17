@@ -401,13 +401,8 @@ async def test_each_select_carries_its_own_asks_place() -> None:
     assert points == [pune.coordinates, mumbai.coordinates]
 
 
-async def test_select_makes_no_call_for_an_ask_whose_place_failed() -> None:
-    """Xyzzy has nowhere to search. Calling anyway would send no location,
-    and the provider could answer for some other place."""
-
-    invocation = _FakeInvocation()
-    deps = _deps(invocation)
-    deps.intent = Intent(
+def _paddy_in_xyzzy() -> Intent:
+    return Intent(
         asks=(
             Ask(
                 agriculture_subjects="paddy",
@@ -419,19 +414,47 @@ async def test_select_makes_no_call_for_an_ask_whose_place_failed() -> None:
         confidence=1.0,
     )
 
+
+async def test_select_makes_no_call_for_an_ask_whose_place_failed() -> None:
+    """The pack indexes a location and Xyzzy is nowhere. Calling anyway would
+    send no location, and the provider could answer for some other place.
+    Settlement asks first, so this is a safety net."""
+
+    invocation = _FakeInvocation()
+    deps = _deps(invocation)
+    deps.intent = _paddy_in_xyzzy()
+    deps.schemas = {
+        "openagrinet:MandiPrice": SCHEMAS["openagrinet:MandiPrice"].model_copy(
+            update={"needs_place": True}
+        )
+    }
+
     agent = build_planner_agent(skills=(_skill_with("select"),))
     with agent.override(model=FunctionModel(_calls_select_then_answers)):
         await agent.run("price of paddy in Xyzzy", deps=deps)
 
     assert invocation.calls == []
-    # `plan()` records the failure up front; this must not add a second one.
     assert deps.failures == []
+
+
+async def test_a_placeless_pack_takes_the_call_whatever_the_place() -> None:
+    """The pack indexes no location, so an unclear place said in passing does
+    not stop the call."""
+
+    invocation = _FakeInvocation()
+    deps = _deps(invocation)
+    deps.intent = _paddy_in_xyzzy()
+
+    agent = build_planner_agent(skills=(_skill_with("select"),))
+    with agent.override(model=FunctionModel(_calls_select_then_answers)):
+        await agent.run("price of paddy in Xyzzy", deps=deps)
+
+    assert len(invocation.calls) == 1
 
 
 async def test_no_call_without_needed_place() -> None:
     """Nothing named, and the pack indexes a location: a call would go out
-    for nowhere. The same guard as a failed place, so `plan()`'s up-front
-    failure stays the only record."""
+    for nowhere."""
 
     invocation = _FakeInvocation()
     deps = _deps(invocation)

@@ -18,10 +18,22 @@ from dss.adapters.llm.pydantic_ai_provider import PydanticAILLMProvider
 from dss.adapters.scheme_catalog.csv_file import load_scheme_catalog
 from dss.config.prompt_service import build_prompt_service
 from dss.config.settings import Settings
-from dss.core.intent.models import InteractionType, SubjectCategory
+from dss.core.intent.models import (
+    IntentClassification,
+    InteractionType,
+    Scheme,
+    SubjectCategory,
+    UnclearAction,
+    UnlistedScheme,
+)
 from dss.core.intent.service import classify_intent
-from dss.core.shared.models import TextQuery, UserTurn
-from dss.entrypoint.composition import _resolve_model
+from dss.core.shared.models import (
+    ConversationMessage,
+    ProviderAction,
+    TextQuery,
+    UserTurn,
+)
+from dss.entrypoint.composition.root import _resolve_model
 from dss.observability.stages import Stage
 from tests.support.live_model import missing_model_key
 
@@ -64,7 +76,9 @@ def _live_llm() -> PydanticAILLMProvider:
     )
 
 
-def _turn(query: str) -> UserTurn[TextQuery]:
+def _turn(
+    query: str, *, history: list[ConversationMessage] | None = None
+) -> UserTurn[TextQuery]:
     return UserTurn[TextQuery](
         input=TextQuery(text=query),
         session_id="s1",
@@ -72,6 +86,17 @@ def _turn(query: str) -> UserTurn[TextQuery]:
         source_lang="en",
         target_lang="en",
         channel="web",
+        history=history or [],
+    )
+
+
+async def _classify(
+    query: str, *, history: list[ConversationMessage] | None = None
+) -> IntentClassification:
+    prompts = build_prompt_service(_REPO / "configs" / "prompts.yaml")
+    schemes = load_scheme_catalog(_CATALOG).schemes()
+    return await classify_intent(
+        _turn(query, history=history), _live_llm(), prompts, schemes
     )
 
 
@@ -96,20 +121,31 @@ async def test_filing_a_scheme_complaint_is_a_grievance_act() -> None:
     [
         "I want to file a PMFBY grievance",
         "My fasal bima claim was rejected, I want to complain",
-        "I cannot log in to the PMFBY portal to see my Kharif 2026 enrolment",
     ],
 )
 async def test_filing_a_pmfby_complaint_is_grievance_pmfby_act(query: str) -> None:
-    prompts = build_prompt_service(_REPO / "configs" / "prompts.yaml")
-    schemes = load_scheme_catalog(_CATALOG).schemes()
-
-    classification = await classify_intent(_turn(query), _live_llm(), prompts, schemes)
+    classification = await _classify(query)
 
     (ask,) = classification.asks
     assert ask.subject_categories is SubjectCategory.GRIEVANCE
     assert ask.interaction_type is InteractionType.ACT
-    assert ask.scheme is not None
+    assert isinstance(ask.scheme, Scheme), f"{classification!r}"
     assert ask.scheme.code == "PMFBY"
+
+
+async def test_a_portal_problem_is_never_a_status_check() -> None:
+    """The farmer has a problem and no ticket, so "check one you already
+    raised" is the one wrong reading. Whether it is a complaint at all is not
+    stable yet, so the category is not pinned here."""
+
+    classification = await _classify(
+        "I cannot log in to the PMFBY portal to see my Kharif 2026 enrolment"
+    )
+
+    (ask,) = classification.asks
+    assert isinstance(ask.scheme, Scheme), f"{classification!r}"
+    assert ask.scheme.code == "PMFBY"
+    assert ask.action is not ProviderAction.STATUS, f"{classification!r}"
 
 
 @pytest.mark.parametrize(
@@ -122,16 +158,110 @@ async def test_filing_a_pmfby_complaint_is_grievance_pmfby_act(query: str) -> No
 async def test_checking_a_pmfby_complaint_is_grievance_pmfby_observe(
     query: str,
 ) -> None:
-    prompts = build_prompt_service(_REPO / "configs" / "prompts.yaml")
-    schemes = load_scheme_catalog(_CATALOG).schemes()
-
-    classification = await classify_intent(_turn(query), _live_llm(), prompts, schemes)
+    classification = await _classify(query)
 
     (ask,) = classification.asks
     assert ask.subject_categories is SubjectCategory.GRIEVANCE
     assert ask.interaction_type is InteractionType.OBSERVE
-    assert ask.scheme is not None
+    assert isinstance(ask.scheme, Scheme), f"{classification!r}"
     assert ask.scheme.code == "PMFBY"
+
+
+async def test_yes_to_the_confirm_names_the_scheme() -> None:
+    """A yes read as a guess would be confirmed again, in a circle."""
+
+    history = [
+        ConversationMessage(
+            role="user",
+            text="My crop insurance money did not come, I want to complain",
+        ),
+        ConversationMessage(
+            role="assistant", text="Do you mean Pradhan Mantri Fasal Bima Yojana?"
+        ),
+    ]
+
+    classification = await _classify("yes", history=history)
+
+    (ask,) = classification.asks
+    assert ask.subject_categories is SubjectCategory.GRIEVANCE
+    assert isinstance(ask.scheme, Scheme), f"{classification!r}"
+    assert ask.scheme.code == "PMFBY"
+
+
+async def test_an_unlisted_scheme_keeps_its_name() -> None:
+    """Without the name, the farmer cannot be told which scheme we could
+    not find."""
+
+    classification = await _classify(
+        "I want to file a complaint about my Kisan Credit Card"
+    )
+
+    (ask,) = classification.asks
+    assert ask.subject_categories is SubjectCategory.GRIEVANCE
+    assert isinstance(ask.scheme, UnlistedScheme), f"{classification!r}"
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "There is a problem with my fasal bima claim",
+        "My PM-KISAN instalment has not reached my bank account",
+    ],
+)
+async def test_an_unclear_complaint_is_marked_unclear(query: str) -> None:
+    """A guess costs too much either way: a second complaint for the same
+    problem, or a ticket number the farmer does not have. Left empty, the
+    farmer would not be asked which. Neither query is an example in the
+    prompt."""
+
+    classification = await _classify(query)
+
+    (ask,) = classification.asks
+    assert ask.action is UnclearAction.UNCLEAR, f"{classification!r}"
+
+
+async def test_a_plain_question_names_no_action() -> None:
+    """The farmer wants an answer, so "new or old?" has no reply that fits.
+    The query is not an example in the prompt."""
+
+    classification = await _classify(
+        "How long does a PMFBY grievance usually take to resolve?"
+    )
+
+    (ask,) = classification.asks
+    assert ask.action is None, f"{classification!r}"
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "I want to file a PMFBY grievance",
+        "Tell me how to lodge a complaint about my PMFBY claim",
+    ],
+)
+async def test_a_new_complaint_is_support(query: str) -> None:
+    """Asking how to complain is wanting to complain: the form is the how."""
+
+    classification = await _classify(query)
+
+    (ask,) = classification.asks
+    assert ask.action is ProviderAction.SUPPORT, f"{classification!r}"
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "Is there any update on the PMFBY grievance I raised last month?",
+        "PMFBY ticket GRV-2026-004512",
+    ],
+)
+async def test_an_existing_complaint_is_status(query: str) -> None:
+    """A ticket number alone says a complaint exists."""
+
+    classification = await _classify(query)
+
+    (ask,) = classification.asks
+    assert ask.action is ProviderAction.STATUS, f"{classification!r}"
 
 
 @pytest.mark.parametrize(
@@ -142,15 +272,12 @@ async def test_checking_a_pmfby_complaint_is_grievance_pmfby_observe(
     ],
 )
 async def test_filing_a_pmkisan_complaint_is_grievance_pmkisan_act(query: str) -> None:
-    prompts = build_prompt_service(_REPO / "configs" / "prompts.yaml")
-    schemes = load_scheme_catalog(_CATALOG).schemes()
-
-    classification = await classify_intent(_turn(query), _live_llm(), prompts, schemes)
+    classification = await _classify(query)
 
     (ask,) = classification.asks
     assert ask.subject_categories is SubjectCategory.GRIEVANCE
     assert ask.interaction_type is InteractionType.ACT
-    assert ask.scheme is not None
+    assert isinstance(ask.scheme, Scheme), f"{classification!r}"
     assert ask.scheme.code == "PM-KISAN"
 
 
@@ -164,13 +291,10 @@ async def test_filing_a_pmkisan_complaint_is_grievance_pmkisan_act(query: str) -
 async def test_checking_a_pmkisan_complaint_is_grievance_pmkisan_observe(
     query: str,
 ) -> None:
-    prompts = build_prompt_service(_REPO / "configs" / "prompts.yaml")
-    schemes = load_scheme_catalog(_CATALOG).schemes()
-
-    classification = await classify_intent(_turn(query), _live_llm(), prompts, schemes)
+    classification = await _classify(query)
 
     (ask,) = classification.asks
     assert ask.subject_categories is SubjectCategory.GRIEVANCE
     assert ask.interaction_type is InteractionType.OBSERVE
-    assert ask.scheme is not None
+    assert isinstance(ask.scheme, Scheme), f"{classification!r}"
     assert ask.scheme.code == "PM-KISAN"
