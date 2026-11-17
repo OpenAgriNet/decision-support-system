@@ -200,6 +200,12 @@ def _is_one_sure_match(choices: list[AreaMatch]) -> bool:
     return len(choices) == 1 and not choices[0].is_guess
 
 
+def _places_inside(state: AreaMatch, matches: list[AreaMatch]) -> list[AreaMatch]:
+    # A common name is in many states. Only the ones in this state count.
+    places = [m for m in matches if not m.is_region and _inside(m, state)]
+    return _drop_nested(places)
+
+
 async def _user_own_place(
     region: AreaMatch,
     user_location: Location | None,
@@ -212,11 +218,10 @@ async def _user_own_place(
     if user_location is None:
         return None
     if user_location.area:
-        matches = [
-            m for m in await lookup.resolve(user_location.area) if not m.is_region
-        ]
-        if len(matches) == 1 and _inside(matches[0], region):
-            return _from_match(matches[0], PlaceSource.NEAR_USER)
+        named = await lookup.resolve(user_location.area)
+        own_places = _places_inside(region, named)
+        if len(own_places) == 1:
+            return _from_match(own_places[0], PlaceSource.NEAR_USER)
     if user_location.geometry is not None:
         # The device point is the exact spot. The nearest known place only
         # names it, so the answer can say where it is about.
