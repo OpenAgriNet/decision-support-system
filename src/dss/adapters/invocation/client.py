@@ -70,6 +70,17 @@ _DEFAULT_STATUS_DESCRIPTOR = {"code": "DRAFT", "name": "Draft"}
 _DEFAULT_OFFER_ID = "offer:open-data"
 
 
+def _build_commitment(resources: list[dict], **other_fields: object) -> dict[str, Any]:
+    """The protocol requires a status on every commitment, on every action
+    that carries a contract — even one, like `status`, with none to report."""
+
+    return {
+        "status": {"descriptor": _DEFAULT_STATUS_DESCRIPTOR},
+        "resources": resources,
+        **other_fields,
+    }
+
+
 def build_select_request(  # noqa: PLR0913
     capability: ProviderCapability,
     resource_attributes: dict,
@@ -79,7 +90,6 @@ def build_select_request(  # noqa: PLR0913
     message_id: str,
     transaction_id: NetworkTransactionID,
     timestamp: str,
-    status_descriptor: dict = _DEFAULT_STATUS_DESCRIPTOR,
     offer_id: str = _DEFAULT_OFFER_ID,
 ) -> dict[str, Any]:
     context = SelectContext(
@@ -95,16 +105,15 @@ def build_select_request(  # noqa: PLR0913
         "message": {
             "contract": {
                 "commitments": [
-                    {
-                        "status": {"descriptor": status_descriptor},
-                        "resources": [
+                    _build_commitment(
+                        [
                             {
                                 "id": resource_id,
                                 "resourceAttributes": resource_attributes,
                                 "quantity": {"count": 1},
                             }
                         ],
-                        "offer": {
+                        offer={
                             "id": offer_id,
                             "resourceIds": [resource_id],
                             "provider": {
@@ -112,7 +121,7 @@ def build_select_request(  # noqa: PLR0913
                                 "descriptor": {"name": capability.provider_name},
                             },
                         },
-                    }
+                    )
                 ]
             }
         },
@@ -229,10 +238,10 @@ def _commitment_message(
         "contract": {
             "id": contract_id,
             "commitments": [
-                {
-                    "resources": [{"id": resource_id, "quantity": {"count": 1}}],
-                    "commitmentAttributes": attributes,
-                }
+                _build_commitment(
+                    [{"id": resource_id, "quantity": {"count": 1}}],
+                    commitmentAttributes=attributes,
+                )
             ],
         }
     }

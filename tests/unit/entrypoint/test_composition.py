@@ -10,7 +10,7 @@ import pytest
 
 from dss.adapters.area_lookup.cache import CachedAreaLookup
 from dss.config.settings import Settings
-from dss.entrypoint.composition import (
+from dss.entrypoint.composition.root import (
     _aclose_all,
     _network_sender_for,
     build_area_lookup,

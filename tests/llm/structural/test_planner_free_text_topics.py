@@ -41,7 +41,7 @@ from dss.core.provider_discovery.models import (
 )
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import ConversationMessage, TextQuery, UserTurn
-from dss.entrypoint.composition import _resolve_model
+from dss.entrypoint.composition.root import _resolve_model
 from dss.orchestration.plan import build_plan
 from tests.support.live_model import missing_model_key
 from tests.support.providers import build_capability

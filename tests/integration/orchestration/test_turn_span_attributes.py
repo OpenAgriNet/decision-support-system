@@ -26,13 +26,27 @@ from dss.core.intent.models import (
     ClassifiedAsk,
     IntentClassification,
     InteractionType,
+    Scheme,
     SubjectCategory,
+)
+from dss.core.settlement.models import (
+    Ambiguous,
+    AskSlot,
+    CannotServe,
+    Frame,
+    Missing,
+    NeedsClarification,
+    Settled,
+    Slot,
+    Unservable,
+    UnservableReason,
 )
 from dss.core.shared.models import ClaimDelta, Geometry, TurnFinished
 from dss.observability.trace_log import set_stage_span_opener
 from dss.orchestration.turn import run_turn
 from dss.ports.area_lookup import AreaMatch
 from tests.support.fakes import FakeAreaLookup, FakePromptProvider
+from tests.support.settlement import settles_every_ask
 
 from .test_orchestrator import (
     _ANSWERED_EVIDENCE,
@@ -46,7 +60,12 @@ from .test_orchestrator import (
     _served_discovery,
     _turn,
 )
-from .test_turn import _FakeDiscovery, _FakeIntentLLM, _FakeModerationLLM
+from .test_turn import (
+    _FakeDiscovery,
+    _FakeIntentLLM,
+    _FakeModerationLLM,
+    _settle_with,
+)
 
 
 @pytest.fixture
@@ -245,6 +264,7 @@ async def test_the_location_stage_says_what_became_of_each_place(spans) -> None:
         prompts=FakePromptProvider(),
         policies=[],
         discover_providers=_FakeDiscovery(),
+        settle_asks=settles_every_ask,
         area_lookup=lookup,
     )
 
@@ -261,6 +281,59 @@ async def test_the_location_stage_says_what_became_of_each_place(spans) -> None:
         "langfuse.observation.input": "Pune, Aurangabad, Xyzzy",
         "langfuse.observation.output": (
             "Pune: found; Aurangabad: 2 matches; Xyzzy: not found"
+        ),
+    }
+
+
+async def test_the_settlement_stage_says_what_each_ask_waits_on(spans) -> None:
+    """Slot names and states only. A value is the farmer's own words, and
+    these keys reach the shared database."""
+
+    def complaint() -> ClassifiedAsk:
+        return ClassifiedAsk(
+            subject_categories=SubjectCategory.GRIEVANCE,
+            interaction_type=InteractionType.ACT,
+        )
+
+    rain = ClassifiedAsk(
+        subject_categories=SubjectCategory.WEATHER,
+        interaction_type=InteractionType.OBSERVE,
+    )
+    pmfby = Scheme(code="PMFBY", name="Pradhan Mantri Fasal Bima Yojana")
+    waits_on_two = NeedsClarification(
+        open_slots=(
+            Slot(AskSlot.ACTION, Missing()),
+            Slot(AskSlot.SCHEME, Ambiguous(pmfby.name, (pmfby,))),
+        )
+    )
+    unlisted = CannotServe(
+        slot=Slot(AskSlot.SCHEME, Unservable("XYZ Yojana", UnservableReason.UNLISTED))
+    )
+
+    await run_turn(
+        _turn("two complaints, and will it rain?"),
+        intent_llm=_FakeIntentLLM(
+            IntentClassification(asks=(complaint(), complaint(), rain))
+        ),
+        moderation_llm=_FakeModerationLLM(violated=None),
+        prompts=FakePromptProvider(),
+        policies=[],
+        discover_providers=_FakeDiscovery(),
+        settle_asks=_settle_with(waits_on_two, unlisted, Settled(Frame(slots=()))),
+        area_lookup=FakeAreaLookup(),
+    )
+
+    (span,) = [
+        s for s in spans.get_finished_spans() if s.name == "dss.stage.settlement"
+    ]
+    assert dict(span.attributes) == {
+        "dss.settlement.settled": 1,
+        "dss.settlement.needs_clarification": 1,
+        "dss.settlement.cannot_serve": 1,
+        "dss.settlement.asks": (
+            "ask 1 (Grievance): action missing, scheme ambiguous; "
+            "ask 2 (Grievance): scheme unlisted; "
+            "ask 3 (Weather): settled"
         ),
     }
 

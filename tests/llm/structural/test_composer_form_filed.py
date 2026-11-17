@@ -19,7 +19,7 @@ from dss.core.intent.models import Ask, InteractionType, Scheme, SubjectCategory
 from dss.core.planner.models import Result, Source, SourceKind
 from dss.core.shared.models import UserTurn
 from dss.core.stream_response.service import stream_response
-from dss.entrypoint.composition import _composer_llm
+from dss.entrypoint.composition.root import _composer_llm
 from tests.support.evidence import build_evidence
 from tests.support.live_model import missing_model_key
 

@@ -118,6 +118,7 @@ async def test_the_outbound_request_is_logged(httpserver: HTTPServer, caplog) ->
 
             await discovery.discover(query, transaction_id="t1")
 
-    assert "external=discovery event=request" in caplog.text
-    assert "/discover" in caplog.text
-    assert "request_id=t1" in caplog.text
+    (request,) = [r for r in caplog.records if getattr(r, "event", None) == "request"]
+    assert request.external == "discovery"
+    assert "/discover" in request.endpoint
+    assert request.request_id == "t1"

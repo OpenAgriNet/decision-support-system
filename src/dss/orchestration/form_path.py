@@ -234,7 +234,6 @@ class FormPath:
                     turn=turn,
                     compose=self._components.compose,
                     localize=self._components.localize,
-                    question=None,
                     ctx=ctx,
                     recorder=recorder,
                 )

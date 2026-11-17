@@ -126,10 +126,12 @@ def test_the_fallback_is_recorded_as_a_trace_event(
     with caplog.at_level(logging.INFO, logger="dss.trace"):
         service.get_prompt(_PROBE, LanguageTag("mr"), {"name": "x"})
 
-    line = next(r.message for r in caplog.records if "language_fallback" in r.message)
-    assert "prompt=intent" in line
-    assert "requested=mr" in line
-    assert "served=en" in line
+    record = next(
+        r for r in caplog.records if getattr(r, "event", None) == "language_fallback"
+    )
+    assert record.prompt == "intent"
+    assert record.requested == "mr"
+    assert record.served == "en"
 
 
 def test_a_regional_tag_resolves_to_its_primary_subtag(tmp_path: Path) -> None:
@@ -175,7 +177,9 @@ def test_an_english_regional_tag_logs_no_fallback(
             service.get_prompt(_PROBE, LanguageTag("en-GB"), {"name": "x"}) == "Hello x"
         )
 
-    assert not any("language_fallback" in r.message for r in caplog.records)
+    assert not any(
+        getattr(r, "event", None) == "language_fallback" for r in caplog.records
+    )
 
 
 def test_a_broken_override_serves_english_rather_than_failing_the_turn(

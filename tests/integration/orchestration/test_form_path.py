@@ -15,7 +15,6 @@ from dss.core.forms.models import (
     FormContext,
     FormErrorBlock,
     FormSubmission,
-    ProviderAction,
 )
 from dss.core.forms.service import build_form_registry
 from dss.core.intent.models import Intent, InteractionType, Scheme, SubjectCategory
@@ -31,6 +30,7 @@ from dss.core.shared.models import (
     Cause,
     ClaimDelta,
     ConversationMessage,
+    ProviderAction,
     RefusalBlock,
     TextBlock,
     TurnContext,
@@ -46,6 +46,7 @@ from dss.orchestration.session import NoSessionStore, Sessions
 from dss.ports.invocation import (
     SupportFailedError,
 )
+from tests.support.evidence import attempted
 from tests.support.fakes import (
     FakeLocalizer,
     FakePromptProvider,
@@ -552,7 +553,7 @@ async def test_the_composer_gets_the_providers_reply_as_evidence() -> None:
     (source,) = compose.evidence.sources
     assert source.name == "PMFBY-PROVIDER"
     (ask,) = compose.evidence.ask_evidences
-    (result,) = ask.results
+    (result,) = attempted(ask).results
     assert result.data == _TICKET
 
 
