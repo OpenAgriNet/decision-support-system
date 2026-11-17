@@ -171,6 +171,7 @@ async def test_the_failure_is_recorded_for_the_evidence() -> None:
     assert failure.ask_index == 0
     assert failure.capability == "openagrinet:MandiPrice"
     assert failure.retryable is True
+    assert failure.status_code == 429
 
 
 def _calls_unindexed_then_answers(

@@ -72,6 +72,7 @@ from dss.orchestration.orchestrator import (
 )
 from dss.orchestration.provider_action import FORM_ASK_INDEX, call_provider_action
 from dss.orchestration.redaction import RedactTexts
+from dss.orchestration.session import Session
 from dss.orchestration.stage_content import (
     asks_text,
     discovery_text,
@@ -135,6 +136,7 @@ class FormPath:
         *,
         ctx: TurnContext,
         recorder: TurnRecorder,
+        session: Session,
     ) -> AsyncGenerator[TurnEvent]:
         # Raw values are checked first: a tagged phone fails its own pattern.
         checked: ValidSubmission | FormErrors | UnknownForm = validate_submission(

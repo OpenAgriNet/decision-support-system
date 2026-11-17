@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start the whole local stack: Langfuse, the mock network, and the DSS.
+# Start the whole local stack: Langfuse, Redis, the mock network, and the DSS.
 #
 #     ./scripts/run-local.sh
 #     ./scripts/run-local.sh --with-grafana   # also ClickHouse + Grafana
@@ -7,8 +7,8 @@
 # Traces go to the local Langfuse unless .env.local sets
 # OTEL_EXPORTER_OTLP_ENDPOINT, in which case the local Langfuse is not started.
 #
-# Ctrl-C stops the DSS. Langfuse and the mock keep running — they are slow to
-# start and you usually want them across several DSS restarts. Stop them with
+# Ctrl-C stops the DSS. Langfuse, Redis and the mock keep running — they are slow
+# to start and you usually want them across several DSS restarts. Stop them with
 # `./scripts/run-local.sh --down`.
 #
 # This script checks prerequisites and refuses, rather than fixing them. A dev
@@ -22,6 +22,8 @@ DSS_PORT="${DSS_PORT:-8077}"
 MOCK_PORT="${MOCK_PORT:-8078}"
 LANGFUSE_PORT="${LANGFUSE_PORT:-3000}"
 OTEL_PORT="${OTEL_PORT:-4318}"
+REDIS_PORT="${REDIS_PORT:-6379}"
+REDIS_CONTAINER="${REDIS_CONTAINER:-dss-redis}"
 COLLECTOR="${COLLECTOR:-dss-otel-collector}"
 SCHEMA_PACK_REF="${SCHEMA_PACK_REF:-schema-packs-v0.1}"
 COMPOSE_PROJECT="${COMPOSE_PROJECT:-decision-support-system}"
@@ -96,6 +98,7 @@ if [ "$DOWN" = true ]; then
   $COMPOSE -f docker-compose.observability.yml down
   # Started with `run`, not compose, so stopped by name.
   "$R" rm -f "$COLLECTOR" >/dev/null 2>&1 || true
+  "$R" rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
   # The mock is not a container, so compose does not own it.
   pkill -f 'tools.mock_network' 2>/dev/null || true
   echo "stopped"
@@ -283,6 +286,37 @@ else
     --config=/etc/otel/collector.yaml >/dev/null
 fi
 
+# --- redis -----------------------------------------------------------------
+#
+# The session store for form flows (ADR-0022). Without it a PM-KISAN grievance
+# cannot finish: the OTP reply finds nothing waiting. Nothing is saved to disk,
+# so --down, or a restart, forgets every session, which is what a laptop wants.
+#
+# A DSS_REDIS_URL set in .env.local wins, and no local Redis is started.
+# `run`, not compose: the compose service publishes no port, so a DSS on the
+# host could not reach it.
+
+if [ -n "${DSS_REDIS_URL:-}" ]; then
+  echo "==> session store at DSS_REDIS_URL (from $ENV_LOCAL); local redis not started"
+elif [ -n "$("$R" ps --filter "name=^${REDIS_CONTAINER}$" --format '{{.Names}}' 2>/dev/null || true)" ]; then
+  echo "==> redis already up on :$REDIS_PORT"
+  export DSS_REDIS_URL="redis://127.0.0.1:${REDIS_PORT}/0"
+else
+  lsof -ti:"$REDIS_PORT" >/dev/null 2>&1 && \
+    die "port $REDIS_PORT is in use, and redis needs it. Another Redis, or a
+  stale container — find it with \`lsof -i:$REDIS_PORT\`, or set REDIS_PORT."
+
+  echo "==> starting redis on :$REDIS_PORT"
+  # A stopped container of the same name would block `run`.
+  "$R" rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
+  # Bound to 127.0.0.1 only, so no password is needed on a laptop.
+  "$R" run -d --name "$REDIS_CONTAINER" \
+    -p "127.0.0.1:${REDIS_PORT}:6379" \
+    "redis:${REDIS_TAG:-7-alpine}" \
+    redis-server --save "" --appendonly no >/dev/null
+  export DSS_REDIS_URL="redis://127.0.0.1:${REDIS_PORT}/0"
+fi
+
 # --- mock network ----------------------------------------------------------
 #
 # --reload because the @type-to-response map is read at import: a mock started
@@ -341,7 +375,8 @@ export DSS_SCHEMES_CONFIG_PATH="${DSS_SCHEMES_CONFIG_PATH:-configs/schemes.csv}"
 echo
 echo "    traces     ${OTEL_EXPORTER_OTLP_ENDPOINT}"
 echo "    dss        http://127.0.0.1:${DSS_PORT}/docs"
-echo "    mock log   tail -f var/mock-network.log"
+echo "    sessions   ${DSS_REDIS_URL}"
+echo "    mock log   tail -f var/mock-network.log  (PM-KISAN test OTP: 1234)"
 if [ "$LOCAL_LANGFUSE" = true ]; then
   echo "    otel log   $R logs -f $COLLECTOR"
 fi

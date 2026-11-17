@@ -157,7 +157,7 @@ a warning, and offers no forms. A `var/schema-packs/` fetched before
 
 Discovery and invocation leave for the OAN network, which a local build does
 not have. `tools/mock_network/` stands in for it — the same synchronous
-`POST /discover` / `POST /select` / `POST /support` / `POST /status` contract,
+`POST /discover` / `POST /select` / `POST /init` / `POST /support` / `POST /status` contract,
 no auth:
 
 ```bash
@@ -261,6 +261,12 @@ the status form. Send back a ticket this mock filed, with the same phone, and
 `/status` answers the case. Any other ticket or phone is a 400, which the DSS
 tells the farmer as no complaint found. The mock remembers its filings only
 while it runs: restart it and it knows no case.
+
+PM-KISAN needs an OTP. `/init` takes a PM-KISAN enrolment number and answers
+that a 4-digit OTP was sent by SMS; no SMS is sent. PM-KISAN's `/support` and
+`/status` accept only the OTP `1234` (`MOCK_OTP`) and refuse any other with a
+400. A PM-KISAN case is read back by its enrolment number and filing date, not
+a ticket. PMFBY needs no OTP. The DSS's form path does not call `/init` yet.
 
 A question intent classifies into a category the mock does not serve comes
 back `no_match` — which is the honest answer, and worth telling apart from a
@@ -863,6 +869,28 @@ filter and the farmer is asked which one they mean.
 the column across when regenerating against a newer snapshot. An adopter who
 needs a different area set or different aliases points `DSS_AREA_CSV_PATH`
 at their own file.
+
+### Session state for forms (Redis)
+
+Some forms take more than one turn: PM-KISAN sends an OTP, and the farmer's
+next form answers it. The DSS keeps what it needs between those turns in
+Redis, for 180 seconds per session. Every turn runs in its session, one at a
+time; only form turns write to it for now.
+
+| Setting | Default | What it does |
+|---|---|---|
+| `DSS_REDIS_URL` | unset | The Redis address, like `redis://:<password>@redis:6379/0`. Unset means no store: a form turn forgets everything when it ends, so a flow that needs an OTP cannot finish. Forms that file in one turn work as before. |
+
+`docker-compose.yml` runs a Redis with a password (`DSS_REDIS_PASSWORD`) and
+nothing saved to disk, and points the DSS at it. Set `DSS_REDIS_URL=` (empty)
+in `.env` to turn it off. The Redis container still starts; the DSS just
+does not use it.
+
+- The password goes into the URL as it is. Use only letters, digits, `-` and
+  `_`, or set `DSS_REDIS_URL` yourself with the password URL-encoded.
+- Beyond a laptop, use TLS: a `rediss://` address.
+- A Redis that cannot be reached does not stop a form turn. That turn runs as
+  if `DSS_REDIS_URL` were unset, and the log says why.
 
 ### Place names the file lacks (Photon)
 

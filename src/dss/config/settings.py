@@ -220,7 +220,11 @@ class Settings(BaseSettings):
     # and the turn runs as if no preference existed.
     provider_preferences_timeout_seconds: float = Field(3.0, gt=0.0)
 
-    @field_validator("provider_preferences_base_url", mode="before")
+    # Where form turns keep their session state (ADR-0022). Unset → no store:
+    # a form turn's session lasts that turn only and takes no lock.
+    redis_url: str | None = None
+
+    @field_validator("provider_preferences_base_url", "redis_url", mode="before")
     @classmethod
     def _unset_when_blank(cls, value: object) -> object:
         """An empty variable is an operator leaving it off, not a URL.

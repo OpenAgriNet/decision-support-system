@@ -226,6 +226,18 @@ def test_a_missing_required_field_is_unprocessable(a_body):
     assert runner.calls == []
 
 
+@pytest.mark.parametrize("session_id", ["", "   "])
+def test_a_blank_session_id_is_unprocessable(a_body, session_id):
+    app, runner = client()
+    body = a_body()
+    body["context"]["sessionId"] = session_id
+
+    response = app.post("/v1/turns", json=body)
+
+    assert response.status_code == 422
+    assert runner.calls == []
+
+
 def test_a_non_json_content_type_is_unsupported(a_body):
     app, _ = client()
 

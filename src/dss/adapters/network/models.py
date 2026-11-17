@@ -24,13 +24,14 @@ from pydantic.alias_generators import to_camel
 class NetworkAction(StrEnum):
     """What a message is for.
 
-    Four, not eight. Every call answers synchronously — the reply comes back
+    Five, not ten. Every call answers synchronously — the reply comes back
     on the same call — so there is no separate `on_discover`, `on_select`,
-    `on_support` or `on_status` message for the DSS to send or name.
+    `on_init`, `on_support` or `on_status` message for the DSS to send or name.
     """
 
     DISCOVER = "discover"
     SELECT = "select"
+    INIT = "init"
     SUPPORT = "support"
     STATUS = "status"
 
@@ -131,6 +132,10 @@ class ProviderContext(NetworkContext):
 
 class SelectContext(ProviderContext):
     action: Literal[NetworkAction.SELECT] = NetworkAction.SELECT
+
+
+class InitContext(ProviderContext):
+    action: Literal[NetworkAction.INIT] = NetworkAction.INIT
 
 
 class SupportContext(ProviderContext):
