@@ -263,6 +263,19 @@
   `group_by_ask` and `merge_unsettled` to `core/evidence/`, so no stage
   looks like the owner.
 
+- **Drop an ask that repeats another.** "Tell me the weather and tell me the
+  weather" gives two asks that differ only by `id`, so the user can get the
+  same answer twice. Drop the repeat in `resolve_places`, after places are
+  resolved and before ids are given: two asks with different places are not
+  repeats. Changes replies, so it is its own story.
+  - "Weather today and tomorrow" also gives two same asks, because an ask
+    has no field for time. Dropping one is safe: both search the same thing
+    and the composer reads the user's words. The real gap is that an ask
+    cannot say what makes it different.
+  - Repeats are handled late today, piece by piece: discovery sends one
+    query for asks that search the same thing, and the "no provider" reply
+    names a place once. Check whether those can go once this is in.
+
 ## Settlement (#243)
 
 - **An ask and its settlement are matched by position.** `TurnResult` holds
