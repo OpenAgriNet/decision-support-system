@@ -8,12 +8,13 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
+from functools import partial
 
 import anyio
 from pydantic_ai import Agent, ModelRetry, RunContext
 from pydantic_ai.models import Model
 
-from dss.core.intent.models import AskId, Intent, ResolvedPlace
+from dss.core.intent.models import Ask, AskId, Intent, ResolvedPlace
 from dss.core.moderation.models import Outcome
 from dss.core.planner.describe_capability import render_candidates_as_markdown
 from dss.core.planner.lookup import find_capability
@@ -77,6 +78,17 @@ class PlannerDeps:
     next_choices: NextChoices = field(default_factory=NextChoices)
 
 
+@dataclass(frozen=True)
+class _SelectedCapability:
+    ask: Ask
+    capability: ProviderCapability
+    schema: DomainSchema
+
+    @property
+    def lacks_needed_place(self) -> bool:
+        return self.schema.needs_place and not isinstance(self.ask.place, ResolvedPlace)
+
+
 async def _select(
     ctx: RunContext[PlannerDeps],
     ask_id: AskId,
@@ -98,10 +110,61 @@ async def _select(
     model's — the model is picking a capability, not a vendor."""
 
     deps = ctx.deps
-    decision = await deps.verdict.get()
-    if decision.outcome is not Outcome.PROCEED:
+    if not await _is_cleared_to_call_providers(deps):
         # Not a ModelRetry: retrying cannot clear a moderation rejection.
         return "This turn was not cleared to call providers. Do not retry."
+
+    selected = _find_selected_capability(deps, ask_id=ask_id, resource_id=resource_id)
+    # A safety net: settlement asks for a needed place first.
+    # Not a ModelRetry: retrying cannot fix the place.
+    if selected.lacks_needed_place:
+        return (
+            f"Ask {ask_id} has no place to search. Do not call select for "
+            f"it; report that this ask has no answer."
+        )
+    _validate_model_fields(resource_attributes, selected.schema)
+
+    consulted = await _consult_ranked_providers(
+        deps, selected, model_filled=resource_attributes
+    )
+    answered = _find_first_answered(consulted)
+    _log_consultation(deps, ask_id=ask_id, consulted=consulted, chosen=answered)
+    if answered is None:
+        return _nothing_came_back(deps, ask_id=ask_id, consulted=consulted)
+
+    _keep_answer(deps, ask_id=ask_id, consulted=consulted, chosen=answered)
+    return render_answers_as_markdown(answered.answers)
+
+
+async def _is_cleared_to_call_providers(deps: PlannerDeps) -> bool:
+    decision = await deps.verdict.get()
+    return decision.outcome is Outcome.PROCEED
+
+
+async def _consult_ranked_providers(
+    deps: PlannerDeps, selected: _SelectedCapability, *, model_filled: dict
+) -> tuple[Consulted, ...]:
+    return await _consult_all(
+        deps,
+        _consulting(deps, ask_id=selected.ask.id, capability=selected.capability),
+        attributes_for=partial(
+            _build_attributes,
+            deps=deps,
+            selected=selected,
+            model_filled=model_filled,
+        ),
+    )
+
+
+def _find_first_answered(consulted: tuple[Consulted, ...]) -> Consulted | None:
+    return next((one for one in consulted if one.answers), None)
+
+
+def _find_selected_capability(
+    deps: PlannerDeps, *, ask_id: AskId, resource_id: str
+) -> _SelectedCapability:
+    """Raises ``ModelRetry`` when the model named something this turn does
+    not have: each is a reason to pick again, not to end the turn."""
 
     capability = find_capability(deps.discovery, ask_id=ask_id, resource_id=resource_id)
     if capability is None:
@@ -115,12 +178,8 @@ async def _select(
     if ask is None:
         raise ModelRetry(f"ask {ask_id} is not one of this turn's asks")
 
-    # A ModelRetry, not a KeyError. Discovery reports what the network
-    # offers; the schema index is built from the packs on disk, and the two
-    # can disagree — a skipped pack leaves the index without a @type the
-    # network still advertises. Without a schema there is nothing to validate
-    # the model's fields against and no way to build a request, but that is a
-    # reason for the model to pick another candidate, not to end the turn.
+    # A skipped pack leaves no schema for a @type the network still offers.
+    # A retry, so the model picks another candidate.
     schema = deps.schemas.get(capability.capability)
     if schema is None:
         raise ModelRetry(
@@ -129,59 +188,56 @@ async def _select(
             f"that this ask has no answer."
         )
 
-    # A safety net. Settlement asks for a needed place first. Without one, the
-    # call has no location and could answer for some other place.
-    # Not a ModelRetry: retrying cannot fix the place.
-    if schema.needs_place and not isinstance(ask.place, ResolvedPlace):
-        return (
-            f"Ask {ask_id} has no place to search. Do not call select for "
-            f"it; report that this ask has no answer."
-        )
+    return _SelectedCapability(ask=ask, capability=capability, schema=schema)
 
+
+def _validate_model_fields(resource_attributes: dict, schema: DomainSchema) -> None:
     try:
         validate_arguments(resource_attributes, schema)
     except InvalidArgumentError as exc:
         raise ModelRetry(str(exc)) from exc
 
-    # Who this one call consults. With a client ranking in force that is
-    # every ranked provider for the ask, best first; without one it is the
-    # single candidate the model named, exactly as before (ADR-0019).
-    consulting = _consulting(deps, ask_id=ask_id, capability=capability)
 
-    # Built per provider, not once and reused: `build_resource_attributes`
-    # echoes each capability's own advertised values back into the request,
-    # so two providers serving the same @type need two different bodies out
-    # of the same model-authored fields.
-    def attributes_for(candidate: ProviderCapability) -> dict:
-        return build_resource_attributes(
-            capability=candidate,
-            subject_category=ask.subject_categories.value,
-            place=ask.place if isinstance(ask.place, ResolvedPlace) else None,
-            model_filled=resource_attributes,
-            schema_context_index=deps.schema_context_index,
-            filterable=schema.filterable,
-            # The fields the pack declares, which is not the same as the fields it
-            # lets a caller filter on: `AgricultureFacility` declares `location`
-            # and leaves it out of `filterable_paths`.
-            declared=tuple(schema.field_types),
-            # TODO(#55): remove with the pack fix.
-            #
-            # Always today. Nothing reads a date out of the question yet, so a
-            # farmer asking about yesterday still gets today's window —
-            # `arrivalDate` is filterable and is where that will come from.
-            priced_on=deps.today(),
-        )
+def _build_attributes(
+    candidate: ProviderCapability,
+    *,
+    deps: PlannerDeps,
+    selected: _SelectedCapability,
+    model_filled: dict,
+) -> dict:
+    """Built per provider: each one's own advertised values go back into its
+    request."""
 
-    consulted = await _consult_all(deps, consulting, attributes_for=attributes_for)
-    chosen = next((one for one in consulted if one.answers), None)
-    _log_consultation(deps, ask_id=ask_id, consulted=consulted, chosen=chosen)
+    ask = selected.ask
+    return build_resource_attributes(
+        capability=candidate,
+        subject_category=ask.subject_categories.value,
+        place=ask.place if isinstance(ask.place, ResolvedPlace) else None,
+        model_filled=model_filled,
+        schema_context_index=deps.schema_context_index,
+        filterable=selected.schema.filterable,
+        # The fields the pack declares, which is not the same as the fields it
+        # lets a caller filter on: `AgricultureFacility` declares `location`
+        # and leaves it out of `filterable_paths`.
+        declared=tuple(selected.schema.field_types),
+        # TODO(#55): remove with the pack fix.
+        #
+        # Always today. Nothing reads a date out of the question yet, so a
+        # farmer asking about yesterday still gets today's window —
+        # `arrivalDate` is filterable and is where that will come from.
+        priced_on=deps.today(),
+    )
 
-    if chosen is None:
-        return _nothing_came_back(deps, ask_id=ask_id, consulted=consulted)
 
+def _keep_answer(
+    deps: PlannerDeps,
+    *,
+    ask_id: AskId,
+    consulted: tuple[Consulted, ...],
+    chosen: Consulted,
+) -> None:
     deps.next_choices.hold_after(ask_id, consulted=consulted, chosen=chosen)
     deps.raw_answers.extend((ask_id, answer) for answer in chosen.answers)
-    return render_answers_as_markdown(chosen.answers)
 
 
 async def _select_next(ctx: RunContext[PlannerDeps], ask_id: AskId) -> str:
