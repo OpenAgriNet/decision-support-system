@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-17
+
 ### Changed
 - Each ask is settled right after intent, before discovery: code checks it
   has the place, the scheme and the action it needs. An ask with a missing
@@ -32,6 +34,12 @@
   `went_wrong`, `form_cannot_complete`, `saved_details_unusable`,
   `field_recheck`, `init_response_refused`, `init_response_not_sent`,
   `outcome_unknown` and `case_not_found` (#207, #208)
+- A `status` call now sends a status on its commitment, as the Beckn
+  protocol requires. `support` is unchanged (#205)
+- Log lines carry their fields as attributes, not in the message text, so
+  the request, message and session ids can be filtered on. Every `dss`
+  log line carries the turn's ids. The console still prints `key=value`
+  (#241)
 
 ### Added
 - A farmer with a scheme problem is guided to the grievance form. When their
