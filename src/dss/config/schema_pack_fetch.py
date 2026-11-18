@@ -155,9 +155,9 @@ def _download_pack(
 ) -> dict[str, bytes] | None:
     """Every file of one pack, keyed by its path within the version directory.
 
-    `None` when the pack is not on this ref at all — the two essential files
-    are what decides that. The other four are optional: unread today, but
-    fetched so the on-disk tree mirrors upstream.
+    `None` when the pack is not published, or not in this preview — the two
+    essential files are what decides that. The other four are optional:
+    unread today, but fetched so the on-disk tree mirrors upstream.
     """
 
     files: dict[str, bytes] = {}
@@ -216,9 +216,9 @@ def _example_names(pack: str, *, ref: str | None, api_host: str) -> tuple[str, .
 def _get(url: str) -> bytes | None:
     """The body at `url`, or None if it is not there.
 
-    A 404 is the ordinary answer for "this pack is not on this ref", so it is
-    data rather than an error. `GITHUB_TOKEN` is used when set: unauthenticated
-    Contents API calls are capped at 60 an hour.
+    A 404 is the ordinary answer for "this pack is not published, or not in
+    this preview", so it is data rather than an error. `GITHUB_TOKEN` is used
+    when set: unauthenticated Contents API calls are capped at 60 an hour.
     """
 
     request = urllib.request.Request(url)  # noqa: S310 - URL is built from fixed https hosts
