@@ -242,21 +242,6 @@
 
 ## Ask identity
 
-- **Pass the ask itself, not its index.** Results, failures, forms,
-  discovery and the planner's tools all name an ask by its position in
-  `intent.asks`, so any step that branches has to keep positions lined up by
-  hand. #243 works around it by running only the settled asks through
-  discovery and the planner as their own `Intent`, then merging their
-  evidence back with the unsettled asks. Direction: each stage's output
-  carries its ask, as `AskEvidence` already does, so a step can pass on just
-  the asks it means and the merge goes.
-
-- **`ask_index` is wrong after the merge.** `merge_unsettled` puts every ask
-  back in the farmer's order. But a `Result` or `Failure` keeps the number it
-  had among the settled asks only. With the asks [needs a place, settled],
-  the settled ask's result says `ask_index == 0`, which is the other ask.
-  Nothing reads the number after the merge today. The item above removes it.
-
 - **Give `Evidence` its own package.** It lives in `core/planner/` because
   the planner was its first producer, but the form step and settlement add
   outcomes to it too. Move `Evidence`, `AskEvidence`, `AskOutcome`,
@@ -278,15 +263,25 @@
 
 ## Settlement (#243)
 
-- **An ask and its settlement are matched by position.** `TurnResult` holds
-  the asks and the settlements as two lists. One built with a missing or
-  short settlements list passes `is_every_ask_settled` and then fails in
-  `settled_intent`, far from where it was built. Pair them in one type,
-  `AskSettlement` (an ask with its settlement), as `AskEvidence` pairs an ask
-  with its outcome. `settle_asks` returns the pairs, `TurnResult` holds only
-  the pairs and the confidence, and `intent` is read from them. The three
-  `zip(strict=True)` calls go, and `merge_unsettled` no longer takes the
-  intent. Its own PR.
+- **`TurnResult` holds the asks twice.** They are in `intent` and in the
+  `AskSettlement` pairs. One built with asks and no pairs passes
+  `is_every_ask_settled`, and the farmer is told nobody serves asks that were
+  never checked. After settlement nothing needs an `Intent`: every later step
+  reads only its asks. Its own PR:
+  - `TurnResult` holds the pairs and the intent's confidence. Its `intent`
+    field goes, and nothing builds an `Intent` from parts.
+  - A type in `core/settlement`, `AskSettlements`, holds the pairs and
+    answers `asks`, `settled_asks` and `is_every_ask_settled`. Those leave
+    `TurnResult`, with `settled_intent` and `_settled_only`.
+  - Settlement, discovery, the planner and the form step take asks, not an
+    `Intent`. The form path then stops building an `Intent` with a made-up
+    confidence of 1.0.
+  - `Intent.find_ask` has one caller, the planner. It becomes a function
+    beside `find_capability`.
+  - Cost: a new turn-level field on `Intent` must be added to `TurnResult`
+    by hand.
+  - Left for later: a turn that moderation stopped as its own type, so three
+    fields are not blanked by hand.
 - **A type for scheme codes.** A scheme's code and its name are both plain
   strings, so one can be passed where the other is wanted. Add
   `SchemeCode = NewType("SchemeCode", str)` for `Scheme.code`,
