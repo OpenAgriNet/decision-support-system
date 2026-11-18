@@ -34,14 +34,18 @@ from dss.core.provider_discovery.models import DiscoveredAnswer
 from dss.core.shared.models import ConversationMessage
 
 
-def guidance_section(skills: Sequence[Skill]) -> str:
+def guidance_section(skills: Sequence[Skill], *, category_guidance: str = "") -> str:
+    """The skills' guidance, then the guidance for the turn's intent
+    categories, which is empty on a turn no category has any for."""
+
     if not skills:
         return (
             "# Guidance\n\n"
             "You have no skills loaded and no tools to call. Report that this "
             "turn cannot be served.\n\n"
         )
-    body = "\n\n".join(skill.guidance.strip() for skill in skills)
+    parts = [skill.guidance.strip() for skill in skills]
+    body = "\n\n".join([*parts, category_guidance] if category_guidance else parts)
     return f"# Guidance\n\n{body}\n\n"
 
 

@@ -72,7 +72,6 @@ def _planner_prompt(**overrides) -> str:
         "guidance_section": guidance_section(()),
         "asks_section": asks_section(()),
         "answers_section": answers_section({}),
-        "category_guidance": "",
     } | overrides
     return _service().get_prompt(
         PromptIdentifier.PLANNER, lang=LanguageTag("en"), placeholder_values=kwargs
@@ -535,7 +534,6 @@ def test_planner_hindi_demo_keeps_the_marker_names_in_english() -> None:
             "guidance_section": guidance_section(()),
             "asks_section": "",
             "answers_section": "",
-            "category_guidance": "",
         },
     )
 
