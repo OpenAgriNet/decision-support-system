@@ -18,9 +18,9 @@ from dss.core.intent.models import (
     SchemeConfidence,
     SubjectCategory,
 )
-from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.shared.models import TextQuery, UserTurn
 from dss.orchestration.turn import run_turn
+from tests.support.discovery import a_discovery
 from tests.support.fakes import FakeAreaLookup, FakePromptProvider, FakeSchemeCatalog
 from tests.support.settlement import settles_every_ask
 
@@ -73,7 +73,7 @@ class _RecordingDiscovery:
 
     async def __call__(self, intent: Intent, turn: UserTurn, *, now: datetime):
         self.seen = intent
-        return DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
+        return a_discovery()
 
 
 async def _run(classification: IntentClassification, *, catalog):

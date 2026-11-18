@@ -37,6 +37,7 @@ from dss.core.provider_discovery.models import (
 from dss.core.provider_discovery.service import discover_providers
 from dss.core.shared.models import Geometry, ProviderAction, TextQuery, UserTurn
 from tests.support.asks import an_ask, numbered
+from tests.support.discovery import a_discovery, discovered
 from tests.support.providers import build_capability
 
 NOW = datetime(2026, 8, 26, 12, 0, 0, tzinfo=UTC)
@@ -105,24 +106,14 @@ async def test_a_single_ask_resolves_and_returns_the_discovery_result() -> None:
     schema_pack_cache = _FakeSchemaPackCache(
         {("Market", "Service"): ("openagrinet:MandiPrice",)}
     )
-    expected_result = DiscoveryResult(
-        answers={0: ()},
-        capabilities={
-            0: (
-                build_capability(
-                    provider_id="mausamgram",
-                    provider_name="IMD",
-                    capability="openagrinet:MandiPrice",
-                    resource_id="r1",
-                ),
-            )
-        },
-        failures={0: ()},
-        events=(),
+    offered = build_capability(
+        provider_id="mausamgram",
+        provider_name="IMD",
+        capability="openagrinet:MandiPrice",
+        resource_id="r1",
     )
-    discovery = _FakeDiscovery(
-        _query_result(capabilities=expected_result.capabilities[0])
-    )
+    expected_result = a_discovery(discovered(ask, capabilities=(offered,)))
+    discovery = _FakeDiscovery(_query_result(capabilities=(offered,)))
 
     result = await discover_providers(
         intent,
@@ -1164,9 +1155,7 @@ async def test_a_turn_with_no_asks_sends_nothing() -> None:
     result = await _discover_with(discovery)
 
     assert discovery.calls == []
-    assert result == DiscoveryResult(
-        answers={}, capabilities={}, failures={}, events=()
-    )
+    assert result == a_discovery()
 
 
 async def test_an_expired_answer_on_a_shared_query_is_reported_once_per_ask() -> None:

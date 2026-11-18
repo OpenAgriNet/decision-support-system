@@ -31,13 +31,13 @@ from dss.core.planner.models import Skill, Verdict
 from dss.core.planner.validation import DomainSchema
 from dss.core.provider_discovery.models import (
     DiscoveredAnswer,
-    DiscoveryResult,
     ProviderCapability,
 )
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import Geometry, TextQuery, UserTurn
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
 from tests.support.asks import an_ask
+from tests.support.discovery import a_discovery, discovered
 from tests.support.providers import build_capability
 
 CAPABILITY = build_capability(
@@ -119,8 +119,6 @@ def _intent(category: SubjectCategory = SubjectCategory.MARKET) -> Intent:
 
 
 def _deps(invocation: _FakeInvocation) -> PlannerDeps:
-    from dss.core.provider_discovery.models import DiscoveryResult
-
     return PlannerDeps(
         turn=UserTurn(
             input=TextQuery(text="price of paddy"),
@@ -131,9 +129,7 @@ def _deps(invocation: _FakeInvocation) -> PlannerDeps:
             channel="web",
         ),
         intent=_intent(),
-        discovery=DiscoveryResult(
-            answers={}, capabilities={0: (CAPABILITY,)}, failures={}, events=()
-        ),
+        discovery=a_discovery(discovered(capabilities=(CAPABILITY,))),
         schemas=SCHEMAS,
         schema_context_index={
             "openagrinet:MandiPrice": "https://schemas.openagrinet.global/schema/MandiPrice/0.1/context.jsonld"
@@ -275,9 +271,7 @@ async def test_a_facility_select_carries_the_search_origin() -> None:
 
     invocation = _FakeInvocation()
     deps = _deps(invocation)
-    deps.discovery = DiscoveryResult(
-        answers={}, capabilities={0: (facility,)}, failures={}, events=()
-    )
+    deps.discovery = a_discovery(discovered(capabilities=(facility,)))
     deps.schemas = schemas
     deps.schema_context_index = {
         "openagrinet:AgricultureFacility": (
@@ -365,8 +359,8 @@ async def test_each_select_carries_its_own_asks_place() -> None:
 
     invocation = _FakeInvocation()
     deps = _deps(invocation)
-    deps.discovery = DiscoveryResult(
-        answers={}, capabilities={0: (weather,), 2: (weather,)}, failures={}, events=()
+    deps.discovery = a_discovery(
+        discovered(0, capabilities=(weather,)), discovered(2, capabilities=(weather,))
     )
     deps.schemas = {
         "openagrinet:WeatherForecast": DomainSchema(

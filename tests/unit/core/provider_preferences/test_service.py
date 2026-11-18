@@ -16,6 +16,7 @@ from dss.core.provider_discovery.models import (
 from dss.core.provider_preferences.models import NO_PREFERENCE, PreferenceBook
 from dss.core.provider_preferences.service import prioritise, priority_for_ask
 from tests.support.asks import an_ask
+from tests.support.discovery import a_discovery, discovered
 from tests.support.providers import build_capability
 
 WEATHER = "openagrinet:WeatherObservation"
@@ -61,12 +62,7 @@ def _discovered(
     capabilities: tuple[ProviderCapability, ...] = (),
     answers: tuple[DiscoveredAnswer, ...] = (),
 ) -> DiscoveryResult:
-    return DiscoveryResult(
-        answers={0: answers} if answers else {},
-        capabilities={0: capabilities} if capabilities else {},
-        failures={},
-        events=(),
-    )
+    return a_discovery(discovered(capabilities=capabilities, answers=answers))
 
 
 def _book(**senders: dict[str, tuple[str, ...]]) -> PreferenceBook:
@@ -160,14 +156,11 @@ def test_two_clients_asking_the_same_question_get_their_own_first_choice() -> No
 def test_each_ask_is_ranked_on_its_own_topic() -> None:
     """Asks 0 and 2 of a turn. Ask 1 was not passed on."""
 
-    discovery = DiscoveryResult(
-        answers={},
-        capabilities={
-            0: (_capability("imd"), _capability("vistaar")),
-            2: (_capability("agmarknet"), _capability("state-mandi")),
-        },
-        failures={},
-        events=(),
+    discovery = a_discovery(
+        discovered(0, capabilities=(_capability("imd"), _capability("vistaar"))),
+        discovered(
+            2, capabilities=(_capability("agmarknet"), _capability("state-mandi"))
+        ),
     )
     preference = _book(
         app={"weather": ("vistaar",), "market": ("state-mandi",)}
@@ -248,7 +241,7 @@ def test_an_ask_discovery_found_nobody_for_gains_no_entry() -> None:
     """Filtering must not turn "absent from the result" into "found nobody" —
     the same thing to the farmer, one more key for every later reader."""
 
-    discovery = DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
+    discovery = a_discovery()
     preference = _book(app={"weather": ("imd",)}).for_sender("app")
 
     result = prioritise(discovery, intent=_intent(), preference=preference)

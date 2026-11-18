@@ -60,6 +60,7 @@ from dss.ports.invocation import (
     InitFailedError,
     SupportFailedError,
 )
+from tests.support.discovery import a_discovery, discovered
 from tests.support.evidence import attempted
 from tests.support.fakes import (
     FakeLocalizer,
@@ -114,9 +115,7 @@ _TICKET = {"case": {"ticketNo": "100626000099001", "filedOn": "2026-10-29"}}
 
 
 def _providers_found(*providers: ProviderCapability) -> DiscoveryResult:
-    return DiscoveryResult(
-        answers={}, capabilities={0: providers}, failures={}, events=()
-    )
+    return a_discovery(discovered(capabilities=providers))
 
 
 def _support_unavailable(
@@ -453,9 +452,7 @@ async def test_a_direct_answer_does_not_stand_in_for_a_provider() -> None:
         attributes={},
         validity=None,
     )
-    found = DiscoveryResult(
-        answers={0: (direct,)}, capabilities={}, failures={}, events=()
-    )
+    found = a_discovery(discovered(answers=(direct,)))
     orch, _ = _build_orchestrator_and_turn_sink(discovery=found)
 
     events = await _collect(orch, _form_turn(_VALUES))

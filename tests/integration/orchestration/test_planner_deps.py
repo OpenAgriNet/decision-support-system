@@ -8,6 +8,7 @@ from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.shared.models import TextQuery, UserTurn
 from dss.orchestration.planner import PlannerDeps
 from tests.support.asks import an_ask
+from tests.support.discovery import a_discovery
 
 
 def _turn() -> UserTurn:
@@ -22,7 +23,7 @@ def _turn() -> UserTurn:
 
 
 def _discovery_result() -> DiscoveryResult:
-    return DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
+    return a_discovery()
 
 
 class _UnusedInvocation:

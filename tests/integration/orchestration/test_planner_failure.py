@@ -22,7 +22,6 @@ from dss.core.planner.models import Skill, Verdict
 from dss.core.planner.validation import DomainSchema
 from dss.core.provider_discovery.models import (
     DiscoveredAnswer,
-    DiscoveryResult,
     FailureClass,
     ProviderCapability,
 )
@@ -30,6 +29,7 @@ from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import TextQuery, UserTurn
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
 from tests.support.asks import an_ask
+from tests.support.discovery import a_discovery, discovered
 from tests.support.providers import build_capability
 
 CAPABILITY = build_capability(
@@ -112,9 +112,7 @@ def _deps(invocation: _FailingInvocation) -> PlannerDeps:
             channel="web",
         ),
         intent=_intent(),
-        discovery=DiscoveryResult(
-            answers={}, capabilities={0: (CAPABILITY,)}, failures={}, events=()
-        ),
+        discovery=a_discovery(discovered(capabilities=(CAPABILITY,))),
         schemas=SCHEMAS,
         schema_context_index={
             "openagrinet:MandiPrice": "https://schemas.openagrinet.global/schema/MandiPrice/0.1/context.jsonld"
@@ -210,9 +208,7 @@ async def test_a_capability_with_no_indexed_schema_gets_a_retry() -> None:
     )
     invocation = _FailingInvocation()
     deps = _deps(invocation)
-    deps.discovery = DiscoveryResult(
-        answers={}, capabilities={0: (unindexed,)}, failures={}, events=()
-    )
+    deps.discovery = a_discovery(discovered(capabilities=(unindexed,)))
     agent = build_planner_agent(skills=(_skill_with("select"),))
 
     with agent.override(model=FunctionModel(_calls_unindexed_then_answers)):

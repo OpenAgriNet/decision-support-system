@@ -17,7 +17,7 @@ from dss.core.intent.models import (
     SubjectCategory,
     UnclearAction,
 )
-from dss.core.provider_discovery.models import DiscoveryResult, ProviderCapability
+from dss.core.provider_discovery.models import ProviderCapability
 from dss.core.shared.models import REQUESTABLE_ACTIONS, ProviderAction, TurnStatus
 from dss.orchestration.form_offer import ask_for_form, find_forms, form_context_for
 from dss.orchestration.provider_action import FORM_ASK_ID
@@ -30,6 +30,7 @@ from tests.integration.orchestration.test_orchestrator import (
     _turn,
 )
 from tests.support.asks import an_ask
+from tests.support.discovery import FoundForAsk, a_discovery, discovered
 from tests.support.fakes import FakeSchemeCatalog
 from tests.support.grievance_pack import (
     PMKISAN_STATUS,
@@ -70,12 +71,8 @@ class _FakeForms:
         return self._forms.get(context)
 
 
-def _discovery(
-    capabilities: dict[int, tuple[ProviderCapability, ...]] | None = None,
-) -> DiscoveryResult:
-    return DiscoveryResult(
-        answers={}, capabilities=capabilities or {}, failures={}, events=()
-    )
+def _served_by(desk: ProviderCapability, *, ask_id: int = 0) -> FoundForAsk:
+    return discovered(ask_id, capabilities=(desk,))
 
 
 def _grievance_ask(
@@ -143,7 +140,7 @@ def test_a_served_ask_the_registry_knows_gets_its_form() -> None:
     intent = Intent(asks=(_grievance_ask(),), confidence=0.9)
     forms = _FakeForms({PMFBY_SUPPORT: GRIEVANCE_FORM})
 
-    awaiting = find_forms(intent, _discovery({0: (GRIEVANCE_DESK,)}), forms)
+    awaiting = find_forms(intent, a_discovery(_served_by(GRIEVANCE_DESK)), forms)
 
     assert awaiting == {0: GRIEVANCE_FORM}
 
@@ -171,7 +168,7 @@ def test_a_pmkisan_ask_gets_its_form_without_the_otp(
     intent = Intent(asks=(_grievance_ask(action, scheme=PMKISAN),), confidence=0.9)
 
     awaiting = find_forms(
-        intent, _discovery({0: (PMKISAN_PROVIDER,)}), build_grievance_forms()
+        intent, a_discovery(_served_by(PMKISAN_PROVIDER)), build_grievance_forms()
     )
 
     form = awaiting[0]
@@ -186,7 +183,7 @@ def test_an_ask_nobody_serves_gets_no_form() -> None:
     intent = Intent(asks=(_grievance_ask(),), confidence=0.9)
     forms = _FakeForms({PMFBY_SUPPORT: GRIEVANCE_FORM})
 
-    awaiting = find_forms(intent, _discovery(), forms)
+    awaiting = find_forms(intent, a_discovery(), forms)
 
     assert awaiting == {}
     assert forms.asked == []
@@ -195,7 +192,9 @@ def test_an_ask_nobody_serves_gets_no_form() -> None:
 def test_a_served_ask_without_a_registry_form_is_the_planners() -> None:
     intent = Intent(asks=(_grievance_ask(),), confidence=0.9)
 
-    awaiting = find_forms(intent, _discovery({0: (GRIEVANCE_DESK,)}), _FakeForms({}))
+    awaiting = find_forms(
+        intent, a_discovery(_served_by(GRIEVANCE_DESK)), _FakeForms({})
+    )
 
     assert awaiting == {}
 
@@ -207,7 +206,9 @@ def test_only_the_form_ask_is_taken_from_a_mixed_turn() -> None:
 
     grievance = _grievance_ask().model_copy(update={"id": 2})
     intent = Intent(asks=(WEATHER_ASK, grievance), confidence=0.9)
-    discovery = _discovery({0: (WEATHER_DESK,), 2: (GRIEVANCE_DESK,)})
+    discovery = a_discovery(
+        _served_by(WEATHER_DESK), _served_by(GRIEVANCE_DESK, ask_id=2)
+    )
 
     awaiting = find_forms(
         intent, discovery, _FakeForms({PMFBY_SUPPORT: GRIEVANCE_FORM})
@@ -239,7 +240,7 @@ async def test_the_planner_is_told_which_asks_await_a_form() -> None:
     plan = _FakePlan(_evidence(results=(), awaiting={0: GRIEVANCE_FORM}))
     orch, _ = _build(
         intent=_grievance_classification(),
-        discovery=_discovery({0: (GRIEVANCE_DESK,)}),
+        discovery=a_discovery(_served_by(GRIEVANCE_DESK)),
         plan=plan,
         compose=_FakeCompose("Please fill in the form below."),
         forms=_FakeForms({PMFBY_SUPPORT: GRIEVANCE_FORM}),

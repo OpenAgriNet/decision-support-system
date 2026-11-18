@@ -24,6 +24,7 @@ from dss.core.shared.models import (
 from dss.orchestration.stub_runner import StubRunner
 from dss.ports.translator import Translator
 from dss.ports.turn import TurnRunner
+from tests.support.discovery import a_discovery
 from tests.support.fakes import (
     FakeAreaLookup,
     FakeLocalizer,
@@ -59,9 +60,7 @@ def test_the_fake_runner_satisfies_the_port(a_turn, a_context):
 async def _no_discovery(intent, turn, *, now):
     """Conformance is about the port's shape, not discovery."""
 
-    from dss.core.provider_discovery.models import DiscoveryResult
-
-    return DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
+    return a_discovery()
 
 
 async def _unreached_plan(turn, *, intent, discovery, verdict, visibility):

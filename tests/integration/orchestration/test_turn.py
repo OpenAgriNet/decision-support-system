@@ -55,6 +55,7 @@ from dss.orchestration.settlement import SettleAsks, build_settle_asks
 from dss.orchestration.turn import run_turn
 from dss.ports.area_lookup import AreaMatch
 from tests.support.asks import an_ask, numbered
+from tests.support.discovery import a_discovery, discovered
 from tests.support.fakes import FakeAreaLookup, FakePromptProvider
 from tests.support.providers import build_capability
 from tests.support.settlement import settles_every_ask, settles_with
@@ -133,9 +134,7 @@ class _FakeDiscovery:
     was handed, so a test can prove discovery ran off intent's output."""
 
     def __init__(self, result: DiscoveryResult | None = None) -> None:
-        self._result = result or DiscoveryResult(
-            answers={}, capabilities={}, failures={}, events=()
-        )
+        self._result = result or a_discovery()
         self.intents: list[Intent] = []
 
     async def __call__(
@@ -218,9 +217,7 @@ async def test_discovery_runs_on_the_classified_intent() -> None:
         ),
         confidence=0.9,
     )
-    found = DiscoveryResult(
-        answers={}, capabilities={0: (CAPABILITY,)}, failures={}, events=()
-    )
+    found = a_discovery(discovered(capabilities=(CAPABILITY,)))
     discovery = _FakeDiscovery(found)
 
     result = await run_turn(
@@ -323,9 +320,7 @@ async def test_moderation_reject_blanks_the_discovery_result() -> None:
     an effect with no cause on it. Why it is empty is already on the result:
     the non-PROCEED outcome and its reason code."""
 
-    found = DiscoveryResult(
-        answers={}, capabilities={0: (CAPABILITY,)}, failures={}, events=()
-    )
+    found = a_discovery(discovered(capabilities=(CAPABILITY,)))
     discovery = _FakeDiscovery(found)
 
     result = await run_turn(
@@ -381,9 +376,7 @@ async def test_discovery_does_not_wait_for_moderation() -> None:
     for no safety gain — the barrier that matters is the planner's."""
 
     moderation = _SlowModerationLLM(delay=0.05)
-    found = DiscoveryResult(
-        answers={}, capabilities={0: (CAPABILITY,)}, failures={}, events=()
-    )
+    found = a_discovery(discovered(capabilities=(CAPABILITY,)))
     discovery = _ObservingDiscovery(moderation, found)
 
     result = await run_turn(

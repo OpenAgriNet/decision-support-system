@@ -33,7 +33,6 @@ from dss.core.planner.models import Skill, Verdict
 from dss.core.planner.validation import DomainSchema
 from dss.core.provider_discovery.models import (
     DiscoveredAnswer,
-    DiscoveryResult,
     FailureClass,
     ProviderCapability,
 )
@@ -43,6 +42,7 @@ from dss.core.shared.models import Geometry, TextQuery, UserTurn
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
 from dss.ports.invocation import SelectFailedError
 from tests.support.asks import an_ask, numbered
+from tests.support.discovery import a_discovery, a_priority, discovered
 from tests.support.providers import build_capability
 
 WEATHER = "openagrinet:WeatherObservation"
@@ -131,27 +131,11 @@ def _intent() -> Intent:
     )
 
 
-def _ranked(*providers: str) -> dict[int, AskPriority]:
-    """The record the discovery wrapper leaves behind when a ranking applied."""
-
-    return {
-        0: AskPriority(
-            ask_id=0,
-            capability="Weather",
-            sender_id="kisan-mitra-web",
-            source="sender",
-            ranking=providers,
-            kept=providers,
-            dropped=(),
-        )
-    }
-
-
 def _deps(
     invocation: _FakeInvocation,
     *,
     candidates: tuple[ProviderCapability, ...],
-    priorities: dict[int, AskPriority] | None = None,
+    priority: AskPriority | None = None,
 ) -> PlannerDeps:
     verdict = Verdict()
     verdict.set(ModerationDecision(outcome=Outcome.PROCEED))
@@ -166,13 +150,7 @@ def _deps(
             sender_id="kisan-mitra-web",
         ),
         intent=_intent(),
-        discovery=DiscoveryResult(
-            answers={},
-            capabilities={0: candidates},
-            failures={},
-            events=(),
-            priorities=priorities or {},
-        ),
+        discovery=a_discovery(discovered(capabilities=candidates, priority=priority)),
         schemas=SCHEMAS,
         schema_context_index=CONTEXT_INDEX,
         invocation=invocation,
@@ -245,7 +223,7 @@ async def test_the_first_choice_answers_when_it_returns_anything() -> None:
         _deps(
             invocation,
             candidates=(VISTAAR, MAUSAMGRAM),
-            priorities=_ranked("maharashtra-vistaar", "mausamgram"),
+            priority=a_priority("maharashtra-vistaar", "mausamgram"),
         )
     )
 
@@ -262,7 +240,7 @@ async def test_the_next_choice_answers_when_the_first_has_nothing() -> None:
         _deps(
             invocation,
             candidates=(VISTAAR, MAUSAMGRAM),
-            priorities=_ranked("maharashtra-vistaar", "mausamgram"),
+            priority=a_priority("maharashtra-vistaar", "mausamgram"),
         )
     )
 
@@ -284,7 +262,7 @@ async def test_every_ranked_provider_is_consulted_even_when_the_first_answers() 
         _deps(
             invocation,
             candidates=(VISTAAR, MAUSAMGRAM),
-            priorities=_ranked("maharashtra-vistaar", "mausamgram"),
+            priority=a_priority("maharashtra-vistaar", "mausamgram"),
         )
     )
 
@@ -305,7 +283,7 @@ async def test_the_unused_answer_never_reaches_the_evidence() -> None:
         _deps(
             invocation,
             candidates=(VISTAAR, MAUSAMGRAM),
-            priorities=_ranked("maharashtra-vistaar", "mausamgram"),
+            priority=a_priority("maharashtra-vistaar", "mausamgram"),
         )
     )
 
@@ -323,7 +301,7 @@ async def test_a_first_choice_that_cannot_be_reached_costs_nobody_the_answer() -
         _deps(
             invocation,
             candidates=(VISTAAR, MAUSAMGRAM),
-            priorities=_ranked("maharashtra-vistaar", "mausamgram"),
+            priority=a_priority("maharashtra-vistaar", "mausamgram"),
         )
     )
 
@@ -340,7 +318,7 @@ async def test_nothing_anywhere_on_the_ranking_leaves_the_ask_unanswered() -> No
         _deps(
             invocation,
             candidates=(VISTAAR, MAUSAMGRAM),
-            priorities=_ranked("maharashtra-vistaar", "mausamgram"),
+            priority=a_priority("maharashtra-vistaar", "mausamgram"),
         )
     )
 
@@ -360,7 +338,7 @@ async def test_an_ask_nobody_could_be_reached_for_is_recorded_as_a_failure() -> 
         _deps(
             invocation,
             candidates=(VISTAAR, MAUSAMGRAM),
-            priorities=_ranked("maharashtra-vistaar", "mausamgram"),
+            priority=a_priority("maharashtra-vistaar", "mausamgram"),
         )
     )
 
@@ -376,7 +354,7 @@ async def test_an_unranked_ask_calls_only_the_candidate_the_model_named() -> Non
     invocation = _FakeInvocation(
         {"maharashtra-vistaar": (_answer("maharashtra-vistaar", 29),)}
     )
-    await _run(_deps(invocation, candidates=(VISTAAR, MAUSAMGRAM), priorities={}))
+    await _run(_deps(invocation, candidates=(VISTAAR, MAUSAMGRAM)))
 
     assert invocation.called == ["maharashtra-vistaar"]
 
@@ -393,7 +371,7 @@ async def test_only_candidates_of_the_chosen_type_are_consulted() -> None:
         _deps(
             invocation,
             candidates=(VISTAAR, other),
-            priorities=_ranked("maharashtra-vistaar", "mausamgram"),
+            priority=a_priority("maharashtra-vistaar", "mausamgram"),
         )
     )
 
@@ -408,7 +386,7 @@ async def test_an_unranked_miss_still_invites_the_other_candidates() -> None:
     replies: list[str] = []
     invocation = _FakeInvocation()  # everyone reached, nobody has anything
     await _run(
-        _deps(invocation, candidates=(VISTAAR, MAUSAMGRAM), priorities={}),
+        _deps(invocation, candidates=(VISTAAR, MAUSAMGRAM)),
         replies=replies,
     )
 
@@ -428,7 +406,7 @@ async def test_a_ranked_provider_of_another_type_keeps_the_ask_open() -> None:
         _deps(
             invocation,
             candidates=(VISTAAR, other),
-            priorities=_ranked("maharashtra-vistaar", "mausamgram"),
+            priority=a_priority("maharashtra-vistaar", "mausamgram"),
         ),
         replies=replies,
     )
@@ -446,7 +424,7 @@ async def test_a_spent_ranking_tells_the_model_to_stop() -> None:
         _deps(
             invocation,
             candidates=(VISTAAR, MAUSAMGRAM),
-            priorities=_ranked("maharashtra-vistaar", "mausamgram"),
+            priority=a_priority("maharashtra-vistaar", "mausamgram"),
         ),
         replies=replies,
     )
@@ -513,7 +491,7 @@ async def test_select_next_answers_the_ask_from_the_next_choice_instead() -> Non
         _deps(
             invocation,
             candidates=(VISTAAR, MAUSAMGRAM),
-            priorities=_ranked("maharashtra-vistaar", "mausamgram"),
+            priority=a_priority("maharashtra-vistaar", "mausamgram"),
         ),
         replies,
     )
@@ -537,7 +515,7 @@ async def test_select_next_calls_no_provider_again() -> None:
         _deps(
             invocation,
             candidates=(VISTAAR, MAUSAMGRAM),
-            priorities=_ranked("maharashtra-vistaar", "mausamgram"),
+            priority=a_priority("maharashtra-vistaar", "mausamgram"),
         ),
         replies,
     )
@@ -554,7 +532,7 @@ async def test_select_next_with_no_next_choice_keeps_the_first_answer() -> None:
         _deps(
             invocation,
             candidates=(VISTAAR, MAUSAMGRAM),
-            priorities=_ranked("maharashtra-vistaar", "mausamgram"),
+            priority=a_priority("maharashtra-vistaar", "mausamgram"),
         ),
         replies,
     )
@@ -576,7 +554,7 @@ async def test_select_next_on_an_unranked_ask_has_nothing_to_offer() -> None:
         }
     )
     deps = await _run_then_next(
-        _deps(invocation, candidates=(VISTAAR, MAUSAMGRAM), priorities={}),
+        _deps(invocation, candidates=(VISTAAR, MAUSAMGRAM)),
         replies,
     )
 
@@ -592,15 +570,16 @@ async def test_select_next_on_one_ask_leaves_the_other_ask_alone() -> None:
             "mausamgram": (_answer("mausamgram", 31),),
         }
     )
-    deps = _deps(
-        invocation,
-        candidates=(VISTAAR, MAUSAMGRAM),
-        priorities=_ranked("maharashtra-vistaar", "mausamgram"),
-    )
+    ranked = a_priority("maharashtra-vistaar", "mausamgram")
+    deps = _deps(invocation, candidates=(VISTAAR, MAUSAMGRAM), priority=ranked)
     two_asks = numbered(*deps.intent.asks, *deps.intent.asks)
     deps.intent = Intent(asks=two_asks, confidence=1.0)
-    deps.discovery.capabilities[1] = (VISTAAR, MAUSAMGRAM)
-    deps.discovery.priorities[1] = _ranked("maharashtra-vistaar", "mausamgram")[0]
+    deps.discovery = a_discovery(
+        *(
+            discovered(ask, capabilities=(VISTAAR, MAUSAMGRAM), priority=ranked)
+            for ask in two_asks
+        )
+    )
 
     def select(ask_id: int) -> ToolCallPart:
         return ToolCallPart(

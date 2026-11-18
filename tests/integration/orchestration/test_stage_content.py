@@ -10,7 +10,6 @@ from dss.core.intent.models import (
     UnlistedScheme,
 )
 from dss.core.planner.models import Evidence, Result, Source, SourceKind
-from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.shared.models import ProviderAction
 from dss.orchestration.stage_content import (
     asks_text,
@@ -19,6 +18,7 @@ from dss.orchestration.stage_content import (
     evidence_text,
 )
 from tests.support.asks import an_ask
+from tests.support.discovery import a_discovery, discovered
 from tests.support.evidence import build_evidence
 from tests.support.providers import build_capability
 
@@ -96,11 +96,8 @@ def test_a_served_ask_is_named_by_its_id() -> None:
 
 
 def test_a_discovered_ask_is_named_by_its_id() -> None:
-    discovery = DiscoveryResult(
-        answers={},
-        capabilities={2: (build_capability(provider_name="IMD"),)},
-        failures={},
-        events=(),
+    discovery = a_discovery(
+        discovered(2, capabilities=(build_capability(provider_name="IMD"),))
     )
 
     assert discovery_text(discovery) == "2. offered by IMD"

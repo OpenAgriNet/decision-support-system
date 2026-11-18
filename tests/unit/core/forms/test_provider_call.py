@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -14,7 +13,7 @@ from dss.core.forms.service import (
     without_farmer_values,
 )
 from dss.core.planner.models import Failure
-from dss.core.provider_discovery.models import DiscoveryResult
+from tests.support.discovery import a_discovery, discovered
 from tests.support.grievance_pack import (
     PMFBY_STATUS,
     PMFBY_SUPPORT,
@@ -43,16 +42,14 @@ def test_only_the_providers_advertising_the_scheme_are_kept() -> None:
 def test_discovery_for_a_scheme_keeps_each_asks_providers_of_that_scheme() -> None:
     pmfby = grievance_provider("pmfby-provider", "PMFBY")
     kisan = grievance_provider("kisan-provider", "PM-KISAN")
-    found = DiscoveryResult(
-        answers={},
-        capabilities={0: (kisan, pmfby), 1: (kisan,)},
-        failures={},
-        events=(),
+    found = a_discovery(
+        discovered(0, capabilities=(kisan, pmfby)),
+        discovered(1, capabilities=(kisan,)),
     )
 
     narrowed = discovery_for_scheme(found, "PMFBY")
 
-    assert narrowed == replace(found, capabilities={0: (pmfby,), 1: ()})
+    assert narrowed == a_discovery(discovered(0, capabilities=(pmfby,)), discovered(1))
 
 
 _FILE_GRIEVANCE_EXAMPLE = json.loads(
