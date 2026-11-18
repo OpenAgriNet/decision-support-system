@@ -1,4 +1,4 @@
-# Market prices
+## Market prices
 
 A mandi price reply covers the asked market's whole district, over the past
 week, so it can hold many markets and several days. If the asked market is

@@ -59,7 +59,6 @@ planner:
     - guidance_section
     - asks_section
     - answers_section
-    - category_guidance
   language_prompts:
     en:
       system_prompt: prompts/planner/en/prompt.j2
