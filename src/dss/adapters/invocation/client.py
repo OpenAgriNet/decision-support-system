@@ -6,11 +6,10 @@ assembled by the caller; this module only wraps them in the network envelope.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from functools import partial
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
@@ -345,12 +344,6 @@ def _to_answer(
     )
 
 
-# The action's own error for a failed POST.
-type _AsFailure = Callable[
-    [ProviderCapability, httpx.HTTPError], ProviderCallFailedError
-]
-
-
 class HttpCapabilityInvocation:
     """Implements CapabilityInvocation over the Network Adapter's /select.
 
@@ -402,17 +395,21 @@ class HttpCapabilityInvocation:
                 transaction_id=transaction_id,
                 timestamp=_now(),
             )
-            response = await self._post(
-                "select",
-                request_body,
-                as_failure=partial(_as_select_error, visibility=visibility),
-                capability=capability,
-                visibility=visibility,
-                retries=self._retries,
-                # Select never reads `Retry-After`, so it retries a 429 that
-                # names one.
-                should_retry=_is_transient,
-            )
+            try:
+                response = await self._post(
+                    "select",
+                    request_body,
+                    capability=capability,
+                    visibility=visibility,
+                    retries=self._retries,
+                    # Select never reads `Retry-After`, so it retries a 429 that
+                    # names one.
+                    should_retry=_is_transient,
+                )
+            except httpx.HTTPError as error:
+                raise _as_select_error(
+                    capability, error, visibility=visibility
+                ) from error
             # Inside a guard, not after it: the port promises "an answer or
             # SelectFailedError", and a 200 with an unreadable body would
             # otherwise raise KeyError/IndexError straight past the planner
@@ -457,13 +454,15 @@ class HttpCapabilityInvocation:
                 timestamp=_now(),
             )
             # Never retried: each try can text the farmer a new OTP.
-            response = await self._post(
-                "init",
-                request_body,
-                as_failure=partial(_as_action_error, InitFailedError),
-                capability=capability,
-                visibility=visibility,
-            )
+            try:
+                response = await self._post(
+                    "init",
+                    request_body,
+                    capability=capability,
+                    visibility=visibility,
+                )
+            except httpx.HTTPError as error:
+                raise _as_action_error(InitFailedError, capability, error) from error
             try:
                 attributes_back = _first_commitment_attributes(
                     visibility.conceal_body(response.json())
@@ -499,15 +498,17 @@ class HttpCapabilityInvocation:
                 transaction_id=transaction_id,
                 timestamp=_now(),
             )
-            response = await self._post(
-                "support",
-                request_body,
-                as_failure=partial(_as_action_error, SupportFailedError),
-                capability=capability,
-                visibility=visibility,
-                retries=self._retries,
-                should_retry=_is_transient_and_no_retry_after,
-            )
+            try:
+                response = await self._post(
+                    "support",
+                    request_body,
+                    capability=capability,
+                    visibility=visibility,
+                    retries=self._retries,
+                    should_retry=_is_transient_and_no_retry_after,
+                )
+            except httpx.HTTPError as error:
+                raise _as_action_error(SupportFailedError, capability, error) from error
             try:
                 attributes_back = map_support_response(
                     visibility.conceal_body(response.json())
@@ -543,15 +544,17 @@ class HttpCapabilityInvocation:
                 transaction_id=transaction_id,
                 timestamp=_now(),
             )
-            response = await self._post(
-                "status",
-                request_body,
-                as_failure=partial(_as_action_error, StatusFailedError),
-                capability=capability,
-                visibility=visibility,
-                retries=self._retries,
-                should_retry=_is_transient_and_no_retry_after,
-            )
+            try:
+                response = await self._post(
+                    "status",
+                    request_body,
+                    capability=capability,
+                    visibility=visibility,
+                    retries=self._retries,
+                    should_retry=_is_transient_and_no_retry_after,
+                )
+            except httpx.HTTPError as error:
+                raise _as_action_error(StatusFailedError, capability, error) from error
             try:
                 attributes_back = _first_commitment_attributes(
                     visibility.conceal_body(response.json())
@@ -568,15 +571,13 @@ class HttpCapabilityInvocation:
         action: str,
         request_body: dict,
         *,
-        as_failure: _AsFailure,
         capability: ProviderCapability,
         visibility: Visibility,
         retries: int = 0,
         should_retry: RetryPredicate | None = None,
     ) -> httpx.Response:
         """One logged call to the action's endpoint, retried by ``HttpClient``.
-        A failure becomes the action's own error; the body is left to the
-        action's mapper."""
+        Raises the httpx error as it came; the caller makes its own error."""
 
         call_log = _CallLog(
             transaction_id=request_body["context"]["transactionId"],
@@ -607,7 +608,7 @@ class HttpCapabilityInvocation:
             )
         except httpx.HTTPError as error:
             _log_failed_response(call_log, error, visibility=visibility)
-            raise as_failure(capability, error) from error
+            raise
         log_external_response(
             "invocation",
             call_log.transaction_id,
