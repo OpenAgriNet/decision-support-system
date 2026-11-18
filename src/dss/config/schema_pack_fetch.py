@@ -18,20 +18,20 @@ import tempfile
 import urllib.error
 import urllib.request
 from pathlib import Path
+from urllib.parse import quote, urlencode
 
 _REPO = "OpenAgriNet/network-specs"
 _PAGES_HOST = "https://openagrinet.github.io"
+_SITE_PATH = "/network-specs"
 _API_HOST = "https://api.github.com"
 
 # The only version published today. When v0.2 lands this becomes a per-pack
 # lookup, not a constant.
 _VERSION = "v0.1"
 
-# GitHub Pages is built from this branch. Only the examples listing reads it:
-# Pages cannot list a directory, so the Contents API lists the branch instead.
-PAGES_SOURCE_BRANCH = "schema-packs-v0.1"
-
-PREVIEWS_URL = f"{_PAGES_HOST}/network-specs/previews/"
+# The branch the published site is built from. With no ref, the examples
+# listing reads it: Pages cannot list a directory, so the Contents API does.
+_PUBLISHED_BRANCH = "main"
 
 # Every download error reads as "not there", so nothing published means the
 # fetch could not reach the site, not that the packs are missing.
@@ -67,7 +67,8 @@ PACKS = (
     "Grievance",
 )
 
-# What the loader needs. Absent either, the pack is not on this ref.
+# What the loader needs. Absent either, the pack is not published, or not in
+# this preview.
 _ESSENTIAL_FILES = ("attributes.yaml", "profile.json")
 
 # Fetched so the tree mirrors upstream, though nothing reads them today. A 404
@@ -85,11 +86,19 @@ def pack_file_url(
     *, ref: str | None, pack: str, filename: str, host: str = _PAGES_HOST
 ) -> str:
     site = (
-        f"{host}/network-specs"
+        _published_site_url(host)
         if ref is None
-        else f"{host}/network-specs/previews/{ref}"
+        else f"{_previews_url(host)}{quote(ref, safe='/')}"
     )
     return f"{site}/schema/{pack}/{_VERSION}/{filename}"
+
+
+def _published_site_url(host: str) -> str:
+    return f"{host}{_SITE_PATH}"
+
+
+def _previews_url(host: str) -> str:
+    return f"{_published_site_url(host)}/previews/"
 
 
 def examples_api_url(*, ref: str | None, pack: str, host: str = _API_HOST) -> str:
@@ -101,10 +110,9 @@ def examples_api_url(*, ref: str | None, pack: str, host: str = _API_HOST) -> st
     default branch instead of erroring.
     """
 
-    branch = PAGES_SOURCE_BRANCH if ref is None else ref
-    return (
-        f"{host}/repos/{_REPO}/contents/schema/{pack}/{_VERSION}/examples?ref={branch}"
-    )
+    branch = _PUBLISHED_BRANCH if ref is None else ref
+    query = urlencode({"ref": branch})
+    return f"{host}/repos/{_REPO}/contents/schema/{pack}/{_VERSION}/examples?{query}"
 
 
 def fetch_packs(
@@ -138,7 +146,7 @@ def fetch_packs(
         _publish(staged, dest / pack / _VERSION)
         fetched.append(pack)
 
-    raise_for_empty(fetched=tuple(fetched), ref=ref)
+    raise_for_empty(fetched=tuple(fetched), ref=ref, pages_host=pages_host)
     return tuple(fetched)
 
 
@@ -215,7 +223,7 @@ def _get(url: str) -> bytes | None:
 
     request = urllib.request.Request(url)  # noqa: S310 - URL is built from fixed https hosts
     token = os.environ.get("GITHUB_TOKEN")
-    if token and "/repos/" in url:
+    if token and url.startswith(f"{_API_HOST}/"):
         request.add_header("Authorization", f"Bearer {token}")
     try:
         with urllib.request.urlopen(request, timeout=_TIMEOUT_SECONDS) as response:  # noqa: S310 - URL is built from fixed https hosts
@@ -249,14 +257,9 @@ def _publish(files: dict[str, bytes], version_dir: Path) -> None:
         shutil.move(str(staged), str(version_dir))
 
 
-def raise_for_empty(*, fetched: tuple[str, ...], ref: str | None) -> None:
-    """Refuse a fetch that found no pack at all.
-
-    Zero packs means the DSS cannot route to anything, so reporting success
-    would move the failure to boot time and describe it as missing packs
-    rather than an unreachable site or a branch with no preview.
-    """
-
+def raise_for_empty(
+    *, fetched: tuple[str, ...], ref: str | None, pages_host: str = _PAGES_HOST
+) -> None:
     if fetched:
         return
 
@@ -266,5 +269,6 @@ def raise_for_empty(*, fetched: tuple[str, ...], ref: str | None) -> None:
         )
     raise SchemaPackFetchFailedError(
         f"no schema packs found in a preview of {ref!r} (0 of {len(PACKS)})."
-        f" The branches with a preview are listed at {PREVIEWS_URL}"
+        f" The branches with a preview are listed at {_previews_url(pages_host)}."
+        " `main` is the published site itself: leave the ref unset to read it."
     )

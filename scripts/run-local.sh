@@ -184,13 +184,8 @@ done
 # boot, so this is a prerequisite rather than an optimisation.
 
 if [ -z "$(ls -A var/schema-packs 2>/dev/null || true)" ]; then
-  if [ -n "$SCHEMA_PACK_REF" ]; then
-    echo "==> fetching schema packs (preview of $SCHEMA_PACK_REF)"
-    uv run python scripts/fetch_schema_packs.py --ref "$SCHEMA_PACK_REF"
-  else
-    echo "==> fetching schema packs (published)"
-    uv run python scripts/fetch_schema_packs.py
-  fi
+  echo "==> fetching schema packs (${SCHEMA_PACK_REF:-published})"
+  uv run python scripts/fetch_schema_packs.py ${SCHEMA_PACK_REF:+--ref "$SCHEMA_PACK_REF"}
 else
   echo "==> schema packs present"
 fi
