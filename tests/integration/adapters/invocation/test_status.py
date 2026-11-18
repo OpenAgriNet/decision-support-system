@@ -12,7 +12,6 @@ from dss.adapters.invocation.client import (
     HttpCapabilityInvocation,
     StatusFailedError,
     build_status_request,
-    map_status_response,
 )
 from dss.core.provider_discovery.models import FailureClass
 from tests.support.providers import build_capability
@@ -128,17 +127,6 @@ _READ = {
 }
 
 
-def test_the_reply_is_the_first_commitments_attributes() -> None:
-    assert map_status_response(_READ) == _CASE
-
-
-def test_attributes_that_are_not_an_object_are_malformed() -> None:
-    with pytest.raises(TypeError):
-        map_status_response(
-            {"message": {"contract": {"commitments": [{"commitmentAttributes": []}]}}}
-        )
-
-
 class _Replies:
     """Answers ``status_code`` with ``headers`` for the first ``fail_times``
     calls, then returns the case. Counts the calls."""
@@ -220,6 +208,16 @@ async def test_a_rejected_read_is_a_defect_and_not_retried() -> None:
     assert failed.value.failure_class is FailureClass.DEFECT
     assert failed.value.status_code == 400
     assert failed.value.retry_after_seconds is None
+
+
+async def test_an_unreadable_reply_is_a_defect_and_not_retried() -> None:
+    handler = _Replies(200, fail_times=99)
+
+    with pytest.raises(StatusFailedError) as failed:
+        await _invocation(handler).status(PROVIDER, ATTRIBUTES, "txn-1")
+
+    assert handler.calls == 1
+    assert failed.value.failure_class is FailureClass.DEFECT
 
 
 async def test_a_provider_naming_its_own_time_is_not_retried() -> None:

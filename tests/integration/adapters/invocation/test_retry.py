@@ -11,7 +11,9 @@ one failure.
 
 from __future__ import annotations
 
+import json
 import logging
+from collections.abc import Callable
 
 import httpx
 import pytest
@@ -31,6 +33,27 @@ CAPABILITY = build_capability(
 _ANSWERED_RESOURCE_ID = "res:mausamgram:point-forecast:2026-08-26"
 
 
+_SELECT_REPLY = {
+    "message": {
+        "contract": {
+            "commitments": [
+                {
+                    "resources": [
+                        {
+                            "id": _ANSWERED_RESOURCE_ID,
+                            "resourceAttributes": {
+                                "@type": CAPABILITY.capability,
+                                "parameters": [],
+                            },
+                        }
+                    ]
+                }
+            ]
+        }
+    }
+}
+
+
 class _CountingHandler:
     """Fails with ``status_code`` for the first ``fail_times`` calls, then
     succeeds. Records how many times it was called."""
@@ -44,31 +67,12 @@ class _CountingHandler:
         self.calls += 1
         if self.calls <= self._fail_times:
             return httpx.Response(self._status_code, json={"error": "simulated"})
-        return httpx.Response(
-            200,
-            json={
-                "message": {
-                    "contract": {
-                        "commitments": [
-                            {
-                                "resources": [
-                                    {
-                                        "id": _ANSWERED_RESOURCE_ID,
-                                        "resourceAttributes": {
-                                            "@type": CAPABILITY.capability,
-                                            "parameters": [],
-                                        },
-                                    }
-                                ]
-                            }
-                        ]
-                    }
-                }
-            },
-        )
+        return httpx.Response(200, json=_SELECT_REPLY)
 
 
-def _invocation(handler: _CountingHandler, **kwargs) -> HttpCapabilityInvocation:
+def _invocation(
+    handler: Callable[[httpx.Request], httpx.Response], **kwargs
+) -> HttpCapabilityInvocation:
     return HttpCapabilityInvocation(
         client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
         base_url="https://provider-network-vistaar.da.gov.in/oan",
@@ -135,4 +139,57 @@ async def test_giving_up_is_logged_as_a_warning(caplog) -> None:
     ]
     assert line.levelno == logging.WARNING
     assert line.provider_id == "mausamgram"
-    assert (line.status_code, line.attempts) == (429, 3)
+    assert line.status_code == 429
+
+
+_SUPPORT_REPLY = {
+    "message": {"support": {"channels": [{"case": {"ticketNo": "100626000099001"}}]}}
+}
+
+
+class _FailsTwiceThenReplies:
+    def __init__(self, reply: dict) -> None:
+        self._reply = reply
+        self.bodies: list[bytes] = []
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        self.bodies.append(request.content)
+        if len(self.bodies) <= 2:
+            return httpx.Response(503, json={"error": "simulated"})
+        return httpx.Response(200, json=self._reply)
+
+
+def _body_lines(caplog, event: str) -> list[logging.LogRecord]:
+    return [r for r in caplog.records if getattr(r, "event", "") == event]
+
+
+@pytest.mark.parametrize(
+    ("action", "reply"),
+    [("select", _SELECT_REPLY), ("support", _SUPPORT_REPLY)],
+)
+async def test_a_retry_resends_the_same_body(action: str, reply: dict) -> None:
+    handler = _FailsTwiceThenReplies(reply)
+
+    await getattr(_invocation(handler), action)(CAPABILITY, {}, "txn-1")
+
+    first = json.loads(handler.bodies[0])
+    assert len(handler.bodies) == 3
+    assert len(set(handler.bodies)) == 1
+    assert first["context"]["messageId"]
+    assert first["context"]["timestamp"]
+
+
+@pytest.mark.parametrize(
+    ("action", "reply"),
+    [("select", _SELECT_REPLY), ("support", _SUPPORT_REPLY)],
+)
+async def test_the_bodies_are_logged_once_per_call(
+    caplog, action: str, reply: dict
+) -> None:
+    with caplog.at_level(logging.DEBUG, logger="dss.trace"):
+        await getattr(_invocation(_FailsTwiceThenReplies(reply)), action)(
+            CAPABILITY, {}, "txn-1"
+        )
+
+    assert len(_body_lines(caplog, "request_body")) == 1
+    assert len(_body_lines(caplog, "response_body")) == 1

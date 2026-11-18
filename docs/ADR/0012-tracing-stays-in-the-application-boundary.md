@@ -61,7 +61,7 @@ dss.turn                        status, model names, first_delta_ms, composed_ms
 │   └── dss.discover            one per provider query
 ├── dss.stage.planner
 │   └── dss.select              one per provider call
-│       └── dss.select.attempt  one per network attempt
+│       └── dss.http.post       one per try
 └── dss.stage.composer
 ```
 

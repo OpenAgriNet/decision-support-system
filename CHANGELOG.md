@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Changed
+- A provider call's tries are now `dss.http.post` spans, one per try, under
+  `dss.select`, `dss.init`, `dss.support` or `dss.status`. They were
+  `dss.<action>.attempt`. Every try that got a reply now records its status
+  code, so a successful try records 200. A timeout or a lost connection
+  records no code; it used to record 0 (#207)
+- The `attempts` attribute is gone from those outer spans and from the
+  `provider_call_failed` log line. Count the `dss.http.post` spans instead.
+  Each retry now logs one `http` `retry` line with the method, path, status
+  and try number, never the body (#207)
+- A provider call's request and response bodies are logged once per call, not
+  once per try. A retry resends the same body: the same timestamp, and on
+  `select` the same message id (#207)
+
 ### Fixed
 - `init` and `status` now send an offer on their commitment, as `select`
   does. PM-KISAN refused `init` without one (#207)

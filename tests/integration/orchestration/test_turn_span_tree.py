@@ -134,6 +134,6 @@ async def test_a_provider_call_nests_under_the_planner_stage(spans) -> None:
         == finished["dss.stage.planner"].context.span_id
     )
     assert (
-        finished["dss.select.attempt"].parent.span_id
+        finished["dss.http.post"].parent.span_id
         == finished["dss.select"].context.span_id
     )
