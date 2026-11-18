@@ -84,6 +84,7 @@ def _composer_prompt() -> str:
             "persona": "A calm, practical farm advisor.",
             "boundaries": "Never gives financial or legal advice.",
             "target_lang": "en",
+            "category_guidance": "",
         },
     )
 
@@ -393,6 +394,7 @@ def test_composer_prompt_carries_identity_and_target_language() -> None:
             "persona": "A calm advisor.",
             "boundaries": "Never gives legal advice.",
             "target_lang": "mr",
+            "category_guidance": "",
         },
     )
 
@@ -413,13 +415,83 @@ def test_composer_hindi_demo_keeps_the_citation_form() -> None:
             "persona": "p",
             "boundaries": "b",
             "target_lang": "hi",
+            "category_guidance": "",
         },
     )
 
     assert "[1]" in prompt
 
 
+def test_the_market_guidance_ships_outside_the_composer_prompt() -> None:
+    """Mandi rules reach the composer only on a turn intent found asking
+    about a market; the general prompt carries none of them."""
+
+    service = _service()
+    guidance = service.get_category_guidance(
+        PromptIdentifier.COMPOSER, LanguageTag("en"), {SubjectCategory.MARKET}
+    )
+
+    assert "market" in guidance
+    assert "date" in guidance
+    assert guidance not in _composer_prompt()
+
+
+def test_the_hindi_market_guidance_is_its_own() -> None:
+    service = _service()
+
+    hindi = service.get_category_guidance(
+        PromptIdentifier.COMPOSER, LanguageTag("hi"), {SubjectCategory.MARKET}
+    )
+
+    assert "मंडी" in hindi
+
+
 # --- planner (moved from tests/unit/core/planner/test_prompt.py) -----------
+
+
+def test_the_planner_s_market_guidance_ships_outside_its_prompt() -> None:
+    """Without it the planner reads other markets' prices as the wrong place
+    and drops them; with it in the general prompt, every turn carries it."""
+
+    guidance = _service().get_category_guidance(
+        PromptIdentifier.PLANNER, LanguageTag("en"), {SubjectCategory.MARKET}
+    )
+
+    assert "select_next" in guidance
+    assert guidance not in _planner_prompt()
+
+
+@pytest.mark.parametrize("lang", ["en", "hi"])
+def test_the_planner_skill_carries_the_market_guidance_on_a_market_turn(
+    lang: str,
+) -> None:
+    service = _service()
+    guidance = service.get_category_guidance(
+        PromptIdentifier.PLANNER, LanguageTag(lang), {SubjectCategory.MARKET}
+    )
+
+    skills = service.get_skills(
+        PromptIdentifier.PLANNER, LanguageTag(lang), {SubjectCategory.MARKET}
+    )
+
+    assert any(guidance in skill.guidance for skill in skills)
+
+
+def test_the_planner_skill_carries_no_slot_on_a_turn_about_anything_else() -> None:
+    skills = _service().get_skills(
+        PromptIdentifier.PLANNER, LanguageTag("en"), {SubjectCategory.CROP}
+    )
+
+    assert all("category_guidance" not in skill.guidance for skill in skills)
+    assert all("Market prices" not in skill.guidance for skill in skills)
+
+
+def test_the_planner_s_hindi_market_guidance_is_its_own() -> None:
+    hindi = _service().get_category_guidance(
+        PromptIdentifier.PLANNER, LanguageTag("hi"), {SubjectCategory.MARKET}
+    )
+
+    assert "मंडी" in hindi
 
 
 def test_planner_prompt_includes_identity() -> None:

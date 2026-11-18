@@ -621,7 +621,8 @@ def test_mandi_price_carries_a_validity_window_the_pack_does_not_offer() -> None
     Sent from here rather than by the model: the field is not filterable, so
     `validate_arguments` runs before this and would refuse it. Today's date,
     because the turn carries no date and the provider advertised a current
-    snapshot.
+    snapshot — opened back a week, because a market that has not reported
+    today often has a price from a few days ago.
 
     Scoped to MandiPrice on purpose. No other pack declares `validity` as
     anything a caller may send, and WeatherObservation answers today without
@@ -639,7 +640,7 @@ def test_mandi_price_carries_a_validity_window_the_pack_does_not_offer() -> None
     )
 
     assert resource_attributes["validity"] == {
-        "startsAt": "2026-09-17T00:00:00+05:30",
+        "startsAt": "2026-09-10T00:00:00+05:30",
         "endsAt": "2026-09-17T23:59:59+05:30",
     }
 

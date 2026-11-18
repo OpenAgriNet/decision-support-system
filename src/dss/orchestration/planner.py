@@ -166,8 +166,8 @@ async def _select(
             declared=tuple(schema.field_types),
             # TODO(#55): remove with the pack fix.
             #
-            # Always today. Nothing reads a date out of the question yet, so a
-            # farmer asking about yesterday still gets today's window —
+            # The week up to today. Nothing reads a date out of the question
+            # yet, so a farmer asking about last month still gets this week —
             # `arrivalDate` is filterable and is where that will come from.
             priced_on=deps.today(),
         )

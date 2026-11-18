@@ -113,7 +113,9 @@ def build_plan(  # noqa: PLR0913
                 awaiting=awaiting,
             )
 
-        skills = prompts.get_skills(PromptIdentifier.PLANNER, turn.target_lang)
+        skills = prompts.get_skills(
+            PromptIdentifier.PLANNER, turn.target_lang, intent.asked_categories
+        )
         agent = build_planner_agent(
             skills=skills,
             model=model,

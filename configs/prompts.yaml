@@ -24,6 +24,10 @@
 # are not backed by an eval (that is M3's call). Each Hindi file is marked as
 # a demo in its header and is pending review by a Hindi speaker. To put any
 # component back on English for Hindi farmers, delete its `hi:` entry.
+#
+# `category_guidance` adds guidance for one intent category, only on a turn
+# intent found asking about it — so the prompt stays general, and a
+# category's rules ride along only when needed. Keys are intent categories (Market, Weather, ...).
 
 intent:
   placeholders:
@@ -60,10 +64,14 @@ planner:
       system_prompt: prompts/planner/en/prompt.j2
       skills:
         - prompts/planner/en/skills/provider-invocation.md
+      category_guidance:
+        Market: prompts/planner/en/category_guidance/market.md
     hi:
       system_prompt: prompts/planner/hi/prompt.j2
       skills:
         - prompts/planner/hi/skills/provider-invocation.md
+      category_guidance:
+        Market: prompts/planner/hi/category_guidance/market.md
 
 composer:
   placeholders:
@@ -71,11 +79,16 @@ composer:
     - persona
     - boundaries
     - target_lang
+    - category_guidance
   language_prompts:
     en:
       system_prompt: prompts/composer/en/prompt.j2
+      category_guidance:
+        Market: prompts/composer/en/category_guidance/market.md
     hi:
       system_prompt: prompts/composer/hi/prompt.j2
+      category_guidance:
+        Market: prompts/composer/hi/category_guidance/market.md
 
 # Renders system-authored text — refusals, clarification questions, the
 # no-provider answers — in the turn's target language (ADR-0018). English

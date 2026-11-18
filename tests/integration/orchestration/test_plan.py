@@ -265,6 +265,53 @@ async def test_the_prompt_carries_the_identity_and_the_marked_history() -> None:
     assert "<BEGIN CONVERSATION>" in everything
 
 
+MARKET_GUIDANCE = "Other markets in the district answer a price ask too."
+
+
+async def _planner_prompt_for(ask: Ask) -> str:
+    skill_with_a_slot = SKILL.model_copy(
+        update={"guidance": f"{SKILL.guidance}\n\n{{{{ category_guidance }}}}"}
+    )
+    prompts = FakePromptProvider(
+        skills=(skill_with_a_slot,),
+        category_guidance={SubjectCategory.MARKET: MARKET_GUIDANCE},
+    )
+    plan = build_plan(
+        schemas=SCHEMAS,
+        schema_context_index={
+            "openagrinet:MandiPrice": "https://schemas.openagrinet.global/schema/MandiPrice/0.1/context.jsonld"
+        },
+        invocation_for=lambda _turn: _FakeInvocation(),
+        identity=IDENTITY,
+        prompts=prompts,
+        model=FunctionModel(_answers_without_calling),
+    )
+
+    await plan(
+        _turn(),
+        intent=Intent(asks=(ask,), confidence=0.9),
+        discovery=DiscoveryResult(
+            answers={}, capabilities={0: (CAPABILITY,)}, failures={}, events=()
+        ),
+        verdict=_cleared_verdict(),
+    )
+
+    (_, _, values), *_ = prompts.calls
+    return values["guidance_section"]
+
+
+async def test_a_market_ask_brings_the_market_guidance_to_the_planner() -> None:
+    assert MARKET_GUIDANCE in await _planner_prompt_for(PRICE_ASK)
+
+
+async def test_an_ask_about_anything_else_brings_no_market_guidance() -> None:
+    weather = PRICE_ASK.model_copy(
+        update={"subject_categories": SubjectCategory.WEATHER}
+    )
+
+    assert MARKET_GUIDANCE not in await _planner_prompt_for(weather)
+
+
 DIRECT_ANSWER = DiscoveredAnswer(
     provider_id="krishi-kb",
     provider_name="Krishi Knowledge Base",

@@ -7,12 +7,12 @@ fails, which is the point of having a contract at all.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Mapping, Sequence
+from collections.abc import AsyncIterator, Collection, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
 from dss.core.forms.models import ActionReply
-from dss.core.intent.models import Scheme, SchemeEntry
+from dss.core.intent.models import Scheme, SchemeEntry, SubjectCategory
 from dss.core.planner.models import Skill
 from dss.core.provider_discovery.models import ProviderCapability
 from dss.core.provider_preferences.models import PreferenceBook, capability_key
@@ -146,8 +146,13 @@ class FakePromptProvider:
     text is config, pinned by `tests/unit/config/test_shipped_prompts.py`.
     """
 
-    def __init__(self, skills: Sequence[Skill] = ()) -> None:
+    def __init__(
+        self,
+        skills: Sequence[Skill] = (),
+        category_guidance: Mapping[SubjectCategory, str] | None = None,
+    ) -> None:
         self._skills = tuple(skills)
+        self._category_guidance = dict(category_guidance or {})
         self.calls: list[tuple[PromptIdentifier, LanguageTag, dict[str, Any]]] = []
 
     def get_prompt(
@@ -169,9 +174,36 @@ class FakePromptProvider:
         return "\n".join(lines)
 
     def get_skills(
-        self, prompt_identifier: PromptIdentifier, lang: LanguageTag
+        self,
+        prompt_identifier: PromptIdentifier,
+        lang: LanguageTag,
+        categories: Collection[SubjectCategory] = frozenset(),
     ) -> tuple[Skill, ...]:
-        return self._skills
+        category_guidance = self.get_category_guidance(
+            prompt_identifier, lang, categories
+        )
+        return tuple(
+            skill.model_copy(
+                update={
+                    "guidance": skill.guidance.replace(
+                        "{{ category_guidance }}", category_guidance
+                    )
+                }
+            )
+            for skill in self._skills
+        )
+
+    def get_category_guidance(
+        self,
+        prompt_identifier: PromptIdentifier,
+        lang: LanguageTag,
+        categories: Collection[SubjectCategory],
+    ) -> str:
+        return "\n\n".join(
+            guidance
+            for category, guidance in self._category_guidance.items()
+            if category in categories
+        )
 
 
 class FakeLocalizer:
