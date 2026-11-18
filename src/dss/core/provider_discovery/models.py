@@ -1,24 +1,19 @@
-"""Types produced and consumed by provider_discovery.
-
-A type answers questions about its own data; service.py runs the flow.
-"""
+"""A type answers questions about its own data. service.py runs the flow."""
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from dataclasses import field as dataclass_field
 from datetime import datetime
 from enum import Enum
 
-from dss.core.intent.models import AskId
+from dss.core.intent.models import Ask, AskId
 from dss.core.provider_preferences.models import AskPriority
 
-# A resource's `@type`, as a prefixed CURIE: `openagrinet:MandiPrice`. An open
-# set, fed by whichever schema packs a deployment mounts — so never an enum.
-# Called `capability` at most call sites, which is the DSS's word for the same
-# thing seen from the planning side. A plain alias, like `NetworkTransactionID`
-# in `core/shared/network.py`: it buys the name, not a runtime check.
+# A resource's `@type`, like `openagrinet:MandiPrice`. Not an enum: the set is
+# open, fed by the schema packs a deployment mounts. Most call sites call it
+# `capability`.
 NetworkSchemaType = str
 
 # The pack types for each (subject category, action type) pair.
@@ -29,20 +24,18 @@ type CapabilityIndex = Mapping[tuple[str, str], tuple[NetworkSchemaType, ...]]
 class Coverage:
     lat: float
     lon: float
-    radius_m: int  # caller-supplied — config today, may vary per ask later
+    radius_m: int
 
 
 @dataclass(frozen=True)
 class ProviderQuery:
-    """A domain-level discovery query. No ask index, no trace id, no timestamp —
-    those live in the envelope the client adapter builds.
-    """
+    """No ask id, trace id or timestamp: those belong to the envelope the
+    client adapter builds."""
 
     capabilities: tuple[str, ...]
-    # The Ask's subject category ("Weather"), which the JSONPath filter matches
-    # on. `capabilities` carries the resolved @type values alongside it: those
-    # name the envelope's `schemaContext`, which is what pins the query to a
-    # specific resource type, so the filter itself does not repeat them.
+    # What the JSONPath filter matches on ("Weather"). `capabilities` is not
+    # in the filter: it names the envelope's `schemaContext`, which already
+    # pins the resource type.
     subject_category: str
     languages: tuple[str, ...]
     coverage: Coverage | None
@@ -51,33 +44,20 @@ class ProviderQuery:
 @dataclass(frozen=True)
 class ProviderCapability:
     """What discovery intends to use, not the provider's full inventory.
-
-    ``kind`` is deferred until host-URL derivation is built.
-    """
+    ``kind`` waits on host-URL derivation."""
 
     provider_id: str
     provider_name: str
     capability: NetworkSchemaType
-    resource_id: str  # names which resource `select` commits to
+    resource_id: str
     bpp_id: str
     bpp_uri: str
     observed_categories: tuple[str, ...] = ()  # the resource's own subjectCategories
-    # The provider's own code from on_discover ("AGMARKNET-01"). Kept rather
-    # than sent: the real select request names a provider by id and name only.
-    # Optional because only `name` appears in every fixture.
+    # From on_discover ("AGMARKNET-01"). Kept, not sent: select names a
+    # provider by id and name. Optional: only `name` is in every fixture.
     provider_code: str | None = None
-    # The resource's own advertised vocabulary, verbatim from on_discover
-    # ("supportedCommodities": [{"code": "78", "name": "Tomato"}, ...]). The
-    # planner shows it to the model, which otherwise has to invent a code and
-    # has nothing to check it against.
-    #
-    # An opaque map, not named fields: which fields a resource advertises is
-    # pack-specific — MandiPrice names supportedCommodities, another pack
-    # names something else — and one pack's vocabulary must not enter a type
-    # four packs share. Same stance as DiscoveredAnswer.attributes.
-    #
-    # Mapping rather than dict: the dataclass is frozen, and a dict field
-    # would still let a caller mutate what the network said.
+    # What the resource says it supports, as sent ("supportedCommodities": [...]).
+    # An opaque map: the fields differ per pack, and every pack shares this type.
     advertised: Mapping[str, object] = dataclass_field(default_factory=dict)
 
 
@@ -89,10 +69,8 @@ class Validity:
 
 @dataclass(frozen=True)
 class DiscoveredAnswer:
-    """A Direct resource's answer. ``attributes`` is the pack-specific
-    ``resourceAttributes`` verbatim — provider_discovery doesn't know every
-    pack's schema, so it passes them through rather than typing each one.
-    """
+    """A Direct resource's answer. ``attributes`` is the pack's
+    ``resourceAttributes`` as sent: discovery does not know each pack's schema."""
 
     provider_id: str
     provider_name: str
@@ -100,10 +78,8 @@ class DiscoveredAnswer:
     resource_id: str
     attributes: dict[str, object]
     validity: Validity | None
-    # Who authored the data, from `resourceAttributes.source`. Not the same as
-    # the provider: one relaying IMD still cites IMD. All optional — `source`
-    # is optional on every pack that declares it, and `sourceUri` is dropped
-    # here unless it is http(s), since a farmer cannot open a JSON-LD id.
+    # Who made the data, when that is not who we called. E.g. a provider that
+    # passes on IMD's forecast gives IMD as the source.
     source_id: str | None = None
     source_name: str | None = None
     source_url: str | None = None
@@ -134,37 +110,30 @@ class ProviderQueryResult:
 
 @dataclass(frozen=True)
 class CapabilityUnresolved:
-    """The (subject_category, action_type) pair resolves to zero @type values.
-
-    Every valid pair should map to at least one @type, so this means our own
-    mapping is incomplete — not that no provider serves this pair.
-    """
+    """The (subject category, action type) pair maps to no @type. Our own
+    mapping is incomplete: it does not mean no provider serves the pair."""
 
     subject_category: str
     action_type: str
 
 
 @dataclass(frozen=True)
+class AskToDiscover:
+    ask: Ask
+    query: ProviderQuery | None  # None: a failed place, or no @type for the ask
+
+
+@dataclass(frozen=True)
 class AsksToBeDiscovered:
-    queries_by_ask: Mapping[AskId, ProviderQuery]  # only asks that can be searched
-    unsearchable_asks: frozenset[AskId]  # a failed place, or no @type for the ask
+    asks: tuple[AskToDiscover, ...]
     events: tuple[CapabilityUnresolved, ...]
 
     def find_unique_queries(self) -> tuple[ProviderQuery, ...]:
         """Each query once, in the order of the first ask that needs it."""
 
-        return tuple(dict.fromkeys(query for _, query in self._in_ask_order()))
-
-    def find_asks_sharing(self, query: ProviderQuery) -> tuple[AskId, ...]:
-        """In ask order."""
-
         return tuple(
-            ask_id for ask_id, shared in self._in_ask_order() if shared == query
+            dict.fromkeys(ask.query for ask in self.asks if ask.query is not None)
         )
-
-    def _in_ask_order(self) -> list[tuple[AskId, ProviderQuery]]:
-        # Ids are given in the user's order, so sorting by id is ask order.
-        return sorted(self.queries_by_ask.items(), key=lambda item: item[0])
 
 
 class FailureClass(Enum):
@@ -174,13 +143,9 @@ class FailureClass(Enum):
 
 @dataclass(frozen=True)
 class DiscoveryFailure:
-    """A discovery call failed for one capability.
-
-    ``provider_id`` is None for a whole-call failure. It is set when one
-    catalog in an otherwise good response was dropped (no BPP to address);
-    the ask then counts as failed in the discovery span even when a sibling
-    catalog serves it.
-    """
+    """``provider_id`` is None when the whole call failed. It is set when one
+    catalog of a good response was dropped (no BPP to address). The ask then
+    counts as failed in the discovery span, even if another catalog serves it."""
 
     capability: NetworkSchemaType
     status_code: int
@@ -191,12 +156,8 @@ class DiscoveryFailure:
 
 @dataclass(frozen=True)
 class ExpiredAnswerDropped:
-    """A Direct answer was outside its validity window and was dropped.
-
-    Either side of the window: the name says "expired", but an answer whose
-    ``startsAt`` has not arrived yet is dropped and reported here too. Not
-    renamed because the event type is what the sinks consume.
-    """
+    """Also raised for an answer that is not valid yet. Not renamed: the
+    sinks consume the event type."""
 
     provider_id: str
     capability: NetworkSchemaType
@@ -206,8 +167,6 @@ class ExpiredAnswerDropped:
 
 @dataclass(frozen=True)
 class AskDiscoveryFailed:
-    """A discovery call failed for one ask — mirrors the DiscoveryFailure."""
-
     ask_id: AskId
     capability: NetworkSchemaType
     failure_class: FailureClass
@@ -216,7 +175,7 @@ class AskDiscoveryFailed:
 
 @dataclass(frozen=True)
 class AskUnservable:
-    """An ask ended with no answer and no capability — the normal no_match path."""
+    """Nobody serves the ask. Not an error: the normal no-match path."""
 
     ask_id: AskId
     capabilities: tuple[str, ...]  # the @type values the query carried, for context
@@ -239,50 +198,53 @@ type DiscoveryEvent = (
 )
 
 
-@dataclass(frozen=True)
-class DiscoveryResult:
-    answers: dict[AskId, tuple[DiscoveredAnswer, ...]]
-    capabilities: dict[AskId, tuple[ProviderCapability, ...]]
-    failures: dict[AskId, tuple[DiscoveryFailure, ...]]
-    events: tuple[DiscoveryEvent, ...]
-    # What the calling client's provider ranking did to each ask, keyed by ask
-    # id (ADR-0019). Filled by `core.provider_preferences.prioritise`, which
-    # runs over this result before anything downstream reads it.
-    #
-    # Here rather than alongside, because the ordering above *is* the thing it
-    # explains: `capabilities[2]` being one provider long is either "only one
-    # provider serves this" or "the client ranked the other two out", and
-    # nothing else can tell those apart. Defaulted, so every existing
-    # construction — and an unwired deployment — stays valid.
-    priorities: dict[AskId, AskPriority] = dataclass_field(default_factory=dict)
-
-    def serves(self, ask_id: AskId) -> bool:
-        """Whether anyone was found for the ask: a Direct answer in
-        ``answers`` or an OnDemand capability in ``capabilities``."""
-
-        return bool(self.answers.get(ask_id) or self.capabilities.get(ask_id))
-
-    @property
-    def serves_any_ask(self) -> bool:
-        return any(self.answers.values()) or any(self.capabilities.values())
-
-
-_NOTHING_FOUND = ProviderQueryResult(answers=(), capabilities=(), failures=())
+NOTHING_FOUND = ProviderQueryResult(answers=(), capabilities=(), failures=())
 
 
 @dataclass(frozen=True)
 class DiscoveredAsk:
-    ask_id: AskId
-    query: ProviderQuery
-    query_result: ProviderQueryResult
+    ask: Ask
+    # Asks that searched the same thing hold the same query. None: never searched.
+    query: ProviderQuery | None
+    found: ProviderQueryResult
+    priority: AskPriority | None = None  # None: the ranking step did not run
+
+    @property
+    def answers(self) -> tuple[DiscoveredAnswer, ...]:
+        return self.found.answers
+
+    @property
+    def capabilities(self) -> tuple[ProviderCapability, ...]:
+        return self.found.capabilities
+
+    @property
+    def failures(self) -> tuple[DiscoveryFailure, ...]:
+        return self.found.failures
+
+    @property
+    def is_served(self) -> bool:
+        return bool(self.answers or self.capabilities)
+
+    def with_capabilities(
+        self, capabilities: tuple[ProviderCapability, ...]
+    ) -> DiscoveredAsk:
+        return replace(self, found=replace(self.found, capabilities=capabilities))
+
+    def ranked(
+        self,
+        priority: AskPriority,
+        *,
+        capabilities: tuple[ProviderCapability, ...],
+        answers: tuple[DiscoveredAnswer, ...],
+    ) -> DiscoveredAsk:
+        found = replace(self.found, capabilities=capabilities, answers=answers)
+        return replace(self, found=found, priority=priority)
 
     def within_validity(self, now: datetime) -> DiscoveredAsk:
         fresh = tuple(
-            answer
-            for answer in self.query_result.answers
-            if not answer.is_outside_validity(now)
+            answer for answer in self.answers if not answer.is_outside_validity(now)
         )
-        return replace(self, query_result=replace(self.query_result, answers=fresh))
+        return replace(self, found=replace(self.found, answers=fresh))
 
     def build_expired_answer_events(
         self, now: datetime
@@ -292,62 +254,73 @@ class DiscoveredAsk:
                 provider_id=answer.provider_id,
                 capability=answer.capability,
                 resource_id=answer.resource_id,
-                had_fallback=self.query_result.has_on_demand_fallback_for(answer),
+                had_fallback=self.found.has_on_demand_fallback_for(answer),
             )
-            for answer in self.query_result.answers
+            for answer in self.answers
             if answer.is_outside_validity(now)
         )
 
     def build_outcome_events(self) -> tuple[AskDiscoveryFailed | AskUnservable, ...]:
-        if self.query_result.failures:
+        if self.query is None:
+            return ()
+        if self.failures:
             return tuple(
                 AskDiscoveryFailed(
-                    ask_id=self.ask_id,
+                    ask_id=self.ask.id,
                     capability=failure.capability,
                     failure_class=failure.failure_class,
                     status_code=failure.status_code,
                 )
-                for failure in self.query_result.failures
+                for failure in self.failures
             )
-        if not self.query_result.answers and not self.query_result.capabilities:
+        if not self.is_served:
             return (
-                AskUnservable(ask_id=self.ask_id, capabilities=self.query.capabilities),
+                AskUnservable(ask_id=self.ask.id, capabilities=self.query.capabilities),
             )
         return ()
 
 
 @dataclass(frozen=True)
-class DiscoveredAsks:
-    asks: tuple[DiscoveredAsk, ...]  # the searched asks, in ask order
-    unsearchable_asks: frozenset[AskId]  # never searched
+class DiscoveryResult:
+    asks: tuple[DiscoveredAsk, ...]
+    events: tuple[DiscoveryEvent, ...]
 
-    def within_validity(self, now: datetime) -> DiscoveredAsks:
-        return replace(self, asks=tuple(ask.within_validity(now) for ask in self.asks))
+    def __post_init__(self) -> None:
+        seen: set[AskId] = set()
+        for discovered in self.asks:
+            if discovered.ask.id in seen:
+                raise ValueError(f"two entries for ask {discovered.ask.id}")
+            seen.add(discovered.ask.id)
 
-    def build_expired_answer_events(
-        self, now: datetime
-    ) -> tuple[ExpiredAnswerDropped, ...]:
-        return tuple(
-            event for ask in self.asks for event in ask.build_expired_answer_events(now)
-        )
+    @property
+    def serves_any_ask(self) -> bool:
+        return any(ask.is_served for ask in self.asks)
 
-    def build_outcome_events(self) -> tuple[AskDiscoveryFailed | AskUnservable, ...]:
-        return tuple(event for ask in self.asks for event in ask.build_outcome_events())
+    def with_each_ask(
+        self, change: Callable[[DiscoveredAsk], DiscoveredAsk]
+    ) -> DiscoveryResult:
+        return replace(self, asks=tuple(change(ask) for ask in self.asks))
 
-    def build_result(self, events: Sequence[DiscoveryEvent]) -> DiscoveryResult:
-        """An entry for every ask, searched or not, in ask order."""
+    # TODO(#249): the four dicts and `serves` below are views for readers not
+    # moved to `asks` yet. They go with the last of those readers.
 
-        results = self._find_query_results_by_ask()
-        return DiscoveryResult(
-            answers={ask_id: result.answers for ask_id, result in results.items()},
-            capabilities={
-                ask_id: result.capabilities for ask_id, result in results.items()
-            },
-            failures={ask_id: result.failures for ask_id, result in results.items()},
-            events=tuple(events),
-        )
+    @property
+    def answers(self) -> dict[AskId, tuple[DiscoveredAnswer, ...]]:
+        return {ask.ask.id: ask.answers for ask in self.asks}
 
-    def _find_query_results_by_ask(self) -> dict[AskId, ProviderQueryResult]:
-        searched = {ask.ask_id: ask.query_result for ask in self.asks}
-        never_searched = dict.fromkeys(self.unsearchable_asks, _NOTHING_FOUND)
-        return dict(sorted((searched | never_searched).items()))
+    @property
+    def capabilities(self) -> dict[AskId, tuple[ProviderCapability, ...]]:
+        return {ask.ask.id: ask.capabilities for ask in self.asks}
+
+    @property
+    def failures(self) -> dict[AskId, tuple[DiscoveryFailure, ...]]:
+        return {ask.ask.id: ask.failures for ask in self.asks}
+
+    @property
+    def priorities(self) -> dict[AskId, AskPriority]:
+        return {
+            ask.ask.id: ask.priority for ask in self.asks if ask.priority is not None
+        }
+
+    def serves(self, ask_id: AskId) -> bool:
+        return any(ask.is_served for ask in self.asks if ask.ask.id == ask_id)

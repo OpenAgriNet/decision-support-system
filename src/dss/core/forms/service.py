@@ -4,7 +4,7 @@ import copy
 import re
 from collections import Counter
 from collections.abc import Callable, Container, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import datetime
 from http import HTTPStatus
 from uuid import uuid4
@@ -745,12 +745,10 @@ def candidates_for_scheme(
 def discovery_for_scheme(
     discovery: DiscoveryResult, scheme_code: str
 ) -> DiscoveryResult:
-    return replace(
-        discovery,
-        capabilities={
-            ask_id: candidates_for_scheme(candidates, scheme_code)
-            for ask_id, candidates in discovery.capabilities.items()
-        },
+    return discovery.with_each_ask(
+        lambda ask: ask.with_capabilities(
+            candidates_for_scheme(ask.capabilities, scheme_code)
+        )
     )
 
 

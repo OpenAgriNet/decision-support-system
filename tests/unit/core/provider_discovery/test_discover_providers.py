@@ -19,6 +19,7 @@ from dss.core.intent.models import (
     UnresolvedPlace,
 )
 from dss.core.provider_discovery.models import (
+    NOTHING_FOUND,
     AskDiscoveryFailed,
     AskUnservable,
     CapabilityUnresolved,
@@ -37,7 +38,7 @@ from dss.core.provider_discovery.models import (
 from dss.core.provider_discovery.service import discover_providers
 from dss.core.shared.models import Geometry, ProviderAction, TextQuery, UserTurn
 from tests.support.asks import an_ask, numbered
-from tests.support.discovery import a_discovery, discovered
+from tests.support.discovery import a_discovery
 from tests.support.providers import build_capability
 
 NOW = datetime(2026, 8, 26, 12, 0, 0, tzinfo=UTC)
@@ -112,7 +113,6 @@ async def test_a_single_ask_resolves_and_returns_the_discovery_result() -> None:
         capability="openagrinet:MandiPrice",
         resource_id="r1",
     )
-    expected_result = a_discovery(discovered(ask, capabilities=(offered,)))
     discovery = _FakeDiscovery(_query_result(capabilities=(offered,)))
 
     result = await discover_providers(
@@ -124,7 +124,10 @@ async def test_a_single_ask_resolves_and_returns_the_discovery_result() -> None:
         now=NOW,
     )
 
-    assert result == expected_result
+    (discovered_ask,) = result.asks
+    assert discovered_ask.ask == ask
+    assert discovered_ask.capabilities == (offered,)
+    assert discovered_ask.is_served
     assert len(discovery.calls) == 1
     query, transaction_id = discovery.calls[0]
     assert query.capabilities == ("openagrinet:MandiPrice",)
@@ -151,9 +154,10 @@ async def test_an_unresolved_ask_never_calls_discover() -> None:
     )
 
     assert discovery.calls == []
-    assert result.answers == {0: ()}
-    assert result.capabilities == {0: ()}
-    assert result.failures == {0: ()}
+    (never_searched,) = result.asks
+    assert never_searched.ask == ask
+    assert never_searched.query is None
+    assert never_searched.found == NOTHING_FOUND
     assert result.events == (CapabilityUnresolved("Facility", "Service"),)
 
 
@@ -1122,8 +1126,11 @@ async def test_asks_get_only_their_own_query_reply() -> None:
     )
 
     assert len(discovery.calls) == 2
-    assert result.answers == {0: (market_answer,), 2: (), 5: (market_answer,)}
-    assert result.capabilities == {0: (), 2: (weather_capability,), 5: ()}
+    first_market, weather, second_market = result.asks
+    assert [found.ask.id for found in result.asks] == [0, 2, 5]
+    assert first_market.answers == second_market.answers == (market_answer,)
+    assert weather.capabilities == (weather_capability,)
+    assert first_market.query == second_market.query != weather.query
 
 
 async def test_an_unplaced_ask_gets_an_empty_entry_beside_a_searched_one() -> None:

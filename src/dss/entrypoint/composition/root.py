@@ -592,7 +592,7 @@ async def _discovers_nothing(
     supplying the three network settings replaces this with the real client and
     lights up the planner and composer."""
 
-    return DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
+    return DiscoveryResult(asks=(), events=())
 
 
 @dataclass(frozen=True)

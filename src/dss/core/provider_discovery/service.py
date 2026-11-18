@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
@@ -19,13 +19,14 @@ from dss.core.intent.models import (
     UnresolvedPlace,
 )
 from dss.core.provider_discovery.models import (
+    NOTHING_FOUND,
     AsksToBeDiscovered,
+    AskToDiscover,
     CapabilityIndex,
     CapabilityUnresolved,
     CategoryMappingDiverged,
     Coverage,
     DiscoveredAsk,
-    DiscoveredAsks,
     DiscoveryResult,
     NetworkSchemaType,
     ProviderQuery,
@@ -55,7 +56,7 @@ def _action_type_of(ask: Ask) -> str:
 
 
 class CapabilityIndexSource(Protocol):
-    def current(self) -> Mapping[tuple[str, str], tuple[str, ...]]: ...
+    def current(self) -> CapabilityIndex: ...
 
     def place_bound_types(self) -> frozenset[str]: ...
 
@@ -63,7 +64,7 @@ class CapabilityIndexSource(Protocol):
 def resolve_capability_type(
     subject_category: str,
     action_type: str,
-    index: Mapping[tuple[str, str], tuple[str, ...]],
+    index: CapabilityIndex,
 ) -> tuple[tuple[str, ...], CapabilityUnresolved | None]:
     types = index.get((subject_category, action_type), ())
     if not types:
@@ -108,7 +109,7 @@ def _query_for_ask(
     ask: Ask,
     languages: tuple[str, ...],
     coverage: Coverage | None,
-    index: Mapping[tuple[str, str], tuple[str, ...]],
+    index: CapabilityIndex,
     place_bound_types: frozenset[str],
 ) -> ProviderQuery | CapabilityUnresolved:
     types, event = resolve_capability_type(
@@ -166,9 +167,7 @@ def _lacks_a_needed_place(
     )
 
 
-def _expected_categories(
-    capability: str, index: Mapping[tuple[str, str], tuple[str, ...]]
-) -> set[str]:
+def _expected_categories(capability: str, index: CapabilityIndex) -> set[str]:
     return {
         subject_category
         for (subject_category, _action_type), types in index.items()
@@ -179,7 +178,7 @@ def _expected_categories(
 def _diverged_categories(
     capability: str,
     observed_categories: tuple[str, ...],
-    index: Mapping[tuple[str, str], tuple[str, ...]],
+    index: CapabilityIndex,
 ) -> list[CategoryMappingDiverged]:
     expected = _expected_categories(capability, index)
     return [
@@ -205,15 +204,14 @@ def _find_asks_to_discover(
         for ask in intent.asks
     }
     return AsksToBeDiscovered(
-        queries_by_ask={
-            ask_id: outcome
-            for ask_id, outcome in outcomes.items()
-            if isinstance(outcome, ProviderQuery)
-        },
-        unsearchable_asks=frozenset(
-            ask_id
-            for ask_id, outcome in outcomes.items()
-            if not isinstance(outcome, ProviderQuery)
+        asks=tuple(
+            AskToDiscover(
+                ask=ask,
+                query=outcome
+                if isinstance(outcome := outcomes[ask.id], ProviderQuery)
+                else None,
+            )
+            for ask in intent.asks
         ),
         events=tuple(
             outcome
@@ -227,7 +225,7 @@ async def _send_queries(
     to_discover: AsksToBeDiscovered,
     discovery: CapabilityDiscovery,
     transaction_id: str,
-) -> DiscoveredAsks:
+) -> tuple[DiscoveredAsk, ...]:
     unique_queries = to_discover.find_unique_queries()
     replies: dict[ProviderQuery, ProviderQueryResult] = {}
 
@@ -241,24 +239,24 @@ async def _send_queries(
         for query in unique_queries:
             task_group.start_soon(_send, query)
 
-    searched = (
-        DiscoveredAsk(ask_id=ask_id, query=query, query_result=replies[query])
-        for query in unique_queries
-        for ask_id in to_discover.find_asks_sharing(query)
-    )
-    return DiscoveredAsks(
-        asks=tuple(sorted(searched, key=lambda ask: ask.ask_id)),
-        unsearchable_asks=to_discover.unsearchable_asks,
+    return tuple(
+        DiscoveredAsk(
+            ask=ask.ask,
+            query=ask.query,
+            found=NOTHING_FOUND if ask.query is None else replies[ask.query],
+        )
+        for ask in to_discover.asks
     )
 
 
 def _detect_divergence(
-    discovered: DiscoveredAsks, index: Mapping[tuple[str, str], tuple[str, ...]]
+    discovered: Sequence[DiscoveredAsk],
+    index: CapabilityIndex,
 ) -> list[CategoryMappingDiverged]:
     # Runs after the expiry filter: divergence is an alert to go fix a
     # provider's data, so raising it for an answer dropped in the same turn
     # would point an operator at a resource that never reached the user.
-    query_results = [ask.query_result for ask in discovered.asks]
+    query_results = [ask.found for ask in discovered]
     return [
         event
         for query_result in query_results
@@ -304,14 +302,16 @@ async def discover_providers(  # noqa: PLR0913
     to_discover: AsksToBeDiscovered = _find_asks_to_discover(
         intent, languages, radius_m, index, schema_pack_cache.place_bound_types()
     )
-    discovered: DiscoveredAsks = await _send_queries(
-        to_discover, discovery, turn.transaction_id
-    )
-    fresh: DiscoveredAsks = discovered.within_validity(now)
-    events = [
+    discovered = await _send_queries(to_discover, discovery, turn.transaction_id)
+    fresh = tuple(ask.within_validity(now) for ask in discovered)
+    events = (
         *to_discover.events,
-        *discovered.build_expired_answer_events(now),
+        *(
+            event
+            for ask in discovered
+            for event in ask.build_expired_answer_events(now)
+        ),
         *_detect_divergence(fresh, index),
-        *fresh.build_outcome_events(),
-    ]
-    return fresh.build_result(events)
+        *(event for ask in fresh for event in ask.build_outcome_events()),
+    )
+    return DiscoveryResult(asks=fresh, events=events)

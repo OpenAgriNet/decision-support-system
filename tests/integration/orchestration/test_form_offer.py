@@ -17,7 +17,7 @@ from dss.core.intent.models import (
     SubjectCategory,
     UnclearAction,
 )
-from dss.core.provider_discovery.models import ProviderCapability
+from dss.core.provider_discovery.models import DiscoveredAsk, ProviderCapability
 from dss.core.shared.models import REQUESTABLE_ACTIONS, ProviderAction, TurnStatus
 from dss.orchestration.form_offer import ask_for_form, find_forms, form_context_for
 from dss.orchestration.provider_action import FORM_ASK_ID
@@ -30,7 +30,7 @@ from tests.integration.orchestration.test_orchestrator import (
     _turn,
 )
 from tests.support.asks import an_ask
-from tests.support.discovery import FoundForAsk, a_discovery, discovered
+from tests.support.discovery import a_discovery, discovered
 from tests.support.fakes import FakeSchemeCatalog
 from tests.support.grievance_pack import (
     PMKISAN_STATUS,
@@ -71,7 +71,7 @@ class _FakeForms:
         return self._forms.get(context)
 
 
-def _served_by(desk: ProviderCapability, *, ask_id: int = 0) -> FoundForAsk:
+def _served_by(desk: ProviderCapability, *, ask_id: int = 0) -> DiscoveredAsk:
     return discovered(ask_id, capabilities=(desk,))
 
 

@@ -237,15 +237,15 @@ def test_the_record_says_which_layer_answered_and_what_it_dropped() -> None:
     assert priority.dropped == ("unvetted",)
 
 
-def test_an_ask_discovery_found_nobody_for_gains_no_entry() -> None:
-    """Filtering must not turn "absent from the result" into "found nobody" —
-    the same thing to the farmer, one more key for every later reader."""
+def test_an_ask_nobody_was_found_for_still_records_the_ranking() -> None:
+    """An operator must see that a ranking applied, even with nobody to rank."""
 
-    discovery = a_discovery()
+    discovery = a_discovery(discovered(0))
     preference = _book(app={"weather": ("imd",)}).for_sender("app")
 
     result = prioritise(discovery, intent=_intent(), preference=preference)
 
-    assert result.capabilities == {}
-    assert result.answers == {}
-    assert result.priorities[0].applied is True
+    (ranked,) = result.asks
+    assert not ranked.is_served
+    assert ranked.priority is not None
+    assert ranked.priority.applied is True
