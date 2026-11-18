@@ -69,7 +69,7 @@ class PromptProvider(Protocol):
         fallback. Empty for components that declare none."""
         ...
 
-    def get_topic_guidance(
+    def get_category_guidance(
         self,
         prompt_identifier: PromptIdentifier,
         lang: LanguageTag,
@@ -77,5 +77,5 @@ class PromptProvider(Protocol):
     ) -> str:
         """The guidance configured for those intent categories beside that
         prompt, with the same language fallback. Empty when none of them has
-        any — a prompt carries a topic's rules only on a turn about it."""
+        any — a prompt carries a category's rules only on a turn about it."""
         ...

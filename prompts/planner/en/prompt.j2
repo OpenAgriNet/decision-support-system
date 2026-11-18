@@ -6,7 +6,7 @@
     guidance_section — the selected skills' guidance, rendered by core
     asks_section     — the turn's asks, rendered by core
     answers_section  — the catalog's Direct answers, rendered by core
-    topic_guidance   — rules for the turn's intent categories, or nothing
+    category_guidance — rules for the turn's intent categories, or nothing
 
   The marker names (<BEGIN CONVERSATION> etc.) are emitted by code and are a
   safety property — a translation must keep them verbatim, in English.
@@ -41,7 +41,7 @@ sowing date costs a farmer money.
 
 {{ guidance_section }}
 
-{{ topic_guidance }}
+{{ category_guidance }}
 
 {{ asks_section }}# Reading data
 

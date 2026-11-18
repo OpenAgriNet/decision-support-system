@@ -20,11 +20,11 @@
 - `--ref` is removed from the fetch script; passing it now fails as an
   unknown argument. `DSS_SCHEMA_PACK_REF` and `SCHEMA_PACK_REF` are removed
   and ignored if still set (#252)
-- The planner's and the composer's prompts carry guidance for a topic only
-  on a turn intent found asking about it. `configs/prompts.yaml` maps an
-  intent category to a guidance file per language under `topics`. The mandi
-  price rule moves out of the composer's general prompt into the Market
-  guidance (#242, ADR-0025)
+- The planner's and the composer's prompts carry guidance for an intent
+  category only on a turn intent found asking about it. `configs/prompts.yaml`
+  maps a category to a guidance file per language under `category_guidance`.
+  The mandi price rule moves out of the composer's general prompt into the
+  Market guidance (#242, ADR-0025)
 - A mandi price is asked for over the past week, not today alone, so a
   market that has not reported today still has a recent price (#242)
 - A mandi answer gives the asked market's latest price. When that market has
