@@ -24,6 +24,10 @@
 # are not backed by an eval (that is M3's call). Each Hindi file is marked as
 # a demo in its header and is pending review by a Hindi speaker. To put any
 # component back on English for Hindi farmers, delete its `hi:` entry.
+#
+# `topics` adds guidance for one intent category, only on a turn intent found
+# asking about it — so the prompt stays general, and a topic's rules ride
+# along only when needed. Keys are intent categories (Market, Weather, ...).
 
 intent:
   placeholders:
@@ -55,19 +59,21 @@ planner:
     - guidance_section
     - asks_section
     - answers_section
+    - topic_guidance
   language_prompts:
     en:
       system_prompt: prompts/planner/en/prompt.j2
       skills:
         - prompts/planner/en/skills/provider-invocation.md
+      topics:
+        Market: prompts/planner/en/topics/market.md
     hi:
       system_prompt: prompts/planner/hi/prompt.j2
       skills:
         - prompts/planner/hi/skills/provider-invocation.md
+      topics:
+        Market: prompts/planner/hi/topics/market.md
 
-# `topics` adds guidance for one intent category, only on a turn intent found
-# asking about it — so the prompt stays general, and a topic's rules ride
-# along only when needed. Keys are intent categories (Market, Weather, ...).
 composer:
   placeholders:
     - name

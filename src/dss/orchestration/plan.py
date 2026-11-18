@@ -130,6 +130,11 @@ def build_plan(  # noqa: PLR0913
                         intent.asks, awaiting=frozenset(awaiting)
                     ),
                     "answers_section": answers_section(discovery.answers),
+                    "topic_guidance": prompts.get_topic_guidance(
+                        PromptIdentifier.PLANNER,
+                        turn.target_lang,
+                        {ask.subject_categories for ask in intent.asks},
+                    ),
                 },
             ),
         )

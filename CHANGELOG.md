@@ -3,15 +3,17 @@
 ## [Unreleased]
 
 ### Changed
-- The composer's prompt carries guidance for a topic only on a turn intent
-  found asking about it. `configs/prompts.yaml` maps an intent category to a
-  guidance file per language under `topics`. The mandi price rule moves out
-  of the general prompt into the Market guidance (#242, ADR-0025)
+- The planner's and the composer's prompts carry guidance for a topic only
+  on a turn intent found asking about it. `configs/prompts.yaml` maps an
+  intent category to a guidance file per language under `topics`. The mandi
+  price rule moves out of the composer's general prompt into the Market
+  guidance (#242, ADR-0025)
 - A mandi price is asked for over the past week, not today alone, so a
   market that has not reported today still has a recent price (#242)
 - A mandi answer gives the asked market's latest price. When that market has
   none, it gives the latest price of the other markets in the same district.
-  The answer names each market and the date of its price (#242)
+  The answer names each market and the date of its price. This is Market
+  guidance in the prompts, not code (#242)
 
 ### Fixed
 - `init` and `status` now send an offer on their commitment, as `select`
