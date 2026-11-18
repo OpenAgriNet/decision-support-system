@@ -87,6 +87,14 @@ def test_the_attributes_ride_on_the_first_commitment() -> None:
                         {"id": "res:pmkisan:grievance", "quantity": {"count": 1}}
                     ],
                     "commitmentAttributes": ATTRIBUTES,
+                    "offer": {
+                        "id": "offer:open-data",
+                        "resourceIds": ["res:pmkisan:grievance"],
+                        "provider": {
+                            "id": "pmkisan",
+                            "descriptor": {"name": "PM-KISAN Portal"},
+                        },
+                    },
                 }
             ],
         }
