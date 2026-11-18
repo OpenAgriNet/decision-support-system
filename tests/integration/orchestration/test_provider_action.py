@@ -11,7 +11,7 @@ from dss.core.provider_discovery.models import DiscoveredAnswer, FailureClass
 from dss.core.redaction.visibility import NOTHING_HELD
 from dss.core.shared.models import ProviderAction
 from dss.orchestration.provider_action import call_provider_action
-from dss.ports.invocation import StatusFailedError, SupportFailedError
+from dss.ports.invocation import ProviderActionFailedError
 from tests.support.fakes import RecordingActionInvocation
 from tests.support.providers import grievance_provider
 
@@ -135,7 +135,8 @@ async def test_the_reply_loses_the_farmers_values() -> None:
 
 
 async def test_a_failed_call_becomes_a_failure() -> None:
-    refused = SupportFailedError(
+    refused = ProviderActionFailedError(
+        ProviderAction.SUPPORT,
         "openagrinet:Grievance",
         503,
         FailureClass.TRANSIENT,
@@ -155,7 +156,9 @@ async def test_a_failed_call_becomes_a_failure() -> None:
 
 
 async def test_a_refused_status_is_not_retryable() -> None:
-    refused = StatusFailedError("openagrinet:Grievance", 404, FailureClass.DEFECT)
+    refused = ProviderActionFailedError(
+        ProviderAction.STATUS, "openagrinet:Grievance", 404, FailureClass.DEFECT
+    )
 
     response = await _call(STATUS, RecordingActionInvocation(failure=refused))
 

@@ -10,10 +10,11 @@ import pytest
 
 from dss.adapters.invocation.client import (
     HttpCapabilityInvocation,
-    StatusFailedError,
     build_status_request,
 )
 from dss.core.provider_discovery.models import FailureClass
+from dss.core.shared.models import ProviderAction
+from dss.ports.invocation import ProviderActionFailedError
 from tests.support.providers import build_capability
 
 SENDER_ID = "seeker-network-vistaar.da.gov.in"
@@ -201,9 +202,10 @@ async def test_a_rejected_read_is_a_defect_and_not_retried() -> None:
 
     handler = _Replies(400, fail_times=99)
 
-    with pytest.raises(StatusFailedError) as failed:
+    with pytest.raises(ProviderActionFailedError) as failed:
         await _invocation(handler).status(PROVIDER, ATTRIBUTES, "txn-1")
 
+    assert failed.value.action is ProviderAction.STATUS
     assert handler.calls == 1
     assert failed.value.failure_class is FailureClass.DEFECT
     assert failed.value.status_code == 400
@@ -213,9 +215,10 @@ async def test_a_rejected_read_is_a_defect_and_not_retried() -> None:
 async def test_an_unreadable_reply_is_a_defect_and_not_retried() -> None:
     handler = _Replies(200, fail_times=99)
 
-    with pytest.raises(StatusFailedError) as failed:
+    with pytest.raises(ProviderActionFailedError) as failed:
         await _invocation(handler).status(PROVIDER, ATTRIBUTES, "txn-1")
 
+    assert failed.value.action is ProviderAction.STATUS
     assert handler.calls == 1
     assert failed.value.failure_class is FailureClass.DEFECT
 
@@ -223,9 +226,10 @@ async def test_an_unreadable_reply_is_a_defect_and_not_retried() -> None:
 async def test_a_provider_naming_its_own_time_is_not_retried() -> None:
     handler = _Replies(503, fail_times=99, headers={"Retry-After": "120"})
 
-    with pytest.raises(StatusFailedError) as failed:
+    with pytest.raises(ProviderActionFailedError) as failed:
         await _invocation(handler).status(PROVIDER, ATTRIBUTES, "txn-1")
 
+    assert failed.value.action is ProviderAction.STATUS
     assert handler.calls == 1
     assert failed.value.failure_class is FailureClass.TRANSIENT
     assert failed.value.retry_after_seconds == 120

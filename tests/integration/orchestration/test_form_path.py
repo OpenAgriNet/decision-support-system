@@ -56,10 +56,7 @@ from dss.orchestration.form_path import FormPath, FormPathComponents
 from dss.orchestration.orchestrator import Orchestrator
 from dss.orchestration.redaction import RedactTexts, pass_through, redact_texts
 from dss.orchestration.session import NoSessionStore, Sessions, SessionStore
-from dss.ports.invocation import (
-    InitFailedError,
-    SupportFailedError,
-)
+from dss.ports.invocation import ProviderActionFailedError
 from tests.support.evidence import attempted
 from tests.support.fakes import (
     FakeLocalizer,
@@ -123,7 +120,8 @@ def _support_unavailable(
     *, retry_after_seconds: int | None = None
 ) -> RecordingActionInvocation:
     return RecordingActionInvocation(
-        failure=SupportFailedError(
+        failure=ProviderActionFailedError(
+            ProviderAction.SUPPORT,
             "openagrinet:Grievance",
             503,
             FailureClass.TRANSIENT,
@@ -134,7 +132,9 @@ def _support_unavailable(
 
 def _support_refused() -> RecordingActionInvocation:
     return RecordingActionInvocation(
-        failure=SupportFailedError("openagrinet:Grievance", 400, FailureClass.DEFECT)
+        failure=ProviderActionFailedError(
+            ProviderAction.SUPPORT, "openagrinet:Grievance", 400, FailureClass.DEFECT
+        )
     )
 
 
@@ -535,7 +535,9 @@ async def test_our_credentials_refused_on_a_filing_are_logged_and_read_as_reject
     caplog,
 ) -> None:
     caplog.set_level(logging.WARNING)
-    refused = SupportFailedError("openagrinet:Grievance", 403, FailureClass.DEFECT)
+    refused = ProviderActionFailedError(
+        ProviderAction.SUPPORT, "openagrinet:Grievance", 403, FailureClass.DEFECT
+    )
     orch, _ = _build_orchestrator_and_turn_sink(
         invocation=RecordingActionInvocation(failure=refused)
     )
@@ -777,7 +779,9 @@ async def test_an_init_response_with_nothing_waiting_calls_nobody() -> None:
 def _init_failed(status_code: int) -> RecordingActionInvocation:
     failure_class = FailureClass.DEFECT if status_code < 500 else FailureClass.TRANSIENT
     return RecordingActionInvocation(
-        failure=InitFailedError("openagrinet:Grievance", status_code, failure_class)
+        failure=ProviderActionFailedError(
+            ProviderAction.INIT, "openagrinet:Grievance", status_code, failure_class
+        )
     )
 
 
@@ -1007,8 +1011,12 @@ def _support_fails(status_code: int, **kwargs) -> RecordingActionInvocation:
     failure_class = FailureClass.DEFECT if status_code < 500 else FailureClass.TRANSIENT
     return RecordingActionInvocation(
         failures={
-            ProviderAction.SUPPORT: SupportFailedError(
-                "openagrinet:Grievance", status_code, failure_class, **kwargs
+            ProviderAction.SUPPORT: ProviderActionFailedError(
+                ProviderAction.SUPPORT,
+                "openagrinet:Grievance",
+                status_code,
+                failure_class,
+                **kwargs,
             )
         }
     )

@@ -7,7 +7,7 @@ enforceable, even before anything calls it.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import ClassVar, Protocol
+from typing import Protocol
 
 from dss.core.forms.models import ActionReply
 from dss.core.provider_discovery.models import (
@@ -16,6 +16,7 @@ from dss.core.provider_discovery.models import (
     ProviderCapability,
 )
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
+from dss.core.shared.models import ProviderAction
 from dss.core.shared.network import NetworkTransactionID
 
 
@@ -64,30 +65,19 @@ class SelectFailedError(ProviderCallFailedError):
 
 class ProviderActionFailedError(ProviderCallFailedError):
     # No provider text: the farmer is told in the DSS's own words.
-    action: ClassVar[str]
 
     def __init__(
         self,
+        action: ProviderAction,
         capability: str,
         status_code: int,
         failure_class: FailureClass,
         *,
         retry_after_seconds: int | None = None,
     ) -> None:
-        super().__init__(self.action, capability, status_code, failure_class)
+        super().__init__(action, capability, status_code, failure_class)
+        self.action = action
         self.retry_after_seconds = retry_after_seconds
-
-
-class SupportFailedError(ProviderActionFailedError):
-    action = "support"
-
-
-class StatusFailedError(ProviderActionFailedError):
-    action = "status"
-
-
-class InitFailedError(ProviderActionFailedError):
-    action = "init"
 
 
 class ProviderActionInvocation(Protocol):

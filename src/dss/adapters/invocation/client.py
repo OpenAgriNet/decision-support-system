@@ -31,6 +31,7 @@ from dss.core.provider_discovery.models import (
     ProviderCapability,
 )
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
+from dss.core.shared.models import ProviderAction
 from dss.core.shared.network import NetworkTransactionID
 from dss.observability.trace_log import (
     log_external_request,
@@ -42,12 +43,9 @@ from dss.observability.trace_log import (
 # a caller can catch it without importing this adapter. Re-exported because
 # this module raises it.
 from dss.ports.invocation import (
-    InitFailedError,
     ProviderActionFailedError,
     ProviderCallFailedError,
     SelectFailedError,
-    StatusFailedError,
-    SupportFailedError,
 )
 
 if TYPE_CHECKING:
@@ -55,10 +53,8 @@ if TYPE_CHECKING:
 
 __all__ = [
     "HttpCapabilityInvocation",
-    "InitFailedError",
+    "ProviderActionFailedError",
     "SelectFailedError",
-    "StatusFailedError",
-    "SupportFailedError",
     "build_init_request",
     "build_select_request",
     "build_status_request",
@@ -462,15 +458,20 @@ class HttpCapabilityInvocation:
                     visibility=visibility,
                 )
             except httpx.HTTPError as error:
-                raise _as_action_error(InitFailedError, capability, error) from error
+                raise _as_action_error(
+                    ProviderAction.INIT, capability, error
+                ) from error
             try:
                 attributes_back = _first_commitment_attributes(
                     visibility.conceal_body(response.json())
                 )
             except _MALFORMED_RESPONSE as exc:
                 # A defect, never transient: the same body reads the same way.
-                raise InitFailedError(
-                    capability.capability, NO_STATUS_CODE, FailureClass.DEFECT
+                raise ProviderActionFailedError(
+                    ProviderAction.INIT,
+                    capability.capability,
+                    NO_STATUS_CODE,
+                    FailureClass.DEFECT,
                 ) from exc
             return ActionReply(attributes=attributes_back)
 
@@ -508,15 +509,20 @@ class HttpCapabilityInvocation:
                     should_retry=_is_transient_and_no_retry_after,
                 )
             except httpx.HTTPError as error:
-                raise _as_action_error(SupportFailedError, capability, error) from error
+                raise _as_action_error(
+                    ProviderAction.SUPPORT, capability, error
+                ) from error
             try:
                 attributes_back = map_support_response(
                     visibility.conceal_body(response.json())
                 )
             except _MALFORMED_RESPONSE as exc:
                 # A defect, never transient: the same body reads the same way.
-                raise SupportFailedError(
-                    capability.capability, NO_STATUS_CODE, FailureClass.DEFECT
+                raise ProviderActionFailedError(
+                    ProviderAction.SUPPORT,
+                    capability.capability,
+                    NO_STATUS_CODE,
+                    FailureClass.DEFECT,
                 ) from exc
             return ActionReply(attributes=attributes_back)
 
@@ -554,15 +560,20 @@ class HttpCapabilityInvocation:
                     should_retry=_is_transient_and_no_retry_after,
                 )
             except httpx.HTTPError as error:
-                raise _as_action_error(StatusFailedError, capability, error) from error
+                raise _as_action_error(
+                    ProviderAction.STATUS, capability, error
+                ) from error
             try:
                 attributes_back = _first_commitment_attributes(
                     visibility.conceal_body(response.json())
                 )
             except _MALFORMED_RESPONSE as exc:
                 # A defect, never transient: the same body reads the same way.
-                raise StatusFailedError(
-                    capability.capability, NO_STATUS_CODE, FailureClass.DEFECT
+                raise ProviderActionFailedError(
+                    ProviderAction.STATUS,
+                    capability.capability,
+                    NO_STATUS_CODE,
+                    FailureClass.DEFECT,
                 ) from exc
             return ActionReply(attributes=attributes_back)
 
@@ -691,12 +702,13 @@ def _as_select_error(
 
 
 def _as_action_error(
-    error_type: type[ProviderActionFailedError],
+    action: ProviderAction,
     capability: ProviderCapability,
     error: httpx.HTTPError,
 ) -> ProviderActionFailedError:
     status_code = _status_code_of(error)
-    return error_type(
+    return ProviderActionFailedError(
+        action,
         capability.capability,
         status_code,
         classify_status_code(status_code),
