@@ -130,8 +130,8 @@
      Scanning `query_results` once instead would fix it.
 
   Fixing (1) alone does not fix (2): two asks in different categories can
-  still resolve to the same `@type` set and dedupe to one query. Whether the
-  per-ask dict is the right response shape at all is the real question.
+  still resolve to the same `@type` set and dedupe to one query. Each
+  `DiscoveredAsk` now keeps its query, so the scan can run once per query.
 
 - **network-specs refresh.** `scripts/fetch_schema_packs.py` now pulls the
   packs onto disk, and the composition root fetches once when the directory is
@@ -183,16 +183,6 @@
 
 ## Place resolution (#130) — deferred to separate PRs
 
-- **An ask has no type of its own after discovery.** Its options, place
-  status and failures sit in separate collections keyed by its index: three
-  dicts on `DiscoveryResult`, the place failures, and the place-optional set.
-  Every rule joins them by index, and the branching (no place and every
-  option needs one; no option at all) is spread across
-  `core/planner/place.py`, `core/planner/evidence.py` and
-  `core/channel/service.py`. Fix: one per-ask object built right after
-  discovery, holding its options and its state (answerable, needs a place,
-  nobody serves it). Keep `DiscoveryResult` as is: results come back per
-  query and are split per ask.
 - **A reply can bring back a place we already answered (#131).**
   - Example: "Weather in Pune and Aurangabad". We answer Pune and ask which
     Aurangabad. The farmer replies "2".
@@ -261,23 +251,26 @@
     query for asks that search the same thing, and the "no provider" reply
     names a place once. Check whether those can go once this is in.
 
+- **The form step gives back a dict of ask id to form.** It is the last
+  per-ask fact kept beside the asks. It can give back
+  `AskEvidence(ask, AwaitingInput(form))`, which needs no new type.
+
+- **`AskPriority.ask_id` repeats its ask.** The priority sits on a
+  `DiscoveredAsk`, which holds the ask. Only the ranking log line reads the
+  field.
+
 ## Settlement (#243)
 
 - **`TurnResult` holds the asks twice.** They are in `intent` and in the
   `AskSettlement` pairs. One built with asks and no pairs passes
   `is_every_ask_settled`, and the farmer is told nobody serves asks that were
-  never checked. After settlement nothing needs an `Intent`: every later step
-  reads only its asks. Its own PR:
+  never checked. No step after intent takes an `Intent` now, so only
+  `TurnResult` still holds one. Its own PR:
   - `TurnResult` holds the pairs and the intent's confidence. Its `intent`
-    field goes, and nothing builds an `Intent` from parts.
+    field goes.
   - A type in `core/settlement`, `AskSettlements`, holds the pairs and
     answers `asks`, `settled_asks` and `is_every_ask_settled`. Those leave
-    `TurnResult`, with `settled_intent` and `_settled_only`.
-  - Settlement, discovery, the planner and the form step take asks, not an
-    `Intent`. The form path then stops building an `Intent` with a made-up
-    confidence of 1.0.
-  - `Intent.find_ask` has one caller, the planner. It becomes a function
-    beside `find_capability`.
+    `TurnResult`.
   - Cost: a new turn-level field on `Intent` must be added to `TurnResult`
     by hand.
   - Left for later: a turn that moderation stopped as its own type, so three
