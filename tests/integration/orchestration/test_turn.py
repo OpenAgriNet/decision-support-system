@@ -454,7 +454,7 @@ async def test_a_settled_ask_keeps_its_id() -> None:
         settle_asks=settles_with(_NEEDS_PLACE, _SETTLED),
     )
 
-    assert [ask.id for ask in result.settled_intent.asks] == [1]
+    assert [ask.id for ask in result.settled_asks] == [1]
     assert [[ask.id for ask in asks] for asks in discovery.asks_seen] == [[1]]
 
 
@@ -470,7 +470,7 @@ async def test_the_settled_asks_are_built_once() -> None:
         settle_asks=settles_with(_SETTLED, _NEEDS_PLACE),
     )
 
-    assert result.settled_intent is result.settled_intent
+    assert result.settled_asks is result.settled_asks
 
 
 async def test_nothing_settled_skips_discovery() -> None:
@@ -488,7 +488,7 @@ async def test_nothing_settled_skips_discovery() -> None:
     )
 
     assert discovery.asks_seen == []
-    assert result.settled_intent.asks == ()
+    assert result.settled_asks == ()
 
 
 async def test_moderation_reject_blanks_the_settlements() -> None:

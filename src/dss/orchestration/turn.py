@@ -202,14 +202,14 @@ class TurnResult(BaseModel):
     decision: ModerationDecision
     # One per ask in `intent`, same order.
     settlements: tuple[AskSettlement, ...] = ()
-    # Of `settled_intent`'s asks only, keyed by ask id.
+    # One entry per settled ask.
     discovery: DiscoveryResult
 
     @cached_property
-    def settled_intent(self) -> Intent:
-        """Only the settled asks: the ones discovery and the planner work on."""
+    def settled_asks(self) -> tuple[Ask, ...]:
+        """The asks discovery and the planner work on."""
 
-        return _settled_only(self.settlements, confidence=self.intent.confidence)
+        return _settled_asks(self.settlements)
 
     @property
     def is_every_ask_settled(self) -> bool:
@@ -221,13 +221,6 @@ def _settled_asks(settlements: Sequence[AskSettlement]) -> tuple[Ask, ...]:
         ask_settlement.ask
         for ask_settlement in settlements
         if ask_settlement.is_settled
-    )
-
-
-def _settled_only(settlements: Sequence[AskSettlement], *, confidence: float) -> Intent:
-    return Intent(
-        asks=_settled_asks(settlements),
-        confidence=confidence,
     )
 
 

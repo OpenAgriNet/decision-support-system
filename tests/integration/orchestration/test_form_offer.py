@@ -9,7 +9,6 @@ from dss.core.intent.models import (
     Ask,
     ClassifiedAsk,
     GuessedScheme,
-    Intent,
     IntentClassification,
     InteractionType,
     Scheme,
@@ -71,8 +70,8 @@ class _FakeForms:
         return self._forms.get(context)
 
 
-def _served_by(desk: ProviderCapability, *, ask_id: int = 0) -> DiscoveredAsk:
-    return discovered(ask_id, capabilities=(desk,))
+def _served_by(desk: ProviderCapability, ask: Ask) -> DiscoveredAsk:
+    return discovered(ask, capabilities=(desk,))
 
 
 def _grievance_ask(
@@ -137,10 +136,10 @@ def test_a_guessed_scheme_names_no_form() -> None:
 
 
 def test_a_served_ask_the_registry_knows_gets_its_form() -> None:
-    intent = Intent(asks=(_grievance_ask(),), confidence=0.9)
+    discovery = a_discovery(_served_by(GRIEVANCE_DESK, _grievance_ask()))
     forms = _FakeForms({PMFBY_SUPPORT: GRIEVANCE_FORM})
 
-    awaiting = find_forms(intent, a_discovery(_served_by(GRIEVANCE_DESK)), forms)
+    awaiting = find_forms(discovery, forms)
 
     assert awaiting == {0: GRIEVANCE_FORM}
 
@@ -165,10 +164,10 @@ PMKISAN_PROVIDER = build_capability(
 def test_a_pmkisan_ask_gets_its_form_without_the_otp(
     action: ProviderAction, context: FormContext
 ) -> None:
-    intent = Intent(asks=(_grievance_ask(action, scheme=PMKISAN),), confidence=0.9)
+    ask = _grievance_ask(action, scheme=PMKISAN)
 
     awaiting = find_forms(
-        intent, a_discovery(_served_by(PMKISAN_PROVIDER)), build_grievance_forms()
+        a_discovery(_served_by(PMKISAN_PROVIDER, ask)), build_grievance_forms()
     )
 
     form = awaiting[0]
@@ -180,21 +179,18 @@ def test_an_ask_nobody_serves_gets_no_form() -> None:
     """No desk on this network: the unserved message, as for any other ask.
     The registry is not even asked."""
 
-    intent = Intent(asks=(_grievance_ask(),), confidence=0.9)
     forms = _FakeForms({PMFBY_SUPPORT: GRIEVANCE_FORM})
 
-    awaiting = find_forms(intent, a_discovery(), forms)
+    awaiting = find_forms(a_discovery(discovered(_grievance_ask())), forms)
 
     assert awaiting == {}
     assert forms.asked == []
 
 
 def test_a_served_ask_without_a_registry_form_is_the_planners() -> None:
-    intent = Intent(asks=(_grievance_ask(),), confidence=0.9)
+    discovery = a_discovery(_served_by(GRIEVANCE_DESK, _grievance_ask()))
 
-    awaiting = find_forms(
-        intent, a_discovery(_served_by(GRIEVANCE_DESK)), _FakeForms({})
-    )
+    awaiting = find_forms(discovery, _FakeForms({}))
 
     assert awaiting == {}
 
@@ -205,14 +201,11 @@ def test_only_the_form_ask_is_taken_from_a_mixed_turn() -> None:
     ask 2: the ask between the two was not passed on."""
 
     grievance = _grievance_ask().model_copy(update={"id": 2})
-    intent = Intent(asks=(WEATHER_ASK, grievance), confidence=0.9)
     discovery = a_discovery(
-        _served_by(WEATHER_DESK), _served_by(GRIEVANCE_DESK, ask_id=2)
+        _served_by(WEATHER_DESK, WEATHER_ASK), _served_by(GRIEVANCE_DESK, grievance)
     )
 
-    awaiting = find_forms(
-        intent, discovery, _FakeForms({PMFBY_SUPPORT: GRIEVANCE_FORM})
-    )
+    awaiting = find_forms(discovery, _FakeForms({PMFBY_SUPPORT: GRIEVANCE_FORM}))
 
     assert awaiting == {2: GRIEVANCE_FORM}
 
@@ -240,7 +233,7 @@ async def test_the_planner_is_told_which_asks_await_a_form() -> None:
     plan = _FakePlan(_evidence(results=(), awaiting={0: GRIEVANCE_FORM}))
     orch, _ = _build(
         intent=_grievance_classification(),
-        discovery=a_discovery(_served_by(GRIEVANCE_DESK)),
+        discovery=a_discovery(_served_by(GRIEVANCE_DESK, _grievance_ask())),
         plan=plan,
         compose=_FakeCompose("Please fill in the form below."),
         forms=_FakeForms({PMFBY_SUPPORT: GRIEVANCE_FORM}),
