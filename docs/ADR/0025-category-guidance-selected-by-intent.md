@@ -56,10 +56,12 @@ Chosen option: **1**.
   returns the guidance for those categories, in configured order, joined by a
   blank line — or nothing.
 - **Planner and composer.** Both are given the guidance for the subject
-  categories of the turn's asks. The planner's goes into its guidance
-  section, after the skills, so its prompt keeps one place for guidance. The
-  composer has no skills, so its prompt declares a `category_guidance`
-  placeholder. Market is the first category with guidance.
+  categories of the turn's asks, in a `{{ category_guidance }}` slot. The
+  planner's slot is in its skill (`provider-invocation.md`), so its prompt
+  template is unchanged. The composer has no skills, so the slot is a
+  placeholder in its template. A skill may use no other value, and guidance
+  with no slot in the template or a skill refuses to boot. Market is the
+  first category with guidance.
   The planner is told other markets' prices in the district still answer the
   ask, so it keeps them. The composer is told to give the asked market's
   latest price, or say it had none and give each other market's latest, and

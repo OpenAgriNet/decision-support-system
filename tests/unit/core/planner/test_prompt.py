@@ -46,23 +46,6 @@ def test_guidance_section_carries_the_skills_guidance() -> None:
     assert "Read the capability, build resourceAttributes, then call select." in section
 
 
-def test_guidance_section_carries_the_category_guidance_after_the_skills() -> None:
-    section = guidance_section(
-        (_skill(),), category_guidance="Other markets answer a price ask too."
-    )
-
-    assert section.index("call select.") < section.index("Other markets")
-
-
-def test_no_category_guidance_leaves_only_the_skills() -> None:
-    section = guidance_section((_skill(),), category_guidance="")
-
-    assert section == (
-        "# Guidance\n\n"
-        "Read the capability, build resourceAttributes, then call select.\n\n"
-    )
-
-
 def test_no_skills_says_so_rather_than_leaving_a_blank() -> None:
     """No skills means no tools bound. The prompt has to say that, or the
     model is told to gather with nothing to gather from."""

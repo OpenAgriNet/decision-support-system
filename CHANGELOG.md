@@ -6,8 +6,10 @@
 - The planner's and the composer's prompts carry guidance for an intent
   category only on a turn intent found asking about it. `configs/prompts.yaml`
   maps a category to a guidance file per language under `category_guidance`.
-  The mandi price rule moves out of the composer's general prompt into the
-  Market guidance (#242, ADR-0025)
+  It goes where the composer's template or the planner's skill writes
+  `{{ category_guidance }}`; a skill may use no other value. The mandi price
+  rule moves out of the composer's general prompt into the Market guidance
+  (#242, ADR-0025)
 - A mandi price is asked for over the past week, not today alone, so a
   market that has not reported today still has a recent price (#242)
 - A mandi answer gives the asked market's latest price. When that market has

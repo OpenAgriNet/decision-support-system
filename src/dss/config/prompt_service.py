@@ -21,7 +21,9 @@ The two properties the design leans on:
   template parses, that every template uses all of its component's declared
   ``placeholders`` and nothing else (``str.format``'s silently-dropped
   placeholder is the bug this guards against — see the old
-  ``core/planner/prompt._checked``), and that every skill file parses.
+  ``core/planner/prompt._checked``), and that every skill file parses and
+  uses no value but ``category_guidance``, and that configured category
+  guidance has a place to go.
 
 Rendering is Jinja2 with ``StrictUndefined``: a value the template needs but
 the caller did not send raises instead of printing nothing.
@@ -60,6 +62,10 @@ DEFAULT_CONFIG = Path("configs/prompts.yaml")
 # The language every component must ship and every turn can fall back to.
 FALLBACK_LANGUAGE = ENGLISH
 
+# The one value a skill may use, and where a component's category guidance
+# goes: a placeholder in its template, or in one of its skills.
+CATEGORY_GUIDANCE = "category_guidance"
+
 
 class _LanguageSpec(BaseModel):
     """One language's row in the YAML, as written — paths, not content.
@@ -85,12 +91,28 @@ class _ComponentSpec(BaseModel):
 
 
 @dataclass(frozen=True)
+class _SkillEntry:
+    """A skill and its guidance, compiled: the guidance is filled per turn."""
+
+    skill: Skill
+    guidance: Template
+    has_category_guidance: bool
+
+    def filled_with(self, category_guidance: str) -> Skill:
+        return self.skill.model_copy(
+            update={
+                "guidance": self.guidance.render({CATEGORY_GUIDANCE: category_guidance})
+            }
+        )
+
+
+@dataclass(frozen=True)
 class _LanguageEntry:
     """One language's row for one component, loaded: the compiled template and
     the skills configured beside it."""
 
     template: Template
-    skills: tuple[Skill, ...]
+    skills: tuple[_SkillEntry, ...]
     category_guidance: Mapping[SubjectCategory, str]
 
 
@@ -136,16 +158,23 @@ class PromptService:
             return component.languages[FALLBACK_LANGUAGE].template.render(**values)
 
     def get_skills(
-        self, prompt_identifier: PromptIdentifier, lang: LanguageTag
+        self,
+        prompt_identifier: PromptIdentifier,
+        lang: LanguageTag,
+        categories: Collection[SubjectCategory] = frozenset(),
     ) -> tuple[Skill, ...]:
         component = self._components[prompt_identifier.value]
         served = self._resolve(prompt_identifier, component, lang)
-        skills = component.languages[served].skills
-        if skills or served == FALLBACK_LANGUAGE:
-            return skills
         # A language entry may override the prompt alone. Its skills then come
         # from English — "each prompt falls back on its own" holds per file.
-        return component.languages[FALLBACK_LANGUAGE].skills
+        skills = (
+            component.languages[served].skills
+            or component.languages[FALLBACK_LANGUAGE].skills
+        )
+        category_guidance = self.get_category_guidance(
+            prompt_identifier, lang, categories
+        )
+        return tuple(skill.filled_with(category_guidance) for skill in skills)
 
     def get_category_guidance(
         self,
@@ -307,14 +336,48 @@ def _load_language(
         )
 
     skills = tuple(
-        load_skill_file(_resolved(base, skill_path)) for skill_path in entry.skills
+        _load_skill(environment, _resolved(base, skill_path), label)
+        for skill_path in entry.skills
     )
+    category_guidance = _load_category_guidance(
+        entry.category_guidance, base=base, label=label
+    )
+    if category_guidance and not _has_place_for_category_guidance(placeholders, skills):
+        raise ValueError(
+            f"prompt {label} has category guidance but neither its template "
+            f"nor its skills use {CATEGORY_GUIDANCE} — it would never be read"
+        )
     return _LanguageEntry(
         template=environment.from_string(text),
         skills=skills,
-        category_guidance=_load_category_guidance(
-            entry.category_guidance, base=base, label=label
-        ),
+        category_guidance=category_guidance,
+    )
+
+
+def _load_skill(environment: Environment, path: Path, label: str) -> _SkillEntry:
+    skill = load_skill_file(path)
+    used = meta.find_undeclared_variables(
+        environment.parse(skill.guidance, filename=str(path))
+    )
+    unknown = used - {CATEGORY_GUIDANCE}
+    if unknown:
+        raise ValueError(
+            f"prompt {label} skill {path} uses {', '.join(sorted(unknown))}, "
+            f"which the code does not supply — a skill may use only "
+            f"{CATEGORY_GUIDANCE}"
+        )
+    return _SkillEntry(
+        skill=skill,
+        guidance=environment.from_string(skill.guidance),
+        has_category_guidance=CATEGORY_GUIDANCE in used,
+    )
+
+
+def _has_place_for_category_guidance(
+    placeholders: frozenset[str], skills: tuple[_SkillEntry, ...]
+) -> bool:
+    return CATEGORY_GUIDANCE in placeholders or any(
+        skill.has_category_guidance for skill in skills
     )
 
 
