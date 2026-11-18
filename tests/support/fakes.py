@@ -149,10 +149,10 @@ class FakePromptProvider:
     def __init__(
         self,
         skills: Sequence[Skill] = (),
-        topics: Mapping[SubjectCategory, str] | None = None,
+        category_guidance: Mapping[SubjectCategory, str] | None = None,
     ) -> None:
         self._skills = tuple(skills)
-        self._topics = dict(topics or {})
+        self._category_guidance = dict(category_guidance or {})
         self.calls: list[tuple[PromptIdentifier, LanguageTag, dict[str, Any]]] = []
 
     def get_prompt(
@@ -178,7 +178,7 @@ class FakePromptProvider:
     ) -> tuple[Skill, ...]:
         return self._skills
 
-    def get_topic_guidance(
+    def get_category_guidance(
         self,
         prompt_identifier: PromptIdentifier,
         lang: LanguageTag,
@@ -186,7 +186,7 @@ class FakePromptProvider:
     ) -> str:
         return "\n\n".join(
             guidance
-            for category, guidance in self._topics.items()
+            for category, guidance in self._category_guidance.items()
             if category in categories
         )
 

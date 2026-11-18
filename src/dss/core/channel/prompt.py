@@ -9,7 +9,7 @@ grounded in belongs.
 The system prompt's *text* lives under ``prompts/composer/``, one version per
 language (configs/prompts.yaml), served through the ``PromptProvider`` port;
 this module decides what the template is told — the identity, the turn's
-target language, and the guidance for the topics intent found in the turn.
+target language, and the guidance for the categories intent found in the turn.
 The evidence layout below stays code: it is structure the model reads, built
 from network-supplied values, not prose a language reviewer rewrites.
 
@@ -79,7 +79,7 @@ def system_prompt(
             "persona": identity.persona,
             "boundaries": identity.boundaries,
             "target_lang": turn.target_lang,
-            "topic_guidance": prompts.get_topic_guidance(
+            "category_guidance": prompts.get_category_guidance(
                 PromptIdentifier.COMPOSER, turn.target_lang, asked_about
             ),
         },

@@ -476,7 +476,7 @@ def test_system_prompt_hands_the_identity_and_language_to_the_template() -> None
         "persona": "a calm advisor.",
         "boundaries": "Never gives legal advice.",
         "target_lang": LanguageTag("mr"),
-        "topic_guidance": "",
+        "category_guidance": "",
     }
 
 
@@ -484,7 +484,7 @@ def _guidance_given(*categories: SubjectCategory) -> str:
     """What the composer prompt was told for a turn asking about these."""
 
     prompts = FakePromptProvider(
-        topics={
+        category_guidance={
             SubjectCategory.MARKET: "Name the market and the date.",
             SubjectCategory.WEATHER: "Give rain in millimetres.",
         }
@@ -510,21 +510,21 @@ def _guidance_given(*categories: SubjectCategory) -> str:
     )
 
     [(_, _, kwargs)] = prompts.calls
-    return kwargs["topic_guidance"]
+    return kwargs["category_guidance"]
 
 
 def test_a_market_question_brings_the_market_guidance() -> None:
     """Intent decided what the turn is about; the composer's prompt carries a
-    topic's rules only on a turn about that topic."""
+    category's rules only on a turn about that category."""
 
     assert _guidance_given(SubjectCategory.MARKET) == "Name the market and the date."
 
 
-def test_a_question_on_another_topic_carries_no_market_guidance() -> None:
+def test_a_question_on_another_category_carries_no_market_guidance() -> None:
     assert _guidance_given(SubjectCategory.CROP) == ""
 
 
-def test_every_topic_the_turn_asks_about_brings_its_guidance() -> None:
+def test_every_category_the_turn_asks_about_brings_its_guidance() -> None:
     guidance = _guidance_given(SubjectCategory.WEATHER, SubjectCategory.MARKET)
 
     assert "Name the market and the date." in guidance
