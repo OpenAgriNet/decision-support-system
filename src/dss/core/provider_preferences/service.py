@@ -22,7 +22,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Protocol
 
-from dss.core.intent.models import Ask, AskId, Intent
+from dss.core.intent.models import AskId
 from dss.core.provider_discovery.models import DiscoveredAsk, DiscoveryResult
 from dss.core.provider_preferences.models import (
     AskPriority,
@@ -44,30 +44,22 @@ class _HasProvider(Protocol):
 
 
 def prioritise(
-    discovery: DiscoveryResult,
-    *,
-    intent: Intent,
-    preference: SenderPreference,
+    discovery: DiscoveryResult, *, preference: SenderPreference
 ) -> DiscoveryResult:
     """A ranking drops providers as well as ordering them. It governs both
     halves of a finding: `capabilities`, which the planner calls, and
     `answers`, which the catalog already holds. An ask with no ranking is
     left as found."""
 
-    asks = {ask.id: ask for ask in intent.asks}
     return discovery.with_each_ask(
-        lambda discovered: (
-            _prioritise_ask(discovered, asks[discovered.ask.id], preference)
-            if discovered.ask.id in asks
-            else discovered
-        )
+        lambda discovered: _prioritise_ask(discovered, preference)
     )
 
 
 def _prioritise_ask(
-    discovered: DiscoveredAsk, ask: Ask, preference: SenderPreference
+    discovered: DiscoveredAsk, preference: SenderPreference
 ) -> DiscoveredAsk:
-    priority = _priority(ask, discovered=discovered, preference=preference)
+    priority = _priority(discovered, preference=preference)
     capabilities, answers = discovered.capabilities, discovered.answers
     if priority.applied:
         capabilities = _ordered(capabilities, priority.ranking)
@@ -76,16 +68,16 @@ def _prioritise_ask(
 
 
 def _priority(
-    ask: Ask, *, discovered: DiscoveredAsk, preference: SenderPreference
+    discovered: DiscoveredAsk, *, preference: SenderPreference
 ) -> AskPriority:
     """What the sender's ranking means for this one ask — the record alone,
     before anything is reordered by it."""
 
-    capability = ask.subject_categories.value
+    capability = discovered.ask.subject_categories.value
     ranking = preference.ranking_for(capability)
     found = (*discovered.capabilities, *discovered.answers)
     return AskPriority(
-        ask_id=ask.id,
+        ask_id=discovered.ask.id,
         capability=capability,
         sender_id=preference.sender_id,
         source=preference.source_for(capability) if ranking else None,

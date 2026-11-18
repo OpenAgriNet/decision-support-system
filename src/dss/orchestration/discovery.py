@@ -99,7 +99,7 @@ def build_discover_providers(
         preference = await preferences.for_sender(
             turn.sender_id, transaction_id=turn.transaction_id
         )
-        result = prioritise(result, intent=intent, preference=preference)
+        result = prioritise(result, preference=preference)
         _report(result, turn=turn)
         # `asks_total`, not "asks queried": the core service seeds `failures`
         # with every unresolved ask before any query goes out, so an ask whose

@@ -7,7 +7,7 @@ here rather than through the planner.
 
 from __future__ import annotations
 
-from dss.core.intent.models import Intent, InteractionType, SubjectCategory
+from dss.core.intent.models import SubjectCategory
 from dss.core.provider_discovery.models import (
     DiscoveredAnswer,
     DiscoveryResult,
@@ -42,22 +42,6 @@ def _answer(provider: str) -> DiscoveredAnswer:
     )
 
 
-def _intent(*categories: SubjectCategory) -> Intent:
-    return Intent(
-        asks=tuple(
-            an_ask(
-                id=position,
-                subject_categories=category,
-                interaction_type=InteractionType.OBSERVE,
-            )
-            for position, category in enumerate(
-                categories or (SubjectCategory.WEATHER,)
-            )
-        ),
-        confidence=1.0,
-    )
-
-
 def _discovered(
     capabilities: tuple[ProviderCapability, ...] = (),
     answers: tuple[DiscoveredAnswer, ...] = (),
@@ -73,7 +57,7 @@ def test_the_first_choice_provider_is_consulted_first() -> None:
     discovery = _discovered((_capability("imd"), _capability("vistaar")))
     preference = _book(app={"weather": ("vistaar", "imd")}).for_sender("app")
 
-    result = prioritise(discovery, intent=_intent(), preference=preference)
+    result = prioritise(discovery, preference=preference)
 
     assert [c.provider_id for c in result.capabilities[0]] == ["vistaar", "imd"]
 
@@ -85,7 +69,7 @@ def test_a_provider_the_ranking_does_not_name_is_dropped() -> None:
     discovery = _discovered((_capability("imd"), _capability("unvetted")))
     preference = _book(app={"weather": ("imd",)}).for_sender("app")
 
-    result = prioritise(discovery, intent=_intent(), preference=preference)
+    result = prioritise(discovery, preference=preference)
 
     assert [c.provider_id for c in result.capabilities[0]] == ["imd"]
     assert result.priorities[0].dropped == ("unvetted",)
@@ -99,7 +83,7 @@ def test_answers_the_catalog_already_held_are_ranked_too() -> None:
     discovery = _discovered(answers=(_answer("unvetted"), _answer("imd")))
     preference = _book(app={"weather": ("imd",)}).for_sender("app")
 
-    result = prioritise(discovery, intent=_intent(), preference=preference)
+    result = prioritise(discovery, preference=preference)
 
     assert [a.provider_id for a in result.answers[0]] == ["imd"]
 
@@ -112,7 +96,7 @@ def test_direct_answers_come_from_the_best_ranked_provider_only() -> None:
     discovery = _discovered(answers=(_answer("imd"), _answer("vistaar")))
     preference = _book(app={"weather": ("vistaar", "imd")}).for_sender("app")
 
-    result = prioritise(discovery, intent=_intent(), preference=preference)
+    result = prioritise(discovery, preference=preference)
 
     assert [a.provider_id for a in result.answers[0]] == ["vistaar"]
     # The runner-up stays on the record, so the order can be judged later.
@@ -125,7 +109,7 @@ def test_a_topic_nobody_ranked_keeps_every_provider_in_discovery_order() -> None
     discovery = _discovered((_capability("imd"), _capability("vistaar")))
     preference = _book(app={"market": ("agmarknet",)}).for_sender("app")
 
-    result = prioritise(discovery, intent=_intent(), preference=preference)
+    result = prioritise(discovery, preference=preference)
 
     assert [c.provider_id for c in result.capabilities[0]] == ["imd", "vistaar"]
     assert result.priorities[0].applied is False
@@ -134,7 +118,7 @@ def test_a_topic_nobody_ranked_keeps_every_provider_in_discovery_order() -> None
 def test_no_preference_at_all_leaves_discovery_untouched() -> None:
     discovery = _discovered((_capability("imd"), _capability("vistaar")))
 
-    result = prioritise(discovery, intent=_intent(), preference=NO_PREFERENCE)
+    result = prioritise(discovery, preference=NO_PREFERENCE)
 
     assert result.capabilities == discovery.capabilities
     assert priority_for_ask(result, ask_id=0) is None
@@ -146,8 +130,8 @@ def test_two_clients_asking_the_same_question_get_their_own_first_choice() -> No
         one={"weather": ("imd", "vistaar")}, two={"weather": ("vistaar", "imd")}
     )
 
-    first = prioritise(discovery, intent=_intent(), preference=book.for_sender("one"))
-    second = prioritise(discovery, intent=_intent(), preference=book.for_sender("two"))
+    first = prioritise(discovery, preference=book.for_sender("one"))
+    second = prioritise(discovery, preference=book.for_sender("two"))
 
     assert first.capabilities[0][0].provider_id == "imd"
     assert second.capabilities[0][0].provider_id == "vistaar"
@@ -156,31 +140,24 @@ def test_two_clients_asking_the_same_question_get_their_own_first_choice() -> No
 def test_each_ask_is_ranked_on_its_own_topic() -> None:
     """Asks 0 and 2 of a turn. Ask 1 was not passed on."""
 
+    weather = an_ask(id=0, subject_categories=SubjectCategory.WEATHER)
+    market = an_ask(id=2, subject_categories=SubjectCategory.MARKET)
     discovery = a_discovery(
-        discovered(0, capabilities=(_capability("imd"), _capability("vistaar"))),
+        discovered(weather, capabilities=(_capability("imd"), _capability("vistaar"))),
         discovered(
-            2, capabilities=(_capability("agmarknet"), _capability("state-mandi"))
+            market, capabilities=(_capability("agmarknet"), _capability("state-mandi"))
         ),
     )
     preference = _book(
         app={"weather": ("vistaar",), "market": ("state-mandi",)}
     ).for_sender("app")
-    intent = Intent(
-        asks=(
-            an_ask(id=0, subject_categories=SubjectCategory.WEATHER),
-            an_ask(id=2, subject_categories=SubjectCategory.MARKET),
-        ),
-        confidence=1.0,
-    )
 
-    result = prioritise(discovery, intent=intent, preference=preference)
+    result = prioritise(discovery, preference=preference)
 
-    assert [c.provider_id for c in result.capabilities[0]] == ["vistaar"]
-    assert [c.provider_id for c in result.capabilities[2]] == ["state-mandi"]
-    assert {key: priority.ask_id for key, priority in result.priorities.items()} == {
-        0: 0,
-        2: 2,
-    }
+    ranked_weather, ranked_market = result.asks
+    assert [c.provider_id for c in ranked_weather.capabilities] == ["vistaar"]
+    assert [c.provider_id for c in ranked_market.capabilities] == ["state-mandi"]
+    assert [found.priority.ask_id for found in result.asks] == [0, 2]
 
 
 def test_one_providers_several_resources_keep_discoverys_order() -> None:
@@ -196,7 +173,7 @@ def test_one_providers_several_resources_keep_discoverys_order() -> None:
     )
     preference = _book(app={"weather": ("imd", "vistaar")}).for_sender("app")
 
-    result = prioritise(discovery, intent=_intent(), preference=preference)
+    result = prioritise(discovery, preference=preference)
 
     assert [c.resource_id for c in result.capabilities[0]] == [
         "res:b:imd",
@@ -212,7 +189,7 @@ def test_a_ranking_that_matches_nobody_leaves_the_ask_with_no_provider() -> None
     discovery = _discovered((_capability("imd"),))
     preference = _book(app={"weather": ("maharashtra-vistaar",)}).for_sender("app")
 
-    result = prioritise(discovery, intent=_intent(), preference=preference)
+    result = prioritise(discovery, preference=preference)
 
     assert result.capabilities[0] == ()
     assert result.priorities[0].applied is True
@@ -226,7 +203,7 @@ def test_the_record_says_which_layer_answered_and_what_it_dropped() -> None:
     discovery = _discovered((_capability("imd"), _capability("unvetted")))
     book = PreferenceBook(default={"weather": ("imd",)}, senders={"app": {}})
 
-    result = prioritise(discovery, intent=_intent(), preference=book.for_sender("app"))
+    result = prioritise(discovery, preference=book.for_sender("app"))
 
     priority = result.priorities[0]
     assert priority.sender_id == "app"
@@ -243,7 +220,7 @@ def test_an_ask_nobody_was_found_for_still_records_the_ranking() -> None:
     discovery = a_discovery(discovered(0))
     preference = _book(app={"weather": ("imd",)}).for_sender("app")
 
-    result = prioritise(discovery, intent=_intent(), preference=preference)
+    result = prioritise(discovery, preference=preference)
 
     (ranked,) = result.asks
     assert not ranked.is_served
