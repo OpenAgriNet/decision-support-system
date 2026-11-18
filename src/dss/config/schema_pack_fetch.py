@@ -20,23 +20,24 @@ import urllib.request
 from pathlib import Path
 
 _REPO = "OpenAgriNet/network-specs"
-_RAW_HOST = "https://raw.githubusercontent.com"
+_PAGES_HOST = "https://openagrinet.github.io"
 _API_HOST = "https://api.github.com"
 
 # The only version published today. When v0.2 lands this becomes a per-pack
 # lookup, not a constant.
 _VERSION = "v0.1"
 
-# The ref every fetch reads unless told otherwise: it carries the catalog packs
-# and the API packs (Grievance) in one `schema/` folder. A failure on a ref with
-# no packs quotes this one — see `raise_for_empty`.
-PUBLISHED_REF = "schema-packs-v0.1"
+# GitHub Pages is built from this branch. Only the examples listing reads it:
+# Pages cannot list a directory, so the Contents API lists the branch instead.
+PAGES_SOURCE_BRANCH = "schema-packs-v0.1"
 
-# Every download error reads as "not there", so nothing on the published ref
-# means the fetch could not reach it, not that the packs are missing.
+PREVIEWS_URL = f"{_PAGES_HOST}/network-specs/previews/"
+
+# Every download error reads as "not there", so nothing published means the
+# fetch could not reach the site, not that the packs are missing.
 _UNREACHABLE_HINT = (
-    " Check that raw.githubusercontent.com is reachable, set GITHUB_TOKEN if"
-    " rate-limited, and check the ref still exists on network-specs."
+    " Check that openagrinet.github.io is reachable, and set GITHUB_TOKEN if"
+    " api.github.com rate-limits the examples listing."
 )
 
 # Where the packs go. Anchored to this file, not the working directory: the
@@ -80,20 +81,18 @@ class SchemaPackFetchFailedError(RuntimeError):
     """The fetch produced nothing usable. Never raised for a partial result."""
 
 
-def raw_url(*, ref: str, pack: str, filename: str, host: str = _RAW_HOST) -> str:
-    """Where one file of one pack lives, on one ref.
-
-    The ref sits in the path, so it appears in any URL a failure reports —
-    which matters because the default ref carries no packs at all.
-
-    `host` is overridable so a test can serve the same layout over a real
-    socket; production never passes it.
-    """
-
-    return f"{host}/{_REPO}/{ref}/schema/{pack}/{_VERSION}/{filename}"
+def pack_file_url(
+    *, ref: str | None, pack: str, filename: str, host: str = _PAGES_HOST
+) -> str:
+    site = (
+        f"{host}/network-specs"
+        if ref is None
+        else f"{host}/network-specs/previews/{ref}"
+    )
+    return f"{site}/schema/{pack}/{_VERSION}/{filename}"
 
 
-def examples_api_url(*, ref: str, pack: str, host: str = _API_HOST) -> str:
+def examples_api_url(*, ref: str | None, pack: str, host: str = _API_HOST) -> str:
     """Where to list a pack's `examples/` directory.
 
     The example filenames vary per pack and plain HTTP cannot list a
@@ -102,15 +101,18 @@ def examples_api_url(*, ref: str, pack: str, host: str = _API_HOST) -> str:
     default branch instead of erroring.
     """
 
-    return f"{host}/repos/{_REPO}/contents/schema/{pack}/{_VERSION}/examples?ref={ref}"
+    branch = PAGES_SOURCE_BRANCH if ref is None else ref
+    return (
+        f"{host}/repos/{_REPO}/contents/schema/{pack}/{_VERSION}/examples?ref={branch}"
+    )
 
 
 def fetch_packs(
     *,
-    ref: str,
+    ref: str | None,
     dest: Path,
     packs: tuple[str, ...] = PACKS,
-    raw_host: str = _RAW_HOST,
+    pages_host: str = _PAGES_HOST,
     api_host: str = _API_HOST,
 ) -> tuple[str, ...]:
     """Download the packs onto disk under `dest`, returning what was written.
@@ -130,7 +132,7 @@ def fetch_packs(
 
     fetched: list[str] = []
     for pack in packs:
-        staged = _download_pack(pack, ref=ref, raw_host=raw_host, api_host=api_host)
+        staged = _download_pack(pack, ref=ref, pages_host=pages_host, api_host=api_host)
         if staged is None:
             continue
         _publish(staged, dest / pack / _VERSION)
@@ -141,7 +143,7 @@ def fetch_packs(
 
 
 def _download_pack(
-    pack: str, *, ref: str, raw_host: str, api_host: str
+    pack: str, *, ref: str | None, pages_host: str, api_host: str
 ) -> dict[str, bytes] | None:
     """Every file of one pack, keyed by its path within the version directory.
 
@@ -152,19 +154,25 @@ def _download_pack(
 
     files: dict[str, bytes] = {}
     for filename in _ESSENTIAL_FILES:
-        body = _get(raw_url(ref=ref, pack=pack, filename=filename, host=raw_host))
+        body = _get(
+            pack_file_url(ref=ref, pack=pack, filename=filename, host=pages_host)
+        )
         if body is None:
             return None
         files[filename] = body
 
     for filename in _OPTIONAL_FILES:
-        body = _get(raw_url(ref=ref, pack=pack, filename=filename, host=raw_host))
+        body = _get(
+            pack_file_url(ref=ref, pack=pack, filename=filename, host=pages_host)
+        )
         if body is not None:
             files[filename] = body
 
     for name in _example_names(pack, ref=ref, api_host=api_host):
         body = _get(
-            raw_url(ref=ref, pack=pack, filename=f"examples/{name}", host=raw_host)
+            pack_file_url(
+                ref=ref, pack=pack, filename=f"examples/{name}", host=pages_host
+            )
         )
         if body is not None:
             files[f"examples/{name}"] = body
@@ -172,7 +180,7 @@ def _download_pack(
     return files
 
 
-def _example_names(pack: str, *, ref: str, api_host: str) -> tuple[str, ...]:
+def _example_names(pack: str, *, ref: str | None, api_host: str) -> tuple[str, ...]:
     """The pack's example filenames, from the Contents API.
 
     One call per pack, because plain HTTP cannot list a directory. An
@@ -241,26 +249,22 @@ def _publish(files: dict[str, bytes], version_dir: Path) -> None:
         shutil.move(str(staged), str(version_dir))
 
 
-def raise_for_empty(*, fetched: tuple[str, ...], ref: str) -> None:
+def raise_for_empty(*, fetched: tuple[str, ...], ref: str | None) -> None:
     """Refuse a fetch that found no pack at all.
 
     Zero packs means the DSS cannot route to anything, so reporting success
     would move the failure to boot time and describe it as missing packs
-    rather than an empty ref. The message names the ref and says where to look:
-    the published ref when another was tried, the network when it was not.
+    rather than an unreachable site or a branch with no preview.
     """
 
     if fetched:
         return
 
-    hint = (
-        _UNREACHABLE_HINT
-        if ref == PUBLISHED_REF
-        else (
-            f" The published packs are on {PUBLISHED_REF!r} — "
-            f"re-run with --ref {PUBLISHED_REF}."
+    if ref is None:
+        raise SchemaPackFetchFailedError(
+            f"no published schema packs found (0 of {len(PACKS)}).{_UNREACHABLE_HINT}"
         )
-    )
     raise SchemaPackFetchFailedError(
-        f"no schema packs found on ref {ref!r} (0 of {len(PACKS)}).{hint}"
+        f"no schema packs found in a preview of {ref!r} (0 of {len(PACKS)})."
+        f" The branches with a preview are listed at {PREVIEWS_URL}"
     )

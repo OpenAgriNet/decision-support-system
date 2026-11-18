@@ -17,7 +17,7 @@ from typing import Annotated
 from pydantic import Field, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
-from dss.config.schema_pack_fetch import DEFAULT_PACK_DIR, PUBLISHED_REF
+from dss.config.schema_pack_fetch import DEFAULT_PACK_DIR
 from dss.core.location.service import DEFAULT_NEAREST_MAX_KM
 
 # Ships beside this module, so it resolves the same however the app is started.
@@ -99,9 +99,9 @@ class Settings(BaseSettings):
     # started from wherever the operator is. A container has no repo root, so a
     # deployment sets DSS_SCHEMA_PACK_DIR to its mounted path.
     schema_pack_dir: Path | None = DEFAULT_PACK_DIR
-    # Which network-specs ref the startup fetch reads when the directory above
-    # is empty.
-    schema_pack_ref: str = PUBLISHED_REF
+    # Which network-specs branch preview the startup fetch reads when the
+    # directory above is empty. Unset → the published packs.
+    schema_pack_ref: str | None = None
     # How far around the turn's location to look for a provider. Only consulted
     # once the network is wired and the turn carries a geometry.
     discovery_radius_m: int = Field(25_000, ge=0)
@@ -224,7 +224,9 @@ class Settings(BaseSettings):
     # a form turn's session lasts that turn only and takes no lock.
     redis_url: str | None = None
 
-    @field_validator("provider_preferences_base_url", "redis_url", mode="before")
+    @field_validator(
+        "provider_preferences_base_url", "redis_url", "schema_pack_ref", mode="before"
+    )
     @classmethod
     def _unset_when_blank(cls, value: object) -> object:
         """An empty variable is an operator leaving it off, not a URL.

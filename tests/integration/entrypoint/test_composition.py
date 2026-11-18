@@ -672,8 +672,19 @@ def test_no_packs_boots_with_no_forms_and_says_how_to_fetch(
 
     assert isinstance(runner, Orchestrator)
     assert _forms_of(runner).find(_PMFBY_SUPPORT) is None
+    assert any("fetch_schema_packs.py" in record.message for record in caplog.records)
+
+
+def test_the_fetch_hint_names_the_configured_ref(tmp_path: Path, caplog) -> None:
+    settings = _settings(
+        tmp_path, schema_pack_dir=tmp_path / "absent", schema_pack_ref="my-branch"
+    )
+
+    with caplog.at_level("WARNING"):
+        build_runner(settings)
+
     assert any(
-        "fetch_schema_packs.py --ref schema-packs-v0.1" in record.message
+        "fetch_schema_packs.py --ref my-branch" in record.message
         for record in caplog.records
     )
 
