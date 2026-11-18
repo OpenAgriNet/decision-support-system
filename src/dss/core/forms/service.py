@@ -41,7 +41,7 @@ from dss.core.forms.models import (
     ValidSubmission,
 )
 from dss.core.forms.registry import FormLookup, FormRegistry
-from dss.core.intent.models import Intent
+from dss.core.intent.models import Ask
 from dss.core.planner.models import Failure
 from dss.core.provider_discovery.models import DiscoveryResult, ProviderCapability
 from dss.core.redaction.visibility import Visibility
@@ -585,11 +585,11 @@ def end_for_already_filed(text: ClarificationText) -> FlowEnding:
     )
 
 
-def end_for_no_provider(intent: Intent, text: ClarificationText) -> FlowEnding:
+def end_for_no_provider(ask: Ask, text: ClarificationText) -> FlowEnding:
     return FlowEnding(
         status=TurnStatus.NO_MATCH,
         cause=None,
-        answer=answer_for_unserved_asks(intent.asks, text),
+        answer=answer_for_unserved_asks((ask,), text),
     )
 
 

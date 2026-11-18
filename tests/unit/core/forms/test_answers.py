@@ -31,7 +31,7 @@ from dss.core.forms.service import (
     form_error_block,
     offer_form,
 )
-from dss.core.intent.models import Intent, InteractionType, SubjectCategory
+from dss.core.intent.models import InteractionType, SubjectCategory
 from dss.core.planner.models import Failure
 from dss.core.shared.models import Cause, ProviderAction, TextBlock, TurnStatus
 from tests.support.asks import an_ask
@@ -259,19 +259,14 @@ def test_a_form_nobody_serves_ends_as_an_unknown_form() -> None:
 
 
 def test_a_form_with_no_provider_ends_no_match_naming_its_ask() -> None:
-    intent = Intent(
-        asks=(
-            an_ask(
-                agriculture_subjects="PMFBY",
-                subject_categories=SubjectCategory.GRIEVANCE,
-                interaction_type=InteractionType.ACT,
-            ),
-        ),
-        confidence=1.0,
+    ask = an_ask(
+        agriculture_subjects="PMFBY",
+        subject_categories=SubjectCategory.GRIEVANCE,
+        interaction_type=InteractionType.ACT,
     )
 
-    assert end_for_no_provider(intent, _TEXT) == FlowEnding(
+    assert end_for_no_provider(ask, _TEXT) == FlowEnding(
         status=TurnStatus.NO_MATCH,
         cause=None,
-        answer=answer_for_unserved_asks(intent.asks, _TEXT),
+        answer=answer_for_unserved_asks((ask,), _TEXT),
     )
