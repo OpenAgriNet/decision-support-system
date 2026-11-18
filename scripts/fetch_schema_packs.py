@@ -19,7 +19,6 @@ from pathlib import Path
 
 from dss.config.schema_pack_fetch import (
     DEFAULT_PACK_DIR,
-    PUBLISHED_REF,
     SchemaPackFetchFailedError,
     fetch_packs,
 )
@@ -31,8 +30,10 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument(
         "--ref",
-        default=PUBLISHED_REF,
-        help=f"the network-specs branch or tag to read (default: {PUBLISHED_REF})",
+        help=(
+            "read this network-specs branch's preview instead of the published"
+            " packs (default: the published packs)"
+        ),
     )
     parser.add_argument(
         "--dest",
@@ -45,8 +46,8 @@ def main(argv: list[str] | None = None) -> None:
     try:
         fetched = fetch_packs(ref=args.ref, dest=args.dest)
     except SchemaPackFetchFailedError as failure:
-        # The message names the ref and where the packs are, so print it
-        # rather than a traceback — the cause is a wrong ref, not a crash.
+        # The message says what to check, so print it rather than a
+        # traceback — the cause is a wrong ref or no network, not a crash.
         print(f"error: {failure}", file=sys.stderr)
         raise SystemExit(1) from None
 

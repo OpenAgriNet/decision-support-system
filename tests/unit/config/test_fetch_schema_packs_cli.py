@@ -36,9 +36,7 @@ def test_a_failed_fetch_exits_non_zero(monkeypatch, tmp_path: Path) -> None:
     assert caught.value.code == 1
 
 
-def test_the_ref_is_an_argument_and_defaults_to_the_published_ref(
-    monkeypatch, tmp_path
-) -> None:
+def test_the_ref_is_an_argument_and_defaults_to_none(monkeypatch, tmp_path) -> None:
     seen: dict = {}
 
     def record(**kwargs):
@@ -48,7 +46,7 @@ def test_the_ref_is_an_argument_and_defaults_to_the_published_ref(
     monkeypatch.setattr("scripts.fetch_schema_packs.fetch_packs", record)
 
     main(["--dest", str(tmp_path)])
-    assert seen["ref"] == "schema-packs-v0.1"
+    assert seen["ref"] is None
 
     main(["--ref", "main", "--dest", str(tmp_path)])
     assert seen["ref"] == "main"

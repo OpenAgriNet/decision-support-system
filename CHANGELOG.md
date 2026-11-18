@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Changed
+- Schema packs are fetched from network-specs on GitHub Pages, not
+  `raw.githubusercontent.com`. No ref (the new default) reads the published
+  packs; `--ref` / `DSS_SCHEMA_PACK_REF` reads that branch's preview
+
 ### Fixed
 - `init` and `status` now send an offer on their commitment, as `select`
   does. PM-KISAN refused `init` without one (#207)

@@ -127,21 +127,30 @@ That writes the packs into `var/schema-packs/` (gitignored):
 `AgricultureResource` is not a capability anything routes to. The other
 catalog packs `$ref` it for their shared fields, so it has to sit beside them.
 
-It reads `schema-packs-v0.1` of network-specs, which carries every pack the
-DSS reads in one `schema/` folder. The app's own startup fetch, Docker compose
-and `scripts/run-local.sh` read the same ref. A ref with no packs on it, such
-as `main`, fetches nothing and exits `1`, naming the ref that has them:
+It reads the published packs from network-specs on GitHub Pages
+(`https://openagrinet.github.io/network-specs/schema/...`). The app's own
+startup fetch, Docker compose and `scripts/run-local.sh` do the same.
+
+To try packs from a network-specs branch, pass `--ref <branch>` (or set
+`DSS_SCHEMA_PACK_REF`). That reads the branch's preview, under
+`.../network-specs/previews/<branch>/`. The branches with a preview are listed
+at <https://openagrinet.github.io/network-specs/previews/>. A preview's files
+point their own URLs (`id`, `@context`) at the preview path; that is expected.
+A branch with no preview, such as `main`, fetches nothing and exits `1`:
 
 ```
-error: no schema packs found on ref 'main' (0 of 6). The published packs are
-on 'schema-packs-v0.1' — re-run with --ref schema-packs-v0.1.
+error: no schema packs found in a preview of 'main' (0 of 6). The branches
+with a preview are listed at https://openagrinet.github.io/network-specs/previews/
 ```
 
 | Flag | Default | Notes |
 |---|---|---|
-| `--ref` | `schema-packs-v0.1` | the network-specs branch or tag |
+| `--ref` | none: the published packs | a network-specs branch with a preview |
 | `--dest` | `var/schema-packs/` | resolved from the repo root, not your working directory |
 
+Pages cannot list a folder, so each pack's example file names come from the
+GitHub API, from the `--ref` branch or, with no ref, from `schema-packs-v0.1`
+(the branch Pages is built from).
 Set `GITHUB_TOKEN` if you re-run it often — the listing call is capped at 60 an
 hour unauthenticated.
 

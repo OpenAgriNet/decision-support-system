@@ -25,7 +25,7 @@ OTEL_PORT="${OTEL_PORT:-4318}"
 REDIS_PORT="${REDIS_PORT:-6379}"
 REDIS_CONTAINER="${REDIS_CONTAINER:-dss-redis}"
 COLLECTOR="${COLLECTOR:-dss-otel-collector}"
-SCHEMA_PACK_REF="${SCHEMA_PACK_REF:-schema-packs-v0.1}"
+SCHEMA_PACK_REF="${SCHEMA_PACK_REF:-}"
 COMPOSE_PROJECT="${COMPOSE_PROJECT:-decision-support-system}"
 ENV_LOCAL="${ENV_LOCAL:-.env.local}"
 
@@ -184,8 +184,13 @@ done
 # boot, so this is a prerequisite rather than an optimisation.
 
 if [ -z "$(ls -A var/schema-packs 2>/dev/null || true)" ]; then
-  echo "==> fetching schema packs ($SCHEMA_PACK_REF)"
-  uv run python scripts/fetch_schema_packs.py --ref "$SCHEMA_PACK_REF"
+  if [ -n "$SCHEMA_PACK_REF" ]; then
+    echo "==> fetching schema packs (preview of $SCHEMA_PACK_REF)"
+    uv run python scripts/fetch_schema_packs.py --ref "$SCHEMA_PACK_REF"
+  else
+    echo "==> fetching schema packs (published)"
+    uv run python scripts/fetch_schema_packs.py
+  fi
 else
   echo "==> schema packs present"
 fi

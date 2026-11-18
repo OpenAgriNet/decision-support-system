@@ -1,7 +1,7 @@
 """Tier 1 — the URLs and failure rules of the schema-pack fetch.
 
 Pure functions only: what URL a pack file lives at, and what happens when a
-ref carries no packs. The fetch itself — sockets, disk, the two halves
+fetch finds no packs. The fetch itself — sockets, disk, the two halves
 agreeing — is tier 2, in `tests/integration/config/`.
 """
 
@@ -11,71 +11,65 @@ import pytest
 
 from dss.config.schema_pack_fetch import (
     PACKS,
-    PUBLISHED_REF,
     SchemaPackFetchFailedError,
     examples_api_url,
+    pack_file_url,
     raise_for_empty,
-    raw_url,
 )
 
 
-def test_raw_url_points_at_the_file_on_the_given_ref() -> None:
-    """The ref is part of the path, not a query parameter.
-
-    `main` carries only a README today, so the ref is the difference between
-    a pack and a 404 — it has to be visible in the URL a failure reports.
-    """
-
-    url = raw_url(ref="schema-packs-v0.1", pack="MandiPrice", filename="profile.json")
+def test_with_no_ref_a_pack_file_is_read_from_the_published_site() -> None:
+    url = pack_file_url(ref=None, pack="MandiPrice", filename="profile.json")
 
     assert url == (
-        "https://raw.githubusercontent.com/OpenAgriNet/network-specs/"
+        "https://openagrinet.github.io/network-specs/"
+        "schema/MandiPrice/v0.1/profile.json"
+    )
+
+
+def test_with_a_ref_a_pack_file_is_read_from_that_branch_preview() -> None:
+    url = pack_file_url(
+        ref="schema-packs-v0.1", pack="MandiPrice", filename="profile.json"
+    )
+
+    assert url == (
+        "https://openagrinet.github.io/network-specs/previews/"
         "schema-packs-v0.1/schema/MandiPrice/v0.1/profile.json"
     )
 
 
 def test_the_examples_url_carries_the_ref_as_a_query_parameter() -> None:
-    """`examples/` filenames are not knowable up front, so they are listed.
-
-    Plain HTTP cannot list a directory, so this one call per pack asks the
-    Contents API instead. Unlike the raw host the ref is a query parameter
-    here — and omitting it silently lists the default branch, which carries
-    no packs.
-    """
-
-    url = examples_api_url(ref="schema-packs-v0.1", pack="MandiPrice")
+    url = examples_api_url(ref="my-branch", pack="MandiPrice")
 
     assert url == (
         "https://api.github.com/repos/OpenAgriNet/network-specs/contents/"
-        "schema/MandiPrice/v0.1/examples?ref=schema-packs-v0.1"
+        "schema/MandiPrice/v0.1/examples?ref=my-branch"
     )
 
 
-def test_a_ref_with_no_packs_fails_and_names_the_ref() -> None:
-    """Zero packs is a failure, not an empty success.
+def test_with_no_ref_the_examples_are_listed_from_the_branch_pages_is_built_from() -> (
+    None
+):
+    url = examples_api_url(ref=None, pack="MandiPrice")
 
-    `main` carries only a README, so a run pointed at it lands here. The
-    message has to say which ref was tried and where the packs actually are,
-    or it reads as a bug in the fetch rather than a ref that has nothing on it.
-    """
+    assert url.endswith("examples?ref=schema-packs-v0.1")
 
+
+def test_a_ref_with_no_preview_fails_and_points_at_the_previews() -> None:
     with pytest.raises(SchemaPackFetchFailedError) as caught:
         raise_for_empty(fetched=(), ref="main")
 
     message = str(caught.value)
-    assert "main" in message  # which ref was tried
-    assert f"0 of {len(PACKS)}" in message  # how much was found
-    assert "--ref schema-packs-v0.1" in message  # where the packs are
+    assert "'main'" in message
+    assert f"0 of {len(PACKS)}" in message
+    assert "https://openagrinet.github.io/network-specs/previews/" in message
 
 
-def test_nothing_on_the_published_ref_says_what_to_check() -> None:
-    """Every fetch error reads as "not there", so an empty published ref is
-    usually no network, a rate limit, or the ref deleted upstream."""
-
+def test_nothing_published_says_what_to_check() -> None:
     with pytest.raises(SchemaPackFetchFailedError) as caught:
-        raise_for_empty(fetched=(), ref=PUBLISHED_REF)
+        raise_for_empty(fetched=(), ref=None)
 
     message = str(caught.value)
-    assert "raw.githubusercontent.com" in message
+    assert f"0 of {len(PACKS)}" in message
+    assert "openagrinet.github.io" in message
     assert "GITHUB_TOKEN" in message
-    assert "still exists" in message

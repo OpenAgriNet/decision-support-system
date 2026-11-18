@@ -57,8 +57,8 @@ services:
       DSS_NETWORK_HOST_ID: ${DSS_NETWORK_HOST_ID:-oan}
       # true → network calls name the caller's senderId instead of the DSS.
       DSS_NETWORK_SENDER_FROM_TURN_ENABLED: ${DSS_NETWORK_SENDER_FROM_TURN_ENABLED:-false}
-      # Every pack, catalog and API, is on this ref of network-specs.
-      DSS_SCHEMA_PACK_REF: ${DSS_SCHEMA_PACK_REF:-schema-packs-v0.1}
+      # Unset: the published packs. Set: that network-specs branch's preview.
+      DSS_SCHEMA_PACK_REF: ${DSS_SCHEMA_PACK_REF:-}
       # Read straight from os.environ by app.py, not through Settings, so it
       # has to be named here to reach the container at all. DEBUG is what puts
       # the /discover and /select request bodies in the log.

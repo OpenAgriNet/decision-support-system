@@ -14,11 +14,7 @@ from dss.adapters.schema_packs.filesystem import (
     FilesystemSchemaPackSource,
     has_packs,
 )
-from dss.config.schema_pack_fetch import (
-    PUBLISHED_REF,
-    SchemaPackFetchFailedError,
-    fetch_packs,
-)
+from dss.config.schema_pack_fetch import SchemaPackFetchFailedError, fetch_packs
 from dss.config.settings import Settings
 from dss.core.forms.registry import FormRegistry
 from dss.core.forms.service import build_form_registry
@@ -68,8 +64,7 @@ def load_schema_packs(
             f"the network is configured but no schema packs loaded from "
             f"{settings.schema_pack_dir} — refusing to boot, because every turn "
             f"would come back no_match and look like 'no provider serves this'. "
-            f"Run: uv run python scripts/fetch_schema_packs.py "
-            f"--ref {PUBLISHED_REF}"
+            f"Run: {_fetch_command(settings)}"
         )
     for skip in cache.skipped_packs():
         logger.warning(
@@ -107,6 +102,12 @@ def _ensure_schema_packs(settings: Settings, *, fetch: FetchPacks) -> None:
         fetch(ref=settings.schema_pack_ref, dest=directory)
     except SchemaPackFetchFailedError as failure:
         logger.warning("schema pack fetch found nothing: %s", failure)
+
+
+def _fetch_command(settings: Settings) -> str:
+    command = "uv run python scripts/fetch_schema_packs.py"
+    ref = settings.schema_pack_ref
+    return command if ref is None else f"{command} --ref {ref}"
 
 
 def planner_schemas(packs: tuple[SchemaPackFiles, ...]) -> dict[str, DomainSchema]:
@@ -186,10 +187,9 @@ def boot_forms(settings: Settings) -> FormRegistry:
         return FormRegistry()
     if not has_packs(directory):
         logger.warning(
-            "no schema packs in %s, so no forms will be offered. Run: "
-            "uv run python scripts/fetch_schema_packs.py --ref %s",
+            "no schema packs in %s, so no forms will be offered. Run: %s",
             directory,
-            PUBLISHED_REF,
+            _fetch_command(settings),
         )
         return FormRegistry()
 
@@ -203,8 +203,8 @@ def boot_forms(settings: Settings) -> FormRegistry:
         # A folder from an older fetch has catalog packs but no API pack.
         logger.warning(
             "no API schema pack in %s, so no forms will be offered. Delete the "
-            "folder and run: uv run python scripts/fetch_schema_packs.py --ref %s",
+            "folder and run: %s",
             directory,
-            PUBLISHED_REF,
+            _fetch_command(settings),
         )
     return registry
