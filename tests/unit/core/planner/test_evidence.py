@@ -168,7 +168,7 @@ def test_one_answer_becomes_one_source_and_one_result(
 
     [result] = _results(evidence)
     assert result.ask_id == 0
-    assert result.source_id == "1"
+    assert result.source == source
     assert result.data == answer.attributes
 
 
@@ -200,7 +200,7 @@ def test_one_provider_answering_two_asks_is_one_source() -> None:
     )
 
     assert [source.id for source in evidence.sources] == ["1"]
-    assert [result.source_id for result in _results(evidence)] == ["1", "1"]
+    assert [result.source.id for result in _results(evidence)] == ["1", "1"]
     assert [result.ask_id for result in _results(evidence)] == [0, 2]
 
 
@@ -217,7 +217,7 @@ def test_two_providers_are_numbered_in_first_seen_order() -> None:
         ("1", "Agmarknet"),  # no source block — falls back to the provider
         ("2", "Agriculture Knowledge Provider"),
     ]
-    assert [result.source_id for result in _results(evidence)] == ["1", "2"]
+    assert [result.source.id for result in _results(evidence)] == ["1", "2"]
 
 
 def test_no_answers_assembles_empty_evidence() -> None:
@@ -430,7 +430,7 @@ def test_one_provider_relaying_two_originators_is_two_sources() -> None:
         ("1", "IMD Mausamgram NWP"),
         ("2", "Skymet"),
     ]
-    assert [result.source_id for result in _results(evidence)] == ["1", "2"]
+    assert [result.source.id for result in _results(evidence)] == ["1", "2"]
 
 
 def test_two_providers_relaying_one_originator_stay_two_sources() -> None:
@@ -476,7 +476,7 @@ def test_the_same_originator_twice_from_one_provider_is_one_source() -> None:
     )
 
     assert [s.id for s in evidence.sources] == ["1"]
-    assert [result.source_id for result in _results(evidence)] == ["1", "1"]
+    assert [result.source.id for result in _results(evidence)] == ["1", "1"]
 
 
 _RAIN = an_ask(
@@ -507,7 +507,7 @@ def test_merge_keeps_the_farmers_order() -> None:
         ask=_POTATO, outcome=Attempted(results=(), failures=())
     )
     onion_evidence = AskEvidence(ask=onion, outcome=Attempted(results=(), failures=()))
-    settled = Evidence(sources=(), ask_evidences=(onion_evidence, potato_evidence))
+    settled = Evidence(ask_evidences=(onion_evidence, potato_evidence))
 
     merged = merge_unsettled(
         (*_RAIN_WAITS_POTATO_SETTLED, AskSettlement(onion, _SETTLED)),
@@ -525,7 +525,7 @@ def test_merge_refuses_a_settled_ask_without_evidence() -> None:
     """The only evidence is for another ask: potato would get no answer."""
 
     rain_evidence = AskEvidence(ask=_RAIN, outcome=Attempted(results=(), failures=()))
-    settled = Evidence(sources=(), ask_evidences=(rain_evidence,))
+    settled = Evidence(ask_evidences=(rain_evidence,))
 
     with pytest.raises(ValueError, match="no evidence for settled ask 1"):
         merge_unsettled(_RAIN_WAITS_POTATO_SETTLED, settled=settled)

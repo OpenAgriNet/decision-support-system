@@ -74,8 +74,7 @@ async def test_the_reply_names_the_ticket_and_never_the_phone() -> None:
     }
     evidence = build_evidence(
         asks=(ask,),
-        sources=(portal,),
-        results=(Result(ask_id=0, source_id="1", data=filed),),
+        results=(Result(ask_id=0, source=portal, data=filed),),
     )
     turn = UserTurn[FormSubmission](
         input=FormSubmission(

@@ -521,7 +521,6 @@ class TextPath:
         settled_asks = result.settled_asks
         if not settled_asks or _nobody_serves(result.discovery):
             return Evidence(
-                sources=(),
                 ask_evidences=group_by_ask(settled_asks, results=(), failures=()),
             )
         return await self._plan(

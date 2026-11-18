@@ -76,11 +76,10 @@ async def test_pick_reply_still_answers() -> None:
     )
     evidence = build_evidence(
         asks=(ask,),
-        sources=(Source(id="1", name="IMD", kind=SourceKind.PROVIDER, url=None),),
         results=(
             Result(
                 ask_id=0,
-                source_id="1",
+                source=Source(id="1", name="IMD", kind=SourceKind.PROVIDER, url=None),
                 data={"forecast": "light rain", "rainfall_mm": 37},
             ),
         ),

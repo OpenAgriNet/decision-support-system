@@ -68,6 +68,14 @@ class Validity:
 
 
 @dataclass(frozen=True)
+class AnswerOrigin:
+    provider_id: str
+    # Means nothing outside its provider, so both fields make the key.
+    # None: the provider named no source.
+    source_id: str | None
+
+
+@dataclass(frozen=True)
 class DiscoveredAnswer:
     """A Direct resource's answer. ``attributes`` is the pack's
     ``resourceAttributes`` as sent: discovery does not know each pack's schema."""
@@ -83,6 +91,10 @@ class DiscoveredAnswer:
     source_id: str | None = None
     source_name: str | None = None
     source_url: str | None = None
+
+    @property
+    def origin(self) -> AnswerOrigin:
+        return AnswerOrigin(provider_id=self.provider_id, source_id=self.source_id)
 
     def is_outside_validity(self, now: datetime) -> bool:
         """Both bounds: an answer not yet valid is as wrong as an expired one."""

@@ -93,9 +93,7 @@ _WHICH_BILASPUR = Ambiguous("Bilaspur", (_BILASPUR_HP, _BILASPUR_CT))
 
 def _waiting_on(*open_slots: Slot) -> Evidence:
     outcome = NeedsClarification(open_slots=open_slots)
-    return Evidence(
-        sources=(), ask_evidences=(AskEvidence(ask=an_ask(), outcome=outcome),)
-    )
+    return Evidence(ask_evidences=(AskEvidence(ask=an_ask(), outcome=outcome),))
 
 
 def test_an_ambiguous_place_gets_a_numbered_pick_list() -> None:
@@ -115,7 +113,6 @@ def test_two_asks_share_one_pick_list() -> None:
         open_slots=(Slot(AskSlot.PLACE, _WHICH_BILASPUR),)
     )
     evidence = Evidence(
-        sources=(),
         ask_evidences=(
             AskEvidence(ask=an_ask(), outcome=which_bilaspur),
             AskEvidence(ask=an_ask(), outcome=which_bilaspur),

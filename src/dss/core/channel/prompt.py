@@ -38,6 +38,7 @@ from dss.core.planner.models import (
     Failure,
     Identity,
     Result,
+    Source,
 )
 from dss.core.settlement.models import (
     Ambiguous,
@@ -143,12 +144,11 @@ def render_evidence(evidence: Evidence) -> str:
     Questions come in ask order, numbered among the asks that were served.
     """
 
-    name_by_id = {source.id: source.name for source in evidence.sources}
     served = [entry for entry in evidence.ask_evidences if entry.is_served]
     blocks = [
         block
         for position, entry in enumerate(served, start=1)
-        for block in _render_results(entry, position=position, name_by_id=name_by_id)
+        for block in _render_results(entry, position=position)
     ]
     blocks += [
         block for entry in evidence.ask_evidences for block in _render_failures(entry)
@@ -165,9 +165,7 @@ def render_evidence(evidence: Evidence) -> str:
     return "\n\n".join(blocks)
 
 
-def _render_results(
-    ask_evidence: AskEvidence, *, position: int, name_by_id: Mapping[str, str]
-) -> list[str]:
+def _render_results(ask_evidence: AskEvidence, *, position: int) -> list[str]:
     """One block per source that answered this ask, in first-seen order."""
 
     match ask_evidence.outcome:
@@ -175,19 +173,18 @@ def _render_results(
             label = _place_label(ask_evidence.ask)
             return [
                 (
-                    f"Question {position} — [{source_id}] "
-                    f"{name_by_id.get(source_id, 'unknown')}"
+                    f"Question {position} — [{source.id}] {source.name}"
                     f"{label}\n{_render_payloads(payloads)}"
                 )
-                for source_id, payloads in _payloads_by_source(results).items()
+                for source, payloads in _payloads_by_source(results).items()
             ]
     return []
 
 
-def _payloads_by_source(results: Sequence[Result]) -> dict[str, list[dict]]:
-    payloads_by_source: dict[str, list[dict]] = {}
+def _payloads_by_source(results: Sequence[Result]) -> dict[Source, list[dict]]:
+    payloads_by_source: dict[Source, list[dict]] = {}
     for result in results:
-        payloads_by_source.setdefault(result.source_id, []).append(result.data)
+        payloads_by_source.setdefault(result.source, []).append(result.data)
     return payloads_by_source
 
 

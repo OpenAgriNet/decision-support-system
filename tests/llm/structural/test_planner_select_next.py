@@ -197,12 +197,9 @@ async def _find_answering_providers(
         verdict=_cleared_verdict(),
     )
 
-    source_names = {source.id: source.name for source in evidence.sources}
     (blight_evidence,) = evidence.ask_evidences
     assert blight_evidence.is_served, "the model left the ask unanswered"
-    return {
-        source_names[result.source_id] for result in attempted(blight_evidence).results
-    }
+    return {result.source.name for result in attempted(blight_evidence).results}
 
 
 async def test_off_topic_data_falls_back_to_the_next_provider() -> None:

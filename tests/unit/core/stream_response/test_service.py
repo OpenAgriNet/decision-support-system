@@ -40,11 +40,10 @@ IDENTITY = Identity(
 )
 
 EVIDENCE = build_evidence(
-    sources=(Source(id="1", name="Agmarknet", kind=SourceKind.PROVIDER, url=None),),
     results=(
         Result(
             ask_id=0,
-            source_id="1",
+            source=Source(id="1", name="Agmarknet", kind=SourceKind.PROVIDER, url=None),
             data={
                 "commodity": {"name": "Paddy"},
                 "prices": {"modal": 2200, "unit": "INR/quintal"},
@@ -221,9 +220,7 @@ async def test_the_asks_resolved_place_reaches_the_model() -> None:
     llm = _FakeLLM()
 
     [paddy] = EVIDENCE.ask_evidences
-    evidence = build_evidence(
-        sources=EVIDENCE.sources, results=attempted(paddy).results, asks=(_ask(PUNE),)
-    )
+    evidence = build_evidence(results=attempted(paddy).results, asks=(_ask(PUNE),))
 
     await _collect(llm, evidence)
 
