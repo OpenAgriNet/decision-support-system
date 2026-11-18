@@ -133,9 +133,10 @@ def settlement_attributes(
     words, and `dss.` keys reach the shared database."""
 
     waits = [
-        f"ask {number} ({ask_settlement.ask.subject_categories.value}): "
+        f"ask {ask_settlement.ask.id} "
+        f"({ask_settlement.ask.subject_categories.value}): "
         f"{_wait_of(ask_settlement.settlement)}"
-        for number, ask_settlement in enumerate(settlements, start=1)
+        for ask_settlement in settlements
     ]
 
     def count(kind: type[Settlement]) -> int:

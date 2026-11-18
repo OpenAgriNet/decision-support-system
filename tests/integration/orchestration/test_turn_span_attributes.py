@@ -330,9 +330,9 @@ async def test_the_settlement_stage_says_what_each_ask_waits_on(spans) -> None:
         "dss.settlement.needs_clarification": 1,
         "dss.settlement.cannot_serve": 1,
         "dss.settlement.asks": (
-            "ask 1 (Grievance): action missing, scheme ambiguous; "
-            "ask 2 (Grievance): scheme unlisted; "
-            "ask 3 (Weather): settled"
+            "ask 0 (Grievance): action missing, scheme ambiguous; "
+            "ask 1 (Grievance): scheme unlisted; "
+            "ask 2 (Weather): settled"
         ),
     }
 
