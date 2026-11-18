@@ -44,6 +44,12 @@ which category's rules a turn needs.
    change the rules, and they skip the per-language mechanism. An earlier
    version of #242 picked the asked market's prices in the planner's code;
    review asked for the planner to stay free of any one capability.
+4. **A whole skill per category, chosen by intent** ("skill discovery"). A
+   skill binds tools and sets out how to call providers; the Market rules
+   are a few lines that adjust that one procedure, not a new one. And the
+   composer has no skills, so it would still need option 1. A slot in the
+   existing skill gives the planner the same per-category selection with one
+   mechanism for both components.
 
 ## 4. Decision Outcome
 
