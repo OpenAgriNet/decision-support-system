@@ -109,8 +109,7 @@ def build_plan(  # noqa: PLR0913
                 [], asks=asks, direct_answers=direct_answers, awaiting=awaiting
             )
 
-        skills = prompts.get_skills(PromptIdentifier.PLANNER, turn.target_lang)
-        category_guidance = prompts.get_category_guidance(
+        skills = prompts.get_skills(
             PromptIdentifier.PLANNER, turn.target_lang, discovery.asked_categories
         )
         agent = build_planner_agent(
@@ -124,9 +123,7 @@ def build_plan(  # noqa: PLR0913
                     "identity_name": identity.name,
                     "identity_persona": identity.persona,
                     "identity_boundaries": identity.boundaries,
-                    "guidance_section": guidance_section(
-                        skills, category_guidance=category_guidance
-                    ),
+                    "guidance_section": guidance_section(skills),
                     "asks_section": asks_section(asks, awaiting=frozenset(awaiting)),
                     "answers_section": answers_section(direct_answers),
                 },

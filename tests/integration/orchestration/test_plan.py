@@ -263,8 +263,12 @@ MARKET_GUIDANCE = "Other markets in the district answer a price ask too."
 
 
 async def _planner_prompt_for(ask: Ask) -> str:
+    skill_with_a_slot = SKILL.model_copy(
+        update={"guidance": f"{SKILL.guidance}\n\n{{{{ category_guidance }}}}"}
+    )
     prompts = FakePromptProvider(
-        skills=(SKILL,), category_guidance={SubjectCategory.MARKET: MARKET_GUIDANCE}
+        skills=(skill_with_a_slot,),
+        category_guidance={SubjectCategory.MARKET: MARKET_GUIDANCE},
     )
     plan = build_plan(
         schemas=SCHEMAS,

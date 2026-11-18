@@ -54,4 +54,6 @@ next preferred provider's data; it calls nobody new. Judge that data the same
 way. Stop when the data answers the ask or `select_next` says no provider is
 left.
 
+{{ category_guidance }}
+
 Stop once every ask you can answer has been answered.

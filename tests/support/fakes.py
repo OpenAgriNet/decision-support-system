@@ -174,9 +174,24 @@ class FakePromptProvider:
         return "\n".join(lines)
 
     def get_skills(
-        self, prompt_identifier: PromptIdentifier, lang: LanguageTag
+        self,
+        prompt_identifier: PromptIdentifier,
+        lang: LanguageTag,
+        categories: Collection[SubjectCategory] = frozenset(),
     ) -> tuple[Skill, ...]:
-        return self._skills
+        category_guidance = self.get_category_guidance(
+            prompt_identifier, lang, categories
+        )
+        return tuple(
+            skill.model_copy(
+                update={
+                    "guidance": skill.guidance.replace(
+                        "{{ category_guidance }}", category_guidance
+                    )
+                }
+            )
+            for skill in self._skills
+        )
 
     def get_category_guidance(
         self,
