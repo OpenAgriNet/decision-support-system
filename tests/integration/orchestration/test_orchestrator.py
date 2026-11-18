@@ -242,10 +242,10 @@ class _FakePlan:
         self.verdict_was_set: bool | None = None
 
     async def __call__(
-        self, turn, *, intent, discovery, verdict, visibility, awaiting=None
+        self, turn, *, discovery, verdict, visibility, awaiting=None
     ) -> Evidence:
         self.calls += 1
-        self.intent = intent
+        self.discovery = discovery
         self.awaiting = dict(awaiting or {})
         self.verdict_was_set = verdict.is_set()
         self.turn = turn
@@ -1069,7 +1069,7 @@ async def test_a_settled_ask_is_served_beside_a_question() -> None:
     compose = _FakeCompose("Wheat is 2,275 Rs [1]. Which district for the rain?")
     orch, _ = _build(
         intent=_one_ask(2),
-        discovery=_served_discovery(),
+        discovery=a_discovery(discovered(1, capabilities=(CAPABILITY,))),
         plan=plan,
         compose=compose,
         settle_asks=settles_with(_NEEDS_PLACE, _SETTLED),
@@ -1077,7 +1077,7 @@ async def test_a_settled_ask_is_served_beside_a_question() -> None:
 
     events = await _collect(orch)
 
-    assert len(plan.intent.asks) == 1
+    assert [found.ask.id for found in plan.discovery.asks] == [1]
     question, answer = compose.evidence.ask_evidences
     assert question.outcome == _NEEDS_PLACE
     assert answer == wheat_evidence.ask_evidences[0]

@@ -551,7 +551,6 @@ class TextPath:
         with trace_component(Stage.PLANNER, ctx.trace_id):
             evidence = await self._components.plan(
                 turn,
-                intent=settled,
                 discovery=result.discovery,
                 verdict=verdict,
                 visibility=visibility,

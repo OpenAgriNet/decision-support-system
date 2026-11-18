@@ -19,7 +19,6 @@ from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from dss.core.intent.models import (
     Ask,
-    Intent,
     InteractionType,
     PlaceSource,
     ResolvedPlace,
@@ -31,6 +30,7 @@ from dss.core.planner.models import Skill, Verdict
 from dss.core.planner.validation import DomainSchema
 from dss.core.provider_discovery.models import (
     DiscoveredAnswer,
+    DiscoveryResult,
     ProviderCapability,
 )
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
@@ -103,19 +103,16 @@ def _skill_with(*tool_names: str) -> Skill:
     )
 
 
-def _intent(category: SubjectCategory = SubjectCategory.MARKET) -> Intent:
-    """One ask at index 0 — the only index these tests' discovery uses."""
-
-    return Intent(
-        asks=(
-            an_ask(
-                agriculture_subjects="paddy",
-                subject_categories=category,
-                interaction_type=InteractionType.OBSERVE,
-            ),
-        ),
-        confidence=1.0,
+def _paddy_ask(category: SubjectCategory = SubjectCategory.MARKET) -> Ask:
+    return an_ask(
+        agriculture_subjects="paddy",
+        subject_categories=category,
+        interaction_type=InteractionType.OBSERVE,
     )
+
+
+def _served(ask: Ask) -> DiscoveryResult:
+    return a_discovery(discovered(ask, capabilities=(CAPABILITY,)))
 
 
 def _deps(invocation: _FakeInvocation) -> PlannerDeps:
@@ -128,8 +125,7 @@ def _deps(invocation: _FakeInvocation) -> PlannerDeps:
             target_lang="en",
             channel="web",
         ),
-        intent=_intent(),
-        discovery=a_discovery(discovered(capabilities=(CAPABILITY,))),
+        discovery=_served(_paddy_ask()),
         schemas=SCHEMAS,
         schema_context_index={
             "openagrinet:MandiPrice": "https://schemas.openagrinet.global/schema/MandiPrice/0.1/context.jsonld"
@@ -271,7 +267,6 @@ async def test_a_facility_select_carries_the_search_origin() -> None:
 
     invocation = _FakeInvocation()
     deps = _deps(invocation)
-    deps.discovery = a_discovery(discovered(capabilities=(facility,)))
     deps.schemas = schemas
     deps.schema_context_index = {
         "openagrinet:AgricultureFacility": (
@@ -279,21 +274,17 @@ async def test_a_facility_select_carries_the_search_origin() -> None:
             "AgricultureFacility/v0.1/context.jsonld"
         )
     }
-    deps.intent = Intent(
-        asks=(
-            an_ask(
-                subject_categories=SubjectCategory.FACILITY,
-                interaction_type=InteractionType.OBSERVE,
-                place=ResolvedPlace(
-                    name="Anand",
-                    within=("IN-GJ",),
-                    geometry=Geometry(coordinates=[73.7898, 19.9975]),
-                    source=PlaceSource.ASSERTED_GEOMETRY,
-                ),
-            ),
+    facility_ask = an_ask(
+        subject_categories=SubjectCategory.FACILITY,
+        interaction_type=InteractionType.OBSERVE,
+        place=ResolvedPlace(
+            name="Anand",
+            within=("IN-GJ",),
+            geometry=Geometry(coordinates=[73.7898, 19.9975]),
+            source=PlaceSource.ASSERTED_GEOMETRY,
         ),
-        confidence=1.0,
     )
+    deps.discovery = a_discovery(discovered(facility_ask, capabilities=(facility,)))
 
     def call_select(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
         if len(messages) == 1:
@@ -360,7 +351,8 @@ async def test_each_select_carries_its_own_asks_place() -> None:
     invocation = _FakeInvocation()
     deps = _deps(invocation)
     deps.discovery = a_discovery(
-        discovered(0, capabilities=(weather,)), discovered(2, capabilities=(weather,))
+        discovered(weather_ask(0, "Pune", pune), capabilities=(weather,)),
+        discovered(weather_ask(2, "Mumbai", mumbai), capabilities=(weather,)),
     )
     deps.schemas = {
         "openagrinet:WeatherForecast": DomainSchema(
@@ -370,10 +362,6 @@ async def test_each_select_carries_its_own_asks_place() -> None:
     deps.schema_context_index = {
         "openagrinet:WeatherForecast": "https://example.test/context.jsonld"
     }
-    deps.intent = Intent(
-        asks=(weather_ask(0, "Pune", pune), weather_ask(2, "Mumbai", mumbai)),
-        confidence=1.0,
-    )
 
     def select_both(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
         if len(messages) == 1:
@@ -400,17 +388,12 @@ async def test_each_select_carries_its_own_asks_place() -> None:
     assert points == [pune.coordinates, mumbai.coordinates]
 
 
-def _paddy_in_xyzzy() -> Intent:
-    return Intent(
-        asks=(
-            an_ask(
-                agriculture_subjects="paddy",
-                subject_categories=SubjectCategory.MARKET,
-                interaction_type=InteractionType.OBSERVE,
-                place=UnresolvedPlace(unresolved_name="Xyzzy"),
-            ),
-        ),
-        confidence=1.0,
+def _paddy_in_xyzzy() -> Ask:
+    return an_ask(
+        agriculture_subjects="paddy",
+        subject_categories=SubjectCategory.MARKET,
+        interaction_type=InteractionType.OBSERVE,
+        place=UnresolvedPlace(unresolved_name="Xyzzy"),
     )
 
 
@@ -421,7 +404,7 @@ async def test_select_makes_no_call_for_an_ask_whose_place_failed() -> None:
 
     invocation = _FakeInvocation()
     deps = _deps(invocation)
-    deps.intent = _paddy_in_xyzzy()
+    deps.discovery = _served(_paddy_in_xyzzy())
     deps.schemas = {
         "openagrinet:MandiPrice": SCHEMAS["openagrinet:MandiPrice"].model_copy(
             update={"needs_place": True}
@@ -442,7 +425,7 @@ async def test_a_placeless_pack_takes_the_call_whatever_the_place() -> None:
 
     invocation = _FakeInvocation()
     deps = _deps(invocation)
-    deps.intent = _paddy_in_xyzzy()
+    deps.discovery = _served(_paddy_in_xyzzy())
 
     agent = build_planner_agent(skills=(_skill_with("select"),))
     with agent.override(model=FunctionModel(_calls_select_then_answers)):
@@ -484,7 +467,7 @@ async def test_select_states_the_ask_category_not_the_advertised_one() -> None:
     agent = build_planner_agent(skills=(_skill_with("select"),))
     deps = _deps(invocation)
     # The capability advertises Market; the ask is about a scheme.
-    deps.intent = _intent(SubjectCategory.SCHEME)
+    deps.discovery = _served(_paddy_ask(SubjectCategory.SCHEME))
 
     with agent.override(model=FunctionModel(_calls_select_then_answers)):
         await agent.run("am I eligible for PM-KISAN", deps=deps)

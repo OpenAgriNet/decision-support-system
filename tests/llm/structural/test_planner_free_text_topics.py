@@ -30,7 +30,7 @@ from dotenv import dotenv_values
 from dss.config.identity_loader import load_identity
 from dss.config.prompt_service import build_prompt_service
 from dss.config.settings import Settings
-from dss.core.intent.models import Intent, InteractionType, SubjectCategory
+from dss.core.intent.models import InteractionType, SubjectCategory
 from dss.core.moderation.models import ModerationDecision, Outcome
 from dss.core.planner.models import Verdict
 from dss.core.planner.validation import DomainSchema
@@ -188,8 +188,7 @@ async def sent_topics() -> list[str]:
 
     await plan(
         _turn(),
-        intent=Intent(asks=(ADVICE_ASK,), confidence=0.9),
-        discovery=a_discovery(discovered(capabilities=(CAPABILITY,))),
+        discovery=a_discovery(discovered(ADVICE_ASK, capabilities=(CAPABILITY,))),
         verdict=_cleared_verdict(),
     )
 

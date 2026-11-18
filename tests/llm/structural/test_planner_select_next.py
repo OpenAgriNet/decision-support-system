@@ -19,7 +19,7 @@ from dotenv import dotenv_values
 from dss.config.identity_loader import load_identity
 from dss.config.prompt_service import build_prompt_service
 from dss.config.settings import Settings
-from dss.core.intent.models import Intent, InteractionType, SubjectCategory
+from dss.core.intent.models import InteractionType, SubjectCategory
 from dss.core.moderation.models import ModerationDecision, Outcome
 from dss.core.planner.models import Verdict
 from dss.core.planner.validation import DomainSchema
@@ -144,6 +144,7 @@ def _ranked_discovery() -> DiscoveryResult:
     ranking = (PREFERRED, NEXT_PREFERRED)
     return a_discovery(
         discovered(
+            BLIGHT_ASK,
             capabilities=tuple(_capability(provider) for provider in ranking),
             priority=a_priority(*ranking, capability="Crop"),
         )
@@ -192,7 +193,6 @@ async def _find_answering_providers(
 
     evidence = await plan(
         _turn(),
-        intent=Intent(asks=(BLIGHT_ASK,), confidence=0.9),
         discovery=_ranked_discovery(),
         verdict=_cleared_verdict(),
     )

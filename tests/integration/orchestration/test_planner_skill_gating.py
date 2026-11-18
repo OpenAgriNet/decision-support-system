@@ -12,13 +12,11 @@ from pydantic_ai import Agent
 from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
-from dss.core.intent.models import Intent, InteractionType, SubjectCategory
 from dss.core.moderation.models import ModerationDecision, Outcome
 from dss.core.planner.models import Skill, Verdict
 from dss.core.planner.validation import DomainSchema
 from dss.core.shared.models import TextQuery, UserTurn
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
-from tests.support.asks import an_ask
 from tests.support.discovery import a_discovery
 
 INVOCATION_SKILL = Skill(
@@ -40,21 +38,6 @@ class _UnusedInvocation:
         raise AssertionError("select must not be called in this test")
 
 
-def _intent(category: SubjectCategory = SubjectCategory.MARKET) -> Intent:
-    """One ask at index 0 — the only index these tests' discovery uses."""
-
-    return Intent(
-        asks=(
-            an_ask(
-                agriculture_subjects="paddy",
-                subject_categories=category,
-                interaction_type=InteractionType.OBSERVE,
-            ),
-        ),
-        confidence=1.0,
-    )
-
-
 def _deps() -> PlannerDeps:
     verdict = Verdict()
     verdict.set(ModerationDecision(outcome=Outcome.PROCEED))
@@ -67,7 +50,6 @@ def _deps() -> PlannerDeps:
             target_lang="en",
             channel="web",
         ),
-        intent=_intent(),
         discovery=a_discovery(),
         schemas={
             "openagrinet:MandiPrice": DomainSchema(

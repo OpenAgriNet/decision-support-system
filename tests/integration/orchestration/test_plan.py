@@ -24,7 +24,7 @@ from dss.core.forms.models import (
     FormContext,
     FormDefinition,
 )
-from dss.core.intent.models import Intent, InteractionType, SubjectCategory
+from dss.core.intent.models import InteractionType, SubjectCategory
 from dss.core.moderation.models import ModerationDecision, Outcome, ReasonCode
 from dss.core.planner.models import AwaitingInput, Identity, Skill, Verdict
 from dss.core.planner.validation import DomainSchema
@@ -163,8 +163,7 @@ async def test_plan_returns_evidence_from_what_the_tools_returned() -> None:
 
     evidence = await plan(
         _turn(),
-        intent=Intent(asks=(PRICE_ASK,), confidence=0.9),
-        discovery=a_discovery(discovered(capabilities=(CAPABILITY,))),
+        discovery=a_discovery(discovered(PRICE_ASK, capabilities=(CAPABILITY,))),
         verdict=_cleared_verdict(),
     )
 
@@ -199,8 +198,7 @@ async def test_the_invocation_is_built_for_the_turn() -> None:
 
     await plan(
         turn,
-        intent=Intent(asks=(PRICE_ASK,), confidence=0.9),
-        discovery=a_discovery(discovered(capabilities=(CAPABILITY,))),
+        discovery=a_discovery(discovered(PRICE_ASK, capabilities=(CAPABILITY,))),
         verdict=_cleared_verdict(),
     )
 
@@ -246,8 +244,7 @@ async def test_the_prompt_carries_the_identity_and_the_marked_history() -> None:
 
     await plan(
         turn,
-        intent=Intent(asks=(PRICE_ASK,), confidence=0.9),
-        discovery=a_discovery(discovered(capabilities=(CAPABILITY,))),
+        discovery=a_discovery(discovered(PRICE_ASK, capabilities=(CAPABILITY,))),
         verdict=_cleared_verdict(),
     )
 
@@ -257,6 +254,8 @@ async def test_the_prompt_carries_the_identity_and_the_marked_history() -> None:
     assert "Can I get advisory for potato" in everything
     assert "I am from Pune" in everything
     assert "<BEGIN CONVERSATION>" in everything
+    # The catalog held no answer for the ask, so there is nothing "already known".
+    assert "Already known" not in everything
 
 
 DIRECT_ANSWER = DiscoveredAnswer(
@@ -301,8 +300,7 @@ async def test_a_direct_answer_reaches_the_evidence_through_plan() -> None:
 
     evidence = await plan(
         _turn(),
-        intent=Intent(asks=(PRICE_ASK,), confidence=0.9),
-        discovery=a_discovery(discovered(answers=(DIRECT_ANSWER,))),
+        discovery=a_discovery(discovered(PRICE_ASK, answers=(DIRECT_ANSWER,))),
         verdict=_cleared_verdict(),
     )
 
@@ -332,10 +330,11 @@ async def test_a_turn_with_only_form_asks_never_runs_the_agent() -> None:
 
     evidence = await plan(
         _turn(),
-        intent=Intent(
-            asks=(GRIEVANCE_ASK.model_copy(update={"id": 2}),), confidence=0.9
+        discovery=a_discovery(
+            discovered(
+                GRIEVANCE_ASK.model_copy(update={"id": 2}), capabilities=(CAPABILITY,)
+            )
         ),
-        discovery=a_discovery(discovered(2, capabilities=(CAPABILITY,))),
         verdict=_cleared_verdict(),
         awaiting={2: GRIEVANCE_FORM},
     )
@@ -381,12 +380,13 @@ async def test_a_model_that_still_selects_for_a_form_ask_reaches_no_provider() -
         model=FunctionModel(_calls_select_for_ask_0_then_answers),
     )
 
+    grievance, price = numbered(GRIEVANCE_ASK, PRICE_ASK)
+
     evidence = await plan(
         _turn(),
-        intent=Intent(asks=numbered(GRIEVANCE_ASK, PRICE_ASK), confidence=0.9),
         discovery=a_discovery(
-            discovered(0, capabilities=(grievance_desk,)),
-            discovered(1, capabilities=(CAPABILITY,)),
+            discovered(grievance, capabilities=(grievance_desk,)),
+            discovered(price, capabilities=(CAPABILITY,)),
         ),
         verdict=_cleared_verdict(),
         awaiting={0: GRIEVANCE_FORM},
@@ -427,8 +427,7 @@ async def test_the_planner_binds_its_own_model_settings() -> None:
 
     await plan(
         _turn(),
-        intent=Intent(asks=(PRICE_ASK,), confidence=0.9),
-        discovery=a_discovery(),
+        discovery=a_discovery(discovered(PRICE_ASK)),
         verdict=_cleared_verdict(),
     )
 
@@ -461,8 +460,7 @@ async def test_a_rejected_turn_yields_empty_evidence() -> None:
 
     evidence = await plan(
         _turn(),
-        intent=Intent(asks=(PRICE_ASK,), confidence=0.9),
-        discovery=a_discovery(discovered(capabilities=(CAPABILITY,))),
+        discovery=a_discovery(discovered(PRICE_ASK, capabilities=(CAPABILITY,))),
         verdict=verdict,
     )
 
@@ -512,8 +510,7 @@ async def test_a_planner_run_that_fails_still_records_what_it_spent() -> None:
     with pytest.raises(RuntimeError, match="the model went away"):
         await plan(
             _turn(),
-            intent=Intent(asks=(PRICE_ASK,), confidence=0.9),
-            discovery=a_discovery(discovered(capabilities=(CAPABILITY,))),
+            discovery=a_discovery(discovered(PRICE_ASK, capabilities=(CAPABILITY,))),
             verdict=_cleared_verdict(),
         )
 

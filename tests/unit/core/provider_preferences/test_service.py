@@ -14,7 +14,7 @@ from dss.core.provider_discovery.models import (
     ProviderCapability,
 )
 from dss.core.provider_preferences.models import NO_PREFERENCE, PreferenceBook
-from dss.core.provider_preferences.service import prioritise, priority_for_ask
+from dss.core.provider_preferences.service import prioritise
 from tests.support.asks import an_ask
 from tests.support.discovery import a_discovery, discovered
 from tests.support.providers import build_capability
@@ -120,8 +120,9 @@ def test_no_preference_at_all_leaves_discovery_untouched() -> None:
 
     result = prioritise(discovery, preference=NO_PREFERENCE)
 
-    assert result.capabilities == discovery.capabilities
-    assert priority_for_ask(result, ask_id=0) is None
+    (untouched,) = result.asks
+    assert untouched.capabilities == discovery.asks[0].capabilities
+    assert not untouched.is_ranked
 
 
 def test_two_clients_asking_the_same_question_get_their_own_first_choice() -> None:

@@ -63,7 +63,7 @@ async def _no_discovery(asks, turn, *, now):
     return a_discovery()
 
 
-async def _unreached_plan(turn, *, intent, discovery, verdict, visibility):
+async def _unreached_plan(turn, *, discovery, verdict, visibility):
     """With `_no_discovery` nobody serves the ask, so the orchestrator answers
     NO_MATCH before the planner runs — this must never be called."""
 

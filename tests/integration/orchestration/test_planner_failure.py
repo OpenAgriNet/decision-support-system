@@ -7,16 +7,18 @@ providers, and one unreachable mandi is not a reason to answer nothing.
 
 from __future__ import annotations
 
+import pytest
 from pydantic_ai.messages import (
     ModelMessage,
     ModelResponse,
+    RetryPromptPart,
     TextPart,
     ToolCallPart,
 )
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from dss.adapters.invocation.client import SelectFailedError
-from dss.core.intent.models import Intent, InteractionType, SubjectCategory
+from dss.core.intent.models import InteractionType, SubjectCategory
 from dss.core.moderation.models import ModerationDecision, Outcome
 from dss.core.planner.models import Skill, Verdict
 from dss.core.planner.validation import DomainSchema
@@ -86,19 +88,11 @@ def _cleared_verdict() -> Verdict:
     return verdict
 
 
-def _intent(category: SubjectCategory = SubjectCategory.MARKET) -> Intent:
-    """One ask at index 0 — the only index these tests' discovery uses."""
-
-    return Intent(
-        asks=(
-            an_ask(
-                agriculture_subjects="paddy",
-                subject_categories=category,
-                interaction_type=InteractionType.OBSERVE,
-            ),
-        ),
-        confidence=1.0,
-    )
+PADDY_ASK = an_ask(
+    agriculture_subjects="paddy",
+    subject_categories=SubjectCategory.MARKET,
+    interaction_type=InteractionType.OBSERVE,
+)
 
 
 def _deps(invocation: _FailingInvocation) -> PlannerDeps:
@@ -111,8 +105,7 @@ def _deps(invocation: _FailingInvocation) -> PlannerDeps:
             target_lang="en",
             channel="web",
         ),
-        intent=_intent(),
-        discovery=a_discovery(discovered(capabilities=(CAPABILITY,))),
+        discovery=a_discovery(discovered(PADDY_ASK, capabilities=(CAPABILITY,))),
         schemas=SCHEMAS,
         schema_context_index={
             "openagrinet:MandiPrice": "https://schemas.openagrinet.global/schema/MandiPrice/0.1/context.jsonld"
@@ -217,6 +210,49 @@ async def test_a_capability_with_no_indexed_schema_gets_a_retry() -> None:
     # the turn survived, and no provider was called for a capability we
     # cannot even build a request for
     assert result.output == "picked another"
+    assert invocation.calls == 0
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "args"),
+    [
+        (
+            "select",
+            {
+                "ask_id": 9,
+                "resource_id": CAPABILITY.resource_id,
+                "resource_attributes": {},
+            },
+        ),
+        ("describe_capability", {"ask_id": 9}),
+    ],
+)
+async def test_an_ask_the_turn_lacks_gets_a_retry(tool_name: str, args: dict) -> None:
+    """The model can only send a number. A wrong one must come back as
+    something it can act on."""
+
+    retries: list[str] = []
+
+    def calls_ask_9_then_answers(
+        messages: list[ModelMessage], info: AgentInfo
+    ) -> ModelResponse:
+        retries.extend(
+            str(part.content)
+            for message in messages
+            for part in message.parts
+            if isinstance(part, RetryPromptPart)
+        )
+        if len(messages) == 1:
+            return ModelResponse(parts=[ToolCallPart(tool_name=tool_name, args=args)])
+        return ModelResponse(parts=[TextPart(content="done")])
+
+    invocation = _FailingInvocation()
+    agent = build_planner_agent(skills=(_skill_with(tool_name),))
+
+    with agent.override(model=FunctionModel(calls_ask_9_then_answers)):
+        await agent.run("price of paddy", deps=_deps(invocation))
+
+    assert retries == ["ask 9 is not one of this turn's asks"]
     assert invocation.calls == 0
 
 

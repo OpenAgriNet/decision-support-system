@@ -22,7 +22,6 @@ from pydantic_ai.messages import (
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from dss.core.intent.models import (
-    Intent,
     InteractionType,
     PlaceSource,
     ResolvedPlace,
@@ -112,23 +111,17 @@ def _unreachable() -> SelectFailedError:
     return SelectFailedError(WEATHER, 503, FailureClass.TRANSIENT, "upstream is down")
 
 
-def _intent() -> Intent:
-    return Intent(
-        asks=(
-            an_ask(
-                agriculture_subjects="rain",
-                subject_categories=SubjectCategory.WEATHER,
-                interaction_type=InteractionType.OBSERVE,
-                place=ResolvedPlace(
-                    name="Nashik",
-                    within=("Maharashtra",),
-                    geometry=Geometry(coordinates=[73.79, 19.99]),
-                    source=PlaceSource.NAMED,
-                ),
-            ),
-        ),
-        confidence=1.0,
-    )
+RAIN_ASK = an_ask(
+    agriculture_subjects="rain",
+    subject_categories=SubjectCategory.WEATHER,
+    interaction_type=InteractionType.OBSERVE,
+    place=ResolvedPlace(
+        name="Nashik",
+        within=("Maharashtra",),
+        geometry=Geometry(coordinates=[73.79, 19.99]),
+        source=PlaceSource.NAMED,
+    ),
+)
 
 
 def _deps(
@@ -149,8 +142,9 @@ def _deps(
             channel="web",
             sender_id="kisan-mitra-web",
         ),
-        intent=_intent(),
-        discovery=a_discovery(discovered(capabilities=candidates, priority=priority)),
+        discovery=a_discovery(
+            discovered(RAIN_ASK, capabilities=candidates, priority=priority)
+        ),
         schemas=SCHEMAS,
         schema_context_index=CONTEXT_INDEX,
         invocation=invocation,
@@ -572,8 +566,7 @@ async def test_select_next_on_one_ask_leaves_the_other_ask_alone() -> None:
     )
     ranked = a_priority("maharashtra-vistaar", "mausamgram")
     deps = _deps(invocation, candidates=(VISTAAR, MAUSAMGRAM), priority=ranked)
-    two_asks = numbered(*deps.intent.asks, *deps.intent.asks)
-    deps.intent = Intent(asks=two_asks, confidence=1.0)
+    two_asks = numbered(RAIN_ASK, RAIN_ASK)
     deps.discovery = a_discovery(
         *(
             discovered(ask, capabilities=(VISTAAR, MAUSAMGRAM), priority=ranked)

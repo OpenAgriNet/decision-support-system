@@ -69,7 +69,7 @@ def asks_section(
     return "# Asks\n\n" + "\n".join(lines) + "\n\n"
 
 
-def answers_section(answers: dict[AskId, tuple[DiscoveredAnswer, ...]]) -> str:
+def answers_section(answers: Sequence[tuple[AskId, DiscoveredAnswer]]) -> str:
     """Direct answers only — the catalog already holds these values, so no
     call is needed. OnDemand candidates are not prompt content: the model
     reaches those through the tools' own ``RunContext.deps``.
@@ -87,8 +87,7 @@ def answers_section(answers: dict[AskId, tuple[DiscoveredAnswer, ...]]) -> str:
 
     values = [
         f"- ask {ask_id}: {answer.provider_name} — {answer.attributes}"
-        for ask_id, ask_answers in answers.items()
-        for answer in ask_answers
+        for ask_id, answer in answers
     ]
     return (
         "\n# Already known\n\nNo call is needed for these:\n"

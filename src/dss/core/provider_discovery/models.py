@@ -225,6 +225,29 @@ class DiscoveredAsk:
     def is_served(self) -> bool:
         return bool(self.answers or self.capabilities)
 
+    @property
+    def is_ranked(self) -> bool:
+        return self.priority is not None and self.priority.applied
+
+    def find_capability(self, resource_id: str) -> ProviderCapability | None:
+        return next(
+            (
+                capability
+                for capability in self.capabilities
+                if capability.resource_id == resource_id
+            ),
+            None,
+        )
+
+    def find_capabilities_of_type(
+        self, schema_type: NetworkSchemaType
+    ) -> tuple[ProviderCapability, ...]:
+        return tuple(
+            capability
+            for capability in self.capabilities
+            if capability.capability == schema_type
+        )
+
     def with_capabilities(
         self, capabilities: tuple[ProviderCapability, ...]
     ) -> DiscoveredAsk:
@@ -295,6 +318,9 @@ class DiscoveryResult:
     @property
     def serves_any_ask(self) -> bool:
         return any(ask.is_served for ask in self.asks)
+
+    def find(self, ask_id: AskId) -> DiscoveredAsk | None:
+        return next((ask for ask in self.asks if ask.ask.id == ask_id), None)
 
     def with_each_ask(
         self, change: Callable[[DiscoveredAsk], DiscoveredAsk]

@@ -22,7 +22,6 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Protocol
 
-from dss.core.intent.models import AskId
 from dss.core.provider_discovery.models import DiscoveredAsk, DiscoveryResult
 from dss.core.provider_preferences.models import (
     AskPriority,
@@ -149,23 +148,3 @@ def _dropped(
             item.provider_id for item in found if item.provider_id not in ranking
         )
     )
-
-
-def priority_for_ask(
-    discovery: DiscoveryResult, *, ask_id: AskId
-) -> AskPriority | None:
-    """The priority record of the ranking that governed this ask, or ``None``
-    if none did.
-
-    ``None`` covers three states that have to behave identically: no
-    registry is configured, the ask's capability carries no ranking, and the
-    result predates preferences entirely (an unwired deployment, a test
-    building a `DiscoveryResult` by hand). Each one means "do what the system
-    did before a ranking existed", and a caller that branched on `priorities`
-    directly would have to spell all three out.
-    """
-
-    priority = discovery.priorities.get(ask_id)
-    if priority is None or not priority.applied:
-        return None
-    return priority

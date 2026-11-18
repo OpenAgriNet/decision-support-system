@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-from dss.core.intent.models import Intent, InteractionType, SubjectCategory
 from dss.core.planner.models import Verdict
-from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.shared.models import TextQuery, UserTurn
 from dss.orchestration.planner import PlannerDeps
-from tests.support.asks import an_ask
 from tests.support.discovery import a_discovery
 
 
@@ -22,10 +19,6 @@ def _turn() -> UserTurn:
     )
 
 
-def _discovery_result() -> DiscoveryResult:
-    return a_discovery()
-
-
 class _UnusedInvocation:
     """These tests never reach ``select``, but ``invocation`` is required —
     the tool cannot work without one, so the type says so."""
@@ -36,26 +29,10 @@ class _UnusedInvocation:
         raise AssertionError("select must not be called in this test")
 
 
-def _intent(category: SubjectCategory = SubjectCategory.MARKET) -> Intent:
-    """One ask at index 0 — the only index these tests' discovery uses."""
-
-    return Intent(
-        asks=(
-            an_ask(
-                agriculture_subjects="paddy",
-                subject_categories=category,
-                interaction_type=InteractionType.OBSERVE,
-            ),
-        ),
-        confidence=1.0,
-    )
-
-
 def test_planner_deps_starts_with_an_empty_accumulator() -> None:
     deps = PlannerDeps(
         turn=_turn(),
-        intent=_intent(),
-        discovery=_discovery_result(),
+        discovery=a_discovery(),
         schemas={},
         schema_context_index={},
         invocation=_UnusedInvocation(),

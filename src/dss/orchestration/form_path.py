@@ -392,7 +392,7 @@ class FormPath:
         redaction: _Redacted,
         form_turn: _FormTurn,
     ) -> AsyncGenerator[TurnEvent]:
-        evidence = assemble_evidence([(FORM_ASK_ID, response)], intent=intent)
+        evidence = assemble_evidence([(FORM_ASK_ID, response)], asks=intent.asks)
         return self._stream_answer(evidence, redaction, form_turn)
 
     async def _stream_answer(
