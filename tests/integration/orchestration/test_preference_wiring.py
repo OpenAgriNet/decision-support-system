@@ -157,12 +157,12 @@ async def test_discovery_hands_on_a_ranked_candidate_list() -> None:
         _asks(), _turn("kisan-mitra-web"), now=datetime.now(UTC)
     )
 
-    assert [c.provider_id for c in result.capabilities[0]] == [
+    assert [c.provider_id for c in result.asks[0].capabilities] == [
         "maharashtra-vistaar",
         "mausamgram",
     ]
     # The Direct answer came from a provider this client ruled out.
-    assert result.answers[0] == ()
+    assert result.asks[0].answers == ()
 
 
 async def test_a_caller_that_named_nobody_gets_the_default_ranking() -> None:
@@ -173,7 +173,7 @@ async def test_a_caller_that_named_nobody_gets_the_default_ranking() -> None:
 
     result = await _discover(preferences)(_asks(), _turn(None), now=datetime.now(UTC))
 
-    assert [c.provider_id for c in result.capabilities[0]] == ["mausamgram"]
+    assert [c.provider_id for c in result.asks[0].capabilities] == ["mausamgram"]
 
 
 async def test_an_unconfigured_deployment_keeps_every_provider() -> None:
@@ -181,7 +181,7 @@ async def test_an_unconfigured_deployment_keeps_every_provider() -> None:
         _asks(), _turn("kisan-mitra-web"), now=datetime.now(UTC)
     )
 
-    assert [c.provider_id for c in result.capabilities[0]] == [
+    assert [c.provider_id for c in result.asks[0].capabilities] == [
         "unvetted",
         "mausamgram",
         "maharashtra-vistaar",

@@ -667,7 +667,7 @@ def _warn_if_auth_refused(
 
 
 def _count(discovery: DiscoveryResult) -> int:
-    return sum(len(candidates) for candidates in discovery.capabilities.values())
+    return sum(len(discovered.capabilities) for discovered in discovery.asks)
 
 
 def _with_values_withheld(

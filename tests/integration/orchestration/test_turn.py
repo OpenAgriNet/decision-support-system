@@ -336,8 +336,7 @@ async def test_moderation_reject_blanks_the_discovery_result() -> None:
     )
 
     assert result.decision.outcome is Outcome.REJECT
-    assert result.discovery.capabilities == {}
-    assert result.discovery.answers == {}
+    assert result.discovery.asks == ()
 
 
 class _SlowModerationLLM(_NeverStreams):

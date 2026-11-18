@@ -121,7 +121,7 @@ async def test_the_wired_discover_providers_bakes_in_radius() -> None:
             (ask,), turn, now=datetime(2026, 8, 24, 12, 0, 0, tzinfo=UTC)
         )
 
-    assert result.answers[0][0].provider_id == "agmarknet"
+    assert result.asks[0].answers[0].provider_id == "agmarknet"
 
 
 async def test_the_fan_out_runs_inside_a_span(monkeypatch) -> None:
@@ -338,4 +338,4 @@ async def test_run_turn_can_call_the_composed_discover_providers() -> None:
             area_lookup=FakeAreaLookup(),
         )
 
-    assert result.discovery.answers[0][0].provider_id == "agmarknet"
+    assert result.discovery.asks[0].answers[0].provider_id == "agmarknet"

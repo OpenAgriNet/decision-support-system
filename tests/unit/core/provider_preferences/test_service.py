@@ -13,7 +13,11 @@ from dss.core.provider_discovery.models import (
     DiscoveryResult,
     ProviderCapability,
 )
-from dss.core.provider_preferences.models import NO_PREFERENCE, PreferenceBook
+from dss.core.provider_preferences.models import (
+    NO_PREFERENCE,
+    AskPriority,
+    PreferenceBook,
+)
 from dss.core.provider_preferences.service import prioritise
 from tests.support.asks import an_ask
 from tests.support.discovery import a_discovery, discovered
@@ -53,13 +57,19 @@ def _book(**senders: dict[str, tuple[str, ...]]) -> PreferenceBook:
     return PreferenceBook(default={}, senders=senders)
 
 
+def _priority_of(result: DiscoveryResult) -> AskPriority:
+    priority = result.asks[0].priority
+    assert priority is not None
+    return priority
+
+
 def test_the_first_choice_provider_is_consulted_first() -> None:
     discovery = _discovered((_capability("imd"), _capability("vistaar")))
     preference = _book(app={"weather": ("vistaar", "imd")}).for_sender("app")
 
     result = prioritise(discovery, preference=preference)
 
-    assert [c.provider_id for c in result.capabilities[0]] == ["vistaar", "imd"]
+    assert [c.provider_id for c in result.asks[0].capabilities] == ["vistaar", "imd"]
 
 
 def test_a_provider_the_ranking_does_not_name_is_dropped() -> None:
@@ -71,8 +81,8 @@ def test_a_provider_the_ranking_does_not_name_is_dropped() -> None:
 
     result = prioritise(discovery, preference=preference)
 
-    assert [c.provider_id for c in result.capabilities[0]] == ["imd"]
-    assert result.priorities[0].dropped == ("unvetted",)
+    assert [c.provider_id for c in result.asks[0].capabilities] == ["imd"]
+    assert _priority_of(result).dropped == ("unvetted",)
 
 
 def test_answers_the_catalog_already_held_are_ranked_too() -> None:
@@ -85,7 +95,7 @@ def test_answers_the_catalog_already_held_are_ranked_too() -> None:
 
     result = prioritise(discovery, preference=preference)
 
-    assert [a.provider_id for a in result.answers[0]] == ["imd"]
+    assert [a.provider_id for a in result.asks[0].answers] == ["imd"]
 
 
 def test_direct_answers_come_from_the_best_ranked_provider_only() -> None:
@@ -98,9 +108,9 @@ def test_direct_answers_come_from_the_best_ranked_provider_only() -> None:
 
     result = prioritise(discovery, preference=preference)
 
-    assert [a.provider_id for a in result.answers[0]] == ["vistaar"]
+    assert [a.provider_id for a in result.asks[0].answers] == ["vistaar"]
     # The runner-up stays on the record, so the order can be judged later.
-    assert result.priorities[0].kept == ("vistaar", "imd")
+    assert _priority_of(result).kept == ("vistaar", "imd")
 
 
 def test_a_topic_nobody_ranked_keeps_every_provider_in_discovery_order() -> None:
@@ -111,8 +121,8 @@ def test_a_topic_nobody_ranked_keeps_every_provider_in_discovery_order() -> None
 
     result = prioritise(discovery, preference=preference)
 
-    assert [c.provider_id for c in result.capabilities[0]] == ["imd", "vistaar"]
-    assert result.priorities[0].applied is False
+    assert [c.provider_id for c in result.asks[0].capabilities] == ["imd", "vistaar"]
+    assert _priority_of(result).applied is False
 
 
 def test_no_preference_at_all_leaves_discovery_untouched() -> None:
@@ -134,8 +144,8 @@ def test_two_clients_asking_the_same_question_get_their_own_first_choice() -> No
     first = prioritise(discovery, preference=book.for_sender("one"))
     second = prioritise(discovery, preference=book.for_sender("two"))
 
-    assert first.capabilities[0][0].provider_id == "imd"
-    assert second.capabilities[0][0].provider_id == "vistaar"
+    assert first.asks[0].capabilities[0].provider_id == "imd"
+    assert second.asks[0].capabilities[0].provider_id == "vistaar"
 
 
 def test_each_ask_is_ranked_on_its_own_topic() -> None:
@@ -176,7 +186,7 @@ def test_one_providers_several_resources_keep_discoverys_order() -> None:
 
     result = prioritise(discovery, preference=preference)
 
-    assert [c.resource_id for c in result.capabilities[0]] == [
+    assert [c.resource_id for c in result.asks[0].capabilities] == [
         "res:b:imd",
         "res:a:imd",
         "res:1:vistaar",
@@ -192,9 +202,9 @@ def test_a_ranking_that_matches_nobody_leaves_the_ask_with_no_provider() -> None
 
     result = prioritise(discovery, preference=preference)
 
-    assert result.capabilities[0] == ()
-    assert result.priorities[0].applied is True
-    assert result.priorities[0].kept == ()
+    assert result.asks[0].capabilities == ()
+    assert _priority_of(result).applied is True
+    assert _priority_of(result).kept == ()
 
 
 def test_the_record_says_which_layer_answered_and_what_it_dropped() -> None:
@@ -206,7 +216,7 @@ def test_the_record_says_which_layer_answered_and_what_it_dropped() -> None:
 
     result = prioritise(discovery, preference=book.for_sender("app"))
 
-    priority = result.priorities[0]
+    priority = _priority_of(result)
     assert priority.sender_id == "app"
     assert priority.capability == "Weather"
     assert priority.source == "default"

@@ -326,27 +326,3 @@ class DiscoveryResult:
         self, change: Callable[[DiscoveredAsk], DiscoveredAsk]
     ) -> DiscoveryResult:
         return replace(self, asks=tuple(change(ask) for ask in self.asks))
-
-    # TODO(#249): the four dicts and `serves` below are views for readers not
-    # moved to `asks` yet. They go with the last of those readers.
-
-    @property
-    def answers(self) -> dict[AskId, tuple[DiscoveredAnswer, ...]]:
-        return {ask.ask.id: ask.answers for ask in self.asks}
-
-    @property
-    def capabilities(self) -> dict[AskId, tuple[ProviderCapability, ...]]:
-        return {ask.ask.id: ask.capabilities for ask in self.asks}
-
-    @property
-    def failures(self) -> dict[AskId, tuple[DiscoveryFailure, ...]]:
-        return {ask.ask.id: ask.failures for ask in self.asks}
-
-    @property
-    def priorities(self) -> dict[AskId, AskPriority]:
-        return {
-            ask.ask.id: ask.priority for ask in self.asks if ask.priority is not None
-        }
-
-    def serves(self, ask_id: AskId) -> bool:
-        return any(ask.is_served for ask in self.asks if ask.ask.id == ask_id)

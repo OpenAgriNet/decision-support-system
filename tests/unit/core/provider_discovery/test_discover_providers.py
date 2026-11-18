@@ -191,8 +191,9 @@ async def test_an_ask_whose_place_failed_is_never_discovered() -> None:
     )
 
     assert discovery.calls == []
-    assert result.answers == {0: ()}
-    assert result.capabilities == {0: ()}
+    (unsearched,) = result.asks
+    assert unsearched.answers == ()
+    assert unsearched.capabilities == ()
 
 
 async def test_an_unclear_place_does_not_stop_a_placeless_search() -> None:
@@ -318,10 +319,11 @@ async def test_a_failing_query_does_not_prevent_a_sibling_from_succeeding() -> N
     )
 
     assert len(discovery.calls) == 2
-    assert result.capabilities[1][0].capability == "openagrinet:MandiPrice"
-    assert result.failures[0] != ()
-    assert result.answers[0] == ()
-    assert result.capabilities[0] == ()
+    failed_weather, market = result.asks
+    assert market.capabilities[0].capability == "openagrinet:MandiPrice"
+    assert failed_weather.failures != ()
+    assert failed_weather.answers == ()
+    assert failed_weather.capabilities == ()
     assert result.events == (
         AskDiscoveryFailed(
             ask_id=0,
@@ -446,7 +448,7 @@ async def test_an_expired_answer_with_no_fallback_is_dropped() -> None:
         now=NOW,
     )
 
-    assert result.answers[0] == ()
+    assert result.asks[0].answers == ()
     assert result.events == (
         ExpiredAnswerDropped(
             provider_id="agmarknet",
@@ -487,8 +489,8 @@ async def test_an_expired_answer_with_an_on_demand_sibling_records_a_fallback() 
         now=NOW,
     )
 
-    assert result.answers[0] == ()
-    assert result.capabilities[0] == (fallback_capability,)
+    assert result.asks[0].answers == ()
+    assert result.asks[0].capabilities == (fallback_capability,)
     assert result.events == (
         ExpiredAnswerDropped(
             provider_id="agmarknet",
@@ -530,7 +532,7 @@ async def test_a_non_expired_answer_is_kept() -> None:
         now=NOW,
     )
 
-    assert result.answers[0] == (fresh_answer,)
+    assert result.asks[0].answers == (fresh_answer,)
     assert result.events == ()
 
 
@@ -569,7 +571,7 @@ async def test_an_answer_whose_window_has_not_opened_is_dropped() -> None:
         now=NOW,
     )
 
-    assert result.answers[0] == ()
+    assert result.asks[0].answers == ()
     # dropped, and then the ask has nothing left to serve it
     assert isinstance(result.events[0], ExpiredAnswerDropped)
     assert isinstance(result.events[1], AskUnservable)
@@ -604,7 +606,7 @@ async def test_an_answer_with_no_validity_is_kept() -> None:
         now=NOW,
     )
 
-    assert result.answers[0] == (answer_without_validity,)
+    assert result.asks[0].answers == (answer_without_validity,)
 
 
 async def test_a_capability_matching_the_index_has_no_divergence_event() -> None:
@@ -1075,9 +1077,10 @@ async def test_asks_sharing_a_query_each_get_the_whole_reply() -> None:
     result = await _discover_with(discovery, _MARKET_ASK, _MARKET_ASK)
 
     assert len(discovery.calls) == 1
-    assert result.answers == {0: (answer,), 1: (answer,)}
-    assert result.capabilities == {0: (capability,), 1: (capability,)}
-    assert result.failures == {0: (), 1: ()}
+    first, second = result.asks
+    assert first.answers == second.answers == (answer,)
+    assert first.capabilities == second.capabilities == (capability,)
+    assert first.failures == second.failures == ()
 
 
 async def test_a_failing_shared_query_fails_every_ask_that_shared_it() -> None:
@@ -1092,7 +1095,7 @@ async def test_a_failing_shared_query_fails_every_ask_that_shared_it() -> None:
 
     result = await _discover_with(discovery, _MARKET_ASK, _MARKET_ASK, ids=(0, 2))
 
-    assert result.failures == {0: (failure,), 2: (failure,)}
+    assert [found.failures for found in result.asks] == [(failure,), (failure,)]
     assert result.events == (
         AskDiscoveryFailed(0, "openagrinet:MandiPrice", FailureClass.TRANSIENT, 500),
         AskDiscoveryFailed(2, "openagrinet:MandiPrice", FailureClass.TRANSIENT, 500),
@@ -1145,10 +1148,9 @@ async def test_an_unplaced_ask_gets_an_empty_entry_beside_a_searched_one() -> No
     result = await _discover_with(discovery, unplaced_market_ask, _WEATHER_ASK)
 
     assert len(discovery.calls) == 1
-    assert set(result.answers) == set(result.capabilities) == set(result.failures)
-    assert set(result.answers) == {0, 1}
-    assert result.answers[0] == result.capabilities[0] == result.failures[0] == ()
-    assert result.capabilities[1] == (capability,)
+    unplaced, weather = result.asks
+    assert unplaced.answers == unplaced.capabilities == unplaced.failures == ()
+    assert weather.capabilities == (capability,)
 
 
 async def test_a_turn_with_no_asks_sends_nothing() -> None:
@@ -1167,7 +1169,7 @@ async def test_an_expired_answer_on_a_shared_query_is_reported_once_per_ask() ->
 
     result = await _discover_with(discovery, _MARKET_ASK, _MARKET_ASK)
 
-    assert result.answers == {0: (), 1: ()}
+    assert [found.answers for found in result.asks] == [(), ()]
     assert [e for e in result.events if isinstance(e, ExpiredAnswerDropped)] == [
         ExpiredAnswerDropped(
             "agmarknet", "openagrinet:MandiPrice", "r1", had_fallback=False
