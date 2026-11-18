@@ -72,7 +72,7 @@ def _planner_prompt(**overrides) -> str:
         "guidance_section": guidance_section(()),
         "asks_section": asks_section(()),
         "answers_section": answers_section({}),
-        "topic_guidance": "",
+        "category_guidance": "",
     } | overrides
     return _service().get_prompt(
         PromptIdentifier.PLANNER, lang=LanguageTag("en"), placeholder_values=kwargs
@@ -88,7 +88,7 @@ def _composer_prompt() -> str:
             "persona": "A calm, practical farm advisor.",
             "boundaries": "Never gives financial or legal advice.",
             "target_lang": "en",
-            "topic_guidance": "",
+            "category_guidance": "",
         },
     )
 
@@ -407,7 +407,7 @@ def test_composer_prompt_carries_identity_and_target_language() -> None:
             "persona": "A calm advisor.",
             "boundaries": "Never gives legal advice.",
             "target_lang": "mr",
-            "topic_guidance": "",
+            "category_guidance": "",
         },
     )
 
@@ -428,7 +428,7 @@ def test_composer_hindi_demo_keeps_the_citation_form() -> None:
             "persona": "p",
             "boundaries": "b",
             "target_lang": "hi",
-            "topic_guidance": "",
+            "category_guidance": "",
         },
     )
 
@@ -440,7 +440,7 @@ def test_the_market_guidance_ships_outside_the_composer_prompt() -> None:
     about a market; the general prompt carries none of them."""
 
     service = _service()
-    guidance = service.get_topic_guidance(
+    guidance = service.get_category_guidance(
         PromptIdentifier.COMPOSER, LanguageTag("en"), {SubjectCategory.MARKET}
     )
 
@@ -452,7 +452,7 @@ def test_the_market_guidance_ships_outside_the_composer_prompt() -> None:
 def test_the_hindi_market_guidance_is_its_own() -> None:
     service = _service()
 
-    hindi = service.get_topic_guidance(
+    hindi = service.get_category_guidance(
         PromptIdentifier.COMPOSER, LanguageTag("hi"), {SubjectCategory.MARKET}
     )
 
@@ -466,7 +466,7 @@ def test_the_planner_s_market_guidance_ships_outside_its_prompt() -> None:
     """Without it the planner reads other markets' prices as the wrong place
     and drops them; with it in the general prompt, every turn carries it."""
 
-    guidance = _service().get_topic_guidance(
+    guidance = _service().get_category_guidance(
         PromptIdentifier.PLANNER, LanguageTag("en"), {SubjectCategory.MARKET}
     )
 
@@ -475,7 +475,7 @@ def test_the_planner_s_market_guidance_ships_outside_its_prompt() -> None:
 
 
 def test_the_planner_s_hindi_market_guidance_is_its_own() -> None:
-    hindi = _service().get_topic_guidance(
+    hindi = _service().get_category_guidance(
         PromptIdentifier.PLANNER, LanguageTag("hi"), {SubjectCategory.MARKET}
     )
 
@@ -535,7 +535,7 @@ def test_planner_hindi_demo_keeps_the_marker_names_in_english() -> None:
             "guidance_section": guidance_section(()),
             "asks_section": "",
             "answers_section": "",
-            "topic_guidance": "",
+            "category_guidance": "",
         },
     )
 

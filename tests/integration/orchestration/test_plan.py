@@ -264,7 +264,7 @@ MARKET_GUIDANCE = "Other markets in the district answer a price ask too."
 
 async def _planner_prompt_for(ask: Ask) -> str:
     prompts = FakePromptProvider(
-        skills=(SKILL,), topics={SubjectCategory.MARKET: MARKET_GUIDANCE}
+        skills=(SKILL,), category_guidance={SubjectCategory.MARKET: MARKET_GUIDANCE}
     )
     plan = build_plan(
         schemas=SCHEMAS,
@@ -287,7 +287,7 @@ async def _planner_prompt_for(ask: Ask) -> str:
     )
 
     (_, _, values), *_ = prompts.calls
-    return values["topic_guidance"]
+    return values["category_guidance"]
 
 
 async def test_a_market_ask_brings_the_market_guidance_to_the_planner() -> None:
