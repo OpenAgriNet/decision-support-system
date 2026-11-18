@@ -22,13 +22,12 @@ from dss.core.intent.models import SubjectCategory
 from dss.core.shared.language import ENGLISH, LanguageTag
 from dss.ports.prompts import PromptIdentifier
 
-_SKILL = """---
+_SKILL_FRONTMATTER = """---
 id: test-skill
 domain: agriculture
 description: A test skill.
 tool_names: [select]
 ---
-Guidance line one.
 """
 
 # Any member does for probing behaviour that is the same for every component.
@@ -44,6 +43,7 @@ def _registry(
     more_overrides: tuple[tuple[str, str], ...] = (),
     placeholders: tuple[str, ...] = ("name",),
     en_skills: bool = False,
+    skill_guidance: str = "Guidance line one.\n\n{{ category_guidance }}\n",
     en_category_guidance: tuple[tuple[str, str], ...] = (),
     include_en: bool = True,
     omit_component: str | None = None,
@@ -67,7 +67,9 @@ def _registry(
         (prompt_dir / f"{language_tag}.j2").write_text(template, encoding="utf-8")
         languages.append(language_tag)
     if en_skills:
-        (prompt_dir / "skill.md").write_text(_SKILL, encoding="utf-8")
+        (prompt_dir / "skill.md").write_text(
+            _SKILL_FRONTMATTER + skill_guidance, encoding="utf-8"
+        )
     for category, guidance in en_category_guidance:
         (prompt_dir / f"{category}.md").write_text(guidance, encoding="utf-8")
 
@@ -321,7 +323,11 @@ def test_category_guidance_is_served_for_the_categories_asked_about(
     tmp_path: Path,
 ) -> None:
     service = build_prompt_service(
-        _registry(tmp_path, en_category_guidance=(_MARKET_GUIDANCE, _WEATHER_GUIDANCE))
+        _registry(
+            tmp_path,
+            en_skills=True,
+            en_category_guidance=(_MARKET_GUIDANCE, _WEATHER_GUIDANCE),
+        )
     )
 
     guidance = service.get_category_guidance(
@@ -335,7 +341,11 @@ def test_guidance_for_several_categories_comes_in_configured_order(
     tmp_path: Path,
 ) -> None:
     service = build_prompt_service(
-        _registry(tmp_path, en_category_guidance=(_MARKET_GUIDANCE, _WEATHER_GUIDANCE))
+        _registry(
+            tmp_path,
+            en_skills=True,
+            en_category_guidance=(_MARKET_GUIDANCE, _WEATHER_GUIDANCE),
+        )
     )
 
     guidance = service.get_category_guidance(
@@ -351,7 +361,7 @@ def test_guidance_for_several_categories_comes_in_configured_order(
 
 def test_a_category_with_no_guidance_adds_nothing(tmp_path: Path) -> None:
     service = build_prompt_service(
-        _registry(tmp_path, en_category_guidance=(_MARKET_GUIDANCE,))
+        _registry(tmp_path, en_skills=True, en_category_guidance=(_MARKET_GUIDANCE,))
     )
 
     guidance = service.get_category_guidance(
@@ -365,7 +375,7 @@ def test_a_language_entry_without_category_guidance_falls_back_to_english(
     tmp_path: Path,
 ) -> None:
     service = build_prompt_service(
-        _registry(tmp_path, en_category_guidance=(_MARKET_GUIDANCE,))
+        _registry(tmp_path, en_skills=True, en_category_guidance=(_MARKET_GUIDANCE,))
     )
 
     guidance = service.get_category_guidance(
@@ -380,13 +390,69 @@ def test_guidance_for_a_name_that_is_not_a_category_refuses_to_boot(
 ) -> None:
     with pytest.raises(ValueError, match="Mandi"):
         build_prompt_service(
-            _registry(tmp_path, en_category_guidance=(("Mandi", "Name the market.\n"),))
+            _registry(
+                tmp_path,
+                en_skills=True,
+                en_category_guidance=(("Mandi", "Name the market.\n"),),
+            )
         )
 
 
 def test_a_named_guidance_file_that_is_absent_refuses_to_boot(tmp_path: Path) -> None:
-    config = _registry(tmp_path, en_category_guidance=(_MARKET_GUIDANCE,))
+    config = _registry(
+        tmp_path, en_skills=True, en_category_guidance=(_MARKET_GUIDANCE,)
+    )
     (tmp_path / "prompts" / "Market.md").unlink()
 
     with pytest.raises(FileNotFoundError, match=r"Market\.md"):
         build_prompt_service(config)
+
+
+def test_a_skill_carries_the_guidance_for_the_categories_asked_about(
+    tmp_path: Path,
+) -> None:
+    service = build_prompt_service(
+        _registry(tmp_path, en_skills=True, en_category_guidance=(_MARKET_GUIDANCE,))
+    )
+
+    (skill,) = service.get_skills(
+        _PROBE, LanguageTag("en"), frozenset({SubjectCategory.MARKET})
+    )
+
+    assert "Name the market and the date." in skill.guidance
+
+
+def test_a_skill_carries_no_guidance_on_a_turn_about_another_category(
+    tmp_path: Path,
+) -> None:
+    service = build_prompt_service(
+        _registry(tmp_path, en_skills=True, en_category_guidance=(_MARKET_GUIDANCE,))
+    )
+
+    (skill,) = service.get_skills(
+        _PROBE, LanguageTag("en"), frozenset({SubjectCategory.CROP})
+    )
+
+    assert "Name the market" not in skill.guidance
+    assert "{{" not in skill.guidance
+
+
+def test_a_skill_using_a_value_the_code_does_not_send_refuses_to_boot(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ValueError, match="crop_name"):
+        build_prompt_service(
+            _registry(tmp_path, en_skills=True, skill_guidance="Grow {{ crop_name }}.")
+        )
+
+
+def test_category_guidance_with_no_place_in_the_prompt_refuses_to_boot(
+    tmp_path: Path,
+) -> None:
+    """Neither the template nor a skill has `category_guidance`, so the
+    guidance would never be read."""
+
+    with pytest.raises(ValueError, match="category_guidance"):
+        build_prompt_service(
+            _registry(tmp_path, en_category_guidance=(_MARKET_GUIDANCE,))
+        )

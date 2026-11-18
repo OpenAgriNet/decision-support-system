@@ -63,10 +63,14 @@ class PromptProvider(Protocol):
         ...
 
     def get_skills(
-        self, prompt_identifier: PromptIdentifier, lang: LanguageTag
+        self,
+        prompt_identifier: PromptIdentifier,
+        lang: LanguageTag,
+        categories: Collection[SubjectCategory] = frozenset(),
     ) -> tuple[Skill, ...]:
         """The skills configured beside that prompt, with the same language
-        fallback. Empty for components that declare none."""
+        fallback. Empty for components that declare none. A skill's
+        ``{{ category_guidance }}`` holds the guidance for ``categories``."""
         ...
 
     def get_category_guidance(

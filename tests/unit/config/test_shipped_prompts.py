@@ -461,6 +461,31 @@ def test_the_planner_s_market_guidance_ships_outside_its_prompt() -> None:
     assert guidance not in _planner_prompt()
 
 
+@pytest.mark.parametrize("lang", ["en", "hi"])
+def test_the_planner_skill_carries_the_market_guidance_on_a_market_turn(
+    lang: str,
+) -> None:
+    service = _service()
+    guidance = service.get_category_guidance(
+        PromptIdentifier.PLANNER, LanguageTag(lang), {SubjectCategory.MARKET}
+    )
+
+    skills = service.get_skills(
+        PromptIdentifier.PLANNER, LanguageTag(lang), {SubjectCategory.MARKET}
+    )
+
+    assert any(guidance in skill.guidance for skill in skills)
+
+
+def test_the_planner_skill_carries_no_slot_on_a_turn_about_anything_else() -> None:
+    skills = _service().get_skills(
+        PromptIdentifier.PLANNER, LanguageTag("en"), {SubjectCategory.CROP}
+    )
+
+    assert all("category_guidance" not in skill.guidance for skill in skills)
+    assert all("Market prices" not in skill.guidance for skill in skills)
+
+
 def test_the_planner_s_hindi_market_guidance_is_its_own() -> None:
     hindi = _service().get_category_guidance(
         PromptIdentifier.PLANNER, LanguageTag("hi"), {SubjectCategory.MARKET}
