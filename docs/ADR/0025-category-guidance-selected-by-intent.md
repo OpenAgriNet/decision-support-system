@@ -34,8 +34,8 @@ which category's rules a turn needs.
 
 1. **Category guidance in the prompt registry.** `configs/prompts.yaml` maps an
    intent category to a guidance file, per component and language. The
-   component's template has one `category_guidance` placeholder, filled with the
-   guidance for the categories the turn's asks carry.
+   guidance for the categories the turn's asks carry goes into the
+   component's prompt in one place.
 2. **`{% if %}` branches in the template.** Every category's text stays inside
    the general prompt file, so the file grows with each category and the
    reviewer still reads them all.
@@ -55,8 +55,11 @@ Chosen option: **1**.
 - **Port.** `PromptProvider.get_category_guidance(identifier, lang, categories)`
   returns the guidance for those categories, in configured order, joined by a
   blank line — or nothing.
-- **Planner and composer.** Each prompt declares `category_guidance`, filled
-  from the subject categories of the turn's asks. Market is the first category with guidance.
+- **Planner and composer.** Both are given the guidance for the subject
+  categories of the turn's asks. The planner's goes into its guidance
+  section, after the skills, so its prompt keeps one place for guidance. The
+  composer has no skills, so its prompt declares a `category_guidance`
+  placeholder. Market is the first category with guidance.
   The planner is told other markets' prices in the district still answer the
   ask, so it keeps them. The composer is told to give the asked market's
   latest price, or say it had none and give each other market's latest, and
@@ -66,8 +69,8 @@ Chosen option: **1**.
 
 - **Good:** a turn about weather no longer reads mandi rules. Adding guidance
   for a category is a file and a config line, per language.
-- **Good:** the same mechanism serves any component that declares the
-  placeholder; the planner and the composer do today.
+- **Good:** the same mechanism serves any component that asks for its
+  guidance; the planner and the composer do today.
 - **Good:** the planner's and the composer's code stay generic. A category's
   rules change prompt text, never the flow.
 - **Bad:** following a category's rules is up to the model, not code. Picking

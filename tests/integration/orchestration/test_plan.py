@@ -293,11 +293,11 @@ async def _planner_prompt_for(ask: Ask) -> str:
     )
 
     (_, _, values), *_ = prompts.calls
-    return values["category_guidance"]
+    return values["guidance_section"]
 
 
 async def test_a_market_ask_brings_the_market_guidance_to_the_planner() -> None:
-    assert await _planner_prompt_for(PRICE_ASK) == MARKET_GUIDANCE
+    assert MARKET_GUIDANCE in await _planner_prompt_for(PRICE_ASK)
 
 
 async def test_an_ask_about_anything_else_brings_no_market_guidance() -> None:
@@ -305,7 +305,7 @@ async def test_an_ask_about_anything_else_brings_no_market_guidance() -> None:
         update={"subject_categories": SubjectCategory.WEATHER}
     )
 
-    assert await _planner_prompt_for(weather) == ""
+    assert MARKET_GUIDANCE not in await _planner_prompt_for(weather)
 
 
 DIRECT_ANSWER = DiscoveredAnswer(
