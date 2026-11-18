@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+- `init` and `status` now send an offer on their commitment, as `select`
+  does. PM-KISAN refused `init` without one (#207)
+
 ## [0.3.0] - 2026-11-17
 
 ### Changed

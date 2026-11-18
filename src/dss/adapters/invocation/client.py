@@ -82,6 +82,22 @@ def _build_commitment(resources: list[dict], **other_fields: object) -> dict[str
     }
 
 
+def _build_offer(
+    capability: ProviderCapability,
+    *,
+    resource_id: str,
+    offer_id: str,
+) -> dict[str, Any]:
+    return {
+        "id": offer_id,
+        "resourceIds": [resource_id],
+        "provider": {
+            "id": capability.provider_id,
+            "descriptor": {"name": capability.provider_name},
+        },
+    }
+
+
 def build_select_request(  # noqa: PLR0913
     capability: ProviderCapability,
     resource_attributes: dict,
@@ -114,14 +130,9 @@ def build_select_request(  # noqa: PLR0913
                                 "quantity": {"count": 1},
                             }
                         ],
-                        offer={
-                            "id": offer_id,
-                            "resourceIds": [resource_id],
-                            "provider": {
-                                "id": capability.provider_id,
-                                "descriptor": {"name": capability.provider_name},
-                            },
-                        },
+                        offer=_build_offer(
+                            capability, resource_id=resource_id, offer_id=offer_id
+                        ),
                     )
                 ]
             }
@@ -192,7 +203,7 @@ def build_status_request(  # noqa: PLR0913
     return {
         "context": context.to_wire(),
         "message": _commitment_message(
-            attributes, resource_id=resource_id, contract_id=contract_id
+            capability, attributes, resource_id=resource_id, contract_id=contract_id
         ),
     }
 
@@ -227,13 +238,17 @@ def build_init_request(  # noqa: PLR0913
     return {
         "context": context.to_wire(),
         "message": _commitment_message(
-            attributes, resource_id=resource_id, contract_id=contract_id
+            capability, attributes, resource_id=resource_id, contract_id=contract_id
         ),
     }
 
 
 def _commitment_message(
-    attributes: dict, *, resource_id: str, contract_id: str
+    capability: ProviderCapability,
+    attributes: dict,
+    *,
+    resource_id: str,
+    contract_id: str,
 ) -> dict[str, Any]:
     return {
         "contract": {
@@ -242,6 +257,11 @@ def _commitment_message(
                 _build_commitment(
                     [{"id": resource_id, "quantity": {"count": 1}}],
                     commitmentAttributes=attributes,
+                    offer=_build_offer(
+                        capability,
+                        resource_id=resource_id,
+                        offer_id=_DEFAULT_OFFER_ID,
+                    ),
                 )
             ],
         }
