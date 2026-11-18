@@ -57,7 +57,7 @@ def test_the_fake_runner_satisfies_the_port(a_turn, a_context):
     assert events == [StubRunner.ANSWER]
 
 
-async def _no_discovery(intent, turn, *, now):
+async def _no_discovery(asks, turn, *, now):
     """Conformance is about the port's shape, not discovery."""
 
     return a_discovery()

@@ -7,7 +7,7 @@ two components run concurrently and neither consumes the other's output.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from datetime import datetime
 
 import anyio
@@ -15,6 +15,7 @@ import anyio
 from dss.core.forms.models import ActionSchema, FormContext
 from dss.core.forms.registry import FormRegistry
 from dss.core.intent.models import (
+    Ask,
     ClassifiedAsk,
     Intent,
     IntentClassification,
@@ -130,17 +131,17 @@ class _FakeModerationLLM(_NeverStreams):
 
 
 class _FakeDiscovery:
-    """Stands in for the composed ``DiscoverProviders``. Records the intent it
+    """Stands in for the composed ``DiscoverProviders``. Records the asks it
     was handed, so a test can prove discovery ran off intent's output."""
 
     def __init__(self, result: DiscoveryResult | None = None) -> None:
         self._result = result or a_discovery()
-        self.intents: list[Intent] = []
+        self.asks_seen: list[tuple[Ask, ...]] = []
 
     async def __call__(
-        self, intent: Intent, turn: UserTurn, now: datetime
+        self, asks: Sequence[Ask], turn: UserTurn, now: datetime
     ) -> DiscoveryResult:
-        self.intents.append(intent)
+        self.asks_seen.append(tuple(asks))
         return self._result
 
 
@@ -231,7 +232,7 @@ async def test_discovery_runs_on_the_classified_intent() -> None:
         area_lookup=FakeAreaLookup(),
     )
 
-    assert discovery.intents == [resolved_intent]
+    assert discovery.asks_seen == [resolved_intent.asks]
     assert result.discovery == found
 
 
@@ -430,7 +431,7 @@ async def test_discovery_searches_only_settled_asks() -> None:
     )
 
     potato, rain = result.intent.asks
-    assert [intent.asks for intent in discovery.intents] == [(potato,)]
+    assert discovery.asks_seen == [(potato,)]
     assert result.settlements == (
         AskSettlement(potato, _SETTLED),
         AskSettlement(rain, _NEEDS_PLACE),
@@ -454,7 +455,7 @@ async def test_a_settled_ask_keeps_its_id() -> None:
     )
 
     assert [ask.id for ask in result.settled_intent.asks] == [1]
-    assert [[ask.id for ask in intent.asks] for intent in discovery.intents] == [[1]]
+    assert [[ask.id for ask in asks] for asks in discovery.asks_seen] == [[1]]
 
 
 async def test_the_settled_asks_are_built_once() -> None:
@@ -486,7 +487,7 @@ async def test_nothing_settled_skips_discovery() -> None:
         settle_asks=settles_with(_NEEDS_PLACE),
     )
 
-    assert discovery.intents == []
+    assert discovery.asks_seen == []
     assert result.settled_intent.asks == ()
 
 
@@ -528,11 +529,11 @@ def test_settle_reads_the_index_each_turn() -> None:
         interaction_type=InteractionType.OBSERVE,
     )
 
-    assert settle(Intent(asks=(rain,))) == (AskSettlement(rain, _SETTLED),)
+    assert settle((rain,)) == (AskSettlement(rain, _SETTLED),)
 
     index._place_bound_types = frozenset({weather_pack})
 
-    assert settle(Intent(asks=(rain,))) == (AskSettlement(rain, _NEEDS_PLACE),)
+    assert settle((rain,)) == (AskSettlement(rain, _NEEDS_PLACE),)
 
 
 def _grievance_form(scheme: str, action: str) -> ActionSchema:
@@ -560,7 +561,7 @@ def test_the_registrys_forms_reach_settlement() -> None:
         interaction_type=InteractionType.OBSERVE,
     )
 
-    settlements = settle(Intent(asks=numbered(complaint, rain)))
+    settlements = settle(numbered(complaint, rain))
 
     assert [each.settlement for each in settlements] == [
         NeedsClarification(open_slots=(Slot(AskSlot.SCHEME, Missing()),)),

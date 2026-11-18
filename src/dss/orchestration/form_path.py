@@ -551,7 +551,7 @@ class FormPath:
     ) -> DiscoveryResult:
         with trace_component(Stage.DISCOVERY, form_turn.ctx.trace_id):
             found = await self._components.discover(
-                intent, form_turn.turn, now=datetime.now(UTC)
+                intent.asks, form_turn.turn, now=datetime.now(UTC)
             )
             providers = discovery_for_scheme(found, scheme_code)
             set_current_span_attributes(

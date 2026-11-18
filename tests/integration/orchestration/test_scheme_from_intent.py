@@ -7,11 +7,12 @@ handed. The code check itself is tier 1.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from dss.core.intent.models import (
+    Ask,
     ClassifiedAsk,
-    Intent,
     IntentClassification,
     InteractionType,
     Scheme,
@@ -66,13 +67,13 @@ class _FakeLLM:
 
 
 class _RecordingDiscovery:
-    """Captures the intent discovery was actually handed."""
+    """Captures the asks discovery was actually handed."""
 
     def __init__(self) -> None:
-        self.seen: Intent | None = None
+        self.seen: tuple[Ask, ...] | None = None
 
-    async def __call__(self, intent: Intent, turn: UserTurn, *, now: datetime):
-        self.seen = intent
+    async def __call__(self, asks: Sequence[Ask], turn: UserTurn, *, now: datetime):
+        self.seen = tuple(asks)
         return a_discovery()
 
 
@@ -107,7 +108,7 @@ async def test_discovery_receives_the_scheme_intent_named() -> None:
     )
 
     assert discovery.seen is not None
-    (ask,) = discovery.seen.asks
+    (ask,) = discovery.seen
     assert ask.scheme == PMFBY
     assert ask.agriculture_subjects == PMFBY.name
     # The model's category stands; nothing after intent changes it.
@@ -120,7 +121,7 @@ async def test_no_catalog_means_no_scheme_and_the_turn_still_runs() -> None:
 
     result, discovery, prompts = await _run(_grievance("PMFBY"), catalog=None)
 
-    assert discovery.seen.asks[0].scheme is None
-    assert discovery.seen.asks[0].agriculture_subjects == "fasal bima"
+    assert discovery.seen[0].scheme is None
+    assert discovery.seen[0].agriculture_subjects == "fasal bima"
     (intent_call,) = [call for call in prompts.calls if call[0].value == "intent"]
     assert intent_call[2]["schemes"] == ()

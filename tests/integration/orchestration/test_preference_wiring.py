@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 import pytest
 
 from dss.core.intent.models import (
-    Intent,
+    Ask,
     InteractionType,
     PlaceSource,
     ResolvedPlace,
@@ -95,21 +95,18 @@ def _turn(sender_id: str | None) -> UserTurn[TextQuery]:
     )
 
 
-def _intent() -> Intent:
-    return Intent(
-        asks=(
-            an_ask(
-                subject_categories=SubjectCategory.WEATHER,
-                interaction_type=InteractionType.OBSERVE,
-                place=ResolvedPlace(
-                    name="Nashik",
-                    within=("Maharashtra",),
-                    geometry=Geometry(coordinates=[73.79, 19.99]),
-                    source=PlaceSource.NAMED,
-                ),
+def _asks() -> tuple[Ask, ...]:
+    return (
+        an_ask(
+            subject_categories=SubjectCategory.WEATHER,
+            interaction_type=InteractionType.OBSERVE,
+            place=ResolvedPlace(
+                name="Nashik",
+                within=("Maharashtra",),
+                geometry=Geometry(coordinates=[73.79, 19.99]),
+                source=PlaceSource.NAMED,
             ),
         ),
-        confidence=1.0,
     )
 
 
@@ -134,7 +131,7 @@ async def test_the_discovery_is_built_for_the_turn() -> None:
     )
     turn = _turn("kisan-mitra-web")
 
-    await discover(_intent(), turn, now=datetime.now(UTC))
+    await discover(_asks(), turn, now=datetime.now(UTC))
 
     assert built_for == [turn]
 
@@ -145,7 +142,7 @@ async def test_the_turns_own_client_is_the_one_looked_up() -> None:
     )
 
     await _discover(preferences)(
-        _intent(), _turn("kisan-mitra-web"), now=datetime.now(UTC)
+        _asks(), _turn("kisan-mitra-web"), now=datetime.now(UTC)
     )
 
     assert preferences.asked == ["kisan-mitra-web"]
@@ -157,7 +154,7 @@ async def test_discovery_hands_on_a_ranked_candidate_list() -> None:
     )
 
     result = await _discover(preferences)(
-        _intent(), _turn("kisan-mitra-web"), now=datetime.now(UTC)
+        _asks(), _turn("kisan-mitra-web"), now=datetime.now(UTC)
     )
 
     assert [c.provider_id for c in result.capabilities[0]] == [
@@ -174,14 +171,14 @@ async def test_a_caller_that_named_nobody_gets_the_default_ranking() -> None:
         default={"Weather": ["mausamgram"]},
     )
 
-    result = await _discover(preferences)(_intent(), _turn(None), now=datetime.now(UTC))
+    result = await _discover(preferences)(_asks(), _turn(None), now=datetime.now(UTC))
 
     assert [c.provider_id for c in result.capabilities[0]] == ["mausamgram"]
 
 
 async def test_an_unconfigured_deployment_keeps_every_provider() -> None:
     result = await _discover(FakeProviderPreferences())(
-        _intent(), _turn("kisan-mitra-web"), now=datetime.now(UTC)
+        _asks(), _turn("kisan-mitra-web"), now=datetime.now(UTC)
     )
 
     assert [c.provider_id for c in result.capabilities[0]] == [
@@ -204,7 +201,7 @@ async def test_what_the_ranking_dropped_is_logged(
 
     with caplog.at_level("INFO", logger="dss.trace"):
         await _discover(preferences)(
-            _intent(), _turn("kisan-mitra-web"), now=datetime.now(UTC)
+            _asks(), _turn("kisan-mitra-web"), now=datetime.now(UTC)
         )
 
     record = next(

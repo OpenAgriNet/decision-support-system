@@ -12,7 +12,6 @@ import anyio
 from dss.core.intent.models import (
     AmbiguousPlace,
     Ask,
-    Intent,
     InteractionType,
     ResolvedPlace,
     SubjectCategory,
@@ -189,7 +188,7 @@ def _diverged_categories(
 
 
 def _find_asks_to_discover(
-    intent: Intent,
+    asks: Sequence[Ask],
     languages: tuple[str, ...],
     radius_m: int,
     index: CapabilityIndex,
@@ -201,7 +200,7 @@ def _find_asks_to_discover(
 
     outcomes = {
         ask.id: _search_for(ask, languages, radius_m, index, place_bound_types)
-        for ask in intent.asks
+        for ask in asks
     }
     return AsksToBeDiscovered(
         asks=tuple(
@@ -211,7 +210,7 @@ def _find_asks_to_discover(
                 if isinstance(outcome := outcomes[ask.id], ProviderQuery)
                 else None,
             )
-            for ask in intent.asks
+            for ask in asks
         ),
         events=tuple(
             outcome
@@ -277,7 +276,7 @@ def _detect_divergence(
 
 
 async def discover_providers(  # noqa: PLR0913
-    intent: Intent,
+    asks: Sequence[Ask],
     turn: UserTurn,
     *,
     discovery: CapabilityDiscovery,
@@ -285,22 +284,16 @@ async def discover_providers(  # noqa: PLR0913
     radius_m: int,
     now: datetime,
 ) -> DiscoveryResult:
-    """Find who can serve each of ``intent``'s asks.
+    """One entry per ask, in the order given.
 
-    Coverage is per ask (``ask.place``, resolved before this runs) rather than
-    one shared coordinate for the turn — see ``_find_asks_to_discover``.
-
-    Everything past ``turn`` is keyword-only on purpose. ``build_discover_providers``
-    binds ``discovery``/``schema_pack_cache``/``radius_m`` by keyword and leaves
-    the caller to pass ``now``; with these positional, a caller passing ``now``
-    by position landed it in ``discovery``'s slot and collided with the bound
-    value. Keyword-only makes that impossible to write.
+    Keyword-only past ``turn``: with positional arguments, a caller passing
+    ``now`` by position landed it in ``discovery``'s slot.
     """
 
     languages = (str(turn.target_lang),)
     index = schema_pack_cache.current()
     to_discover: AsksToBeDiscovered = _find_asks_to_discover(
-        intent, languages, radius_m, index, schema_pack_cache.place_bound_types()
+        asks, languages, radius_m, index, schema_pack_cache.place_bound_types()
     )
     discovered = await _send_queries(to_discover, discovery, turn.transaction_id)
     fresh = tuple(ask.within_validity(now) for ask in discovered)

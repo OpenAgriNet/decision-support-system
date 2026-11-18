@@ -22,7 +22,7 @@ from __future__ import annotations
 import logging
 import os
 import warnings
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from datetime import datetime
@@ -70,12 +70,14 @@ from dss.core.channel.models import ClarificationText
 from dss.core.channel.service import answer_for_session_busy
 from dss.core.forms.models import FormSubmission
 from dss.core.forms.registry import FormRegistry
-from dss.core.intent.models import Intent
+from dss.core.intent.models import Ask
 from dss.core.planner.models import Identity
 from dss.core.planner.validation import DomainSchema
 from dss.core.policy.models import Checkpoint, Policy
 from dss.core.provider_discovery.models import (
+    NOTHING_FOUND,
     CapabilityIndex,
+    DiscoveredAsk,
     DiscoveryResult,
     ProviderCapability,
 )
@@ -586,13 +588,18 @@ def _refuse_unwired_call() -> Never:
 
 
 async def _discovers_nothing(
-    intent: Intent, turn: UserTurn, *, now: datetime
+    asks: Sequence[Ask], turn: UserTurn, *, now: datetime
 ) -> DiscoveryResult:
     """Every turn finds nobody to call. The seam is typed and in place, so
     supplying the three network settings replaces this with the real client and
     lights up the planner and composer."""
 
-    return DiscoveryResult(asks=(), events=())
+    return DiscoveryResult(
+        asks=tuple(
+            DiscoveredAsk(ask=ask, query=None, found=NOTHING_FOUND) for ask in asks
+        ),
+        events=(),
+    )
 
 
 @dataclass(frozen=True)

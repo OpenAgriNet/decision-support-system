@@ -28,6 +28,7 @@ from dss.adapters.observability.tracing import (
 )
 from dss.core.intent.models import (
     AmbiguousPlace,
+    Ask,
     Intent,
     IntentClassification,
     ResolvedPlace,
@@ -215,13 +216,17 @@ class TurnResult(BaseModel):
         return all(ask_settlement.is_settled for ask_settlement in self.settlements)
 
 
+def _settled_asks(settlements: Sequence[AskSettlement]) -> tuple[Ask, ...]:
+    return tuple(
+        ask_settlement.ask
+        for ask_settlement in settlements
+        if ask_settlement.is_settled
+    )
+
+
 def _settled_only(settlements: Sequence[AskSettlement], *, confidence: float) -> Intent:
     return Intent(
-        asks=tuple(
-            ask_settlement.ask
-            for ask_settlement in settlements
-            if ask_settlement.is_settled
-        ),
+        asks=_settled_asks(settlements),
         confidence=confidence,
     )
 
@@ -274,7 +279,7 @@ async def run_turn(  # noqa: PLR0913
         )
         settlements = _settle(intent, turn, settle_asks=settle_asks)
         discovery = await _discover(
-            _settled_only(settlements, confidence=intent.confidence),
+            _settled_asks(settlements),
             turn,
             discover_providers=discover_providers,
             now=now or datetime.now(UTC),
@@ -345,13 +350,13 @@ def _settle(
     intent: Intent, turn: UserTurn[TextQuery], *, settle_asks: SettleAsks
 ) -> tuple[AskSettlement, ...]:
     with trace_component(Stage.SETTLEMENT, turn.transaction_id):
-        settlements = settle_asks(intent)
+        settlements = settle_asks(intent.asks)
         set_current_span_attributes(**settlement_attributes(settlements))
     return settlements
 
 
 async def _discover(
-    settled: Intent,
+    settled_asks: Sequence[Ask],
     turn: UserTurn[TextQuery],
     *,
     discover_providers: DiscoverProviders,
@@ -359,12 +364,12 @@ async def _discover(
 ) -> DiscoveryResult:
     """Nothing settled means nothing to search."""
 
-    if not settled.asks:
+    if not settled_asks:
         return _nothing_discovered()
     with trace_component(Stage.DISCOVERY, turn.transaction_id):
-        discovery = await discover_providers(settled, turn, now=now)
+        discovery = await discover_providers(settled_asks, turn, now=now)
         set_current_span_content(
-            input=asks_text(settled.asks), output=discovery_text(discovery)
+            input=asks_text(settled_asks), output=discovery_text(discovery)
         )
     return discovery
 

@@ -231,7 +231,7 @@ class _FakeDiscovery:
     def __init__(self, result: DiscoveryResult) -> None:
         self._result = result
 
-    async def __call__(self, intent, turn, now) -> DiscoveryResult:
+    async def __call__(self, asks, turn, now) -> DiscoveryResult:
         return self._result
 
 
