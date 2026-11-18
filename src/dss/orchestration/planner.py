@@ -120,7 +120,8 @@ async def _select(
         return "This turn was not cleared to call providers. Do not retry."
 
     selected = _find_selected_capability(deps, ask_id=ask_id, resource_id=resource_id)
-    # A safety net: settlement asks for a needed place first.
+    # The index lists the facility pack under Crop too, so an ask that settled
+    # with no place can still be offered an option that needs one.
     # Not a ModelRetry: retrying cannot fix the place.
     if selected.lacks_needed_place:
         return (

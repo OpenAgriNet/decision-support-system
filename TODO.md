@@ -179,7 +179,8 @@
   pack of the category needs one. So a Crop ask that only the facility pack
   can answer is never asked for its place. When the mapping is fixed, change
   the rule in the same change: with one pack per category it is just "the
-  pack needs a place".
+  pack needs a place". Remove the place check in the planner's `select` tool
+  then too: settlement will cover every case.
 
 ## Place resolution (#130) — deferred to separate PRs
 
