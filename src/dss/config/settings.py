@@ -229,13 +229,6 @@ class Settings(BaseSettings):
     )
     @classmethod
     def _unset_when_blank(cls, value: object) -> object:
-        """An empty variable is an operator leaving it off, not a URL.
-
-        `DSS_PROVIDER_PREFERENCES_BASE_URL=` is what `docker-compose.yml`
-        passes when the operator sets nothing. Same stance as
-        `DSS_PHOTON_BASE_URL`, where empty also means off.
-        """
-
         if isinstance(value, str) and not value.strip():
             return None
         return value

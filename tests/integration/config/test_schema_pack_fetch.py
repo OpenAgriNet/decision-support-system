@@ -70,10 +70,7 @@ async def _assert_loader_reads_mandi_price(root: Path) -> None:
 async def test_the_published_tree_is_one_the_loader_reads(
     httpserver: HTTPServer, tmp_path: Path
 ) -> None:
-    # Loading the tree, rather than asserting paths, makes both halves agree.
-    _serve_one_pack(
-        httpserver, site_path="/network-specs", listed_ref="schema-packs-v0.1"
-    )
+    _serve_one_pack(httpserver, site_path="/network-specs", listed_ref="main")
 
     written = fetch_packs(
         ref=None,
@@ -111,10 +108,7 @@ async def test_a_branch_preview_tree_is_one_the_loader_reads(
 async def test_the_destination_does_not_have_to_exist(
     httpserver: HTTPServer, tmp_path: Path
 ) -> None:
-    # The fresh-clone case, which is the one the startup fetch is for.
-    _serve_one_pack(
-        httpserver, site_path="/network-specs", listed_ref="schema-packs-v0.1"
-    )
+    _serve_one_pack(httpserver, site_path="/network-specs", listed_ref="main")
     absent = tmp_path / "never" / "created"
 
     written = fetch_packs(

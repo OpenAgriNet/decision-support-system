@@ -136,11 +136,13 @@ To try packs from a network-specs branch, pass `--ref <branch>` (or set
 `.../network-specs/previews/<branch>/`. The branches with a preview are listed
 at <https://openagrinet.github.io/network-specs/previews/>. A preview's files
 point their own URLs (`id`, `@context`) at the preview path; that is expected.
-A branch with no preview, such as `main`, fetches nothing and exits `1`:
+A branch with no preview fetches nothing and exits `1`. `main` has no preview
+either: it is the published site, so leave the ref unset to read it.
 
 ```
-error: no schema packs found in a preview of 'main' (0 of 6). The branches
-with a preview are listed at https://openagrinet.github.io/network-specs/previews/
+error: no schema packs found in a preview of 'my-branch' (0 of 6). The branches
+with a preview are listed at https://openagrinet.github.io/network-specs/previews/.
+`main` is the published site itself: leave the ref unset to read it.
 ```
 
 | Flag | Default | Notes |
@@ -149,8 +151,9 @@ with a preview are listed at https://openagrinet.github.io/network-specs/preview
 | `--dest` | `var/schema-packs/` | resolved from the repo root, not your working directory |
 
 Pages cannot list a folder, so each pack's example file names come from the
-GitHub API, from the `--ref` branch or, with no ref, from `schema-packs-v0.1`
+GitHub API, from the `--ref` branch or, with no ref, from `main`
 (the branch Pages is built from).
+
 Set `GITHUB_TOKEN` if you re-run it often — the listing call is capped at 60 an
 hour unauthenticated.
 
