@@ -388,3 +388,20 @@ def test_the_model_is_never_shown_the_scheme_field() -> None:
 
     assert "scheme_code" in properties
     assert "scheme" not in properties
+
+
+def test_an_intent_names_each_category_its_asks_are_about_once() -> None:
+    def ask(category: SubjectCategory) -> Ask:
+        return Ask(
+            subject_categories=category, interaction_type=InteractionType.OBSERVE
+        )
+
+    intent = Intent(
+        asks=(
+            ask(SubjectCategory.MARKET),
+            ask(SubjectCategory.WEATHER),
+            ask(SubjectCategory.MARKET),
+        )
+    )
+
+    assert intent.asked_categories == {SubjectCategory.MARKET, SubjectCategory.WEATHER}

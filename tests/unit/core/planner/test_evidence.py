@@ -25,7 +25,7 @@ from dss.core.settlement.models import (
     Settled,
     Slot,
 )
-from tests.support.evidence import attempted
+from tests.support.evidence import attempted, build_evidence
 
 
 def _results(evidence: Evidence) -> list[Result]:
@@ -525,3 +525,20 @@ def test_merge_refuses_mismatched_evidence() -> None:
         merge_unsettled(
             _intent(_RAIN, _POTATO), (_NEEDS_PLACE, _SETTLED), settled=settled
         )
+
+
+def test_evidence_names_each_category_its_asks_are_about() -> None:
+    evidence = build_evidence(
+        asks=[
+            Ask(
+                subject_categories=SubjectCategory.MARKET,
+                interaction_type=InteractionType.OBSERVE,
+            ),
+            Ask(
+                subject_categories=SubjectCategory.CROP,
+                interaction_type=InteractionType.OBSERVE,
+            ),
+        ]
+    )
+
+    assert evidence.asked_categories == {SubjectCategory.MARKET, SubjectCategory.CROP}

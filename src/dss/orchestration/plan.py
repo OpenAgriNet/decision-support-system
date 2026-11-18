@@ -114,6 +114,9 @@ def build_plan(  # noqa: PLR0913
             )
 
         skills = prompts.get_skills(PromptIdentifier.PLANNER, turn.target_lang)
+        category_guidance = prompts.get_category_guidance(
+            PromptIdentifier.PLANNER, turn.target_lang, intent.asked_categories
+        )
         agent = build_planner_agent(
             skills=skills,
             model=model,
@@ -126,12 +129,7 @@ def build_plan(  # noqa: PLR0913
                     "identity_persona": identity.persona,
                     "identity_boundaries": identity.boundaries,
                     "guidance_section": guidance_section(
-                        skills,
-                        category_guidance=prompts.get_category_guidance(
-                            PromptIdentifier.PLANNER,
-                            turn.target_lang,
-                            {ask.subject_categories for ask in intent.asks},
-                        ),
+                        skills, category_guidance=category_guidance
                     ),
                     "asks_section": asks_section(
                         intent.asks, awaiting=frozenset(awaiting)

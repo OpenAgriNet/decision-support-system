@@ -279,3 +279,7 @@ class Intent(BaseModel):
 
     asks: tuple[Ask, ...] = ()
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+
+    @property
+    def asked_categories(self) -> frozenset[SubjectCategory]:
+        return frozenset(ask.subject_categories for ask in self.asks)

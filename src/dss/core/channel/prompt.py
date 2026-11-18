@@ -68,9 +68,6 @@ def system_prompt(
     prompts: PromptProvider,
     evidence: Evidence,
 ) -> str:
-    asked_about = {
-        ask_evidence.ask.subject_categories for ask_evidence in evidence.ask_evidences
-    }
     return prompts.get_prompt(
         PromptIdentifier.COMPOSER,
         lang=turn.target_lang,
@@ -80,7 +77,7 @@ def system_prompt(
             "boundaries": identity.boundaries,
             "target_lang": turn.target_lang,
             "category_guidance": prompts.get_category_guidance(
-                PromptIdentifier.COMPOSER, turn.target_lang, asked_about
+                PromptIdentifier.COMPOSER, turn.target_lang, evidence.asked_categories
             ),
         },
     )
