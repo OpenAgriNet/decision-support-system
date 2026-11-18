@@ -77,7 +77,7 @@ def capability_types_for(
 ) -> tuple[NetworkSchemaType, ...]:
     """The pack types discovery would search for this ask."""
 
-    return index.get((ask.subject_categories.value, _action_type_of(ask)), ())
+    return index.get((ask.subject_category, _action_type_of(ask)), ())
 
 
 def coverage_for_ask(ask: Ask, *, radius_m: int) -> Coverage | None:
@@ -113,7 +113,7 @@ def _query_for_ask(
     place_bound_types: frozenset[str],
 ) -> ProviderQuery | CapabilityUnresolved:
     types, event = resolve_capability_type(
-        ask.subject_categories.value, _action_type_of(ask), index
+        ask.subject_category, _action_type_of(ask), index
     )
     if (
         event is not None
@@ -122,7 +122,7 @@ def _query_for_ask(
         return event
     return ProviderQuery(
         capabilities=types,
-        subject_category=ask.subject_categories.value,
+        subject_category=ask.subject_category,
         languages=languages,
         coverage=coverage if is_place_needed(types, place_bound_types) else None,
     )

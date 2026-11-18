@@ -61,7 +61,7 @@ def form_context_for(ask: Ask) -> FormContext | None:
         return None
     return FormContext(
         scheme=ask.scheme.code,
-        category=ask.subject_categories.value,
+        category=ask.subject_category,
         action=action,
     )
 

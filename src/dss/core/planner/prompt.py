@@ -62,7 +62,7 @@ def asks_section(
         return ""
 
     lines = [
-        f"- ask {ask.id}: {ask.subject_categories.value} ({ask.interaction_type.value})"
+        f"- ask {ask.id}: {ask.subject_category} ({ask.interaction_type.value})"
         + (", awaits a form" if ask.id in awaiting else "")
         for ask in asks
     ]

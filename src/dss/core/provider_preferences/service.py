@@ -73,7 +73,7 @@ def _priority(
     """What the sender's ranking means for this one ask — the record alone,
     before anything is reordered by it."""
 
-    capability = discovered.ask.subject_categories.value
+    capability = discovered.ask.subject_category
     ranking = preference.ranking_for(capability)
     found = (*discovered.capabilities, *discovered.answers)
     return AskPriority(

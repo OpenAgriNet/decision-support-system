@@ -211,7 +211,7 @@ def _build_attributes(
     ask = selected.ask
     return build_resource_attributes(
         capability=candidate,
-        subject_category=ask.subject_categories.value,
+        subject_category=ask.subject_category,
         place=ask.place if isinstance(ask.place, ResolvedPlace) else None,
         model_filled=model_filled,
         schema_context_index=deps.schema_context_index,

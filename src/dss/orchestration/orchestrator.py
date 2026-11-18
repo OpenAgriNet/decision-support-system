@@ -494,7 +494,7 @@ class TextPath:
         self._note("intent", ctx, _classified(intent))
         asks = intent.asks
         recorder.asked(
-            categories=[ask.subject_categories.value for ask in asks],
+            categories=[ask.subject_category for ask in asks],
             interactions=[ask.interaction_type.value for ask in asks],
             subjects=[ask.agriculture_subjects or "" for ask in asks],
         )
@@ -804,9 +804,7 @@ def _classified(intent: Intent) -> str:
     """A non-personal summary for telemetry: which categories the turn asked
     about, never the question itself."""
 
-    return (
-        ",".join(ask.subject_categories.value for ask in intent.asks) or "unclassified"
-    )
+    return ",".join(ask.subject_category for ask in intent.asks) or "unclassified"
 
 
 def refusal_for(decision: ModerationDecision) -> tuple[TurnOutcome, ComposedAnswer]:

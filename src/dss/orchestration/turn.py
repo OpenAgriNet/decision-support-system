@@ -123,7 +123,7 @@ def settlement_attributes(
 
     waits = [
         f"ask {ask_settlement.ask.id} "
-        f"({ask_settlement.ask.subject_categories.value}): "
+        f"({ask_settlement.ask.subject_category}): "
         f"{_wait_of(ask_settlement.settlement)}"
         for ask_settlement in settlements
     ]

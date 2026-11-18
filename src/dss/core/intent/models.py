@@ -204,6 +204,10 @@ class Ask(BaseModel):
     def known_action(self) -> RequestedAction | None:
         return self.action if isinstance(self.action, ProviderAction) else None
 
+    @property
+    def subject_category(self) -> str:
+        return self.subject_categories.value
+
 
 # The docstrings of ClassifiedAsk and IntentClassification go to the model as
 # the tool description. Write them for the model; notes for us go in comments.
