@@ -10,9 +10,10 @@
 ## 1. Context and Problem Statement
 
 Some answers need rules that only make sense for one kind of question. A
-mandi price answer must name the market and the date of each price, and say
-when the farmer's own market had none (#242). Put into the composer's prompt,
-that rule is read on every turn — a weather or scheme answer carries mandi
+mandi price reply covers a whole district over a week, so the answer must
+pick the asked market's price, or say it had none and give the others', each
+with its market and date (#242). Put into a component's general prompt, or
+into the planner's code, that rule runs on every turn — a weather or scheme answer carries mandi
 rules it can only misapply, and each new topic makes the general prompt
 longer and harder to review.
 
@@ -38,8 +39,11 @@ which topic rules a turn needs.
 2. **`{% if %}` branches in the template.** Every topic's text stays inside
    the general prompt file, so the file grows with each topic and the
    reviewer still reads them all.
-3. **Rules in code**, appended by the composer for a known category. A
-   reviewer cannot change them, and they skip the per-language mechanism.
+3. **Rules in code**, in the planner or the composer, for a known category or
+   data type. The generic flow gains a branch per topic, a reviewer cannot
+   change the rules, and they skip the per-language mechanism. An earlier
+   version of #242 picked the asked market's prices in the planner's code;
+   review asked for the planner to stay free of any one capability.
 
 ## 4. Decision Outcome
 
@@ -51,52 +55,40 @@ Chosen option: **1**.
 - **Port.** `PromptProvider.get_topic_guidance(identifier, lang, categories)`
   returns the guidance for those categories, in configured order, joined by a
   blank line — or nothing.
-- **Composer.** The composer's prompt declares `topic_guidance`, filled from
-  the subject categories of the turn's asks. Market is the first topic: the
-  rule to name each price's market and date, and to say when the asked market
-  had none.
+- **Planner and composer.** Each prompt declares `topic_guidance`, filled
+  from the subject categories of the turn's asks. Market is the first topic.
+  The planner is told other markets' prices in the district still answer the
+  ask, so it keeps them. The composer is told to give the asked market's
+  latest price, or say it had none and give each other market's latest, and
+  to name the market and date of every price.
 
 ## 5. Consequences
 
 - **Good:** a turn about weather no longer reads mandi rules. Adding a topic
   is a file and a config line, per language.
 - **Good:** the same mechanism serves any component that declares the
-  placeholder; only the composer does today.
+  placeholder; the planner and the composer do today.
+- **Good:** the planner's and the composer's code stay generic. A topic
+  changes prompt text, never the flow.
+- **Bad:** following a topic's rules is up to the model, not code. Picking
+  the asked market's latest price is no longer guaranteed, and the composer
+  reads every market's rows for the week, which costs more tokens.
 - **Bad:** a topic's guidance is chosen by category, not by what was found. A
   Market ask that ends with no data still gets the market rules — harmless,
   since they only speak about prices that are there.
-- **Neutral:** code for one kind of data stays gated on the data's type, not
-  on intent's category. See §6.
+- **Neutral:** the one topic-specific line of code left is the MandiPrice
+  validity window. See §6.
 
-## 6. Prompt Text by Category, Code by Data Type
+## 6. What Stays in Code
 
-Two kinds of topic-specific behaviour exist, and each is gated by a
-different check:
+A topic's rules are prompt text, chosen by intent's category. The planner's
+and the composer's code carry no branch for a category or a data type.
 
-| What | Gated on | Where |
-|---|---|---|
-| Prompt text (the Market guidance) | the ask's intent category | `core/channel/prompt.py` |
-| The `/select` validity window | the capability being called (`openagrinet:MandiPrice`) | `core/planner/resource_attributes.py` |
-| Picking the asked market's prices, or the other markets' | the capability being called | `core/planner/mandi_prices.py` |
-
-The code already runs only for a Market ask, through a chain intent starts:
-
-1. Intent tags the ask `Market`.
-2. `/discover` filters on that category, so only Market resources come back.
-3. The planner can `/select` only what discovery returned.
-4. So a MandiPrice `/select` comes only from a Market ask.
-
-Adding an intent check to the code was considered and not done:
-
-- **It repeats a check.** `category == Market and capability == MandiPrice`
-  selects nothing that `capability == MandiPrice` does not.
-- **The data type is the true reason.** The validity window exists because
-  Agmarknet's MandiPrice endpoint refuses a select without one — a fact about
-  the endpoint, not the question. A future Market resource of another type
-  (a price-trend provider with no such rule) would wrongly get the window
-  under a category check, and correctly not get it under a type check.
-- **The code reads that type's fields.** Price picking reads
-  `market.marketName` and `arrivalDate`, which only MandiPrice guarantees.
-
-The rule: what the farmer asked decides which text a prompt carries; what
-data is being handled decides which code runs.
+One exception stays, and it is not a rule about answers. Agmarknet refuses
+a MandiPrice `/select` without a validity window, so
+`core/planner/resource_attributes.py` adds one when the capability called is
+`openagrinet:MandiPrice`. It was there before #242, which only widened it to
+a week. It is keyed on the data type, not the category, because it is a fact
+about that endpoint: another Market resource without the rule must not get
+it. It goes when the schema pack fix (#55) lets the window come from the
+pack.
