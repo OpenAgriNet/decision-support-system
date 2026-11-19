@@ -31,7 +31,7 @@ from dss.core.planner.models import (
     Source,
     SourceKind,
 )
-from dss.core.provider_discovery.models import DiscoveredAnswer
+from dss.core.provider_discovery.models import AnswerSource, DiscoveredAnswer
 from dss.core.settlement.models import AskSettlement, Settled
 
 
@@ -43,66 +43,41 @@ def assemble_evidence(
     failures: Sequence[Failure] = (),
     awaiting: Mapping[AskId, FormDefinition] | None = None,
 ) -> Evidence:
-    """Turn everything the turn gathered into ``Evidence``.
+    """Sources are numbered from 1 in first-seen order, direct answers first.
 
-    Two sources of answer, both ``DiscoveredAnswer``, so both assemble the
-    same way:
+    ``direct_answers`` must be passed in: a Direct resource needs no call, so
+    it never appears in ``raw_answers``."""
 
-    - ``raw_answers`` — what the loop's ``select`` calls returned.
-    - ``direct_answers`` — what discovery found that the catalog
-      already holds. These never appear in ``raw_answers``, because a Direct
-      resource needs no call. Leaving them out meant an ask the catalog had
-      already answered reached the planner's prompt and then vanished: the
-      planner is told not to answer, and the composer never saw it.
-
-    ``failures`` are calls that errored after the adapter's retries, and asks
-    whose place left nowhere to search. They ride alongside the results so the
-    composer can say "we could not reach Agmarknet" rather than "nobody serves
-    this" — the same empty result, two different things to tell a farmer.
-
-    Sources are numbered ``"1"``, ``"2"``, … in first-seen order, one per
-    ``(provider, originator)`` pair:
-
-    - A source is named by who authored the data, not who served it — a
-      provider relaying IMD cites IMD, falling back to its own name.
-    - Keyed on the pair, so one provider relaying two originators is two
-      sources; ``sourceId`` is provider-scoped, so two providers relaying one
-      originator stay two.
-    - ``kind`` stays ``PROVIDER``: it says how the DSS reached the fact, which
-      is not what ``name`` says.
-    """
-
-    source_id_by_origin: dict[tuple[str, str | None], str] = {}
-    sources: list[Source] = []
+    numbered_source: dict[AnswerSource, Source] = {}
     results: list[Result] = []
 
     for ask_id, answer in [*direct_answers, *raw_answers]:
-        origin = (answer.provider_id, answer.source_id)
-        source_id = source_id_by_origin.get(origin)
-        if source_id is None:
-            source_id = str(len(sources) + 1)
-            source_id_by_origin[origin] = source_id
-            sources.append(
-                Source(
-                    id=source_id,
-                    name=answer.source_name or answer.provider_name,
-                    kind=SourceKind.PROVIDER,
-                    url=answer.source_url,
-                )
+        origin = answer.origin
+        if origin not in numbered_source:
+            numbered_source[origin] = _source_of(
+                answer, number=len(numbered_source) + 1
             )
         results.append(
             Result(
                 ask_id=ask_id,
-                source_id=source_id,
+                source=numbered_source[origin],
                 data=dict(answer.attributes),
             )
         )
 
     return Evidence(
-        sources=tuple(sources),
         ask_evidences=group_by_ask(
             asks, results=results, failures=failures, awaiting=awaiting
         ),
+    )
+
+
+def _source_of(answer: DiscoveredAnswer, *, number: int) -> Source:
+    return Source(
+        id=str(number),
+        name=answer.source_name or answer.provider_name,
+        kind=SourceKind.PROVIDER,
+        url=answer.source_url,
     )
 
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from operator import attrgetter
 
 import anyio
 from pydantic import BaseModel, ConfigDict
@@ -65,6 +66,10 @@ class Source(BaseModel):
     kind: SourceKind
     url: str | None
 
+    @property
+    def number(self) -> int:
+        return int(self.id)
+
 
 class Skill(BaseModel):
     """What tools bind for this turn, and the guidance that goes with them
@@ -85,14 +90,14 @@ class Result(BaseModel):
 
     The design doc's ``Result.step_id`` names a ``Plan`` step; there is no
     ``Plan`` here. ``ask_id`` names the ask a result answers instead, so
-    ``assemble_evidence`` can file it under its ask. No ``url`` here: it
-    lives on the ``Source`` this result's ``source_id`` points to.
+    ``assemble_evidence`` can file it under its ask. It holds its ``Source``,
+    so a result can never name one that is not there.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     ask_id: AskId
-    source_id: str
+    source: Source
     data: dict
 
 
@@ -190,22 +195,35 @@ class AskEvidence:
     def has_provider_failure(self) -> bool:
         return self.outcome.has_provider_failure
 
+    @property
+    def sources(self) -> tuple[Source, ...]:
+        outcome = self.outcome
+        if not isinstance(outcome, Attempted):
+            return ()
+        return tuple(dict.fromkeys(result.source for result in outcome.results))
+
 
 @dataclass(frozen=True)
 class Evidence:
-    """What the loop gathered for a turn: every source it cites, and per ask,
-    every result and every gap (design doc §8, open item 14).
+    """What the loop gathered for a turn: per ask, every result and every gap
+    (design doc §8, open item 14).
 
-    ``sources`` spans the turn, numbered in first-seen order, because one
-    source can answer several asks and a claim cites it by that one number.
     ``ask_evidences`` holds one entry per ``Intent.asks``, in ask order.
     """
 
-    sources: tuple[Source, ...]
     ask_evidences: tuple[AskEvidence, ...]
     # Always empty for now: refusal and no-match fill it once they reach the
     # composer. Added early so they add a kind of note, not a new shape.
     turn_note: TurnNote | None = None
+
+    @property
+    def sources(self) -> tuple[Source, ...]:
+        source_by_id = {
+            source.id: source
+            for entry in self.ask_evidences
+            for source in entry.sources
+        }
+        return tuple(sorted(source_by_id.values(), key=attrgetter("number")))
 
     @property
     def unserved_asks(self) -> tuple[AskEvidence, ...]:

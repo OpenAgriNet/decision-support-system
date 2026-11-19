@@ -25,11 +25,17 @@ from tests.support.evidence import build_evidence
 from tests.support.providers import build_capability
 
 
+def _source(number: int, name: str) -> Source:
+    return Source(id=str(number), name=name, kind=SourceKind.PROVIDER, url=None)
+
+
 def _evidence(*names: str) -> Evidence:
+    """One result from each named source."""
+
     return build_evidence(
-        sources=tuple(
-            Source(id=str(i), name=name, kind=SourceKind.PROVIDER, url=None)
-            for i, name in enumerate(names, start=1)
+        results=tuple(
+            Result(ask_id=0, source=_source(number, name), data={})
+            for number, name in enumerate(names, start=1)
         ),
     )
 
@@ -91,10 +97,10 @@ def test_a_served_ask_is_named_by_its_id() -> None:
 
     evidence = build_evidence(
         asks=(an_ask(id=2),),
-        results=(Result(ask_id=2, source_id="1", data={}),),
+        results=(Result(ask_id=2, source=_source(1, "IMD"), data={}),),
     )
 
-    assert evidence_text(evidence) == "served asks: 2\nno sources"
+    assert evidence_text(evidence) == "served asks: 2\n[1] IMD"
 
 
 def test_a_discovered_ask_is_named_by_its_id() -> None:

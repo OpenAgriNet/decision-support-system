@@ -11,7 +11,6 @@ from dss.core.planner.models import (
     Evidence,
     Failure,
     Result,
-    Source,
 )
 from tests.support.asks import an_ask, numbered
 
@@ -21,7 +20,6 @@ ANY_ASK = an_ask()
 
 def build_evidence(
     *,
-    sources: Sequence[Source] = (),
     results: Sequence[Result] = (),
     failures: Sequence[Failure] = (),
     awaiting: Mapping[int, FormDefinition] | None = None,
@@ -34,7 +32,6 @@ def build_evidence(
     if asks is None:
         asks = numbered(*(ANY_ASK,) * _count_asks_named(results, failures, awaiting))
     return Evidence(
-        sources=tuple(sources),
         ask_evidences=group_by_ask(
             asks, results=results, failures=failures, awaiting=awaiting
         ),

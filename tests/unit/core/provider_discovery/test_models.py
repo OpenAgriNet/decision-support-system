@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from dss.core.provider_discovery.models import (
     NOTHING_FOUND,
+    AnswerSource,
     AsksToBeDiscovered,
     AskToDiscover,
     AskUnservable,
@@ -97,3 +99,9 @@ def test_within_validity_returns_a_new_ask_without_the_answers_outside_it() -> N
 
     assert ask.within_validity(NOW).answers == ()
     assert ask.answers == (stale,)
+
+
+def test_an_answer_names_its_origin() -> None:
+    relayed = replace(_answer(None), source_id="imd")
+
+    assert relayed.origin == AnswerSource(provider_id="agmarknet", source_id="imd")

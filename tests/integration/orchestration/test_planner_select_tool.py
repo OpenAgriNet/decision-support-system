@@ -400,7 +400,8 @@ def _paddy_in_xyzzy() -> Ask:
 async def test_select_makes_no_call_for_an_ask_whose_place_failed() -> None:
     """The pack indexes a location and Xyzzy is nowhere. Calling anyway would
     send no location, and the provider could answer for some other place.
-    Settlement asks first, so this is a safety net."""
+    Settlement checks the category, and a category can list a pack that needs
+    a place beside one that does not."""
 
     invocation = _FakeInvocation()
     deps = _deps(invocation)

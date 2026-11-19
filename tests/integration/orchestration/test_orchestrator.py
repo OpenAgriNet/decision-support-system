@@ -192,13 +192,14 @@ def _evidence(
     ask_count: int = 1,
 ) -> Evidence:
     return build_evidence(
-        sources=(Source(id="1", name="Agmarknet", kind=SourceKind.PROVIDER, url=None),),
         results=results,
         failures=failures,
         awaiting=awaiting,
         asks=numbered(*(ANY_ASK,) * ask_count),
     )
 
+
+AGMARKNET = Source(id="1", name="Agmarknet", kind=SourceKind.PROVIDER, url=None)
 
 _GRIEVANCE_FORM = FormDefinition(
     context=FormContext(scheme="PMFBY", category="Grievance", action="support"),
@@ -207,7 +208,7 @@ _GRIEVANCE_FORM = FormDefinition(
 
 
 _ANSWERED_EVIDENCE = _evidence(
-    results=(Result(ask_id=0, source_id="1", data={"modal": 2275}),),
+    results=(Result(ask_id=0, source=AGMARKNET, data={"modal": 2275}),),
 )
 
 
@@ -559,7 +560,7 @@ async def test_an_ask_awaiting_a_form_ends_the_turn_on_the_form() -> None:
 async def test_some_asks_unserved_is_partial() -> None:
     plan = _FakePlan(
         _evidence(
-            results=(Result(ask_id=0, source_id="1", data={"modal": 2275}),),
+            results=(Result(ask_id=0, source=AGMARKNET, data={"modal": 2275}),),
             ask_count=2,
         )
     )
@@ -636,16 +637,16 @@ async def test_a_streamed_claim_carries_the_sources_it_cites() -> None:
 
 async def test_the_one_source_cited_reaches_the_farmer_as_one() -> None:
 
+    practices = Source(
+        id="1", name="Package of Practices", kind=SourceKind.PROVIDER, url=None
+    )
+    mango_guide = Source(
+        id="2", name="KAU Mango Guide", kind=SourceKind.PROVIDER, url=None
+    )
     evidence = build_evidence(
-        sources=(
-            Source(
-                id="1", name="Package of Practices", kind=SourceKind.PROVIDER, url=None
-            ),
-            Source(id="2", name="KAU Mango Guide", kind=SourceKind.PROVIDER, url=None),
-        ),
         results=(
-            Result(ask_id=0, source_id="1", data={"v": 1}),
-            Result(ask_id=0, source_id="2", data={"v": 2}),
+            Result(ask_id=0, source=practices, data={"v": 1}),
+            Result(ask_id=0, source=mango_guide, data={"v": 2}),
         ),
     )
     orch, _ = _build(
@@ -1062,8 +1063,7 @@ async def test_a_settled_ask_is_served_beside_a_question() -> None:
 
     wheat_evidence = build_evidence(
         asks=(an_ask(id=1),),
-        sources=_ANSWERED_EVIDENCE.sources,
-        results=(Result(ask_id=1, source_id="1", data={"modal": 2275}),),
+        results=(Result(ask_id=1, source=AGMARKNET, data={"modal": 2275}),),
     )
     plan = _FakePlan(wheat_evidence)
     compose = _FakeCompose("Wheat is 2,275 Rs [1]. Which district for the rain?")
