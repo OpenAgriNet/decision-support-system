@@ -588,7 +588,7 @@ class FormPath:
         surroundings = surrounding_texts_of(turn)
         with trace_component(Stage.REDACTION, ctx.trace_id):
             redaction = await self._components.redact(
-                [*surroundings, *free_text], request_id=turn.transaction_id
+                [*surroundings, *free_text], transaction_id=turn.transaction_id
             )
         form_turn.recorder.redacted(found=redaction.found, failed=redaction.failed)
         tagged_surroundings = redaction.texts[: len(surroundings)]

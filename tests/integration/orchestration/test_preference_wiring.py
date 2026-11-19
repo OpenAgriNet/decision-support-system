@@ -204,12 +204,33 @@ async def test_what_the_ranking_dropped_is_logged(
             _asks(), _turn("kisan-mitra-web"), now=datetime.now(UTC)
         )
 
-    record = next(
+    line = next(
         record
         for record in caplog.records
         if getattr(record, "event", None) == "ranking_applied"
     )
-    assert record.sender_id == "kisan-mitra-web"
-    assert record.capability == "Weather"
-    assert record.dropped == "unvetted,mausamgram"
-    assert "nashik" not in str(vars(record)).lower()
+    assert line.source == "sender"
+    assert line.capability == "Weather"
+    assert line.dropped == "unvetted,mausamgram"
+    assert "nashik" not in str(vars(line)).lower()
+
+
+async def test_a_default_ranking_says_so_and_leaves_the_sender_to_the_filter(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The turn's sender is added to every line; here it would only repeat."""
+
+    preferences = FakeProviderPreferences(default={"Weather": ["mausamgram"]})
+
+    with caplog.at_level("INFO", logger="dss.trace"):
+        await _discover(preferences)(
+            _asks(), _turn("kisan-mitra-web"), now=datetime.now(UTC)
+        )
+
+    line = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "ranking_applied"
+    )
+    assert line.source == "default"
+    assert not hasattr(line, "sender_id")

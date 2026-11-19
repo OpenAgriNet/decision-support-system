@@ -3,6 +3,19 @@
 ## [Unreleased]
 
 ### Changed
+- Schema packs are fetched from network-specs on GitHub Pages, which is
+  built from `main`, not from `raw.githubusercontent.com` (#252)
+- `--ref` is removed from the fetch script; passing it now fails as an
+  unknown argument. `DSS_SCHEMA_PACK_REF` and `SCHEMA_PACK_REF` are removed
+  and ignored if still set (#252)
+
+### Fixed
+- `init` and `status` now send an offer on their commitment, as `select`
+  does. PM-KISAN refused `init` without one (#207)
+
+## [0.3.0] - 2026-11-17
+
+### Changed
 - Each ask is settled right after intent, before discovery: code checks it
   has the place, the scheme and the action it needs. An ask with a missing
   or unsure one gets one question, written by the composer (#243, ADR-0023)
@@ -32,6 +45,16 @@
   `went_wrong`, `form_cannot_complete`, `saved_details_unusable`,
   `field_recheck`, `init_response_refused`, `init_response_not_sent`,
   `outcome_unknown` and `case_not_found` (#207, #208)
+- A `status` call now sends a status on its commitment, as the Beckn
+  protocol requires. `support` is unchanged (#205)
+- Log lines carry their fields as attributes, not in the message text, so
+  the request, message and session ids can be filtered on. Every `dss`
+  log line carries the turn's ids. The console still prints `key=value`
+  (#241)
+- A form field the pack marks `x-oan-pii` is masked whole: logs, traces and
+  the audit record see a tag, and the provider gets the real value. Only
+  unmarked typed fields are moderated, so the grievance description, which
+  the pack marks, is no longer moderated (#207)
 
 ### Added
 - A farmer with a scheme problem is guided to the grievance form. When their

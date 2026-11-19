@@ -19,7 +19,7 @@ import anyio
 from dss.core.redaction.models import ENTITY_PATTERN, PiiSpan, RedactionPolicy
 from dss.core.redaction.service import Redaction, redact
 from dss.core.redaction.visibility import NOTHING_HELD
-from dss.observability.trace_log import log_event
+from dss.observability.trace_log import log_failure
 from dss.ports.pii_identifier import PiiIdentifier
 
 _ENTITY = re.compile(ENTITY_PATTERN)
@@ -31,12 +31,12 @@ class RedactTexts(Protocol):
     over ``pass_through`` when redaction is off."""
 
     async def __call__(
-        self, texts: Sequence[str], *, request_id: str | None = None
+        self, texts: Sequence[str], *, transaction_id: str | None = None
     ) -> Redaction: ...
 
 
 async def pass_through(
-    texts: Sequence[str], *, request_id: str | None = None
+    texts: Sequence[str], *, transaction_id: str | None = None
 ) -> Redaction:
     """Redaction is off: the texts come back unchanged, and nothing is held."""
 
@@ -48,7 +48,7 @@ async def redact_texts(
     identifiers: Sequence[PiiIdentifier],
     policy: RedactionPolicy,
     *,
-    request_id: str | None = None,
+    transaction_id: str | None = None,
 ) -> Redaction:
     texts = list(texts)
     found: dict[int, list[list[PiiSpan]]] = {}
@@ -68,13 +68,12 @@ async def redact_texts(
                 for text_index, text in enumerate(texts):
                     group.start_soon(one, text_index, text)
         except Exception as exc:  # noqa: BLE001 — any identifier failure is survivable
-            # The type only: an exception message could quote the farmer's text.
-            log_event(
+            log_failure(
                 "redaction",
-                request_id,
+                exc,
+                transaction_id,
                 event="identifier_failed",
                 identifier=identifier.name,
-                error=_first_error(exc),
             )
             failed.append(identifier.name)
             return
@@ -92,14 +91,6 @@ async def redact_texts(
 
     result = redact(texts, merged, policy)
     return replace(result, failed=tuple(sorted(failed))) if failed else result
-
-
-def _first_error(exc: BaseException) -> str:
-    """The type of the first real error, past the task group's wrapper."""
-
-    while isinstance(exc, BaseExceptionGroup) and exc.exceptions:
-        exc = exc.exceptions[0]
-    return type(exc).__name__
 
 
 def _check(span: PiiSpan, text: str) -> None:

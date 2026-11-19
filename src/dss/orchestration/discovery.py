@@ -118,7 +118,6 @@ def _log_rankings_applied(priorities: Sequence[AskPriority], *, turn: UserTurn) 
             event="ranking_applied",
             ask_id=priority.ask_id,
             capability=priority.capability,
-            sender_id=priority.sender_id or "-",
             source=priority.source,
             ranked=_ids(priority.ranking),
             found=_ids(priority.kept),

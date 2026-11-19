@@ -56,7 +56,7 @@ you can't write one, it's not a finding.
 - User-supplied values not marked as data.
 
 ### Conventions and docs
-- A log without `request_id` (`CONVENTIONS.md`).
+- A fact in the log message text instead of `extra` (`CONVENTIONS.md`).
 - PR body without `Relates to #N`; changelog entries without `(#N)`.
 - A design decision with no ADR, or `docs/DSS_ARCHITECTURE.md` not updated.
 - References to renamed or deleted files, functions or settings left in code,

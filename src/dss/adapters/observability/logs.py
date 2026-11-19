@@ -1,7 +1,9 @@
 """Sends the app's log lines to the same endpoint as spans and metrics.
 
 - Ids as fields, not text, so a dashboard can join a log line to its span.
+- Every line gets the turn's ids, so HyperDX can filter a turn or a sender.
 - The handler's INFO level is the PII guard: DEBUG lines hold farmer words.
+- Stderr gets the span ids as fields too; the OTLP bridge has its own columns.
 - logfire builds no logger provider, so this module builds one (same OTLP env).
 """
 
@@ -10,7 +12,9 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from dss.observability.trace_log import TurnFilter
+from opentelemetry import trace
+
+from dss.observability.log_fields import TurnFilter
 
 if TYPE_CHECKING:
     from opentelemetry.sdk._logs import LoggerProvider
@@ -85,3 +89,18 @@ def _detach() -> None:
 
     if _provider is not None and _provider_is_ours:
         _provider.shutdown()
+
+
+class SpanIdsFilter(logging.Filter):
+    """Adds the active span's ids, in the hex Langfuse shows, to each record.
+
+    For stderr only, so a local line pastes straight into Langfuse. Outside a
+    span, as in every local run without an OTLP endpoint, they are left off.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        span_context = trace.get_current_span().get_span_context()
+        if span_context.is_valid:
+            record.trace_id = format(span_context.trace_id, "032x")
+            record.span_id = format(span_context.span_id, "016x")
+        return True
