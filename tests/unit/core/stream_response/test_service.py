@@ -29,6 +29,7 @@ from dss.core.planner.models import (
 )
 from dss.core.shared.models import Geometry, TextQuery, UserTurn
 from dss.core.stream_response.service import stream_response
+from tests.support.asks import an_ask
 from tests.support.evidence import attempted, build_evidence
 from tests.support.fakes import FakePromptProvider
 
@@ -39,11 +40,10 @@ IDENTITY = Identity(
 )
 
 EVIDENCE = build_evidence(
-    sources=(Source(id="1", name="Agmarknet", kind=SourceKind.PROVIDER, url=None),),
     results=(
         Result(
-            ask_index=0,
-            source_id="1",
+            ask_id=0,
+            source=Source(id="1", name="Agmarknet", kind=SourceKind.PROVIDER, url=None),
             data={
                 "commodity": {"name": "Paddy"},
                 "prices": {"modal": 2200, "unit": "INR/quintal"},
@@ -57,7 +57,7 @@ NOTHING_FOUND = build_evidence()
 UNREACHABLE = build_evidence(
     failures=(
         Failure(
-            ask_index=0,
+            ask_id=0,
             capability="openagrinet:MandiPrice",
             reason="429 too many requests",
             retryable=True,
@@ -67,7 +67,7 @@ UNREACHABLE = build_evidence(
 
 
 def _ask(place: ResolvedPlace | None = None) -> Ask:
-    return Ask(
+    return an_ask(
         subject_categories=SubjectCategory.MARKET,
         interaction_type=InteractionType.OBSERVE,
         place=place,
@@ -220,9 +220,7 @@ async def test_the_asks_resolved_place_reaches_the_model() -> None:
     llm = _FakeLLM()
 
     [paddy] = EVIDENCE.ask_evidences
-    evidence = build_evidence(
-        sources=EVIDENCE.sources, results=attempted(paddy).results, asks=(_ask(PUNE),)
-    )
+    evidence = build_evidence(results=attempted(paddy).results, asks=(_ask(PUNE),))
 
     await _collect(llm, evidence)
 

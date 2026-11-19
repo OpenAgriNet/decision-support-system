@@ -69,10 +69,120 @@
                   "schema": "https://openagrinet.github.io/network-specs/schema/Grievance/v0.1/attributes.yaml#/components/schemas/PMFBYStatus",
                   "attributesAt": "$.message.contract.commitments[0].commitmentAttributes"
                 }
-              ],
-              "languages": [
-                "en"
               ]
+            }
+          }
+        ]
+      },
+      {
+        "bppId": "provider-network-vistaar.da.gov.in",
+        "bppUri": "https://provider-network-vistaar.da.gov.in/oan",
+        "descriptor": {
+          "name": "PM-KISAN grievance desk"
+        },
+        "id": "catalog:grievance:pmkisan",
+        "isActive": true,
+        "provider": {
+          "id": "pmkisan",
+          "descriptor": {
+            "name": "PM-KISAN"
+          }
+        },
+        "resources": [
+          {
+            "id": "res:pmkisan:grievance",
+            "resourceAttributes": {
+              "@type": "openagrinet:Grievance",
+              "scheme": {
+                "code": "PM-KISAN",
+                "name": "Pradhan Mantri Kisan Samman Nidhi"
+              },
+              "actions": [
+                {
+                  "action": "init",
+                  "schema": "https://openagrinet.github.io/network-specs/schema/Grievance/v0.1/attributes.yaml#/components/schemas/PMKISANInit",
+                  "description": "Ask PM-KISAN to send a four-digit OTP to the mobile registered against this enrolment number. Needs only the enrolment number. Call before status or support: both require challenge.response carrying this OTP.",
+                  "attributesAt": "$.message.contract.commitments[0].commitmentAttributes"
+                },
+                {
+                  "action": "status",
+                  "schema": "https://openagrinet.github.io/network-specs/schema/Grievance/v0.1/attributes.yaml#/components/schemas/PMKISANStatus",
+                  "description": "Read a grievance already filed against this enrolment number: its status code, the officer's reply and when it was given. Needs the OTP from init and case.filedOn, the filing date support returned, which picks one case out of all those on the registration.",
+                  "attributesAt": "$.message.contract.commitments[0].commitmentAttributes"
+                },
+                {
+                  "action": "support",
+                  "schema": "https://openagrinet.github.io/network-specs/schema/Grievance/v0.1/attributes.yaml#/components/schemas/PMKISANSupport",
+                  "description": "File a new grievance against this enrolment number, under one of the categories published above. Needs the OTP from init. Returns case.ticketNo and case.filedOn; keep filedOn, because status selects a case by it.",
+                  "attributesAt": "$.message.support.channels[0]"
+                }
+              ],
+              "@context": "https://openagrinet.github.io/network-specs/schema/Grievance/v0.1/context.jsonld",
+              "challenge": {
+                "methods": [
+                  {
+                    "length": 4,
+                    "method": "OTP",
+                    "channel": "SMS",
+                    "valueType": "NUMERIC"
+                  }
+                ]
+              },
+              "informationMode": "OnDemand",
+              "grievanceOptions": {
+                "categories": [
+                  {
+                    "code": "G001",
+                    "help": "The bank account held against your registration is wrong, so money cannot reach you.",
+                    "name": "Account number not correct"
+                  },
+                  {
+                    "code": "G002",
+                    "help": "You applied online and the application has not yet been approved.",
+                    "name": "Online application pending for approval"
+                  },
+                  {
+                    "code": "G003",
+                    "help": "Your registration is approved but an instalment has not reached your account.",
+                    "name": "Installment not received"
+                  },
+                  {
+                    "code": "G004",
+                    "help": "A payment was attempted and the transfer did not go through.",
+                    "name": "Transaction failed"
+                  },
+                  {
+                    "code": "G005",
+                    "help": "A correction to your Aadhaar details has not gone through.",
+                    "name": "Problem in Aadhaar correction"
+                  },
+                  {
+                    "code": "G006",
+                    "help": "The gender recorded against your registration is wrong.",
+                    "name": "Gender not correct"
+                  },
+                  {
+                    "code": "G007",
+                    "help": "Any other problem with a payment that the options above do not cover.",
+                    "name": "Payment related"
+                  },
+                  {
+                    "code": "G008",
+                    "help": "eKYC by OTP is failing.",
+                    "name": "Problem in OTP-based eKYC"
+                  },
+                  {
+                    "code": "G009",
+                    "help": "eKYC by fingerprint or iris is failing.",
+                    "name": "Problem in biometric-based eKYC"
+                  },
+                  {
+                    "code": "G010",
+                    "help": "eKYC by face scan is failing.",
+                    "name": "Problem in facial-based eKYC"
+                  }
+                ]
+              }
             }
           }
         ]

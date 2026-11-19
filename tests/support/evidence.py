@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 
 from dss.core.forms.models import FormDefinition
-from dss.core.intent.models import Ask, InteractionType, SubjectCategory
+from dss.core.intent.models import Ask
 from dss.core.planner.evidence import group_by_ask
 from dss.core.planner.models import (
     AskEvidence,
@@ -11,31 +11,27 @@ from dss.core.planner.models import (
     Evidence,
     Failure,
     Result,
-    Source,
 )
+from tests.support.asks import an_ask, numbered
 
 # For a test that does not care which ask its results answer.
-ANY_ASK = Ask(
-    subject_categories=SubjectCategory.WEATHER, interaction_type=InteractionType.OBSERVE
-)
+ANY_ASK = an_ask()
 
 
 def build_evidence(
     *,
-    sources: Sequence[Source] = (),
     results: Sequence[Result] = (),
     failures: Sequence[Failure] = (),
     awaiting: Mapping[int, FormDefinition] | None = None,
     asks: Sequence[Ask] | None = None,
 ) -> Evidence:
     """Evidence as `assemble_evidence` would shape it, from its parts. With no
-    `asks`, every ask index the parts name stands for `ANY_ASK`."""
+    `asks`, every ask id the parts name stands for an `ANY_ASK` with that id."""
 
     awaiting = awaiting or {}
     if asks is None:
-        asks = (ANY_ASK,) * _count_asks_named(results, failures, awaiting)
+        asks = numbered(*(ANY_ASK,) * _count_asks_named(results, failures, awaiting))
     return Evidence(
-        sources=tuple(sources),
         ask_evidences=group_by_ask(
             asks, results=results, failures=failures, awaiting=awaiting
         ),
@@ -54,5 +50,5 @@ def _count_asks_named(
     failures: Sequence[Failure],
     awaiting: Mapping[int, FormDefinition],
 ) -> int:
-    indexes = [*(part.ask_index for part in (*results, *failures)), *awaiting]
+    indexes = [*(part.ask_id for part in (*results, *failures)), *awaiting]
     return max(indexes, default=-1) + 1

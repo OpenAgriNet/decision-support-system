@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from dss.core.intent.models import AskId
 from dss.core.provider_discovery.models import DiscoveredAnswer, ProviderCapability
 from dss.ports.invocation import SelectFailedError
 
@@ -32,28 +33,28 @@ class Consulted:
 class NextChoices:
     """Per ask, the lower-ranked providers that also returned data, best first."""
 
-    waiting: dict[int, tuple[Consulted, ...]] = field(default_factory=dict)
+    waiting: dict[AskId, tuple[Consulted, ...]] = field(default_factory=dict)
 
     def hold_after(
-        self, ask_index: int, *, consulted: tuple[Consulted, ...], chosen: Consulted
+        self, ask_id: AskId, *, consulted: tuple[Consulted, ...], chosen: Consulted
     ) -> None:
         position = consulted.index(chosen)
-        self.waiting[ask_index] = tuple(
+        self.waiting[ask_id] = tuple(
             one for one in consulted[position + 1 :] if one.answers
         )
 
-    def take(self, ask_index: int) -> Consulted | None:
+    def take(self, ask_id: AskId) -> Consulted | None:
         """The next choice for the ask, removed so a second call moves on."""
 
-        waiting = self.waiting.get(ask_index, ())
+        waiting = self.waiting.get(ask_id, ())
         if not waiting:
             return None
-        self.waiting[ask_index] = waiting[1:]
+        self.waiting[ask_id] = waiting[1:]
         return waiting[0]
 
 
-def no_next_choice(ask_index: int) -> str:
+def no_next_choice(ask_id: AskId) -> str:
     return (
-        f"No other preferred provider has data for ask {ask_index}. Do not "
+        f"No other preferred provider has data for ask {ask_id}. Do not "
         f"call select_next for it again; report what you found."
     )

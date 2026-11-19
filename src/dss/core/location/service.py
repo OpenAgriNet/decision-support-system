@@ -20,6 +20,7 @@ from __future__ import annotations
 from dss.core.intent.models import (
     AmbiguousPlace,
     Ask,
+    AskId,
     ClassifiedAsk,
     Intent,
     IntentClassification,
@@ -380,8 +381,9 @@ def _first_resolved(places: list[Place]) -> ResolvedPlace | None:
     return None
 
 
-def _build_ask(classified: ClassifiedAsk, place: Place) -> Ask:
+def _build_ask(classified: ClassifiedAsk, place: Place, *, ask_id: AskId) -> Ask:
     return Ask(
+        id=ask_id,
         agriculture_subjects=classified.agriculture_subjects,
         subject_categories=classified.subject_categories,
         interaction_type=classified.interaction_type,
@@ -436,7 +438,9 @@ async def resolve_places(
             )
 
     asks = tuple(
-        _build_ask(classified, place)
-        for classified, place in zip(classified_asks, places, strict=True)
+        _build_ask(classified, place, ask_id=AskId(position))
+        for position, (classified, place) in enumerate(
+            zip(classified_asks, places, strict=True)
+        )
     )
     return Intent(asks=asks, confidence=classification.confidence)

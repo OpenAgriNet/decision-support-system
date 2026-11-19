@@ -5,6 +5,7 @@ import pytest
 from dss.core.forms.models import FormContext, FormReference
 from dss.core.shared.language import ENGLISH
 from dss.core.shared.models import (
+    Cause,
     ConversationMessage,
     ProviderAction,
     TextQuery,
@@ -86,3 +87,16 @@ def test_a_form_handed_back_is_not_an_offer() -> None:
     message = ConversationMessage(role="assistant", text="", reference=handed_back)
 
     assert message.prompt_text == "a form was handed back with errors"
+
+
+@pytest.mark.parametrize(
+    "wire_value",
+    [
+        "already_filed",
+        "no_init_pending",
+        "init_response_refused",
+        "provider_outcome_unknown",
+    ],
+)
+def test_the_form_flow_causes_read_as_their_wire_values(wire_value: str) -> None:
+    assert Cause(wire_value) == wire_value

@@ -170,8 +170,9 @@ def test_an_unknown_field_sent_twice_is_listed_once() -> None:
     )
 
 
-def test_the_free_text_of_a_submission_is_its_freetext_fields_only() -> None:
+def test_the_free_text_of_a_submission_is_its_unmarked_typed_fields() -> None:
     valid = validate_submission(_submission(_PMFBY_VALUES), build_grievance_forms())
     assert isinstance(valid, ValidSubmission)
 
-    assert free_text_of(valid) == (_PMFBY_VALUES["grievance.description"],)
+    # Marked PII: the enrolment id, phone and description. A select: the season.
+    assert free_text_of(valid) == (_PMFBY_VALUES["cropYear"],)

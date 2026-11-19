@@ -1,4 +1,4 @@
-"""Builds /select, /support and /status requests and maps their responses.
+"""Builds /select, /init, /support and /status requests and maps their responses.
 
 Pure translation only — no business logic. The attributes are already fully
 assembled by the caller; this module only wraps them in the network envelope.
@@ -7,6 +7,7 @@ assembled by the caller; this module only wraps them in the network envelope.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import partial
 from typing import Any
@@ -16,7 +17,7 @@ import anyio
 import httpx
 
 from dss.adapters.network import SelectContext
-from dss.adapters.network.models import StatusContext, SupportContext
+from dss.adapters.network.models import InitContext, StatusContext, SupportContext
 from dss.adapters.network_common import (
     NO_STATUS_CODE,
     classify_status_code,
@@ -34,12 +35,15 @@ from dss.core.shared.network import NetworkTransactionID
 from dss.observability.trace_log import (
     log_external_request,
     log_external_response,
+    log_failure,
 )
 
 # Defined on the port, not here: a failed select is part of the contract, so
 # a caller can catch it without importing this adapter. Re-exported because
 # this module raises it.
 from dss.ports.invocation import (
+    InitFailedError,
+    ProviderActionFailedError,
     ProviderCallFailedError,
     SelectFailedError,
     StatusFailedError,
@@ -48,9 +52,11 @@ from dss.ports.invocation import (
 
 __all__ = [
     "HttpCapabilityInvocation",
+    "InitFailedError",
     "SelectFailedError",
     "StatusFailedError",
     "SupportFailedError",
+    "build_init_request",
     "build_select_request",
     "build_status_request",
     "build_support_request",
@@ -73,6 +79,22 @@ def _build_commitment(resources: list[dict], **other_fields: object) -> dict[str
         "status": {"descriptor": _DEFAULT_STATUS_DESCRIPTOR},
         "resources": resources,
         **other_fields,
+    }
+
+
+def _build_offer(
+    capability: ProviderCapability,
+    *,
+    resource_id: str,
+    offer_id: str,
+) -> dict[str, Any]:
+    return {
+        "id": offer_id,
+        "resourceIds": [resource_id],
+        "provider": {
+            "id": capability.provider_id,
+            "descriptor": {"name": capability.provider_name},
+        },
     }
 
 
@@ -108,14 +130,9 @@ def build_select_request(  # noqa: PLR0913
                                 "quantity": {"count": 1},
                             }
                         ],
-                        offer={
-                            "id": offer_id,
-                            "resourceIds": [resource_id],
-                            "provider": {
-                                "id": capability.provider_id,
-                                "descriptor": {"name": capability.provider_name},
-                            },
-                        },
+                        offer=_build_offer(
+                            capability, resource_id=resource_id, offer_id=offer_id
+                        ),
                     )
                 ]
             }
@@ -185,23 +202,73 @@ def build_status_request(  # noqa: PLR0913
     )
     return {
         "context": context.to_wire(),
-        "message": {
-            "contract": {
-                "id": contract_id,
-                "commitments": [
-                    _build_commitment(
-                        [{"id": resource_id, "quantity": {"count": 1}}],
-                        commitmentAttributes=attributes,
-                    )
-                ],
-            }
-        },
+        "message": _commitment_message(
+            capability, attributes, resource_id=resource_id, contract_id=contract_id
+        ),
     }
 
 
 def map_status_response(response: dict[str, Any]) -> dict[str, Any]:
     """The case comes back where it was asked for: the first commitment."""
 
+    return _first_commitment_attributes(response)
+
+
+def build_init_request(  # noqa: PLR0913
+    capability: ProviderCapability,
+    attributes: dict,
+    *,
+    resource_id: str,
+    contract_id: str,
+    sender_id: str,
+    message_id: str,
+    transaction_id: NetworkTransactionID,
+    timestamp: str,
+) -> dict[str, Any]:
+    # The pack names `commitmentAttributes`; the contract and resource around it
+    # are copied from `status`.
+    context = InitContext(
+        sender_id=sender_id,
+        receiver_id=capability.bpp_id,
+        bpp_uri=capability.bpp_uri,
+        message_id=message_id,
+        transaction_id=transaction_id,
+        timestamp=timestamp,
+    )
+    return {
+        "context": context.to_wire(),
+        "message": _commitment_message(
+            capability, attributes, resource_id=resource_id, contract_id=contract_id
+        ),
+    }
+
+
+def _commitment_message(
+    capability: ProviderCapability,
+    attributes: dict,
+    *,
+    resource_id: str,
+    contract_id: str,
+) -> dict[str, Any]:
+    return {
+        "contract": {
+            "id": contract_id,
+            "commitments": [
+                _build_commitment(
+                    [{"id": resource_id, "quantity": {"count": 1}}],
+                    commitmentAttributes=attributes,
+                    offer=_build_offer(
+                        capability,
+                        resource_id=resource_id,
+                        offer_id=_DEFAULT_OFFER_ID,
+                    ),
+                )
+            ],
+        }
+    }
+
+
+def _first_commitment_attributes(response: dict[str, Any]) -> dict[str, Any]:
     commitment = response["message"]["contract"]["commitments"][0]
     attributes = commitment["commitmentAttributes"]
     if not isinstance(attributes, dict):
@@ -280,6 +347,20 @@ def _to_answer(
     )
 
 
+@dataclass(frozen=True)
+class _CommitmentCall:
+    build_request: Callable[..., dict[str, Any]]
+    map_response: Callable[[dict[str, Any]], dict[str, Any]]
+    failed_as: type[ProviderActionFailedError]
+
+
+# The calls whose attributes ride on a commitment; the error names the endpoint.
+_INIT = _CommitmentCall(
+    build_init_request, _first_commitment_attributes, InitFailedError
+)
+_STATUS = _CommitmentCall(build_status_request, map_status_response, StatusFailedError)
+
+
 class HttpCapabilityInvocation:
     """Implements CapabilityInvocation over the Network Adapter's /select.
 
@@ -287,17 +368,21 @@ class HttpCapabilityInvocation:
     the pure functions above so they're testable without a client at all.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         client: httpx.AsyncClient,
         base_url: str,
         sender_id: str,
         attempts: int = 3,
         backoff_seconds: float = 0.5,
+        *,
+        network_id: str,
     ) -> None:
         self._client = client
         self._base_url = base_url
         self._sender_id = sender_id
+        # Logged, never sent: a provider call's envelope carries no network id.
+        self._network_id = network_id
         self._attempts = attempts
         self._backoff_seconds = backoff_seconds
 
@@ -326,7 +411,34 @@ class HttpCapabilityInvocation:
                 transaction_id,
                 visibility,
             ),
+            attempts=self._attempts,
             outcome_attributes=_select_outcome,
+        )
+
+    async def init(
+        self,
+        capability: ProviderCapability,
+        attributes: dict,
+        transaction_id: str,
+        *,
+        visibility: Visibility = NOTHING_HELD,
+    ) -> ActionReply:
+        return await self._call_with_retries(
+            "dss.init",
+            capability,
+            partial(
+                self._commitment_call_once,
+                _INIT,
+                capability,
+                attributes,
+                transaction_id,
+                visibility,
+                message_id=str(uuid4()),
+                contract_id=str(uuid4()),
+            ),
+            # Once: each try can text the farmer a new OTP.
+            attempts=1,
+            outcome_attributes=_no_outcome_attributes,
         )
 
     async def support(
@@ -356,6 +468,7 @@ class HttpCapabilityInvocation:
                 visibility,
                 message_id=message_id,
             ),
+            attempts=self._attempts,
             outcome_attributes=_no_outcome_attributes,
         )
 
@@ -378,7 +491,8 @@ class HttpCapabilityInvocation:
             "dss.status",
             capability,
             partial(
-                self._status_once,
+                self._commitment_call_once,
+                _STATUS,
                 capability,
                 attributes,
                 transaction_id,
@@ -386,6 +500,7 @@ class HttpCapabilityInvocation:
                 message_id=message_id,
                 contract_id=contract_id,
             ),
+            attempts=self._attempts,
             outcome_attributes=_no_outcome_attributes,
         )
 
@@ -395,6 +510,7 @@ class HttpCapabilityInvocation:
         capability: ProviderCapability,
         once: Callable[[], Awaitable[T]],
         *,
+        attempts: int,
         outcome_attributes: Callable[[T], Mapping[str, object]],
     ) -> T:
         """Only ``TRANSIENT`` failures are retried: a ``DEFECT`` (400/401/403)
@@ -420,7 +536,7 @@ class HttpCapabilityInvocation:
                 "capability": capability.capability,
             },
         ) as call:
-            for attempt in range(1, self._attempts + 1):
+            for attempt in range(1, attempts + 1):
                 call.set_attribute("attempts", attempt)
                 try:
                     with open_span(f"{span_name}.attempt") as span:
@@ -438,13 +554,14 @@ class HttpCapabilityInvocation:
                             span.set_attribute("http.status_code", failure.status_code)
                             raise
                 except ProviderCallFailedError as failure:
-                    last_chance = attempt == self._attempts
+                    last_chance = attempt == attempts
                     if (
                         failure.failure_class is not FailureClass.TRANSIENT
                         or failure.retry_after_seconds is not None
                         or last_chance
                     ):
                         call.set_attribute("failure_class", failure.failure_class.value)
+                        _log_given_up(capability, failure, attempts=attempt)
                         raise
                     await anyio.sleep(self._backoff_seconds * 2 ** (attempt - 1))
         raise AssertionError("unreachable: the loop either returns or raises")
@@ -493,6 +610,45 @@ class HttpCapabilityInvocation:
                 f"malformed response: {exc!r}",
             ) from exc
 
+    async def _commitment_call_once(  # noqa: PLR0913
+        self,
+        call: _CommitmentCall,
+        capability: ProviderCapability,
+        attributes: dict,
+        transaction_id: str,
+        visibility: Visibility,
+        *,
+        message_id: str,
+        contract_id: str,
+    ) -> ActionReply:
+        request_body = call.build_request(
+            capability,
+            attributes,
+            resource_id=capability.resource_id,
+            contract_id=contract_id,
+            sender_id=self._sender_id,
+            message_id=message_id,
+            transaction_id=transaction_id,
+            timestamp=datetime.now(UTC).isoformat(),
+        )
+        response = await self._post_once(
+            call.failed_as.action,
+            request_body,
+            capability=capability,
+            visibility=visibility,
+            failed=_failed_as(call.failed_as),
+        )
+        try:
+            attributes_back = call.map_response(
+                visibility.conceal_body(response.json())
+            )
+        except _MALFORMED_RESPONSE as exc:
+            # A defect, never transient: the same body reads the same way.
+            raise call.failed_as(
+                capability.capability, NO_STATUS_CODE, FailureClass.DEFECT
+            ) from exc
+        return ActionReply(attributes=attributes_back)
+
     async def _support_once(
         self,
         capability: ProviderCapability,
@@ -515,7 +671,7 @@ class HttpCapabilityInvocation:
             request_body,
             capability=capability,
             visibility=visibility,
-            failed=_support_failed,
+            failed=_failed_as(SupportFailedError),
         )
         try:
             attributes_back = map_support_response(
@@ -524,44 +680,6 @@ class HttpCapabilityInvocation:
         except _MALFORMED_RESPONSE as exc:
             # A defect, never transient: the same body reads the same way.
             raise SupportFailedError(
-                capability.capability, NO_STATUS_CODE, FailureClass.DEFECT
-            ) from exc
-        return ActionReply(attributes=attributes_back)
-
-    async def _status_once(  # noqa: PLR0913
-        self,
-        capability: ProviderCapability,
-        attributes: dict,
-        transaction_id: str,
-        visibility: Visibility,
-        *,
-        message_id: str,
-        contract_id: str,
-    ) -> ActionReply:
-        request_body = build_status_request(
-            capability,
-            attributes,
-            resource_id=capability.resource_id,
-            contract_id=contract_id,
-            sender_id=self._sender_id,
-            message_id=message_id,
-            transaction_id=transaction_id,
-            timestamp=datetime.now(UTC).isoformat(),
-        )
-        response = await self._post_once(
-            "status",
-            request_body,
-            capability=capability,
-            visibility=visibility,
-            failed=_status_failed,
-        )
-        try:
-            attributes_back = map_status_response(
-                visibility.conceal_body(response.json())
-            )
-        except _MALFORMED_RESPONSE as exc:
-            # A defect, never transient: the same body reads the same way.
-            raise StatusFailedError(
                 capability.capability, NO_STATUS_CODE, FailureClass.DEFECT
             ) from exc
         return ActionReply(attributes=attributes_back)
@@ -581,16 +699,20 @@ class HttpCapabilityInvocation:
 
         endpoint = f"{self._base_url}/{action}"
         transaction_id = request_body["context"]["transactionId"]
+        call_fields = {
+            "capability": capability.capability,
+            # One ask can call several providers, so each line names its own.
+            "provider_id": capability.provider_id,
+            "message_id": request_body["context"]["messageId"],
+            "network_id": self._network_id,
+        }
         log_external_request(
             "invocation",
             transaction_id,
+            labels=(capability.capability, capability.provider_id),
             endpoint=endpoint,
-            capability=capability.capability,
-            # Named on every line because one ask can now call several
-            # providers (ADR-0019), and a capability alone no longer says
-            # which of them a body belongs to.
-            provider_id=capability.provider_id,
             body=request_body,
+            **call_fields,
         )
         try:
             # The one place a real value leaves the DSS (ADR-0015).
@@ -600,10 +722,10 @@ class HttpCapabilityInvocation:
             log_external_response(
                 "invocation",
                 transaction_id,
+                labels=(capability.capability, capability.provider_id),
                 status=response.status_code,
-                capability=capability.capability,
-                provider_id=capability.provider_id,
                 body=visibility.conceal(response.text),
+                **call_fields,
             )
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
@@ -617,10 +739,11 @@ class HttpCapabilityInvocation:
             log_external_response(
                 "invocation",
                 transaction_id,
+                labels=(capability.capability, capability.provider_id),
                 status="transport_error",
-                capability=capability.capability,
-                provider_id=capability.provider_id,
+                error_type=type(exc).__name__,
                 error=visibility.conceal(str(exc)),
+                **call_fields,
             )
             raise failed(
                 capability.capability,
@@ -629,6 +752,23 @@ class HttpCapabilityInvocation:
                 visibility.conceal(str(exc)),
             ) from exc
         return response
+
+
+def _log_given_up(
+    capability: ProviderCapability, failure: ProviderCallFailedError, *, attempts: int
+) -> None:
+    """The caller answers around this failure, so this line is all that says why."""
+
+    log_failure(
+        "invocation",
+        failure,
+        event="provider_call_failed",
+        provider_id=capability.provider_id,
+        capability=capability.capability,
+        status_code=failure.status_code,
+        failure_class=failure.failure_class.value,
+        attempts=attempts,
+    )
 
 
 # The action's own error for a failed POST: the capability, the status code
@@ -648,30 +788,20 @@ def _select_failed(
     )
 
 
-def _support_failed(
-    capability: str, status_code: int, response: httpx.Response | None, detail: str
-) -> SupportFailedError:
-    return SupportFailedError(
-        capability,
-        status_code,
-        classify_status_code(status_code),
-        retry_after_seconds=(
-            _retry_after_seconds(response) if response is not None else None
-        ),
-    )
+def _failed_as(error_type: type[ProviderActionFailedError]) -> _FailureBuilder:
+    def failed(
+        capability: str, status_code: int, response: httpx.Response | None, detail: str
+    ) -> ProviderActionFailedError:
+        return error_type(
+            capability,
+            status_code,
+            classify_status_code(status_code),
+            retry_after_seconds=(
+                _retry_after_seconds(response) if response is not None else None
+            ),
+        )
 
-
-def _status_failed(
-    capability: str, status_code: int, response: httpx.Response | None, detail: str
-) -> StatusFailedError:
-    return StatusFailedError(
-        capability,
-        status_code,
-        classify_status_code(status_code),
-        retry_after_seconds=(
-            _retry_after_seconds(response) if response is not None else None
-        ),
-    )
+    return failed
 
 
 def _no_outcome_attributes(reply: ActionReply) -> Mapping[str, object]:

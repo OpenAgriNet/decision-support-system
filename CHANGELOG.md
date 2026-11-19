@@ -3,6 +3,19 @@
 ## [Unreleased]
 
 ### Changed
+- Schema packs are fetched from network-specs on GitHub Pages, which is
+  built from `main`, not from `raw.githubusercontent.com` (#252)
+- `--ref` is removed from the fetch script; passing it now fails as an
+  unknown argument. `DSS_SCHEMA_PACK_REF` and `SCHEMA_PACK_REF` are removed
+  and ignored if still set (#252)
+
+### Fixed
+- `init` and `status` now send an offer on their commitment, as `select`
+  does. PM-KISAN refused `init` without one (#207)
+
+## [0.3.0] - 2026-11-17
+
+### Changed
 - Each ask is settled right after intent, before discovery: code checks it
   has the place, the scheme and the action it needs. An ask with a missing
   or unsure one gets one question, written by the composer (#243, ADR-0023)
@@ -20,6 +33,28 @@
 - "How do I file a complaint" now finds the grievance provider and shows the
   form. An ask with a known action is searched as a service, however it is
   worded (#243)
+- `context.sessionId` must not be blank: a request with an empty or
+  whitespace-only one is refused with 422. Every turn is keyed by it, and a
+  blank one would put every caller that sends it on one session (#207)
+- `clarification-text.yaml` has a new required key, `session_busy`: the
+  answer to a form turn that waited too long while another turn from the same
+  farmer held its session. An adopter with their own copy must add it, or the
+  DSS refuses to boot (#207)
+- `clarification-text.yaml` has more required keys: `already_filed`,
+  `no_init_pending`, `init_not_sent`, `init_rejected`, `init_response_needed`,
+  `went_wrong`, `form_cannot_complete`, `saved_details_unusable`,
+  `field_recheck`, `init_response_refused`, `init_response_not_sent`,
+  `outcome_unknown` and `case_not_found` (#207, #208)
+- A `status` call now sends a status on its commitment, as the Beckn
+  protocol requires. `support` is unchanged (#205)
+- Log lines carry their fields as attributes, not in the message text, so
+  the request, message and session ids can be filtered on. Every `dss`
+  log line carries the turn's ids. The console still prints `key=value`
+  (#241)
+- A form field the pack marks `x-oan-pii` is masked whole: logs, traces and
+  the audit record see a tag, and the provider gets the real value. Only
+  unmarked typed fields are moderated, so the grievance description, which
+  the pack marks, is no longer moderated (#207)
 
 ### Added
 - A farmer with a scheme problem is guided to the grievance form. When their
@@ -31,6 +66,24 @@
 - The intent model returns each ask's `action` (`support`, `status`,
   `unclear` or nothing) and how sure it is of the scheme
   (`scheme_confidence`) (#243)
+- A form sent again after the provider took it is answered `rejected`,
+  `already_filed`, and nothing is called. Needs `DSS_REDIS_URL` (#207)
+- A PM-KISAN details form calls the provider's `init` once, then sends the
+  farmer the init form for the OTP the provider texted them. Without a kept
+  session (no `DSS_REDIS_URL`, or Redis down) it calls nothing and ends
+  `unavailable`, `internal` (#207)
+- The init form sent back files the waiting PM-KISAN form with the provider
+  init went to. A refused or unsent response hands the init form back as a
+  `form_error` on the response field; one that may have gone through ends
+  with `provider_outcome_unknown` (#207)
+- A PM-KISAN status check the provider refuses ends the flow: no such case,
+  and no init form back (#208)
+- Form turns keep a little state between turns in Redis, when
+  `DSS_REDIS_URL` is set, and every turn runs one at a time per session.
+  Unset, nothing changes (#207, ADR-0022)
+- Four new `cause` values for the form flow: `already_filed`,
+  `no_init_pending`, `init_response_refused` and `provider_outcome_unknown`.
+  `provider_outcome_unknown` is sent with `retryable: false` (#207)
 
 ## [0.2.0] - 2026-11-05
 

@@ -7,7 +7,7 @@ from dataclasses import FrozenInstanceError
 import pytest
 from pydantic import ValidationError
 
-from dss.core.intent.models import Ask, InteractionType, SubjectCategory
+from dss.core.intent.models import InteractionType, SubjectCategory
 from dss.core.planner.models import (
     AskEvidence,
     Attempted,
@@ -28,6 +28,7 @@ from dss.core.settlement.models import (
     Unservable,
     UnservableReason,
 )
+from tests.support.asks import an_ask
 
 
 def test_source_carries_provenance() -> None:
@@ -76,24 +77,28 @@ def test_skill_is_frozen() -> None:
         skill.domain = "livestock"
 
 
-def test_result_carries_ask_index_and_source() -> None:
-    result = Result(ask_index=0, source_id="1", data={"modal_price": "2100"})
-    assert result.ask_index == 0
-    assert result.source_id == "1"
+_AGMARKNET = Source(id="1", name="Agmarknet", kind=SourceKind.PROVIDER, url=None)
+_IMD = Source(id="2", name="IMD", kind=SourceKind.PROVIDER, url=None)
+
+
+def test_result_carries_ask_id_and_source() -> None:
+    result = Result(ask_id=0, source=_AGMARKNET, data={"modal_price": "2100"})
+    assert result.ask_id == 0
+    assert result.source == _AGMARKNET
     assert result.data == {"modal_price": "2100"}
 
 
 def test_result_is_frozen() -> None:
-    result = Result(ask_index=0, source_id="1", data={})
+    result = Result(ask_id=0, source=_AGMARKNET, data={})
     with pytest.raises(ValidationError):
-        result.source_id = "2"
+        result.source = _IMD
 
 
 def test_failure_carries_capability_and_reason() -> None:
     failure = Failure(
-        ask_index=0, capability="MandiPrice", reason="timeout", retryable=True
+        ask_id=0, capability="MandiPrice", reason="timeout", retryable=True
     )
-    assert failure.ask_index == 0
+    assert failure.ask_id == 0
     assert failure.capability == "MandiPrice"
     assert failure.reason == "timeout"
     assert failure.retryable is True
@@ -101,18 +106,18 @@ def test_failure_carries_capability_and_reason() -> None:
 
 def test_failure_is_frozen() -> None:
     failure = Failure(
-        ask_index=0, capability="MandiPrice", reason="timeout", retryable=True
+        ask_id=0, capability="MandiPrice", reason="timeout", retryable=True
     )
     with pytest.raises(ValidationError):
         failure.retryable = False
 
 
-_ASK = Ask(
+_ASK = an_ask(
     subject_categories=SubjectCategory.MARKET, interaction_type=InteractionType.OBSERVE
 )
-_RESULT = Result(ask_index=0, source_id="1", data={"modal_price": "2100"})
+_RESULT = Result(ask_id=0, source=_AGMARKNET, data={"modal_price": "2100"})
 _PROVIDER_FAILURE = Failure(
-    ask_index=0, capability="MandiPrice", reason="timeout", retryable=True
+    ask_id=0, capability="MandiPrice", reason="timeout", retryable=True
 )
 
 
@@ -170,8 +175,15 @@ def test_ask_we_cannot_serve_is_unanswered() -> None:
     assert _CANNOT_SERVE.has_provider_failure is False
 
 
+def test_only_an_answered_ask_has_sources() -> None:
+    """A question or a form cites nothing."""
+
+    assert _SERVED.sources == (_AGMARKNET,)
+    assert _NEEDS_PLACE.sources == ()
+
+
 def _evidence(*ask_evidences: AskEvidence) -> Evidence:
-    return Evidence(sources=(), ask_evidences=ask_evidences)
+    return Evidence(ask_evidences=ask_evidences)
 
 
 def test_turn_note_empty_by_default() -> None:
@@ -214,19 +226,20 @@ def test_a_turn_has_a_provider_failure_only_when_a_call_failed() -> None:
     assert _evidence(_UNSERVED, _PROVIDER_FAILED).has_provider_failure is True
 
 
-def test_evidence_carries_sources_and_each_asks_evidence() -> None:
-    source = Source(id="1", name="Agmarknet", kind=SourceKind.PROVIDER, url=None)
+def test_evidence_lists_each_source_once() -> None:
+    """In number order, whichever ask named a source first."""
 
-    evidence = Evidence(sources=(source,), ask_evidences=(_SERVED, _UNSERVED))
+    by_both = _attempted_ask((Result(ask_id=0, source=_IMD, data={}), _RESULT))
 
-    assert evidence.sources == (source,)
-    assert evidence.ask_evidences == (_SERVED, _UNSERVED)
+    evidence = _evidence(by_both, _SERVED, _UNSERVED)
+
+    assert evidence.sources == (_AGMARKNET, _IMD)
 
 
 def test_evidence_is_frozen() -> None:
     evidence = _evidence()
     with pytest.raises(FrozenInstanceError):
-        evidence.sources = ()  # type: ignore[misc]
+        evidence.ask_evidences = ()  # type: ignore[misc]
 
 
 def test_identity_carries_name_persona_boundaries() -> None:

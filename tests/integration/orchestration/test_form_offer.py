@@ -9,7 +9,6 @@ from dss.core.intent.models import (
     Ask,
     ClassifiedAsk,
     GuessedScheme,
-    Intent,
     IntentClassification,
     InteractionType,
     Scheme,
@@ -17,9 +16,10 @@ from dss.core.intent.models import (
     SubjectCategory,
     UnclearAction,
 )
-from dss.core.provider_discovery.models import DiscoveryResult, ProviderCapability
+from dss.core.provider_discovery.models import DiscoveredAsk, ProviderCapability
 from dss.core.shared.models import REQUESTABLE_ACTIONS, ProviderAction, TurnStatus
 from dss.orchestration.form_offer import ask_for_form, find_forms, form_context_for
+from dss.orchestration.provider_action import FORM_ASK_ID
 from tests.integration.orchestration.test_orchestrator import (
     _build,
     _ctx,
@@ -28,6 +28,8 @@ from tests.integration.orchestration.test_orchestrator import (
     _FakePlan,
     _turn,
 )
+from tests.support.asks import an_ask
+from tests.support.discovery import a_discovery, discovered
 from tests.support.fakes import FakeSchemeCatalog
 from tests.support.grievance_pack import (
     PMKISAN_STATUS,
@@ -38,7 +40,7 @@ from tests.support.providers import build_capability
 
 PMFBY = Scheme(code="PMFBY", name="Pradhan Mantri Fasal Bima Yojana")
 PMFBY_SUPPORT = FormContext(scheme="PMFBY", category="Grievance", action="support")
-WEATHER_ASK = Ask(
+WEATHER_ASK = an_ask(
     subject_categories=SubjectCategory.WEATHER, interaction_type=InteractionType.OBSERVE
 )
 WEATHER_DESK = build_capability(
@@ -68,12 +70,8 @@ class _FakeForms:
         return self._forms.get(context)
 
 
-def _discovery(
-    capabilities: dict[int, tuple[ProviderCapability, ...]] | None = None,
-) -> DiscoveryResult:
-    return DiscoveryResult(
-        answers={}, capabilities=capabilities or {}, failures={}, events=()
-    )
+def _served_by(desk: ProviderCapability, ask: Ask) -> DiscoveredAsk:
+    return discovered(ask, capabilities=(desk,))
 
 
 def _grievance_ask(
@@ -82,7 +80,7 @@ def _grievance_ask(
     scheme: Scheme | GuessedScheme | None = PMFBY,
     interaction: InteractionType = InteractionType.ACT,
 ) -> Ask:
-    return Ask(
+    return an_ask(
         agriculture_subjects=PMFBY.name,
         subject_categories=SubjectCategory.GRIEVANCE,
         interaction_type=interaction,
@@ -138,10 +136,10 @@ def test_a_guessed_scheme_names_no_form() -> None:
 
 
 def test_a_served_ask_the_registry_knows_gets_its_form() -> None:
-    intent = Intent(asks=(_grievance_ask(),), confidence=0.9)
+    discovery = a_discovery(_served_by(GRIEVANCE_DESK, _grievance_ask()))
     forms = _FakeForms({PMFBY_SUPPORT: GRIEVANCE_FORM})
 
-    awaiting = find_forms(intent, _discovery({0: (GRIEVANCE_DESK,)}), forms)
+    awaiting = find_forms(discovery, forms)
 
     assert awaiting == {0: GRIEVANCE_FORM}
 
@@ -166,10 +164,10 @@ PMKISAN_PROVIDER = build_capability(
 def test_a_pmkisan_ask_gets_its_form_without_the_otp(
     action: ProviderAction, context: FormContext
 ) -> None:
-    intent = Intent(asks=(_grievance_ask(action, scheme=PMKISAN),), confidence=0.9)
+    ask = _grievance_ask(action, scheme=PMKISAN)
 
     awaiting = find_forms(
-        intent, _discovery({0: (PMKISAN_PROVIDER,)}), build_grievance_forms()
+        a_discovery(_served_by(PMKISAN_PROVIDER, ask)), build_grievance_forms()
     )
 
     form = awaiting[0]
@@ -181,35 +179,35 @@ def test_an_ask_nobody_serves_gets_no_form() -> None:
     """No desk on this network: the unserved message, as for any other ask.
     The registry is not even asked."""
 
-    intent = Intent(asks=(_grievance_ask(),), confidence=0.9)
     forms = _FakeForms({PMFBY_SUPPORT: GRIEVANCE_FORM})
 
-    awaiting = find_forms(intent, _discovery(), forms)
+    awaiting = find_forms(a_discovery(discovered(_grievance_ask())), forms)
 
     assert awaiting == {}
     assert forms.asked == []
 
 
 def test_a_served_ask_without_a_registry_form_is_the_planners() -> None:
-    intent = Intent(asks=(_grievance_ask(),), confidence=0.9)
+    discovery = a_discovery(_served_by(GRIEVANCE_DESK, _grievance_ask()))
 
-    awaiting = find_forms(intent, _discovery({0: (GRIEVANCE_DESK,)}), _FakeForms({}))
+    awaiting = find_forms(discovery, _FakeForms({}))
 
     assert awaiting == {}
 
 
 def test_only_the_form_ask_is_taken_from_a_mixed_turn() -> None:
     """ "What's the weather, and file my PMFBY grievance": the weather ask
-    stays the planner's, the grievance ask is the form's."""
+    stays the planner's, the grievance ask is the form's. The grievance is
+    ask 2: the ask between the two was not passed on."""
 
-    intent = Intent(asks=(WEATHER_ASK, _grievance_ask()), confidence=0.9)
-    discovery = _discovery({0: (WEATHER_DESK,), 1: (GRIEVANCE_DESK,)})
-
-    awaiting = find_forms(
-        intent, discovery, _FakeForms({PMFBY_SUPPORT: GRIEVANCE_FORM})
+    grievance = _grievance_ask().model_copy(update={"id": 2})
+    discovery = a_discovery(
+        _served_by(WEATHER_DESK, WEATHER_ASK), _served_by(GRIEVANCE_DESK, grievance)
     )
 
-    assert awaiting == {1: GRIEVANCE_FORM}
+    awaiting = find_forms(discovery, _FakeForms({PMFBY_SUPPORT: GRIEVANCE_FORM}))
+
+    assert awaiting == {2: GRIEVANCE_FORM}
 
 
 def _grievance_classification() -> IntentClassification:
@@ -235,7 +233,7 @@ async def test_the_planner_is_told_which_asks_await_a_form() -> None:
     plan = _FakePlan(_evidence(results=(), awaiting={0: GRIEVANCE_FORM}))
     orch, _ = _build(
         intent=_grievance_classification(),
-        discovery=_discovery({0: (GRIEVANCE_DESK,)}),
+        discovery=a_discovery(_served_by(GRIEVANCE_DESK, _grievance_ask())),
         plan=plan,
         compose=_FakeCompose("Please fill in the form below."),
         forms=_FakeForms({PMFBY_SUPPORT: GRIEVANCE_FORM}),
@@ -262,6 +260,14 @@ def test_a_submission_ask_names_the_form_it_came_from() -> None:
     assert ask.scheme == PMFBY
     assert ask.place is None
     assert form_context_for(ask) == PMFBY_SUPPORT
+
+
+def test_a_submission_ask_has_the_form_paths_id() -> None:
+    """The form path reads discovery by this id, so the two must agree."""
+
+    ask = ask_for_form(PMFBY_SUPPORT, scheme=PMFBY)
+
+    assert ask.id == FORM_ASK_ID
 
 
 @pytest.mark.parametrize("action", sorted(REQUESTABLE_ACTIONS))

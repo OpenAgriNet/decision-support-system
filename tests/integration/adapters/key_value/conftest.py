@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import AsyncIterator, Iterator
+from contextlib import suppress
 
 import pytest
 from docker.errors import DockerException
@@ -20,15 +21,20 @@ def redis_url() -> Iterator[str]:
     container = RedisContainer("redis:7")
     try:
         container.start()
-    except DockerException as error:
+    except Exception as error:
+        # start() can create the container and then fail, and Ryuk is off.
+        with suppress(Exception):
+            container.stop()
         # CI must run these; only a laptop without Docker may skip them.
-        if os.environ.get("CI"):
+        if not isinstance(error, DockerException) or os.environ.get("CI"):
             raise
         pytest.skip(f"no Docker for the Redis container: {error}")
-    host = container.get_container_host_ip()
-    port = container.get_exposed_port(6379)
-    yield f"redis://{host}:{port}/0"
-    container.stop()
+    try:
+        host = container.get_container_host_ip()
+        port = container.get_exposed_port(6379)
+        yield f"redis://{host}:{port}/0"
+    finally:
+        container.stop()
 
 
 @pytest.fixture

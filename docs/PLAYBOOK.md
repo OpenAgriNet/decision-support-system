@@ -23,10 +23,10 @@ Hindi, which is how the channel's language handling gets exercised.
 
 ## One command
 
-`scripts/run-local.sh` starts the whole stack — Langfuse, the collector, the
-mock network and the DSS. Every prerequisite is checked before anything
-starts, so a missing piece is one message naming the fix rather than a failure
-three minutes in:
+`scripts/run-local.sh` starts the whole stack — Langfuse, the collector, a
+Redis for form sessions, the mock network and the DSS. Every prerequisite is
+checked before anything starts, so a missing piece is one message naming the
+fix rather than a failure three minutes in:
 
 ```bash
 ./scripts/run-local.sh
@@ -58,9 +58,9 @@ in the gateway instead. Without it, `azure:<deployment>` uses the first pair.
 See [`RUNNING-GATEWAY.md`](./RUNNING-GATEWAY.md). The Langfuse keys come from
 Settings → API Keys at <http://localhost:3000>.
 
-Ctrl-C stops the DSS and leaves Langfuse, the collector and the mock up — they
-are slow to start and a local session restarts the DSS often. `--down` stops
-all three.
+Ctrl-C stops the DSS and leaves Langfuse, the collector, Redis and the mock
+up — they are slow to start and a local session restarts the DSS often.
+`--down` stops them all, and Redis forgets every session.
 
 The collector runs `otel/collector.local.yaml`, which has no ClickHouse
 exporter: a laptop needs no ClickHouse, and the collector refuses to start
@@ -127,20 +127,17 @@ That writes the packs into `var/schema-packs/` (gitignored):
 `AgricultureResource` is not a capability anything routes to. The other
 catalog packs `$ref` it for their shared fields, so it has to sit beside them.
 
-It reads `schema-packs-v0.1` of network-specs, which carries every pack the
-DSS reads in one `schema/` folder. The app's own startup fetch, Docker compose
-and `scripts/run-local.sh` read the same ref. A ref with no packs on it, such
-as `main`, fetches nothing and exits `1`, naming the ref that has them:
-
-```
-error: no schema packs found on ref 'main' (0 of 6). The published packs are
-on 'schema-packs-v0.1' — re-run with --ref schema-packs-v0.1.
-```
+It reads the published packs from network-specs on GitHub Pages
+(`https://openagrinet.github.io/network-specs/schema/...`), which is built from
+`main`. The app's own startup fetch and `scripts/run-local.sh` do the same.
+If nothing can be fetched, it exits `1` and says what to check.
 
 | Flag | Default | Notes |
 |---|---|---|
-| `--ref` | `schema-packs-v0.1` | the network-specs branch or tag |
 | `--dest` | `var/schema-packs/` | resolved from the repo root, not your working directory |
+
+Pages cannot list a folder, so each pack's example file names come from the
+GitHub API, on `main`.
 
 Set `GITHUB_TOKEN` if you re-run it often — the listing call is capped at 60 an
 hour unauthenticated.
@@ -157,7 +154,7 @@ a warning, and offers no forms. A `var/schema-packs/` fetched before
 
 Discovery and invocation leave for the OAN network, which a local build does
 not have. `tools/mock_network/` stands in for it — the same synchronous
-`POST /discover` / `POST /select` / `POST /support` / `POST /status` contract,
+`POST /discover` / `POST /select` / `POST /init` / `POST /support` / `POST /status` contract,
 no auth:
 
 ```bash
@@ -167,18 +164,22 @@ uv run python -m tools.mock_network --port 8078 --reload
 `--reload` restarts the mock when its code changes. It does not watch
 `benchmarks/questions.toml`, so restart the mock after editing that file.
 
-One mock serves weather, mandi, advisory and a PMFBY grievance desk. The
-first three answer only the questions in `benchmarks/questions.toml`; the desk
-takes any form the DSS files at `/support` and answers a fresh ticket number,
-and reads that case back at `/status`:
+One mock serves weather, mandi, advisory, and grievances for PMFBY and
+PM-KISAN. The first three answer only the questions in
+`benchmarks/questions.toml`. The grievance providers take any form the DSS
+files at `/support`, answer a fresh ticket number, and read that case back at
+`/status`. PM-KISAN needs an OTP first, from `/init`:
 
 | Type | Answers | Matched on |
 |---|---|---|
 | Mandi | 5 markets, 4 commodities | commodity code and market code |
 | Weather | any point | the turn's coordinates (must be sent) |
 | Advisory | 10 written answers | the crop word in `topics` |
-| Grievance | a ticket, status Registered, filed today | nothing; every filing is accepted |
-| Grievance status | the filed case, status UnderReview, crop Paddy | the ticket and the phone it was filed from |
+| Grievance (PMFBY) | a ticket, status Registered, filed today | nothing; every filing is accepted |
+| Grievance status (PMFBY) | the filed case, status UnderReview, crop Paddy | the ticket and the phone it was filed from |
+| Grievance init (PM-KISAN) | an OTP was sent by SMS (none is sent) | any PM-KISAN enrolment number (must be present) |
+| Grievance (PM-KISAN) | a ticket, status Registered, filed today | only the OTP `1234` (`MOCK_OTP`) |
+| Grievance status (PM-KISAN) | the filed case | the enrolment number and the filing date, with the OTP `1234` |
 
 The same question gets the same answer every run. A request it can't match
 gets a `400`, and is counted at `GET /_bench/misses`. `/docs` on port 8078
@@ -261,6 +262,23 @@ the status form. Send back a ticket this mock filed, with the same phone, and
 `/status` answers the case. Any other ticket or phone is a 400, which the DSS
 tells the farmer as no complaint found. The mock remembers its filings only
 while it runs: restart it and it knows no case.
+
+PM-KISAN needs an OTP. `/init` takes a PM-KISAN enrolment number and answers
+that a 4-digit OTP was sent by SMS; no SMS is sent. PM-KISAN's `/support` and
+`/status` accept only the OTP `1234` (`MOCK_OTP`) and refuse any other with a
+400. A PM-KISAN case is read back by its enrolment number and filing date, not
+a ticket. PMFBY needs no OTP.
+
+To try the OTP flow, start the stack with `./scripts/run-local.sh` (it starts
+Redis too, which carries the flow from one turn to the next). Then:
+
+1. Ask "I want to file a PM-KISAN grievance". The reply is the details form.
+2. Send it back filled in. The DSS calls `/init`, and the reply is a form with
+   one `secret` field, its `context.action` set to `init`.
+3. Send that form back with `1234`. The DSS files at `/support`, and the
+   reply names the ticket.
+
+Any other OTP is refused by the mock, and the DSS hands the OTP form back.
 
 A question intent classifies into a category the mock does not serve comes
 back `no_match` — which is the honest answer, and worth telling apart from a
@@ -863,6 +881,28 @@ filter and the farmer is asked which one they mean.
 the column across when regenerating against a newer snapshot. An adopter who
 needs a different area set or different aliases points `DSS_AREA_CSV_PATH`
 at their own file.
+
+### Session state for forms (Redis)
+
+Some forms take more than one turn: PM-KISAN sends an OTP, and the farmer's
+next form answers it. The DSS keeps what it needs between those turns in
+Redis, for 180 seconds per session. Every turn runs in its session, one at a
+time; only form turns write to it for now.
+
+| Setting | Default | What it does |
+|---|---|---|
+| `DSS_REDIS_URL` | unset | The Redis address, like `redis://:<password>@redis:6379/0`. Unset means no store: a form turn forgets everything when it ends, so a form that needs an OTP is refused before init is called, and no SMS goes out. Forms that file in one turn work as before. |
+
+`docker-compose.yml` runs a Redis with a password (`DSS_REDIS_PASSWORD`) and
+nothing saved to disk, and points the DSS at it. Set `DSS_REDIS_URL=` (empty)
+in `.env` to turn it off. The Redis container still starts; the DSS just
+does not use it.
+
+- The password goes into the URL as it is. Use only letters, digits, `-` and
+  `_`, or set `DSS_REDIS_URL` yourself with the password URL-encoded.
+- Beyond a laptop, use TLS: a `rediss://` address.
+- A Redis that cannot be reached does not stop a form turn. That turn runs as
+  if `DSS_REDIS_URL` were unset, and the log says why.
 
 ### Place names the file lacks (Photon)
 

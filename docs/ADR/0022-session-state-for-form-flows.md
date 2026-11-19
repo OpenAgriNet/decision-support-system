@@ -82,8 +82,10 @@ Chosen option: **4.**
   ends `unavailable`.
 - **Any task may release the lock.** A closed screen can leave the turn to be
   finished by another task, which must still release it.
-- **Only form turns use it.** A text turn takes no lock, so quick text
-  messages never queue.
+- **Every turn runs in a session, one turn at a time per session.** Text and
+  form turns both take the lock; text turns do not write state yet. A turn
+  that waits past the acquire timeout is answered by the orchestrator:
+  `unavailable`, cause `timeout`.
 - **What it holds.** Only details forms the provider has seen, by form id,
   each waiting for an OTP or done. The OTP itself is never stored. At most one
   flow is open per session.
@@ -98,6 +100,13 @@ Chosen option: **4.**
 - **Every deployment needs its own Redis.** Not Langfuse's: that one is tuned
   for Langfuse and saves to disk. Ours must have a password, TLS, and saving
   to disk turned off (no RDB, no AOF), so form values never land on disk.
+- Every turn runs in a session, one turn at a time per session; text turns
+  do not write state yet. A quick second message waits for the first. A turn
+  turned away as busy never reaches a path, so it is not in the turn record
+  yet.
+- Redis is optional. With `DSS_REDIS_URL` unset there is no store: a
+  turn's session lasts that turn, so a flow that needs an OTP cannot finish.
+  A Redis that cannot be reached is treated the same way for that turn.
 - A Redis restart loses every open flow. The farmer is asked to start again.
 - A failover to a replica that had not caught up can drop a lock. Two turns
   in one session may then overlap once, and the last save wins. Accepted:

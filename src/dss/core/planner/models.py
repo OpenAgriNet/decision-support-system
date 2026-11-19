@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from operator import attrgetter
 
 import anyio
 from pydantic import BaseModel, ConfigDict
 
 from dss.core.forms.models import FormDefinition
-from dss.core.intent.models import Ask
+from dss.core.intent.models import Ask, AskId
 from dss.core.moderation.models import ModerationDecision
 from dss.core.settlement.models import CannotServe, NeedsClarification
 
@@ -65,6 +66,10 @@ class Source(BaseModel):
     kind: SourceKind
     url: str | None
 
+    @property
+    def number(self) -> int:
+        return int(self.id)
+
 
 class Skill(BaseModel):
     """What tools bind for this turn, and the guidance that goes with them
@@ -84,36 +89,40 @@ class Result(BaseModel):
     """One capability call's data, mapped to the domain schema.
 
     The design doc's ``Result.step_id`` names a ``Plan`` step; there is no
-    ``Plan`` here. ``ask_index`` names what a result actually answers instead
-    — the position among the asks the planner was given — so
-    ``assemble_evidence`` can file it under its ask. Those are the settled
-    asks, not every ask of the turn. No ``url`` here: it lives on the
-    ``Source`` this result's ``source_id`` points to.
+    ``Plan`` here. ``ask_id`` names the ask a result answers instead, so
+    ``assemble_evidence`` can file it under its ask. It holds its ``Source``,
+    so a result can never name one that is not there.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    ask_index: int
-    source_id: str
+    ask_id: AskId
+    source: Source
     data: dict
+
+
+# A failure's status code when no readable reply came back: a timeout, a
+# dropped connection, or a 2xx whose body could not be read.
+NO_READABLE_REPLY = 0
 
 
 class Failure(BaseModel):
     """An ask that did not produce a result.
 
-    ``ask_index`` names what the call was answering — the position among the
-    asks the planner was given — the same way ``Result.ask_index`` does, so
-    ``assemble_evidence`` can file it under its ask.
+    ``ask_id`` names the ask the call was answering, the same way
+    ``Result.ask_id`` does, so ``assemble_evidence`` can file it under its ask.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    ask_index: int
+    ask_id: AskId
     capability: str
     reason: str
     retryable: bool
     # The provider's own `Retry-After`, when it sent one on a failed filing.
     retry_after_seconds: int | None = None
+    # None: the provider was never called.
+    status_code: int | None = None
 
 
 class Identity(BaseModel):
@@ -186,22 +195,35 @@ class AskEvidence:
     def has_provider_failure(self) -> bool:
         return self.outcome.has_provider_failure
 
+    @property
+    def sources(self) -> tuple[Source, ...]:
+        outcome = self.outcome
+        if not isinstance(outcome, Attempted):
+            return ()
+        return tuple(dict.fromkeys(result.source for result in outcome.results))
+
 
 @dataclass(frozen=True)
 class Evidence:
-    """What the loop gathered for a turn: every source it cites, and per ask,
-    every result and every gap (design doc §8, open item 14).
+    """What the loop gathered for a turn: per ask, every result and every gap
+    (design doc §8, open item 14).
 
-    ``sources`` spans the turn, numbered in first-seen order, because one
-    source can answer several asks and a claim cites it by that one number.
     ``ask_evidences`` holds one entry per ``Intent.asks``, in ask order.
     """
 
-    sources: tuple[Source, ...]
     ask_evidences: tuple[AskEvidence, ...]
     # Always empty for now: refusal and no-match fill it once they reach the
     # composer. Added early so they add a kind of note, not a new shape.
     turn_note: TurnNote | None = None
+
+    @property
+    def sources(self) -> tuple[Source, ...]:
+        source_by_id = {
+            source.id: source
+            for entry in self.ask_evidences
+            for source in entry.sources
+        }
+        return tuple(sorted(source_by_id.values(), key=attrgetter("number")))
 
     @property
     def unserved_asks(self) -> tuple[AskEvidence, ...]:

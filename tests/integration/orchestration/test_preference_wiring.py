@@ -17,7 +17,6 @@ import pytest
 
 from dss.core.intent.models import (
     Ask,
-    Intent,
     InteractionType,
     PlaceSource,
     ResolvedPlace,
@@ -31,6 +30,7 @@ from dss.core.provider_discovery.models import (
 )
 from dss.core.shared.models import Geometry, TextQuery, UserTurn
 from dss.orchestration.discovery import build_discover_providers
+from tests.support.asks import an_ask
 from tests.support.fakes import FakeProviderPreferences
 from tests.support.providers import build_capability
 
@@ -95,21 +95,18 @@ def _turn(sender_id: str | None) -> UserTurn[TextQuery]:
     )
 
 
-def _intent() -> Intent:
-    return Intent(
-        asks=(
-            Ask(
-                subject_categories=SubjectCategory.WEATHER,
-                interaction_type=InteractionType.OBSERVE,
-                place=ResolvedPlace(
-                    name="Nashik",
-                    within=("Maharashtra",),
-                    geometry=Geometry(coordinates=[73.79, 19.99]),
-                    source=PlaceSource.NAMED,
-                ),
+def _asks() -> tuple[Ask, ...]:
+    return (
+        an_ask(
+            subject_categories=SubjectCategory.WEATHER,
+            interaction_type=InteractionType.OBSERVE,
+            place=ResolvedPlace(
+                name="Nashik",
+                within=("Maharashtra",),
+                geometry=Geometry(coordinates=[73.79, 19.99]),
+                source=PlaceSource.NAMED,
             ),
         ),
-        confidence=1.0,
     )
 
 
@@ -134,7 +131,7 @@ async def test_the_discovery_is_built_for_the_turn() -> None:
     )
     turn = _turn("kisan-mitra-web")
 
-    await discover(_intent(), turn, now=datetime.now(UTC))
+    await discover(_asks(), turn, now=datetime.now(UTC))
 
     assert built_for == [turn]
 
@@ -145,7 +142,7 @@ async def test_the_turns_own_client_is_the_one_looked_up() -> None:
     )
 
     await _discover(preferences)(
-        _intent(), _turn("kisan-mitra-web"), now=datetime.now(UTC)
+        _asks(), _turn("kisan-mitra-web"), now=datetime.now(UTC)
     )
 
     assert preferences.asked == ["kisan-mitra-web"]
@@ -157,15 +154,15 @@ async def test_discovery_hands_on_a_ranked_candidate_list() -> None:
     )
 
     result = await _discover(preferences)(
-        _intent(), _turn("kisan-mitra-web"), now=datetime.now(UTC)
+        _asks(), _turn("kisan-mitra-web"), now=datetime.now(UTC)
     )
 
-    assert [c.provider_id for c in result.capabilities[0]] == [
+    assert [c.provider_id for c in result.asks[0].capabilities] == [
         "maharashtra-vistaar",
         "mausamgram",
     ]
     # The Direct answer came from a provider this client ruled out.
-    assert result.answers[0] == ()
+    assert result.asks[0].answers == ()
 
 
 async def test_a_caller_that_named_nobody_gets_the_default_ranking() -> None:
@@ -174,17 +171,17 @@ async def test_a_caller_that_named_nobody_gets_the_default_ranking() -> None:
         default={"Weather": ["mausamgram"]},
     )
 
-    result = await _discover(preferences)(_intent(), _turn(None), now=datetime.now(UTC))
+    result = await _discover(preferences)(_asks(), _turn(None), now=datetime.now(UTC))
 
-    assert [c.provider_id for c in result.capabilities[0]] == ["mausamgram"]
+    assert [c.provider_id for c in result.asks[0].capabilities] == ["mausamgram"]
 
 
 async def test_an_unconfigured_deployment_keeps_every_provider() -> None:
     result = await _discover(FakeProviderPreferences())(
-        _intent(), _turn("kisan-mitra-web"), now=datetime.now(UTC)
+        _asks(), _turn("kisan-mitra-web"), now=datetime.now(UTC)
     )
 
-    assert [c.provider_id for c in result.capabilities[0]] == [
+    assert [c.provider_id for c in result.asks[0].capabilities] == [
         "unvetted",
         "mausamgram",
         "maharashtra-vistaar",
@@ -204,15 +201,36 @@ async def test_what_the_ranking_dropped_is_logged(
 
     with caplog.at_level("INFO", logger="dss.trace"):
         await _discover(preferences)(
-            _intent(), _turn("kisan-mitra-web"), now=datetime.now(UTC)
+            _asks(), _turn("kisan-mitra-web"), now=datetime.now(UTC)
         )
 
-    record = next(
+    line = next(
         record
         for record in caplog.records
         if getattr(record, "event", None) == "ranking_applied"
     )
-    assert record.sender_id == "kisan-mitra-web"
-    assert record.capability == "Weather"
-    assert record.dropped == "unvetted,mausamgram"
-    assert "nashik" not in str(vars(record)).lower()
+    assert line.source == "sender"
+    assert line.capability == "Weather"
+    assert line.dropped == "unvetted,mausamgram"
+    assert "nashik" not in str(vars(line)).lower()
+
+
+async def test_a_default_ranking_says_so_and_leaves_the_sender_to_the_filter(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The turn's sender is added to every line; here it would only repeat."""
+
+    preferences = FakeProviderPreferences(default={"Weather": ["mausamgram"]})
+
+    with caplog.at_level("INFO", logger="dss.trace"):
+        await _discover(preferences)(
+            _asks(), _turn("kisan-mitra-web"), now=datetime.now(UTC)
+        )
+
+    line = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "ranking_applied"
+    )
+    assert line.source == "default"
+    assert not hasattr(line, "sender_id")

@@ -38,7 +38,7 @@ on top: the planner and composer, the event stream, the evidence writes, and
 the mapping from a turn's findings to a contract outcome.
 
 `Orchestrator.run` opens the turn's span and hands the turn to the path for
-its input kind. `TextPath` is the path for a sentence, in three layers: `run`
+its input type. `TextPath` is the path for a sentence, in three layers: `run`
 is the edge (redact, record, reveal kept values),
 `orchestration/translation.py` translates in and out or passes through, and
 `_run_core` runs the pipeline on tags only.
@@ -54,6 +54,7 @@ from collections.abc import (
     AsyncGenerator,
     AsyncIterator,
     Callable,
+    Container,
     Iterable,
     Mapping,
     Sequence,
@@ -79,7 +80,7 @@ from dss.core.channel.service import (
 from dss.core.forms.models import FormDefinition
 from dss.core.forms.registry import FormLookup
 from dss.core.forms.service import offer_form
-from dss.core.intent.models import Intent
+from dss.core.intent.models import AskId, Intent
 from dss.core.moderation.messages import messages_for
 from dss.core.moderation.models import ModerationDecision, Outcome
 from dss.core.planner.evidence import group_by_ask, merge_unsettled
@@ -107,7 +108,7 @@ from dss.core.shared.models import (
 )
 from dss.core.stream_response.citations import CitationNumbers
 from dss.core.stream_response.service import ComposeStream
-from dss.core.translation.service import EdgeTranslation
+from dss.core.translation.service import EdgeTranslation, TurnTranslation
 from dss.observability.stages import Stage
 from dss.observability.trace_log import trace_component
 from dss.orchestration.answer_stream import AnswerStream
@@ -116,6 +117,7 @@ from dss.orchestration.events import CoreEvent
 from dss.orchestration.form_offer import find_forms
 from dss.orchestration.plan import Plan
 from dss.orchestration.redaction import RedactTexts
+from dss.orchestration.session import Session, SessionBusy, Sessions
 from dss.orchestration.settlement import SettleAsks
 from dss.orchestration.stage_content import (
     asks_text,
@@ -152,8 +154,18 @@ _STUB_CONFIDENCE = {
 }
 
 
-def outcome_for(status: TurnStatus, cause: Cause | None = None) -> TurnOutcome:
-    return TurnOutcome(status=status, cause=cause, confidence=_STUB_CONFIDENCE[status])
+def outcome_for(
+    status: TurnStatus,
+    cause: Cause | None = None,
+    *,
+    retry_after_seconds: int | None = None,
+) -> TurnOutcome:
+    return TurnOutcome(
+        status=status,
+        cause=cause,
+        confidence=_STUB_CONFIDENCE[status],
+        retry_after_seconds=retry_after_seconds,
+    )
 
 
 @dataclass(frozen=True)
@@ -184,29 +196,42 @@ class Components:
 
 
 class TurnPath[InputT: TurnInput](Protocol):
-    """One input kind's pipeline, from the turn as sent to the events the
+    """One input type's pipeline, from the turn as sent to the events the
     farmer reads."""
 
     def run(
-        self, turn: UserTurn[InputT], *, ctx: TurnContext, recorder: TurnRecorder
+        self,
+        turn: UserTurn[InputT],
+        *,
+        ctx: TurnContext,
+        recorder: TurnRecorder,
+        session: Session,
     ) -> AsyncGenerator[TurnEvent]: ...
 
 
-# `Any`: the table mixes kinds, and the type checker cannot say that a value's
-# kind equals its key. The boot check does.
+# `Any`: the table mixes input types, and the type checker cannot say that a
+# value's input type equals its key. The boot check does.
 type TurnPaths = Mapping[type[TurnInput], TurnPath[Any]]
 
 
-class NoPathForKindError(Exception):
+class NoPathForInputTypeError(Exception):
     pass
 
 
 class Orchestrator:
     """Satisfies `ports.turn.TurnRunner`. Opens the turn's span, then runs the
-    path wired for the input's kind."""
+    path wired for the input type inside the turn's session."""
 
-    def __init__(self, *, paths: TurnPaths) -> None:
+    def __init__(
+        self,
+        *,
+        paths: TurnPaths,
+        session_busy_answer: ComposedAnswer,
+        sessions: Sessions,
+    ) -> None:
         self._paths = paths
+        self._session_busy_answer = session_busy_answer
+        self._sessions = sessions
 
     async def run(
         self, turn: UserTurn[TurnInput], ctx: TurnContext
@@ -222,22 +247,46 @@ class Orchestrator:
         ) as recorder:
             yield TurnStarted()
             path = self._path_for(type(turn.input))
-            # `aclosing`: closing this generator does not reach the path's, and
-            # a closed screen must close every model stream.
-            async with aclosing(path.run(turn, ctx=ctx, recorder=recorder)) as events:
-                async for event in events:
-                    yield event
+            # One turn at a time per session, whatever its path.
+            async with self._sessions.open(ctx) as opened:
+                if isinstance(opened, SessionBusy):
+                    yield self._session_busy(recorder)
+                    return
+                # `aclosing`: closing this generator does not reach the path's,
+                # and a closed screen must close every model stream.
+                async with aclosing(
+                    path.run(turn, ctx=ctx, recorder=recorder, session=opened)
+                ) as events:
+                    async for event in events:
+                        yield event
 
-    def _path_for(self, kind: type[TurnInput]) -> TurnPath[Any]:
-        if kind not in self._paths:
-            raise NoPathForKindError(kind.__name__)
-        return self._paths[kind]
+    def _path_for(self, input_type: type[TurnInput]) -> TurnPath[Any]:
+        if input_type not in self._paths:
+            raise NoPathForInputTypeError(input_type.__name__)
+        return self._paths[input_type]
+
+    # shortcut: not redacted, recorded or localized, since no path ran; the
+    # turn record misses busy turns until a path answers them.
+    def _session_busy(self, recorder: TurnRecorder) -> TurnFinished:
+        finished = build_turn_finished(
+            outcome_for(TurnStatus.UNAVAILABLE, Cause.TIMEOUT),
+            self._session_busy_answer,
+        )
+        recorder.status(finished.outcome.status.value)
+        return finished
 
 
-def unrouted_kinds(
-    paths: TurnPaths, kinds: Iterable[type[TurnInput]]
+def unrouted_input_types(
+    routed: Container[type[TurnInput]], input_types: Iterable[type[TurnInput]]
 ) -> list[type[TurnInput]]:
-    return [kind for kind in kinds if kind not in paths]
+    return [input_type for input_type in input_types if input_type not in routed]
+
+
+@dataclass(frozen=True)
+class _Redacted:
+    turn: UserTurn[TextQuery]
+    # The real values behind the tags, for the provider calls only.
+    visibility: Visibility
 
 
 class TextPath:
@@ -283,19 +332,47 @@ class TextPath:
         self._settle_asks = settle_asks
 
     async def run(
-        self, turn: UserTurn[TextQuery], *, ctx: TurnContext, recorder: TurnRecorder
+        self,
+        turn: UserTurn[TextQuery],
+        *,
+        ctx: TurnContext,
+        recorder: TurnRecorder,
+        session: Session,
     ) -> AsyncGenerator[TurnEvent]:
+        redacted = await self._redact_for_the_record(turn, ctx, recorder)
+        translation = self._edge_translation.for_turn(redacted.turn)
+        core_turn = await translate_in(
+            redacted.turn, translation, trace_id=ctx.trace_id
+        )
+        async with aclosing(
+            self._stream_to_farmer(
+                core_turn, redacted, translation, ctx=ctx, recorder=recorder
+            )
+        ) as events:
+            async for event in events:
+                yield event
+
+    async def _redact_for_the_record(
+        self, turn: UserTurn[TextQuery], ctx: TurnContext, recorder: TurnRecorder
+    ) -> _Redacted:
         with trace_component(Stage.REDACTION, ctx.trace_id):
             redaction = await self._components.redact(
-                texts_of(turn), request_id=turn.transaction_id
+                texts_of(turn), transaction_id=turn.transaction_id
             )
         farmer_turn = with_texts(turn, redaction.texts)
         recorder.redacted(found=redaction.found, failed=redaction.failed)
         self._turns.opened(ctx, farmer_turn)
+        return _Redacted(turn=farmer_turn, visibility=redaction.visibility)
 
-        translation = self._edge_translation.for_turn(farmer_turn)
-        core_turn = await translate_in(farmer_turn, translation, trace_id=ctx.trace_id)
-
+    async def _stream_to_farmer(
+        self,
+        core_turn: UserTurn[TextQuery],
+        redacted: _Redacted,
+        translation: TurnTranslation | None,
+        *,
+        ctx: TurnContext,
+        recorder: TurnRecorder,
+    ) -> AsyncGenerator[TurnEvent]:
         # `aclosing` each layer: closing an async generator does not reach the
         # one it reads from, and a closed screen must close every model stream.
         async with (
@@ -304,7 +381,7 @@ class TextPath:
                     core_turn,
                     ctx=ctx,
                     recorder=recorder,
-                    visibility=redaction.visibility,
+                    visibility=redacted.visibility,
                 )
             ) as core_events,
             aclosing(
@@ -313,12 +390,12 @@ class TextPath:
             aclosing(
                 reveal_to_farmer(
                     translated_events,
-                    visibility=redaction.visibility,
+                    visibility=redacted.visibility,
                     recorder=recorder,
                     on_finished=partial(
                         self._record_finished,
                         ctx=ctx,
-                        farmer_turn=farmer_turn,
+                        farmer_turn=redacted.turn,
                         recorder=recorder,
                     ),
                 )
@@ -349,11 +426,9 @@ class TextPath:
             yield await self._no_match(turn)
             return
 
-        # Discovery searched only the settled asks, so everything that reads
-        # it works on those. The rest wait on the farmer.
-        settled = result.settled_intent
-        # The asks a form answers, once discovery has said who serves what.
-        awaiting = find_forms(settled, result.discovery, self._forms)
+        # Discovery searched only the settled asks, so only those can get a
+        # form. The rest wait on the farmer.
+        awaiting = find_forms(result.discovery, self._forms)
         # Fixed text, as ADR-0018 has it, only when no ask needs a question.
         if result.is_every_ask_settled and _nobody_serves(result.discovery):
             yield await self._unserved_reply(result, turn=turn)
@@ -363,9 +438,7 @@ class TextPath:
             turn, result, ctx=ctx, visibility=visibility, awaiting=awaiting
         )
         if not result.is_every_ask_settled:
-            evidence = merge_unsettled(
-                result.intent, result.settlements, settled=evidence
-            )
+            evidence = merge_unsettled(result.settlements, settled=evidence)
         # `aclosing`: closing this generator does not reach the composer's.
         async with aclosing(
             compose_answer(
@@ -419,7 +492,7 @@ class TextPath:
         self._note("intent", ctx, _classified(intent))
         asks = intent.asks
         recorder.asked(
-            categories=[ask.subject_categories.value for ask in asks],
+            categories=[ask.subject_category for ask in asks],
             interactions=[ask.interaction_type.value for ask in asks],
             subjects=[ask.agriculture_subjects or "" for ask in asks],
         )
@@ -440,16 +513,15 @@ class TextPath:
         *,
         ctx: TurnContext,
         visibility: Visibility,
-        awaiting: Mapping[int, FormDefinition],
+        awaiting: Mapping[AskId, FormDefinition],
     ) -> Evidence:
         """The planner's evidence for the settled asks. With none to plan, or
         nobody to serve them, the planner is not called."""
 
-        settled = result.settled_intent
-        if not settled.asks or _nobody_serves(result.discovery):
+        settled_asks = result.settled_asks
+        if not settled_asks or _nobody_serves(result.discovery):
             return Evidence(
-                sources=(),
-                ask_evidences=group_by_ask(settled.asks, results=(), failures=()),
+                ask_evidences=group_by_ask(settled_asks, results=(), failures=()),
             )
         return await self._plan(
             turn, result, ctx=ctx, visibility=visibility, awaiting=awaiting
@@ -462,7 +534,7 @@ class TextPath:
         *,
         ctx: TurnContext,
         visibility: Visibility,
-        awaiting: Mapping[int, FormDefinition],
+        awaiting: Mapping[AskId, FormDefinition],
     ) -> Evidence:
         """Past the barrier: the decision cleared, so the planner's `select`
         tool is free to call providers. The `Verdict` is how that clearance
@@ -470,20 +542,18 @@ class TextPath:
 
         Plans the settled asks only. Discovery searched just those."""
 
-        settled = result.settled_intent
         verdict = Verdict()
         verdict.set(result.decision)
         with trace_component(Stage.PLANNER, ctx.trace_id):
             evidence = await self._components.plan(
                 turn,
-                intent=settled,
                 discovery=result.discovery,
                 verdict=verdict,
                 visibility=visibility,
                 awaiting=awaiting,
             )
             set_current_span_content(
-                input=asks_text(settled.asks),
+                input=asks_text(result.settled_asks),
                 output=evidence_text(evidence),
             )
         return evidence
@@ -729,9 +799,7 @@ def _classified(intent: Intent) -> str:
     """A non-personal summary for telemetry: which categories the turn asked
     about, never the question itself."""
 
-    return (
-        ",".join(ask.subject_categories.value for ask in intent.asks) or "unclassified"
-    )
+    return ",".join(ask.subject_category for ask in intent.asks) or "unclassified"
 
 
 def refusal_for(decision: ModerationDecision) -> tuple[TurnOutcome, ComposedAnswer]:

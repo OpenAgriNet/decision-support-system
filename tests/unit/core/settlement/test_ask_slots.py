@@ -36,6 +36,7 @@ from dss.core.settlement.models import (
 )
 from dss.core.shared.models import Geometry, ProviderAction
 from dss.ports.area_lookup import AreaMatch
+from tests.support.asks import an_ask
 
 PUNE = ResolvedPlace(
     name="Pune",
@@ -101,7 +102,7 @@ def test_action_is_asked_before_scheme_and_place() -> None:
 def _place_of(
     place: ResolvedPlace | AmbiguousPlace | UnresolvedPlace | None,
 ) -> SlotState:
-    ask = Ask(
+    ask = an_ask(
         subject_categories=SubjectCategory.WEATHER,
         interaction_type=InteractionType.OBSERVE,
         place=place,
@@ -177,7 +178,7 @@ def _scheme_of(
 ) -> SlotState:
     """Only PMFBY has a form."""
 
-    ask = Ask(
+    ask = an_ask(
         subject_categories=SubjectCategory.GRIEVANCE,
         interaction_type=InteractionType.ACT,
         scheme=scheme,
@@ -226,7 +227,7 @@ def test_no_scheme_given() -> None:
 
 
 def _action_of(action: ProviderAction | UnclearAction | None) -> SlotState:
-    ask = Ask(
+    ask = an_ask(
         subject_categories=SubjectCategory.GRIEVANCE,
         interaction_type=InteractionType.ACT,
         action=action,
@@ -253,7 +254,7 @@ def test_unknown_slot_fails_at_once() -> None:
 
 
 def _weather_at(place: ResolvedPlace | None) -> Ask:
-    return Ask(
+    return an_ask(
         subject_categories=SubjectCategory.WEATHER,
         interaction_type=InteractionType.OBSERVE,
         place=place,

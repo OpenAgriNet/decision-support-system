@@ -52,7 +52,11 @@ Do not duplicate architecture, domain model, or design-decision detail here — 
 - Logs: the `dss` logger bridged to OTLP at INFO and above
   (`adapters/observability/logs.py`). The handler's level is a PII control, not a
   volume one — provider request/response bodies are DEBUG-only and must never be
-  exported (ADR-0014).
+  exported (ADR-0014). Facts go on the record as attributes, never in the text
+  (ADR-0024): pass them as `extra`, or through `observability/trace_log.py`.
+  A filter adds the turn's ids (`transaction_id`, `turn_message_id`,
+  `session_id`, `sender_id`) to every line; stderr prints them as `key=value`.
+  One access line per HTTP request; the `/openapi.json` health probe only when it fails.
 - Place sources: an ordered chain behind `AreaLookup`. The area CSV first, then
   Photon (an OpenStreetMap place search) over HTTP when `DSS_PHOTON_BASE_URL` is
   set. An optional cache on `async-lru`, off by default. Counted in
@@ -86,9 +90,11 @@ Do not duplicate architecture, domain model, or design-decision detail here — 
 - Session state: Redis (ADR-0022), through `redis` (redis-py). A `SessionStore`
   (orchestration) over a plain `KeyValueStore` port: `get`, `set` with a time
   to live, and redis-py's single-server lock (not Redlock), ownerless, with
-  required `lease_seconds` and `acquire_timeout_seconds`. Only form turns use it,
-  keyed by `sender_id:session_id`, 180 seconds per entry. It reverses "the DSS
-  never owns session state" for form flows only. Its own Redis: password, TLS,
+  required `lease_seconds` and `acquire_timeout_seconds`. Every turn runs in a
+  session, one at a time per session (text turns write nothing yet),
+  keyed by `sender_id:session_id`, 180 seconds per entry. Optional: unset
+  `DSS_REDIS_URL` means no store, and a turn's session lasts that turn.
+  It reverses "the DSS never owns session state" for form flows only. Its own Redis: password, TLS,
   no saving to disk. Tests run a real Redis with `testcontainers`, Ryuk off.
 - Speed benchmark: `benchmarks/` CLI, real models with the mock network; load mode
   runs the DSS in a 1 CPU / 1 GiB container (ADR-0013).
@@ -170,6 +176,7 @@ src/dss/
 
 **Hard rules:**
 - One behavior → one tier. If a test needs two tiers' doubles at once, split it.
+- Change a test before adding one. When a contract changes, update the test that already owns that behavior. Add a new test only for a new rule: one that can fail for a reason no existing test can.
 - Tier 1 must outnumber every other tier combined. If it doesn't, you're testing at the wrong layer.
 - Never assert exact LLM-generated text anywhere except tier 4 (where the cassette makes it deterministic).
 - Tier 6 (eval) is diagnostic, not a gate — wire it to a schedule/dashboard, not to merge checks.

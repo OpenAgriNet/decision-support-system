@@ -20,6 +20,7 @@ from dss.core.shared.models import TurnFinished
 
 from .test_orchestrator import (
     _ANSWERED_EVIDENCE,
+    AGMARKNET,
     DELETE_COMMAND,
     _build,
     _collect,
@@ -32,7 +33,7 @@ from .test_orchestrator import (
     _turn,
 )
 
-_WHEAT_PRICE = Result(ask_index=0, source_id="1", data={"modal": 2275})
+_WHEAT_PRICE = Result(ask_id=0, source=AGMARKNET, data={"modal": 2275})
 
 
 @pytest.fixture

@@ -12,13 +12,20 @@ from collections.abc import Mapping
 
 from dss.core.forms.models import FormContext, FormDefinition
 from dss.core.forms.registry import FormLookup
-from dss.core.intent.models import Ask, Intent, InteractionType, Scheme, SubjectCategory
+from dss.core.intent.models import (
+    Ask,
+    AskId,
+    InteractionType,
+    Scheme,
+    SubjectCategory,
+)
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.shared.models import (
     ProviderAction,
     RequestedAction,
     as_requested_action,
 )
+from dss.orchestration.provider_action import FORM_ASK_ID
 
 # Discovery finds a provider by the interaction type, so the ask a submitted
 # form stands for needs one.
@@ -38,6 +45,7 @@ def ask_for_form(context: FormContext, *, scheme: Scheme) -> Ask | None:
     if action is None or context.category not in SubjectCategory:
         return None
     return Ask(
+        id=FORM_ASK_ID,
         subject_categories=SubjectCategory(context.category),
         interaction_type=_INTERACTION_BY_ACTION[action],
         scheme=scheme,
@@ -52,22 +60,25 @@ def form_context_for(ask: Ask) -> FormContext | None:
         return None
     return FormContext(
         scheme=ask.scheme.code,
-        category=ask.subject_categories.value,
+        category=ask.subject_category,
         action=action,
     )
 
 
 def find_forms(
-    intent: Intent, discovery: DiscoveryResult, forms: FormLookup
-) -> dict[int, FormDefinition]:
-    """The asks a form answers, by position: a provider serves the ask, and
+    discovery: DiscoveryResult, forms: FormLookup
+) -> dict[AskId, FormDefinition]:
+    """The asks a form answers, by ask id: a provider serves the ask, and
     the registry has a form for what it names. Anything else is the
     planner's, as today."""
 
+    form_by_served_ask = {
+        discovered.ask.id: _form_for(discovered.ask, forms)
+        for discovered in discovery.asks
+        if discovered.is_served
+    }
     return {
-        position: form
-        for position, ask in enumerate(intent.asks)
-        if discovery.serves(position) and (form := _form_for(ask, forms)) is not None
+        ask_id: form for ask_id, form in form_by_served_ask.items() if form is not None
     }
 
 

@@ -209,9 +209,8 @@ Evidence
   farmer has said what they want.
 - **Branch and merge:** `run_turn` settles each ask, then runs only the
   settled asks as their own `Intent`. `merge_unsettled` puts their evidence
-  back beside the unsettled asks, in the farmer's order. Passing the ask
-  itself instead of its index would remove the merge (`TODO.md`, "Ask
-  identity").
+  back beside the unsettled asks, in the farmer's order. The merge finds each
+  settled ask's evidence by the ask's id.
 
 ### Intent (`core/intent/models.py`)
 

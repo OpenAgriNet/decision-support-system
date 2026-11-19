@@ -23,6 +23,7 @@ from pydantic import (
     ConfigDict,
     Field,
     SerializerFunctionWrapHandler,
+    StringConstraints,
     model_serializer,
 )
 from pydantic.alias_generators import to_camel
@@ -49,7 +50,8 @@ class Context(_WireIn):
 
     id: Literal["api.dss.turn"]
     timestamp: datetime
-    session_id: str
+    # Never blank: each turn's session is keyed by it.
+    session_id: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
     transaction_id: str  # required; echoed back as `traceId`
     version: str | None = None
     message_id: str | None = None

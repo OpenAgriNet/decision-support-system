@@ -22,7 +22,7 @@ from __future__ import annotations
 import logging
 import os
 import warnings
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from datetime import datetime
@@ -36,6 +36,7 @@ from dss.adapters.area_lookup.chain import ChainedAreaLookup
 from dss.adapters.area_lookup.csv_lookup import CsvAreaLookup
 from dss.adapters.area_lookup.photon import PhotonAreaLookup
 from dss.adapters.invocation.client import HttpCapabilityInvocation
+from dss.adapters.key_value.redis import RedisKeyValueStore
 from dss.adapters.llm.pydantic_ai_provider import (
     ModelBinding,
     PydanticAILLMProvider,
@@ -66,14 +67,17 @@ from dss.config.schema_pack_fetch import (
 from dss.config.settings import Settings
 from dss.core.channel.localize import build_localizer
 from dss.core.channel.models import ClarificationText
+from dss.core.channel.service import answer_for_session_busy
 from dss.core.forms.models import FormSubmission
 from dss.core.forms.registry import FormRegistry
-from dss.core.intent.models import Intent
+from dss.core.intent.models import Ask
 from dss.core.planner.models import Identity
 from dss.core.planner.validation import DomainSchema
 from dss.core.policy.models import Checkpoint, Policy
 from dss.core.provider_discovery.models import (
+    NOTHING_FOUND,
     CapabilityIndex,
+    DiscoveredAsk,
     DiscoveryResult,
     ProviderCapability,
 )
@@ -108,14 +112,16 @@ from dss.orchestration.orchestrator import (
     Orchestrator,
     TextPath,
     TurnPaths,
-    unrouted_kinds,
+    unrouted_input_types,
 )
 from dss.orchestration.plan import InvocationFor, build_plan
 from dss.orchestration.redaction import RedactTexts, pass_through, redact_texts
+from dss.orchestration.session import NoSessionStore, SessionStore
 from dss.orchestration.settlement import SettleAsks, build_settle_asks
 from dss.ports.area_lookup import AreaLookup
 from dss.ports.discovery import CapabilityDiscovery
 from dss.ports.invocation import CapabilityInvocation
+from dss.ports.key_value_store import KeyValueStore
 from dss.ports.llm import LLMProvider
 from dss.ports.prompts import PromptProvider
 from dss.ports.provider_preferences import ProviderPreferences
@@ -183,10 +189,35 @@ def build_runner_with_lifecycle(
         TextQuery: _build_text_path(settings, wiring),
         FormSubmission: _build_form_path(wiring),
     }
-    _refuse_unrouted_kinds(paths)
-    return Orchestrator(paths=paths), _aclose_all(
-        _aclose_for(network.client), area_aclose
+    _refuse_unrouted_input_types(paths)
+    store = _key_value_store(settings)
+    orchestrator = Orchestrator(
+        paths=paths,
+        session_busy_answer=answer_for_session_busy(boot.clarification_text),
+        sessions=_sessions(store),
     )
+    return orchestrator, _aclose_all(
+        _aclose_for(network.client), area_aclose, _aclose_store(store)
+    )
+
+
+def _key_value_store(settings: Settings) -> RedisKeyValueStore | None:
+    if settings.redis_url is None:
+        return None
+    return RedisKeyValueStore(settings.redis_url)
+
+
+def _sessions(store: KeyValueStore | None) -> SessionStore | NoSessionStore:
+    # No store: every turn runs on a session that lasts one turn.
+    if store is None:
+        return NoSessionStore()
+    return SessionStore(store)
+
+
+def _aclose_store(store: RedisKeyValueStore | None) -> Callable[[], Awaitable[None]]:
+    if store is None:
+        return _aclose_nothing
+    return store.aclose
 
 
 def _warn_if_the_evidence_url_is_set(settings: Settings) -> None:
@@ -331,10 +362,10 @@ def _build_form_path(wiring: _Wiring) -> FormPath:
     )
 
 
-def _refuse_unrouted_kinds(paths: TurnPaths) -> None:
-    unrouted = unrouted_kinds(paths, TurnInput.__subclasses__())
+def _refuse_unrouted_input_types(paths: TurnPaths) -> None:
+    unrouted = unrouted_input_types(paths, TurnInput.__subclasses__())
     if unrouted:
-        names = ", ".join(kind.__name__ for kind in unrouted)
+        names = ", ".join(input_type.__name__ for input_type in unrouted)
         raise ValueError(f"no path for {names}, refusing to boot")
 
 
@@ -518,6 +549,16 @@ class _UnwiredInvocation:
     ) -> Never:
         _refuse_unwired_call()
 
+    async def init(
+        self,
+        capability: ProviderCapability,
+        attributes: dict,
+        transaction_id: NetworkTransactionID,
+        *,
+        visibility: Visibility = NOTHING_HELD,
+    ) -> Never:
+        _refuse_unwired_call()
+
     async def support(
         self,
         capability: ProviderCapability,
@@ -547,13 +588,18 @@ def _refuse_unwired_call() -> Never:
 
 
 async def _discovers_nothing(
-    intent: Intent, turn: UserTurn, *, now: datetime
+    asks: Sequence[Ask], turn: UserTurn, *, now: datetime
 ) -> DiscoveryResult:
     """Every turn finds nobody to call. The seam is typed and in place, so
     supplying the three network settings replaces this with the real client and
     lights up the planner and composer."""
 
-    return DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
+    return DiscoveryResult(
+        asks=tuple(
+            DiscoveredAsk(ask=ask, query=None, found=NOTHING_FOUND) for ask in asks
+        ),
+        events=(),
+    )
 
 
 @dataclass(frozen=True)
@@ -637,6 +683,7 @@ def _network(
             client=client,
             base_url=settings.invocation_base_url,
             sender_id=sender_for(turn),
+            network_id=settings.network_host_id,
             attempts=settings.select_attempts,
             backoff_seconds=settings.select_backoff_seconds,
         )

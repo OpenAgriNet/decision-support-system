@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
+from dss.core.intent.models import Ask
 from dss.core.shared.models import ProviderAction
 
 # An `AskSlot`, or a field name from a form pack.
@@ -146,3 +147,13 @@ class CannotServe:
 
 # Closed on purpose, like the states: callers match on these three.
 type Settlement = Settled | NeedsClarification | CannotServe
+
+
+@dataclass(frozen=True)
+class AskSettlement:
+    ask: Ask
+    settlement: Settlement
+
+    @property
+    def is_settled(self) -> bool:
+        return isinstance(self.settlement, Settled)

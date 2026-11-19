@@ -10,12 +10,23 @@ the four ways out map from the verdict and the evidence.
 
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
+from contextlib import aclosing
+
+import anyio
 import pytest
 
 from dss.adapters.sinks.memory import MemoryTurnSink
 from dss.config.clarification_text_loader import load_clarification_text
-from dss.core.channel.service import NO_MATCH_TEXT
-from dss.core.forms.models import FormBlock, FormContext, FormDefinition
+from dss.core.channel.service import NO_MATCH_TEXT, answer_for_session_busy
+from dss.core.forms.models import (
+    FormBlock,
+    FormContext,
+    FormDefinition,
+    FormDone,
+    FormRecords,
+    FormSubmission,
+)
 from dss.core.forms.registry import FormLookup, FormRegistry
 from dss.core.intent.models import (
     ClassifiedAsk,
@@ -33,7 +44,6 @@ from dss.core.policy.models import (
     PolicyExample,
 )
 from dss.core.provider_discovery.models import DiscoveryResult
-from dss.core.provider_preferences.models import AskPriority
 from dss.core.settlement.models import (
     Ambiguous,
     AskSlot,
@@ -42,12 +52,13 @@ from dss.core.settlement.models import (
     Missing,
     NeedsClarification,
     Settled,
-    Settlement,
     Slot,
     Unservable,
     UnservableReason,
 )
+from dss.core.shared.language import LanguageTag
 from dss.core.shared.models import (
+    Cause,
     Claim,
     ClaimDelta,
     Geometry,
@@ -56,6 +67,7 @@ from dss.core.shared.models import (
     TextBlock,
     TextQuery,
     TurnContext,
+    TurnEvent,
     TurnFinished,
     TurnInput,
     TurnOutcome,
@@ -63,18 +75,22 @@ from dss.core.shared.models import (
     TurnStatus,
     UserTurn,
 )
+from dss.core.shared.session_state import SessionState
 from dss.core.translation.service import EdgeTranslation
 from dss.orchestration.orchestrator import (
     Components,
-    NoPathForKindError,
+    NoPathForInputTypeError,
     Orchestrator,
     TextPath,
-    unrouted_kinds,
+    unrouted_input_types,
 )
 from dss.orchestration.plan import Plan
 from dss.orchestration.redaction import RedactTexts, pass_through
+from dss.orchestration.session import NoSessionStore, Sessions, SessionStore
 from dss.orchestration.settlement import SettleAsks
 from dss.ports.area_lookup import AreaMatch
+from tests.support.asks import an_ask, numbered
+from tests.support.discovery import a_discovery, a_priority, discovered
 from tests.support.evidence import ANY_ASK, build_evidence
 from tests.support.fakes import (
     FakeAreaLookup,
@@ -82,8 +98,19 @@ from tests.support.fakes import (
     FakePromptProvider,
     FakeSchemeCatalog,
 )
+from tests.support.key_value import (
+    FailingReadStore,
+    FailingReleaseStore,
+    FailingSaveStore,
+    FakeKeyValueStore,
+    HangingReadStore,
+    HangingReleaseStore,
+    HangingSaveStore,
+    HangingStore,
+    UnreachableStore,
+)
 from tests.support.providers import build_capability
-from tests.support.settlement import settles_every_ask
+from tests.support.settlement import settles_every_ask, settles_with
 from tests.support.turn_events import assert_well_formed
 
 DELETE_COMMAND = LlmPolicy(
@@ -154,9 +181,7 @@ def _one_ask(n: int = 1) -> IntentClassification:
 
 
 def _served_discovery() -> DiscoveryResult:
-    return DiscoveryResult(
-        answers={}, capabilities={0: (CAPABILITY,)}, failures={}, events=()
-    )
+    return a_discovery(discovered(capabilities=(CAPABILITY,)))
 
 
 def _evidence(
@@ -167,13 +192,14 @@ def _evidence(
     ask_count: int = 1,
 ) -> Evidence:
     return build_evidence(
-        sources=(Source(id="1", name="Agmarknet", kind=SourceKind.PROVIDER, url=None),),
         results=results,
         failures=failures,
         awaiting=awaiting,
-        asks=(ANY_ASK,) * ask_count,
+        asks=numbered(*(ANY_ASK,) * ask_count),
     )
 
+
+AGMARKNET = Source(id="1", name="Agmarknet", kind=SourceKind.PROVIDER, url=None)
 
 _GRIEVANCE_FORM = FormDefinition(
     context=FormContext(scheme="PMFBY", category="Grievance", action="support"),
@@ -182,7 +208,7 @@ _GRIEVANCE_FORM = FormDefinition(
 
 
 _ANSWERED_EVIDENCE = _evidence(
-    results=(Result(ask_index=0, source_id="1", data={"modal": 2275}),),
+    results=(Result(ask_id=0, source=AGMARKNET, data={"modal": 2275}),),
 )
 
 
@@ -206,7 +232,7 @@ class _FakeDiscovery:
     def __init__(self, result: DiscoveryResult) -> None:
         self._result = result
 
-    async def __call__(self, intent, turn, now) -> DiscoveryResult:
+    async def __call__(self, asks, turn, now) -> DiscoveryResult:
         return self._result
 
 
@@ -217,10 +243,10 @@ class _FakePlan:
         self.verdict_was_set: bool | None = None
 
     async def __call__(
-        self, turn, *, intent, discovery, verdict, visibility, awaiting=None
+        self, turn, *, discovery, verdict, visibility, awaiting=None
     ) -> Evidence:
         self.calls += 1
-        self.intent = intent
+        self.discovery = discovery
         self.awaiting = dict(awaiting or {})
         self.verdict_was_set = verdict.is_set()
         self.turn = turn
@@ -269,9 +295,11 @@ class _Telemetry:
 class _FakePath:
     def __init__(self) -> None:
         self.turns: list[UserTurn] = []
+        self.started = anyio.Event()
 
-    async def run(self, turn, *, ctx, recorder):
+    async def run(self, turn, *, ctx, recorder, session):
         self.turns.append(turn)
+        self.started.set()
         yield TurnFinished(
             outcome=TurnOutcome(status=TurnStatus.ANSWERED, confidence=80)
         )
@@ -294,6 +322,7 @@ def _build(
     edge_translation: EdgeTranslation | None = None,
     forms: FormLookup | None = None,
     scheme_catalog: FakeSchemeCatalog | None = None,
+    sessions: Sessions | None = None,
 ) -> tuple[Orchestrator, MemoryTurnSink]:
     turns = MemoryTurnSink()
     text_path = TextPath(
@@ -318,7 +347,12 @@ def _build(
         forms=forms or FormRegistry(),
         settle_asks=settle_asks,
     )
-    return Orchestrator(paths={TextQuery: text_path}), turns
+    orch = Orchestrator(
+        paths={TextQuery: text_path},
+        session_busy_answer=answer_for_session_busy(load_clarification_text()),
+        sessions=sessions or NoSessionStore(),
+    )
+    return orch, turns
 
 
 async def _collect(orch: Orchestrator, turn: UserTurn | None = None):
@@ -329,7 +363,11 @@ async def _collect(orch: Orchestrator, turn: UserTurn | None = None):
 
 async def test_a_text_turn_runs_on_its_path() -> None:
     path = _FakePath()
-    orch = Orchestrator(paths={TextQuery: path})
+    orch = Orchestrator(
+        paths={TextQuery: path},
+        session_busy_answer=answer_for_session_busy(load_clarification_text()),
+        sessions=NoSessionStore(),
+    )
 
     events = [event async for event in orch.run(_turn(), _ctx())]
 
@@ -389,7 +427,7 @@ async def test_moderation_reject_refuses_before_the_planner() -> None:
 async def test_nobody_serving_is_no_match_without_planning() -> None:
     plan = _FakePlan(_ANSWERED_EVIDENCE)
     compose = _FakeCompose("unused")
-    empty = DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
+    empty = a_discovery()
     orch, _ = _build(intent=_one_ask(), discovery=empty, plan=plan, compose=compose)
 
     events = await _collect(orch)
@@ -402,7 +440,7 @@ async def test_nobody_serving_is_no_match_without_planning() -> None:
 async def test_nobody_serving_names_the_place() -> None:
     """Understood, but nobody serves it here. Not the out-of-scope reply."""
 
-    empty = DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
+    empty = a_discovery()
     orch, _ = _build(
         intent=_one_ask(),
         discovery=empty,
@@ -426,22 +464,8 @@ async def test_an_ask_whose_every_provider_the_client_ruled_out_is_no_match() ->
     error, because nothing failed. The planner is not spent on it either.
     """
 
-    ranked_out = DiscoveryResult(
-        answers={0: ()},
-        capabilities={0: ()},
-        failures={},
-        events=(),
-        priorities={
-            0: AskPriority(
-                ask_index=0,
-                capability="Market",
-                sender_id="vistaar-whatsapp",
-                source="sender",
-                ranking=("state-mandi",),
-                kept=(),
-                dropped=("agmarknet",),
-            )
-        },
+    ranked_out = a_discovery(
+        discovered(priority=a_priority("state-mandi", kept=(), dropped=("agmarknet",)))
     )
     plan = _FakePlan(_ANSWERED_EVIDENCE)
     compose = _FakeCompose("unused")
@@ -462,7 +486,7 @@ async def test_no_asks_is_no_match_with_a_message() -> None:
 
     plan = _FakePlan(_ANSWERED_EVIDENCE)
     compose = _FakeCompose("unused")
-    empty = DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
+    empty = a_discovery()
     orch, _ = _build(
         intent=IntentClassification(asks=(), confidence=0.1),
         discovery=empty,
@@ -502,9 +526,7 @@ async def test_an_unlocated_advisory_ask_is_answered() -> None:
             ),
             confidence=0.9,
         ),
-        discovery=DiscoveryResult(
-            answers={}, capabilities={0: (advisory,)}, failures={}, events=()
-        ),
+        discovery=a_discovery(discovered(capabilities=(advisory,))),
         plan=plan,
         compose=compose,
     )
@@ -538,7 +560,7 @@ async def test_an_ask_awaiting_a_form_ends_the_turn_on_the_form() -> None:
 async def test_some_asks_unserved_is_partial() -> None:
     plan = _FakePlan(
         _evidence(
-            results=(Result(ask_index=0, source_id="1", data={"modal": 2275}),),
+            results=(Result(ask_id=0, source=AGMARKNET, data={"modal": 2275}),),
             ask_count=2,
         )
     )
@@ -558,7 +580,7 @@ async def test_all_calls_failing_is_unavailable() -> None:
             results=(),
             failures=(
                 Failure(
-                    ask_index=0,
+                    ask_id=0,
                     capability="openagrinet:MandiPrice",
                     reason="502",
                     retryable=True,
@@ -615,16 +637,16 @@ async def test_a_streamed_claim_carries_the_sources_it_cites() -> None:
 
 async def test_the_one_source_cited_reaches_the_farmer_as_one() -> None:
 
+    practices = Source(
+        id="1", name="Package of Practices", kind=SourceKind.PROVIDER, url=None
+    )
+    mango_guide = Source(
+        id="2", name="KAU Mango Guide", kind=SourceKind.PROVIDER, url=None
+    )
     evidence = build_evidence(
-        sources=(
-            Source(
-                id="1", name="Package of Practices", kind=SourceKind.PROVIDER, url=None
-            ),
-            Source(id="2", name="KAU Mango Guide", kind=SourceKind.PROVIDER, url=None),
-        ),
         results=(
-            Result(ask_index=0, source_id="1", data={"v": 1}),
-            Result(ask_index=0, source_id="2", data={"v": 2}),
+            Result(ask_id=0, source=practices, data={"v": 1}),
+            Result(ask_id=0, source=mango_guide, data={"v": 2}),
         ),
     )
     orch, _ = _build(
@@ -643,31 +665,377 @@ async def test_the_one_source_cited_reaches_the_farmer_as_one() -> None:
     assert claim.content.source_ids == ("1",)
 
 
-async def test_a_kind_without_a_path_names_itself() -> None:
-    orch = Orchestrator(paths={})
+async def test_an_input_type_without_a_path_names_itself() -> None:
+    orch = Orchestrator(
+        paths={},
+        session_busy_answer=answer_for_session_busy(load_clarification_text()),
+        sessions=NoSessionStore(),
+    )
 
-    with pytest.raises(NoPathForKindError, match="TextQuery"):
+    with pytest.raises(NoPathForInputTypeError, match="TextQuery"):
         await _collect(orch)
 
 
-def test_unrouted_kinds_lists_the_kind_without_a_path() -> None:
+def test_unrouted_input_types_lists_the_input_type_without_a_path() -> None:
     class _OtpReply(TurnInput):
         code: str
 
-    kinds = [TextQuery, _OtpReply]
+    input_types = [TextQuery, _OtpReply]
 
-    assert unrouted_kinds({TextQuery: _FakePath()}, kinds) == [_OtpReply]
+    assert unrouted_input_types({TextQuery: _FakePath()}, input_types) == [_OtpReply]
+
+
+_GRIEVANCE = FormContext(scheme="PM-KISAN", category="Grievance", action="support")
+
+
+def _form_turn() -> UserTurn:
+    return UserTurn(
+        input=FormSubmission(
+            form_id="f1", context=_GRIEVANCE, submission_id="sub1", values=()
+        ),
+        session_id="s1",
+        transaction_id="t1",
+        source_lang=LanguageTag("en"),
+        target_lang=LanguageTag("en"),
+        channel="web",
+    )
+
+
+def _form_ctx(sender_id: str = "c1", session_id: str = "s1") -> TurnContext:
+    return TurnContext(
+        trace_id="t1", message_id="m1", session_id=session_id, sender_id=sender_id
+    )
+
+
+def _state_with(form_id: str) -> SessionState:
+    return SessionState(forms={form_id: FormDone(submission=_form_turn().input)})
+
+
+def _forms_with(form_id: str) -> FormRecords:
+    return _state_with(form_id).forms
+
+
+class _SessionFormPath:
+    def __init__(
+        self, *, saves: FormRecords | None = None, hold: anyio.Event | None = None
+    ) -> None:
+        self.saves = saves
+        self.hold = hold
+        self.started = anyio.Event()
+        self.seen_states: list[SessionState] = []
+        self.seen_kept: list[bool] = []
+        self.running_count = 0
+        self.most_running_at_once = 0
+
+    async def run(self, turn, *, ctx, recorder, session):
+        self.seen_states.append(session.state)
+        self.seen_kept.append(session.is_kept)
+        self.running_count += 1
+        self.most_running_at_once = max(self.most_running_at_once, self.running_count)
+        self.started.set()
+        try:
+            if self.saves is not None:
+                session.update_forms(self.saves)
+            yield ClaimDelta(text="filing")
+            if self.hold is not None:
+                await self.hold.wait()
+            yield TurnFinished(
+                outcome=TurnOutcome(status=TurnStatus.ANSWERED, confidence=80)
+            )
+        finally:
+            self.running_count -= 1
+
+
+def _session_orchestrator(
+    path: _SessionFormPath,
+    store: FakeKeyValueStore | None,
+    *,
+    text_path: _FakePath | None = None,
+    acquire_timeout_seconds: float = 30,
+    write_deadline_seconds: float = 3,
+) -> Orchestrator:
+    sessions: Sessions = (
+        NoSessionStore()
+        if store is None
+        else SessionStore(
+            store,
+            acquire_timeout_seconds=acquire_timeout_seconds,
+            write_deadline_seconds=write_deadline_seconds,
+        )
+    )
+    return Orchestrator(
+        paths={TextQuery: text_path or _FakePath(), FormSubmission: path},
+        session_busy_answer=answer_for_session_busy(load_clarification_text()),
+        sessions=sessions,
+    )
+
+
+async def _run_form(
+    orch: Orchestrator, *, ctx: TurnContext | None = None
+) -> list[TurnEvent]:
+    return [event async for event in orch.run(_form_turn(), ctx or _form_ctx())]
+
+
+def _saved_state(store: FakeKeyValueStore, key: str = "c1:s1") -> SessionState:
+    return SessionState.model_validate_json(store.values[key])
+
+
+async def test_a_form_turn_loads_its_session_and_saves_the_change() -> None:
+    store = FakeKeyValueStore()
+    store.values["c1:s1"] = _state_with("old").model_dump_json()
+    path = _SessionFormPath(saves=_forms_with("new"))
+
+    await _run_form(_session_orchestrator(path, store))
+
+    assert path.seen_states == [_state_with("old")]
+    assert path.seen_kept == [True]
+    assert _saved_state(store) == _state_with("new")
+
+
+async def test_an_unchanged_session_is_not_saved() -> None:
+    store = FakeKeyValueStore()
+
+    await _run_form(_session_orchestrator(_SessionFormPath(), store))
+
+    assert store.set_calls == []
+
+
+async def test_a_stream_closed_from_another_task_saves_and_unlocks() -> None:
+    store = FakeKeyValueStore()
+    path = _SessionFormPath(saves=_forms_with("new"), hold=anyio.Event())
+    events = _session_orchestrator(path, store).run(_form_turn(), _form_ctx())
+
+    async for event in events:
+        if isinstance(event, ClaimDelta):
+            break
+    async with anyio.create_task_group() as tasks:
+        tasks.start_soon(events.aclose)  # type: ignore[attr-defined]
+
+    assert _saved_state(store) == _state_with("new")
+    assert not store.is_locked("c1:s1")
+
+
+async def test_a_cancelled_consumer_still_saves_and_unlocks() -> None:
+    store = FakeKeyValueStore()
+    path = _SessionFormPath(saves=_forms_with("new"), hold=anyio.Event())
+    orch = _session_orchestrator(path, store)
+    filing_seen = anyio.Event()
+
+    # As the transport does on a client disconnect: the stream is closed
+    # inside the consumer's cancelled task.
+    async def consume() -> None:
+        stream = orch.run(_form_turn(), _form_ctx())
+        assert isinstance(stream, AsyncGenerator)
+        async with aclosing(stream) as events:
+            async for event in events:
+                if isinstance(event, ClaimDelta):
+                    filing_seen.set()
+
+    async with anyio.create_task_group() as tasks:
+        tasks.start_soon(consume)
+        await filing_seen.wait()
+        tasks.cancel_scope.cancel()
+
+    assert _saved_state(store) == _state_with("new")
+    assert not store.is_locked("c1:s1")
+
+
+async def test_a_failed_save_keeps_the_answer_already_given() -> None:
+    path = _SessionFormPath(saves=_forms_with("new"))
+
+    events = await _run_form(_session_orchestrator(path, FailingSaveStore()))
+
+    assert events[-1].outcome.status is TurnStatus.ANSWERED  # type: ignore[union-attr]
+
+
+async def test_a_failed_release_keeps_the_answer_already_given() -> None:
+    events = await _run_form(
+        _session_orchestrator(_SessionFormPath(), FailingReleaseStore())
+    )
+
+    assert events[-1].outcome.status is TurnStatus.ANSWERED  # type: ignore[union-attr]
+
+
+@pytest.mark.parametrize("store_kind", [HangingSaveStore, HangingReleaseStore])
+async def test_a_hung_store_gives_up_after_the_deadline(
+    store_kind: type[HangingStore],
+) -> None:
+    store = store_kind()
+    orch = _session_orchestrator(
+        _SessionFormPath(saves=_forms_with("new")),
+        store,
+        write_deadline_seconds=0.05,
+    )
+    events: list[TurnEvent] = []
+    finished = anyio.Event()
+    finished_before_let_go = False
+
+    async def run_turn() -> None:
+        events.extend(await _run_form(orch))
+        finished.set()
+
+    async with anyio.create_task_group() as tasks:
+        tasks.start_soon(run_turn)
+        with anyio.move_on_after(1):
+            await finished.wait()
+        finished_before_let_go = finished.is_set()
+        store.let_go.set()
+
+    assert finished_before_let_go
+    assert events[-1].outcome.status is TurnStatus.ANSWERED  # type: ignore[union-attr]
+
+
+async def test_two_form_turns_in_one_session_run_one_after_the_other() -> None:
+    store = FakeKeyValueStore()
+    path = _SessionFormPath(saves=_forms_with("new"), hold=anyio.Event())
+    orch = _session_orchestrator(path, store)
+
+    async with anyio.create_task_group() as tasks:
+        tasks.start_soon(_run_form, orch)
+        tasks.start_soon(_run_form, orch)
+        await path.started.wait()
+        await anyio.sleep(0.05)
+        assert path.seen_states == [SessionState()]
+        assert path.hold is not None
+        path.hold.set()
+
+    assert path.most_running_at_once == 1
+    assert path.seen_states == [SessionState(), _state_with("new")]
+
+
+async def test_a_form_turn_past_the_lock_wait_gets_the_busy_answer() -> None:
+    store = FakeKeyValueStore()
+    path = _SessionFormPath()
+    orch = _session_orchestrator(path, store, acquire_timeout_seconds=0.05)
+
+    async with store.lock("c1:s1", lease_seconds=1, acquire_timeout_seconds=1):
+        events = await _run_form(orch)
+
+    finished = events[-1]
+    assert isinstance(finished, TurnFinished)
+    assert finished.outcome.status is TurnStatus.UNAVAILABLE
+    assert finished.outcome.cause is Cause.TIMEOUT
+    assert finished.content == (TextBlock(text=load_clarification_text().session_busy),)
+    assert path.seen_states == []
+    assert store.set_calls == []
+
+
+async def test_two_senders_with_one_session_id_keep_two_states() -> None:
+    store = FakeKeyValueStore()
+
+    await _run_form(
+        _session_orchestrator(_SessionFormPath(saves=_forms_with("c1")), store),
+        ctx=_form_ctx(sender_id="c1"),
+    )
+    second = _SessionFormPath(saves=_forms_with("c2"))
+    await _run_form(_session_orchestrator(second, store), ctx=_form_ctx(sender_id="c2"))
+
+    assert second.seen_states == [SessionState()]
+    assert set(store.values) == {"c1:s1", "c2:s1"}
+
+
+async def test_a_text_turn_runs_inside_the_session_and_saves_nothing() -> None:
+    store = FakeKeyValueStore()
+    orch = _session_orchestrator(_SessionFormPath(), store)
+
+    await _collect(orch)
+
+    assert store.locked_keys == ["c1:s1"]
+    assert store.set_calls == []
+    assert not store.is_locked("c1:s1")
+
+
+async def test_a_text_turn_waits_behind_a_form_turn_in_the_same_session() -> None:
+    store = FakeKeyValueStore()
+    form_path = _SessionFormPath(hold=anyio.Event())
+    text_path = _FakePath()
+    orch = _session_orchestrator(form_path, store, text_path=text_path)
+
+    async with anyio.create_task_group() as tasks:
+        tasks.start_soon(_run_form, orch)
+        await form_path.started.wait()
+        tasks.start_soon(_collect, orch)
+        await anyio.sleep(0.05)
+        assert text_path.turns == []
+        assert form_path.hold is not None
+        form_path.hold.set()
+
+    assert len(text_path.turns) == 1
+
+
+async def test_a_text_turn_past_the_lock_wait_answers_busy_without_running() -> None:
+    store = FakeKeyValueStore()
+    text_path = _FakePath()
+    orch = _session_orchestrator(
+        _SessionFormPath(), store, text_path=text_path, acquire_timeout_seconds=0.05
+    )
+
+    async with store.lock("c1:s1", lease_seconds=1, acquire_timeout_seconds=1):
+        events = await _collect(orch)
+
+    finished = events[-1]
+    assert isinstance(finished, TurnFinished)
+    assert finished.outcome.status is TurnStatus.UNAVAILABLE
+    assert finished.outcome.cause is Cause.TIMEOUT
+    assert text_path.turns == []
+
+
+async def test_a_form_turn_without_a_store_runs_on_an_empty_session() -> None:
+    path = _SessionFormPath(saves=_forms_with("new"))
+
+    events = await _run_form(_session_orchestrator(path, store=None))
+
+    assert isinstance(events[-1], TurnFinished)
+    assert path.seen_states == [SessionState()]
+    assert path.seen_kept == [False]
+
+
+async def test_an_unreachable_store_runs_the_turn_on_a_one_turn_session() -> None:
+    path = _SessionFormPath(saves=_forms_with("new"))
+
+    events = await _run_form(_session_orchestrator(path, UnreachableStore()))
+
+    assert events[-1].outcome.status is TurnStatus.ANSWERED  # type: ignore[union-attr]
+    assert path.seen_states == [SessionState()]
+    assert path.seen_kept == [False]
+
+
+async def test_a_store_that_cannot_be_read_gives_an_empty_session() -> None:
+    path = _SessionFormPath()
+
+    await _run_form(_session_orchestrator(path, FailingReadStore()))
+
+    assert path.seen_states == [SessionState()]
+    assert path.seen_kept == [False]
+
+
+async def test_a_session_that_could_not_be_read_is_never_saved_over() -> None:
+    store = FailingReadStore()
+    store.values["c1:s1"] = _state_with("stored").model_dump_json()
+    path = _SessionFormPath(saves=_forms_with("new"))
+
+    await _run_form(_session_orchestrator(path, store))
+
+    assert store.set_calls == []
+    assert _saved_state(store) == _state_with("stored")
+    assert not store.is_locked("c1:s1")
+
+
+async def test_a_turn_cancelled_while_its_session_is_read_releases_the_lock() -> None:
+    store = HangingReadStore()
+    orch = _session_orchestrator(_SessionFormPath(saves=_forms_with("new")), store)
+
+    async with anyio.create_task_group() as tasks:
+        tasks.start_soon(_run_form, orch)
+        await store.reading.wait()
+        tasks.cancel_scope.cancel()
+
+    assert not store.is_locked("c1:s1")
+    assert store.set_calls == []
 
 
 _NEEDS_PLACE = NeedsClarification(open_slots=(Slot(AskSlot.PLACE, Missing()),))
 _SETTLED = Settled(Frame(slots=()))
-
-
-def _settle_with(*settlements: Settlement) -> SettleAsks:
-    def settle(intent):
-        return settlements
-
-    return settle
 
 
 async def test_an_unsettled_ask_is_asked_by_the_composer() -> None:
@@ -678,7 +1046,7 @@ async def test_an_unsettled_ask_is_asked_by_the_composer() -> None:
         discovery=_served_discovery(),
         plan=plan,
         compose=compose,
-        settle_asks=_settle_with(_NEEDS_PLACE),
+        settle_asks=settles_with(_NEEDS_PLACE),
     )
 
     events = await _collect(orch)
@@ -693,22 +1061,26 @@ async def test_a_settled_ask_is_served_beside_a_question() -> None:
     """The settled ask is planned on its own; the composer gets both asks,
     in the farmer's order."""
 
-    plan = _FakePlan(_ANSWERED_EVIDENCE)
+    wheat_evidence = build_evidence(
+        asks=(an_ask(id=1),),
+        results=(Result(ask_id=1, source=AGMARKNET, data={"modal": 2275}),),
+    )
+    plan = _FakePlan(wheat_evidence)
     compose = _FakeCompose("Wheat is 2,275 Rs [1]. Which district for the rain?")
     orch, _ = _build(
         intent=_one_ask(2),
-        discovery=_served_discovery(),
+        discovery=a_discovery(discovered(1, capabilities=(CAPABILITY,))),
         plan=plan,
         compose=compose,
-        settle_asks=_settle_with(_NEEDS_PLACE, _SETTLED),
+        settle_asks=settles_with(_NEEDS_PLACE, _SETTLED),
     )
 
     events = await _collect(orch)
 
-    assert len(plan.intent.asks) == 1
+    assert [found.ask.id for found in plan.discovery.asks] == [1]
     question, answer = compose.evidence.ask_evidences
     assert question.outcome == _NEEDS_PLACE
-    assert answer == _ANSWERED_EVIDENCE.ask_evidences[0]
+    assert answer == wheat_evidence.ask_evidences[0]
     assert events[-1].outcome.status is TurnStatus.REQUIRES_INPUT
 
 
@@ -718,13 +1090,13 @@ async def test_nobody_serving_beside_a_question_reaches_the_composer() -> None:
 
     plan = _FakePlan(_ANSWERED_EVIDENCE)
     compose = _FakeCompose("No onion prices found. Which district for the rain?")
-    nobody = DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
+    nobody = a_discovery()
     orch, _ = _build(
         intent=_one_ask(2),
         discovery=nobody,
         plan=plan,
         compose=compose,
-        settle_asks=_settle_with(_SETTLED, _NEEDS_PLACE),
+        settle_asks=settles_with(_SETTLED, _NEEDS_PLACE),
     )
 
     events = await _collect(orch)
@@ -753,7 +1125,7 @@ async def test_an_ask_we_cannot_serve_ends_the_turn() -> None:
         discovery=_served_discovery(),
         plan=plan,
         compose=compose,
-        settle_asks=_settle_with(cannot_serve),
+        settle_asks=settles_with(cannot_serve),
     )
 
     events = await _collect(orch)
@@ -776,7 +1148,7 @@ async def test_the_pick_list_follows_the_question() -> None:
         discovery=_served_discovery(),
         plan=_FakePlan(_ANSWERED_EVIDENCE),
         compose=_FakeCompose("Which Pune do you mean?"),
-        settle_asks=_settle_with(which_pune),
+        settle_asks=settles_with(which_pune),
     )
 
     events = await _collect(orch)

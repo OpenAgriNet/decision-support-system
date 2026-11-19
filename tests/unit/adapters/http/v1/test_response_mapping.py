@@ -395,6 +395,25 @@ def test_a_rejected_filing_is_not_retryable(ctx):
     assert frame.message.error.retry_after_seconds is None
 
 
+def test_an_unknown_provider_outcome_is_not_retryable(ctx):
+    finished = TurnFinished(
+        outcome=TurnOutcome(
+            status=TurnStatus.UNAVAILABLE,
+            cause=Cause.PROVIDER_OUTCOME_UNKNOWN,
+            confidence=0,
+        ),
+        content=(),
+    )
+
+    frame = mapping.to_terminal_frame(
+        finished, ctx, now=NOW, seq=None, response_id=RESPONSE_ID
+    )
+
+    assert frame.message.error is not None
+    assert frame.message.error.code == "provider_outcome_unknown"
+    assert frame.message.error.retryable is False
+
+
 def test_a_form_error_block_is_a_form_error_item_with_names_labels_and_messages(ctx):
     """What a UI needs to reopen the form with the errors; never a value."""
 

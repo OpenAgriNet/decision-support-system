@@ -17,7 +17,7 @@ from typing import Annotated
 from pydantic import Field, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
-from dss.config.schema_pack_fetch import DEFAULT_PACK_DIR, PUBLISHED_REF
+from dss.config.schema_pack_fetch import DEFAULT_PACK_DIR
 from dss.core.location.service import DEFAULT_NEAREST_MAX_KM
 
 # Ships beside this module, so it resolves the same however the app is started.
@@ -99,9 +99,6 @@ class Settings(BaseSettings):
     # started from wherever the operator is. A container has no repo root, so a
     # deployment sets DSS_SCHEMA_PACK_DIR to its mounted path.
     schema_pack_dir: Path | None = DEFAULT_PACK_DIR
-    # Which network-specs ref the startup fetch reads when the directory above
-    # is empty.
-    schema_pack_ref: str = PUBLISHED_REF
     # How far around the turn's location to look for a provider. Only consulted
     # once the network is wired and the turn carries a geometry.
     discovery_radius_m: int = Field(25_000, ge=0)
@@ -220,16 +217,13 @@ class Settings(BaseSettings):
     # and the turn runs as if no preference existed.
     provider_preferences_timeout_seconds: float = Field(3.0, gt=0.0)
 
-    @field_validator("provider_preferences_base_url", mode="before")
+    # Where form turns keep their session state (ADR-0022). Unset → no store:
+    # a form turn's session lasts that turn only and takes no lock.
+    redis_url: str | None = None
+
+    @field_validator("provider_preferences_base_url", "redis_url", mode="before")
     @classmethod
     def _unset_when_blank(cls, value: object) -> object:
-        """An empty variable is an operator leaving it off, not a URL.
-
-        `DSS_PROVIDER_PREFERENCES_BASE_URL=` is what `docker-compose.yml`
-        passes when the operator sets nothing. Same stance as
-        `DSS_PHOTON_BASE_URL`, where empty also means off.
-        """
-
         if isinstance(value, str) and not value.strip():
             return None
         return value

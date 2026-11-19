@@ -7,7 +7,8 @@ provider uses it twice:
   tag it does not hold (a destroyed Aadhaar) goes out as the tag.
 - ``conceal`` swaps a real value back to its tag when the provider echoes it
   ("status for 9876543210"), so it does not re-enter prompts, traces or logs.
-  Numbers the farmer did not type, like a KVK officer's, are left alone.
+  Numbers the farmer did not type, like a KVK officer's, are left alone, and
+  so are the values in ``never_concealed``.
 
 The farmer's own answer uses it once, through ``StreamReveal``: the tags the
 composer wrote are swapped back as the answer goes out, so the farmer reads
@@ -31,6 +32,9 @@ _OPEN_TAG = re.compile(r"«[a-z0-9_]*\Z")
 @dataclass(frozen=True, slots=True)
 class Visibility:
     values: Mapping[str, str]  # tag → real value
+    # Revealed in requests, never searched for in replies: a short value like a
+    # 4-digit OTP would match unrelated numbers there.
+    never_concealed: frozenset[str] = frozenset()
 
     def reveal(self, body: Any) -> Any:
         """A copy of ``body`` with every held tag swapped for its value."""
@@ -44,7 +48,8 @@ class Visibility:
         return body
 
     def conceal_body(self, body: Any) -> Any:
-        """A copy of a parsed provider reply with every held value hidden.
+        """A copy of a parsed provider reply with every held value hidden,
+        except those in ``never_concealed``.
 
         Walks the parsed JSON rather than the raw text: a phone sent back as a
         bare number would otherwise become «phone_1» outside any quotes, and
@@ -54,7 +59,7 @@ class Visibility:
             return self.conceal(body)
         if isinstance(body, bool):
             return body
-        if isinstance(body, int) and str(body) in self.values.values():
+        if isinstance(body, int) and str(body) in self._values_to_conceal().values():
             return self.conceal(str(body))
         if isinstance(body, Mapping):
             return {key: self.conceal_body(item) for key, item in body.items()}
@@ -63,15 +68,17 @@ class Visibility:
         return body
 
     def conceal(self, text: str) -> str:
-        """``text`` with every held value swapped back to its tag, however it is
-        spaced (``98765 43210`` hides as ``9876543210`` does)."""
+        """``text`` with every held value, except those in ``never_concealed``,
+        swapped back to its tag however it is spaced (``98765 43210`` hides as
+        ``9876543210`` does)."""
 
-        if not self.values:
+        concealed = self._values_to_conceal()
+        if not concealed:
             return text
 
         joined = join_number_gaps(text)
         spans: list[tuple[int, int, str]] = []
-        for tag, value in self.values.items():
+        for tag, value in concealed.items():
             for match in _echo(value).finditer(joined.text):
                 start, end = joined.map_to_original(match.start(), match.end())
                 spans.append((start, end, tag))
@@ -86,6 +93,13 @@ class Visibility:
             last = end
         out.append(text[last:])
         return "".join(out)
+
+    def _values_to_conceal(self) -> Mapping[str, str]:
+        return {
+            tag: value
+            for tag, value in self.values.items()
+            if tag not in self.never_concealed
+        }
 
 
 def _echo(value: str) -> re.Pattern[str]:

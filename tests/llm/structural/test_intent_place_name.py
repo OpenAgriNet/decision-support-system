@@ -484,9 +484,7 @@ async def _pick_list_we_send(name: str) -> str:
         actions_with_a_form=frozenset(),
     )
     outcome = NeedsClarification(open_slots=frame_for(resolved, requirements).slots)
-    evidence = Evidence(
-        sources=(), ask_evidences=(AskEvidence(ask=resolved, outcome=outcome),)
-    )
+    evidence = Evidence(ask_evidences=(AskEvidence(ask=resolved, outcome=outcome),))
     lists = pick_lists(evidence, load_clarification_text())
     assert lists, f"{name} is not ambiguous in the place list"
     return lists[0].text

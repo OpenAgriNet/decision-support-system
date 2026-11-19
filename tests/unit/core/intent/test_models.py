@@ -21,6 +21,7 @@ from dss.core.intent.models import (
 from dss.core.shared.language import LanguageTag
 from dss.core.shared.models import Geometry, ProviderAction, TextQuery, UserTurn
 from dss.ports.area_lookup import AreaMatch
+from tests.support.asks import an_ask
 
 
 def test_intent_defaults_are_empty() -> None:
@@ -39,7 +40,7 @@ def test_ask_carries_its_own_resolved_place() -> None:
         geometry=Geometry(coordinates=[73.85, 18.52]),
         source=PlaceSource.NAMED,
     )
-    ask = Ask(
+    ask = an_ask(
         subject_categories=SubjectCategory.WEATHER,
         interaction_type=InteractionType.OBSERVE,
         place=place,
@@ -67,7 +68,7 @@ def test_ask_place_defaults_to_none() -> None:
     """No place needed and none named — a valid ask, not an error
     ("how do I grow potatoes" has nothing to resolve)."""
 
-    ask = Ask(
+    ask = an_ask(
         subject_categories=SubjectCategory.WEATHER,
         interaction_type=InteractionType.OBSERVE,
     )
@@ -93,7 +94,7 @@ def test_ask_carries_an_ambiguous_place() -> None:
             geometry=Geometry(coordinates=[82.15, 22.09]),
         ),
     )
-    ask = Ask(
+    ask = an_ask(
         subject_categories=SubjectCategory.WEATHER,
         interaction_type=InteractionType.OBSERVE,
         place=AmbiguousPlace(unresolved_name="Bilaspur", candidates=candidates),
@@ -107,7 +108,7 @@ def test_ask_carries_an_unresolved_place() -> None:
     """A name the index does not carry — different from `None`, which means
     nothing was named at all."""
 
-    ask = Ask(
+    ask = an_ask(
         subject_categories=SubjectCategory.WEATHER,
         interaction_type=InteractionType.OBSERVE,
         place=UnresolvedPlace(unresolved_name="Xyzzy"),
@@ -283,7 +284,7 @@ def test_classification_rejects_a_domain_ask() -> None:
     """Proves the split is a real type boundary, not a rename: the LLM schema
     cannot be handed a domain ``Ask`` carrying a ``ResolvedPlace``."""
 
-    ask = Ask(
+    ask = an_ask(
         subject_categories=SubjectCategory.MARKET,
         interaction_type=InteractionType.OBSERVE,
     )
@@ -292,7 +293,7 @@ def test_classification_rejects_a_domain_ask() -> None:
 
 
 def test_intent_carries_asks_and_confidence() -> None:
-    ask = Ask(
+    ask = an_ask(
         agriculture_subjects="potato",
         subject_categories=SubjectCategory.MARKET,
         interaction_type=InteractionType.OBSERVE,
@@ -302,12 +303,28 @@ def test_intent_carries_asks_and_confidence() -> None:
     assert intent.confidence == 0.9
 
 
+def test_two_asks_cannot_share_an_id() -> None:
+    weather = an_ask(id=0, subject_categories=SubjectCategory.WEATHER)
+    market = an_ask(id=0, subject_categories=SubjectCategory.MARKET)
+
+    with pytest.raises(ValidationError, match="share an id"):
+        Intent(asks=(weather, market))
+
+
 def test_ask_subject_may_be_none() -> None:
-    ask = Ask(
+    ask = an_ask(
         subject_categories=SubjectCategory.WEATHER,
         interaction_type=InteractionType.OBSERVE,
     )
     assert ask.agriculture_subjects is None
+
+
+def test_ask_needs_an_id() -> None:
+    with pytest.raises(ValidationError):
+        Ask(
+            subject_categories=SubjectCategory.WEATHER,
+            interaction_type=InteractionType.OBSERVE,
+        )
 
 
 def test_interaction_type_values() -> None:
@@ -337,7 +354,11 @@ def test_confidence_out_of_range_raises() -> None:
 
 def test_unknown_subject_category_raises() -> None:
     with pytest.raises(ValidationError):
-        Ask(subject_categories="Fishery", interaction_type=InteractionType.ADVISE)
+        Ask(
+            id=0,
+            subject_categories="Fishery",
+            interaction_type=InteractionType.ADVISE,
+        )
 
 
 def test_unknown_field_raises() -> None:
@@ -388,3 +409,9 @@ def test_the_model_is_never_shown_the_scheme_field() -> None:
 
     assert "scheme_code" in properties
     assert "scheme" not in properties
+
+
+def test_an_ask_names_its_category_as_the_network_writes_it() -> None:
+    ask = an_ask(subject_categories=SubjectCategory.MARKET)
+
+    assert ask.subject_category == "Market"

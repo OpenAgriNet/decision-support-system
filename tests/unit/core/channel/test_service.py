@@ -7,19 +7,18 @@ its own test alongside this one.
 
 from __future__ import annotations
 
+from dss.config.clarification_text_loader import load_clarification_text
 from dss.core.channel.models import ClarificationText
 from dss.core.channel.service import (
     NO_MATCH_TEXT,
+    answer_for_session_busy,
     answer_for_unserved_asks,
     no_match_answer,
     pick_lists,
 )
 from dss.core.intent.models import (
-    Ask,
-    InteractionType,
     PlaceSource,
     ResolvedPlace,
-    SubjectCategory,
     UnresolvedPlace,
 )
 from dss.core.planner.models import AskEvidence, Evidence
@@ -29,8 +28,9 @@ from dss.core.settlement.models import (
     NeedsClarification,
     Slot,
 )
-from dss.core.shared.models import Geometry
+from dss.core.shared.models import Geometry, TextBlock
 from dss.ports.area_lookup import AreaMatch
+from tests.support.asks import an_ask
 
 _TEXT = ClarificationText(
     more_places_hint="Not in this list? Tell me the area it is in.",
@@ -49,6 +49,20 @@ _TEXT = ClarificationText(
     not_filed_rejected="The desk could not take your complaint as sent.",
     status_not_checked="We could not check your complaint's status right now.",
     status_not_found="No complaint was found for that ticket number and phone.",
+    session_busy="Another message from you is still being handled. Try again.",
+    already_filed="This form was already sent.",
+    no_init_pending="Nothing is waiting for this response.",
+    init_not_sent="We could not reach the provider to start this.",
+    init_rejected="The provider did not accept these details.",
+    init_response_needed="Enter the one-time password the provider sent you.",
+    went_wrong="Something went wrong on our side.",
+    form_cannot_complete="This form cannot be completed right now.",
+    saved_details_unusable="We could not use your saved details.",
+    field_recheck="Check this value.",
+    init_response_refused="The provider did not accept that response.",
+    init_response_not_sent="Nothing was sent. Try the same response again.",
+    outcome_unknown="We could not confirm whether this went through.",
+    case_not_found="No case was found for these details.",
 )
 
 
@@ -79,9 +93,7 @@ _WHICH_BILASPUR = Ambiguous("Bilaspur", (_BILASPUR_HP, _BILASPUR_CT))
 
 def _waiting_on(*open_slots: Slot) -> Evidence:
     outcome = NeedsClarification(open_slots=open_slots)
-    return Evidence(
-        sources=(), ask_evidences=(AskEvidence(ask=_ask(), outcome=outcome),)
-    )
+    return Evidence(ask_evidences=(AskEvidence(ask=an_ask(), outcome=outcome),))
 
 
 def test_an_ambiguous_place_gets_a_numbered_pick_list() -> None:
@@ -101,10 +113,9 @@ def test_two_asks_share_one_pick_list() -> None:
         open_slots=(Slot(AskSlot.PLACE, _WHICH_BILASPUR),)
     )
     evidence = Evidence(
-        sources=(),
         ask_evidences=(
-            AskEvidence(ask=_ask(), outcome=which_bilaspur),
-            AskEvidence(ask=_ask(), outcome=which_bilaspur),
+            AskEvidence(ask=an_ask(), outcome=which_bilaspur),
+            AskEvidence(ask=an_ask(), outcome=which_bilaspur),
         ),
     )
 
@@ -235,14 +246,6 @@ def test_grouped_list_uses_the_typed_name() -> None:
     assert block.text.splitlines()[:2] == ["1. North, Goa", "2. North, Sikkim"]
 
 
-def _ask(place=None) -> Ask:  # noqa: ANN001
-    return Ask(
-        subject_categories=SubjectCategory.WEATHER,
-        interaction_type=InteractionType.OBSERVE,
-        place=place,
-    )
-
-
 _PUNE = ResolvedPlace(
     name="Pune",
     within=("IN-MH",),
@@ -254,7 +257,7 @@ _PUNE = ResolvedPlace(
 def test_no_provider_names_the_place() -> None:
     """Nobody serves the ask here. Say so, rather than read as out of scope."""
 
-    answer = answer_for_unserved_asks((_ask(place=_PUNE),), _TEXT)
+    answer = answer_for_unserved_asks((an_ask(place=_PUNE),), _TEXT)
 
     assert answer.content[0].text == (
         "I could not find a source that answers this for Pune yet."
@@ -268,7 +271,7 @@ def test_no_provider_without_a_place_name() -> None:
         update={"name": "", "source": PlaceSource.ASSERTED_GEOMETRY}
     )
 
-    answer = answer_for_unserved_asks((_ask(place=device_point),), _TEXT)
+    answer = answer_for_unserved_asks((an_ask(place=device_point),), _TEXT)
 
     assert answer.content[0].text == _TEXT.no_provider
 
@@ -276,7 +279,7 @@ def test_no_provider_without_a_place_name() -> None:
 def test_no_provider_names_each_place_once() -> None:
     """ "Wheat and onion price in Pune" is one thing the farmer can act on."""
 
-    answer = answer_for_unserved_asks((_ask(place=_PUNE), _ask(place=_PUNE)), _TEXT)
+    answer = answer_for_unserved_asks((an_ask(place=_PUNE), an_ask(place=_PUNE)), _TEXT)
 
     assert answer.content[0].text == (
         "I could not find a source that answers this for Pune yet."
@@ -286,17 +289,25 @@ def test_no_provider_names_each_place_once() -> None:
 def test_an_ask_with_no_place_nobody_serves_still_gets_an_answer() -> None:
     """A form's ask names no place; the farmer must not read an empty bubble."""
 
-    answer = answer_for_unserved_asks([_ask(place=None)], _TEXT)
+    answer = answer_for_unserved_asks([an_ask(place=None)], _TEXT)
 
     (block,) = answer.content
     assert block.text == _TEXT.no_provider
+
+
+def test_the_busy_answer_is_the_configured_text() -> None:
+    text = load_clarification_text()
+
+    answer = answer_for_session_busy(text)
+
+    assert answer.content == (TextBlock(text=text.session_busy),)
 
 
 def test_an_unclear_place_nobody_serves_still_gets_an_answer() -> None:
     """A complaint names Xyzzy in passing. No question follows it now, so the
     farmer must still hear that nobody serves it."""
 
-    xyzzy = _ask(place=UnresolvedPlace(unresolved_name="Xyzzy"))
+    xyzzy = an_ask(place=UnresolvedPlace(unresolved_name="Xyzzy"))
 
     answer = answer_for_unserved_asks([xyzzy], _TEXT)
 

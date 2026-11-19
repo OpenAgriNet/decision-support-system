@@ -5,11 +5,14 @@ import re
 from collections import Counter
 from collections.abc import Callable, Container, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime
+from http import HTTPStatus
 from uuid import uuid4
 
 import yaml
 
 from dss.core.channel.models import ClarificationText, ComposedAnswer
+from dss.core.channel.service import answer_for_unserved_asks
 from dss.core.forms.models import (
     ActionField,
     ActionSchema,
@@ -17,26 +20,34 @@ from dss.core.forms.models import (
     FieldError,
     FieldErrorCode,
     FieldErrorEntry,
+    FieldKind,
     FieldRules,
     FieldSource,
     FieldValue,
+    FlowEnding,
+    FormAwaitingInit,
     FormBlock,
     FormContext,
     FormDefinition,
+    FormDone,
     FormErrorBlock,
     FormErrors,
+    FormRecords,
     FormSubmission,
     JsonScalar,
+    MaskedSubmission,
     PiiClass,
     UnknownForm,
     ValidSubmission,
 )
 from dss.core.forms.registry import FormLookup, FormRegistry
+from dss.core.intent.models import Ask
 from dss.core.planner.models import Failure
-from dss.core.provider_discovery.models import ProviderCapability
+from dss.core.provider_discovery.models import DiscoveryResult, ProviderCapability
+from dss.core.redaction.visibility import Visibility
 from dss.core.schema_packs.models import SchemaPackFiles, SchemaPackSkipped
 from dss.core.schema_packs.service import PACK_DEFECTS, is_api_pack
-from dss.core.shared.models import Cause, ProviderAction, TextBlock
+from dss.core.shared.models import Cause, ProviderAction, TextBlock, TurnStatus
 from dss.core.shared.schema import resolve_schema
 
 _ACTION_MAP = "x-oan-schema-by-action"
@@ -375,20 +386,58 @@ def _first_broken_rule(field: FieldDefinition, value: str | None) -> FieldError 
     )
 
 
-def free_text_of(valid: ValidSubmission) -> tuple[str, ...]:
-    """What a farmer wrote in prose, in field order: the part of a form that
-    is moderated like a question."""
+# Select values are the pack's own options: nothing in them to moderate.
+_TYPED_KINDS = frozenset({FieldKind.TEXT, FieldKind.TEXTAREA})
 
+
+def free_text_of(valid: ValidSubmission) -> tuple[str, ...]:
     return tuple(
         valid.values[field.name]
         for field in valid.definition.fields
-        if field.pii_class == PiiClass.FREETEXT and field.name in valid.values
+        if field.pii_class is None
+        and field.kind in _TYPED_KINDS
+        and field.name in valid.values
     )
 
 
+def mask_pii_fields(valid: ValidSubmission) -> MaskedSubmission:
+    pii_fields = {
+        position: field
+        for position, field in enumerate(valid.definition.fields, start=1)
+        if field.pii_class is not None and field.name in valid.values
+    }
+    tags = {
+        field.name: _pii_tag_for(valid.definition.context, field.name, position)
+        for position, field in pii_fields.items()
+    }
+    credentials = frozenset(
+        tags[field.name]
+        for field in pii_fields.values()
+        if field.pii_class == PiiClass.CREDENTIAL
+    )
+    return MaskedSubmission(
+        submission=valid.model_copy(update={"values": {**valid.values, **tags}}),
+        visibility=Visibility(
+            values={tag: valid.values[name] for name, tag in tags.items()},
+            never_concealed=credentials,
+        ),
+    )
+
+
+_CAMEL_BREAK = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
+_NOT_TAG_CHARACTER = re.compile(r"[^a-z0-9]+")
+
+
+def _pii_tag_for(context: FormContext, field_name: str, position: int) -> str:
+    # Named after the form's action and the field, so a log shows which field
+    # a tag hides, and a details form and its init form never share one.
+    # Numbered by the field's place, so two names that read alike still differ.
+    words = _CAMEL_BREAK.sub("_", field_name).lower()
+    name = _NOT_TAG_CHARACTER.sub("_", words).strip("_")
+    return f"«form_{context.action}_{name}_{position}»"
+
+
 # What the audit record and the trace hold in place of a farmer's value.
-# Values are withheld, not tagged: tagging a form by the pack's PII mark is
-# its own story. Only the free text is tagged, and only to be moderated.
 WITHHELD = "[withheld]"
 
 
@@ -414,12 +463,12 @@ def answer_for_form_errors(
     )
 
 
-type NotSentText = Callable[[ClarificationText], str]
+type TextChoice = Callable[[ClarificationText], str]
 
 # What the farmer reads for each way a form's call can fail, by the call. A
 # `form_error` with no fields says the form is still theirs; the values were
 # fine. A status check the provider refused is read as no such case (#206).
-_NOT_SENT_TEXT: Mapping[ProviderAction, Mapping[Cause, NotSentText]] = {
+_NOT_SENT_TEXT: Mapping[ProviderAction, Mapping[Cause, TextChoice]] = {
     ProviderAction.SUPPORT: {
         Cause.PROVIDER_UNAVAILABLE: lambda text: text.not_filed,
         Cause.PROVIDER_REJECTED: lambda text: text.not_filed_rejected,
@@ -428,28 +477,37 @@ _NOT_SENT_TEXT: Mapping[ProviderAction, Mapping[Cause, NotSentText]] = {
         Cause.PROVIDER_UNAVAILABLE: lambda text: text.status_not_checked,
         Cause.PROVIDER_REJECTED: lambda text: text.status_not_found,
     },
+    ProviderAction.INIT: {
+        Cause.PROVIDER_UNAVAILABLE: lambda text: text.init_not_sent,
+        Cause.PROVIDER_REJECTED: lambda text: text.init_rejected,
+    },
 }
 
 
-def cause_for_failed_call(failure: Failure) -> Cause:
+def _cause_for_failed_call(failure: Failure) -> Cause:
     if failure.retryable:
         return Cause.PROVIDER_UNAVAILABLE
     return Cause.PROVIDER_REJECTED
 
 
-def _not_sent_text(action: str, cause: Cause) -> NotSentText:
-    # An action with no words of its own reads as a filing: the form is
-    # still the farmer's either way.
-    texts = _NOT_SENT_TEXT.get(action, _NOT_SENT_TEXT[ProviderAction.SUPPORT])
-    return texts[cause]
+_AUTH_REFUSED_STATUS_CODES = frozenset({HTTPStatus.UNAUTHORIZED, HTTPStatus.FORBIDDEN})
+
+
+# The network refused our own credentials, not the farmer's details or response.
+def is_auth_refused(failure: Failure) -> bool:
+    return failure.status_code in _AUTH_REFUSED_STATUS_CODES
 
 
 def answer_for_failed_call(
-    submission: FormSubmission, cause: Cause, text: ClarificationText
+    submission: FormSubmission,
+    cause: Cause,
+    text: ClarificationText,
+    *,
+    action: ProviderAction,
 ) -> ComposedAnswer:
     return ComposedAnswer(
         content=(
-            TextBlock(text=_not_sent_text(submission.context.action, cause)(text)),
+            TextBlock(text=_NOT_SENT_TEXT[action][cause](text)),
             FormErrorBlock(
                 form_id=submission.form_id,
                 context=submission.context,
@@ -459,8 +517,88 @@ def answer_for_failed_call(
     )
 
 
+def end_for_failed_call(
+    submission: FormSubmission,
+    failure: Failure,
+    text: ClarificationText,
+    *,
+    action: ActionSchema,
+) -> FlowEnding:
+    return end_for_call_cause(
+        submission,
+        _cause_for_failed_call(failure),
+        text,
+        action=ProviderAction(action.context.action),
+        retry_after_seconds=failure.retry_after_seconds,
+    )
+
+
+def end_for_call_cause(
+    submission: FormSubmission,
+    cause: Cause,
+    text: ClarificationText,
+    *,
+    action: ProviderAction,
+    retry_after_seconds: int | None = None,
+) -> FlowEnding:
+    return FlowEnding(
+        status=TurnStatus.UNAVAILABLE,
+        cause=cause,
+        answer=answer_for_failed_call(submission, cause, text, action=action),
+        retry_after_seconds=retry_after_seconds,
+    )
+
+
+def answer_for_init_form(init_form: FormDefinition, text: str) -> ComposedAnswer:
+    return ComposedAnswer(content=(TextBlock(text=text), offer_form(init_form)))
+
+
+def end_for_form_errors(errors: FormErrors, text: ClarificationText) -> FlowEnding:
+    return FlowEnding(
+        status=TurnStatus.REQUIRES_INPUT,
+        cause=Cause.INVALID_INPUT,
+        answer=answer_for_form_errors(errors, text),
+    )
+
+
+def end_for_unknown_form(text: ClarificationText) -> FlowEnding:
+    return FlowEnding(
+        status=TurnStatus.REQUIRES_INPUT,
+        cause=Cause.INVALID_INPUT,
+        answer=answer_for_unknown_form(text),
+    )
+
+
+def end_for_invalid_form(
+    checked: FormErrors | UnknownForm, text: ClarificationText
+) -> FlowEnding:
+    if isinstance(checked, FormErrors):
+        return end_for_form_errors(checked, text)
+    return end_for_unknown_form(text)
+
+
+def end_for_already_filed(text: ClarificationText) -> FlowEnding:
+    return FlowEnding(
+        status=TurnStatus.REJECTED,
+        cause=Cause.ALREADY_FILED,
+        answer=answer_with_text(text.already_filed),
+    )
+
+
+def end_for_no_provider(ask: Ask, text: ClarificationText) -> FlowEnding:
+    return FlowEnding(
+        status=TurnStatus.NO_MATCH,
+        cause=None,
+        answer=answer_for_unserved_asks((ask,), text),
+    )
+
+
 def answer_for_unknown_form(text: ClarificationText) -> ComposedAnswer:
     return ComposedAnswer(content=(TextBlock(text=text.unknown_form),))
+
+
+def answer_with_text(text: str) -> ComposedAnswer:
+    return ComposedAnswer(content=(TextBlock(text=text),))
 
 
 def form_error_block(errors: FormErrors, text: ClarificationText) -> FormErrorBlock:
@@ -604,6 +742,16 @@ def candidates_for_scheme(
     )
 
 
+def discovery_for_scheme(
+    discovery: DiscoveryResult, scheme_code: str
+) -> DiscoveryResult:
+    return discovery.with_each_ask(
+        lambda ask: ask.with_capabilities(
+            candidates_for_scheme(ask.capabilities, scheme_code)
+        )
+    )
+
+
 def _advertised_at(candidate: ProviderCapability, path: str) -> object:
     node: object = candidate.advertised
     for segment in path.split("."):
@@ -611,3 +759,53 @@ def _advertised_at(candidate: ProviderCapability, path: str) -> object:
             return None
         node = node.get(segment)
     return node
+
+
+def clear_awaiting_init_record(forms: FormRecords) -> FormRecords:
+    return {
+        form_id: entry
+        for form_id, entry in forms.items()
+        if not isinstance(entry, FormAwaitingInit)
+    }
+
+
+def find_awaiting_init(
+    forms: FormRecords, init_context: FormContext
+) -> FormAwaitingInit | None:
+    return next(
+        (
+            entry
+            for entry in forms.values()
+            if isinstance(entry, FormAwaitingInit)
+            and _is_same_flow(entry, init_context)
+        ),
+        None,
+    )
+
+
+def _is_same_flow(entry: FormAwaitingInit, init_context: FormContext) -> bool:
+    details_context = entry.submission.context
+    return (details_context.scheme, details_context.category) == (
+        init_context.scheme,
+        init_context.category,
+    )
+
+
+def is_done(forms: FormRecords, form_id: str) -> bool:
+    return isinstance(forms.get(form_id), FormDone)
+
+
+def with_form_done(forms: FormRecords, submission: FormSubmission) -> FormRecords:
+    done = FormDone(submission=withhold_values(submission))
+    return {**forms, submission.form_id: done}
+
+
+def with_init_awaited(
+    forms: FormRecords,
+    submission: FormSubmission,
+    *,
+    provider: ProviderCapability,
+    now: datetime,
+) -> FormRecords:
+    waiting = FormAwaitingInit(submission=submission, provider=provider, awaited_at=now)
+    return {**forms, submission.form_id: waiting}

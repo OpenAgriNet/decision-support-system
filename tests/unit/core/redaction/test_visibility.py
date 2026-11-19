@@ -128,3 +128,16 @@ def test_conceal_body_hides_echoes_in_strings_and_bare_numbers() -> None:
         "count": 2,
         "items": [{"note": "«person_1» ji"}],
     }
+
+
+def test_a_value_not_concealed_is_revealed_but_left_in_a_reply() -> None:
+    visibility = Visibility(
+        values={"«otp_1»": "2026", "«phone_1»": "9876543210"},
+        never_concealed=frozenset({"«otp_1»"}),
+    )
+
+    assert visibility.reveal({"otp": "«otp_1»"}) == {"otp": "2026"}
+    assert visibility.conceal_body({"year": 2026, "phone": "9876543210"}) == {
+        "year": 2026,
+        "phone": "«phone_1»",
+    }
