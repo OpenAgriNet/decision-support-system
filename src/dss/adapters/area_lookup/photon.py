@@ -7,6 +7,7 @@ asked. Core then asks the farmer when two remain.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from typing import Any
 
@@ -25,10 +26,34 @@ _LIMIT = "50"
 # Village-sized places live in `locality` and `district`. Streets, houses and
 # shops are never a place a farmer names.
 _LAYERS = ("city", "district", "locality", "county", "state")
+# The apostrophe is part of a word: "Murang'a" is one. A hyphen is not:
+# "Tharaka-Nithi" is two.
+_BETWEEN_WORDS = re.compile(r"[^\w']+")
+
+# One result in Photon's reply, as GeoJSON.
+type Feature = dict[str, Any]
 
 
 def _fold(text: str) -> str:
     return " ".join(text.split()).casefold()
+
+
+def _words(text: str) -> list[str]:
+    return _BETWEEN_WORDS.split(_fold(text))
+
+
+def _state_named_with(word: str, features: list[Feature]) -> AreaMatch | None:
+    # Only a state gets this loose match ("Kashmir" for Jammu and Kashmir).
+    # For a small place ("Chota Kashmir") it is a confident wrong answer.
+    states = [
+        feature
+        for feature in features
+        if feature["properties"].get("type") == "state"
+        and _fold(feature["properties"]["name"]) != word
+        and word in _words(feature["properties"]["name"])
+    ]
+    # A word in several states ("Pradesh") points at none of them.
+    return _to_match(states[0]) if len(states) == 1 else None
 
 
 def _readable(feature: Any) -> bool:
@@ -59,7 +84,7 @@ def _parts(properties: dict[str, Any]) -> tuple[str, ...]:
     return tuple(part for part in parts if part)
 
 
-def _to_match(feature: dict[str, Any]) -> AreaMatch:
+def _to_match(feature: Feature) -> AreaMatch:
     properties = feature["properties"]
     name = properties["name"]
     return AreaMatch(
@@ -73,7 +98,7 @@ def _to_match(feature: dict[str, Any]) -> AreaMatch:
     )
 
 
-def _inside_prefix(feature: dict[str, Any]) -> tuple[str, ...] | None:
+def _inside_prefix(feature: Feature) -> tuple[str, ...] | None:
     """If the feature sits inside a place with its own name (the town of
     Nakuru in Nakuru county), the places above that bigger place."""
 
@@ -83,7 +108,7 @@ def _inside_prefix(feature: dict[str, Any]) -> tuple[str, ...] | None:
     return parts[: parts.index(name)] if name in parts else None
 
 
-def _without_containers(features: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _without_containers(features: list[Feature]) -> list[Feature]:
     """Drop the bigger place when a town of the same name sits inside it.
 
     This is done here and not in core on purpose. Core keeps the bigger place
@@ -169,12 +194,10 @@ class PhotonAreaLookup:
             raise AreaLookupUnavailableError(str(error)) from error
         wanted = _fold(name)
         try:
-            features = [
-                feature
-                for feature in response.json()["features"]
-                if _readable(feature) and _fold(feature["properties"]["name"]) == wanted
-            ]
-            matches = [_to_match(f) for f in _without_containers(features)]
+            readable = [f for f in response.json()["features"] if _readable(f)]
+            named = [f for f in readable if _fold(f["properties"]["name"]) == wanted]
+            matches = [_to_match(f) for f in _without_containers(named)]
+            state = _state_named_with(wanted, readable)
         except (ValueError, KeyError, TypeError) as error:
             raise AreaLookupUnavailableError("unreadable reply") from error
         # Same name, same surroundings: the farmer cannot tell them apart.
@@ -182,4 +205,4 @@ class PhotonAreaLookup:
         unique: dict[tuple[str, ...], AreaMatch] = {}
         for match in matches:
             unique.setdefault(match.within, match)
-        return list(unique.values())
+        return [*unique.values(), *([state] if state else [])]

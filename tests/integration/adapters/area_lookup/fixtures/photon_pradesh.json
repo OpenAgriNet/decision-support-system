@@ -1,0 +1,181 @@
+{
+    "type": "FeatureCollection",
+    "features": [
+        {
+            "type": "Feature",
+            "properties": {
+                "osm_type": "R",
+                "osm_id": 1942587,
+                "osm_key": "place",
+                "osm_value": "state",
+                "type": "state",
+                "name": "Uttar Pradesh",
+                "country": "India",
+                "countrycode": "IN",
+                "extra": {
+                    "admin_level": "4"
+                },
+                "extent": [
+                    77.0838761,
+                    30.4063828,
+                    84.6345091,
+                    23.8706272
+                ]
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    80.859666,
+                    27.1303344
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "osm_type": "R",
+                "osm_id": 2022095,
+                "osm_key": "place",
+                "osm_value": "state",
+                "type": "state",
+                "name": "Andhra Pradesh",
+                "country": "India",
+                "countrycode": "IN",
+                "extra": {
+                    "admin_level": "4"
+                },
+                "extent": [
+                    76.7600837,
+                    19.166806,
+                    84.7658033,
+                    12.6238599
+                ]
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    80.1863809,
+                    15.9240905
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "osm_type": "R",
+                "osm_id": 1950071,
+                "osm_key": "place",
+                "osm_value": "state",
+                "type": "state",
+                "name": "Madhya Pradesh",
+                "country": "India",
+                "countrycode": "IN",
+                "extra": {
+                    "admin_level": "4"
+                },
+                "extent": [
+                    74.029382,
+                    26.8695616,
+                    82.8126116,
+                    21.0706885
+                ]
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    77.5340719,
+                    23.8143419
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "osm_type": "R",
+                "osm_id": 364186,
+                "osm_key": "place",
+                "osm_value": "state",
+                "type": "state",
+                "name": "Himachal Pradesh",
+                "country": "India",
+                "countrycode": "IN",
+                "extra": {
+                    "admin_level": "4"
+                },
+                "extent": [
+                    75.5940055,
+                    33.2565165,
+                    79.0123843,
+                    30.3771701
+                ]
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    77.1828462,
+                    31.9292352
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "osm_type": "R",
+                "osm_id": 2027346,
+                "osm_key": "place",
+                "osm_value": "state",
+                "type": "state",
+                "name": "Arunachal Pradesh",
+                "country": "India",
+                "countrycode": "IN",
+                "extra": {
+                    "admin_level": "4"
+                },
+                "extent": [
+                    91.5623082,
+                    29.3745566,
+                    97.3950905,
+                    26.650863
+                ]
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    94.5921326,
+                    28.0937702
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "osm_type": "R",
+                "osm_id": 7606343,
+                "osm_key": "boundary",
+                "osm_value": "administrative",
+                "type": "city",
+                "name": "Andhra Pradesh Capital Region Development Authority",
+                "county": "Thullur Mandal",
+                "state": "Andhra Pradesh",
+                "country": "India",
+                "countrycode": "IN",
+                "extra": {
+                    "admin_level": "7"
+                },
+                "extent": [
+                    80.4074471,
+                    16.5742783,
+                    80.6054567,
+                    16.4137571
+                ]
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    80.5105858,
+                    16.494222
+                ]
+            }
+        }
+    ]
+}

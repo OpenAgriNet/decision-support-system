@@ -174,6 +174,29 @@ def test_each_choice_stops_where_it_stands_apart_from_every_other() -> None:
     ]
 
 
+def test_a_state_among_the_choices_has_its_own_line() -> None:
+    """ "Kashmir" is two villages and a word in a state. The state is listed
+    by its full name, so the farmer can pick it."""
+
+    state = AreaMatch(
+        name="Jammu and Kashmir",
+        region="IN",
+        within=("India",),
+        geometry=Geometry(coordinates=[75.16, 33.66]),
+        is_region=True,
+    )
+
+    assert _pick_list(
+        _place("Kashmir", "Rajasthan", "Sheo Tehsil"),
+        _place("Kashmir", "Himachal Pradesh", "Karsog"),
+        state,
+    ) == [
+        "1. Kashmir, Rajasthan",
+        "2. Kashmir, Himachal Pradesh",
+        "3. Jammu and Kashmir, India",
+    ]
+
+
 def test_a_long_list_is_grouped_one_level_up() -> None:
     """Six Rampurs, two in each of three states. Six lines are too many to
     read. The farmer picks a state first, and the next turn narrows further."""
