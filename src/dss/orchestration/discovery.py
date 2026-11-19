@@ -139,7 +139,7 @@ def _report(result: DiscoveryResult, *, turn: UserTurn) -> None:
             "provider_preferences",
             turn.transaction_id,
             event="ranking_applied",
-            ask_index=priority.ask_index,
+            ask_id=priority.ask_id,
             capability=priority.capability,
             source=priority.source,
             ranked=_ids(priority.ranking),

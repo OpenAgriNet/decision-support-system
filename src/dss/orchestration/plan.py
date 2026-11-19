@@ -24,7 +24,7 @@ from dss.adapters.observability.metrics import (
     record_agent_run,
 )
 from dss.core.forms.models import FormDefinition
-from dss.core.intent.models import Intent
+from dss.core.intent.models import AskId, Intent
 from dss.core.planner.evidence import assemble_evidence
 from dss.core.planner.models import Evidence, Identity, Verdict
 from dss.core.planner.prompt import (
@@ -55,7 +55,7 @@ class Plan(Protocol):
         discovery: DiscoveryResult,
         verdict: Verdict,
         visibility: Visibility = NOTHING_HELD,
-        awaiting: Mapping[int, FormDefinition] | None = None,
+        awaiting: Mapping[AskId, FormDefinition] | None = None,
     ) -> Evidence: ...
 
 
@@ -99,12 +99,12 @@ def build_plan(  # noqa: PLR0913
         discovery: DiscoveryResult,
         verdict: Verdict,
         visibility: Visibility = NOTHING_HELD,
-        awaiting: Mapping[int, FormDefinition] | None = None,
+        awaiting: Mapping[AskId, FormDefinition] | None = None,
     ) -> Evidence:
         awaiting = awaiting or {}
         # Nothing left to call when every ask is a form's: a run would only
         # cost a model round-trip.
-        actionable = [i for i in range(len(intent.asks)) if i not in awaiting]
+        actionable = [ask for ask in intent.asks if ask.id not in awaiting]
         if not actionable:
             return assemble_evidence(
                 [],

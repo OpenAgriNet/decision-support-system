@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 from enum import StrEnum
+from typing import NewType
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.json_schema import SkipJsonSchema
@@ -161,8 +162,15 @@ class SchemeEntry(BaseModel):
     aliases: tuple[str, ...] = ()
 
 
+# Not a position: a step may pass on only some of a turn's asks.
+AskId = NewType("AskId", int)
+
+
 class Ask(BaseModel):
     """One thing the turn wants: a subject on a single interaction type.
+
+    ``id`` is given once, when the ask is built, and never changes. It is
+    what every later step names the ask by.
 
     ``agriculture_subjects`` is the free-text specific ("potato", "PM-KISAN") and
     is ``None`` when the category needs no subject (e.g. "will it rain?").
@@ -184,6 +192,7 @@ class Ask(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
+    id: AskId
     agriculture_subjects: str | None = None
     subject_categories: SubjectCategory
     interaction_type: InteractionType
@@ -279,3 +288,14 @@ class Intent(BaseModel):
 
     asks: tuple[Ask, ...] = ()
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+
+    @field_validator("asks")
+    @classmethod
+    def _reject_shared_ids(cls, asks: tuple[Ask, ...]) -> tuple[Ask, ...]:
+        ids = [ask.id for ask in asks]
+        if len(set(ids)) != len(ids):
+            raise ValueError(f"two asks share an id: {sorted(ids)}")
+        return asks
+
+    def find_ask(self, ask_id: AskId) -> Ask | None:
+        return next((ask for ask in self.asks if ask.id == ask_id), None)

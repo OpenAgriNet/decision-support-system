@@ -25,7 +25,7 @@ from dss.core.forms.models import (
     FormContext,
     FormDefinition,
 )
-from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
+from dss.core.intent.models import Intent, InteractionType, SubjectCategory
 from dss.core.moderation.models import ModerationDecision, Outcome, ReasonCode
 from dss.core.planner.models import AwaitingInput, Identity, Skill, Verdict
 from dss.core.planner.validation import DomainSchema
@@ -37,6 +37,7 @@ from dss.core.provider_discovery.models import (
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import ConversationMessage, TextQuery, UserTurn
 from dss.orchestration.plan import build_plan
+from tests.support.asks import an_ask, numbered
 from tests.support.evidence import attempted
 from tests.support.fakes import FakePromptProvider
 from tests.support.providers import build_capability
@@ -69,12 +70,12 @@ SKILL = Skill(
     tool_names=("select",),
 )
 
-PRICE_ASK = Ask(
+PRICE_ASK = an_ask(
     agriculture_subjects="paddy",
     subject_categories=SubjectCategory.MARKET,
     interaction_type=InteractionType.OBSERVE,
 )
-GRIEVANCE_ASK = Ask(
+GRIEVANCE_ASK = an_ask(
     agriculture_subjects="PMFBY",
     subject_categories=SubjectCategory.GRIEVANCE,
     interaction_type=InteractionType.ACT,
@@ -138,7 +139,7 @@ def _calls_select_then_answers(
                 ToolCallPart(
                     tool_name="select",
                     args={
-                        "ask_index": 0,
+                        "ask_id": 0,
                         "resource_id": "res:agmarknet:daily-price",
                         "resource_attributes": {"commodity": {"code": "PADDY"}},
                     },
@@ -326,7 +327,8 @@ def _must_not_run(messages: list[ModelMessage], info: AgentInfo) -> ModelRespons
 
 async def test_a_turn_with_only_form_asks_never_runs_the_agent() -> None:
     """Nothing is left to call, so a model round-trip would only cost time.
-    The form still reaches the evidence."""
+    The form still reaches the evidence. The grievance is the turn's third
+    ask: the others were not passed on."""
 
     plan = build_plan(
         schemas=SCHEMAS,
@@ -339,12 +341,14 @@ async def test_a_turn_with_only_form_asks_never_runs_the_agent() -> None:
 
     evidence = await plan(
         _turn(),
-        intent=Intent(asks=(GRIEVANCE_ASK,), confidence=0.9),
+        intent=Intent(
+            asks=(GRIEVANCE_ASK.model_copy(update={"id": 2}),), confidence=0.9
+        ),
         discovery=DiscoveryResult(
-            answers={}, capabilities={0: (CAPABILITY,)}, failures={}, events=()
+            answers={}, capabilities={2: (CAPABILITY,)}, failures={}, events=()
         ),
         verdict=_cleared_verdict(),
-        awaiting={0: GRIEVANCE_FORM},
+        awaiting={2: GRIEVANCE_FORM},
     )
 
     assert evidence.awaiting_forms == (GRIEVANCE_FORM,)
@@ -360,7 +364,7 @@ def _calls_select_for_ask_0_then_answers(
                 ToolCallPart(
                     tool_name="select",
                     args={
-                        "ask_index": 0,
+                        "ask_id": 0,
                         "resource_id": CAPABILITY.resource_id,
                         "resource_attributes": {},
                     },
@@ -390,7 +394,7 @@ async def test_a_model_that_still_selects_for_a_form_ask_reaches_no_provider() -
 
     evidence = await plan(
         _turn(),
-        intent=Intent(asks=(GRIEVANCE_ASK, PRICE_ASK), confidence=0.9),
+        intent=Intent(asks=numbered(GRIEVANCE_ASK, PRICE_ASK), confidence=0.9),
         discovery=DiscoveryResult(
             answers={},
             capabilities={0: (grievance_desk,), 1: (CAPABILITY,)},

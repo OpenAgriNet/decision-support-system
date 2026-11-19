@@ -30,7 +30,7 @@ from dotenv import dotenv_values
 from dss.config.identity_loader import load_identity
 from dss.config.prompt_service import build_prompt_service
 from dss.config.settings import Settings
-from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
+from dss.core.intent.models import Intent, InteractionType, SubjectCategory
 from dss.core.moderation.models import ModerationDecision, Outcome
 from dss.core.planner.models import Verdict
 from dss.core.planner.validation import DomainSchema
@@ -43,6 +43,7 @@ from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import ConversationMessage, TextQuery, UserTurn
 from dss.entrypoint.composition.root import _resolve_model
 from dss.orchestration.plan import build_plan
+from tests.support.asks import an_ask
 from tests.support.live_model import missing_model_key
 from tests.support.providers import build_capability
 
@@ -99,7 +100,7 @@ SCHEMAS = {
     )
 }
 
-ADVICE_ASK = Ask(
+ADVICE_ASK = an_ask(
     agriculture_subjects="potato",
     subject_categories=SubjectCategory.CROP,
     interaction_type=InteractionType.ADVISE,

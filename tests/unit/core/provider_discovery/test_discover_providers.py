@@ -36,6 +36,7 @@ from dss.core.provider_discovery.models import (
 )
 from dss.core.provider_discovery.service import discover_providers
 from dss.core.shared.models import Geometry, ProviderAction, TextQuery, UserTurn
+from tests.support.asks import an_ask, numbered
 from tests.support.providers import build_capability
 
 NOW = datetime(2026, 8, 26, 12, 0, 0, tzinfo=UTC)
@@ -95,7 +96,7 @@ class _FakeDiscovery:
 
 
 async def test_a_single_ask_resolves_and_returns_the_discovery_result() -> None:
-    ask = Ask(
+    ask = an_ask(
         subject_categories=SubjectCategory.MARKET,
         interaction_type=InteractionType.OBSERVE,
     )
@@ -140,7 +141,7 @@ async def test_a_single_ask_resolves_and_returns_the_discovery_result() -> None:
 
 
 async def test_an_unresolved_ask_never_calls_discover() -> None:
-    ask = Ask(
+    ask = an_ask(
         subject_categories=SubjectCategory.FACILITY,
         interaction_type=InteractionType.ACT,
     )
@@ -168,7 +169,7 @@ async def test_an_unresolved_ask_never_calls_discover() -> None:
 async def _discover_in_xyzzy(
     category: SubjectCategory, pack: str, *, place_bound: bool
 ) -> tuple[_FakeDiscovery, DiscoveryResult]:
-    ask = Ask(
+    ask = an_ask(
         subject_categories=category,
         interaction_type=InteractionType.OBSERVE,
         place=UnresolvedPlace(unresolved_name="Xyzzy"),
@@ -216,7 +217,7 @@ async def test_a_how_to_with_an_action_is_searched_as_a_service() -> None:
     """Searched by its wording, "how do I file a complaint" would look among
     the advice packs and never find the desk."""
 
-    how_to_file = Ask(
+    how_to_file = an_ask(
         subject_categories=SubjectCategory.GRIEVANCE,
         interaction_type=InteractionType.ADVISE,
         action=ProviderAction.SUPPORT,
@@ -240,7 +241,7 @@ async def test_a_how_to_with_an_action_is_searched_as_a_service() -> None:
 async def test_scheme_ask_ignores_unclear_place() -> None:
     """No pack serves a scheme ask, so none says it needs a place."""
 
-    ask = Ask(
+    ask = an_ask(
         subject_categories=SubjectCategory.SCHEME,
         interaction_type=InteractionType.ADVISE,
         place=UnresolvedPlace(unresolved_name="Xyzzy"),
@@ -296,15 +297,15 @@ class _PartiallyFailingDiscovery:
 
 
 async def test_a_failing_query_does_not_prevent_a_sibling_from_succeeding() -> None:
-    weather_ask = Ask(
+    weather_ask = an_ask(
         subject_categories=SubjectCategory.WEATHER,
         interaction_type=InteractionType.OBSERVE,
     )
-    market_ask = Ask(
+    market_ask = an_ask(
         subject_categories=SubjectCategory.MARKET,
         interaction_type=InteractionType.OBSERVE,
     )
-    intent = Intent(asks=(weather_ask, market_ask), confidence=0.8)
+    intent = Intent(asks=numbered(weather_ask, market_ask), confidence=0.8)
     turn = _turn()
     schema_pack_cache = _FakeSchemaPackCache(
         {
@@ -330,7 +331,7 @@ async def test_a_failing_query_does_not_prevent_a_sibling_from_succeeding() -> N
     assert result.capabilities[0] == ()
     assert result.events == (
         AskDiscoveryFailed(
-            ask_index=0,
+            ask_id=0,
             capability="openagrinet:WeatherObservation",
             failure_class=FailureClass.TRANSIENT,
             status_code=500,
@@ -365,11 +366,12 @@ async def test_an_adapter_that_raises_takes_the_whole_turn_down() -> None:
     """
     intent = Intent(
         asks=(
-            Ask(
+            an_ask(
                 subject_categories=SubjectCategory.WEATHER,
                 interaction_type=InteractionType.OBSERVE,
             ),
-            Ask(
+            an_ask(
+                id=1,
                 subject_categories=SubjectCategory.MARKET,
                 interaction_type=InteractionType.OBSERVE,
             ),
@@ -396,11 +398,11 @@ async def test_an_adapter_that_raises_takes_the_whole_turn_down() -> None:
 
 
 async def test_two_asks_sharing_a_pair_dedupe_to_one_query() -> None:
-    ask = Ask(
+    ask = an_ask(
         subject_categories=SubjectCategory.MARKET,
         interaction_type=InteractionType.OBSERVE,
     )
-    intent = Intent(asks=(ask, ask), confidence=0.8)
+    intent = Intent(asks=numbered(ask, ask), confidence=0.8)
     turn = _turn()
     schema_pack_cache = _FakeSchemaPackCache(
         {("Market", "Service"): ("openagrinet:MandiPrice",)}
@@ -434,7 +436,7 @@ def _expired_answer() -> DiscoveredAnswer:
 
 
 async def test_an_expired_answer_with_no_fallback_is_dropped() -> None:
-    ask = Ask(
+    ask = an_ask(
         subject_categories=SubjectCategory.MARKET,
         interaction_type=InteractionType.OBSERVE,
     )
@@ -462,12 +464,12 @@ async def test_an_expired_answer_with_no_fallback_is_dropped() -> None:
             resource_id="r1",
             had_fallback=False,
         ),
-        AskUnservable(ask_index=0, capabilities=("openagrinet:MandiPrice",)),
+        AskUnservable(ask_id=0, capabilities=("openagrinet:MandiPrice",)),
     )
 
 
 async def test_an_expired_answer_with_an_on_demand_sibling_records_a_fallback() -> None:
-    ask = Ask(
+    ask = an_ask(
         subject_categories=SubjectCategory.MARKET,
         interaction_type=InteractionType.OBSERVE,
     )
@@ -508,7 +510,7 @@ async def test_an_expired_answer_with_an_on_demand_sibling_records_a_fallback() 
 
 
 async def test_a_non_expired_answer_is_kept() -> None:
-    ask = Ask(
+    ask = an_ask(
         subject_categories=SubjectCategory.MARKET,
         interaction_type=InteractionType.OBSERVE,
     )
@@ -548,7 +550,7 @@ async def test_an_answer_whose_window_has_not_opened_is_dropped() -> None:
     as today's answer and cited to the farmer — the open lower bound is the
     more dangerous half, since a stale price at least *was* true once."""
 
-    ask = Ask(
+    ask = an_ask(
         subject_categories=SubjectCategory.MARKET,
         interaction_type=InteractionType.OBSERVE,
     )
@@ -584,7 +586,7 @@ async def test_an_answer_whose_window_has_not_opened_is_dropped() -> None:
 
 
 async def test_an_answer_with_no_validity_is_kept() -> None:
-    ask = Ask(
+    ask = an_ask(
         subject_categories=SubjectCategory.MARKET,
         interaction_type=InteractionType.OBSERVE,
     )
@@ -616,7 +618,7 @@ async def test_an_answer_with_no_validity_is_kept() -> None:
 
 
 async def test_a_capability_matching_the_index_has_no_divergence_event() -> None:
-    ask = Ask(
+    ask = an_ask(
         subject_categories=SubjectCategory.MARKET,
         interaction_type=InteractionType.OBSERVE,
     )
@@ -647,7 +649,7 @@ async def test_a_capability_matching_the_index_has_no_divergence_event() -> None
 
 
 async def test_a_capability_with_a_category_outside_the_index_diverges() -> None:
-    ask = Ask(
+    ask = an_ask(
         subject_categories=SubjectCategory.MARKET,
         interaction_type=InteractionType.OBSERVE,
     )
@@ -682,7 +684,7 @@ async def test_a_capability_with_a_category_outside_the_index_diverges() -> None
 
 
 async def test_a_direct_answer_with_a_diverging_category_is_flagged() -> None:
-    ask = Ask(
+    ask = an_ask(
         subject_categories=SubjectCategory.MARKET,
         interaction_type=InteractionType.OBSERVE,
     )
@@ -722,7 +724,7 @@ async def test_an_expired_answer_is_not_also_reported_as_diverging() -> None:
     answer that is dropped in the same turn points an operator at a resource
     that never reached the user.
     """
-    ask = Ask(
+    ask = an_ask(
         subject_categories=SubjectCategory.MARKET,
         interaction_type=InteractionType.OBSERVE,
     )
@@ -757,7 +759,7 @@ async def test_an_expired_answer_is_not_also_reported_as_diverging() -> None:
 
 async def test_a_live_answer_that_diverges_is_still_reported() -> None:
     """The expiry filter must not swallow divergence for answers that survive."""
-    ask = Ask(
+    ask = an_ask(
         subject_categories=SubjectCategory.MARKET,
         interaction_type=InteractionType.OBSERVE,
     )
@@ -794,7 +796,7 @@ async def test_a_live_answer_that_diverges_is_still_reported() -> None:
 
 
 async def test_an_empty_catalog_result_emits_ask_unservable() -> None:
-    ask = Ask(
+    ask = an_ask(
         subject_categories=SubjectCategory.MARKET,
         interaction_type=InteractionType.OBSERVE,
     )
@@ -815,12 +817,12 @@ async def test_an_empty_catalog_result_emits_ask_unservable() -> None:
     )
 
     assert result.events == (
-        AskUnservable(ask_index=0, capabilities=("openagrinet:MandiPrice",)),
+        AskUnservable(ask_id=0, capabilities=("openagrinet:MandiPrice",)),
     )
 
 
 async def test_a_failed_ask_emits_ask_discovery_failed_not_unservable() -> None:
-    ask = Ask(
+    ask = an_ask(
         subject_categories=SubjectCategory.MARKET,
         interaction_type=InteractionType.OBSERVE,
     )
@@ -852,7 +854,7 @@ async def test_a_failed_ask_emits_ask_discovery_failed_not_unservable() -> None:
 
     assert result.events == (
         AskDiscoveryFailed(
-            ask_index=0,
+            ask_id=0,
             capability="openagrinet:MandiPrice",
             failure_class=FailureClass.TRANSIENT,
             status_code=500,
@@ -861,7 +863,7 @@ async def test_a_failed_ask_emits_ask_discovery_failed_not_unservable() -> None:
 
 
 async def test_an_unresolved_ask_does_not_also_emit_ask_unservable() -> None:
-    ask = Ask(
+    ask = an_ask(
         subject_categories=SubjectCategory.FACILITY,
         interaction_type=InteractionType.ACT,
     )
@@ -883,7 +885,7 @@ async def test_an_unresolved_ask_does_not_also_emit_ask_unservable() -> None:
 
 
 async def test_a_resolved_answer_does_not_emit_ask_unservable() -> None:
-    ask = Ask(
+    ask = an_ask(
         subject_categories=SubjectCategory.MARKET,
         interaction_type=InteractionType.OBSERVE,
     )
@@ -916,7 +918,7 @@ async def test_a_scheme_ask_is_discovered_on_its_category_alone() -> None:
     """No schema pack declares `Scheme`, so the index resolves no `@type` — and
     the ask still reaches the network, filtered on the category (#52)."""
 
-    ask = Ask(
+    ask = an_ask(
         agriculture_subjects="Pradhan Mantri Kisan Maandhan Yojana",
         subject_categories=SubjectCategory.SCHEME,
         interaction_type=InteractionType.ADVISE,
@@ -943,7 +945,7 @@ async def test_an_unresolvable_non_scheme_ask_is_still_never_discovered() -> Non
     every other category has a pack, so an empty index entry is our own
     mapping's hole and the event says so."""
 
-    ask = Ask(
+    ask = an_ask(
         subject_categories=SubjectCategory.MARKET,
         interaction_type=InteractionType.OBSERVE,
     )
@@ -966,7 +968,7 @@ async def test_a_scheme_ask_uses_resolved_types_once_a_pack_declares_them() -> N
     """The category-only query is a fallback, not a rule: a pack that declares
     `Scheme` names its `@type` in `schemaContext` like any other."""
 
-    ask = Ask(
+    ask = an_ask(
         subject_categories=SubjectCategory.SCHEME,
         interaction_type=InteractionType.ADVISE,
     )
@@ -1010,11 +1012,11 @@ _MARKET_AND_WEATHER_INDEX = _FakeSchemaPackCache(
         {"openagrinet:MandiPrice", "openagrinet:WeatherObservation"}
     ),
 )
-_MARKET_ASK = Ask(
+_MARKET_ASK = an_ask(
     subject_categories=SubjectCategory.MARKET,
     interaction_type=InteractionType.OBSERVE,
 )
-_WEATHER_ASK = Ask(
+_WEATHER_ASK = an_ask(
     subject_categories=SubjectCategory.WEATHER,
     interaction_type=InteractionType.OBSERVE,
 )
@@ -1029,9 +1031,22 @@ _NASHIK = _PUNE.model_copy(
 )
 
 
-async def _discover_with(discovery: _NetworkDiscovery, *asks: Ask) -> DiscoveryResult:
+async def _discover_with(
+    discovery: _NetworkDiscovery, *asks: Ask, ids: tuple[int, ...] | None = None
+) -> DiscoveryResult:
+    """``ids`` gives the asks those ids, for a turn where some asks were not
+    passed on. Left out, they are 0, 1, 2."""
+
+    asks_with_ids = (
+        numbered(*asks)
+        if ids is None
+        else tuple(
+            ask.model_copy(update={"id": ask_id})
+            for ask, ask_id in zip(asks, ids, strict=True)
+        )
+    )
     return await discover_providers(
-        Intent(asks=asks, confidence=0.9),
+        Intent(asks=asks_with_ids, confidence=0.9),
         _turn(),
         discovery=discovery,
         schema_pack_cache=_MARKET_AND_WEATHER_INDEX,
@@ -1085,12 +1100,12 @@ async def test_a_failing_shared_query_fails_every_ask_that_shared_it() -> None:
         {"openagrinet:MandiPrice": _query_result(failures=(failure,))}
     )
 
-    result = await _discover_with(discovery, _MARKET_ASK, _MARKET_ASK)
+    result = await _discover_with(discovery, _MARKET_ASK, _MARKET_ASK, ids=(0, 2))
 
-    assert result.failures == {0: (failure,), 1: (failure,)}
+    assert result.failures == {0: (failure,), 2: (failure,)}
     assert result.events == (
         AskDiscoveryFailed(0, "openagrinet:MandiPrice", FailureClass.TRANSIENT, 500),
-        AskDiscoveryFailed(1, "openagrinet:MandiPrice", FailureClass.TRANSIENT, 500),
+        AskDiscoveryFailed(2, "openagrinet:MandiPrice", FailureClass.TRANSIENT, 500),
     )
 
 
@@ -1111,11 +1126,13 @@ async def test_asks_get_only_their_own_query_reply() -> None:
         }
     )
 
-    result = await _discover_with(discovery, _MARKET_ASK, _WEATHER_ASK, _MARKET_ASK)
+    result = await _discover_with(
+        discovery, _MARKET_ASK, _WEATHER_ASK, _MARKET_ASK, ids=(0, 2, 5)
+    )
 
     assert len(discovery.calls) == 2
-    assert result.answers == {0: (market_answer,), 1: (), 2: (market_answer,)}
-    assert result.capabilities == {0: (), 1: (weather_capability,), 2: ()}
+    assert result.answers == {0: (market_answer,), 2: (), 5: (market_answer,)}
+    assert result.capabilities == {0: (), 2: (weather_capability,), 5: ()}
 
 
 async def test_an_unplaced_ask_gets_an_empty_entry_beside_a_searched_one() -> None:
@@ -1228,7 +1245,7 @@ async def test_a_placeless_pack_is_searched_everywhere() -> None:
     user's own place matched nothing and the catalog came back empty."""
 
     discovery = _NetworkDiscovery({})
-    grievance_ask = Ask(
+    grievance_ask = an_ask(
         subject_categories=SubjectCategory.GRIEVANCE,
         interaction_type=InteractionType.ACT,
         place=_PUNE,
@@ -1253,7 +1270,7 @@ async def test_scheme_ask_is_searched_everywhere() -> None:
     even a clear place is not sent."""
 
     discovery = _NetworkDiscovery({})
-    scheme_ask = Ask(
+    scheme_ask = an_ask(
         subject_categories=SubjectCategory.SCHEME,
         interaction_type=InteractionType.ADVISE,
         place=_PUNE,
@@ -1273,7 +1290,7 @@ async def test_scheme_ask_is_searched_everywhere() -> None:
 
 async def test_an_advise_ask_searches_knowledge_resources() -> None:
     discovery = _NetworkDiscovery({})
-    advise_ask = Ask(
+    advise_ask = an_ask(
         subject_categories=SubjectCategory.CROP,
         interaction_type=InteractionType.ADVISE,
     )
@@ -1293,7 +1310,7 @@ async def test_an_advise_ask_searches_knowledge_resources() -> None:
 
 
 async def test_events_come_unresolved_then_expired_then_diverged_then_per_ask() -> None:
-    facility_ask = Ask(
+    facility_ask = an_ask(
         subject_categories=SubjectCategory.FACILITY,
         interaction_type=InteractionType.ACT,
     )

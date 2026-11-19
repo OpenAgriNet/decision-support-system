@@ -25,7 +25,7 @@ def test_finds_the_matching_capability_for_the_ask() -> None:
         events=(),
     )
 
-    result = find_capability(discovery, ask_index=0, resource_id="res:b")
+    result = find_capability(discovery, ask_id=0, resource_id="res:b")
 
     assert result is not None
     assert result.resource_id == "res:b"
@@ -39,14 +39,14 @@ def test_returns_none_when_resource_id_does_not_match_any_candidate() -> None:
         events=(),
     )
 
-    result = find_capability(discovery, ask_index=0, resource_id="res:not-there")
+    result = find_capability(discovery, ask_id=0, resource_id="res:not-there")
 
     assert result is None
 
 
-def test_returns_none_when_the_ask_index_has_no_candidates() -> None:
+def test_returns_none_when_the_ask_id_has_no_candidates() -> None:
     discovery = DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
 
-    result = find_capability(discovery, ask_index=5, resource_id="res:a")
+    result = find_capability(discovery, ask_id=5, resource_id="res:a")
 
     assert result is None

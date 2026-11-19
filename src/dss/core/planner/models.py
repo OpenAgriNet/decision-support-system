@@ -9,7 +9,7 @@ import anyio
 from pydantic import BaseModel, ConfigDict
 
 from dss.core.forms.models import FormDefinition
-from dss.core.intent.models import Ask
+from dss.core.intent.models import Ask, AskId
 from dss.core.moderation.models import ModerationDecision
 from dss.core.settlement.models import CannotServe, NeedsClarification
 
@@ -84,16 +84,14 @@ class Result(BaseModel):
     """One capability call's data, mapped to the domain schema.
 
     The design doc's ``Result.step_id`` names a ``Plan`` step; there is no
-    ``Plan`` here. ``ask_index`` names what a result actually answers instead
-    — the position among the asks the planner was given — so
-    ``assemble_evidence`` can file it under its ask. Those are the settled
-    asks, not every ask of the turn. No ``url`` here: it lives on the
-    ``Source`` this result's ``source_id`` points to.
+    ``Plan`` here. ``ask_id`` names the ask a result answers instead, so
+    ``assemble_evidence`` can file it under its ask. No ``url`` here: it
+    lives on the ``Source`` this result's ``source_id`` points to.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    ask_index: int
+    ask_id: AskId
     source_id: str
     data: dict
 
@@ -106,14 +104,13 @@ NO_READABLE_REPLY = 0
 class Failure(BaseModel):
     """An ask that did not produce a result.
 
-    ``ask_index`` names what the call was answering — the position among the
-    asks the planner was given — the same way ``Result.ask_index`` does, so
-    ``assemble_evidence`` can file it under its ask.
+    ``ask_id`` names the ask the call was answering, the same way
+    ``Result.ask_id`` does, so ``assemble_evidence`` can file it under its ask.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    ask_index: int
+    ask_id: AskId
     capability: str
     reason: str
     retryable: bool

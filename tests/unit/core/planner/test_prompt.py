@@ -18,7 +18,7 @@ those through the ``select`` tool's own ``RunContext.deps``, wired in
 from __future__ import annotations
 
 from dss.core.forms.models import FormContext, FormReference
-from dss.core.intent.models import Ask, InteractionType, SubjectCategory
+from dss.core.intent.models import InteractionType, SubjectCategory
 from dss.core.planner.markers import RETRIEVED_DATA
 from dss.core.planner.models import Skill
 from dss.core.planner.prompt import (
@@ -29,6 +29,7 @@ from dss.core.planner.prompt import (
 )
 from dss.core.provider_discovery.models import DiscoveredAnswer
 from dss.core.shared.models import ConversationMessage
+from tests.support.asks import an_ask
 
 
 def _skill() -> Skill:
@@ -102,29 +103,32 @@ def test_no_direct_answers_leaves_no_empty_section() -> None:
 
 
 def test_asks_section_lists_each_ask() -> None:
-    """The tools take an ``ask_index``, so the model has to know which asks
-    exist. Without this, gemma 4 gave up on a question that named no place."""
+    """The tools take an ``ask_id``, so the model has to know which asks
+    exist. Without this, gemma 4 gave up on a question that named no place.
+    The only ask here is the turn's third: the other two were not passed on."""
 
-    ask = Ask(
+    ask = an_ask(
+        id=2,
         subject_categories=SubjectCategory.WEATHER,
         interaction_type=InteractionType.OBSERVE,
     )
 
-    assert "ask 0: Weather (observe)" in asks_section((ask,))
+    assert "ask 2: Weather (observe)" in asks_section((ask,))
 
 
 def test_an_ask_awaiting_a_form_is_marked() -> None:
     """The form step settled that ask before the planner ran; the model must
     know not to call a provider for it."""
 
-    ask = Ask(
+    ask = an_ask(
+        id=2,
         subject_categories=SubjectCategory.GRIEVANCE,
         interaction_type=InteractionType.ACT,
     )
 
-    section = asks_section((ask,), awaiting=frozenset({0}))
+    section = asks_section((ask,), awaiting=frozenset({2}))
 
-    assert "ask 0: Grievance (act), awaits a form" in section
+    assert "ask 2: Grievance (act), awaits a form" in section
 
 
 def test_no_asks_leaves_no_section() -> None:

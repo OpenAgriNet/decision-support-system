@@ -16,11 +16,11 @@ from dss.core.provider_discovery.service import (
 )
 from dss.core.schema_packs.service import is_place_needed
 from dss.core.settlement import service as settlement
-from dss.core.settlement.models import AskRequirements, Settlement
+from dss.core.settlement.models import AskRequirements, AskSettlement
 from dss.core.settlement.requirements import build_ask_requirements
 
-# One settlement per ask, in ask order.
-type SettleAsks = Callable[[Intent], tuple[Settlement, ...]]
+# One per ask, in ask order.
+type SettleAsks = Callable[[Intent], tuple[AskSettlement, ...]]
 
 
 # A category's forms.
@@ -32,7 +32,7 @@ def build_settle_asks(
 ) -> SettleAsks:
     """Reads the index on every turn. It can refresh while the app runs."""
 
-    def settle(intent: Intent) -> tuple[Settlement, ...]:
+    def settle(intent: Intent) -> tuple[AskSettlement, ...]:
         requirements_for = partial(
             _read_ask_requirements,
             index=index.current(),

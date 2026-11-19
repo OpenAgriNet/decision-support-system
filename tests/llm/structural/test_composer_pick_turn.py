@@ -22,7 +22,6 @@ from dss.config.identity_loader import load_identity
 from dss.config.prompt_service import build_prompt_service
 from dss.config.settings import Settings
 from dss.core.intent.models import (
-    Ask,
     InteractionType,
     PlaceSource,
     ResolvedPlace,
@@ -32,6 +31,7 @@ from dss.core.planner.models import Result, Source, SourceKind
 from dss.core.shared.models import ConversationMessage, Geometry, TextQuery, UserTurn
 from dss.core.stream_response.service import stream_response
 from dss.entrypoint.composition.root import _composer_llm
+from tests.support.asks import an_ask
 from tests.support.evidence import build_evidence
 from tests.support.live_model import missing_model_key
 
@@ -69,7 +69,7 @@ async def test_pick_reply_still_answers() -> None:
         geometry=Geometry(coordinates=[77.63, 31.45]),
         source=PlaceSource.NAMED,
     )
-    ask = Ask(
+    ask = an_ask(
         subject_categories=SubjectCategory.WEATHER,
         interaction_type=InteractionType.OBSERVE,
         place=rampur,
@@ -79,7 +79,7 @@ async def test_pick_reply_still_answers() -> None:
         sources=(Source(id="1", name="IMD", kind=SourceKind.PROVIDER, url=None),),
         results=(
             Result(
-                ask_index=0,
+                ask_id=0,
                 source_id="1",
                 data={"forecast": "light rain", "rainfall_mm": 37},
             ),

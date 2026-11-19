@@ -48,7 +48,7 @@ from dss.orchestration.redaction import RedactTexts, pass_through
 from dss.orchestration.settlement import SettleAsks
 from dss.orchestration.translation import translate_out
 from tests.support.fakes import FakeAreaLookup, FakeLocalizer, FakeTranslator
-from tests.support.settlement import settles_every_ask
+from tests.support.settlement import settles_every_ask, settles_with
 from tests.support.turn_events import assert_well_formed
 
 from .test_orchestrator import (
@@ -453,7 +453,7 @@ async def test_the_pick_list_is_translated_with_the_question() -> None:
     orch = _build_translating(
         FakeTranslator(),
         compose=_FakeCompose("Which Pune do you mean?"),
-        settle_asks=lambda intent: (which_pune,),
+        settle_asks=settles_with(which_pune),
     ).orchestrator
 
     events = await _drain(orch, _build_turn(GUJARATI))

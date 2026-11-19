@@ -14,6 +14,7 @@ from dss.core.intent.models import (
 from dss.core.settlement.models import (
     Ambiguous,
     AskRequirements,
+    AskSettlement,
     AskSlot,
     CannotServe,
     Frame,
@@ -29,6 +30,7 @@ from dss.core.settlement.models import (
 )
 from dss.core.settlement.requirements import build_ask_requirements
 from dss.core.settlement.service import settle, settle_asks
+from tests.support.asks import an_ask, numbered
 
 PLACE = AskSlot.PLACE
 # Form field names: settle works on any frame, not only an ask's.
@@ -89,14 +91,16 @@ def test_unservable_slot_beats_open_ones() -> None:
 
 
 def _ask(category: SubjectCategory, interaction: InteractionType) -> Ask:
-    return Ask(subject_categories=category, interaction_type=interaction)
+    return an_ask(subject_categories=category, interaction_type=interaction)
 
 
 def test_each_ask_settles_on_its_own() -> None:
     """Weather needs a place and none was given; a grievance needs none."""
 
-    weather = _ask(SubjectCategory.WEATHER, InteractionType.OBSERVE)
-    grievance = _ask(SubjectCategory.GRIEVANCE, InteractionType.ACT)
+    weather, grievance = numbered(
+        _ask(SubjectCategory.WEATHER, InteractionType.OBSERVE),
+        _ask(SubjectCategory.GRIEVANCE, InteractionType.ACT),
+    )
 
     settlements = settle_asks(
         Intent(asks=(weather, grievance)),
@@ -108,8 +112,10 @@ def test_each_ask_settles_on_its_own() -> None:
     )
 
     assert settlements == (
-        NeedsClarification(open_slots=(Slot(PLACE, Missing()),)),
-        Settled(Frame(slots=())),
+        AskSettlement(
+            weather, NeedsClarification(open_slots=(Slot(PLACE, Missing()),))
+        ),
+        AskSettlement(grievance, Settled(Frame(slots=()))),
     )
 
 
@@ -118,7 +124,7 @@ def test_a_scheme_is_not_turned_away_before_the_action_is_known() -> None:
     we can serve it, so they are asked first."""
 
     pm_kisan = Scheme(code="PM-KISAN", name="PM Kisan Samman Nidhi")
-    problem = Ask(
+    problem = an_ask(
         subject_categories=SubjectCategory.GRIEVANCE,
         interaction_type=InteractionType.ACT,
         action=UnclearAction.UNCLEAR,
@@ -137,5 +143,7 @@ def test_a_scheme_is_not_turned_away_before_the_action_is_known() -> None:
     )
 
     assert settlements == (
-        NeedsClarification(open_slots=(Slot(AskSlot.ACTION, Missing()),)),
+        AskSettlement(
+            problem, NeedsClarification(open_slots=(Slot(AskSlot.ACTION, Missing()),))
+        ),
     )

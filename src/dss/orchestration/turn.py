@@ -44,6 +44,7 @@ from dss.core.moderation.service import moderate
 from dss.core.policy.models import Policy
 from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.settlement.models import (
+    AskSettlement,
     CannotServe,
     NeedsClarification,
     Settled,
@@ -74,7 +75,7 @@ def _nothing_discovered() -> DiscoveryResult:
     A factory rather than a module constant: ``DiscoveryResult`` is frozen,
     but its ``answers``/``capabilities``/``failures`` are plain dicts, and
     frozen stops you reassigning a field, not mutating the dict inside it.
-    ``_apply_expiry_filter`` writes ``answers[ask_index]`` in place on
+    ``_apply_expiry_filter`` writes ``answers[ask_id]`` in place on
     whatever result it is handed. Nothing routes this one there today, but a
     single shared object means one such write would corrupt every subsequent
     rejected turn in the process.
@@ -130,20 +131,23 @@ def place_attributes(
 
 
 def settlement_attributes(
-    intent: Intent, settlements: Sequence[Settlement]
+    settlements: Sequence[AskSettlement],
 ) -> dict[str, str | int]:
     """Slot names and states only, never a value: a value is the farmer's own
     words, and `dss.` keys reach the shared database."""
 
     waits = [
-        f"ask {number} ({ask.subject_categories.value}): {_wait_of(settlement)}"
-        for number, (ask, settlement) in enumerate(
-            zip(intent.asks, settlements, strict=True), start=1
-        )
+        f"ask {ask_settlement.ask.id} "
+        f"({ask_settlement.ask.subject_categories.value}): "
+        f"{_wait_of(ask_settlement.settlement)}"
+        for ask_settlement in settlements
     ]
 
     def count(kind: type[Settlement]) -> int:
-        return sum(isinstance(settlement, kind) for settlement in settlements)
+        return sum(
+            isinstance(ask_settlement.settlement, kind)
+            for ask_settlement in settlements
+        )
 
     return {
         "dss.settlement.settled": count(Settled),
@@ -211,29 +215,29 @@ class TurnResult(BaseModel):
     intent: Intent
     decision: ModerationDecision
     # One per ask in `intent`, same order.
-    settlements: tuple[Settlement, ...] = ()
-    # Of `settled_intent`'s asks, numbered as that intent numbers them.
+    settlements: tuple[AskSettlement, ...] = ()
+    # Of `settled_intent`'s asks only, keyed by ask id.
     discovery: DiscoveryResult
 
     @cached_property
     def settled_intent(self) -> Intent:
         """Only the settled asks: the ones discovery and the planner work on."""
 
-        return _settled_only(self.intent, self.settlements)
+        return _settled_only(self.settlements, confidence=self.intent.confidence)
 
     @property
     def is_every_ask_settled(self) -> bool:
-        return all(isinstance(s, Settled) for s in self.settlements)
+        return all(ask_settlement.is_settled for ask_settlement in self.settlements)
 
 
-def _settled_only(intent: Intent, settlements: tuple[Settlement, ...]) -> Intent:
+def _settled_only(settlements: Sequence[AskSettlement], *, confidence: float) -> Intent:
     return Intent(
         asks=tuple(
-            ask
-            for ask, settlement in zip(intent.asks, settlements, strict=True)
-            if isinstance(settlement, Settled)
+            ask_settlement.ask
+            for ask_settlement in settlements
+            if ask_settlement.is_settled
         ),
-        confidence=intent.confidence,
+        confidence=confidence,
     )
 
 
@@ -271,7 +275,7 @@ async def run_turn(  # noqa: PLR0913
     """
 
     intent = Intent()
-    settlements: tuple[Settlement, ...] = ()
+    settlements: tuple[AskSettlement, ...] = ()
     discovery = _nothing_discovered()
     decision: ModerationDecision | None = None
 
@@ -285,7 +289,7 @@ async def run_turn(  # noqa: PLR0913
         )
         settlements = _settle(intent, turn, settle_asks=settle_asks)
         discovery = await _discover(
-            _settled_only(intent, settlements),
+            _settled_only(settlements, confidence=intent.confidence),
             turn,
             discover_providers=discover_providers,
             now=now or datetime.now(UTC),
@@ -355,10 +359,10 @@ async def _resolve_places(
 
 def _settle(
     intent: Intent, turn: UserTurn[TextQuery], *, settle_asks: SettleAsks
-) -> tuple[Settlement, ...]:
+) -> tuple[AskSettlement, ...]:
     with trace_component(Stage.SETTLEMENT, turn.transaction_id):
         settlements = settle_asks(intent)
-        set_current_span_attributes(**settlement_attributes(intent, settlements))
+        set_current_span_attributes(**settlement_attributes(settlements))
     return settlements
 
 

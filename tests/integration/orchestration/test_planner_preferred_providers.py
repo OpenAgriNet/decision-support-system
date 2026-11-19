@@ -22,7 +22,6 @@ from pydantic_ai.messages import (
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from dss.core.intent.models import (
-    Ask,
     Intent,
     InteractionType,
     PlaceSource,
@@ -43,6 +42,7 @@ from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import Geometry, TextQuery, UserTurn
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
 from dss.ports.invocation import SelectFailedError
+from tests.support.asks import an_ask, numbered
 from tests.support.providers import build_capability
 
 WEATHER = "openagrinet:WeatherObservation"
@@ -115,7 +115,7 @@ def _unreachable() -> SelectFailedError:
 def _intent() -> Intent:
     return Intent(
         asks=(
-            Ask(
+            an_ask(
                 agriculture_subjects="rain",
                 subject_categories=SubjectCategory.WEATHER,
                 interaction_type=InteractionType.OBSERVE,
@@ -136,7 +136,7 @@ def _ranked(*providers: str) -> dict[int, AskPriority]:
 
     return {
         0: AskPriority(
-            ask_index=0,
+            ask_id=0,
             capability="Weather",
             sender_id="kisan-mitra-web",
             source="sender",
@@ -194,7 +194,7 @@ def _asks_for(resource_id: str, replies: list[str] | None = None):
                     ToolCallPart(
                         tool_name="select",
                         args={
-                            "ask_index": 0,
+                            "ask_id": 0,
                             "resource_id": resource_id,
                             "resource_attributes": {},
                         },
@@ -365,7 +365,7 @@ async def test_an_ask_nobody_could_be_reached_for_is_recorded_as_a_failure() -> 
     )
 
     assert deps.raw_answers == []
-    assert [failure.ask_index for failure in deps.failures] == [0, 0]
+    assert [failure.ask_id for failure in deps.failures] == [0, 0]
     assert all(failure.retryable for failure in deps.failures)
 
 
@@ -469,12 +469,12 @@ def _asks_for_then_next(replies: list[str]):
             1: ToolCallPart(
                 tool_name="select",
                 args={
-                    "ask_index": 0,
+                    "ask_id": 0,
                     "resource_id": "res:maharashtra-vistaar:forecast",
                     "resource_attributes": {},
                 },
             ),
-            3: ToolCallPart(tool_name="select_next", args={"ask_index": 0}),
+            3: ToolCallPart(tool_name="select_next", args={"ask_id": 0}),
         }
         call = calls.get(len(messages))
         if call is None:
@@ -597,16 +597,16 @@ async def test_select_next_on_one_ask_leaves_the_other_ask_alone() -> None:
         candidates=(VISTAAR, MAUSAMGRAM),
         priorities=_ranked("maharashtra-vistaar", "mausamgram"),
     )
-    two_asks = (*deps.intent.asks, *deps.intent.asks)
+    two_asks = numbered(*deps.intent.asks, *deps.intent.asks)
     deps.intent = Intent(asks=two_asks, confidence=1.0)
     deps.discovery.capabilities[1] = (VISTAAR, MAUSAMGRAM)
     deps.discovery.priorities[1] = _ranked("maharashtra-vistaar", "mausamgram")[0]
 
-    def select(ask_index: int) -> ToolCallPart:
+    def select(ask_id: int) -> ToolCallPart:
         return ToolCallPart(
             tool_name="select",
             args={
-                "ask_index": ask_index,
+                "ask_id": ask_id,
                 "resource_id": "res:maharashtra-vistaar:forecast",
                 "resource_attributes": {},
             },
@@ -614,7 +614,7 @@ async def test_select_next_on_one_ask_leaves_the_other_ask_alone() -> None:
 
     calls = {
         1: [select(0), select(1)],
-        3: [ToolCallPart(tool_name="select_next", args={"ask_index": 0})],
+        3: [ToolCallPart(tool_name="select_next", args={"ask_id": 0})],
     }
 
     def model(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:

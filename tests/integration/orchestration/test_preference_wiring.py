@@ -16,7 +16,6 @@ from datetime import UTC, datetime
 import pytest
 
 from dss.core.intent.models import (
-    Ask,
     Intent,
     InteractionType,
     PlaceSource,
@@ -31,6 +30,7 @@ from dss.core.provider_discovery.models import (
 )
 from dss.core.shared.models import Geometry, TextQuery, UserTurn
 from dss.orchestration.discovery import build_discover_providers
+from tests.support.asks import an_ask
 from tests.support.fakes import FakeProviderPreferences
 from tests.support.providers import build_capability
 
@@ -98,7 +98,7 @@ def _turn(sender_id: str | None) -> UserTurn[TextQuery]:
 def _intent() -> Intent:
     return Intent(
         asks=(
-            Ask(
+            an_ask(
                 subject_categories=SubjectCategory.WEATHER,
                 interaction_type=InteractionType.OBSERVE,
                 place=ResolvedPlace(

@@ -7,7 +7,7 @@ from dataclasses import FrozenInstanceError
 import pytest
 from pydantic import ValidationError
 
-from dss.core.intent.models import Ask, InteractionType, SubjectCategory
+from dss.core.intent.models import InteractionType, SubjectCategory
 from dss.core.planner.models import (
     AskEvidence,
     Attempted,
@@ -28,6 +28,7 @@ from dss.core.settlement.models import (
     Unservable,
     UnservableReason,
 )
+from tests.support.asks import an_ask
 
 
 def test_source_carries_provenance() -> None:
@@ -76,24 +77,24 @@ def test_skill_is_frozen() -> None:
         skill.domain = "livestock"
 
 
-def test_result_carries_ask_index_and_source() -> None:
-    result = Result(ask_index=0, source_id="1", data={"modal_price": "2100"})
-    assert result.ask_index == 0
+def test_result_carries_ask_id_and_source() -> None:
+    result = Result(ask_id=0, source_id="1", data={"modal_price": "2100"})
+    assert result.ask_id == 0
     assert result.source_id == "1"
     assert result.data == {"modal_price": "2100"}
 
 
 def test_result_is_frozen() -> None:
-    result = Result(ask_index=0, source_id="1", data={})
+    result = Result(ask_id=0, source_id="1", data={})
     with pytest.raises(ValidationError):
         result.source_id = "2"
 
 
 def test_failure_carries_capability_and_reason() -> None:
     failure = Failure(
-        ask_index=0, capability="MandiPrice", reason="timeout", retryable=True
+        ask_id=0, capability="MandiPrice", reason="timeout", retryable=True
     )
-    assert failure.ask_index == 0
+    assert failure.ask_id == 0
     assert failure.capability == "MandiPrice"
     assert failure.reason == "timeout"
     assert failure.retryable is True
@@ -101,18 +102,18 @@ def test_failure_carries_capability_and_reason() -> None:
 
 def test_failure_is_frozen() -> None:
     failure = Failure(
-        ask_index=0, capability="MandiPrice", reason="timeout", retryable=True
+        ask_id=0, capability="MandiPrice", reason="timeout", retryable=True
     )
     with pytest.raises(ValidationError):
         failure.retryable = False
 
 
-_ASK = Ask(
+_ASK = an_ask(
     subject_categories=SubjectCategory.MARKET, interaction_type=InteractionType.OBSERVE
 )
-_RESULT = Result(ask_index=0, source_id="1", data={"modal_price": "2100"})
+_RESULT = Result(ask_id=0, source_id="1", data={"modal_price": "2100"})
 _PROVIDER_FAILURE = Failure(
-    ask_index=0, capability="MandiPrice", reason="timeout", retryable=True
+    ask_id=0, capability="MandiPrice", reason="timeout", retryable=True
 )
 
 

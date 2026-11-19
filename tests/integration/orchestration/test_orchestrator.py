@@ -53,7 +53,6 @@ from dss.core.settlement.models import (
     Missing,
     NeedsClarification,
     Settled,
-    Settlement,
     Slot,
     Unservable,
     UnservableReason,
@@ -91,6 +90,7 @@ from dss.orchestration.redaction import RedactTexts, pass_through
 from dss.orchestration.session import NoSessionStore, Sessions, SessionStore
 from dss.orchestration.settlement import SettleAsks
 from dss.ports.area_lookup import AreaMatch
+from tests.support.asks import an_ask, numbered
 from tests.support.evidence import ANY_ASK, build_evidence
 from tests.support.fakes import (
     FakeAreaLookup,
@@ -110,7 +110,7 @@ from tests.support.key_value import (
     UnreachableStore,
 )
 from tests.support.providers import build_capability
-from tests.support.settlement import settles_every_ask
+from tests.support.settlement import settles_every_ask, settles_with
 from tests.support.turn_events import assert_well_formed
 
 DELETE_COMMAND = LlmPolicy(
@@ -198,7 +198,7 @@ def _evidence(
         results=results,
         failures=failures,
         awaiting=awaiting,
-        asks=(ANY_ASK,) * ask_count,
+        asks=numbered(*(ANY_ASK,) * ask_count),
     )
 
 
@@ -209,7 +209,7 @@ _GRIEVANCE_FORM = FormDefinition(
 
 
 _ANSWERED_EVIDENCE = _evidence(
-    results=(Result(ask_index=0, source_id="1", data={"modal": 2275}),),
+    results=(Result(ask_id=0, source_id="1", data={"modal": 2275}),),
 )
 
 
@@ -472,7 +472,7 @@ async def test_an_ask_whose_every_provider_the_client_ruled_out_is_no_match() ->
         events=(),
         priorities={
             0: AskPriority(
-                ask_index=0,
+                ask_id=0,
                 capability="Market",
                 sender_id="vistaar-whatsapp",
                 source="sender",
@@ -577,7 +577,7 @@ async def test_an_ask_awaiting_a_form_ends_the_turn_on_the_form() -> None:
 async def test_some_asks_unserved_is_partial() -> None:
     plan = _FakePlan(
         _evidence(
-            results=(Result(ask_index=0, source_id="1", data={"modal": 2275}),),
+            results=(Result(ask_id=0, source_id="1", data={"modal": 2275}),),
             ask_count=2,
         )
     )
@@ -597,7 +597,7 @@ async def test_all_calls_failing_is_unavailable() -> None:
             results=(),
             failures=(
                 Failure(
-                    ask_index=0,
+                    ask_id=0,
                     capability="openagrinet:MandiPrice",
                     reason="502",
                     retryable=True,
@@ -662,8 +662,8 @@ async def test_the_one_source_cited_reaches_the_farmer_as_one() -> None:
             Source(id="2", name="KAU Mango Guide", kind=SourceKind.PROVIDER, url=None),
         ),
         results=(
-            Result(ask_index=0, source_id="1", data={"v": 1}),
-            Result(ask_index=0, source_id="2", data={"v": 2}),
+            Result(ask_id=0, source_id="1", data={"v": 1}),
+            Result(ask_id=0, source_id="2", data={"v": 2}),
         ),
     )
     orch, _ = _build(
@@ -1055,13 +1055,6 @@ _NEEDS_PLACE = NeedsClarification(open_slots=(Slot(AskSlot.PLACE, Missing()),))
 _SETTLED = Settled(Frame(slots=()))
 
 
-def _settle_with(*settlements: Settlement) -> SettleAsks:
-    def settle(intent):
-        return settlements
-
-    return settle
-
-
 async def test_an_unsettled_ask_is_asked_by_the_composer() -> None:
     plan = _FakePlan(_ANSWERED_EVIDENCE)
     compose = _FakeCompose("Which district?")
@@ -1070,7 +1063,7 @@ async def test_an_unsettled_ask_is_asked_by_the_composer() -> None:
         discovery=_served_discovery(),
         plan=plan,
         compose=compose,
-        settle_asks=_settle_with(_NEEDS_PLACE),
+        settle_asks=settles_with(_NEEDS_PLACE),
     )
 
     events = await _collect(orch)
@@ -1085,14 +1078,19 @@ async def test_a_settled_ask_is_served_beside_a_question() -> None:
     """The settled ask is planned on its own; the composer gets both asks,
     in the farmer's order."""
 
-    plan = _FakePlan(_ANSWERED_EVIDENCE)
+    wheat_evidence = build_evidence(
+        asks=(an_ask(id=1),),
+        sources=_ANSWERED_EVIDENCE.sources,
+        results=(Result(ask_id=1, source_id="1", data={"modal": 2275}),),
+    )
+    plan = _FakePlan(wheat_evidence)
     compose = _FakeCompose("Wheat is 2,275 Rs [1]. Which district for the rain?")
     orch, _ = _build(
         intent=_one_ask(2),
         discovery=_served_discovery(),
         plan=plan,
         compose=compose,
-        settle_asks=_settle_with(_NEEDS_PLACE, _SETTLED),
+        settle_asks=settles_with(_NEEDS_PLACE, _SETTLED),
     )
 
     events = await _collect(orch)
@@ -1100,7 +1098,7 @@ async def test_a_settled_ask_is_served_beside_a_question() -> None:
     assert len(plan.intent.asks) == 1
     question, answer = compose.evidence.ask_evidences
     assert question.outcome == _NEEDS_PLACE
-    assert answer == _ANSWERED_EVIDENCE.ask_evidences[0]
+    assert answer == wheat_evidence.ask_evidences[0]
     assert events[-1].outcome.status is TurnStatus.REQUIRES_INPUT
 
 
@@ -1116,7 +1114,7 @@ async def test_nobody_serving_beside_a_question_reaches_the_composer() -> None:
         discovery=nobody,
         plan=plan,
         compose=compose,
-        settle_asks=_settle_with(_SETTLED, _NEEDS_PLACE),
+        settle_asks=settles_with(_SETTLED, _NEEDS_PLACE),
     )
 
     events = await _collect(orch)
@@ -1145,7 +1143,7 @@ async def test_an_ask_we_cannot_serve_ends_the_turn() -> None:
         discovery=_served_discovery(),
         plan=plan,
         compose=compose,
-        settle_asks=_settle_with(cannot_serve),
+        settle_asks=settles_with(cannot_serve),
     )
 
     events = await _collect(orch)
@@ -1168,7 +1166,7 @@ async def test_the_pick_list_follows_the_question() -> None:
         discovery=_served_discovery(),
         plan=_FakePlan(_ANSWERED_EVIDENCE),
         compose=_FakeCompose("Which Pune do you mean?"),
-        settle_asks=_settle_with(which_pune),
+        settle_asks=settles_with(which_pune),
     )
 
     events = await _collect(orch)

@@ -145,7 +145,7 @@ async def test_a_failed_call_becomes_a_failure() -> None:
     response = await _call(SUPPORT, RecordingActionInvocation(failure=refused))
 
     assert response == Failure(
-        ask_index=0,
+        ask_id=0,
         capability="openagrinet:Grievance",
         reason="support failed with status 503",
         retryable=True,

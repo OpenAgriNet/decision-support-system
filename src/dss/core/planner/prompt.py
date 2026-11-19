@@ -27,7 +27,7 @@ from __future__ import annotations
 
 from collections.abc import Collection, Sequence
 
-from dss.core.intent.models import Ask
+from dss.core.intent.models import Ask, AskId
 from dss.core.planner.markers import CONVERSATION, RETRIEVED_DATA, wrap_as_data
 from dss.core.planner.models import Skill
 from dss.core.provider_discovery.models import DiscoveredAnswer
@@ -48,9 +48,9 @@ def guidance_section(skills: Sequence[Skill]) -> str:
 def asks_section(
     asks: Sequence[Ask],
     *,
-    awaiting: Collection[int] = frozenset(),
+    awaiting: Collection[AskId] = frozenset(),
 ) -> str:
-    """Which asks exist, by the index the tools take. Without it the model
+    """Which asks exist, by the id the tools take. Without it the model
     has to guess that ask 0 exists, and a weaker model gives up instead.
 
     The category and interaction type are DSS enums, not the farmer's words,
@@ -62,14 +62,14 @@ def asks_section(
         return ""
 
     lines = [
-        f"- ask {index}: {ask.subject_categories.value} ({ask.interaction_type.value})"
-        + (", awaits a form" if index in awaiting else "")
-        for index, ask in enumerate(asks)
+        f"- ask {ask.id}: {ask.subject_categories.value} ({ask.interaction_type.value})"
+        + (", awaits a form" if ask.id in awaiting else "")
+        for ask in asks
     ]
     return "# Asks\n\n" + "\n".join(lines) + "\n\n"
 
 
-def answers_section(answers: dict[int, tuple[DiscoveredAnswer, ...]]) -> str:
+def answers_section(answers: dict[AskId, tuple[DiscoveredAnswer, ...]]) -> str:
     """Direct answers only — the catalog already holds these values, so no
     call is needed. OnDemand candidates are not prompt content: the model
     reaches those through the tools' own ``RunContext.deps``.
@@ -86,8 +86,8 @@ def answers_section(answers: dict[int, tuple[DiscoveredAnswer, ...]]) -> str:
         return ""
 
     values = [
-        f"- ask {ask_index}: {answer.provider_name} — {answer.attributes}"
-        for ask_index, ask_answers in answers.items()
+        f"- ask {ask_id}: {answer.provider_name} — {answer.attributes}"
+        for ask_id, ask_answers in answers.items()
         for answer in ask_answers
     ]
     return (

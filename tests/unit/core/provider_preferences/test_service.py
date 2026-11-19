@@ -7,7 +7,7 @@ here rather than through the planner.
 
 from __future__ import annotations
 
-from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
+from dss.core.intent.models import Intent, InteractionType, SubjectCategory
 from dss.core.provider_discovery.models import (
     DiscoveredAnswer,
     DiscoveryResult,
@@ -15,6 +15,7 @@ from dss.core.provider_discovery.models import (
 )
 from dss.core.provider_preferences.models import NO_PREFERENCE, PreferenceBook
 from dss.core.provider_preferences.service import prioritise, priority_for_ask
+from tests.support.asks import an_ask
 from tests.support.providers import build_capability
 
 WEATHER = "openagrinet:WeatherObservation"
@@ -43,8 +44,14 @@ def _answer(provider: str) -> DiscoveredAnswer:
 def _intent(*categories: SubjectCategory) -> Intent:
     return Intent(
         asks=tuple(
-            Ask(subject_categories=category, interaction_type=InteractionType.OBSERVE)
-            for category in (categories or (SubjectCategory.WEATHER,))
+            an_ask(
+                id=position,
+                subject_categories=category,
+                interaction_type=InteractionType.OBSERVE,
+            )
+            for position, category in enumerate(
+                categories or (SubjectCategory.WEATHER,)
+            )
         ),
         confidence=1.0,
     )
@@ -134,7 +141,7 @@ def test_no_preference_at_all_leaves_discovery_untouched() -> None:
     result = prioritise(discovery, intent=_intent(), preference=NO_PREFERENCE)
 
     assert result.capabilities == discovery.capabilities
-    assert priority_for_ask(result, ask_index=0) is None
+    assert priority_for_ask(result, ask_id=0) is None
 
 
 def test_two_clients_asking_the_same_question_get_their_own_first_choice() -> None:
@@ -151,11 +158,13 @@ def test_two_clients_asking_the_same_question_get_their_own_first_choice() -> No
 
 
 def test_each_ask_is_ranked_on_its_own_topic() -> None:
+    """Asks 0 and 2 of a turn. Ask 1 was not passed on."""
+
     discovery = DiscoveryResult(
         answers={},
         capabilities={
             0: (_capability("imd"), _capability("vistaar")),
-            1: (_capability("agmarknet"), _capability("state-mandi")),
+            2: (_capability("agmarknet"), _capability("state-mandi")),
         },
         failures={},
         events=(),
@@ -163,15 +172,22 @@ def test_each_ask_is_ranked_on_its_own_topic() -> None:
     preference = _book(
         app={"weather": ("vistaar",), "market": ("state-mandi",)}
     ).for_sender("app")
-
-    result = prioritise(
-        discovery,
-        intent=_intent(SubjectCategory.WEATHER, SubjectCategory.MARKET),
-        preference=preference,
+    intent = Intent(
+        asks=(
+            an_ask(id=0, subject_categories=SubjectCategory.WEATHER),
+            an_ask(id=2, subject_categories=SubjectCategory.MARKET),
+        ),
+        confidence=1.0,
     )
 
+    result = prioritise(discovery, intent=intent, preference=preference)
+
     assert [c.provider_id for c in result.capabilities[0]] == ["vistaar"]
-    assert [c.provider_id for c in result.capabilities[1]] == ["state-mandi"]
+    assert [c.provider_id for c in result.capabilities[2]] == ["state-mandi"]
+    assert {key: priority.ask_id for key, priority in result.priorities.items()} == {
+        0: 0,
+        2: 2,
+    }
 
 
 def test_one_providers_several_resources_keep_discoverys_order() -> None:
