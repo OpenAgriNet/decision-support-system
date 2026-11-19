@@ -29,6 +29,8 @@ from dss.core.schema_packs.service import (
 
 logger = logging.getLogger(__name__)
 
+_FETCH_COMMAND = "uv run python scripts/fetch_schema_packs.py"
+
 # The startup fetch, as a seam. Injected so a test can supply one that writes
 # fixture packs or asserts it was never called — nothing here should reach
 # GitHub from a test run.
@@ -64,7 +66,7 @@ def load_schema_packs(
             f"the network is configured but no schema packs loaded from "
             f"{settings.schema_pack_dir} — refusing to boot, because every turn "
             f"would come back no_match and look like 'no provider serves this'. "
-            f"Run: {_fetch_command(settings)}"
+            f"Run: {_FETCH_COMMAND}"
         )
     for skip in cache.skipped_packs():
         logger.warning(
@@ -99,15 +101,9 @@ def _ensure_schema_packs(settings: Settings, *, fetch: FetchPacks) -> None:
         return
 
     try:
-        fetch(ref=settings.schema_pack_ref, dest=directory)
+        fetch(dest=directory)
     except SchemaPackFetchFailedError as failure:
         logger.warning("schema pack fetch found nothing: %s", failure)
-
-
-def _fetch_command(settings: Settings) -> str:
-    command = "uv run python scripts/fetch_schema_packs.py"
-    ref = settings.schema_pack_ref
-    return command if ref is None else f"{command} --ref {ref}"
 
 
 def planner_schemas(packs: tuple[SchemaPackFiles, ...]) -> dict[str, DomainSchema]:
@@ -189,7 +185,7 @@ def boot_forms(settings: Settings) -> FormRegistry:
         logger.warning(
             "no schema packs in %s, so no forms will be offered. Run: %s",
             directory,
-            _fetch_command(settings),
+            _FETCH_COMMAND,
         )
         return FormRegistry()
 
@@ -205,6 +201,6 @@ def boot_forms(settings: Settings) -> FormRegistry:
             "no API schema pack in %s, so no forms will be offered. Delete the "
             "folder and run: %s",
             directory,
-            _fetch_command(settings),
+            _FETCH_COMMAND,
         )
     return registry

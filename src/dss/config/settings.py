@@ -99,9 +99,6 @@ class Settings(BaseSettings):
     # started from wherever the operator is. A container has no repo root, so a
     # deployment sets DSS_SCHEMA_PACK_DIR to its mounted path.
     schema_pack_dir: Path | None = DEFAULT_PACK_DIR
-    # Which network-specs branch preview the startup fetch reads when the
-    # directory above is empty. Unset → the published packs.
-    schema_pack_ref: str | None = None
     # How far around the turn's location to look for a provider. Only consulted
     # once the network is wired and the turn carries a geometry.
     discovery_radius_m: int = Field(25_000, ge=0)
@@ -224,9 +221,7 @@ class Settings(BaseSettings):
     # a form turn's session lasts that turn only and takes no lock.
     redis_url: str | None = None
 
-    @field_validator(
-        "provider_preferences_base_url", "redis_url", "schema_pack_ref", mode="before"
-    )
+    @field_validator("provider_preferences_base_url", "redis_url", mode="before")
     @classmethod
     def _unset_when_blank(cls, value: object) -> object:
         if isinstance(value, str) and not value.strip():

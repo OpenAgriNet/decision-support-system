@@ -145,7 +145,6 @@ def test_the_network_refuses_to_boot_with_no_packs(tmp_path: Path) -> None:
     )
 
     def fetches_nothing(**_kwargs) -> tuple[str, ...]:
-        """A ref with no packs on it — what the default ref does today."""
         return ()
 
     with pytest.raises(ValueError, match="fetch_schema_packs"):
@@ -242,8 +241,7 @@ def test_build_runner_passes_the_fetch_through(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="fetch_schema_packs"):
         build_runner(settings, fetch=records)
 
-    # reached the fetch, with the configured ref and destination
-    assert calls == [{"ref": settings.schema_pack_ref, "dest": empty}]
+    assert calls == [{"dest": empty}]
 
 
 def _pack_missing_x_jsonld() -> SchemaPackFiles:
@@ -673,20 +671,6 @@ def test_no_packs_boots_with_no_forms_and_says_how_to_fetch(
     assert isinstance(runner, Orchestrator)
     assert _forms_of(runner).find(_PMFBY_SUPPORT) is None
     assert any("fetch_schema_packs.py" in record.message for record in caplog.records)
-
-
-def test_the_fetch_hint_names_the_configured_ref(tmp_path: Path, caplog) -> None:
-    settings = _settings(
-        tmp_path, schema_pack_dir=tmp_path / "absent", schema_pack_ref="my-branch"
-    )
-
-    with caplog.at_level("WARNING"):
-        build_runner(settings)
-
-    assert any(
-        "fetch_schema_packs.py --ref my-branch" in record.message
-        for record in caplog.records
-    )
 
 
 def test_packs_with_no_api_pack_boot_with_no_forms_and_say_so(

@@ -18,19 +18,17 @@ import tempfile
 import urllib.error
 import urllib.request
 from pathlib import Path
-from urllib.parse import quote, urlencode
 
 _REPO = "OpenAgriNet/network-specs"
 _PAGES_HOST = "https://openagrinet.github.io"
-_SITE_PATH = "/network-specs"
 _API_HOST = "https://api.github.com"
 
 # The only version published today. When v0.2 lands this becomes a per-pack
 # lookup, not a constant.
 _VERSION = "v0.1"
 
-# The branch the published site is built from. With no ref, the examples
-# listing reads it: Pages cannot list a directory, so the Contents API does.
+# The branch the published site is built from. Pages cannot list a
+# directory, so the Contents API lists the examples on this branch instead.
 _PUBLISHED_BRANCH = "main"
 
 # Every download error reads as "not there", so nothing published means the
@@ -67,8 +65,7 @@ PACKS = (
     "Grievance",
 )
 
-# What the loader needs. Absent either, the pack is not published, or not in
-# this preview.
+# What the loader needs. Absent either, the pack is not published.
 _ESSENTIAL_FILES = ("attributes.yaml", "profile.json")
 
 # Fetched so the tree mirrors upstream, though nothing reads them today. A 404
@@ -82,42 +79,25 @@ class SchemaPackFetchFailedError(RuntimeError):
     """The fetch produced nothing usable. Never raised for a partial result."""
 
 
-def pack_file_url(
-    *, ref: str | None, pack: str, filename: str, host: str = _PAGES_HOST
-) -> str:
-    site = (
-        _published_site_url(host)
-        if ref is None
-        else f"{_previews_url(host)}{quote(ref, safe='/')}"
-    )
-    return f"{site}/schema/{pack}/{_VERSION}/{filename}"
+def pack_file_url(*, pack: str, filename: str, host: str = _PAGES_HOST) -> str:
+    return f"{host}/network-specs/schema/{pack}/{_VERSION}/{filename}"
 
 
-def _published_site_url(host: str) -> str:
-    return f"{host}{_SITE_PATH}"
-
-
-def _previews_url(host: str) -> str:
-    return f"{_published_site_url(host)}/previews/"
-
-
-def examples_api_url(*, ref: str | None, pack: str, host: str = _API_HOST) -> str:
+def examples_api_url(*, pack: str, host: str = _API_HOST) -> str:
     """Where to list a pack's `examples/` directory.
 
     The example filenames vary per pack and plain HTTP cannot list a
-    directory, so this is the one API call per pack. Note the ref is a query
-    parameter here, not part of the path: leave it off and the API lists the
-    default branch instead of erroring.
+    directory, so this is the one API call per pack.
     """
 
-    branch = _PUBLISHED_BRANCH if ref is None else ref
-    query = urlencode({"ref": branch})
-    return f"{host}/repos/{_REPO}/contents/schema/{pack}/{_VERSION}/examples?{query}"
+    return (
+        f"{host}/repos/{_REPO}/contents/schema/{pack}/{_VERSION}/examples"
+        f"?ref={_PUBLISHED_BRANCH}"
+    )
 
 
 def fetch_packs(
     *,
-    ref: str | None,
     dest: Path,
     packs: tuple[str, ...] = PACKS,
     pages_host: str = _PAGES_HOST,
@@ -140,47 +120,41 @@ def fetch_packs(
 
     fetched: list[str] = []
     for pack in packs:
-        staged = _download_pack(pack, ref=ref, pages_host=pages_host, api_host=api_host)
+        staged = _download_pack(pack, pages_host=pages_host, api_host=api_host)
         if staged is None:
             continue
         _publish(staged, dest / pack / _VERSION)
         fetched.append(pack)
 
-    raise_for_empty(fetched=tuple(fetched), ref=ref, pages_host=pages_host)
+    raise_for_empty(fetched=tuple(fetched))
     return tuple(fetched)
 
 
 def _download_pack(
-    pack: str, *, ref: str | None, pages_host: str, api_host: str
+    pack: str, *, pages_host: str, api_host: str
 ) -> dict[str, bytes] | None:
     """Every file of one pack, keyed by its path within the version directory.
 
-    `None` when the pack is not published, or not in this preview — the two
-    essential files are what decides that. The other four are optional:
+    `None` when the pack is not published — the two essential files are what
+    decides that. The other four are optional:
     unread today, but fetched so the on-disk tree mirrors upstream.
     """
 
     files: dict[str, bytes] = {}
     for filename in _ESSENTIAL_FILES:
-        body = _get(
-            pack_file_url(ref=ref, pack=pack, filename=filename, host=pages_host)
-        )
+        body = _get(pack_file_url(pack=pack, filename=filename, host=pages_host))
         if body is None:
             return None
         files[filename] = body
 
     for filename in _OPTIONAL_FILES:
-        body = _get(
-            pack_file_url(ref=ref, pack=pack, filename=filename, host=pages_host)
-        )
+        body = _get(pack_file_url(pack=pack, filename=filename, host=pages_host))
         if body is not None:
             files[filename] = body
 
-    for name in _example_names(pack, ref=ref, api_host=api_host):
+    for name in _example_names(pack, api_host=api_host):
         body = _get(
-            pack_file_url(
-                ref=ref, pack=pack, filename=f"examples/{name}", host=pages_host
-            )
+            pack_file_url(pack=pack, filename=f"examples/{name}", host=pages_host)
         )
         if body is not None:
             files[f"examples/{name}"] = body
@@ -188,7 +162,7 @@ def _download_pack(
     return files
 
 
-def _example_names(pack: str, *, ref: str | None, api_host: str) -> tuple[str, ...]:
+def _example_names(pack: str, *, api_host: str) -> tuple[str, ...]:
     """The pack's example filenames, from the Contents API.
 
     One call per pack, because plain HTTP cannot list a directory. An
@@ -197,7 +171,7 @@ def _example_names(pack: str, *, ref: str | None, api_host: str) -> tuple[str, .
     pack but not the boot.
     """
 
-    body = _get(examples_api_url(ref=ref, pack=pack, host=api_host))
+    body = _get(examples_api_url(pack=pack, host=api_host))
     if body is None:
         return ()
     try:
@@ -216,8 +190,8 @@ def _example_names(pack: str, *, ref: str | None, api_host: str) -> tuple[str, .
 def _get(url: str) -> bytes | None:
     """The body at `url`, or None if it is not there.
 
-    A 404 is the ordinary answer for "this pack is not published, or not in
-    this preview", so it is data rather than an error. `GITHUB_TOKEN` is used
+    A 404 is the ordinary answer for "this pack is not published", so it is
+    data rather than an error. `GITHUB_TOKEN` is used
     when set: unauthenticated Contents API calls are capped at 60 an hour.
     """
 
@@ -257,18 +231,9 @@ def _publish(files: dict[str, bytes], version_dir: Path) -> None:
         shutil.move(str(staged), str(version_dir))
 
 
-def raise_for_empty(
-    *, fetched: tuple[str, ...], ref: str | None, pages_host: str = _PAGES_HOST
-) -> None:
+def raise_for_empty(*, fetched: tuple[str, ...]) -> None:
     if fetched:
         return
-
-    if ref is None:
-        raise SchemaPackFetchFailedError(
-            f"no published schema packs found (0 of {len(PACKS)}).{_UNREACHABLE_HINT}"
-        )
     raise SchemaPackFetchFailedError(
-        f"no schema packs found in a preview of {ref!r} (0 of {len(PACKS)})."
-        f" The branches with a preview are listed at {_previews_url(pages_host)}."
-        " `main` is the published site itself: leave the ref unset to read it."
+        f"no published schema packs found (0 of {len(PACKS)}).{_UNREACHABLE_HINT}"
     )
