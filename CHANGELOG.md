@@ -3,12 +3,10 @@
 ## [Unreleased]
 
 ### Changed
-- Schema packs are fetched from network-specs on GitHub Pages, not
-  `raw.githubusercontent.com`. No ref (the new default) reads the published
-  packs; `--ref` / `DSS_SCHEMA_PACK_REF` reads that branch's preview (#252)
-- If you set `DSS_SCHEMA_PACK_REF` or `SCHEMA_PACK_REF` to
-  `schema-packs-v0.1` (the old default), unset it: a set ref now reads that
-  branch's preview, not the published packs (#252)
+- Schema packs are fetched from network-specs on GitHub Pages, which is
+  built from `main`, not from `raw.githubusercontent.com` (#252)
+- `--ref`, `DSS_SCHEMA_PACK_REF` and `SCHEMA_PACK_REF` are removed. If one is
+  still set, it is ignored (#252)
 
 ### Fixed
 - `init` and `status` now send an offer on their commitment, as `select`

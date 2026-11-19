@@ -41,8 +41,8 @@ _PROFILE = '{"filterable_paths": ["beckn:resourceAttributes.informationMode"]}'
 _EXAMPLE = '{"subjectCategories": ["Market"]}'
 
 
-def _serve_one_pack(httpserver: HTTPServer, *, site_path: str, listed_ref: str) -> None:
-    base = f"{site_path}/schema/MandiPrice/v0.1"
+def _serve_one_pack(httpserver: HTTPServer) -> None:
+    base = "/network-specs/schema/MandiPrice/v0.1"
     httpserver.expect_request(f"{base}/attributes.yaml").respond_with_data(_ATTRIBUTES)
     httpserver.expect_request(f"{base}/profile.json").respond_with_data(_PROFILE)
     httpserver.expect_request(f"{base}/examples/onion.json").respond_with_data(_EXAMPLE)
@@ -51,7 +51,7 @@ def _serve_one_pack(httpserver: HTTPServer, *, site_path: str, listed_ref: str) 
     # plain HTTP cannot list a directory.
     httpserver.expect_request(
         "/repos/OpenAgriNet/network-specs/contents/schema/MandiPrice/v0.1/examples",
-        query_string=f"ref={listed_ref}",
+        query_string="ref=main",
     ).respond_with_json([{"name": "onion.json", "type": "file"}])
 
 
@@ -70,31 +70,9 @@ async def _assert_loader_reads_mandi_price(root: Path) -> None:
 async def test_the_published_tree_is_one_the_loader_reads(
     httpserver: HTTPServer, tmp_path: Path
 ) -> None:
-    _serve_one_pack(httpserver, site_path="/network-specs", listed_ref="main")
+    _serve_one_pack(httpserver)
 
     written = fetch_packs(
-        ref=None,
-        dest=tmp_path,
-        packs=("MandiPrice",),
-        pages_host=_host(httpserver),
-        api_host=_host(httpserver),
-    )
-
-    assert written == ("MandiPrice",)
-    await _assert_loader_reads_mandi_price(tmp_path)
-
-
-async def test_a_branch_preview_tree_is_one_the_loader_reads(
-    httpserver: HTTPServer, tmp_path: Path
-) -> None:
-    _serve_one_pack(
-        httpserver,
-        site_path="/network-specs/previews/my-branch",
-        listed_ref="my-branch",
-    )
-
-    written = fetch_packs(
-        ref="my-branch",
         dest=tmp_path,
         packs=("MandiPrice",),
         pages_host=_host(httpserver),
@@ -108,11 +86,10 @@ async def test_a_branch_preview_tree_is_one_the_loader_reads(
 async def test_the_destination_does_not_have_to_exist(
     httpserver: HTTPServer, tmp_path: Path
 ) -> None:
-    _serve_one_pack(httpserver, site_path="/network-specs", listed_ref="main")
+    _serve_one_pack(httpserver)
     absent = tmp_path / "never" / "created"
 
     written = fetch_packs(
-        ref=None,
         dest=absent,
         packs=("MandiPrice",),
         pages_host=_host(httpserver),

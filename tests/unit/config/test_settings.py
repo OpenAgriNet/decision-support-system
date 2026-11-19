@@ -40,18 +40,6 @@ def test_the_pack_directory_default_ignores_the_working_directory(
     assert directory.parts[-2:] == ("var", "schema-packs")
 
 
-def test_the_startup_fetch_reads_the_published_packs_by_default() -> None:
-    assert Settings(_env_file=None).schema_pack_ref is None
-
-
-def test_a_blank_schema_pack_ref_reads_the_published_packs(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("DSS_SCHEMA_PACK_REF", "")
-
-    assert Settings(_env_file=None).schema_pack_ref is None
-
-
 def test_the_two_base_urls_are_what_enable_the_network() -> None:
     """The gate is the two URLs, not three settings.
 

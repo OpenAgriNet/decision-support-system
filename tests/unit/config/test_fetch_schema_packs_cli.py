@@ -18,15 +18,13 @@ from scripts.fetch_schema_packs import main
 def test_a_failed_fetch_exits_non_zero(monkeypatch, tmp_path: Path) -> None:
     """The script's whole reason to exist.
 
-    A fetch that finds nothing raises, and the message already says which ref
-    was tried. The script's job is to turn that into an exit code the shell
+    A fetch that finds nothing raises, and the message already says what to
+    check. The script's job is to turn that into an exit code the shell
     can act on, and to print the reason rather than a traceback.
     """
 
     def refuses(**_kwargs):
-        raise SchemaPackFetchFailedError(
-            "no schema packs found on ref 'main' (0 of 4)."
-        )
+        raise SchemaPackFetchFailedError("no published schema packs found (0 of 6).")
 
     monkeypatch.setattr("scripts.fetch_schema_packs.fetch_packs", refuses)
 
@@ -36,7 +34,7 @@ def test_a_failed_fetch_exits_non_zero(monkeypatch, tmp_path: Path) -> None:
     assert caught.value.code == 1
 
 
-def test_the_ref_is_an_argument_and_defaults_to_none(monkeypatch, tmp_path) -> None:
+def test_the_destination_is_passed_to_the_fetch(monkeypatch, tmp_path) -> None:
     seen: dict = {}
 
     def record(**kwargs):
@@ -46,7 +44,5 @@ def test_the_ref_is_an_argument_and_defaults_to_none(monkeypatch, tmp_path) -> N
     monkeypatch.setattr("scripts.fetch_schema_packs.fetch_packs", record)
 
     main(["--dest", str(tmp_path)])
-    assert seen["ref"] is None
 
-    main(["--ref", "main", "--dest", str(tmp_path)])
-    assert seen["ref"] == "main"
+    assert seen == {"dest": tmp_path}

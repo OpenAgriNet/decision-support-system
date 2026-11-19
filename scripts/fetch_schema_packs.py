@@ -29,13 +29,6 @@ def main(argv: list[str] | None = None) -> None:
         description="Download the network-specs schema packs the DSS routes against."
     )
     parser.add_argument(
-        "--ref",
-        help=(
-            "read this network-specs branch's preview instead of the published"
-            " packs (default: the published packs)"
-        ),
-    )
-    parser.add_argument(
         "--dest",
         type=Path,
         default=DEFAULT_PACK_DIR,
@@ -44,10 +37,10 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     try:
-        fetched = fetch_packs(ref=args.ref, dest=args.dest)
+        fetched = fetch_packs(dest=args.dest)
     except SchemaPackFetchFailedError as failure:
         # The message says what to check, so print it rather than a
-        # traceback — the cause is a wrong ref or no network, not a crash.
+        # traceback — the cause is no network or a rate limit, not a crash.
         print(f"error: {failure}", file=sys.stderr)
         raise SystemExit(1) from None
 
