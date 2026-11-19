@@ -64,10 +64,10 @@ class _PlanThatCallsSelect:
     nesting it has to prove untested.
     """
 
-    def __init__(self, evidence) -> None:  # noqa: ANN001
+    def __init__(self, evidence) -> None:
         self._evidence = evidence
 
-    async def __call__(  # noqa: ANN001
+    async def __call__(
         self, turn, *, intent, discovery, verdict, visibility, awaiting=None
     ):
         def answers(request: httpx.Request) -> httpx.Response:
@@ -78,6 +78,7 @@ class _PlanThatCallsSelect:
                 client=client,
                 base_url="https://provider-network.example",
                 sender_id="seeker.example",
+                network_id="host.oan",
             )
             await invocation.select(_CAPABILITY, {}, "t1")
         return self._evidence

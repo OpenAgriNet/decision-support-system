@@ -67,6 +67,14 @@ def test_the_attributes_ride_on_the_first_commitment() -> None:
                         {"id": "res:pmfby:grievance", "quantity": {"count": 1}}
                     ],
                     "commitmentAttributes": ATTRIBUTES,
+                    "offer": {
+                        "id": "offer:open-data",
+                        "resourceIds": ["res:pmfby:grievance"],
+                        "provider": {
+                            "id": "pmfby",
+                            "descriptor": {"name": "PMFBY Grievance Portal"},
+                        },
+                    },
                 }
             ],
         }
@@ -168,6 +176,7 @@ def _invocation(handler: _Replies) -> HttpCapabilityInvocation:
         client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
         base_url="https://provider-network-vistaar.da.gov.in/oan",
         sender_id=SENDER_ID,
+        network_id="host.oan",
         backoff_seconds=0.0,
     )
 

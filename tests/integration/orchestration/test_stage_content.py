@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dss.core.intent.models import (
+    ClassifiedAsk,
     GuessedScheme,
     InteractionType,
     Scheme,
@@ -14,6 +15,7 @@ from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.shared.models import ProviderAction
 from dss.orchestration.stage_content import (
     asks_text,
+    asks_without_place,
     cited_sources_text,
     discovery_text,
     evidence_text,
@@ -104,3 +106,17 @@ def test_a_discovered_ask_is_named_by_its_id() -> None:
     )
 
     assert discovery_text(discovery) == "2. offered by IMD"
+
+
+def test_asks_for_the_log_leave_out_the_place() -> None:
+    """The log is exported unfiltered, and a place can single a farmer out."""
+
+    ask = ClassifiedAsk(
+        agriculture_subjects="rain",
+        subject_categories=SubjectCategory.WEATHER,
+        interaction_type=InteractionType.OBSERVE,
+        place_name="Kanha Chatti",
+        action=ProviderAction.SUPPORT,
+    )
+
+    assert asks_without_place((ask,)) == ("Weather/observe: rain -> support",)

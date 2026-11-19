@@ -127,20 +127,17 @@ That writes the packs into `var/schema-packs/` (gitignored):
 `AgricultureResource` is not a capability anything routes to. The other
 catalog packs `$ref` it for their shared fields, so it has to sit beside them.
 
-It reads `schema-packs-v0.1` of network-specs, which carries every pack the
-DSS reads in one `schema/` folder. The app's own startup fetch, Docker compose
-and `scripts/run-local.sh` read the same ref. A ref with no packs on it, such
-as `main`, fetches nothing and exits `1`, naming the ref that has them:
-
-```
-error: no schema packs found on ref 'main' (0 of 6). The published packs are
-on 'schema-packs-v0.1' — re-run with --ref schema-packs-v0.1.
-```
+It reads the published packs from network-specs on GitHub Pages
+(`https://openagrinet.github.io/network-specs/schema/...`), which is built from
+`main`. The app's own startup fetch and `scripts/run-local.sh` do the same.
+If nothing can be fetched, it exits `1` and says what to check.
 
 | Flag | Default | Notes |
 |---|---|---|
-| `--ref` | `schema-packs-v0.1` | the network-specs branch or tag |
 | `--dest` | `var/schema-packs/` | resolved from the repo root, not your working directory |
+
+Pages cannot list a folder, so each pack's example file names come from the
+GitHub API, on `main`.
 
 Set `GITHUB_TOKEN` if you re-run it often — the listing call is capped at 60 an
 hour unauthenticated.

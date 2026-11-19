@@ -7,9 +7,9 @@
 
 from __future__ import annotations
 
-import contextvars
 import logging
 from collections.abc import Iterator
+from contextvars import Context
 
 import pytest
 from opentelemetry.sdk._logs import LoggerProvider
@@ -19,8 +19,13 @@ from opentelemetry.sdk._logs.export import (
 )
 from opentelemetry.sdk.trace import TracerProvider
 
-from dss.adapters.observability.logs import _DSS_LOGGER, configure_logs, reset_logs
-from dss.observability.trace_log import bind_turn_ids, log_event
+from dss.adapters.observability.logs import (
+    _DSS_LOGGER,
+    SpanIdsFilter,
+    configure_logs,
+    reset_logs,
+)
+from dss.observability.log_fields import bind_turn_ids
 
 
 @pytest.fixture(autouse=True)
@@ -90,36 +95,6 @@ def test_record_carries_the_enclosing_span_ids(
     assert record.span_id == expected.span_id
 
 
-def test_trace_fields_are_exported_as_attributes(
-    exporter: InMemoryLogRecordExporter,
-) -> None:
-    # Attributes, not body text, are what a log search can filter on.
-    log_event("discovery", "txn-1", event="ask_routed", ask_index=0)
-
-    record = exporter.get_finished_logs()[0].log_record
-    assert record.body == "discovery ask_routed"
-    assert record.attributes is not None
-    assert record.attributes["request_id"] == "txn-1"
-    assert record.attributes["component"] == "discovery"
-    assert record.attributes["ask_index"] == 0
-
-
-def test_any_dss_line_is_exported_with_the_turns_ids(
-    exporter: InMemoryLogRecordExporter,
-) -> None:
-    # Bound once by the route; no helper has to pass them on.
-    def log_in_a_turn() -> None:
-        bind_turn_ids("txn-1", message_id="msg-1", session_id="ses-1")
-        logging.getLogger("dss.adapters.http").error("turn failed")
-
-    contextvars.Context().run(log_in_a_turn)
-
-    attributes = exporter.get_finished_logs()[0].log_record.attributes or {}
-    assert attributes["request_id"] == "txn-1"
-    assert attributes["message_id"] == "msg-1"
-    assert attributes["session_id"] == "ses-1"
-
-
 def test_reset_detaches_the_handler(exporter: InMemoryLogRecordExporter) -> None:
     reset_logs()
 
@@ -164,3 +139,52 @@ def test_only_the_dss_logger_is_bridged(exporter: InMemoryLogRecordExporter) -> 
     logging.getLogger("httpx").info("HTTP Request: POST /select 200 OK")
 
     assert messages(exporter) == []
+
+
+def test_record_carries_the_turn_ids_as_attributes(
+    exporter: InMemoryLogRecordExporter,
+) -> None:
+    # Attributes, not text: HyperDX filters on attributes and only searches text.
+    def log_inside_a_turn() -> None:
+        bind_turn_ids(
+            transaction_id="txn-1",
+            turn_message_id="msg-1",
+            session_id="sess-1",
+            sender_id="farmer-app",
+        )
+        logging.getLogger("dss.trace").info(
+            "intent enter", extra={"component": "intent"}
+        )
+
+    Context().run(log_inside_a_turn)
+
+    attributes = exporter.get_finished_logs()[0].log_record.attributes
+    assert attributes["transaction_id"] == "txn-1"
+    assert attributes["turn_message_id"] == "msg-1"
+    assert attributes["sender_id"] == "farmer-app"
+    assert attributes["component"] == "intent"
+
+
+def _a_record() -> logging.LogRecord:
+    return logging.LogRecord("dss.test", logging.INFO, __file__, 1, "hi", None, None)
+
+
+def test_console_line_carries_the_span_ids_langfuse_shows() -> None:
+    # Pastes straight into Langfuse's search, with no conversion.
+    record = _a_record()
+    tracer = TracerProvider().get_tracer("test")
+    with tracer.start_as_current_span("dss.turn") as span:
+        expected = span.get_span_context()
+        SpanIdsFilter().filter(record)
+
+    assert record.trace_id == format(expected.trace_id, "032x")
+    assert record.span_id == format(expected.span_id, "016x")
+
+
+def test_console_line_outside_a_span_leaves_the_span_ids_off() -> None:
+    record = _a_record()
+
+    SpanIdsFilter().filter(record)
+
+    assert not hasattr(record, "trace_id")
+    assert not hasattr(record, "span_id")

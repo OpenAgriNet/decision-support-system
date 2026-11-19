@@ -103,7 +103,7 @@ def test_a_catalog_without_a_bpp_is_rejected_and_logged(caplog) -> None:
         }
     }
 
-    with caplog.at_level(logging.ERROR, logger="dss"):
+    with caplog.at_level(logging.WARNING, logger="dss"):
         result = map_discover_response(response)
 
     assert [c.provider_id for c in result.capabilities] == ["q"]
@@ -116,7 +116,10 @@ def test_a_catalog_without_a_bpp_is_rejected_and_logged(caplog) -> None:
             detail="catalog cat-no-bpp has no bppId",
         ),
     )
-    assert "cat-no-bpp" in caplog.text
+    [dropped] = caplog.records
+    assert dropped.levelno == logging.WARNING
+    assert dropped.provider_id == "p"
+    assert "cat-no-bpp" in dropped.reason
 
 
 def test_a_rejected_catalog_reports_only_typed_resources() -> None:

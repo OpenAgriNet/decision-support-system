@@ -141,7 +141,6 @@ def _report(result: DiscoveryResult, *, turn: UserTurn) -> None:
             event="ranking_applied",
             ask_id=priority.ask_id,
             capability=priority.capability,
-            sender_id=priority.sender_id or "-",
             source=priority.source,
             ranked=_ids(priority.ranking),
             found=_ids(priority.kept),

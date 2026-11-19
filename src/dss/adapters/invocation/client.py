@@ -35,6 +35,7 @@ from dss.core.shared.network import NetworkTransactionID
 from dss.observability.trace_log import (
     log_external_request,
     log_external_response,
+    log_failure,
 )
 
 # Defined on the port, not here: a failed select is part of the contract, so
@@ -81,6 +82,22 @@ def _build_commitment(resources: list[dict], **other_fields: object) -> dict[str
     }
 
 
+def _build_offer(
+    capability: ProviderCapability,
+    *,
+    resource_id: str,
+    offer_id: str,
+) -> dict[str, Any]:
+    return {
+        "id": offer_id,
+        "resourceIds": [resource_id],
+        "provider": {
+            "id": capability.provider_id,
+            "descriptor": {"name": capability.provider_name},
+        },
+    }
+
+
 def build_select_request(  # noqa: PLR0913
     capability: ProviderCapability,
     resource_attributes: dict,
@@ -113,14 +130,9 @@ def build_select_request(  # noqa: PLR0913
                                 "quantity": {"count": 1},
                             }
                         ],
-                        offer={
-                            "id": offer_id,
-                            "resourceIds": [resource_id],
-                            "provider": {
-                                "id": capability.provider_id,
-                                "descriptor": {"name": capability.provider_name},
-                            },
-                        },
+                        offer=_build_offer(
+                            capability, resource_id=resource_id, offer_id=offer_id
+                        ),
                     )
                 ]
             }
@@ -191,7 +203,7 @@ def build_status_request(  # noqa: PLR0913
     return {
         "context": context.to_wire(),
         "message": _commitment_message(
-            attributes, resource_id=resource_id, contract_id=contract_id
+            capability, attributes, resource_id=resource_id, contract_id=contract_id
         ),
     }
 
@@ -226,13 +238,17 @@ def build_init_request(  # noqa: PLR0913
     return {
         "context": context.to_wire(),
         "message": _commitment_message(
-            attributes, resource_id=resource_id, contract_id=contract_id
+            capability, attributes, resource_id=resource_id, contract_id=contract_id
         ),
     }
 
 
 def _commitment_message(
-    attributes: dict, *, resource_id: str, contract_id: str
+    capability: ProviderCapability,
+    attributes: dict,
+    *,
+    resource_id: str,
+    contract_id: str,
 ) -> dict[str, Any]:
     return {
         "contract": {
@@ -241,6 +257,11 @@ def _commitment_message(
                 _build_commitment(
                     [{"id": resource_id, "quantity": {"count": 1}}],
                     commitmentAttributes=attributes,
+                    offer=_build_offer(
+                        capability,
+                        resource_id=resource_id,
+                        offer_id=_DEFAULT_OFFER_ID,
+                    ),
                 )
             ],
         }
@@ -347,17 +368,21 @@ class HttpCapabilityInvocation:
     the pure functions above so they're testable without a client at all.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         client: httpx.AsyncClient,
         base_url: str,
         sender_id: str,
         attempts: int = 3,
         backoff_seconds: float = 0.5,
+        *,
+        network_id: str,
     ) -> None:
         self._client = client
         self._base_url = base_url
         self._sender_id = sender_id
+        # Logged, never sent: a provider call's envelope carries no network id.
+        self._network_id = network_id
         self._attempts = attempts
         self._backoff_seconds = backoff_seconds
 
@@ -536,6 +561,7 @@ class HttpCapabilityInvocation:
                         or last_chance
                     ):
                         call.set_attribute("failure_class", failure.failure_class.value)
+                        _log_given_up(capability, failure, attempts=attempt)
                         raise
                     await anyio.sleep(self._backoff_seconds * 2 ** (attempt - 1))
         raise AssertionError("unreachable: the loop either returns or raises")
@@ -673,16 +699,20 @@ class HttpCapabilityInvocation:
 
         endpoint = f"{self._base_url}/{action}"
         transaction_id = request_body["context"]["transactionId"]
+        call_fields = {
+            "capability": capability.capability,
+            # One ask can call several providers, so each line names its own.
+            "provider_id": capability.provider_id,
+            "message_id": request_body["context"]["messageId"],
+            "network_id": self._network_id,
+        }
         log_external_request(
             "invocation",
             transaction_id,
+            labels=(capability.capability, capability.provider_id),
             endpoint=endpoint,
-            capability=capability.capability,
-            # Named on every line because one ask can now call several
-            # providers (ADR-0019), and a capability alone no longer says
-            # which of them a body belongs to.
-            provider_id=capability.provider_id,
             body=request_body,
+            **call_fields,
         )
         try:
             # The one place a real value leaves the DSS (ADR-0015).
@@ -692,10 +722,10 @@ class HttpCapabilityInvocation:
             log_external_response(
                 "invocation",
                 transaction_id,
+                labels=(capability.capability, capability.provider_id),
                 status=response.status_code,
-                capability=capability.capability,
-                provider_id=capability.provider_id,
                 body=visibility.conceal(response.text),
+                **call_fields,
             )
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
@@ -709,10 +739,11 @@ class HttpCapabilityInvocation:
             log_external_response(
                 "invocation",
                 transaction_id,
+                labels=(capability.capability, capability.provider_id),
                 status="transport_error",
-                capability=capability.capability,
-                provider_id=capability.provider_id,
+                error_type=type(exc).__name__,
                 error=visibility.conceal(str(exc)),
+                **call_fields,
             )
             raise failed(
                 capability.capability,
@@ -721,6 +752,23 @@ class HttpCapabilityInvocation:
                 visibility.conceal(str(exc)),
             ) from exc
         return response
+
+
+def _log_given_up(
+    capability: ProviderCapability, failure: ProviderCallFailedError, *, attempts: int
+) -> None:
+    """The caller answers around this failure, so this line is all that says why."""
+
+    log_failure(
+        "invocation",
+        failure,
+        event="provider_call_failed",
+        provider_id=capability.provider_id,
+        capability=capability.capability,
+        status_code=failure.status_code,
+        failure_class=failure.failure_class.value,
+        attempts=attempts,
+    )
 
 
 # The action's own error for a failed POST: the capability, the status code

@@ -357,7 +357,7 @@ class TextPath:
     ) -> _Redacted:
         with trace_component(Stage.REDACTION, ctx.trace_id):
             redaction = await self._components.redact(
-                texts_of(turn), request_id=turn.transaction_id
+                texts_of(turn), transaction_id=turn.transaction_id
             )
         farmer_turn = with_texts(turn, redaction.texts)
         recorder.redacted(found=redaction.found, failed=redaction.failed)
