@@ -3,6 +3,18 @@
 ## [Unreleased]
 
 ### Changed
+- A provider call's tries are now `dss.http.post` spans, one per try, under
+  `dss.select`, `dss.init`, `dss.support` or `dss.status`. They were
+  `dss.<action>.attempt`. Every try that got a reply now records its status
+  code, so a successful try records 200. A timeout or a lost connection
+  records no code; it used to record 0 (#207)
+- The `attempts` attribute is gone from those outer spans and from the
+  `provider_call_failed` log line. Count the `dss.http.post` spans instead.
+  Each retry now logs one `http` `retry` line with the method, path, status
+  and try number, never the body (#207)
+- A provider call's request and response bodies are logged once per call, not
+  once per try. A retry resends the same body: the same timestamp, and on
+  `select` the same message id (#207)
 - Schema packs are fetched from network-specs on GitHub Pages, which is
   built from `main`, not from `raw.githubusercontent.com` (#252)
 - `--ref` is removed from the fetch script; passing it now fails as an
