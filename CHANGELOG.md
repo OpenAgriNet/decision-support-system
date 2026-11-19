@@ -5,8 +5,9 @@
 ### Changed
 - Schema packs are fetched from network-specs on GitHub Pages, which is
   built from `main`, not from `raw.githubusercontent.com` (#252)
-- `--ref`, `DSS_SCHEMA_PACK_REF` and `SCHEMA_PACK_REF` are removed. If one is
-  still set, it is ignored (#252)
+- `--ref` is removed from the fetch script; passing it now fails as an
+  unknown argument. `DSS_SCHEMA_PACK_REF` and `SCHEMA_PACK_REF` are removed
+  and ignored if still set (#252)
 
 ### Fixed
 - `init` and `status` now send an offer on their commitment, as `select`
