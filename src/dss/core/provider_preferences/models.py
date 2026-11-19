@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from typing import Literal
 
+from dss.core.intent.models import AskId
+
 # What a preference list is keyed on — the registry's word for the *kind of
 # help* a ranking covers, carried by an ask as its subject category:
 # "Weather", "Market". It is what `/discover` already filtered on.
@@ -130,7 +132,7 @@ class AskPriority:
     unexpectedly thin answer needs to see that it was dropped on purpose.
     """
 
-    ask_index: int
+    ask_id: AskId
     capability: Capability
     sender_id: str | None
     source: RankingSource | None  # None when no ranking applied

@@ -18,18 +18,19 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
-from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
+from dss.core.intent.models import InteractionType, SubjectCategory
 from dss.core.moderation.models import ModerationDecision, Outcome, ReasonCode
 from dss.core.planner.models import Skill, Verdict
 from dss.core.planner.validation import DomainSchema
 from dss.core.provider_discovery.models import (
     DiscoveredAnswer,
-    DiscoveryResult,
     ProviderCapability,
 )
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import TextQuery, UserTurn
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
+from tests.support.asks import an_ask
+from tests.support.discovery import a_discovery, discovered
 from tests.support.providers import build_capability
 
 CAPABILITY = build_capability(
@@ -93,19 +94,11 @@ def _skill_with(*tool_names: str) -> Skill:
     )
 
 
-def _intent(category: SubjectCategory = SubjectCategory.MARKET) -> Intent:
-    """One ask at index 0 — the only index these tests' discovery uses."""
-
-    return Intent(
-        asks=(
-            Ask(
-                agriculture_subjects="paddy",
-                subject_categories=category,
-                interaction_type=InteractionType.OBSERVE,
-            ),
-        ),
-        confidence=1.0,
-    )
+PADDY_ASK = an_ask(
+    agriculture_subjects="paddy",
+    subject_categories=SubjectCategory.MARKET,
+    interaction_type=InteractionType.OBSERVE,
+)
 
 
 def _deps(invocation: _RecordingInvocation, verdict: Verdict) -> PlannerDeps:
@@ -118,10 +111,7 @@ def _deps(invocation: _RecordingInvocation, verdict: Verdict) -> PlannerDeps:
             target_lang="en",
             channel="web",
         ),
-        intent=_intent(),
-        discovery=DiscoveryResult(
-            answers={}, capabilities={0: (CAPABILITY,)}, failures={}, events=()
-        ),
+        discovery=a_discovery(discovered(PADDY_ASK, capabilities=(CAPABILITY,))),
         schemas=SCHEMAS,
         schema_context_index={
             "openagrinet:MandiPrice": "https://schemas.openagrinet.global/schema/MandiPrice/0.1/context.jsonld"
@@ -140,7 +130,7 @@ def _calls_select_then_answers(
                 ToolCallPart(
                     tool_name="select",
                     args={
-                        "ask_index": 0,
+                        "ask_id": 0,
                         "resource_id": "res:agmarknet:daily-price",
                         "resource_attributes": {"commodity": {"code": "PADDY"}},
                     },
@@ -198,7 +188,7 @@ def _calls_select_twice_then_answers(
                 ToolCallPart(
                     tool_name="select",
                     args={
-                        "ask_index": 0,
+                        "ask_id": 0,
                         "resource_id": "res:agmarknet:daily-price",
                         "resource_attributes": {"commodity": {"code": code}},
                     },
@@ -237,7 +227,7 @@ def _calls_describe_then_answers(
 ) -> ModelResponse:
     if len(messages) == 1:
         return ModelResponse(
-            parts=[ToolCallPart(tool_name="describe_capability", args={"ask_index": 0})]
+            parts=[ToolCallPart(tool_name="describe_capability", args={"ask_id": 0})]
         )
     return ModelResponse(parts=[TextPart(content="described")])
 

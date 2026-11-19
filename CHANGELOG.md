@@ -15,6 +15,11 @@
 - A provider call's request and response bodies are logged once per call, not
   once per try. A retry resends the same body: the same timestamp, and on
   `select` the same message id (#207)
+- Schema packs are fetched from network-specs on GitHub Pages, which is
+  built from `main`, not from `raw.githubusercontent.com` (#252)
+- `--ref` is removed from the fetch script; passing it now fails as an
+  unknown argument. `DSS_SCHEMA_PACK_REF` and `SCHEMA_PACK_REF` are removed
+  and ignored if still set (#252)
 
 ### Fixed
 - `init` and `status` now send an offer on their commitment, as `select`

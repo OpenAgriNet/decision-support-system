@@ -7,7 +7,7 @@ two components run concurrently and neither consumes the other's output.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from datetime import datetime
 
 import anyio
@@ -38,12 +38,12 @@ from dss.core.provider_discovery.models import (
     DiscoveryResult,
 )
 from dss.core.settlement.models import (
+    AskSettlement,
     AskSlot,
     Frame,
     Missing,
     NeedsClarification,
     Settled,
-    Settlement,
     Slot,
 )
 from dss.core.shared.models import (
@@ -55,9 +55,11 @@ from dss.core.shared.models import (
 from dss.orchestration.settlement import SettleAsks, build_settle_asks
 from dss.orchestration.turn import run_turn
 from dss.ports.area_lookup import AreaMatch
+from tests.support.asks import an_ask, numbered
+from tests.support.discovery import a_discovery, discovered
 from tests.support.fakes import FakeAreaLookup, FakePromptProvider
 from tests.support.providers import build_capability
-from tests.support.settlement import settles_every_ask
+from tests.support.settlement import settles_every_ask, settles_with
 
 PROFANITY = WordCheckPolicy(
     id="profanity-filter",
@@ -129,19 +131,17 @@ class _FakeModerationLLM(_NeverStreams):
 
 
 class _FakeDiscovery:
-    """Stands in for the composed ``DiscoverProviders``. Records the intent it
+    """Stands in for the composed ``DiscoverProviders``. Records the asks it
     was handed, so a test can prove discovery ran off intent's output."""
 
     def __init__(self, result: DiscoveryResult | None = None) -> None:
-        self._result = result or DiscoveryResult(
-            answers={}, capabilities={}, failures={}, events=()
-        )
-        self.intents: list[Intent] = []
+        self._result = result or a_discovery()
+        self.asks_seen: list[tuple[Ask, ...]] = []
 
     async def __call__(
-        self, intent: Intent, turn: UserTurn, now: datetime
+        self, asks: Sequence[Ask], turn: UserTurn, now: datetime
     ) -> DiscoveryResult:
-        self.intents.append(intent)
+        self.asks_seen.append(tuple(asks))
         return self._result
 
 
@@ -204,7 +204,7 @@ async def test_discovery_runs_on_the_classified_intent() -> None:
     )
     resolved_intent = Intent(
         asks=(
-            Ask(
+            an_ask(
                 agriculture_subjects="potato",
                 subject_categories=SubjectCategory.MARKET,
                 interaction_type=InteractionType.OBSERVE,
@@ -218,9 +218,7 @@ async def test_discovery_runs_on_the_classified_intent() -> None:
         ),
         confidence=0.9,
     )
-    found = DiscoveryResult(
-        answers={}, capabilities={0: (CAPABILITY,)}, failures={}, events=()
-    )
+    found = a_discovery(discovered(capabilities=(CAPABILITY,)))
     discovery = _FakeDiscovery(found)
 
     result = await run_turn(
@@ -234,7 +232,7 @@ async def test_discovery_runs_on_the_classified_intent() -> None:
         area_lookup=FakeAreaLookup(),
     )
 
-    assert discovery.intents == [resolved_intent]
+    assert discovery.asks_seen == [resolved_intent.asks]
     assert result.discovery == found
 
 
@@ -251,7 +249,7 @@ async def test_run_turn_returns_both_intent_and_decision() -> None:
     )
     expected_intent = Intent(
         asks=(
-            Ask(
+            an_ask(
                 agriculture_subjects="potato",
                 subject_categories=SubjectCategory.MARKET,
                 interaction_type=InteractionType.OBSERVE,
@@ -323,9 +321,7 @@ async def test_moderation_reject_blanks_the_discovery_result() -> None:
     an effect with no cause on it. Why it is empty is already on the result:
     the non-PROCEED outcome and its reason code."""
 
-    found = DiscoveryResult(
-        answers={}, capabilities={0: (CAPABILITY,)}, failures={}, events=()
-    )
+    found = a_discovery(discovered(capabilities=(CAPABILITY,)))
     discovery = _FakeDiscovery(found)
 
     result = await run_turn(
@@ -340,8 +336,7 @@ async def test_moderation_reject_blanks_the_discovery_result() -> None:
     )
 
     assert result.decision.outcome is Outcome.REJECT
-    assert result.discovery.capabilities == {}
-    assert result.discovery.answers == {}
+    assert result.discovery.asks == ()
 
 
 class _SlowModerationLLM(_NeverStreams):
@@ -381,9 +376,7 @@ async def test_discovery_does_not_wait_for_moderation() -> None:
     for no safety gain — the barrier that matters is the planner's."""
 
     moderation = _SlowModerationLLM(delay=0.05)
-    found = DiscoveryResult(
-        answers={}, capabilities={0: (CAPABILITY,)}, failures={}, events=()
-    )
+    found = a_discovery(discovered(capabilities=(CAPABILITY,)))
     discovery = _ObservingDiscovery(moderation, found)
 
     result = await run_turn(
@@ -419,16 +412,9 @@ _NEEDS_PLACE = NeedsClarification(open_slots=(Slot(AskSlot.PLACE, Missing()),))
 _SETTLED = Settled(Frame(slots=()))
 
 
-def _settle_with(*settlements: Settlement) -> SettleAsks:
-    def settle(intent: Intent) -> tuple[Settlement, ...]:
-        return settlements
-
-    return settle
-
-
 async def test_discovery_searches_only_settled_asks() -> None:
-    """The unsettled ask is never searched, and the settled one is searched
-    as its own intent, so discovery's numbering is its own."""
+    """The unsettled ask is never searched. The settled one is searched as
+    its own intent."""
 
     discovery = _FakeDiscovery()
 
@@ -440,12 +426,35 @@ async def test_discovery_searches_only_settled_asks() -> None:
         policies=[],
         discover_providers=discovery,
         area_lookup=FakeAreaLookup(),
-        settle_asks=_settle_with(_SETTLED, _NEEDS_PLACE),
+        settle_asks=settles_with(_SETTLED, _NEEDS_PLACE),
     )
 
-    potato, _rain = result.intent.asks
-    assert [intent.asks for intent in discovery.intents] == [(potato,)]
-    assert result.settlements == (_SETTLED, _NEEDS_PLACE)
+    potato, rain = result.intent.asks
+    assert discovery.asks_seen == [(potato,)]
+    assert result.settlements == (
+        AskSettlement(potato, _SETTLED),
+        AskSettlement(rain, _NEEDS_PLACE),
+    )
+
+
+async def test_a_settled_ask_keeps_its_id() -> None:
+    """The second ask is the only one settled. It is still ask 1, not ask 0."""
+
+    discovery = _FakeDiscovery()
+
+    result = await run_turn(
+        _turn("will it rain, and potato price?"),
+        intent_llm=_FakeIntentLLM(IntentClassification(asks=(_RAIN, _POTATO))),
+        moderation_llm=_FakeModerationLLM(),
+        prompts=FakePromptProvider(),
+        policies=[],
+        discover_providers=discovery,
+        area_lookup=FakeAreaLookup(),
+        settle_asks=settles_with(_NEEDS_PLACE, _SETTLED),
+    )
+
+    assert [ask.id for ask in result.settled_asks] == [1]
+    assert [[ask.id for ask in asks] for asks in discovery.asks_seen] == [[1]]
 
 
 async def test_the_settled_asks_are_built_once() -> None:
@@ -457,10 +466,10 @@ async def test_the_settled_asks_are_built_once() -> None:
         policies=[],
         discover_providers=_FakeDiscovery(),
         area_lookup=FakeAreaLookup(),
-        settle_asks=_settle_with(_SETTLED, _NEEDS_PLACE),
+        settle_asks=settles_with(_SETTLED, _NEEDS_PLACE),
     )
 
-    assert result.settled_intent is result.settled_intent
+    assert result.settled_asks is result.settled_asks
 
 
 async def test_nothing_settled_skips_discovery() -> None:
@@ -474,11 +483,11 @@ async def test_nothing_settled_skips_discovery() -> None:
         policies=[],
         discover_providers=discovery,
         area_lookup=FakeAreaLookup(),
-        settle_asks=_settle_with(_NEEDS_PLACE),
+        settle_asks=settles_with(_NEEDS_PLACE),
     )
 
-    assert discovery.intents == []
-    assert result.settled_intent.asks == ()
+    assert discovery.asks_seen == []
+    assert result.settled_asks == ()
 
 
 async def test_moderation_reject_blanks_the_settlements() -> None:
@@ -490,7 +499,7 @@ async def test_moderation_reject_blanks_the_settlements() -> None:
         policies=[DELETE_COMMAND],
         discover_providers=_FakeDiscovery(),
         area_lookup=FakeAreaLookup(),
-        settle_asks=_settle_with(_NEEDS_PLACE),
+        settle_asks=settles_with(_NEEDS_PLACE),
     )
 
     assert result.settlements == ()
@@ -514,16 +523,16 @@ def test_settle_reads_the_index_each_turn() -> None:
     weather_pack = "openagrinet:WeatherObservation"
     index = _FakeIndex({("Weather", "Service"): (weather_pack,)}, frozenset())
     settle = build_settle_asks(index, FormRegistry().contexts_for)
-    rain = Ask(
+    rain = an_ask(
         subject_categories=SubjectCategory.WEATHER,
         interaction_type=InteractionType.OBSERVE,
     )
 
-    assert settle(Intent(asks=(rain,))) == (_SETTLED,)
+    assert settle((rain,)) == (AskSettlement(rain, _SETTLED),)
 
     index._place_bound_types = frozenset({weather_pack})
 
-    assert settle(Intent(asks=(rain,))) == (_NEEDS_PLACE,)
+    assert settle((rain,)) == (AskSettlement(rain, _NEEDS_PLACE),)
 
 
 def _grievance_form(scheme: str, action: str) -> ActionSchema:
@@ -541,17 +550,19 @@ def test_the_registrys_forms_reach_settlement() -> None:
     for what is then asked are tested in `tests/unit/core/settlement`."""
 
     settle = _settle_with_forms(_grievance_form("PMFBY", "support"))
-    complaint = Ask(
+    complaint = an_ask(
         subject_categories=SubjectCategory.GRIEVANCE,
         interaction_type=InteractionType.ACT,
         action=UnclearAction.UNCLEAR,
     )
-    rain = Ask(
+    rain = an_ask(
         subject_categories=SubjectCategory.WEATHER,
         interaction_type=InteractionType.OBSERVE,
     )
 
-    assert settle(Intent(asks=(complaint, rain))) == (
+    settlements = settle(numbered(complaint, rain))
+
+    assert [each.settlement for each in settlements] == [
         NeedsClarification(open_slots=(Slot(AskSlot.SCHEME, Missing()),)),
         _SETTLED,
-    )
+    ]

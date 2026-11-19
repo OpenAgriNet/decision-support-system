@@ -20,9 +20,9 @@ from dss.adapters.provider_preferences.registry import RegistryProviderPreferenc
 from dss.config.settings import Settings
 from dss.core.forms.models import FormContext
 from dss.core.forms.registry import FormLookup, FormRegistry
-from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
+from dss.core.intent.models import InteractionType, SubjectCategory
 from dss.core.schema_packs.models import SchemaPackFiles
-from dss.core.settlement.models import Frame, Settled
+from dss.core.settlement.models import AskSettlement, Frame, Settled
 from dss.core.shared.models import TextQuery
 from dss.entrypoint.composition.root import (
     _aclose_for,
@@ -39,6 +39,7 @@ from dss.entrypoint.composition.schema_packs import (
 )
 from dss.orchestration.orchestrator import Orchestrator
 from dss.ports.turn import TurnRunner
+from tests.support.asks import an_ask
 
 SCHEMA_PACKS_FIXTURE_ROOT = (
     Path(__file__).parents[1]
@@ -116,12 +117,12 @@ def test_with_no_packs_every_ask_settles(tmp_path: Path) -> None:
     """Unwired there are no packs, so nothing says an ask needs anything."""
 
     settle = _settle_asks(load_schema_packs(_settings(tmp_path)), FormRegistry())
-    rain = Ask(
+    rain = an_ask(
         subject_categories=SubjectCategory.WEATHER,
         interaction_type=InteractionType.OBSERVE,
     )
 
-    assert settle(Intent(asks=(rain,))) == (Settled(Frame(slots=())),)
+    assert settle((rain,)) == (AskSettlement(rain, Settled(Frame(slots=()))),)
 
 
 def test_the_network_refuses_to_boot_with_no_packs(tmp_path: Path) -> None:
@@ -145,7 +146,6 @@ def test_the_network_refuses_to_boot_with_no_packs(tmp_path: Path) -> None:
     )
 
     def fetches_nothing(**_kwargs) -> tuple[str, ...]:
-        """A ref with no packs on it — what the default ref does today."""
         return ()
 
     with pytest.raises(ValueError, match="fetch_schema_packs"):
@@ -242,8 +242,7 @@ def test_build_runner_passes_the_fetch_through(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="fetch_schema_packs"):
         build_runner(settings, fetch=records)
 
-    # reached the fetch, with the configured ref and destination
-    assert calls == [{"ref": settings.schema_pack_ref, "dest": empty}]
+    assert calls == [{"dest": empty}]
 
 
 def _pack_missing_x_jsonld() -> SchemaPackFiles:
@@ -672,10 +671,7 @@ def test_no_packs_boots_with_no_forms_and_says_how_to_fetch(
 
     assert isinstance(runner, Orchestrator)
     assert _forms_of(runner).find(_PMFBY_SUPPORT) is None
-    assert any(
-        "fetch_schema_packs.py --ref schema-packs-v0.1" in record.message
-        for record in caplog.records
-    )
+    assert any("fetch_schema_packs.py" in record.message for record in caplog.records)
 
 
 def test_packs_with_no_api_pack_boot_with_no_forms_and_say_so(

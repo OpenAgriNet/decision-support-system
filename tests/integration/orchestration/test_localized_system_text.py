@@ -12,7 +12,6 @@ routes through it with the turn in hand.
 
 from __future__ import annotations
 
-from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.settlement.models import (
     Ambiguous,
     AskSlot,
@@ -33,7 +32,9 @@ from tests.integration.orchestration.test_orchestrator import (
     _served_discovery,
     _turn,
 )
+from tests.support.discovery import a_discovery
 from tests.support.fakes import FakeLocalizer
+from tests.support.settlement import settles_with
 
 
 def _hindi(turn):
@@ -67,7 +68,7 @@ async def test_a_refusal_is_localized() -> None:
 
 async def test_the_nobody_serves_answer_is_localized() -> None:
     localize = FakeLocalizer(mark=True)
-    empty = DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
+    empty = a_discovery()
     orch, _ = _build(
         intent=_one_ask(),
         discovery=empty,
@@ -99,7 +100,7 @@ async def test_the_pick_list_is_localized() -> None:
         plan=_FakePlan(_ANSWERED_EVIDENCE),
         compose=_FakeCompose("पुणे कौन सा?"),
         localize=localize,
-        settle_asks=lambda intent: (which_pune,),
+        settle_asks=settles_with(which_pune),
     )
 
     events = await _collect(orch, _hindi(_turn()))

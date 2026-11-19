@@ -32,7 +32,7 @@ from dss.core.forms.service import (
     with_form_done,
     with_init_awaited,
 )
-from dss.core.intent.models import Intent
+from dss.core.intent.models import Ask
 from dss.core.planner.models import NO_READABLE_REPLY, Failure
 from dss.core.provider_discovery.models import DiscoveredAnswer, ProviderCapability
 from dss.core.shared.models import Cause, ProviderAction, TextBlock, TurnStatus
@@ -41,7 +41,7 @@ from dss.core.shared.models import Cause, ProviderAction, TextBlock, TurnStatus
 # what the init form answers is issued under `challenge.issued`.
 _INIT_REPLY_PATH = ("challenge", "issued")
 
-type IntentFor = Callable[[FormContext], Intent | None]
+type AskFor = Callable[[FormContext], Ask | None]
 
 
 @dataclass(frozen=True)
@@ -217,7 +217,7 @@ class WaitingFlow:
     entry: FormAwaitingInit
     details: ValidSubmission
     action: ActionSchema
-    intent: Intent
+    ask: Ask
 
 
 def find_waiting_flow(
@@ -225,7 +225,7 @@ def find_waiting_flow(
     init_context: FormContext,
     form_lookup: FormLookup,
     *,
-    intent_for: IntentFor,
+    ask_for: AskFor,
 ) -> NoInitPending | SavedDetailsUnusable | WaitingFlow:
     entry = find_awaiting_init(forms, init_context)
     if entry is None:
@@ -233,10 +233,10 @@ def find_waiting_flow(
     details = validate_submission(entry.submission, form_lookup)
     # The pack may have changed since the details were saved.
     action = form_lookup.action_schema(entry.submission.context)
-    intent = intent_for(entry.submission.context)
-    if not isinstance(details, ValidSubmission) or action is None or intent is None:
+    ask = ask_for(entry.submission.context)
+    if not isinstance(details, ValidSubmission) or action is None or ask is None:
         return SavedDetailsUnusable(entry.submission.form_id)
-    return WaitingFlow(entry=entry, details=details, action=action, intent=intent)
+    return WaitingFlow(entry=entry, details=details, action=action, ask=ask)
 
 
 def decide_with_no_waiting_flow(

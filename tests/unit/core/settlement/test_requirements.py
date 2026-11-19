@@ -11,6 +11,7 @@ from dss.core.intent.models import (
 )
 from dss.core.settlement.requirements import build_ask_requirements
 from dss.core.shared.models import ProviderAction
+from tests.support.asks import an_ask
 
 SUPPORT = ProviderAction.SUPPORT
 STATUS = ProviderAction.STATUS
@@ -24,7 +25,7 @@ def _grievance(
     action: ProviderAction | UnclearAction | None,
     interaction: InteractionType = InteractionType.ACT,
 ) -> Ask:
-    return Ask(
+    return an_ask(
         subject_categories=SubjectCategory.GRIEVANCE,
         interaction_type=interaction,
         action=action,

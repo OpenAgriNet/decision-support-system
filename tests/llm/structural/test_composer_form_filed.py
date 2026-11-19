@@ -15,11 +15,12 @@ from dss.config.identity_loader import load_identity
 from dss.config.prompt_service import build_prompt_service
 from dss.config.settings import Settings
 from dss.core.forms.models import FieldValue, FormContext, FormSubmission
-from dss.core.intent.models import Ask, InteractionType, Scheme, SubjectCategory
+from dss.core.intent.models import InteractionType, Scheme, SubjectCategory
 from dss.core.planner.models import Result, Source, SourceKind
 from dss.core.shared.models import UserTurn
 from dss.core.stream_response.service import stream_response
 from dss.entrypoint.composition.root import _composer_llm
+from tests.support.asks import an_ask
 from tests.support.evidence import build_evidence
 from tests.support.live_model import missing_model_key
 
@@ -55,7 +56,7 @@ _TICKET = "100626000099001"
 
 
 async def test_the_reply_names_the_ticket_and_never_the_phone() -> None:
-    ask = Ask(
+    ask = an_ask(
         subject_categories=SubjectCategory.GRIEVANCE,
         interaction_type=InteractionType.ACT,
         scheme=_PMFBY,
@@ -73,8 +74,7 @@ async def test_the_reply_names_the_ticket_and_never_the_phone() -> None:
     }
     evidence = build_evidence(
         asks=(ask,),
-        sources=(portal,),
-        results=(Result(ask_index=0, source_id="1", data=filed),),
+        results=(Result(ask_id=0, source=portal, data=filed),),
     )
     turn = UserTurn[FormSubmission](
         input=FormSubmission(

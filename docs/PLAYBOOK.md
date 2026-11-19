@@ -127,20 +127,17 @@ That writes the packs into `var/schema-packs/` (gitignored):
 `AgricultureResource` is not a capability anything routes to. The other
 catalog packs `$ref` it for their shared fields, so it has to sit beside them.
 
-It reads `schema-packs-v0.1` of network-specs, which carries every pack the
-DSS reads in one `schema/` folder. The app's own startup fetch, Docker compose
-and `scripts/run-local.sh` read the same ref. A ref with no packs on it, such
-as `main`, fetches nothing and exits `1`, naming the ref that has them:
-
-```
-error: no schema packs found on ref 'main' (0 of 6). The published packs are
-on 'schema-packs-v0.1' — re-run with --ref schema-packs-v0.1.
-```
+It reads the published packs from network-specs on GitHub Pages
+(`https://openagrinet.github.io/network-specs/schema/...`), which is built from
+`main`. The app's own startup fetch and `scripts/run-local.sh` do the same.
+If nothing can be fetched, it exits `1` and says what to check.
 
 | Flag | Default | Notes |
 |---|---|---|
-| `--ref` | `schema-packs-v0.1` | the network-specs branch or tag |
 | `--dest` | `var/schema-packs/` | resolved from the repo root, not your working directory |
+
+Pages cannot list a folder, so each pack's example file names come from the
+GitHub API, on `main`.
 
 Set `GITHUB_TOKEN` if you re-run it often — the listing call is capped at 60 an
 hour unauthenticated.
@@ -931,12 +928,18 @@ How it behaves:
 - **Exact names only.** Photon returns places with similar names too. The DSS
   keeps only a name that matches exactly. "Eldor" finds nothing, and the
   farmer is told the place was not found. It never guesses.
+  One exception: a state. "Kashmir" also finds Jammu and Kashmir, because the
+  word is in its name. A word in several states, like "Pradesh", finds none.
 - **Same name, different places.** If several remain, the farmer is asked
   which one, the same as with the file.
 - **A whole state or region.** "Weather in Maharashtra" is not answered for the
   middle of the state. If the platform says where the user is, and that is in
   Maharashtra, the answer is for there, and it names the place. Otherwise the
   user is asked for a district or village in it.
+  A state is also offered as a choice next to places of the same name that are
+  not inside it: "Which Kashmir?" lists two villages and Jammu and Kashmir. If
+  the user is inside that state, the answer is for where they are, with no
+  question.
   This works the same with the area file alone.
 - **A name the file has only inside a longer one.** "Kanha" is not in the file,
   but "Kanha Chatti" starts with it and may be far away. That is only a guess.

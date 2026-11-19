@@ -67,9 +67,7 @@ class _PlanThatCallsSelect:
     def __init__(self, evidence) -> None:
         self._evidence = evidence
 
-    async def __call__(
-        self, turn, *, intent, discovery, verdict, visibility, awaiting=None
-    ):
+    async def __call__(self, turn, *, discovery, verdict, visibility, awaiting=None):
         def answers(request: httpx.Request) -> httpx.Response:
             return httpx.Response(200, json=_ON_SELECT)
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
@@ -26,7 +26,7 @@ from dss.core.forms.models import (
     FormSubmission,
 )
 from dss.core.forms.service import WITHHELD, build_form_registry, with_init_awaited
-from dss.core.intent.models import Intent, InteractionType, Scheme, SubjectCategory
+from dss.core.intent.models import Ask, InteractionType, Scheme, SubjectCategory
 from dss.core.policy.models import Policy
 from dss.core.provider_discovery.models import (
     DiscoveredAnswer,
@@ -57,6 +57,7 @@ from dss.orchestration.orchestrator import Orchestrator
 from dss.orchestration.redaction import RedactTexts, pass_through, redact_texts
 from dss.orchestration.session import NoSessionStore, Sessions, SessionStore
 from dss.ports.invocation import ProviderActionFailedError
+from tests.support.discovery import a_discovery, discovered
 from tests.support.evidence import attempted
 from tests.support.fakes import (
     FakeLocalizer,
@@ -111,9 +112,7 @@ _TICKET = {"case": {"ticketNo": "100626000099001", "filedOn": "2026-10-29"}}
 
 
 def _providers_found(*providers: ProviderCapability) -> DiscoveryResult:
-    return DiscoveryResult(
-        answers={}, capabilities={0: providers}, failures={}, events=()
-    )
+    return a_discovery(discovered(capabilities=providers))
 
 
 def _support_unavailable(
@@ -163,10 +162,12 @@ class _StageOutcomes:
 class _RecordingDiscovery:
     def __init__(self, result: DiscoveryResult) -> None:
         self._result = result
-        self.intents: list[Intent] = []
+        self.asks_seen: list[tuple[Ask, ...]] = []
 
-    async def __call__(self, intent: Intent, turn: UserTurn, *, now) -> DiscoveryResult:
-        self.intents.append(intent)
+    async def __call__(
+        self, asks: Sequence[Ask], turn: UserTurn, *, now
+    ) -> DiscoveryResult:
+        self.asks_seen.append(tuple(asks))
         return self._result
 
 
@@ -421,8 +422,7 @@ async def test_discovery_is_asked_for_the_one_ask_the_form_stands_for() -> None:
 
     await _collect(orch, _form_turn(_VALUES))
 
-    (intent,) = discovery.intents
-    (ask,) = intent.asks
+    ((ask,),) = discovery.asks_seen
     assert ask.subject_categories is SubjectCategory.GRIEVANCE
     assert ask.interaction_type is InteractionType.ACT
     assert ask.scheme == _PMFBY
@@ -453,9 +453,7 @@ async def test_a_direct_answer_does_not_stand_in_for_a_provider() -> None:
         attributes={},
         validity=None,
     )
-    found = DiscoveryResult(
-        answers={0: (direct,)}, capabilities={}, failures={}, events=()
-    )
+    found = a_discovery(discovered(answers=(direct,)))
     orch, _ = _build_orchestrator_and_turn_sink(discovery=found)
 
     events = await _collect(orch, _form_turn(_VALUES))
@@ -770,7 +768,7 @@ async def test_an_init_response_with_nothing_waiting_calls_nobody() -> None:
     (text,) = finished.content
     assert text == TextBlock(text=load_clarification_text().no_init_pending)
     assert invocation.calls == []
-    assert discovery.intents == []
+    assert discovery.asks_seen == []
     record = turns.records["t1"]
     assert record.turn is not None and record.finished == finished
     assert _OTP not in record.turn.model_dump_json()
@@ -1042,7 +1040,7 @@ async def test_an_init_response_files_the_waiting_form_with_its_provider() -> No
     assert call.provider == _KISAN_PROVIDER
     assert call.sent()["enrolmentId"] == _KISAN_VALUES["enrolmentId"]
     assert call.sent()["challenge"] == {"response": {"method": "OTP", "value": _OTP}}
-    assert discovery.intents == []
+    assert discovery.asks_seen == []
     assert _stored_state(store).forms["offer-1"].status is FormStatus.DONE
 
 

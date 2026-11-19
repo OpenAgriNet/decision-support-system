@@ -20,6 +20,7 @@ from __future__ import annotations
 from dss.core.intent.models import (
     AmbiguousPlace,
     Ask,
+    AskId,
     ClassifiedAsk,
     Intent,
     IntentClassification,
@@ -178,6 +179,34 @@ def _inside(match: AreaMatch, region: AreaMatch) -> bool:
     return region.name.casefold() in {w.casefold() for w in match.within}
 
 
+def _states_holding_none_of(
+    places: list[AreaMatch], states: list[AreaMatch]
+) -> list[AreaMatch]:
+    # A place inside the state means the user named one thing: Chandigarh the
+    # district is inside Chandigarh the territory. The state is not a choice.
+    # No place inside it means the state is a different thing they may mean:
+    # the villages named Kashmir are not in Jammu and Kashmir. So we ask.
+    return [
+        state for state in states if not any(_inside(place, state) for place in places)
+    ]
+
+
+def _is_only_states(found: list[AreaMatch]) -> bool:
+    return bool(found) and all(match.is_region for match in found)
+
+
+def _is_one_sure_match(choices: list[AreaMatch]) -> bool:
+    # A lone guess ("Kanha Chatti" for "Kanha") is not sure: it may be far
+    # from the place meant.
+    return len(choices) == 1 and not choices[0].is_guess
+
+
+def _places_inside(state: AreaMatch, matches: list[AreaMatch]) -> list[AreaMatch]:
+    # A common name is in many states. Only the ones in this state count.
+    places = [m for m in matches if not m.is_region and _inside(m, state)]
+    return _drop_nested(places)
+
+
 async def _user_own_place(
     region: AreaMatch,
     user_location: Location | None,
@@ -190,11 +219,10 @@ async def _user_own_place(
     if user_location is None:
         return None
     if user_location.area:
-        matches = [
-            m for m in await lookup.resolve(user_location.area) if not m.is_region
-        ]
-        if len(matches) == 1 and _inside(matches[0], region):
-            return _from_match(matches[0], PlaceSource.NEAR_USER)
+        named = await lookup.resolve(user_location.area)
+        own_places = _places_inside(region, named)
+        if len(own_places) == 1:
+            return _from_match(own_places[0], PlaceSource.NEAR_USER)
     if user_location.geometry is not None:
         # The device point is the exact spot. The nearest known place only
         # names it, so the answer can say where it is about.
@@ -209,31 +237,11 @@ async def _user_own_place(
     return None
 
 
-async def _resolve_named(  # noqa: PLR0911, PLR0913
-    name: str,
-    lookup: AreaLookup,
-    region: str | None,
-    source: PlaceSource,
-    user_location: Location | None = None,
-    nearest_max_km: float = DEFAULT_NEAREST_MAX_KM,
-) -> Place:
-    """A place the farmer actually said, this turn or earlier — the one case
-    that can fail loud (`AmbiguousPlace`/`UnresolvedPlace`) rather than fall
-    through."""
+def _fitting_parts(matches: list[AreaMatch], parts: tuple[str, ...]) -> list[AreaMatch]:
+    """The matches that sit in every part after the comma ("Madhubani, Bihar").
+    Empty when a part fits none: dropping the part could answer for a place
+    the farmer did not mean."""
 
-    lookup_name, parts = _name_and_parts(name)
-    found = _exact_first(await lookup.resolve(lookup_name))
-    # A whole region is never the place: one point cannot stand for a state.
-    # Set aside before nesting, so a region does not swallow the town of the
-    # same name inside it.
-    places = [m for m in found if not m.is_region]
-    regions = [m for m in found if m.is_region]
-    if regions and not places:
-        own = await _user_own_place(regions[0], user_location, lookup, nearest_max_km)
-        if own is not None:
-            return own
-        return UnresolvedPlace(unresolved_name=name, region=regions[0].name)
-    matches = _drop_nested(places)
     wanted = [part.casefold() for part in parts]
     # A match that sits directly in the last part comes first. "Madhubani,
     # Bihar" is the line for the Madhubani district; a Madhubani block
@@ -249,30 +257,91 @@ async def _resolve_named(  # noqa: PLR0911, PLR0913
         for m in matches
         if all(part in {w.casefold() for w in m.within} for part in wanted)
     ]
-    # A part that fits no match is not ignored: dropping it could answer for
-    # a place the farmer did not mean.
-    if wanted and not inside:
-        return UnresolvedPlace(unresolved_name=name)
-    matches = directly or inside or matches
+    return directly or inside
+
+
+def _in_user_region(
+    matches: list[AreaMatch], user_region: str | None
+) -> list[AreaMatch]:
     # The region is where the farmer is, not what they asked about: it only
     # breaks a tie between same-name places, never hides the one they named.
-    if len(matches) > 1 and region is not None:
-        matches = [m for m in matches if m.region == region] or matches
-    # Where the user is breaks the same kind of tie: the one match near them
-    # is almost surely the one meant. A lone guess ("Kanha Chatti" for
-    # "Kanha") is a tie too: it may be far from the place meant, so it is
-    # used only when near, and otherwise asked about as the one choice.
-    if len(matches) > 1 or (len(matches) == 1 and matches[0].is_guess):
-        near = await _near_user(matches, user_location, lookup, nearest_max_km)
-        if len(near) == 1:
-            return _from_match(near[0], source)
-        if len(matches) == 1:
-            return AmbiguousPlace(unresolved_name=name, candidates=tuple(matches))
-    if len(matches) == 1:
-        return _from_match(matches[0], source)
-    if len(matches) > 1:
-        return AmbiguousPlace(unresolved_name=name, candidates=tuple(matches))
-    return UnresolvedPlace(unresolved_name=name)
+    return [m for m in matches if m.region == user_region] or matches
+
+
+def _choices_among(
+    found: list[AreaMatch], parts: tuple[str, ...], user_region: str | None
+) -> list[AreaMatch]:
+    """What the farmer may mean, narrowed by what they said and where they
+    are. Empty when a part after the comma fits nothing."""
+
+    # A state is set aside before nesting, so it does not swallow the town of
+    # the same name inside it.
+    places = [m for m in found if not m.is_region]
+    states = [m for m in found if m.is_region]
+    choices = [*_drop_nested(places), *_states_holding_none_of(places, states)]
+    choices = _fitting_parts(choices, parts)
+    return _in_user_region(choices, user_region)
+
+
+async def _one_near_user(
+    matches: list[AreaMatch],
+    user_location: Location | None,
+    lookup: AreaLookup,
+    max_km: float,
+) -> AreaMatch | None:
+    """The one match near the user: almost surely the one meant."""
+
+    # Places only: a state's point is its middle, and standing there says
+    # nothing about which place was meant.
+    places = [m for m in matches if not m.is_region]
+    near = await _near_user(places, user_location, lookup, max_km)
+    return near[0] if len(near) == 1 else None
+
+
+async def _own_place_in_a_state(
+    choices: list[AreaMatch],
+    user_location: Location | None,
+    lookup: AreaLookup,
+    max_km: float,
+) -> ResolvedPlace | None:
+    # A user in Srinagar who says "Kashmir" means where they are, even when a
+    # village of that name exists in another state.
+    states = [choice for choice in choices if choice.is_region]
+    for state in states:
+        own = await _user_own_place(state, user_location, lookup, max_km)
+        if own is not None:
+            return own
+    return None
+
+
+async def _resolve_named(  # noqa: PLR0913
+    name: str,
+    lookup: AreaLookup,
+    region: str | None,
+    source: PlaceSource,
+    user_location: Location | None = None,
+    nearest_max_km: float = DEFAULT_NEAREST_MAX_KM,
+) -> Place:
+    """A place the farmer actually said, this turn or earlier — the one case
+    that can fail loud (`AmbiguousPlace`/`UnresolvedPlace`) rather than fall
+    through."""
+
+    lookup_name, parts = _name_and_parts(name)
+    found = _exact_first(await lookup.resolve(lookup_name))
+    choices = _choices_among(found, parts, region)
+    if not choices:
+        return UnresolvedPlace(unresolved_name=name)
+    own = await _own_place_in_a_state(choices, user_location, lookup, nearest_max_km)
+    if own is not None:
+        return own
+    if _is_only_states(choices):
+        return UnresolvedPlace(unresolved_name=name, region=choices[0].name)
+    if _is_one_sure_match(choices):
+        return _from_match(choices[0], source)
+    near = await _one_near_user(choices, user_location, lookup, nearest_max_km)
+    if near is not None:
+        return _from_match(near, source)
+    return AmbiguousPlace(unresolved_name=name, candidates=tuple(choices))
 
 
 async def _resolve_from_location(
@@ -312,8 +381,9 @@ def _first_resolved(places: list[Place]) -> ResolvedPlace | None:
     return None
 
 
-def _build_ask(classified: ClassifiedAsk, place: Place) -> Ask:
+def _build_ask(classified: ClassifiedAsk, place: Place, *, ask_id: AskId) -> Ask:
     return Ask(
+        id=ask_id,
         agriculture_subjects=classified.agriculture_subjects,
         subject_categories=classified.subject_categories,
         interaction_type=classified.interaction_type,
@@ -368,7 +438,9 @@ async def resolve_places(
             )
 
     asks = tuple(
-        _build_ask(classified, place)
-        for classified, place in zip(classified_asks, places, strict=True)
+        _build_ask(classified, place, ask_id=AskId(position))
+        for position, (classified, place) in enumerate(
+            zip(classified_asks, places, strict=True)
+        )
     )
     return Intent(asks=asks, confidence=classification.confidence)

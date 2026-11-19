@@ -14,6 +14,7 @@ from dss.core.provider_discovery.service import (
     resolve_capability_type,
 )
 from dss.core.shared.models import ProviderAction
+from tests.support.asks import an_ask
 
 
 def test_a_pinned_pair_resolves_to_its_single_type() -> None:
@@ -53,7 +54,7 @@ def test_an_asks_types_follow_its_interaction() -> None:
     }
 
     def ask(interaction: InteractionType) -> Ask:
-        return Ask(
+        return an_ask(
             subject_categories=SubjectCategory.MARKET, interaction_type=interaction
         )
 
@@ -68,7 +69,7 @@ def test_an_ask_with_an_action_is_a_service_ask() -> None:
     desk that files one."""
 
     index = {("Grievance", "Service"): ("openagrinet:Grievance",)}
-    how_to_file = Ask(
+    how_to_file = an_ask(
         subject_categories=SubjectCategory.GRIEVANCE,
         interaction_type=InteractionType.ADVISE,
         action=ProviderAction.SUPPORT,
@@ -85,7 +86,7 @@ def test_an_unclear_action_leaves_the_wording_to_decide() -> None:
         ("Crop", "Knowledge"): ("CropAdvisory",),
         ("Crop", "Service"): ("CropService",),
     }
-    problem = Ask(
+    problem = an_ask(
         subject_categories=SubjectCategory.CROP,
         interaction_type=InteractionType.ADVISE,
         action=UnclearAction.UNCLEAR,

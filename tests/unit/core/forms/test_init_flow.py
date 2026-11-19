@@ -41,10 +41,11 @@ from dss.core.forms.models import (
     ValidSubmission,
 )
 from dss.core.forms.service import validate_submission
-from dss.core.intent.models import Intent
+from dss.core.intent.models import Ask
 from dss.core.planner.models import NO_READABLE_REPLY, Failure
 from dss.core.provider_discovery.models import DiscoveredAnswer
 from dss.core.shared.models import Cause, TextBlock, TurnStatus
+from tests.support.asks import an_ask
 from tests.support.grievance_pack import (
     PMKISAN_INIT,
     PMKISAN_STATUS,
@@ -58,7 +59,7 @@ _FORMS = build_grievance_forms()
 _AWAITED_AT = datetime(2026, 11, 10, 9, 30, tzinfo=UTC)
 _NOW = _AWAITED_AT + timedelta(seconds=90)
 _PROVIDER = grievance_provider("kisan-provider", "PM-KISAN")
-_INTENT = Intent(asks=(), confidence=1.0)
+_ASK = an_ask()
 _KISAN_VALUES = {
     "enrolmentId": "PMK1234567",
     "grievance.category.code": "G001",
@@ -91,7 +92,7 @@ def _failure(
 ) -> Failure:
     # retryable says a 404 is worth retrying; the init rules read the status alone.
     return Failure(
-        ask_index=0,
+        ask_id=0,
         capability="openagrinet:Grievance",
         reason="call failed",
         retryable=True,
@@ -297,11 +298,11 @@ def test_a_sent_init_asks_for_the_init_form() -> None:
     assert offered.form == _FORMS.find(PMKISAN_INIT)
 
 
-def _intent_for(context: FormContext) -> Intent | None:
-    return _INTENT
+def _ask_for(context: FormContext) -> Ask | None:
+    return _ASK
 
 
-def _no_intent(context: FormContext) -> Intent | None:
+def _no_ask(context: FormContext) -> Ask | None:
     return None
 
 
@@ -311,10 +312,10 @@ def test_an_init_response_finds_the_flow_waiting_for_it() -> None:
     assert action is not None
     forms = {"offer-1": entry}
 
-    flow = find_waiting_flow(forms, PMKISAN_INIT, _FORMS, intent_for=_intent_for)
+    flow = find_waiting_flow(forms, PMKISAN_INIT, _FORMS, ask_for=_ask_for)
 
     assert flow == WaitingFlow(
-        entry=entry, details=_valid(_DETAILS), action=action, intent=_INTENT
+        entry=entry, details=_valid(_DETAILS), action=action, ask=_ASK
     )
 
 
@@ -329,7 +330,7 @@ def test_an_init_response_finds_the_flow_waiting_for_it() -> None:
 def test_an_init_response_with_nothing_waiting_finds_no_init_pending(
     forms: FormRecords,
 ) -> None:
-    flow = find_waiting_flow(forms, PMKISAN_INIT, _FORMS, intent_for=_intent_for)
+    flow = find_waiting_flow(forms, PMKISAN_INIT, _FORMS, ask_for=_ask_for)
 
     assert flow == NoInitPending()
 
@@ -338,7 +339,7 @@ def test_an_init_response_for_another_scheme_finds_no_init_pending() -> None:
     forms = {"offer-1": _waiting()}
     pmfby_init = FormContext(scheme="PMFBY", category="Grievance", action="init")
 
-    flow = find_waiting_flow(forms, pmfby_init, _FORMS, intent_for=_intent_for)
+    flow = find_waiting_flow(forms, pmfby_init, _FORMS, ask_for=_ask_for)
 
     assert flow == NoInitPending()
 
@@ -351,24 +352,22 @@ class _WithoutSupport(_WithoutInit):
 
 
 @pytest.mark.parametrize(
-    ("entry", "forms", "intent_for"),
+    ("entry", "forms", "ask_for"),
     [
         (
             _waiting(_submission(PMKISAN_SUPPORT, {"enrolmentId": "bad"})),
             _FORMS,
-            _intent_for,
+            _ask_for,
         ),
-        (_waiting(), _WithoutSupport(), _intent_for),
-        (_waiting(), _FORMS, _no_intent),
+        (_waiting(), _WithoutSupport(), _ask_for),
+        (_waiting(), _FORMS, _no_ask),
     ],
-    ids=["details-invalid", "action-dropped", "no-evidence-intent"],
+    ids=["details-invalid", "action-dropped", "no-ask"],
 )
 def test_saved_details_the_flow_cannot_use_are_unusable(
-    entry: FormAwaitingInit, forms: _WithoutInit, intent_for
+    entry: FormAwaitingInit, forms: _WithoutInit, ask_for
 ) -> None:
-    flow = find_waiting_flow(
-        {"offer-1": entry}, PMKISAN_INIT, forms, intent_for=intent_for
-    )
+    flow = find_waiting_flow({"offer-1": entry}, PMKISAN_INIT, forms, ask_for=ask_for)
 
     assert flow == SavedDetailsUnusable("offer-1")
 
@@ -404,7 +403,7 @@ def _flow(details: FormSubmission = _DETAILS) -> WaitingFlow:
         {details.form_id: _waiting(details)},
         PMKISAN_INIT,
         _FORMS,
-        intent_for=_intent_for,
+        ask_for=_ask_for,
     )
     assert isinstance(flow, WaitingFlow)
     return flow

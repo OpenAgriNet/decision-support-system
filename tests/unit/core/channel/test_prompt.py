@@ -17,7 +17,6 @@ from dss.core.forms.models import (
     FormSubmission,
 )
 from dss.core.intent.models import (
-    Ask,
     GuessedScheme,
     InteractionType,
     PlaceSource,
@@ -55,12 +54,14 @@ from dss.core.shared.models import (
     UserTurn,
 )
 from dss.ports.prompts import PromptIdentifier
+from tests.support.asks import an_ask
 from tests.support.evidence import build_evidence
 from tests.support.fakes import FakePromptProvider
 
 PULSES = Source(id="1", name="PulsesGuidelines2025", kind=SourceKind.PROVIDER, url=None)
 ICAR = Source(id="2", name="ICAR Agro-Advisories", kind=SourceKind.PROVIDER, url=None)
 AGMARKNET = Source(id="3", name="Agmarknet", kind=SourceKind.PROVIDER, url=None)
+IMD = Source(id="1", name="IMD", kind=SourceKind.PROVIDER, url=None)
 
 
 def _place(name: str) -> ResolvedPlace:
@@ -72,19 +73,8 @@ def _place(name: str) -> ResolvedPlace:
     )
 
 
-def _ask(place: ResolvedPlace | None = None) -> Ask:
-    return Ask(
-        subject_categories=SubjectCategory.WEATHER,
-        interaction_type=InteractionType.OBSERVE,
-        place=place,
-    )
-
-
-def _evidence(*results: Result, sources: tuple[Source, ...]) -> Evidence:
-    return build_evidence(
-        sources=sources,
-        results=results,
-    )
+def _evidence(*results: Result) -> Evidence:
+    return build_evidence(results=results)
 
 
 def test_one_sources_passages_are_gathered_under_one_heading() -> None:
@@ -93,9 +83,8 @@ def test_one_sources_passages_are_gathered_under_one_heading() -> None:
     ones."""
 
     evidence = _evidence(
-        Result(ask_index=0, source_id="1", data={"passage": "a"}),
-        Result(ask_index=0, source_id="1", data={"passage": "b"}),
-        sources=(PULSES,),
+        Result(ask_id=0, source=PULSES, data={"passage": "a"}),
+        Result(ask_id=0, source=PULSES, data={"passage": "b"}),
     )
 
     rendered = render_evidence(evidence)
@@ -110,9 +99,8 @@ def test_each_source_answering_one_question_is_its_own_block() -> None:
     where one stops and the next starts."""
 
     evidence = _evidence(
-        Result(ask_index=0, source_id="1", data={"passage": "a"}),
-        Result(ask_index=0, source_id="2", data={"passage": "b"}),
-        sources=(PULSES, ICAR),
+        Result(ask_id=0, source=PULSES, data={"passage": "a"}),
+        Result(ask_id=0, source=ICAR, data={"passage": "b"}),
     )
 
     rendered = render_evidence(evidence)
@@ -127,9 +115,8 @@ def test_results_are_grouped_by_the_question_they_answer() -> None:
     is served by two providers and says so."""
 
     evidence = _evidence(
-        Result(ask_index=0, source_id="1", data={"passage": "a"}),
-        Result(ask_index=1, source_id="3", data={"modal": 2200}),
-        sources=(PULSES, AGMARKNET),
+        Result(ask_id=0, source=PULSES, data={"passage": "a"}),
+        Result(ask_id=1, source=AGMARKNET, data={"modal": 2200}),
     )
 
     rendered = render_evidence(evidence)
@@ -140,14 +127,13 @@ def test_results_are_grouped_by_the_question_they_answer() -> None:
 
 
 def test_nothing_retrieved_still_says_so() -> None:
-    assert render_evidence(_evidence(sources=())) == "Nothing was retrieved."
+    assert render_evidence(_evidence()) == "Nothing was retrieved."
 
 
 def test_a_result_is_labelled_with_its_asks_resolved_place() -> None:
     evidence = build_evidence(
-        asks=(_ask(_place("Pune")),),
-        sources=(Source(id="1", name="Agmarknet", kind=SourceKind.PROVIDER, url=None),),
-        results=(Result(ask_index=0, source_id="1", data={"modal": 2200}),),
+        asks=(an_ask(place=_place("Pune")),),
+        results=(Result(ask_id=0, source=AGMARKNET, data={"modal": 2200}),),
     )
 
     rendered = render_evidence(evidence)
@@ -163,9 +149,8 @@ def test_the_label_names_the_place_above_so_two_rampurs_are_told_apart() -> None
         source=PlaceSource.NAMED,
     )
     evidence = build_evidence(
-        asks=(_ask(rampur),),
-        sources=(Source(id="1", name="IMD", kind=SourceKind.PROVIDER, url=None),),
-        results=(Result(ask_index=0, source_id="1", data={"rain": 2}),),
+        asks=(an_ask(place=rampur),),
+        results=(Result(ask_id=0, source=IMD, data={"rain": 2}),),
     )
 
     rendered = render_evidence(evidence)
@@ -183,9 +168,8 @@ def test_a_place_with_nothing_above_it_is_labelled_with_its_name_alone() -> None
         source=PlaceSource.ASSERTED_GEOMETRY,
     )
     evidence = build_evidence(
-        asks=(_ask(anand),),
-        sources=(Source(id="1", name="IMD", kind=SourceKind.PROVIDER, url=None),),
-        results=(Result(ask_index=0, source_id="1", data={"rain": 2}),),
+        asks=(an_ask(place=anand),),
+        results=(Result(ask_id=0, source=IMD, data={"rain": 2}),),
     )
 
     rendered = render_evidence(evidence)
@@ -195,12 +179,11 @@ def test_a_place_with_nothing_above_it_is_labelled_with_its_name_alone() -> None
 
 def test_a_failure_is_labelled_with_its_asks_resolved_place() -> None:
     evidence = build_evidence(
-        asks=(_ask(_place("Anand")),),
-        sources=(),
+        asks=(an_ask(place=_place("Anand")),),
         results=(),
         failures=(
             Failure(
-                ask_index=0,
+                ask_id=0,
                 capability="openagrinet:WeatherObservation",
                 reason="timeout",
                 retryable=True,
@@ -218,7 +201,7 @@ def test_an_ask_awaiting_a_form_is_rendered_as_such() -> None:
     apologise for it."""
 
     pmfby = Scheme(code="PMFBY", name="Pradhan Mantri Fasal Bima Yojana")
-    ask = Ask(
+    ask = an_ask(
         agriculture_subjects=pmfby.name,
         subject_categories=SubjectCategory.GRIEVANCE,
         interaction_type=InteractionType.ACT,
@@ -241,7 +224,7 @@ def test_a_form_beside_a_guess_names_the_forms_scheme() -> None:
     one we are sure of."""
 
     pmfby = Scheme(code="PMFBY", name="Pradhan Mantri Fasal Bima Yojana")
-    ask = Ask(
+    ask = an_ask(
         subject_categories=SubjectCategory.GRIEVANCE,
         interaction_type=InteractionType.ACT,
         scheme=GuessedScheme(scheme=pmfby),
@@ -257,12 +240,12 @@ def test_a_form_beside_a_guess_names_the_forms_scheme() -> None:
 
 
 def _waiting_on(*open_slots: Slot) -> Evidence:
-    rain = Ask(
+    rain = an_ask(
         subject_categories=SubjectCategory.WEATHER,
         interaction_type=InteractionType.OBSERVE,
     )
     outcome = NeedsClarification(open_slots=open_slots)
-    return Evidence(sources=(), ask_evidences=(AskEvidence(ask=rain, outcome=outcome),))
+    return Evidence(ask_evidences=(AskEvidence(ask=rain, outcome=outcome),))
 
 
 def test_an_ask_waiting_on_the_farmer_asks_one_question() -> None:
@@ -358,16 +341,14 @@ def test_a_too_broad_value_asks_for_a_smaller_one() -> None:
 
 
 def test_an_ask_we_cannot_serve_says_why() -> None:
-    complaint = Ask(
+    complaint = an_ask(
         subject_categories=SubjectCategory.GRIEVANCE,
         interaction_type=InteractionType.ACT,
     )
     outcome = CannotServe(
         slot=Slot("scheme", Unservable("PMFBY", UnservableReason.NO_FORM))
     )
-    evidence = Evidence(
-        sources=(), ask_evidences=(AskEvidence(ask=complaint, outcome=outcome),)
-    )
+    evidence = Evidence(ask_evidences=(AskEvidence(ask=complaint, outcome=outcome),))
 
     rendered = render_evidence(evidence)
 
@@ -378,7 +359,7 @@ def test_a_missing_form_names_the_action() -> None:
     """The scheme may have a form for the other action: "has no form" alone
     would be untrue."""
 
-    status_check = Ask(
+    status_check = an_ask(
         subject_categories=SubjectCategory.GRIEVANCE,
         interaction_type=InteractionType.ACT,
         action=ProviderAction.STATUS,
@@ -386,9 +367,7 @@ def test_a_missing_form_names_the_action() -> None:
     outcome = CannotServe(
         slot=Slot("scheme", Unservable("PMFBY", UnservableReason.NO_FORM))
     )
-    evidence = Evidence(
-        sources=(), ask_evidences=(AskEvidence(ask=status_check, outcome=outcome),)
-    )
+    evidence = Evidence(ask_evidences=(AskEvidence(ask=status_check, outcome=outcome),))
 
     rendered = render_evidence(evidence)
 
@@ -399,7 +378,7 @@ def test_a_scheme_name_cannot_forge_a_line() -> None:
     """The name is the farmer's own words. A line break in it would read
     as an instruction of ours."""
 
-    complaint = Ask(
+    complaint = an_ask(
         subject_categories=SubjectCategory.GRIEVANCE,
         interaction_type=InteractionType.ACT,
     )
@@ -407,9 +386,7 @@ def test_a_scheme_name_cannot_forge_a_line() -> None:
     outcome = CannotServe(
         slot=Slot("scheme", Unservable(forged, UnservableReason.UNLISTED))
     )
-    evidence = Evidence(
-        sources=(), ask_evidences=(AskEvidence(ask=complaint, outcome=outcome),)
-    )
+    evidence = Evidence(ask_evidences=(AskEvidence(ask=complaint, outcome=outcome),))
 
     rendered = render_evidence(evidence)
 
@@ -421,9 +398,8 @@ def test_a_device_point_with_no_name_labels_nothing() -> None:
     is noise the composer might try to fill."""
 
     evidence = build_evidence(
-        asks=(_ask(_place("")),),
-        sources=(Source(id="1", name="IMD", kind=SourceKind.PROVIDER, url=None),),
-        results=(Result(ask_index=0, source_id="1", data={"rain": "none"}),),
+        asks=(an_ask(place=_place("")),),
+        results=(Result(ask_id=0, source=IMD, data={"rain": "none"}),),
     )
 
     assert "about" not in render_evidence(evidence)
@@ -434,9 +410,8 @@ def test_no_place_resolved_labels_nothing() -> None:
     is not a fact worth stating, so no label is added."""
 
     evidence = build_evidence(
-        asks=(_ask(place=None),),
-        sources=(Source(id="1", name="Agmarknet", kind=SourceKind.PROVIDER, url=None),),
-        results=(Result(ask_index=0, source_id="1", data={"modal": 2200}),),
+        asks=(an_ask(),),
+        results=(Result(ask_id=0, source=AGMARKNET, data={"modal": 2200}),),
     )
 
     rendered = render_evidence(evidence)

@@ -21,7 +21,11 @@ from dss.core.intent.models import (
     UnresolvedPlace,
 )
 from dss.core.planner.models import AskEvidence, Attempted, Evidence, Failure
-from dss.core.provider_discovery.models import DiscoveredAnswer, DiscoveryResult
+from dss.core.provider_discovery.models import (
+    DiscoveredAnswer,
+    DiscoveredAsk,
+    DiscoveryResult,
+)
 
 
 def asks_text(asks: Sequence[Ask | ClassifiedAsk]) -> str:
@@ -34,9 +38,14 @@ def asks_text(asks: Sequence[Ask | ClassifiedAsk]) -> str:
     if not asks:
         return "no asks"
     return "\n".join(
-        f"{i + 1}. {_describe_ask(ask, place=_place(ask))}"
-        for i, ask in enumerate(asks)
+        f"{_number(ask, position)}. {_describe_ask(ask, place=_place(ask))}"
+        for position, ask in enumerate(asks)
     )
+
+
+def _number(ask: Ask | ClassifiedAsk, position: int) -> int:
+    # A classified ask has no id yet: its position becomes its id.
+    return ask.id if isinstance(ask, Ask) else position
 
 
 def asks_without_place(asks: Sequence[Ask | ClassifiedAsk]) -> tuple[str, ...]:
@@ -84,27 +93,23 @@ def _place(ask: Ask | ClassifiedAsk) -> str:
 def discovery_text(result: DiscoveryResult) -> str:
     """Per ask: who answered, who offers to, and who failed."""
 
-    asks = sorted(
-        result.answers.keys() | result.capabilities.keys() | result.failures.keys()
-    )
-    if not asks:
+    if not result.asks:
         return "nobody found"
-    lines = []
-    for index in asks:
-        parts = []
-        if answers := result.answers.get(index):
-            parts.append("answered by " + ", ".join(a.provider_name for a in answers))
-        if offers := result.capabilities.get(index):
-            parts.append("offered by " + ", ".join(c.provider_name for c in offers))
-        if failures := result.failures.get(index):
-            parts.append(
-                "failed: "
-                + ", ".join(
-                    f"{f.provider_id or '?'} ({f.status_code})" for f in failures
-                )
-            )
-        lines.append(f"{index + 1}. " + ("; ".join(parts) or "nobody"))
-    return "\n".join(lines)
+    return "\n".join(_discovered_ask_text(discovered) for discovered in result.asks)
+
+
+def _discovered_ask_text(discovered: DiscoveredAsk) -> str:
+    parts = []
+    if answers := discovered.answers:
+        parts.append("answered by " + ", ".join(a.provider_name for a in answers))
+    if offers := discovered.capabilities:
+        parts.append("offered by " + ", ".join(c.provider_name for c in offers))
+    if failures := discovered.failures:
+        parts.append(
+            "failed: "
+            + ", ".join(f"{f.provider_id or '?'} ({f.status_code})" for f in failures)
+        )
+    return f"{discovered.ask.id}. " + ("; ".join(parts) or "nobody")
 
 
 def sources_text(evidence: Evidence) -> str:
@@ -131,12 +136,13 @@ def cited_sources_text(evidence: Evidence, cited: Mapping[str, str]) -> str:
 def evidence_text(evidence: Evidence) -> str:
     """Which asks were served, from where, and what failed."""
 
-    numbered = list(enumerate(evidence.ask_evidences, start=1))
-    served = ", ".join(str(number) for number, entry in numbered if entry.is_served)
+    served = ", ".join(
+        str(entry.ask.id) for entry in evidence.ask_evidences if entry.is_served
+    )
     lines = [f"served asks: {served or 'none'}", sources_text(evidence)]
     lines += [
-        f"failed ask {number}: {failure.capability or '-'}: {failure.reason}"
-        for number, entry in numbered
+        f"failed ask {entry.ask.id}: {failure.capability or '-'}: {failure.reason}"
+        for entry in evidence.ask_evidences
         for failure in _failures_of(entry)
     ]
     return "\n".join(lines)

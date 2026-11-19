@@ -25,18 +25,19 @@ from dss.core.forms.models import (
     FormContext,
     FormDefinition,
 )
-from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
+from dss.core.intent.models import InteractionType, SubjectCategory
 from dss.core.moderation.models import ModerationDecision, Outcome, ReasonCode
 from dss.core.planner.models import AwaitingInput, Identity, Skill, Verdict
 from dss.core.planner.validation import DomainSchema
 from dss.core.provider_discovery.models import (
     DiscoveredAnswer,
-    DiscoveryResult,
     ProviderCapability,
 )
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import ConversationMessage, TextQuery, UserTurn
 from dss.orchestration.plan import build_plan
+from tests.support.asks import an_ask, numbered
+from tests.support.discovery import a_discovery, discovered
 from tests.support.evidence import attempted
 from tests.support.fakes import FakePromptProvider
 from tests.support.providers import build_capability
@@ -69,12 +70,12 @@ SKILL = Skill(
     tool_names=("select",),
 )
 
-PRICE_ASK = Ask(
+PRICE_ASK = an_ask(
     agriculture_subjects="paddy",
     subject_categories=SubjectCategory.MARKET,
     interaction_type=InteractionType.OBSERVE,
 )
-GRIEVANCE_ASK = Ask(
+GRIEVANCE_ASK = an_ask(
     agriculture_subjects="PMFBY",
     subject_categories=SubjectCategory.GRIEVANCE,
     interaction_type=InteractionType.ACT,
@@ -138,7 +139,7 @@ def _calls_select_then_answers(
                 ToolCallPart(
                     tool_name="select",
                     args={
-                        "ask_index": 0,
+                        "ask_id": 0,
                         "resource_id": "res:agmarknet:daily-price",
                         "resource_attributes": {"commodity": {"code": "PADDY"}},
                     },
@@ -163,10 +164,7 @@ async def test_plan_returns_evidence_from_what_the_tools_returned() -> None:
 
     evidence = await plan(
         _turn(),
-        intent=Intent(asks=(PRICE_ASK,), confidence=0.9),
-        discovery=DiscoveryResult(
-            answers={}, capabilities={0: (CAPABILITY,)}, failures={}, events=()
-        ),
+        discovery=a_discovery(discovered(PRICE_ASK, capabilities=(CAPABILITY,))),
         verdict=_cleared_verdict(),
     )
 
@@ -201,10 +199,7 @@ async def test_the_invocation_is_built_for_the_turn() -> None:
 
     await plan(
         turn,
-        intent=Intent(asks=(PRICE_ASK,), confidence=0.9),
-        discovery=DiscoveryResult(
-            answers={}, capabilities={0: (CAPABILITY,)}, failures={}, events=()
-        ),
+        discovery=a_discovery(discovered(PRICE_ASK, capabilities=(CAPABILITY,))),
         verdict=_cleared_verdict(),
     )
 
@@ -250,10 +245,7 @@ async def test_the_prompt_carries_the_identity_and_the_marked_history() -> None:
 
     await plan(
         turn,
-        intent=Intent(asks=(PRICE_ASK,), confidence=0.9),
-        discovery=DiscoveryResult(
-            answers={}, capabilities={0: (CAPABILITY,)}, failures={}, events=()
-        ),
+        discovery=a_discovery(discovered(PRICE_ASK, capabilities=(CAPABILITY,))),
         verdict=_cleared_verdict(),
     )
 
@@ -263,6 +255,8 @@ async def test_the_prompt_carries_the_identity_and_the_marked_history() -> None:
     assert "Can I get advisory for potato" in everything
     assert "I am from Pune" in everything
     assert "<BEGIN CONVERSATION>" in everything
+    # The catalog held no answer for the ask, so there is nothing "already known".
+    assert "Already known" not in everything
 
 
 DIRECT_ANSWER = DiscoveredAnswer(
@@ -307,10 +301,7 @@ async def test_a_direct_answer_reaches_the_evidence_through_plan() -> None:
 
     evidence = await plan(
         _turn(),
-        intent=Intent(asks=(PRICE_ASK,), confidence=0.9),
-        discovery=DiscoveryResult(
-            answers={0: (DIRECT_ANSWER,)}, capabilities={}, failures={}, events=()
-        ),
+        discovery=a_discovery(discovered(PRICE_ASK, answers=(DIRECT_ANSWER,))),
         verdict=_cleared_verdict(),
     )
 
@@ -326,7 +317,8 @@ def _must_not_run(messages: list[ModelMessage], info: AgentInfo) -> ModelRespons
 
 async def test_a_turn_with_only_form_asks_never_runs_the_agent() -> None:
     """Nothing is left to call, so a model round-trip would only cost time.
-    The form still reaches the evidence."""
+    The form still reaches the evidence. The grievance is the turn's third
+    ask: the others were not passed on."""
 
     plan = build_plan(
         schemas=SCHEMAS,
@@ -339,12 +331,13 @@ async def test_a_turn_with_only_form_asks_never_runs_the_agent() -> None:
 
     evidence = await plan(
         _turn(),
-        intent=Intent(asks=(GRIEVANCE_ASK,), confidence=0.9),
-        discovery=DiscoveryResult(
-            answers={}, capabilities={0: (CAPABILITY,)}, failures={}, events=()
+        discovery=a_discovery(
+            discovered(
+                GRIEVANCE_ASK.model_copy(update={"id": 2}), capabilities=(CAPABILITY,)
+            )
         ),
         verdict=_cleared_verdict(),
-        awaiting={0: GRIEVANCE_FORM},
+        awaiting={2: GRIEVANCE_FORM},
     )
 
     assert evidence.awaiting_forms == (GRIEVANCE_FORM,)
@@ -360,7 +353,7 @@ def _calls_select_for_ask_0_then_answers(
                 ToolCallPart(
                     tool_name="select",
                     args={
-                        "ask_index": 0,
+                        "ask_id": 0,
                         "resource_id": CAPABILITY.resource_id,
                         "resource_attributes": {},
                     },
@@ -388,14 +381,13 @@ async def test_a_model_that_still_selects_for_a_form_ask_reaches_no_provider() -
         model=FunctionModel(_calls_select_for_ask_0_then_answers),
     )
 
+    grievance, price = numbered(GRIEVANCE_ASK, PRICE_ASK)
+
     evidence = await plan(
         _turn(),
-        intent=Intent(asks=(GRIEVANCE_ASK, PRICE_ASK), confidence=0.9),
-        discovery=DiscoveryResult(
-            answers={},
-            capabilities={0: (grievance_desk,), 1: (CAPABILITY,)},
-            failures={},
-            events=(),
+        discovery=a_discovery(
+            discovered(grievance, capabilities=(grievance_desk,)),
+            discovered(price, capabilities=(CAPABILITY,)),
         ),
         verdict=_cleared_verdict(),
         awaiting={0: GRIEVANCE_FORM},
@@ -436,8 +428,7 @@ async def test_the_planner_binds_its_own_model_settings() -> None:
 
     await plan(
         _turn(),
-        intent=Intent(asks=(PRICE_ASK,), confidence=0.9),
-        discovery=DiscoveryResult(answers={}, capabilities={}, failures={}, events=()),
+        discovery=a_discovery(discovered(PRICE_ASK)),
         verdict=_cleared_verdict(),
     )
 
@@ -470,10 +461,7 @@ async def test_a_rejected_turn_yields_empty_evidence() -> None:
 
     evidence = await plan(
         _turn(),
-        intent=Intent(asks=(PRICE_ASK,), confidence=0.9),
-        discovery=DiscoveryResult(
-            answers={}, capabilities={0: (CAPABILITY,)}, failures={}, events=()
-        ),
+        discovery=a_discovery(discovered(PRICE_ASK, capabilities=(CAPABILITY,))),
         verdict=verdict,
     )
 
@@ -523,10 +511,7 @@ async def test_a_planner_run_that_fails_still_records_what_it_spent() -> None:
     with pytest.raises(RuntimeError, match="the model went away"):
         await plan(
             _turn(),
-            intent=Intent(asks=(PRICE_ASK,), confidence=0.9),
-            discovery=DiscoveryResult(
-                answers={}, capabilities={0: (CAPABILITY,)}, failures={}, events=()
-            ),
+            discovery=a_discovery(discovered(PRICE_ASK, capabilities=(CAPABILITY,))),
             verdict=_cleared_verdict(),
         )
 
@@ -549,10 +534,7 @@ async def test_the_planner_run_is_logged_before_and_after(caplog) -> None:
     with caplog.at_level(logging.INFO, logger="dss.trace"):
         await plan(
             _turn(),
-            intent=Intent(asks=(PRICE_ASK,), confidence=0.9),
-            discovery=DiscoveryResult(
-                answers={0: (DIRECT_ANSWER,)}, capabilities={}, failures={}, events=()
-            ),
+            discovery=a_discovery(discovered(PRICE_ASK, answers=(DIRECT_ANSWER,))),
             verdict=_cleared_verdict(),
         )
 

@@ -130,8 +130,8 @@
      Scanning `query_results` once instead would fix it.
 
   Fixing (1) alone does not fix (2): two asks in different categories can
-  still resolve to the same `@type` set and dedupe to one query. Whether the
-  per-ask dict is the right response shape at all is the real question.
+  still resolve to the same `@type` set and dedupe to one query. Each
+  `DiscoveredAsk` now keeps its query, so the scan can run once per query.
 
 - **network-specs refresh.** `scripts/fetch_schema_packs.py` now pulls the
   packs onto disk, and the composition root fetches once when the directory is
@@ -179,20 +179,11 @@
   pack of the category needs one. So a Crop ask that only the facility pack
   can answer is never asked for its place. When the mapping is fixed, change
   the rule in the same change: with one pack per category it is just "the
-  pack needs a place".
+  pack needs a place". Remove the place check in the planner's `select` tool
+  then too: settlement will cover every case.
 
 ## Place resolution (#130) — deferred to separate PRs
 
-- **An ask has no type of its own after discovery.** Its options, place
-  status and failures sit in separate collections keyed by its index: three
-  dicts on `DiscoveryResult`, the place failures, and the place-optional set.
-  Every rule joins them by index, and the branching (no place and every
-  option needs one; no option at all) is spread across
-  `core/planner/place.py`, `core/planner/evidence.py` and
-  `core/channel/service.py`. Fix: one per-ask object built right after
-  discovery, holding its options and its state (answerable, needs a place,
-  nobody serves it). Keep `DiscoveryResult` as is: results come back per
-  query and are split per ask.
 - **A reply can bring back a place we already answered (#131).**
   - Example: "Weather in Pune and Aurangabad". We answer Pune and ask which
     Aurangabad. The farmer replies "2".
@@ -242,38 +233,49 @@
 
 ## Ask identity
 
-- **Pass the ask itself, not its index.** Results, failures, forms,
-  discovery and the planner's tools all name an ask by its position in
-  `intent.asks`, so any step that branches has to keep positions lined up by
-  hand. #243 works around it by running only the settled asks through
-  discovery and the planner as their own `Intent`, then merging their
-  evidence back with the unsettled asks. Direction: each stage's output
-  carries its ask, as `AskEvidence` already does, so a step can pass on just
-  the asks it means and the merge goes.
-
-- **`ask_index` is wrong after the merge.** `merge_unsettled` puts every ask
-  back in the farmer's order. But a `Result` or `Failure` keeps the number it
-  had among the settled asks only. With the asks [needs a place, settled],
-  the settled ask's result says `ask_index == 0`, which is the other ask.
-  Nothing reads the number after the merge today. The item above removes it.
-
 - **Give `Evidence` its own package.** It lives in `core/planner/` because
   the planner was its first producer, but the form step and settlement add
   outcomes to it too. Move `Evidence`, `AskEvidence`, `AskOutcome`,
   `group_by_ask` and `merge_unsettled` to `core/evidence/`, so no stage
   looks like the owner.
 
+- **Drop an ask that repeats another.** "Tell me the weather and tell me the
+  weather" gives two asks that differ only by `id`, so the user can get the
+  same answer twice. Drop the repeat in `resolve_places`, after places are
+  resolved and before ids are given: two asks with different places are not
+  repeats. Changes replies, so it is its own story.
+  - "Weather today and tomorrow" also gives two same asks, because an ask
+    has no field for time. Dropping one is safe: both search the same thing
+    and the composer reads the user's words. The real gap is that an ask
+    cannot say what makes it different.
+  - Repeats are handled late today, piece by piece: discovery sends one
+    query for asks that search the same thing, and the "no provider" reply
+    names a place once. Check whether those can go once this is in.
+
+- **The form step gives back a dict of ask id to form.** It is the last
+  per-ask fact kept beside the asks. It can give back
+  `AskEvidence(ask, AwaitingInput(form))`, which needs no new type.
+
+- **`AskPriority.ask_id` repeats its ask.** The priority sits on a
+  `DiscoveredAsk`, which holds the ask. Only the ranking log line reads the
+  field.
+
 ## Settlement (#243)
 
-- **An ask and its settlement are matched by position.** `TurnResult` holds
-  the asks and the settlements as two lists. One built with a missing or
-  short settlements list passes `is_every_ask_settled` and then fails in
-  `settled_intent`, far from where it was built. Pair them in one type,
-  `AskSettlement` (an ask with its settlement), as `AskEvidence` pairs an ask
-  with its outcome. `settle_asks` returns the pairs, `TurnResult` holds only
-  the pairs and the confidence, and `intent` is read from them. The three
-  `zip(strict=True)` calls go, and `merge_unsettled` no longer takes the
-  intent. Its own PR.
+- **`TurnResult` holds the asks twice.** They are in `intent` and in the
+  `AskSettlement` pairs. One built with asks and no pairs passes
+  `is_every_ask_settled`, and the farmer is told nobody serves asks that were
+  never checked. No step after intent takes an `Intent` now, so only
+  `TurnResult` still holds one. Its own PR:
+  - `TurnResult` holds the pairs and the intent's confidence. Its `intent`
+    field goes.
+  - A type in `core/settlement`, `AskSettlements`, holds the pairs and
+    answers `asks`, `settled_asks` and `is_every_ask_settled`. Those leave
+    `TurnResult`.
+  - Cost: a new turn-level field on `Intent` must be added to `TurnResult`
+    by hand.
+  - Left for later: a turn that moderation stopped as its own type, so three
+    fields are not blanked by hand.
 - **A type for scheme codes.** A scheme's code and its name are both plain
   strings, so one can be passed where the other is wanted. Add
   `SchemeCode = NewType("SchemeCode", str)` for `Scheme.code`,

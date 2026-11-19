@@ -4,7 +4,7 @@ import copy
 import re
 from collections import Counter
 from collections.abc import Callable, Container, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import datetime
 from http import HTTPStatus
 from uuid import uuid4
@@ -41,7 +41,7 @@ from dss.core.forms.models import (
     ValidSubmission,
 )
 from dss.core.forms.registry import FormLookup, FormRegistry
-from dss.core.intent.models import Intent
+from dss.core.intent.models import Ask
 from dss.core.planner.models import Failure
 from dss.core.provider_discovery.models import DiscoveryResult, ProviderCapability
 from dss.core.redaction.visibility import Visibility
@@ -585,11 +585,11 @@ def end_for_already_filed(text: ClarificationText) -> FlowEnding:
     )
 
 
-def end_for_no_provider(intent: Intent, text: ClarificationText) -> FlowEnding:
+def end_for_no_provider(ask: Ask, text: ClarificationText) -> FlowEnding:
     return FlowEnding(
         status=TurnStatus.NO_MATCH,
         cause=None,
-        answer=answer_for_unserved_asks(intent.asks, text),
+        answer=answer_for_unserved_asks((ask,), text),
     )
 
 
@@ -745,12 +745,10 @@ def candidates_for_scheme(
 def discovery_for_scheme(
     discovery: DiscoveryResult, scheme_code: str
 ) -> DiscoveryResult:
-    return replace(
-        discovery,
-        capabilities={
-            position: candidates_for_scheme(candidates, scheme_code)
-            for position, candidates in discovery.capabilities.items()
-        },
+    return discovery.with_each_ask(
+        lambda ask: ask.with_capabilities(
+            candidates_for_scheme(ask.capabilities, scheme_code)
+        )
     )
 
 
