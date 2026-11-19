@@ -17,6 +17,7 @@ import shutil
 import tempfile
 import urllib.error
 import urllib.request
+from collections.abc import Mapping
 from pathlib import Path
 
 _REPO = "OpenAgriNet/network-specs"
@@ -30,13 +31,6 @@ _VERSION = "v0.1"
 # The branch the published site is built from. Pages cannot list a
 # directory, so the Contents API lists the examples on this branch instead.
 _PUBLISHED_BRANCH = "main"
-
-# Every download error reads as "not there", so nothing published means the
-# fetch could not reach the site, not that the packs are missing.
-_UNREACHABLE_HINT = (
-    " Check that openagrinet.github.io is reachable, and set GITHUB_TOKEN if"
-    " api.github.com rate-limits the examples listing."
-)
 
 # Where the packs go. Anchored to this file, not the working directory: the
 # service is started with `uvicorn --factory` from wherever the operator
@@ -84,12 +78,6 @@ def pack_file_url(*, pack: str, filename: str, host: str = _PAGES_HOST) -> str:
 
 
 def examples_api_url(*, pack: str, host: str = _API_HOST) -> str:
-    """Where to list a pack's `examples/` directory.
-
-    The example filenames vary per pack and plain HTTP cannot list a
-    directory, so this is the one API call per pack.
-    """
-
     return (
         f"{host}/repos/{_REPO}/contents/schema/{pack}/{_VERSION}/examples"
         f"?ref={_PUBLISHED_BRANCH}"
@@ -133,13 +121,6 @@ def fetch_packs(
 def _download_pack(
     pack: str, *, pages_host: str, api_host: str
 ) -> dict[str, bytes] | None:
-    """Every file of one pack, keyed by its path within the version directory.
-
-    `None` when the pack is not published — the two essential files are what
-    decides that. The other four are optional:
-    unread today, but fetched so the on-disk tree mirrors upstream.
-    """
-
     files: dict[str, bytes] = {}
     for filename in _ESSENTIAL_FILES:
         body = _get(pack_file_url(pack=pack, filename=filename, host=pages_host))
@@ -171,7 +152,7 @@ def _example_names(pack: str, *, api_host: str) -> tuple[str, ...]:
     pack but not the boot.
     """
 
-    body = _get(examples_api_url(pack=pack, host=api_host))
+    body = _get(examples_api_url(pack=pack, host=api_host), headers=_api_headers())
     if body is None:
         return ()
     try:
@@ -187,18 +168,14 @@ def _example_names(pack: str, *, api_host: str) -> tuple[str, ...]:
     )
 
 
-def _get(url: str) -> bytes | None:
-    """The body at `url`, or None if it is not there.
-
-    A 404 is the ordinary answer for "this pack is not published", so it is
-    data rather than an error. `GITHUB_TOKEN` is used
-    when set: unauthenticated Contents API calls are capped at 60 an hour.
-    """
-
-    request = urllib.request.Request(url)  # noqa: S310 - URL is built from fixed https hosts
+def _api_headers() -> Mapping[str, str]:
+    # Unauthenticated Contents API calls are capped at 60 an hour.
     token = os.environ.get("GITHUB_TOKEN")
-    if token and url.startswith(f"{_API_HOST}/"):
-        request.add_header("Authorization", f"Bearer {token}")
+    return {"Authorization": f"Bearer {token}"} if token else {}
+
+
+def _get(url: str, *, headers: Mapping[str, str] | None = None) -> bytes | None:
+    request = urllib.request.Request(url, headers=dict(headers or {}))  # noqa: S310 - URL is built from fixed https hosts
     try:
         with urllib.request.urlopen(request, timeout=_TIMEOUT_SECONDS) as response:  # noqa: S310 - URL is built from fixed https hosts
             return response.read()
@@ -235,5 +212,7 @@ def raise_for_empty(*, fetched: tuple[str, ...]) -> None:
     if fetched:
         return
     raise SchemaPackFetchFailedError(
-        f"no published schema packs found (0 of {len(PACKS)}).{_UNREACHABLE_HINT}"
+        f"no published schema packs found (0 of {len(PACKS)})."
+        " Check that openagrinet.github.io is reachable, and set GITHUB_TOKEN if"
+        " api.github.com rate-limits the examples listing."
     )

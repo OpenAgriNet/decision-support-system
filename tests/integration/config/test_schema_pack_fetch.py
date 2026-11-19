@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from pytest_httpserver import HTTPServer
 
 from dss.adapters.schema_packs.filesystem import FilesystemSchemaPackSource
@@ -55,46 +56,55 @@ def _serve_one_pack(httpserver: HTTPServer) -> None:
     ).respond_with_json([{"name": "onion.json", "type": "file"}])
 
 
-def _host(httpserver: HTTPServer) -> str:
-    return httpserver.url_for("").rstrip("/")
+async def test_the_published_tree_is_one_the_loader_reads(
+    httpserver: HTTPServer, tmp_path: Path
+) -> None:
+    _serve_one_pack(httpserver)
+    host = httpserver.url_for("").rstrip("/")
 
+    written = fetch_packs(
+        dest=tmp_path, packs=("MandiPrice",), pages_host=host, api_host=host
+    )
 
-async def _assert_loader_reads_mandi_price(root: Path) -> None:
-    packs = await FilesystemSchemaPackSource(root=root).fetch_packs()
+    assert written == ("MandiPrice",)
+    packs = await FilesystemSchemaPackSource(root=tmp_path).fetch_packs()
     pack = next(p for p in packs if p.pack_name == "MandiPrice")
     assert pack.version == "v0.1"
     assert pack.examples_json == (_EXAMPLE,)
     assert pack.flattened_fields["informationMode"].enum == ("OnDemand", "Direct")
 
 
-async def test_the_published_tree_is_one_the_loader_reads(
-    httpserver: HTTPServer, tmp_path: Path
-) -> None:
-    _serve_one_pack(httpserver)
-
-    written = fetch_packs(
-        dest=tmp_path,
-        packs=("MandiPrice",),
-        pages_host=_host(httpserver),
-        api_host=_host(httpserver),
-    )
-
-    assert written == ("MandiPrice",)
-    await _assert_loader_reads_mandi_price(tmp_path)
-
-
 async def test_the_destination_does_not_have_to_exist(
     httpserver: HTTPServer, tmp_path: Path
 ) -> None:
     _serve_one_pack(httpserver)
+    host = httpserver.url_for("").rstrip("/")
     absent = tmp_path / "never" / "created"
 
     written = fetch_packs(
-        dest=absent,
-        packs=("MandiPrice",),
-        pages_host=_host(httpserver),
-        api_host=_host(httpserver),
+        dest=absent, packs=("MandiPrice",), pages_host=host, api_host=host
     )
 
     assert written == ("MandiPrice",)
     assert (absent / "MandiPrice" / "v0.1" / "attributes.yaml").exists()
+
+
+def test_github_token_goes_only_to_the_examples_listing(
+    httpserver: HTTPServer, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "secret")
+    _serve_one_pack(httpserver)
+    host = httpserver.url_for("").rstrip("/")
+
+    fetch_packs(dest=tmp_path, packs=("MandiPrice",), pages_host=host, api_host=host)
+
+    authorization_by_path = {
+        request.path: request.headers.get("Authorization")
+        for request, _response in httpserver.log
+    }
+    listing = (
+        "/repos/OpenAgriNet/network-specs/contents/schema/MandiPrice/v0.1/examples"
+    )
+    assert authorization_by_path.pop(listing) == "Bearer secret"
+    assert authorization_by_path
+    assert set(authorization_by_path.values()) == {None}

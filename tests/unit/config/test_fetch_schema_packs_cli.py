@@ -16,13 +16,6 @@ from scripts.fetch_schema_packs import main
 
 
 def test_a_failed_fetch_exits_non_zero(monkeypatch, tmp_path: Path) -> None:
-    """The script's whole reason to exist.
-
-    A fetch that finds nothing raises, and the message already says what to
-    check. The script's job is to turn that into an exit code the shell
-    can act on, and to print the reason rather than a traceback.
-    """
-
     def refuses(**_kwargs):
         raise SchemaPackFetchFailedError("no published schema packs found (0 of 6).")
 

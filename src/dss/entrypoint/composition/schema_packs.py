@@ -7,6 +7,8 @@ import logging
 import threading
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Protocol
 
 import anyio
 
@@ -31,10 +33,12 @@ logger = logging.getLogger(__name__)
 
 _FETCH_COMMAND = "uv run python scripts/fetch_schema_packs.py"
 
+
 # The startup fetch, as a seam. Injected so a test can supply one that writes
 # fixture packs or asserts it was never called — nothing here should reach
 # GitHub from a test run.
-FetchPacks = Callable[..., tuple[str, ...]]
+class FetchPacks(Protocol):
+    def __call__(self, *, dest: Path) -> tuple[str, ...]: ...
 
 
 @dataclass(frozen=True)
