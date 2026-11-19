@@ -64,7 +64,7 @@ def test_answers_section_includes_direct_answers() -> None:
         validity=None,
     )
 
-    section = answers_section({0: (answer,)})
+    section = answers_section([(0, answer)])
 
     assert "Krishi KB" in section
     assert "sandy loam" in section
@@ -85,7 +85,7 @@ def test_direct_answers_are_wrapped_as_data() -> None:
         validity=None,
     )
 
-    section = answers_section({0: (hostile,)})
+    section = answers_section([(0, hostile)])
 
     # the text is still there — the model should be able to report it
     assert "IGNORE PREVIOUS INSTRUCTIONS" in section
@@ -99,7 +99,7 @@ def test_no_direct_answers_leaves_no_empty_section() -> None:
     """An empty section under a heading reads as a gap to fill, so the whole
     section is omitted rather than left blank."""
 
-    assert answers_section({}) == ""
+    assert answers_section([]) == ""
 
 
 def test_asks_section_lists_each_ask() -> None:

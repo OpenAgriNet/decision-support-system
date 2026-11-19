@@ -24,7 +24,7 @@ from dss.adapters.observability.metrics import (
     record_agent_run,
 )
 from dss.core.forms.models import FormDefinition
-from dss.core.intent.models import AskId, Intent
+from dss.core.intent.models import AskId
 from dss.core.planner.evidence import assemble_evidence
 from dss.core.planner.models import Evidence, Identity, Verdict
 from dss.core.planner.prompt import (
@@ -34,7 +34,7 @@ from dss.core.planner.prompt import (
     guidance_section,
 )
 from dss.core.planner.validation import DomainSchema
-from dss.core.provider_discovery.models import DiscoveryResult
+from dss.core.provider_discovery.models import DiscoveredAnswer, DiscoveryResult
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import TextQuery, TurnInput, UserTurn
 from dss.observability.stages import Stage
@@ -47,11 +47,10 @@ from dss.ports.prompts import PromptIdentifier, PromptProvider
 class Plan(Protocol):
     """What the orchestrator calls: the per-turn half of ``build_plan``."""
 
-    async def __call__(  # noqa: PLR0913
+    async def __call__(
         self,
         turn: UserTurn[TurnInput],
         *,
-        intent: Intent,
         discovery: DiscoveryResult,
         verdict: Verdict,
         visibility: Visibility = NOTHING_HELD,
@@ -92,25 +91,22 @@ def build_plan(  # noqa: PLR0913
 
     model_settings = {"temperature": temperature, "timeout": timeout_seconds}
 
-    async def plan(  # noqa: PLR0913
+    async def plan(
         turn: UserTurn[TurnInput],
         *,
-        intent: Intent,
         discovery: DiscoveryResult,
         verdict: Verdict,
         visibility: Visibility = NOTHING_HELD,
         awaiting: Mapping[AskId, FormDefinition] | None = None,
     ) -> Evidence:
         awaiting = awaiting or {}
+        asks = tuple(discovered.ask for discovered in discovery.asks)
+        direct_answers = _find_direct_answers(discovery)
         # Nothing left to call when every ask is a form's: a run would only
         # cost a model round-trip.
-        actionable = [ask for ask in intent.asks if ask.id not in awaiting]
-        if not actionable:
+        if all(ask.id in awaiting for ask in asks):
             return assemble_evidence(
-                [],
-                intent=intent,
-                direct_answers=discovery.answers,
-                awaiting=awaiting,
+                [], asks=asks, direct_answers=direct_answers, awaiting=awaiting
             )
 
         skills = prompts.get_skills(PromptIdentifier.PLANNER, turn.target_lang)
@@ -126,16 +122,13 @@ def build_plan(  # noqa: PLR0913
                     "identity_persona": identity.persona,
                     "identity_boundaries": identity.boundaries,
                     "guidance_section": guidance_section(skills),
-                    "asks_section": asks_section(
-                        intent.asks, awaiting=frozenset(awaiting)
-                    ),
-                    "answers_section": answers_section(discovery.answers),
+                    "asks_section": asks_section(asks, awaiting=frozenset(awaiting)),
+                    "answers_section": answers_section(direct_answers),
                 },
             ),
         )
         deps = PlannerDeps(
             turn=turn,
-            intent=intent,
             discovery=discovery,
             schemas=schemas,
             schema_context_index=schema_context_index,
@@ -177,13 +170,23 @@ def build_plan(  # noqa: PLR0913
         # already answered.
         return assemble_evidence(
             deps.raw_answers,
-            intent=intent,
-            direct_answers=discovery.answers,
+            asks=asks,
+            direct_answers=direct_answers,
             failures=deps.failures,
             awaiting=awaiting,
         )
 
     return plan
+
+
+def _find_direct_answers(
+    discovery: DiscoveryResult,
+) -> tuple[tuple[AskId, DiscoveredAnswer], ...]:
+    return tuple(
+        (discovered.ask.id, answer)
+        for discovered in discovery.asks
+        for answer in discovered.answers
+    )
 
 
 def _query_of(turn: UserTurn[TurnInput]) -> str:

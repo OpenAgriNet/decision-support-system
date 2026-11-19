@@ -19,7 +19,7 @@ from dotenv import dotenv_values
 from dss.config.identity_loader import load_identity
 from dss.config.prompt_service import build_prompt_service
 from dss.config.settings import Settings
-from dss.core.intent.models import Intent, InteractionType, SubjectCategory
+from dss.core.intent.models import InteractionType, SubjectCategory
 from dss.core.moderation.models import ModerationDecision, Outcome
 from dss.core.planner.models import Verdict
 from dss.core.planner.validation import DomainSchema
@@ -28,12 +28,12 @@ from dss.core.provider_discovery.models import (
     DiscoveryResult,
     ProviderCapability,
 )
-from dss.core.provider_preferences.models import AskPriority
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import TextQuery, UserTurn
 from dss.entrypoint.composition.root import _resolve_model
 from dss.orchestration.plan import build_plan
 from tests.support.asks import an_ask
+from tests.support.discovery import a_discovery, a_priority, discovered
 from tests.support.evidence import attempted
 from tests.support.live_model import missing_model_key
 from tests.support.providers import build_capability
@@ -142,22 +142,12 @@ class _ScriptedInvocation:
 
 def _ranked_discovery() -> DiscoveryResult:
     ranking = (PREFERRED, NEXT_PREFERRED)
-    return DiscoveryResult(
-        answers={0: ()},
-        capabilities={0: tuple(_capability(provider) for provider in ranking)},
-        failures={0: ()},
-        events=(),
-        priorities={
-            0: AskPriority(
-                ask_id=0,
-                capability="Crop",
-                sender_id="kisan-mitra-web",
-                source="sender",
-                ranking=ranking,
-                kept=ranking,
-                dropped=(),
-            )
-        },
+    return a_discovery(
+        discovered(
+            BLIGHT_ASK,
+            capabilities=tuple(_capability(provider) for provider in ranking),
+            priority=a_priority(*ranking, capability="Crop"),
+        )
     )
 
 
@@ -203,7 +193,6 @@ async def _find_answering_providers(
 
     evidence = await plan(
         _turn(),
-        intent=Intent(asks=(BLIGHT_ASK,), confidence=0.9),
         discovery=_ranked_discovery(),
         verdict=_cleared_verdict(),
     )

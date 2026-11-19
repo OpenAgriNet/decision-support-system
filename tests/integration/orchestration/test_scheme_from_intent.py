@@ -7,20 +7,21 @@ handed. The code check itself is tier 1.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from dss.core.intent.models import (
+    Ask,
     ClassifiedAsk,
-    Intent,
     IntentClassification,
     InteractionType,
     Scheme,
     SchemeConfidence,
     SubjectCategory,
 )
-from dss.core.provider_discovery.models import DiscoveryResult
 from dss.core.shared.models import TextQuery, UserTurn
 from dss.orchestration.turn import run_turn
+from tests.support.discovery import a_discovery
 from tests.support.fakes import FakeAreaLookup, FakePromptProvider, FakeSchemeCatalog
 from tests.support.settlement import settles_every_ask
 
@@ -66,14 +67,14 @@ class _FakeLLM:
 
 
 class _RecordingDiscovery:
-    """Captures the intent discovery was actually handed."""
+    """Captures the asks discovery was actually handed."""
 
     def __init__(self) -> None:
-        self.seen: Intent | None = None
+        self.seen: tuple[Ask, ...] | None = None
 
-    async def __call__(self, intent: Intent, turn: UserTurn, *, now: datetime):
-        self.seen = intent
-        return DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
+    async def __call__(self, asks: Sequence[Ask], turn: UserTurn, *, now: datetime):
+        self.seen = tuple(asks)
+        return a_discovery()
 
 
 async def _run(classification: IntentClassification, *, catalog):
@@ -107,7 +108,7 @@ async def test_discovery_receives_the_scheme_intent_named() -> None:
     )
 
     assert discovery.seen is not None
-    (ask,) = discovery.seen.asks
+    (ask,) = discovery.seen
     assert ask.scheme == PMFBY
     assert ask.agriculture_subjects == PMFBY.name
     # The model's category stands; nothing after intent changes it.
@@ -120,7 +121,7 @@ async def test_no_catalog_means_no_scheme_and_the_turn_still_runs() -> None:
 
     result, discovery, prompts = await _run(_grievance("PMFBY"), catalog=None)
 
-    assert discovery.seen.asks[0].scheme is None
-    assert discovery.seen.asks[0].agriculture_subjects == "fasal bima"
+    assert discovery.seen[0].scheme is None
+    assert discovery.seen[0].agriculture_subjects == "fasal bima"
     (intent_call,) = [call for call in prompts.calls if call[0].value == "intent"]
     assert intent_call[2]["schemes"] == ()

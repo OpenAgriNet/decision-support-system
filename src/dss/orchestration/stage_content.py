@@ -21,7 +21,11 @@ from dss.core.intent.models import (
     UnresolvedPlace,
 )
 from dss.core.planner.models import AskEvidence, Attempted, Evidence, Failure
-from dss.core.provider_discovery.models import DiscoveredAnswer, DiscoveryResult
+from dss.core.provider_discovery.models import (
+    DiscoveredAnswer,
+    DiscoveredAsk,
+    DiscoveryResult,
+)
 
 
 def asks_text(asks: Sequence[Ask | ClassifiedAsk]) -> str:
@@ -89,27 +93,23 @@ def _place(ask: Ask | ClassifiedAsk) -> str:
 def discovery_text(result: DiscoveryResult) -> str:
     """Per ask: who answered, who offers to, and who failed."""
 
-    ask_ids = sorted(
-        result.answers.keys() | result.capabilities.keys() | result.failures.keys()
-    )
-    if not ask_ids:
+    if not result.asks:
         return "nobody found"
-    lines = []
-    for ask_id in ask_ids:
-        parts = []
-        if answers := result.answers.get(ask_id):
-            parts.append("answered by " + ", ".join(a.provider_name for a in answers))
-        if offers := result.capabilities.get(ask_id):
-            parts.append("offered by " + ", ".join(c.provider_name for c in offers))
-        if failures := result.failures.get(ask_id):
-            parts.append(
-                "failed: "
-                + ", ".join(
-                    f"{f.provider_id or '?'} ({f.status_code})" for f in failures
-                )
-            )
-        lines.append(f"{ask_id}. " + ("; ".join(parts) or "nobody"))
-    return "\n".join(lines)
+    return "\n".join(_discovered_ask_text(discovered) for discovered in result.asks)
+
+
+def _discovered_ask_text(discovered: DiscoveredAsk) -> str:
+    parts = []
+    if answers := discovered.answers:
+        parts.append("answered by " + ", ".join(a.provider_name for a in answers))
+    if offers := discovered.capabilities:
+        parts.append("offered by " + ", ".join(c.provider_name for c in offers))
+    if failures := discovered.failures:
+        parts.append(
+            "failed: "
+            + ", ".join(f"{f.provider_id or '?'} ({f.status_code})" for f in failures)
+        )
+    return f"{discovered.ask.id}. " + ("; ".join(parts) or "nobody")
 
 
 def sources_text(evidence: Evidence) -> str:

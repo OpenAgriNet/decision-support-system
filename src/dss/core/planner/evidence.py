@@ -19,7 +19,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import replace
 
 from dss.core.forms.models import FormDefinition
-from dss.core.intent.models import Ask, AskId, Intent
+from dss.core.intent.models import Ask, AskId
 from dss.core.planner.models import (
     AskEvidence,
     AskOutcome,
@@ -38,8 +38,8 @@ from dss.core.settlement.models import AskSettlement, Settled
 def assemble_evidence(
     raw_answers: Sequence[tuple[AskId, DiscoveredAnswer]],
     *,
-    intent: Intent,
-    direct_answers: Mapping[AskId, tuple[DiscoveredAnswer, ...]] | None = None,
+    asks: Sequence[Ask],
+    direct_answers: Sequence[tuple[AskId, DiscoveredAnswer]] = (),
     failures: Sequence[Failure] = (),
     awaiting: Mapping[AskId, FormDefinition] | None = None,
 ) -> Evidence:
@@ -49,7 +49,7 @@ def assemble_evidence(
     same way:
 
     - ``raw_answers`` — what the loop's ``select`` calls returned.
-    - ``direct_answers`` — ``DiscoveryResult.answers``, values the catalog
+    - ``direct_answers`` — what discovery found that the catalog
       already holds. These never appear in ``raw_answers``, because a Direct
       resource needs no call. Leaving them out meant an ask the catalog had
       already answered reached the planner's prompt and then vanished: the
@@ -76,13 +76,7 @@ def assemble_evidence(
     sources: list[Source] = []
     results: list[Result] = []
 
-    direct = [
-        (ask_id, answer)
-        for ask_id, ask_answers in (direct_answers or {}).items()
-        for answer in ask_answers
-    ]
-
-    for ask_id, answer in [*direct, *raw_answers]:
+    for ask_id, answer in [*direct_answers, *raw_answers]:
         origin = (answer.provider_id, answer.source_id)
         source_id = source_id_by_origin.get(origin)
         if source_id is None:
@@ -107,7 +101,7 @@ def assemble_evidence(
     return Evidence(
         sources=tuple(sources),
         ask_evidences=group_by_ask(
-            intent.asks, results=results, failures=failures, awaiting=awaiting
+            asks, results=results, failures=failures, awaiting=awaiting
         ),
     )
 

@@ -49,6 +49,7 @@ from tests.integration.orchestration.test_orchestrator import (
     _Telemetry,
     _turn,
 )
+from tests.support.discovery import a_discovery
 from tests.support.fakes import (
     FakeAreaLookup,
     FakeLocalizer,
@@ -143,7 +144,7 @@ async def test_a_refused_turn_never_reaches_the_composer() -> None:
     nothing to release early — and the composer must not be spent on one."""
 
     compose = _FakeCompose(WHOLE, chunks=CHUNKS)
-    empty = DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
+    empty = a_discovery()
     orch, _ = _build(compose=compose, discovery=empty)
 
     events = await _collect(orch)

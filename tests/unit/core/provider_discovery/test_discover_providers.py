@@ -11,7 +11,6 @@ import pytest
 
 from dss.core.intent.models import (
     Ask,
-    Intent,
     InteractionType,
     PlaceSource,
     ResolvedPlace,
@@ -19,6 +18,7 @@ from dss.core.intent.models import (
     UnresolvedPlace,
 )
 from dss.core.provider_discovery.models import (
+    NOTHING_FOUND,
     AskDiscoveryFailed,
     AskUnservable,
     CapabilityUnresolved,
@@ -37,6 +37,7 @@ from dss.core.provider_discovery.models import (
 from dss.core.provider_discovery.service import discover_providers
 from dss.core.shared.models import Geometry, ProviderAction, TextQuery, UserTurn
 from tests.support.asks import an_ask, numbered
+from tests.support.discovery import a_discovery
 from tests.support.providers import build_capability
 
 NOW = datetime(2026, 8, 26, 12, 0, 0, tzinfo=UTC)
@@ -100,32 +101,20 @@ async def test_a_single_ask_resolves_and_returns_the_discovery_result() -> None:
         subject_categories=SubjectCategory.MARKET,
         interaction_type=InteractionType.OBSERVE,
     )
-    intent = Intent(asks=(ask,), confidence=0.9)
     turn = _turn()
     schema_pack_cache = _FakeSchemaPackCache(
         {("Market", "Service"): ("openagrinet:MandiPrice",)}
     )
-    expected_result = DiscoveryResult(
-        answers={0: ()},
-        capabilities={
-            0: (
-                build_capability(
-                    provider_id="mausamgram",
-                    provider_name="IMD",
-                    capability="openagrinet:MandiPrice",
-                    resource_id="r1",
-                ),
-            )
-        },
-        failures={0: ()},
-        events=(),
+    offered = build_capability(
+        provider_id="mausamgram",
+        provider_name="IMD",
+        capability="openagrinet:MandiPrice",
+        resource_id="r1",
     )
-    discovery = _FakeDiscovery(
-        _query_result(capabilities=expected_result.capabilities[0])
-    )
+    discovery = _FakeDiscovery(_query_result(capabilities=(offered,)))
 
     result = await discover_providers(
-        intent,
+        (ask,),
         turn,
         discovery=discovery,
         schema_pack_cache=schema_pack_cache,
@@ -133,7 +122,10 @@ async def test_a_single_ask_resolves_and_returns_the_discovery_result() -> None:
         now=NOW,
     )
 
-    assert result == expected_result
+    (discovered_ask,) = result.asks
+    assert discovered_ask.ask == ask
+    assert discovered_ask.capabilities == (offered,)
+    assert discovered_ask.is_served
     assert len(discovery.calls) == 1
     query, transaction_id = discovery.calls[0]
     assert query.capabilities == ("openagrinet:MandiPrice",)
@@ -145,13 +137,13 @@ async def test_an_unresolved_ask_never_calls_discover() -> None:
         subject_categories=SubjectCategory.FACILITY,
         interaction_type=InteractionType.ACT,
     )
-    intent = Intent(asks=(ask,), confidence=0.7)
+    asks = (ask,)
     turn = _turn()
     schema_pack_cache = _FakeSchemaPackCache({})
     discovery = _FakeDiscovery(_query_result())
 
     result = await discover_providers(
-        intent,
+        asks,
         turn,
         discovery=discovery,
         schema_pack_cache=schema_pack_cache,
@@ -160,9 +152,10 @@ async def test_an_unresolved_ask_never_calls_discover() -> None:
     )
 
     assert discovery.calls == []
-    assert result.answers == {0: ()}
-    assert result.capabilities == {0: ()}
-    assert result.failures == {0: ()}
+    (never_searched,) = result.asks
+    assert never_searched.ask == ask
+    assert never_searched.query is None
+    assert never_searched.found == NOTHING_FOUND
     assert result.events == (CapabilityUnresolved("Facility", "Service"),)
 
 
@@ -176,7 +169,7 @@ async def _discover_in_xyzzy(
     )
     discovery = _FakeDiscovery(_query_result())
     result = await discover_providers(
-        Intent(asks=(ask,), confidence=0.9),
+        (ask,),
         _turn(),
         discovery=discovery,
         schema_pack_cache=_FakeSchemaPackCache(
@@ -198,8 +191,9 @@ async def test_an_ask_whose_place_failed_is_never_discovered() -> None:
     )
 
     assert discovery.calls == []
-    assert result.answers == {0: ()}
-    assert result.capabilities == {0: ()}
+    (unsearched,) = result.asks
+    assert unsearched.answers == ()
+    assert unsearched.capabilities == ()
 
 
 async def test_an_unclear_place_does_not_stop_a_placeless_search() -> None:
@@ -225,7 +219,7 @@ async def test_a_how_to_with_an_action_is_searched_as_a_service() -> None:
     discovery = _FakeDiscovery(_query_result())
 
     await discover_providers(
-        Intent(asks=(how_to_file,), confidence=0.9),
+        (how_to_file,),
         _turn(),
         discovery=discovery,
         schema_pack_cache=_FakeSchemaPackCache(
@@ -249,7 +243,7 @@ async def test_scheme_ask_ignores_unclear_place() -> None:
     discovery = _FakeDiscovery(_query_result())
 
     await discover_providers(
-        Intent(asks=(ask,), confidence=0.9),
+        (ask,),
         _turn(),
         discovery=discovery,
         schema_pack_cache=_FakeSchemaPackCache({}),
@@ -305,7 +299,7 @@ async def test_a_failing_query_does_not_prevent_a_sibling_from_succeeding() -> N
         subject_categories=SubjectCategory.MARKET,
         interaction_type=InteractionType.OBSERVE,
     )
-    intent = Intent(asks=numbered(weather_ask, market_ask), confidence=0.8)
+    asks = numbered(weather_ask, market_ask)
     turn = _turn()
     schema_pack_cache = _FakeSchemaPackCache(
         {
@@ -316,7 +310,7 @@ async def test_a_failing_query_does_not_prevent_a_sibling_from_succeeding() -> N
     discovery = _PartiallyFailingDiscovery(fails_for="openagrinet:WeatherObservation")
 
     result = await discover_providers(
-        intent,
+        asks,
         turn,
         discovery=discovery,
         schema_pack_cache=schema_pack_cache,
@@ -325,10 +319,11 @@ async def test_a_failing_query_does_not_prevent_a_sibling_from_succeeding() -> N
     )
 
     assert len(discovery.calls) == 2
-    assert result.capabilities[1][0].capability == "openagrinet:MandiPrice"
-    assert result.failures[0] != ()
-    assert result.answers[0] == ()
-    assert result.capabilities[0] == ()
+    failed_weather, market = result.asks
+    assert market.capabilities[0].capability == "openagrinet:MandiPrice"
+    assert failed_weather.failures != ()
+    assert failed_weather.answers == ()
+    assert failed_weather.capabilities == ()
     assert result.events == (
         AskDiscoveryFailed(
             ask_id=0,
@@ -364,19 +359,16 @@ async def test_an_adapter_that_raises_takes_the_whole_turn_down() -> None:
     gives it no safety net, by design — a raise here is a fail-fast bug
     signal, not a per-query failure mode.
     """
-    intent = Intent(
-        asks=(
-            an_ask(
-                subject_categories=SubjectCategory.WEATHER,
-                interaction_type=InteractionType.OBSERVE,
-            ),
-            an_ask(
-                id=1,
-                subject_categories=SubjectCategory.MARKET,
-                interaction_type=InteractionType.OBSERVE,
-            ),
+    asks = (
+        an_ask(
+            subject_categories=SubjectCategory.WEATHER,
+            interaction_type=InteractionType.OBSERVE,
         ),
-        confidence=0.8,
+        an_ask(
+            id=1,
+            subject_categories=SubjectCategory.MARKET,
+            interaction_type=InteractionType.OBSERVE,
+        ),
     )
     schema_pack_cache = _FakeSchemaPackCache(
         {
@@ -388,7 +380,7 @@ async def test_an_adapter_that_raises_takes_the_whole_turn_down() -> None:
 
     with pytest.raises(BaseExceptionGroup):
         await discover_providers(
-            intent,
+            asks,
             _turn(),
             discovery=discovery,
             schema_pack_cache=schema_pack_cache,
@@ -402,7 +394,7 @@ async def test_two_asks_sharing_a_pair_dedupe_to_one_query() -> None:
         subject_categories=SubjectCategory.MARKET,
         interaction_type=InteractionType.OBSERVE,
     )
-    intent = Intent(asks=numbered(ask, ask), confidence=0.8)
+    asks = numbered(ask, ask)
     turn = _turn()
     schema_pack_cache = _FakeSchemaPackCache(
         {("Market", "Service"): ("openagrinet:MandiPrice",)}
@@ -410,7 +402,7 @@ async def test_two_asks_sharing_a_pair_dedupe_to_one_query() -> None:
     discovery = _FakeDiscovery(_query_result())
 
     await discover_providers(
-        intent,
+        asks,
         turn,
         discovery=discovery,
         schema_pack_cache=schema_pack_cache,
@@ -440,7 +432,7 @@ async def test_an_expired_answer_with_no_fallback_is_dropped() -> None:
         subject_categories=SubjectCategory.MARKET,
         interaction_type=InteractionType.OBSERVE,
     )
-    intent = Intent(asks=(ask,), confidence=0.9)
+    asks = (ask,)
     turn = _turn()
     schema_pack_cache = _FakeSchemaPackCache(
         {("Market", "Service"): ("openagrinet:MandiPrice",)}
@@ -448,7 +440,7 @@ async def test_an_expired_answer_with_no_fallback_is_dropped() -> None:
     discovery = _FakeDiscovery(_query_result(answers=(_expired_answer(),)))
 
     result = await discover_providers(
-        intent,
+        asks,
         turn,
         discovery=discovery,
         schema_pack_cache=schema_pack_cache,
@@ -456,7 +448,7 @@ async def test_an_expired_answer_with_no_fallback_is_dropped() -> None:
         now=NOW,
     )
 
-    assert result.answers[0] == ()
+    assert result.asks[0].answers == ()
     assert result.events == (
         ExpiredAnswerDropped(
             provider_id="agmarknet",
@@ -473,7 +465,7 @@ async def test_an_expired_answer_with_an_on_demand_sibling_records_a_fallback() 
         subject_categories=SubjectCategory.MARKET,
         interaction_type=InteractionType.OBSERVE,
     )
-    intent = Intent(asks=(ask,), confidence=0.9)
+    asks = (ask,)
     turn = _turn()
     schema_pack_cache = _FakeSchemaPackCache(
         {("Market", "Service"): ("openagrinet:MandiPrice",)}
@@ -489,7 +481,7 @@ async def test_an_expired_answer_with_an_on_demand_sibling_records_a_fallback() 
     )
 
     result = await discover_providers(
-        intent,
+        asks,
         turn,
         discovery=discovery,
         schema_pack_cache=schema_pack_cache,
@@ -497,8 +489,8 @@ async def test_an_expired_answer_with_an_on_demand_sibling_records_a_fallback() 
         now=NOW,
     )
 
-    assert result.answers[0] == ()
-    assert result.capabilities[0] == (fallback_capability,)
+    assert result.asks[0].answers == ()
+    assert result.asks[0].capabilities == (fallback_capability,)
     assert result.events == (
         ExpiredAnswerDropped(
             provider_id="agmarknet",
@@ -514,7 +506,7 @@ async def test_a_non_expired_answer_is_kept() -> None:
         subject_categories=SubjectCategory.MARKET,
         interaction_type=InteractionType.OBSERVE,
     )
-    intent = Intent(asks=(ask,), confidence=0.9)
+    asks = (ask,)
     turn = _turn()
     schema_pack_cache = _FakeSchemaPackCache(
         {("Market", "Service"): ("openagrinet:MandiPrice",)}
@@ -532,7 +524,7 @@ async def test_a_non_expired_answer_is_kept() -> None:
     discovery = _FakeDiscovery(_query_result(answers=(fresh_answer,)))
 
     result = await discover_providers(
-        intent,
+        asks,
         turn,
         discovery=discovery,
         schema_pack_cache=schema_pack_cache,
@@ -540,7 +532,7 @@ async def test_a_non_expired_answer_is_kept() -> None:
         now=NOW,
     )
 
-    assert result.answers[0] == (fresh_answer,)
+    assert result.asks[0].answers == (fresh_answer,)
     assert result.events == ()
 
 
@@ -554,7 +546,7 @@ async def test_an_answer_whose_window_has_not_opened_is_dropped() -> None:
         subject_categories=SubjectCategory.MARKET,
         interaction_type=InteractionType.OBSERVE,
     )
-    intent = Intent(asks=(ask,), confidence=0.9)
+    asks = (ask,)
     schema_pack_cache = _FakeSchemaPackCache(
         {("Market", "Service"): ("openagrinet:MandiPrice",)}
     )
@@ -571,7 +563,7 @@ async def test_an_answer_whose_window_has_not_opened_is_dropped() -> None:
     discovery = _FakeDiscovery(_query_result(answers=(tomorrows_price,)))
 
     result = await discover_providers(
-        intent,
+        asks,
         _turn(),
         discovery=discovery,
         schema_pack_cache=schema_pack_cache,
@@ -579,7 +571,7 @@ async def test_an_answer_whose_window_has_not_opened_is_dropped() -> None:
         now=NOW,
     )
 
-    assert result.answers[0] == ()
+    assert result.asks[0].answers == ()
     # dropped, and then the ask has nothing left to serve it
     assert isinstance(result.events[0], ExpiredAnswerDropped)
     assert isinstance(result.events[1], AskUnservable)
@@ -590,7 +582,7 @@ async def test_an_answer_with_no_validity_is_kept() -> None:
         subject_categories=SubjectCategory.MARKET,
         interaction_type=InteractionType.OBSERVE,
     )
-    intent = Intent(asks=(ask,), confidence=0.9)
+    asks = (ask,)
     turn = _turn()
     schema_pack_cache = _FakeSchemaPackCache(
         {("Market", "Service"): ("openagrinet:MandiPrice",)}
@@ -606,7 +598,7 @@ async def test_an_answer_with_no_validity_is_kept() -> None:
     discovery = _FakeDiscovery(_query_result(answers=(answer_without_validity,)))
 
     result = await discover_providers(
-        intent,
+        asks,
         turn,
         discovery=discovery,
         schema_pack_cache=schema_pack_cache,
@@ -614,7 +606,7 @@ async def test_an_answer_with_no_validity_is_kept() -> None:
         now=NOW,
     )
 
-    assert result.answers[0] == (answer_without_validity,)
+    assert result.asks[0].answers == (answer_without_validity,)
 
 
 async def test_a_capability_matching_the_index_has_no_divergence_event() -> None:
@@ -622,7 +614,7 @@ async def test_a_capability_matching_the_index_has_no_divergence_event() -> None
         subject_categories=SubjectCategory.MARKET,
         interaction_type=InteractionType.OBSERVE,
     )
-    intent = Intent(asks=(ask,), confidence=0.9)
+    asks = (ask,)
     turn = _turn()
     schema_pack_cache = _FakeSchemaPackCache(
         {("Market", "Service"): ("openagrinet:MandiPrice",)}
@@ -637,7 +629,7 @@ async def test_a_capability_matching_the_index_has_no_divergence_event() -> None
     discovery = _FakeDiscovery(_query_result(capabilities=(matching_capability,)))
 
     result = await discover_providers(
-        intent,
+        asks,
         turn,
         discovery=discovery,
         schema_pack_cache=schema_pack_cache,
@@ -653,7 +645,7 @@ async def test_a_capability_with_a_category_outside_the_index_diverges() -> None
         subject_categories=SubjectCategory.MARKET,
         interaction_type=InteractionType.OBSERVE,
     )
-    intent = Intent(asks=(ask,), confidence=0.9)
+    asks = (ask,)
     turn = _turn()
     schema_pack_cache = _FakeSchemaPackCache(
         {("Market", "Service"): ("openagrinet:MandiPrice",)}
@@ -668,7 +660,7 @@ async def test_a_capability_with_a_category_outside_the_index_diverges() -> None
     discovery = _FakeDiscovery(_query_result(capabilities=(diverging_capability,)))
 
     result = await discover_providers(
-        intent,
+        asks,
         turn,
         discovery=discovery,
         schema_pack_cache=schema_pack_cache,
@@ -688,7 +680,7 @@ async def test_a_direct_answer_with_a_diverging_category_is_flagged() -> None:
         subject_categories=SubjectCategory.MARKET,
         interaction_type=InteractionType.OBSERVE,
     )
-    intent = Intent(asks=(ask,), confidence=0.9)
+    asks = (ask,)
     turn = _turn()
     schema_pack_cache = _FakeSchemaPackCache(
         {("Market", "Service"): ("openagrinet:MandiPrice",)}
@@ -704,7 +696,7 @@ async def test_a_direct_answer_with_a_diverging_category_is_flagged() -> None:
     discovery = _FakeDiscovery(_query_result(answers=(diverging_answer,)))
 
     result = await discover_providers(
-        intent,
+        asks,
         turn,
         discovery=discovery,
         schema_pack_cache=schema_pack_cache,
@@ -728,7 +720,7 @@ async def test_an_expired_answer_is_not_also_reported_as_diverging() -> None:
         subject_categories=SubjectCategory.MARKET,
         interaction_type=InteractionType.OBSERVE,
     )
-    intent = Intent(asks=(ask,), confidence=0.9)
+    asks = (ask,)
     schema_pack_cache = _FakeSchemaPackCache(
         {("Market", "Service"): ("openagrinet:MandiPrice",)}
     )
@@ -745,7 +737,7 @@ async def test_an_expired_answer_is_not_also_reported_as_diverging() -> None:
     discovery = _FakeDiscovery(_query_result(answers=(expired_and_diverging,)))
 
     result = await discover_providers(
-        intent,
+        asks,
         _turn(),
         discovery=discovery,
         schema_pack_cache=schema_pack_cache,
@@ -763,7 +755,7 @@ async def test_a_live_answer_that_diverges_is_still_reported() -> None:
         subject_categories=SubjectCategory.MARKET,
         interaction_type=InteractionType.OBSERVE,
     )
-    intent = Intent(asks=(ask,), confidence=0.9)
+    asks = (ask,)
     schema_pack_cache = _FakeSchemaPackCache(
         {("Market", "Service"): ("openagrinet:MandiPrice",)}
     )
@@ -780,7 +772,7 @@ async def test_a_live_answer_that_diverges_is_still_reported() -> None:
     discovery = _FakeDiscovery(_query_result(answers=(live_and_diverging,)))
 
     result = await discover_providers(
-        intent,
+        asks,
         _turn(),
         discovery=discovery,
         schema_pack_cache=schema_pack_cache,
@@ -800,7 +792,7 @@ async def test_an_empty_catalog_result_emits_ask_unservable() -> None:
         subject_categories=SubjectCategory.MARKET,
         interaction_type=InteractionType.OBSERVE,
     )
-    intent = Intent(asks=(ask,), confidence=0.9)
+    asks = (ask,)
     turn = _turn()
     schema_pack_cache = _FakeSchemaPackCache(
         {("Market", "Service"): ("openagrinet:MandiPrice",)}
@@ -808,7 +800,7 @@ async def test_an_empty_catalog_result_emits_ask_unservable() -> None:
     discovery = _FakeDiscovery(_query_result())
 
     result = await discover_providers(
-        intent,
+        asks,
         turn,
         discovery=discovery,
         schema_pack_cache=schema_pack_cache,
@@ -826,7 +818,7 @@ async def test_a_failed_ask_emits_ask_discovery_failed_not_unservable() -> None:
         subject_categories=SubjectCategory.MARKET,
         interaction_type=InteractionType.OBSERVE,
     )
-    intent = Intent(asks=(ask,), confidence=0.9)
+    asks = (ask,)
     turn = _turn()
     schema_pack_cache = _FakeSchemaPackCache(
         {("Market", "Service"): ("openagrinet:MandiPrice",)}
@@ -844,7 +836,7 @@ async def test_a_failed_ask_emits_ask_discovery_failed_not_unservable() -> None:
     )
 
     result = await discover_providers(
-        intent,
+        asks,
         turn,
         discovery=discovery,
         schema_pack_cache=schema_pack_cache,
@@ -867,13 +859,13 @@ async def test_an_unresolved_ask_does_not_also_emit_ask_unservable() -> None:
         subject_categories=SubjectCategory.FACILITY,
         interaction_type=InteractionType.ACT,
     )
-    intent = Intent(asks=(ask,), confidence=0.7)
+    asks = (ask,)
     turn = _turn()
     schema_pack_cache = _FakeSchemaPackCache({})
     discovery = _FakeDiscovery(_query_result())
 
     result = await discover_providers(
-        intent,
+        asks,
         turn,
         discovery=discovery,
         schema_pack_cache=schema_pack_cache,
@@ -889,7 +881,7 @@ async def test_a_resolved_answer_does_not_emit_ask_unservable() -> None:
         subject_categories=SubjectCategory.MARKET,
         interaction_type=InteractionType.OBSERVE,
     )
-    intent = Intent(asks=(ask,), confidence=0.9)
+    asks = (ask,)
     turn = _turn()
     schema_pack_cache = _FakeSchemaPackCache(
         {("Market", "Service"): ("openagrinet:MandiPrice",)}
@@ -903,7 +895,7 @@ async def test_a_resolved_answer_does_not_emit_ask_unservable() -> None:
     discovery = _FakeDiscovery(_query_result(capabilities=(capability,)))
 
     result = await discover_providers(
-        intent,
+        asks,
         turn,
         discovery=discovery,
         schema_pack_cache=schema_pack_cache,
@@ -926,7 +918,7 @@ async def test_a_scheme_ask_is_discovered_on_its_category_alone() -> None:
     discovery = _FakeDiscovery(_query_result())
 
     await discover_providers(
-        Intent(asks=(ask,), confidence=0.9),
+        (ask,),
         _turn(),
         discovery=discovery,
         schema_pack_cache=_FakeSchemaPackCache({}),
@@ -952,7 +944,7 @@ async def test_an_unresolvable_non_scheme_ask_is_still_never_discovered() -> Non
     discovery = _FakeDiscovery(_query_result())
 
     result = await discover_providers(
-        Intent(asks=(ask,), confidence=0.9),
+        (ask,),
         _turn(),
         discovery=discovery,
         schema_pack_cache=_FakeSchemaPackCache({}),
@@ -975,7 +967,7 @@ async def test_a_scheme_ask_uses_resolved_types_once_a_pack_declares_them() -> N
     discovery = _FakeDiscovery(_query_result())
 
     await discover_providers(
-        Intent(asks=(ask,), confidence=0.9),
+        (ask,),
         _turn(),
         discovery=discovery,
         schema_pack_cache=_FakeSchemaPackCache(
@@ -1046,7 +1038,7 @@ async def _discover_with(
         )
     )
     return await discover_providers(
-        Intent(asks=asks_with_ids, confidence=0.9),
+        asks_with_ids,
         _turn(),
         discovery=discovery,
         schema_pack_cache=_MARKET_AND_WEATHER_INDEX,
@@ -1085,9 +1077,10 @@ async def test_asks_sharing_a_query_each_get_the_whole_reply() -> None:
     result = await _discover_with(discovery, _MARKET_ASK, _MARKET_ASK)
 
     assert len(discovery.calls) == 1
-    assert result.answers == {0: (answer,), 1: (answer,)}
-    assert result.capabilities == {0: (capability,), 1: (capability,)}
-    assert result.failures == {0: (), 1: ()}
+    first, second = result.asks
+    assert first.answers == second.answers == (answer,)
+    assert first.capabilities == second.capabilities == (capability,)
+    assert first.failures == second.failures == ()
 
 
 async def test_a_failing_shared_query_fails_every_ask_that_shared_it() -> None:
@@ -1102,7 +1095,7 @@ async def test_a_failing_shared_query_fails_every_ask_that_shared_it() -> None:
 
     result = await _discover_with(discovery, _MARKET_ASK, _MARKET_ASK, ids=(0, 2))
 
-    assert result.failures == {0: (failure,), 2: (failure,)}
+    assert [found.failures for found in result.asks] == [(failure,), (failure,)]
     assert result.events == (
         AskDiscoveryFailed(0, "openagrinet:MandiPrice", FailureClass.TRANSIENT, 500),
         AskDiscoveryFailed(2, "openagrinet:MandiPrice", FailureClass.TRANSIENT, 500),
@@ -1131,8 +1124,11 @@ async def test_asks_get_only_their_own_query_reply() -> None:
     )
 
     assert len(discovery.calls) == 2
-    assert result.answers == {0: (market_answer,), 2: (), 5: (market_answer,)}
-    assert result.capabilities == {0: (), 2: (weather_capability,), 5: ()}
+    first_market, weather, second_market = result.asks
+    assert [found.ask.id for found in result.asks] == [0, 2, 5]
+    assert first_market.answers == second_market.answers == (market_answer,)
+    assert weather.capabilities == (weather_capability,)
+    assert first_market.query == second_market.query != weather.query
 
 
 async def test_an_unplaced_ask_gets_an_empty_entry_beside_a_searched_one() -> None:
@@ -1152,10 +1148,9 @@ async def test_an_unplaced_ask_gets_an_empty_entry_beside_a_searched_one() -> No
     result = await _discover_with(discovery, unplaced_market_ask, _WEATHER_ASK)
 
     assert len(discovery.calls) == 1
-    assert set(result.answers) == set(result.capabilities) == set(result.failures)
-    assert set(result.answers) == {0, 1}
-    assert result.answers[0] == result.capabilities[0] == result.failures[0] == ()
-    assert result.capabilities[1] == (capability,)
+    unplaced, weather = result.asks
+    assert unplaced.answers == unplaced.capabilities == unplaced.failures == ()
+    assert weather.capabilities == (capability,)
 
 
 async def test_a_turn_with_no_asks_sends_nothing() -> None:
@@ -1164,9 +1159,7 @@ async def test_a_turn_with_no_asks_sends_nothing() -> None:
     result = await _discover_with(discovery)
 
     assert discovery.calls == []
-    assert result == DiscoveryResult(
-        answers={}, capabilities={}, failures={}, events=()
-    )
+    assert result == a_discovery()
 
 
 async def test_an_expired_answer_on_a_shared_query_is_reported_once_per_ask() -> None:
@@ -1176,7 +1169,7 @@ async def test_an_expired_answer_on_a_shared_query_is_reported_once_per_ask() ->
 
     result = await _discover_with(discovery, _MARKET_ASK, _MARKET_ASK)
 
-    assert result.answers == {0: (), 1: ()}
+    assert [found.answers for found in result.asks] == [(), ()]
     assert [e for e in result.events if isinstance(e, ExpiredAnswerDropped)] == [
         ExpiredAnswerDropped(
             "agmarknet", "openagrinet:MandiPrice", "r1", had_fallback=False
@@ -1211,7 +1204,7 @@ async def test_a_query_carries_the_turn_language_the_category_and_the_coverage()
     discovery = _NetworkDiscovery({})
 
     await discover_providers(
-        Intent(asks=(_MARKET_ASK.model_copy(update={"place": _PUNE}),)),
+        (_MARKET_ASK.model_copy(update={"place": _PUNE}),),
         _turn(source_lang="en", target_lang="hi"),
         discovery=discovery,
         schema_pack_cache=_MARKET_AND_WEATHER_INDEX,
@@ -1252,7 +1245,7 @@ async def test_a_placeless_pack_is_searched_everywhere() -> None:
     )
 
     await discover_providers(
-        Intent(asks=(grievance_ask,), confidence=0.9),
+        (grievance_ask,),
         _turn(),
         discovery=discovery,
         schema_pack_cache=_FakeSchemaPackCache(
@@ -1277,7 +1270,7 @@ async def test_scheme_ask_is_searched_everywhere() -> None:
     )
 
     await discover_providers(
-        Intent(asks=(scheme_ask,), confidence=0.9),
+        (scheme_ask,),
         _turn(),
         discovery=discovery,
         schema_pack_cache=_FakeSchemaPackCache({}),
@@ -1296,7 +1289,7 @@ async def test_an_advise_ask_searches_knowledge_resources() -> None:
     )
 
     await discover_providers(
-        Intent(asks=(advise_ask,), confidence=0.9),
+        (advise_ask,),
         _turn(),
         discovery=discovery,
         schema_pack_cache=_FakeSchemaPackCache(

@@ -57,7 +57,7 @@ from dss.core.forms.service import (
     with_form_done,
     withhold_values,
 )
-from dss.core.intent.models import Intent, Scheme
+from dss.core.intent.models import Ask, Scheme
 from dss.core.intent.service import scheme_with_code
 from dss.core.moderation.models import ModerationContext, ModerationDecision, Outcome
 from dss.core.moderation.service import moderate
@@ -93,11 +93,7 @@ from dss.orchestration.orchestrator import (
     reveal_to_farmer,
     spoken_text,
 )
-from dss.orchestration.provider_action import (
-    FORM_ASK_ID,
-    call_provider_action,
-    warn_auth_refused,
-)
+from dss.orchestration.provider_action import call_provider_action, warn_auth_refused
 from dss.orchestration.redaction import RedactTexts
 from dss.orchestration.session import Session
 from dss.orchestration.stage_content import (
@@ -119,7 +115,7 @@ _FREE_TEXT_SEPARATOR = "\n\n"
 @dataclass(frozen=True)
 class _FormToSend:
     details: ValidSubmission
-    intent: Intent
+    ask: Ask
     action: ActionSchema
 
 
@@ -220,9 +216,9 @@ class FormPath:
 
         details = redaction.form  # PII fields masked
         action = self._forms.action_schema(submission.context)
-        intent = self._intent_for(submission.context)
+        ask = self._ask_for(submission.context)
 
-        if isinstance(details, UnknownForm) or action is None or intent is None:
+        if isinstance(details, UnknownForm) or action is None or ask is None:
             return await self._finish_turn(
                 end_for_unknown_form(self._clarification_text), form_turn
             )
@@ -242,14 +238,14 @@ class FormPath:
                 end_for_session_not_kept(self._clarification_text), form_turn
             )
 
-        form = _FormToSend(details=details, intent=intent, action=action)
+        form = _FormToSend(details=details, ask=ask, action=action)
         decision = await self._moderate(redaction, form_turn)
         if decision.outcome is not Outcome.PROCEED:
             return await self._refuse(decision, form_turn)
-        provider = await self._find_form_provider(form.intent, form_turn)
+        provider = await self._find_form_provider(form.ask, form_turn)
         if provider is None:
             return await self._finish_turn(
-                end_for_no_provider(form.intent, self._clarification_text), form_turn
+                end_for_no_provider(form.ask, self._clarification_text), form_turn
             )
         # One form waits for init at a time: this form's call replaces any
         # other, even another scheme's, and even when this form needs no init.
@@ -296,7 +292,7 @@ class FormPath:
             )
         # Before the answer streams: a closed screen must still leave it done.
         session.update_forms(with_form_done(session.forms, redaction.turn.input))
-        return self._stream_provider_answer(response, form.intent, redaction, form_turn)
+        return self._stream_provider_answer(response, form.ask, redaction, form_turn)
 
     async def _handle_init_response(
         self, form_turn: _FormTurn, session: Session
@@ -308,7 +304,7 @@ class FormPath:
             session.forms,
             form_turn.turn.input.context,
             self._forms,
-            intent_for=self._intent_for,
+            ask_for=self._ask_for,
         )
         redaction = await self._redact_form(
             form_turn, validate_submission(form_turn.turn.input, self._forms)
@@ -383,16 +379,16 @@ class FormPath:
                 form_turn,
             )
         session.update_forms(with_details_form_done(session.forms, flow))
-        return self._stream_provider_answer(response, flow.intent, redaction, form_turn)
+        return self._stream_provider_answer(response, flow.ask, redaction, form_turn)
 
     def _stream_provider_answer(
         self,
         response: DiscoveredAnswer,
-        intent: Intent,
+        ask: Ask,
         redaction: _Redacted,
         form_turn: _FormTurn,
     ) -> AsyncGenerator[TurnEvent]:
-        evidence = assemble_evidence([(FORM_ASK_ID, response)], intent=intent)
+        evidence = assemble_evidence([(ask.id, response)], asks=(ask,))
         return self._stream_answer(evidence, redaction, form_turn)
 
     async def _stream_answer(
@@ -523,35 +519,33 @@ class FormPath:
             )
         return response
 
-    def _intent_for(self, context: FormContext) -> Intent | None:
+    def _ask_for(self, context: FormContext) -> Ask | None:
         scheme = scheme_with_code(self._scheme_catalog.schemes(), context.scheme)
         if scheme is None:
             scheme = Scheme(code=context.scheme, name=context.scheme)
-        ask = ask_for_form(context, scheme=scheme)
-        if ask is None:
-            return None
-        return Intent(asks=(ask,), confidence=1.0)
+        return ask_for_form(context, scheme=scheme)
 
     async def _find_form_provider(
-        self, intent: Intent, form_turn: _FormTurn
+        self, ask: Ask, form_turn: _FormTurn
     ) -> ProviderCapability | None:
         discovery = await self._find_providers(
-            intent, form_turn, scheme_code=form_turn.turn.input.context.scheme
+            ask, form_turn, scheme_code=form_turn.turn.input.context.scheme
         )
+        discovered = discovery.find(ask.id)
         # form's action needs a provider to call and not a direct answer
-        providers = discovery.capabilities.get(FORM_ASK_ID)
+        providers = discovered.capabilities if discovered else ()
         return providers[0] if providers else None
 
     async def _find_providers(
         self,
-        intent: Intent,
+        ask: Ask,
         form_turn: _FormTurn,
         *,
         scheme_code: str,
     ) -> DiscoveryResult:
         with trace_component(Stage.DISCOVERY, form_turn.ctx.trace_id):
             found = await self._components.discover(
-                intent, form_turn.turn, now=datetime.now(UTC)
+                (ask,), form_turn.turn, now=datetime.now(UTC)
             )
             providers = discovery_for_scheme(found, scheme_code)
             set_current_span_attributes(
@@ -559,7 +553,7 @@ class FormPath:
                 providers_for_scheme=_count(providers),
             )
             set_current_span_content(
-                input=asks_text(intent.asks), output=discovery_text(providers)
+                input=asks_text((ask,)), output=discovery_text(providers)
             )
         return providers
 
@@ -673,7 +667,7 @@ def _warn_if_auth_refused(
 
 
 def _count(discovery: DiscoveryResult) -> int:
-    return sum(len(candidates) for candidates in discovery.capabilities.values())
+    return sum(len(discovered.capabilities) for discovered in discovery.asks)
 
 
 def _with_values_withheld(

@@ -5,7 +5,6 @@ from __future__ import annotations
 from dss.core.forms.models import FormContext
 from dss.core.intent.models import (
     Ask,
-    Intent,
     InteractionType,
     Scheme,
     SubjectCategory,
@@ -103,7 +102,7 @@ def test_each_ask_settles_on_its_own() -> None:
     )
 
     settlements = settle_asks(
-        Intent(asks=(weather, grievance)),
+        (weather, grievance),
         requirements_for=lambda ask: AskRequirements(
             needs_place=ask is weather,
             scheme_codes_with_a_form=frozenset(),
@@ -136,7 +135,7 @@ def test_a_scheme_is_not_turned_away_before_the_action_is_known() -> None:
     ]
 
     settlements = settle_asks(
-        Intent(asks=(problem,)),
+        (problem,),
         requirements_for=lambda ask: build_ask_requirements(
             ask, needs_place=False, forms=forms
         ),

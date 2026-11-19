@@ -20,11 +20,9 @@ that existed before any preference did.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import replace
 from typing import Protocol
 
-from dss.core.intent.models import Ask, AskId, Intent
-from dss.core.provider_discovery.models import DiscoveryResult
+from dss.core.provider_discovery.models import DiscoveredAsk, DiscoveryResult
 from dss.core.provider_preferences.models import (
     AskPriority,
     ProviderId,
@@ -45,70 +43,40 @@ class _HasProvider(Protocol):
 
 
 def prioritise(
-    discovery: DiscoveryResult,
-    *,
-    intent: Intent,
-    preference: SenderPreference,
+    discovery: DiscoveryResult, *, preference: SenderPreference
 ) -> DiscoveryResult:
-    """Reorder and filter discovery's findings to this sender's ranking.
+    """A ranking drops providers as well as ordering them. It governs both
+    halves of a finding: `capabilities`, which the planner calls, and
+    `answers`, which the catalog already holds. An ask with no ranking is
+    left as found."""
 
-    Both halves of a finding are governed: `capabilities`, which the planner
-    calls, and `answers`, which the catalog already holds. An ask whose
-    capability carries no ranking passes through untouched.
-
-    The record of what happened rides back on `DiscoveryResult.priorities` —
-    one entry per ask, whether or not a ranking applied. It is the only thing
-    downstream that can tell "this provider was never asked" from "this
-    provider had nothing".
-
-    Only keys discovery itself wrote are rewritten. Writing a key for an ask
-    it never found anyone for would turn "this ask is absent from the result"
-    into "this ask found nobody" — the same thing to the farmer, a different
-    line in `discovery_text` and one more key for every later reader to
-    account for.
-    """
-
-    priorities = {
-        ask.id: _priority(ask, discovery=discovery, preference=preference)
-        for ask in intent.asks
-    }
-    rankings = {
-        ask_id: priority.ranking
-        for ask_id, priority in priorities.items()
-        if priority.applied
-    }
-    capabilities = {
-        ask_id: _ordered(found, rankings[ask_id]) if ask_id in rankings else found
-        for ask_id, found in discovery.capabilities.items()
-    }
-    answers = {
-        ask_id: (
-            _best_provider_only(_ordered(found, rankings[ask_id]))
-            if ask_id in rankings
-            else found
-        )
-        for ask_id, found in discovery.answers.items()
-    }
-
-    return replace(
-        discovery, answers=answers, capabilities=capabilities, priorities=priorities
+    return discovery.with_each_ask(
+        lambda discovered: _prioritise_ask(discovered, preference)
     )
 
 
+def _prioritise_ask(
+    discovered: DiscoveredAsk, preference: SenderPreference
+) -> DiscoveredAsk:
+    priority = _priority(discovered, preference=preference)
+    capabilities, answers = discovered.capabilities, discovered.answers
+    if priority.applied:
+        capabilities = _ordered(capabilities, priority.ranking)
+        answers = _best_provider_only(_ordered(answers, priority.ranking))
+    return discovered.ranked(priority, capabilities=capabilities, answers=answers)
+
+
 def _priority(
-    ask: Ask, *, discovery: DiscoveryResult, preference: SenderPreference
+    discovered: DiscoveredAsk, *, preference: SenderPreference
 ) -> AskPriority:
     """What the sender's ranking means for this one ask — the record alone,
     before anything is reordered by it."""
 
-    capability = ask.subject_categories.value
+    capability = discovered.ask.subject_category
     ranking = preference.ranking_for(capability)
-    found = (
-        *discovery.capabilities.get(ask.id, ()),
-        *discovery.answers.get(ask.id, ()),
-    )
+    found = (*discovered.capabilities, *discovered.answers)
     return AskPriority(
-        ask_id=ask.id,
+        ask_id=discovered.ask.id,
         capability=capability,
         sender_id=preference.sender_id,
         source=preference.source_for(capability) if ranking else None,
@@ -180,23 +148,3 @@ def _dropped(
             item.provider_id for item in found if item.provider_id not in ranking
         )
     )
-
-
-def priority_for_ask(
-    discovery: DiscoveryResult, *, ask_id: AskId
-) -> AskPriority | None:
-    """The priority record of the ranking that governed this ask, or ``None``
-    if none did.
-
-    ``None`` covers three states that have to behave identically: no
-    registry is configured, the ask's capability carries no ranking, and the
-    result predates preferences entirely (an unwired deployment, a test
-    building a `DiscoveryResult` by hand). Each one means "do what the system
-    did before a ranking existed", and a caller that branched on `priorities`
-    directly would have to spell all three out.
-    """
-
-    priority = discovery.priorities.get(ask_id)
-    if priority is None or not priority.applied:
-        return None
-    return priority

@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from dss.core.forms.models import FormContext, FormDefinition
-from dss.core.intent.models import Ask, Intent, InteractionType, SubjectCategory
+from dss.core.intent.models import InteractionType, SubjectCategory
 from dss.core.planner.evidence import assemble_evidence, merge_unsettled
 from dss.core.planner.models import (
     AskEvidence,
@@ -145,10 +145,6 @@ PRICE_ASK = an_ask(
 )
 
 
-def _intent(*asks: Ask) -> Intent:
-    return Intent(asks=asks, confidence=0.9)
-
-
 @pytest.mark.parametrize(
     "answer",
     [MANDI_PRICE, KNOWLEDGE_ADVISORY, WEATHER_OBSERVATION, AGRICULTURE_FACILITY],
@@ -161,7 +157,7 @@ def test_one_answer_becomes_one_source_and_one_result(
     ``resourceAttributes`` verbatim — assembly does not read, reshape or
     validate them."""
 
-    evidence = assemble_evidence([(0, answer)], intent=_intent(PRICE_ASK))
+    evidence = assemble_evidence([(0, answer)], asks=(PRICE_ASK,))
 
     assert len(evidence.sources) == 1
     source = evidence.sources[0]
@@ -200,7 +196,7 @@ def test_one_provider_answering_two_asks_is_one_source() -> None:
 
     evidence = assemble_evidence(
         [(0, MANDI_PRICE), (2, second_ask_answer)],
-        intent=_intent(PRICE_ASK, ADVISORY_ASK),
+        asks=(PRICE_ASK, ADVISORY_ASK),
     )
 
     assert [source.id for source in evidence.sources] == ["1"]
@@ -214,7 +210,7 @@ def test_two_providers_are_numbered_in_first_seen_order() -> None:
 
     evidence = assemble_evidence(
         [(0, MANDI_PRICE), (2, KNOWLEDGE_ADVISORY)],
-        intent=_intent(PRICE_ASK, ADVISORY_ASK),
+        asks=(PRICE_ASK, ADVISORY_ASK),
     )
 
     assert [(source.id, source.name) for source in evidence.sources] == [
@@ -228,7 +224,7 @@ def test_no_answers_assembles_empty_evidence() -> None:
     """The loop ended without a single result, so there is nothing to answer
     from."""
 
-    evidence = assemble_evidence([], intent=_intent(PRICE_ASK))
+    evidence = assemble_evidence([], asks=(PRICE_ASK,))
 
     assert evidence.sources == ()
     assert evidence.has_any_result is False
@@ -242,7 +238,7 @@ def test_a_direct_answer_reaches_the_evidence() -> None:
     in the prompt."""
 
     evidence = assemble_evidence(
-        [], direct_answers={0: (MANDI_PRICE,)}, intent=_intent(PRICE_ASK)
+        [], direct_answers=[(0, MANDI_PRICE)], asks=(PRICE_ASK,)
     )
 
     assert [source.name for source in evidence.sources] == ["Agmarknet"]
@@ -254,9 +250,7 @@ def test_every_ask_gets_its_own_evidence_in_ask_order() -> None:
     """Answered or not, every ask is listed, so a reader never looks it up
     again in the intent."""
 
-    evidence = assemble_evidence(
-        [(2, MANDI_PRICE)], intent=_intent(PRICE_ASK, ADVISORY_ASK)
-    )
+    evidence = assemble_evidence([(2, MANDI_PRICE)], asks=(PRICE_ASK, ADVISORY_ASK))
 
     assert [entry.ask for entry in evidence.ask_evidences] == [
         PRICE_ASK,
@@ -276,7 +270,7 @@ def test_results_and_failures_sit_under_the_ask_they_are_about() -> None:
     evidence = assemble_evidence(
         [(2, MANDI_PRICE)],
         failures=[failure],
-        intent=_intent(PRICE_ASK, ADVISORY_ASK),
+        asks=(PRICE_ASK, ADVISORY_ASK),
     )
 
     price, advisory = map(attempted, evidence.ask_evidences)
@@ -291,7 +285,7 @@ def test_a_result_for_an_ask_the_turn_lacks_is_refused(ask_id: int) -> None:
     Dropping the result instead would quietly turn the turn into no_match."""
 
     with pytest.raises(ValueError, match=f"ask {ask_id} "):
-        assemble_evidence([(ask_id, MANDI_PRICE)], intent=_intent(PRICE_ASK))
+        assemble_evidence([(ask_id, MANDI_PRICE)], asks=(PRICE_ASK,))
 
 
 GRIEVANCE_FORM = FormDefinition(
@@ -301,15 +295,13 @@ GRIEVANCE_FORM = FormDefinition(
 
 
 def test_a_form_ask_awaits_input() -> None:
-    evidence = assemble_evidence(
-        [], intent=_intent(PRICE_ASK), awaiting={0: GRIEVANCE_FORM}
-    )
+    evidence = assemble_evidence([], asks=(PRICE_ASK,), awaiting={0: GRIEVANCE_FORM})
 
     assert evidence.ask_evidences[0].outcome == AwaitingInput(form=GRIEVANCE_FORM)
 
 
 def test_a_served_ask_is_attempted() -> None:
-    evidence = assemble_evidence([(0, MANDI_PRICE)], intent=_intent(PRICE_ASK))
+    evidence = assemble_evidence([(0, MANDI_PRICE)], asks=(PRICE_ASK,))
 
     assert evidence.ask_evidences[0].outcome == Attempted(
         results=tuple(_results(evidence)), failures=()
@@ -322,7 +314,7 @@ def test_a_form_ask_with_a_result_is_refused() -> None:
     with pytest.raises(ValueError, match="ask 0"):
         assemble_evidence(
             [(0, MANDI_PRICE)],
-            intent=_intent(PRICE_ASK),
+            asks=(PRICE_ASK,),
             awaiting={0: GRIEVANCE_FORM},
         )
 
@@ -332,7 +324,7 @@ def test_an_ask_that_awaits_a_form_is_not_an_unserved_ask() -> None:
     the form next."""
 
     evidence = assemble_evidence(
-        [], intent=_intent(PRICE_ASK, ADVISORY_ASK), awaiting={0: GRIEVANCE_FORM}
+        [], asks=(PRICE_ASK, ADVISORY_ASK), awaiting={0: GRIEVANCE_FORM}
     )
 
     assert [entry.ask for entry in evidence.unserved_asks] == [ADVISORY_ASK]
@@ -341,7 +333,7 @@ def test_an_ask_that_awaits_a_form_is_not_an_unserved_ask() -> None:
 
 def test_a_form_for_an_ask_the_turn_lacks_is_refused() -> None:
     with pytest.raises(ValueError, match="ask 3 "):
-        assemble_evidence([], intent=_intent(PRICE_ASK), awaiting={3: GRIEVANCE_FORM})
+        assemble_evidence([], asks=(PRICE_ASK,), awaiting={3: GRIEVANCE_FORM})
 
 
 def test_a_failure_for_an_ask_the_turn_lacks_is_refused() -> None:
@@ -350,7 +342,7 @@ def test_a_failure_for_an_ask_the_turn_lacks_is_refused() -> None:
     )
 
     with pytest.raises(ValueError, match="ask 2 "):
-        assemble_evidence([], failures=[failure], intent=_intent(PRICE_ASK))
+        assemble_evidence([], failures=[failure], asks=(PRICE_ASK,))
 
 
 def test_a_direct_answer_and_a_selected_one_share_a_source() -> None:
@@ -359,8 +351,8 @@ def test_a_direct_answer_and_a_selected_one_share_a_source() -> None:
 
     evidence = assemble_evidence(
         [(2, MANDI_PRICE)],
-        direct_answers={0: (MANDI_PRICE,)},
-        intent=_intent(PRICE_ASK, ADVISORY_ASK),
+        direct_answers=[(0, MANDI_PRICE)],
+        asks=(PRICE_ASK, ADVISORY_ASK),
     )
 
     assert [source.id for source in evidence.sources] == ["1"]
@@ -379,7 +371,7 @@ def test_failures_are_carried_onto_the_evidence() -> None:
         retryable=True,
     )
 
-    evidence = assemble_evidence([], failures=[failure], intent=_intent(PRICE_ASK))
+    evidence = assemble_evidence([], failures=[failure], asks=(PRICE_ASK,))
 
     assert evidence.ask_evidences[0].outcome == Attempted(
         results=(), failures=(failure,)
@@ -390,7 +382,7 @@ def test_the_originator_outranks_the_provider_that_served_it() -> None:
     """A provider may relay someone else's data: the farmer is told who
     produced the fact, not which participant it arrived through."""
 
-    evidence = assemble_evidence([(0, WEATHER_OBSERVATION)], intent=_intent(PRICE_ASK))
+    evidence = assemble_evidence([(0, WEATHER_OBSERVATION)], asks=(PRICE_ASK,))
 
     assert evidence.sources[0].name == "IMD Mausamgram NWP"
     assert WEATHER_OBSERVATION.provider_name == "Automatic Weather Station Network"
@@ -398,7 +390,7 @@ def test_the_originator_outranks_the_provider_that_served_it() -> None:
 
 def test_a_source_uri_becomes_the_citation_url() -> None:
     evidence = assemble_evidence(
-        [(ADVISORY_ASK.id, KNOWLEDGE_ADVISORY)], intent=_intent(ADVISORY_ASK)
+        [(ADVISORY_ASK.id, KNOWLEDGE_ADVISORY)], asks=(ADVISORY_ASK,)
     )
 
     assert evidence.sources[0].url == "https://knowledge.example.org"
@@ -408,7 +400,7 @@ def test_an_answer_without_a_source_block_falls_back_to_the_provider() -> None:
     """`source` is optional on every pack that declares it, so the provider
     name stays the floor — a citation is never left blank."""
 
-    evidence = assemble_evidence([(0, MANDI_PRICE)], intent=_intent(PRICE_ASK))
+    evidence = assemble_evidence([(0, MANDI_PRICE)], asks=(PRICE_ASK,))
 
     assert evidence.sources[0].name == "Agmarknet"
     assert evidence.sources[0].url is None
@@ -431,7 +423,7 @@ def test_one_provider_relaying_two_originators_is_two_sources() -> None:
 
     evidence = assemble_evidence(
         [(0, WEATHER_OBSERVATION), (2, relayed)],
-        intent=_intent(PRICE_ASK, ADVISORY_ASK),
+        asks=(PRICE_ASK, ADVISORY_ASK),
     )
 
     assert [(s.id, s.name) for s in evidence.sources] == [
@@ -459,7 +451,7 @@ def test_two_providers_relaying_one_originator_stay_two_sources() -> None:
 
     evidence = assemble_evidence(
         [(0, WEATHER_OBSERVATION), (2, other_provider)],
-        intent=_intent(PRICE_ASK, ADVISORY_ASK),
+        asks=(PRICE_ASK, ADVISORY_ASK),
     )
 
     assert [s.id for s in evidence.sources] == ["1", "2"]
@@ -480,7 +472,7 @@ def test_the_same_originator_twice_from_one_provider_is_one_source() -> None:
 
     evidence = assemble_evidence(
         [(0, WEATHER_OBSERVATION), (2, second)],
-        intent=_intent(PRICE_ASK, ADVISORY_ASK),
+        asks=(PRICE_ASK, ADVISORY_ASK),
     )
 
     assert [s.id for s in evidence.sources] == ["1"]

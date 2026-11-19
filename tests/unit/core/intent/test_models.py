@@ -409,3 +409,9 @@ def test_the_model_is_never_shown_the_scheme_field() -> None:
 
     assert "scheme_code" in properties
     assert "scheme" not in properties
+
+
+def test_an_ask_names_its_category_as_the_network_writes_it() -> None:
+    ask = an_ask(subject_categories=SubjectCategory.MARKET)
+
+    assert ask.subject_category == "Market"

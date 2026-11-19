@@ -44,7 +44,6 @@ from dss.core.policy.models import (
     PolicyExample,
 )
 from dss.core.provider_discovery.models import DiscoveryResult
-from dss.core.provider_preferences.models import AskPriority
 from dss.core.settlement.models import (
     Ambiguous,
     AskSlot,
@@ -91,6 +90,7 @@ from dss.orchestration.session import NoSessionStore, Sessions, SessionStore
 from dss.orchestration.settlement import SettleAsks
 from dss.ports.area_lookup import AreaMatch
 from tests.support.asks import an_ask, numbered
+from tests.support.discovery import a_discovery, a_priority, discovered
 from tests.support.evidence import ANY_ASK, build_evidence
 from tests.support.fakes import (
     FakeAreaLookup,
@@ -181,9 +181,7 @@ def _one_ask(n: int = 1) -> IntentClassification:
 
 
 def _served_discovery() -> DiscoveryResult:
-    return DiscoveryResult(
-        answers={}, capabilities={0: (CAPABILITY,)}, failures={}, events=()
-    )
+    return a_discovery(discovered(capabilities=(CAPABILITY,)))
 
 
 def _evidence(
@@ -233,7 +231,7 @@ class _FakeDiscovery:
     def __init__(self, result: DiscoveryResult) -> None:
         self._result = result
 
-    async def __call__(self, intent, turn, now) -> DiscoveryResult:
+    async def __call__(self, asks, turn, now) -> DiscoveryResult:
         return self._result
 
 
@@ -244,10 +242,10 @@ class _FakePlan:
         self.verdict_was_set: bool | None = None
 
     async def __call__(
-        self, turn, *, intent, discovery, verdict, visibility, awaiting=None
+        self, turn, *, discovery, verdict, visibility, awaiting=None
     ) -> Evidence:
         self.calls += 1
-        self.intent = intent
+        self.discovery = discovery
         self.awaiting = dict(awaiting or {})
         self.verdict_was_set = verdict.is_set()
         self.turn = turn
@@ -428,7 +426,7 @@ async def test_moderation_reject_refuses_before_the_planner() -> None:
 async def test_nobody_serving_is_no_match_without_planning() -> None:
     plan = _FakePlan(_ANSWERED_EVIDENCE)
     compose = _FakeCompose("unused")
-    empty = DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
+    empty = a_discovery()
     orch, _ = _build(intent=_one_ask(), discovery=empty, plan=plan, compose=compose)
 
     events = await _collect(orch)
@@ -441,7 +439,7 @@ async def test_nobody_serving_is_no_match_without_planning() -> None:
 async def test_nobody_serving_names_the_place() -> None:
     """Understood, but nobody serves it here. Not the out-of-scope reply."""
 
-    empty = DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
+    empty = a_discovery()
     orch, _ = _build(
         intent=_one_ask(),
         discovery=empty,
@@ -465,22 +463,8 @@ async def test_an_ask_whose_every_provider_the_client_ruled_out_is_no_match() ->
     error, because nothing failed. The planner is not spent on it either.
     """
 
-    ranked_out = DiscoveryResult(
-        answers={0: ()},
-        capabilities={0: ()},
-        failures={},
-        events=(),
-        priorities={
-            0: AskPriority(
-                ask_id=0,
-                capability="Market",
-                sender_id="vistaar-whatsapp",
-                source="sender",
-                ranking=("state-mandi",),
-                kept=(),
-                dropped=("agmarknet",),
-            )
-        },
+    ranked_out = a_discovery(
+        discovered(priority=a_priority("state-mandi", kept=(), dropped=("agmarknet",)))
     )
     plan = _FakePlan(_ANSWERED_EVIDENCE)
     compose = _FakeCompose("unused")
@@ -501,7 +485,7 @@ async def test_no_asks_is_no_match_with_a_message() -> None:
 
     plan = _FakePlan(_ANSWERED_EVIDENCE)
     compose = _FakeCompose("unused")
-    empty = DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
+    empty = a_discovery()
     orch, _ = _build(
         intent=IntentClassification(asks=(), confidence=0.1),
         discovery=empty,
@@ -541,9 +525,7 @@ async def test_an_unlocated_advisory_ask_is_answered() -> None:
             ),
             confidence=0.9,
         ),
-        discovery=DiscoveryResult(
-            answers={}, capabilities={0: (advisory,)}, failures={}, events=()
-        ),
+        discovery=a_discovery(discovered(capabilities=(advisory,))),
         plan=plan,
         compose=compose,
     )
@@ -1087,7 +1069,7 @@ async def test_a_settled_ask_is_served_beside_a_question() -> None:
     compose = _FakeCompose("Wheat is 2,275 Rs [1]. Which district for the rain?")
     orch, _ = _build(
         intent=_one_ask(2),
-        discovery=_served_discovery(),
+        discovery=a_discovery(discovered(1, capabilities=(CAPABILITY,))),
         plan=plan,
         compose=compose,
         settle_asks=settles_with(_NEEDS_PLACE, _SETTLED),
@@ -1095,7 +1077,7 @@ async def test_a_settled_ask_is_served_beside_a_question() -> None:
 
     events = await _collect(orch)
 
-    assert len(plan.intent.asks) == 1
+    assert [found.ask.id for found in plan.discovery.asks] == [1]
     question, answer = compose.evidence.ask_evidences
     assert question.outcome == _NEEDS_PLACE
     assert answer == wheat_evidence.ask_evidences[0]
@@ -1108,7 +1090,7 @@ async def test_nobody_serving_beside_a_question_reaches_the_composer() -> None:
 
     plan = _FakePlan(_ANSWERED_EVIDENCE)
     compose = _FakeCompose("No onion prices found. Which district for the rain?")
-    nobody = DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
+    nobody = a_discovery()
     orch, _ = _build(
         intent=_one_ask(2),
         discovery=nobody,

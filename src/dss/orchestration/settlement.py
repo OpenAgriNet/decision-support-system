@@ -4,11 +4,11 @@ reads no pack and no registry."""
 
 from __future__ import annotations
 
-from collections.abc import Callable, Collection, Iterable
+from collections.abc import Callable, Collection, Iterable, Sequence
 from functools import partial
 
 from dss.core.forms.models import FormContext
-from dss.core.intent.models import Ask, Intent, SubjectCategory
+from dss.core.intent.models import Ask, SubjectCategory
 from dss.core.provider_discovery.models import CapabilityIndex, NetworkSchemaType
 from dss.core.provider_discovery.service import (
     CapabilityIndexSource,
@@ -20,7 +20,7 @@ from dss.core.settlement.models import AskRequirements, AskSettlement
 from dss.core.settlement.requirements import build_ask_requirements
 
 # One per ask, in ask order.
-type SettleAsks = Callable[[Intent], tuple[AskSettlement, ...]]
+type SettleAsks = Callable[[Sequence[Ask]], tuple[AskSettlement, ...]]
 
 
 # A category's forms.
@@ -32,14 +32,14 @@ def build_settle_asks(
 ) -> SettleAsks:
     """Reads the index on every turn. It can refresh while the app runs."""
 
-    def settle(intent: Intent) -> tuple[AskSettlement, ...]:
+    def settle(asks: Sequence[Ask]) -> tuple[AskSettlement, ...]:
         requirements_for = partial(
             _read_ask_requirements,
             index=index.current(),
             place_bound_types=index.place_bound_types(),
             contexts_for=contexts_for,
         )
-        return settlement.settle_asks(intent, requirements_for=requirements_for)
+        return settlement.settle_asks(asks, requirements_for=requirements_for)
 
     return settle
 

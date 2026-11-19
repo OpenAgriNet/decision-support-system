@@ -14,10 +14,9 @@ import anyio
 from pydantic_ai import Agent, ModelRetry, RunContext
 from pydantic_ai.models import Model
 
-from dss.core.intent.models import Ask, AskId, Intent, ResolvedPlace
+from dss.core.intent.models import Ask, AskId, ResolvedPlace
 from dss.core.moderation.models import Outcome
 from dss.core.planner.describe_capability import render_candidates_as_markdown
-from dss.core.planner.lookup import find_capability
 from dss.core.planner.markdown import render_answers_as_markdown
 from dss.core.planner.models import Failure, Skill, Verdict
 from dss.core.planner.resource_attributes import build_resource_attributes
@@ -29,8 +28,10 @@ from dss.core.planner.validation import (
 )
 from dss.core.provider_discovery.models import (
     DiscoveredAnswer,
+    DiscoveredAsk,
     DiscoveryResult,
     FailureClass,
+    NetworkSchemaType,
     ProviderCapability,
 )
 from dss.core.provider_preferences.next_choice import (
@@ -38,7 +39,6 @@ from dss.core.provider_preferences.next_choice import (
     NextChoices,
     no_next_choice,
 )
-from dss.core.provider_preferences.service import priority_for_ask
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import UserTurn
 from dss.observability.trace_log import log_event
@@ -54,9 +54,6 @@ class PlannerDeps:
     to ``agent.run(deps=...)`` — tools read it via ``RunContext.deps``."""
 
     turn: UserTurn
-    # The ask an `ask_id` names, so `select` can state the category that was
-    # asked about rather than the one the provider advertised.
-    intent: Intent
     discovery: DiscoveryResult
     schemas: dict[str, DomainSchema]
     schema_context_index: dict[str, str]
@@ -80,9 +77,17 @@ class PlannerDeps:
 
 @dataclass(frozen=True)
 class _SelectedCapability:
-    ask: Ask
+    discovered: DiscoveredAsk
     capability: ProviderCapability
     schema: DomainSchema
+
+    @property
+    def ask(self) -> Ask:
+        return self.discovered.ask
+
+    @property
+    def schema_type(self) -> NetworkSchemaType:
+        return self.capability.capability
 
     @property
     def lacks_needed_place(self) -> bool:
@@ -130,7 +135,9 @@ async def _select(
     answered = _find_first_answered(consulted)
     _log_consultation(deps, ask_id=ask_id, consulted=consulted, chosen=answered)
     if answered is None:
-        return _nothing_came_back(deps, ask_id=ask_id, consulted=consulted)
+        return _nothing_came_back(
+            deps, discovered=selected.discovered, consulted=consulted
+        )
 
     _keep_answer(deps, ask_id=ask_id, consulted=consulted, chosen=answered)
     return render_answers_as_markdown(answered.answers)
@@ -146,7 +153,7 @@ async def _consult_ranked_providers(
 ) -> tuple[Consulted, ...]:
     return await _consult_all(
         deps,
-        _consulting(deps, ask_id=selected.ask.id, capability=selected.capability),
+        _find_capabilities_to_consult(selected),
         attributes_for=partial(
             _build_attributes,
             deps=deps,
@@ -166,17 +173,12 @@ def _find_selected_capability(
     """Raises ``ModelRetry`` when the model named something this turn does
     not have: each is a reason to pick again, not to end the turn."""
 
-    capability = find_capability(deps.discovery, ask_id=ask_id, resource_id=resource_id)
+    discovered = _find_discovered_ask(deps, ask_id)
+    capability = discovered.find_capability(resource_id)
     if capability is None:
         raise ModelRetry(
             f"resource_id {resource_id!r} is not one of ask {ask_id}'s candidates"
         )
-
-    # Discovery is keyed off these same asks, so a candidate found above means
-    # the ask is here. A retry, not a crash, if the two ever disagree.
-    ask = deps.intent.find_ask(ask_id)
-    if ask is None:
-        raise ModelRetry(f"ask {ask_id} is not one of this turn's asks")
 
     # A skipped pack leaves no schema for a @type the network still offers.
     # A retry, so the model picks another candidate.
@@ -188,7 +190,16 @@ def _find_selected_capability(
             f"that this ask has no answer."
         )
 
-    return _SelectedCapability(ask=ask, capability=capability, schema=schema)
+    return _SelectedCapability(
+        discovered=discovered, capability=capability, schema=schema
+    )
+
+
+def _find_discovered_ask(deps: PlannerDeps, ask_id: AskId) -> DiscoveredAsk:
+    discovered = deps.discovery.find(ask_id)
+    if discovered is None:
+        raise ModelRetry(f"ask {ask_id} is not one of this turn's asks")
+    return discovered
 
 
 def _validate_model_fields(resource_attributes: dict, schema: DomainSchema) -> None:
@@ -211,7 +222,7 @@ def _build_attributes(
     ask = selected.ask
     return build_resource_attributes(
         capability=candidate,
-        subject_category=ask.subject_categories.value,
+        subject_category=ask.subject_category,
         place=ask.place if isinstance(ask.place, ResolvedPlace) else None,
         model_filled=model_filled,
         schema_context_index=deps.schema_context_index,
@@ -283,8 +294,8 @@ def _replace_answers(
     deps.raw_answers.extend((ask_id, answer) for answer in answers)
 
 
-def _consulting(
-    deps: PlannerDeps, *, ask_id: AskId, capability: ProviderCapability
+def _find_capabilities_to_consult(
+    selected: _SelectedCapability,
 ) -> tuple[ProviderCapability, ...]:
     """The candidates this call will consult, in the order it will use them.
 
@@ -300,13 +311,9 @@ def _consulting(
     a provider's own resources answers better.
     """
 
-    if priority_for_ask(deps.discovery, ask_id=ask_id) is None:
-        return (capability,)
-    return tuple(
-        candidate
-        for candidate in deps.discovery.capabilities.get(ask_id, ())
-        if candidate.capability == capability.capability
-    )
+    if not selected.discovered.is_ranked:
+        return (selected.capability,)
+    return selected.discovered.find_capabilities_of_type(selected.schema_type)
 
 
 async def _consult_all(
@@ -400,7 +407,7 @@ def _detail(failure: SelectFailedError | None) -> str:
 
 
 def _nothing_came_back(
-    deps: PlannerDeps, *, ask_id: AskId, consulted: tuple[Consulted, ...]
+    deps: PlannerDeps, *, discovered: DiscoveredAsk, consulted: tuple[Consulted, ...]
 ) -> str:
     """What the model is told when no consulted provider had an answer.
 
@@ -418,6 +425,7 @@ def _nothing_came_back(
     such a candidate is a fresh `select`, not a re-run of this set.
     """
 
+    ask_id = discovered.ask.id
     for one in consulted:
         if one.failure is None:
             continue
@@ -439,7 +447,7 @@ def _nothing_came_back(
         )
     else:
         outcome = f"Could not reach any provider for ask {ask_id} ({names})."
-    if _unconsulted(deps, ask_id=ask_id, consulted=consulted):
+    if _has_unconsulted_candidates(discovered, consulted):
         return (
             f"{outcome} Try another candidate for ask {ask_id}, or report "
             f"that this ask has no answer."
@@ -450,15 +458,12 @@ def _nothing_came_back(
     )
 
 
-def _unconsulted(
-    deps: PlannerDeps, *, ask_id: AskId, consulted: tuple[Consulted, ...]
+def _has_unconsulted_candidates(
+    discovered: DiscoveredAsk, consulted: tuple[Consulted, ...]
 ) -> bool:
-    """Whether the ask still has candidates this call did not reach."""
-
     tried = {one.capability.resource_id for one in consulted}
     return any(
-        candidate.resource_id not in tried
-        for candidate in deps.discovery.capabilities.get(ask_id, ())
+        candidate.resource_id not in tried for candidate in discovered.capabilities
     )
 
 
@@ -466,8 +471,10 @@ async def _describe_capability(ctx: RunContext[PlannerDeps], ask_id: AskId) -> s
     """Show an ask's candidates and each one's filterable fields, so the
     model knows what it may set before calling ``select``."""
 
-    candidates = ctx.deps.discovery.capabilities.get(ask_id, ())
-    return render_candidates_as_markdown(candidates, schemas=ctx.deps.schemas)
+    discovered = _find_discovered_ask(ctx.deps, ask_id)
+    return render_candidates_as_markdown(
+        discovered.capabilities, schemas=ctx.deps.schemas
+    )
 
 
 _TOOLS = {
@@ -500,9 +507,9 @@ def build_planner_agent(
     agent with ``agent.override(model=...)`` and no prompt.
 
     ``retries`` is the model's own budget for ``ModelRetry``. The design
-    raises it in three places — an invented field, an unknown ``resource_id``,
-    a capability with no loaded schema — so the framework's default of 1 is
-    too few for a real turn.
+    raises it in four places — an unknown ask id, an unknown ``resource_id``,
+    a capability with no loaded schema, an invented field — so the framework's
+    default of 1 is too few for a real turn.
     """
 
     agent: Agent[PlannerDeps, str] = Agent(

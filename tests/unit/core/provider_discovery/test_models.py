@@ -2,19 +2,23 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from dss.core.provider_discovery.models import (
+    NOTHING_FOUND,
     AsksToBeDiscovered,
+    AskToDiscover,
     AskUnservable,
     DiscoveredAnswer,
     DiscoveredAsk,
-    DiscoveredAsks,
+    DiscoveryResult,
     ProviderQuery,
     ProviderQueryResult,
     Validity,
 )
+from tests.support.asks import an_ask
 
 NOW = datetime(2026, 8, 26, 12, 0, 0, tzinfo=UTC)
-_NOTHING_FOUND = ProviderQueryResult(answers=(), capabilities=(), failures=())
 
 _MARKET_QUERY = ProviderQuery(
     capabilities=("openagrinet:MandiPrice",),
@@ -29,8 +33,11 @@ _WEATHER_QUERY = ProviderQuery(
     coverage=None,
 )
 _MARKET_WEATHER_MARKET = AsksToBeDiscovered(
-    queries_by_ask={0: _MARKET_QUERY, 1: _WEATHER_QUERY, 2: _MARKET_QUERY},
-    unsearchable_asks=frozenset(),
+    asks=(
+        AskToDiscover(an_ask(id=0), _MARKET_QUERY),
+        AskToDiscover(an_ask(id=1), _WEATHER_QUERY),
+        AskToDiscover(an_ask(id=2), _MARKET_QUERY),
+    ),
     events=(),
 )
 
@@ -40,11 +47,6 @@ def test_each_shared_query_is_sent_once_in_first_seen_order() -> None:
         _MARKET_QUERY,
         _WEATHER_QUERY,
     )
-
-
-def test_the_asks_sharing_a_query_come_in_ask_order() -> None:
-    assert _MARKET_WEATHER_MARKET.find_asks_sharing(_MARKET_QUERY) == (0, 2)
-    assert _MARKET_WEATHER_MARKET.find_asks_sharing(_WEATHER_QUERY) == (1,)
 
 
 def _answer(validity: Validity | None) -> DiscoveredAnswer:
@@ -58,34 +60,29 @@ def _answer(validity: Validity | None) -> DiscoveredAnswer:
     )
 
 
-def test_a_result_has_an_entry_per_ask_in_ask_order() -> None:
-    answer = _answer(None)
-    discovered = DiscoveredAsks(
-        asks=(
-            DiscoveredAsk(
-                ask_id=1,
-                query=_MARKET_QUERY,
-                query_result=ProviderQueryResult(
-                    answers=(answer,), capabilities=(), failures=()
-                ),
-            ),
-        ),
-        unsearchable_asks=frozenset({0}),
-    )
-
-    result = discovered.build_result(())
-
-    assert list(result.answers) == [0, 1]
-    assert result.answers == {0: (), 1: (answer,)}
-    assert result.failures == {0: (), 1: ()}
-
-
 def test_a_searched_ask_with_nothing_found_is_unservable() -> None:
-    searched = DiscoveredAsk(ask_id=0, query=_MARKET_QUERY, query_result=_NOTHING_FOUND)
+    searched = DiscoveredAsk(ask=an_ask(), query=_MARKET_QUERY, found=NOTHING_FOUND)
 
     assert searched.build_outcome_events() == (
         AskUnservable(0, ("openagrinet:MandiPrice",)),
     )
+
+
+def test_an_ask_never_searched_is_not_called_unservable() -> None:
+    """Nobody was asked, so "nobody serves it" would be a false report."""
+
+    never_searched = DiscoveredAsk(ask=an_ask(), query=None, found=NOTHING_FOUND)
+
+    assert never_searched.build_outcome_events() == ()
+
+
+def test_two_entries_for_one_ask_are_refused() -> None:
+    """A reader looking an ask up by id would silently get only the first."""
+
+    twice = DiscoveredAsk(ask=an_ask(id=1), query=None, found=NOTHING_FOUND)
+
+    with pytest.raises(ValueError, match="two entries for ask 1"):
+        DiscoveryResult(asks=(twice, twice), events=())
 
 
 def test_within_validity_returns_a_new_ask_without_the_answers_outside_it() -> None:
@@ -93,12 +90,10 @@ def test_within_validity_returns_a_new_ask_without_the_answers_outside_it() -> N
         Validity(starts_at=NOW - timedelta(days=2), ends_at=NOW - timedelta(days=1))
     )
     ask = DiscoveredAsk(
-        ask_id=0,
+        ask=an_ask(),
         query=_MARKET_QUERY,
-        query_result=ProviderQueryResult(
-            answers=(stale,), capabilities=(), failures=()
-        ),
+        found=ProviderQueryResult(answers=(stale,), capabilities=(), failures=()),
     )
 
-    assert ask.within_validity(NOW).query_result.answers == ()
-    assert ask.query_result.answers == (stale,)
+    assert ask.within_validity(NOW).answers == ()
+    assert ask.answers == (stale,)

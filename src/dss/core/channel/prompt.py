@@ -234,7 +234,7 @@ def _render_awaiting(ask_evidence: AskEvidence) -> list[str]:
 def _render_unsettled(ask_evidence: AskEvidence) -> list[str]:
     """Only the first open slot: the farmer is asked one thing per turn."""
 
-    category = ask_evidence.ask.subject_categories.value
+    category = ask_evidence.ask.subject_category
     match ask_evidence.outcome:
         case NeedsClarification(open_slots=(first, *_)):
             return [f"Ask the farmer ({category}): {_slot_brief(first)}"]
@@ -261,7 +261,7 @@ _FORM_BY_ACTION: Mapping[ProviderAction, str] = {
 
 
 def _wanted_form(ask: Ask) -> str:
-    category = ask.subject_categories.value.lower()
+    category = ask.subject_category.lower()
     action = ask.known_action
     form = _FORM_BY_ACTION[action] if action else "{category} form"
     return form.format(category=category)

@@ -426,11 +426,9 @@ class TextPath:
             yield await self._no_match(turn)
             return
 
-        # Discovery searched only the settled asks, so everything that reads
-        # it works on those. The rest wait on the farmer.
-        settled = result.settled_intent
-        # The asks a form answers, once discovery has said who serves what.
-        awaiting = find_forms(settled, result.discovery, self._forms)
+        # Discovery searched only the settled asks, so only those can get a
+        # form. The rest wait on the farmer.
+        awaiting = find_forms(result.discovery, self._forms)
         # Fixed text, as ADR-0018 has it, only when no ask needs a question.
         if result.is_every_ask_settled and _nobody_serves(result.discovery):
             yield await self._unserved_reply(result, turn=turn)
@@ -494,7 +492,7 @@ class TextPath:
         self._note("intent", ctx, _classified(intent))
         asks = intent.asks
         recorder.asked(
-            categories=[ask.subject_categories.value for ask in asks],
+            categories=[ask.subject_category for ask in asks],
             interactions=[ask.interaction_type.value for ask in asks],
             subjects=[ask.agriculture_subjects or "" for ask in asks],
         )
@@ -520,11 +518,11 @@ class TextPath:
         """The planner's evidence for the settled asks. With none to plan, or
         nobody to serve them, the planner is not called."""
 
-        settled = result.settled_intent
-        if not settled.asks or _nobody_serves(result.discovery):
+        settled_asks = result.settled_asks
+        if not settled_asks or _nobody_serves(result.discovery):
             return Evidence(
                 sources=(),
-                ask_evidences=group_by_ask(settled.asks, results=(), failures=()),
+                ask_evidences=group_by_ask(settled_asks, results=(), failures=()),
             )
         return await self._plan(
             turn, result, ctx=ctx, visibility=visibility, awaiting=awaiting
@@ -545,20 +543,18 @@ class TextPath:
 
         Plans the settled asks only. Discovery searched just those."""
 
-        settled = result.settled_intent
         verdict = Verdict()
         verdict.set(result.decision)
         with trace_component(Stage.PLANNER, ctx.trace_id):
             evidence = await self._components.plan(
                 turn,
-                intent=settled,
                 discovery=result.discovery,
                 verdict=verdict,
                 visibility=visibility,
                 awaiting=awaiting,
             )
             set_current_span_content(
-                input=asks_text(settled.asks),
+                input=asks_text(result.settled_asks),
                 output=evidence_text(evidence),
             )
         return evidence
@@ -804,9 +800,7 @@ def _classified(intent: Intent) -> str:
     """A non-personal summary for telemetry: which categories the turn asked
     about, never the question itself."""
 
-    return (
-        ",".join(ask.subject_categories.value for ask in intent.asks) or "unclassified"
-    )
+    return ",".join(ask.subject_category for ask in intent.asks) or "unclassified"
 
 
 def refusal_for(decision: ModerationDecision) -> tuple[TurnOutcome, ComposedAnswer]:

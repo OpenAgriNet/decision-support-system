@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 
-from dss.core.intent.models import Ask, Intent
+from dss.core.intent.models import Ask
 from dss.core.settlement.ask_slots import frame_for
 from dss.core.settlement.models import (
     AskRequirements,
@@ -16,13 +16,13 @@ from dss.core.settlement.models import (
 
 
 def settle_asks(
-    intent: Intent, *, requirements_for: Callable[[Ask], AskRequirements]
+    asks: Sequence[Ask], *, requirements_for: Callable[[Ask], AskRequirements]
 ) -> tuple[AskSettlement, ...]:
     """One per ask, in ask order."""
 
     return tuple(
         AskSettlement(ask, settle(frame_for(ask, requirements_for(ask))))
-        for ask in intent.asks
+        for ask in asks
     )
 
 

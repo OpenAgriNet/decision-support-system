@@ -47,6 +47,7 @@ from dss.orchestration.plan import Plan
 from dss.orchestration.redaction import RedactTexts, pass_through
 from dss.orchestration.settlement import SettleAsks
 from dss.orchestration.translation import translate_out
+from tests.support.discovery import a_discovery
 from tests.support.fakes import FakeAreaLookup, FakeLocalizer, FakeTranslator
 from tests.support.settlement import settles_every_ask, settles_with
 from tests.support.turn_events import assert_well_formed
@@ -76,7 +77,7 @@ MARATHI = LanguageTag("mr")
 BHILI = LanguageTag("bhb")
 QUERY = "આજે વરસાદ પડશે?"
 ANSWER = "It will rain today [1]."
-NOBODY = DiscoveryResult(answers={}, capabilities={}, failures={}, events=())
+NOBODY = a_discovery()
 
 
 def _build_turn(
