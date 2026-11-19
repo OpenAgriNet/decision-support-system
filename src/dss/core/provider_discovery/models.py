@@ -68,7 +68,7 @@ class Validity:
 
 
 @dataclass(frozen=True)
-class AnswerOrigin:
+class AnswerSource:
     provider_id: str
     # Means nothing outside its provider, so both fields make the key.
     # None: the provider named no source.
@@ -93,8 +93,8 @@ class DiscoveredAnswer:
     source_url: str | None = None
 
     @property
-    def origin(self) -> AnswerOrigin:
-        return AnswerOrigin(provider_id=self.provider_id, source_id=self.source_id)
+    def origin(self) -> AnswerSource:
+        return AnswerSource(provider_id=self.provider_id, source_id=self.source_id)
 
     def is_outside_validity(self, now: datetime) -> bool:
         """Both bounds: an answer not yet valid is as wrong as an expired one."""

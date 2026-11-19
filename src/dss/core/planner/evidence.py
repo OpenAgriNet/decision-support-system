@@ -31,7 +31,7 @@ from dss.core.planner.models import (
     Source,
     SourceKind,
 )
-from dss.core.provider_discovery.models import AnswerOrigin, DiscoveredAnswer
+from dss.core.provider_discovery.models import AnswerSource, DiscoveredAnswer
 from dss.core.settlement.models import AskSettlement, Settled
 
 
@@ -48,19 +48,19 @@ def assemble_evidence(
     ``direct_answers`` must be passed in: a Direct resource needs no call, so
     it never appears in ``raw_answers``."""
 
-    source_by_origin: dict[AnswerOrigin, Source] = {}
+    numbered_source: dict[AnswerSource, Source] = {}
     results: list[Result] = []
 
     for ask_id, answer in [*direct_answers, *raw_answers]:
         origin = answer.origin
-        if origin not in source_by_origin:
-            source_by_origin[origin] = _source_of(
-                answer, number=len(source_by_origin) + 1
+        if origin not in numbered_source:
+            numbered_source[origin] = _source_of(
+                answer, number=len(numbered_source) + 1
             )
         results.append(
             Result(
                 ask_id=ask_id,
-                source=source_by_origin[origin],
+                source=numbered_source[origin],
                 data=dict(answer.attributes),
             )
         )
