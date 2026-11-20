@@ -274,7 +274,17 @@ Redis too, which carries the flow from one turn to the next). Then:
 
 1. Ask "I want to file a PM-KISAN grievance". The reply is the details form.
 2. Send it back filled in. The DSS calls `/init`, and the reply is a form with
-   one `secret` field, its `context.action` set to `init`.
+   one `secret` field ("Enter OTP"), its `context.action` set to `init`, and
+   `actions: [{"name": "resend_init", "label": "Resend OTP"}]`.
+   To press Resend, send that form's ids as a `form_action` item. The DSS calls
+   `/init` again, and the same form comes back:
+
+   ```json
+   {"role": "user", "content": [
+     {"type": "form_action", "formId": "<the OTP form's formId>",
+      "context": {"scheme": "PM-KISAN", "category": "Grievance", "action": "init"},
+      "name": "resend_init", "actionId": "press-1"}]}
+   ```
 3. Send that form back with `1234`. The DSS files at `/support`, and the
    reply names the ticket.
 

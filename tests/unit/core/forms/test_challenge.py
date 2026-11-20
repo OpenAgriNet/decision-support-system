@@ -14,9 +14,11 @@ from dss.core.forms.challenge import (
 def test_an_otp_challenge_is_read_with_its_method() -> None:
     attributes = {"challenge": {"issued": {"method": "OTP", "channel": "SMS"}}}
 
-    assert read_issued_challenge(attributes) == IssuedChallenge(
-        method=ChallengeMethod.OTP
-    )
+    challenge = read_issued_challenge(attributes)
+
+    assert challenge is not None
+    assert challenge.method is ChallengeMethod.OTP
+    assert challenge.unknown_method is None
 
 
 @pytest.mark.parametrize(
@@ -27,7 +29,14 @@ def test_a_challenge_with_no_known_method_is_still_issued(
 ) -> None:
     attributes = {"challenge": {"issued": issued}}
 
-    assert read_issued_challenge(attributes) == IssuedChallenge(method=None)
+    assert read_issued_challenge(attributes).method is None
+
+
+def test_a_method_we_do_not_know_is_kept_as_sent() -> None:
+    attributes = {"challenge": {"issued": {"method": "FACE"}}}
+
+    assert read_issued_challenge(attributes) == IssuedChallenge(sent_method="FACE")
+    assert IssuedChallenge(sent_method="FACE").unknown_method == "FACE"
 
 
 @pytest.mark.parametrize(

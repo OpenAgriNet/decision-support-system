@@ -11,13 +11,12 @@ from dss.adapters.observability.tracing import (
     set_current_span_attributes,
     set_current_span_content,
 )
-from dss.core.channel.localize import LocalizeText, localize_answer
+from dss.core.channel.localize import LocalizeText
 from dss.core.channel.models import ClarificationText, ComposedAnswer
 from dss.core.forms.challenge import IssuedChallenge
 from dss.core.forms.init_flow import (
     FlowDecision,
     InitCall,
-    InitReplyWithoutChallenge,
     NoInitPending,
     SavedDetailsUnusable,
     WaitingFlow,
@@ -51,15 +50,13 @@ from dss.core.forms.service import (
     end_for_no_provider,
     end_for_unknown_form,
     free_text_of,
-    is_auth_refused,
     is_done,
     mask_pii_fields,
     validate_submission,
     with_form_done,
     withhold_values,
 )
-from dss.core.intent.models import Ask, Scheme
-from dss.core.intent.service import scheme_with_code
+from dss.core.intent.models import Ask
 from dss.core.moderation.models import ModerationContext, ModerationDecision, Outcome
 from dss.core.moderation.service import moderate
 from dss.core.planner.evidence import assemble_evidence
@@ -70,7 +67,6 @@ from dss.core.provider_discovery.models import (
     DiscoveryResult,
     ProviderCapability,
 )
-from dss.core.redaction.turn import surrounding_texts_of, with_surrounding_texts
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import (
     ProviderAction,
@@ -84,23 +80,27 @@ from dss.core.stream_response.service import ComposeStream
 from dss.observability.stages import Stage
 from dss.observability.trace_log import trace_component
 from dss.orchestration.discovery import DiscoverProviders
-from dss.orchestration.form_offer import ask_for_form
+from dss.orchestration.form_turn import (
+    FormTurn,
+    FormTurnCloser,
+    RedactedTexts,
+    ask_for_form_context,
+    call_traced_provider_action,
+    redact_texts,
+    warn_if_auth_refused,
+    warn_if_unknown_challenge,
+)
 from dss.orchestration.orchestrator import (
-    build_turn_finished,
     compose_answer,
     note_stage,
-    outcome_for,
     refusal_for,
     reveal_to_farmer,
-    spoken_text,
 )
-from dss.orchestration.provider_action import call_provider_action, warn_auth_refused
 from dss.orchestration.redaction import RedactTexts
 from dss.orchestration.session import Session
 from dss.orchestration.stage_content import (
     asks_text,
     discovery_text,
-    provider_response_text,
 )
 from dss.orchestration.turn import moderation_attributes
 from dss.ports.invocation import ProviderActionInvocation
@@ -109,22 +109,12 @@ from dss.ports.prompts import PromptProvider
 from dss.ports.scheme_catalog import SchemeCatalog
 from dss.ports.sinks import TelemetrySink, TurnSink
 
-# Several prose fields are judged as one text, like one question.
-_FREE_TEXT_SEPARATOR = "\n\n"
-
 
 @dataclass(frozen=True)
 class _FormToSend:
     details: ValidSubmission
     ask: Ask
     action: ActionSchema
-
-
-@dataclass(frozen=True)
-class _RedactedTexts:
-    turn: UserTurn[FormSubmission]
-    free_text: str
-    visibility: Visibility
 
 
 @dataclass(frozen=True)
@@ -137,12 +127,7 @@ class _Redacted:
     visibility: Visibility
 
 
-# Which turn this is; the session is apart, since it changes during the turn.
-@dataclass(frozen=True)
-class _FormTurn:
-    turn: UserTurn[FormSubmission]
-    ctx: TurnContext
-    recorder: TurnRecorder
+type _FormTurn = FormTurn[FormSubmission]
 
 
 # One fixed answer, or the composer's stream.
@@ -181,6 +166,7 @@ class FormPath:
         self._turns = turns
         self._telemetry = telemetry
         self._clarification_text = clarification_text
+        self._closer = FormTurnCloser(localize=components.localize, turns=turns)
 
     async def run(
         self,
@@ -190,7 +176,7 @@ class FormPath:
         recorder: TurnRecorder,
         session: Session,
     ) -> AsyncGenerator[TurnEvent]:
-        form_turn = _FormTurn(turn=turn, ctx=ctx, recorder=recorder)
+        form_turn = FormTurn(turn=turn, ctx=ctx, recorder=recorder)
         submission = turn.input
         handle = (
             self._handle_init_response
@@ -281,7 +267,7 @@ class FormPath:
             visibility=redaction.visibility,
         )
         if isinstance(response, Failure):
-            _warn_if_auth_refused(response, form_turn.ctx)
+            warn_if_auth_refused(response, form_turn.ctx)
             return await self._finish_turn(
                 end_for_failed_call(
                     redaction.turn.input,
@@ -343,14 +329,9 @@ class FormPath:
         # The saved details are a second form: masked too, and their tags held
         # with the turn's, so the answer can reveal what the provider echoes.
         details = mask_pii_fields(flow.details)
-        held = redaction.visibility
         redaction = replace(
             redaction,
-            visibility=Visibility(
-                values={**held.values, **details.visibility.values},
-                never_concealed=held.never_concealed
-                | details.visibility.never_concealed,
-            ),
+            visibility=redaction.visibility.merged_with(details.visibility),
         )
         # Removed before the call: a crash after it must not leave a response
         # that may have reached the provider open to be used again. A failure
@@ -365,7 +346,7 @@ class FormPath:
             init_values=init_response.values,
         )
         if isinstance(response, Failure):
-            _warn_if_auth_refused(response, form_turn.ctx)
+            warn_if_auth_refused(response, form_turn.ctx)
             return await self._update_forms_and_end(
                 decide_after_failed_init_response(
                     session.forms,
@@ -448,8 +429,9 @@ class FormPath:
             visibility=redaction.visibility,
         )
         init_reply = read_init_reply(reply)
+        warn_if_unknown_challenge(init_reply)
         if not isinstance(init_reply, IssuedChallenge):
-            _warn_if_auth_refused(init_reply, form_turn.ctx)
+            warn_if_auth_refused(init_reply, form_turn.ctx)
             return await self._finish_turn(
                 end_for_failed_init(
                     init_reply, details=submission, text=self._clarification_text
@@ -482,12 +464,9 @@ class FormPath:
     async def _finish_turn(
         self, ending: FlowEnding, form_turn: _FormTurn
     ) -> TurnFinished:
-        outcome = outcome_for(
-            ending.status,
-            ending.cause,
-            retry_after_seconds=ending.retry_after_seconds,
+        return await self._closer.finish(
+            ending, form_turn, query=_reference_line(form_turn.turn.input)
         )
-        return await self._finish_with_outcome(outcome, ending.answer, form_turn)
 
     async def _call_provider_action(  # noqa: PLR0913
         self,
@@ -499,33 +478,18 @@ class FormPath:
         visibility: Visibility,
         init_values: Mapping[str, str] | None = None,
     ) -> DiscoveredAnswer | Failure:
-        turn = form_turn.turn
-        with trace_component(Stage.PROVIDER_ACTION, form_turn.ctx.trace_id):
-            response = await call_provider_action(
-                provider,
-                action,
-                submission.values,
-                invocation=self._components.invocation_for(turn),
-                transaction_id=turn.transaction_id,
-                visibility=visibility,
-                init_values=init_values,
-            )
-            set_current_span_attributes(
-                action=action.context.action,
-                provider_id=provider.provider_id,
-                is_failure=isinstance(response, Failure),
-            )
-            set_current_span_content(
-                input=f"{action.context.action} to {provider.provider_name}",
-                output=provider_response_text(response),
-            )
-        return response
+        return await call_traced_provider_action(
+            form_turn,
+            submission.values,
+            action,
+            provider=provider,
+            invocation=self._components.invocation_for(form_turn.turn),
+            visibility=visibility,
+            init_values=init_values,
+        )
 
     def _ask_for(self, context: FormContext) -> Ask | None:
-        scheme = scheme_with_code(self._scheme_catalog.schemes(), context.scheme)
-        if scheme is None:
-            scheme = Scheme(code=context.scheme, name=context.scheme)
-        return ask_for_form(context, scheme=scheme)
+        return ask_for_form_context(context, self._scheme_catalog)
 
     async def _find_form_provider(
         self, ask: Ask, form_turn: _FormTurn
@@ -577,31 +541,14 @@ class FormPath:
             turn=texts.turn,
             form=form,
             free_text=texts.free_text,
-            visibility=Visibility(
-                values={**texts.visibility.values, **held.values},
-                never_concealed=texts.visibility.never_concealed | held.never_concealed,
-            ),
+            visibility=texts.visibility.merged_with(held),
         )
 
     async def _redact_texts(
         self, form_turn: _FormTurn, free_text: Sequence[str]
-    ) -> _RedactedTexts:
-        turn, ctx = form_turn.turn, form_turn.ctx
-        surroundings = surrounding_texts_of(turn)
-        with trace_component(Stage.REDACTION, ctx.trace_id):
-            redaction = await self._components.redact(
-                [*surroundings, *free_text], transaction_id=turn.transaction_id
-            )
-        form_turn.recorder.redacted(found=redaction.found, failed=redaction.failed)
-        tagged_surroundings = redaction.texts[: len(surroundings)]
-        tagged_free_text = redaction.texts[len(surroundings) :]
-        return _RedactedTexts(
-            turn=_with_values_withheld(
-                with_surrounding_texts(turn, tagged_surroundings)
-            ),
-            free_text=_FREE_TEXT_SEPARATOR.join(tagged_free_text),
-            visibility=redaction.visibility,
-        )
+    ) -> RedactedTexts[FormSubmission]:
+        texts = await redact_texts(form_turn, free_text, redact=self._components.redact)
+        return replace(texts, turn=_with_values_withheld(texts.turn))
 
     async def _moderate(
         self, redaction: _Redacted, form_turn: _FormTurn
@@ -630,19 +577,13 @@ class FormPath:
     async def _finish_with_outcome(
         self, outcome: TurnOutcome, answer: ComposedAnswer, form_turn: _FormTurn
     ) -> TurnFinished:
-        answer = await localize_answer(
-            answer, self._components.localize, turn=form_turn.turn
+        return await self._closer.finish_with_outcome(
+            outcome, answer, form_turn, query=_reference_line(form_turn.turn.input)
         )
-        finished = build_turn_finished(outcome, answer)
-        self._record(finished, form_turn=form_turn)
-        return finished
 
     def _record(self, finished: TurnFinished, *, form_turn: _FormTurn) -> None:
-        self._turns.closed(form_turn.ctx, finished)
-        form_turn.recorder.status(finished.outcome.status.value)
-        form_turn.recorder.content(
-            query=_reference_line(form_turn.turn.input),
-            answer=spoken_text(finished.content),
+        self._closer.record(
+            finished, form_turn=form_turn, query=_reference_line(form_turn.turn.input)
         )
 
 
@@ -659,13 +600,6 @@ def _free_text_of(
     form: ValidSubmission | FormErrors | UnknownForm,
 ) -> tuple[str, ...]:
     return free_text_of(form) if isinstance(form, ValidSubmission) else ()
-
-
-def _warn_if_auth_refused(
-    failure: Failure | InitReplyWithoutChallenge, ctx: TurnContext
-) -> None:
-    if isinstance(failure, Failure) and is_auth_refused(failure):
-        warn_auth_refused(failure, request_id=ctx.trace_id)
 
 
 def _count(discovery: DiscoveryResult) -> int:

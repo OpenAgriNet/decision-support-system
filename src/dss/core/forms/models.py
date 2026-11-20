@@ -259,12 +259,24 @@ def _label_for(path: str) -> str:
     return words[:1].upper() + words[1:]
 
 
+class FormActionName(StrEnum):
+    RESEND_INIT = "resend_init"
+
+
+class FormActionOffer(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    name: FormActionName
+    label: str
+
+
 class FormBlock(OutputBlock):
     """One offer of a form to one farmer. ``form_id`` names the offer, not the
     form's type; ``form.context`` does that."""
 
     form_id: str
     form: FormDefinition
+    actions: tuple[FormActionOffer, ...] = ()
 
 
 class FieldValue(BaseModel):
@@ -279,6 +291,15 @@ class FormSubmission(TurnInput):
     context: FormContext
     submission_id: str
     values: tuple[FieldValue, ...]
+
+
+class FormAction(TurnInput):
+    """A button the farmer pressed on an offered form. Carries no values."""
+
+    form_id: str
+    context: FormContext
+    name: FormActionName
+    action_id: str
 
 
 class FieldErrorCode(StrEnum):
@@ -389,7 +410,7 @@ class FormReference(MessageReference):
         return _FORM_NOTE[(self.item, role)]
 
 
-type FormItem = Literal["form", "form_error"]
+type FormItem = Literal["form", "form_error", "form_action"]
 
 # The assistant offers a form or hands one back; the farmer submits one.
 _FORM_NOTE: Mapping[tuple[FormItem, Role], str] = {
@@ -397,6 +418,10 @@ _FORM_NOTE: Mapping[tuple[FormItem, Role], str] = {
     ("form", "user"): "a form was submitted",
     ("form_error", "assistant"): "a form was handed back with errors",
     ("form_error", "user"): "a form was handed back with errors",
+    # Only a farmer presses one; an app echoing it under the assistant must
+    # not break the turn.
+    ("form_action", "assistant"): "a button on a form was pressed",
+    ("form_action", "user"): "a button on a form was pressed",
 }
 
 
