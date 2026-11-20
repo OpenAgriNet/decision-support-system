@@ -14,6 +14,8 @@ from dss.core.forms.models import (
     FieldErrorEntry,
     FieldKind,
     FieldRules,
+    FormActionName,
+    FormActionOffer,
     FormBlock,
     FormContext,
     FormDefinition,
@@ -372,6 +374,20 @@ def test_a_form_block_is_a_form_item_with_flat_fields(ctx):
         "options": [],
     }
     assert item["fields"][1]["options"] == [{"value": "Kharif", "label": "Kharif"}]
+
+
+def test_a_form_block_lists_the_buttons_offered_beside_submit(ctx):
+    resend = FormActionOffer(name=FormActionName.RESEND_INIT, label="Resend OTP")
+    block = FormBlock(form_id="8f3c", form=_GRIEVANCE_FORM, actions=(resend,))
+
+    frame = mapping.to_claim_frame(
+        Claim(content=block), ctx, now=NOW, seq=2, response_id=RESPONSE_ID
+    )
+    item = json.loads(frame.model_dump_json(by_alias=True, exclude_none=True))[
+        "message"
+    ]["content"][0]
+
+    assert item["actions"] == [{"name": "resend_init", "label": "Resend OTP"}]
 
 
 def test_a_rejected_filing_is_not_retryable(ctx):

@@ -17,15 +17,26 @@ class ChallengeMethod(StrEnum):
 
 @dataclass(frozen=True)
 class IssuedChallenge:
-    # None: a method this DSS does not know.
-    method: ChallengeMethod | None
+    sent_method: str | None
+
+    @property
+    def method(self) -> ChallengeMethod | None:
+        """None: a method this DSS does not know."""
+
+        known = self.sent_method in ChallengeMethod
+        return ChallengeMethod(self.sent_method) if known else None
+
+    @property
+    def unknown_method(self) -> str | None:
+        return None if self.method else self.sent_method
 
 
 def read_issued_challenge(attributes: Mapping[str, object]) -> IssuedChallenge | None:
     issued = _issued_in(attributes)
     if issued is None:
         return None
-    return IssuedChallenge(method=_method_of(issued.get("method")))
+    sent = issued.get("method")
+    return IssuedChallenge(sent_method=sent if isinstance(sent, str) else None)
 
 
 def _issued_in(attributes: Mapping[str, object]) -> Mapping[str, object] | None:
@@ -35,7 +46,3 @@ def _issued_in(attributes: Mapping[str, object]) -> Mapping[str, object] | None:
             return None
         node = node.get(segment)
     return node if isinstance(node, Mapping) else None
-
-
-def _method_of(value: object) -> ChallengeMethod | None:
-    return ChallengeMethod(value) if value in ChallengeMethod else None

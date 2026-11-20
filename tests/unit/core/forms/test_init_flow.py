@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -15,12 +16,15 @@ from dss.core.forms.init_flow import (
     SavedDetailsUnusable,
     WaitingFlow,
     decide_after_failed_init_response,
+    decide_after_resent_init,
     decide_after_sent_init,
     decide_with_no_waiting_flow,
     end_for_failed_init,
+    end_for_failed_resend,
     end_for_session_not_kept,
     find_init_call,
     find_waiting_flow,
+    offers_action,
     outcome_of_failed_call,
     read_init_reply,
     with_details_form_done,
@@ -31,6 +35,8 @@ from dss.core.forms.models import (
     FieldErrorEntry,
     FieldValue,
     FlowEnding,
+    FormActionName,
+    FormActionOffer,
     FormAwaitingInit,
     FormBlock,
     FormContext,
@@ -171,7 +177,7 @@ def test_details_without_a_value_init_sends_are_not_configured() -> None:
 def test_an_init_reply_with_a_challenge_gives_the_challenge() -> None:
     reply = _reply({"challenge": {"issued": {"method": "OTP"}}})
 
-    assert read_init_reply(reply) == IssuedChallenge(method=ChallengeMethod.OTP)
+    assert read_init_reply(reply) == IssuedChallenge(sent_method="OTP")
 
 
 @pytest.mark.parametrize(
@@ -270,7 +276,14 @@ def _waiting(
     )
 
 
-def _sent_init(forms: FormRecords) -> FlowDecision:
+_OTP_CHALLENGE = IssuedChallenge(sent_method="OTP")
+
+
+def _sent_init(
+    forms: FormRecords,
+    *,
+    challenge: IssuedChallenge = _OTP_CHALLENGE,
+) -> FlowDecision:
     init = find_init_call(_valid(_DETAILS), _FORMS)
     assert isinstance(init, InitCall)
     return decide_after_sent_init(
@@ -278,7 +291,7 @@ def _sent_init(forms: FormRecords) -> FlowDecision:
         _DETAILS,
         provider=_PROVIDER,
         init=init,
-        challenge=IssuedChallenge(method=ChallengeMethod.OTP),
+        challenge=challenge,
         text=_TEXT,
         now=_NOW,
     )
@@ -301,6 +314,25 @@ def test_a_sent_init_asks_for_the_init_form() -> None:
     assert told == TextBlock(text=_TEXT.init_response_needed)
     assert isinstance(offered, FormBlock)
     assert offered.form == _FORMS.find(PMKISAN_INIT)
+
+
+_RESEND = FormActionOffer(name=FormActionName.RESEND_INIT, label="Resend OTP")
+
+
+def test_an_otp_init_form_offers_to_resend_the_otp() -> None:
+    _, offered = _sent_init({}).ending.answer.content
+
+    assert isinstance(offered, FormBlock)
+    assert offered.actions == (_RESEND,)
+
+
+def test_an_init_form_for_a_method_we_do_not_know_offers_no_action() -> None:
+    _, offered = _sent_init(
+        {}, challenge=IssuedChallenge(sent_method="FACE")
+    ).ending.answer.content
+
+    assert isinstance(offered, FormBlock)
+    assert offered.actions == ()
 
 
 def _ask_for(context: FormContext) -> Ask | None:
@@ -545,3 +577,94 @@ def test_a_status_check_reads_every_other_failure_as_support_does(
     status = _decide(status_code, details=_STATUS_DETAILS, retry_after_seconds=30)
 
     assert status.ending == support.ending
+
+
+def _init_form() -> FormDefinition:
+    init_form = _FORMS.find(PMKISAN_INIT)
+    assert init_form is not None
+    return init_form
+
+
+def _init_form_again(told: str) -> tuple[TextBlock, FormBlock]:
+    return (
+        TextBlock(text=told),
+        FormBlock(form_id="otp-1", form=_init_form(), actions=(_RESEND,)),
+    )
+
+
+def test_a_resent_init_waits_again_and_offers_the_same_init_form() -> None:
+    decision = decide_after_resent_init(
+        {},
+        _flow(),
+        form_id="otp-1",
+        init_form=_init_form(),
+        challenge=IssuedChallenge(sent_method="OTP"),
+        text=_TEXT,
+        now=_NOW,
+    )
+
+    assert decision.forms == _awaiting_again()
+    assert decision.ending.status is TurnStatus.REQUIRES_INPUT
+    assert decision.ending.cause is None
+    assert decision.ending.answer.content == _init_form_again(_TEXT.init_resent)
+
+
+@pytest.mark.parametrize(
+    ("failure", "cause"),
+    [
+        (_failure(503, retry_after_seconds=30), Cause.PROVIDER_UNAVAILABLE),
+        (_failure(429, retry_after_seconds=30), Cause.PROVIDER_UNAVAILABLE),
+        (_failure(400, retry_after_seconds=30), Cause.PROVIDER_REJECTED),
+    ],
+    ids=["unreachable", "busy", "refused"],
+)
+def test_a_failed_resend_keeps_the_init_form_open(
+    failure: Failure, cause: Cause
+) -> None:
+    ending = end_for_failed_resend(
+        failure, _flow(), form_id="otp-1", init_form=_init_form(), text=_TEXT
+    )
+
+    assert ending.status is TurnStatus.UNAVAILABLE
+    assert ending.cause is cause
+    assert ending.retry_after_seconds == 30
+    assert ending.answer.content == _init_form_again(_TEXT.init_resend_failed)
+
+
+def test_a_resend_reply_without_a_challenge_reads_as_refused() -> None:
+    ending = end_for_failed_resend(
+        InitReplyWithoutChallenge(),
+        _flow(),
+        form_id="otp-1",
+        init_form=_init_form(),
+        text=_TEXT,
+    )
+
+    assert ending.cause is Cause.PROVIDER_REJECTED
+    assert ending.answer.content == _init_form_again(_TEXT.init_resend_failed)
+
+
+@pytest.mark.parametrize("status_code", [401, 403])
+def test_our_credentials_refused_on_resend_end_text_only(status_code: int) -> None:
+    failure = _failure(status_code)
+
+    ending = end_for_failed_resend(
+        failure, _flow(), form_id="otp-1", init_form=_init_form(), text=_TEXT
+    )
+
+    assert ending.status is TurnStatus.UNAVAILABLE
+    assert ending.cause is Cause.INTERNAL
+    assert ending.answer.content == (TextBlock(text=_TEXT.went_wrong),)
+
+
+def test_an_otp_flow_offers_resend() -> None:
+    assert offers_action(_flow(), FormActionName.RESEND_INIT)
+
+
+def test_a_flow_for_a_method_we_do_not_know_offers_no_resend() -> None:
+    flow = _flow()
+    unknown = replace(
+        flow, entry=flow.entry.model_copy(update={"challenge_method": None})
+    )
+
+    assert not offers_action(unknown, FormActionName.RESEND_INIT)

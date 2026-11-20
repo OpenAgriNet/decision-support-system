@@ -3,6 +3,7 @@ button on it."""
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
@@ -13,7 +14,10 @@ from dss.adapters.observability.tracing import (
 )
 from dss.core.channel.localize import LocalizeText, localize_answer
 from dss.core.channel.models import ComposedAnswer
+from dss.core.forms.challenge import IssuedChallenge
+from dss.core.forms.init_flow import InitReplyWithoutChallenge
 from dss.core.forms.models import ActionSchema, FlowEnding, FormContext
+from dss.core.forms.service import is_auth_refused
 from dss.core.intent.models import Ask, Scheme
 from dss.core.intent.service import scheme_with_code
 from dss.core.planner.models import Failure
@@ -31,12 +35,14 @@ from dss.observability.stages import Stage
 from dss.observability.trace_log import trace_component
 from dss.orchestration.form_offer import ask_for_form
 from dss.orchestration.orchestrator import build_turn_finished, outcome_for, spoken_text
-from dss.orchestration.provider_action import call_provider_action
+from dss.orchestration.provider_action import call_provider_action, warn_auth_refused
 from dss.orchestration.redaction import RedactTexts
 from dss.orchestration.stage_content import provider_response_text
 from dss.ports.invocation import ProviderActionInvocation
 from dss.ports.scheme_catalog import SchemeCatalog
 from dss.ports.sinks import TurnSink
+
+logger = logging.getLogger(__name__)
 
 # Several prose fields are judged as one text, like one question.
 _FREE_TEXT_SEPARATOR = "\n\n"
@@ -112,6 +118,24 @@ async def call_traced_provider_action(  # noqa: PLR0913
             output=provider_response_text(response),
         )
     return response
+
+
+def warn_if_auth_refused(
+    failure: Failure | InitReplyWithoutChallenge, ctx: TurnContext
+) -> None:
+    if isinstance(failure, Failure) and is_auth_refused(failure):
+        warn_auth_refused(failure, request_id=ctx.trace_id)
+
+
+# Such a challenge is still answered, but offers no Resend: say why.
+def warn_if_unknown_challenge(
+    init_reply: IssuedChallenge | Failure | InitReplyWithoutChallenge,
+) -> None:
+    if isinstance(init_reply, IssuedChallenge) and init_reply.unknown_method:
+        logger.warning(
+            "init challenge method not known",
+            extra={"challenge_method": init_reply.unknown_method},
+        )
 
 
 def ask_for_form_context(context: FormContext, schemes: SchemeCatalog) -> Ask | None:

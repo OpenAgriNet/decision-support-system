@@ -255,13 +255,14 @@ components:
 
     InputContentItem:
       description: |
-        Closed set for v1 — `text`, `image`, `form` or `form_error`. `file` is
-        not accepted. A message carries one kind of content: text beside a
-        form is a 422.
+        Closed set for v1 — `text`, `image`, `form`, `form_action` or
+        `form_error`. `file` is not accepted. A message carries one kind of
+        content: text beside a form is a 422.
       oneOf:
         - $ref: '#/components/schemas/InputText'
         - $ref: '#/components/schemas/InputImage'
         - $ref: '#/components/schemas/InputForm'
+        - $ref: '#/components/schemas/InputFormAction'
         - $ref: '#/components/schemas/InputFormError'
       discriminator:
         propertyName: type
@@ -269,6 +270,7 @@ components:
           text: '#/components/schemas/InputText'
           image: '#/components/schemas/InputImage'
           form: '#/components/schemas/InputForm'
+          form_action: '#/components/schemas/InputFormAction'
           form_error: '#/components/schemas/InputFormError'
 
     FormContext:
@@ -311,6 +313,30 @@ components:
                 type: string
               value:
                 type: string
+
+    InputFormAction:
+      type: object
+      required: [type, formId, context, name]
+      description: |
+        A button the farmer pressed on an offered form (one of its `actions`).
+        It carries no field values. In the current user message `actionId` is
+        required; in the history it is a reference only. A `name` the DSS does
+        not offer is a 422. Send it only for a form that offered it.
+      properties:
+        type:
+          type: string
+          const: form_action
+        formId:
+          type: string
+          description: The offered form the button was on.
+        context:
+          $ref: '#/components/schemas/FormContext'
+        name:
+          type: string
+          description: The action's `name`, e.g. `resend_init`.
+        actionId:
+          type: string
+          description: Minted by the client per press.
 
     InputFormError:
       type: object
@@ -559,8 +585,9 @@ components:
       required: [type, formId, context, fields]
       description: |
         An empty form for the farmer to fill in. The turn ends `requires_input`;
-        the next turn carries the form back as an `InputForm`. A field is flat:
-        its rules sit on it. Nothing about PII is sent.
+        the next turn carries the form back as an `InputForm`, or presses one
+        of its `actions` as an `InputFormAction`. A field is flat: its rules
+        sit on it. Nothing about PII is sent.
       properties:
         type:
           type: string
@@ -600,6 +627,24 @@ components:
                       type: string
                     label:
                       type: string
+        actions:
+          type: array
+          description: |
+            Buttons beside submit; empty for none. `name` is an open set: a
+            client skips a name it does not know. Known: `resend_init`, on an
+            OTP form, asks the provider to send the OTP again. `label` is in
+            the turn's target language.
+          items:
+            $ref: '#/components/schemas/OutputFormAction'
+
+    OutputFormAction:
+      type: object
+      required: [name, label]
+      properties:
+        name:
+          type: string
+        label:
+          type: string
 
     OutputFormError:
       type: object

@@ -7,6 +7,8 @@ import pytest
 from dss.adapters.http.v1 import mapping, schema
 from dss.core.forms.models import (
     FieldValue,
+    FormAction,
+    FormActionName,
     FormContext,
     FormReference,
     FormSubmission,
@@ -339,3 +341,58 @@ def test_a_submitted_field_without_a_value_is_refused(a_body):
 
     with pytest.raises(ValueError, match="value"):
         mapping.to_user_turn(body)
+
+
+def _form_action_item(**overrides) -> dict:
+    item = {
+        "type": "form_action",
+        "formId": "otp-1",
+        "context": {"scheme": "PM-KISAN", "category": "Grievance", "action": "init"},
+        "name": "resend_init",
+        "actionId": "press-1",
+    }
+    return {**item, **overrides}
+
+
+def test_a_form_action_in_the_current_message_is_a_button_press(a_body):
+    thread = [{"role": "user", "content": [_form_action_item()]}]
+    body = schema.TurnRequest.model_validate(a_body(message__input=thread))
+
+    assert mapping.to_user_turn(body).input == FormAction(
+        form_id="otp-1",
+        context=FormContext(scheme="PM-KISAN", category="Grievance", action="init"),
+        name=FormActionName.RESEND_INIT,
+        action_id="press-1",
+    )
+
+
+def test_a_pressed_button_needs_an_action_id(a_body):
+    thread = [{"role": "user", "content": [_form_action_item(actionId=None)]}]
+    body = schema.TurnRequest.model_validate(a_body(message__input=thread))
+
+    with pytest.raises(ValueError, match="actionId"):
+        mapping.to_user_turn(body)
+
+
+def test_a_button_the_dss_does_not_offer_is_refused(a_body):
+    thread = [{"role": "user", "content": [_form_action_item(name="cancel")]}]
+    body = schema.TurnRequest.model_validate(a_body(message__input=thread))
+
+    with pytest.raises(ValueError, match="cancel"):
+        mapping.to_user_turn(body)
+
+
+def test_a_form_action_in_history_is_a_reference(a_body):
+    thread = [
+        {"role": "user", "content": [_form_action_item()]},
+        {"role": "user", "content": [{"type": "text", "text": "Got it?"}]},
+    ]
+    body = schema.TurnRequest.model_validate(a_body(message__input=thread))
+
+    (earlier,) = mapping.to_user_turn(body).history
+
+    assert earlier.reference == FormReference(
+        form_id="otp-1",
+        context=FormContext(scheme="PM-KISAN", category="Grievance", action="init"),
+        item="form_action",
+    )

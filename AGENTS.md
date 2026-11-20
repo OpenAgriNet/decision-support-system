@@ -21,7 +21,9 @@ Do not duplicate architecture, domain model, or design-decision detail here — 
   `Accept` selects a single JSON body or the SSE stream. The composer always
   streams (ADR-0011) — SSE frames its pieces as `claim.delta`, JSON drains them.
   A form is a `form` content item, sent whole; the farmer sends it back as a
-  `form` item, and a form handed back is a `form_error` item.
+  `form` item, and a form handed back is a `form_error` item. A form may list
+  `actions` (buttons beside submit); a press is its own `form_action` item, on
+  its own path (ADR-0025). Today only Resend OTP, on an OTP init form.
 - Async concurrency: anyio
 - Dependency injection: Pydantic
 - Package manager: uv

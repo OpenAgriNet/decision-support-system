@@ -215,6 +215,16 @@ def _submission(
     }
 
 
+def _resend(form: dict[str, Any], *, action_id: str) -> dict[str, Any]:
+    return {
+        "type": "form_action",
+        "formId": form["formId"],
+        "context": form["context"],
+        "name": "resend_init",
+        "actionId": action_id,
+    }
+
+
 def test_a_pm_kisan_grievance_is_filed_after_an_otp(live_app, live_network, a_body):
     # One client context for every turn: each request outside one runs on a
     # fresh event loop, and the model client made on the first loop cannot
@@ -259,6 +269,17 @@ def test_a_pm_kisan_grievance_is_filed_after_an_otp(live_app, live_network, a_bo
 
         thread += [
             {"role": "assistant", "content": waiting["content"]},
+            {"role": "user", "content": [_resend(init_form, action_id="press-1")]},
+        ]
+
+        resent = _message(_post(client, a_body, thread))
+
+        assert resent["outcome"]["status"] == "requires_input", resent
+        assert _form_in(resent)["formId"] == init_form["formId"]
+        assert len(live_network.init_requests) == 2
+
+        thread += [
+            {"role": "assistant", "content": resent["content"]},
             {
                 "role": "user",
                 "content": [

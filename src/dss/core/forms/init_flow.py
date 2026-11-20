@@ -6,13 +6,20 @@ from datetime import datetime
 from http import HTTPStatus
 
 from dss.core.channel.models import ClarificationText, ComposedAnswer
-from dss.core.forms.challenge import IssuedChallenge, read_issued_challenge
+from dss.core.forms.challenge import (
+    ChallengeMethod,
+    IssuedChallenge,
+    read_issued_challenge,
+)
 from dss.core.forms.models import (
     ActionSchema,
     FailedCallOutcome,
     FieldErrorEntry,
     FlowEnding,
+    FormActionName,
+    FormActionOffer,
     FormAwaitingInit,
+    FormBlock,
     FormContext,
     FormDefinition,
     FormErrorBlock,
@@ -23,12 +30,13 @@ from dss.core.forms.models import (
 from dss.core.forms.registry import FormLookup
 from dss.core.forms.service import (
     TextChoice,
-    answer_for_init_form,
+    answer_with_form,
     answer_with_text,
     clear_awaiting_init_record,
     end_for_call_cause,
     find_awaiting_init,
     is_auth_refused,
+    offer_form,
     validate_submission,
     with_form_done,
     with_init_awaited,
@@ -39,6 +47,13 @@ from dss.core.provider_discovery.models import DiscoveredAnswer, ProviderCapabil
 from dss.core.shared.models import Cause, ProviderAction, TextBlock, TurnStatus
 
 type AskFor = Callable[[FormContext], Ask | None]
+
+# What the farmer may press beside an init form's submit, by what init sent.
+_ACTIONS_FOR_METHOD: Mapping[ChallengeMethod | None, tuple[FormActionOffer, ...]] = {
+    ChallengeMethod.OTP: (
+        FormActionOffer(name=FormActionName.RESEND_INIT, label="Resend OTP"),
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -142,9 +157,97 @@ def decide_after_sent_init(  # noqa: PLR0913
         ending=FlowEnding(
             status=TurnStatus.REQUIRES_INPUT,
             cause=None,
-            answer=answer_for_init_form(init.init_form, text.init_response_needed),
+            answer=answer_with_form(
+                offer_form(init.init_form, actions=_actions_for(challenge.method)),
+                text.init_response_needed,
+            ),
         ),
     )
+
+
+def decide_after_resent_init(  # noqa: PLR0913
+    forms: FormRecords,
+    flow: WaitingFlow,
+    *,
+    form_id: str,
+    init_form: FormDefinition,
+    challenge: IssuedChallenge,
+    text: ClarificationText,
+    now: datetime,
+) -> FlowDecision:
+    return FlowDecision(
+        forms=with_init_awaited(
+            forms,
+            flow.entry.submission,
+            provider=flow.entry.provider,
+            challenge_method=challenge.method,
+            now=now,
+        ),
+        ending=FlowEnding(
+            status=TurnStatus.REQUIRES_INPUT,
+            cause=None,
+            answer=answer_with_form(
+                _init_form_again(form_id, init_form, challenge.method),
+                text.init_resent,
+            ),
+        ),
+    )
+
+
+# The waiting entry stays: the OTP already sent may still work.
+def end_for_failed_resend(
+    failure: Failure | InitReplyWithoutChallenge,
+    flow: WaitingFlow,
+    *,
+    form_id: str,
+    init_form: FormDefinition,
+    text: ClarificationText,
+) -> FlowEnding:
+    def offer() -> FormBlock:
+        return _init_form_again(form_id, init_form, flow.entry.challenge_method)
+
+    match failure:
+        case Failure() if is_auth_refused(failure):
+            return _ended_by_our_fault(text)
+        case InitReplyWithoutChallenge():
+            return _ended_with_resend_not_sent(Cause.PROVIDER_REJECTED, offer(), text)
+        case Failure():
+            return _ended_with_resend_not_sent(
+                _cause_for_failed_init(failure),
+                offer(),
+                text,
+                retry_after_seconds=failure.retry_after_seconds,
+            )
+
+
+def _ended_with_resend_not_sent(
+    cause: Cause,
+    offer: FormBlock,
+    text: ClarificationText,
+    *,
+    retry_after_seconds: int | None = None,
+) -> FlowEnding:
+    return FlowEnding(
+        status=TurnStatus.UNAVAILABLE,
+        cause=cause,
+        answer=answer_with_form(offer, text.init_resend_failed),
+        retry_after_seconds=retry_after_seconds,
+    )
+
+
+def offers_action(flow: WaitingFlow, name: FormActionName) -> bool:
+    offered = _actions_for(flow.entry.challenge_method)
+    return any(action.name is name for action in offered)
+
+
+def _init_form_again(
+    form_id: str, init_form: FormDefinition, method: ChallengeMethod | None
+) -> FormBlock:
+    return FormBlock(form_id=form_id, form=init_form, actions=_actions_for(method))
+
+
+def _actions_for(method: ChallengeMethod | None) -> tuple[FormActionOffer, ...]:
+    return _ACTIONS_FOR_METHOD.get(method, ())
 
 
 # Internal, not provider_unavailable: the provider is fine; the DSS cannot

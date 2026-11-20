@@ -36,7 +36,13 @@ import anyio
 from pydantic import BaseModel, ConfigDict
 
 from dss.core.channel.models import ComposedAnswer
-from dss.core.forms.models import FieldErrorEntry, FormErrorBlock
+from dss.core.forms.models import (
+    FieldDefinition,
+    FieldErrorEntry,
+    FormActionOffer,
+    FormBlock,
+    FormErrorBlock,
+)
 from dss.core.shared.language import ENGLISH
 from dss.core.shared.models import OutputBlock, RefusalBlock, TextBlock, UserTurn
 from dss.ports.llm import LLMProvider
@@ -115,7 +121,28 @@ async def _localize_block(
         case FormErrorBlock():
             fields = await _each_concurrently(block.fields, localize_entry)
             return block.model_copy(update={"fields": tuple(fields)})
+        case FormBlock():
+            return await _localize_form(block, localize, turn=turn)
     return block
+
+
+async def _localize_form(
+    block: FormBlock, localize: LocalizeText, *, turn: UserTurn
+) -> FormBlock:
+    async def relabel_field(field: FieldDefinition) -> FieldDefinition:
+        return field.model_copy(
+            update={"label": await localize(field.label, turn=turn)}
+        )
+
+    async def relabel_action(action: FormActionOffer) -> FormActionOffer:
+        return action.model_copy(
+            update={"label": await localize(action.label, turn=turn)}
+        )
+
+    fields = await _each_concurrently(block.form.fields, relabel_field)
+    actions = await _each_concurrently(block.actions, relabel_action)
+    form = block.form.model_copy(update={"fields": tuple(fields)})
+    return block.model_copy(update={"form": form, "actions": tuple(actions)})
 
 
 async def _each_concurrently[T, R](

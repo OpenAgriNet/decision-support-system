@@ -9,7 +9,6 @@ from dss.core.forms.models import (
     FieldErrorCode,
     FieldErrorEntry,
     FlowEnding,
-    FormBlock,
     FormDefinition,
     FormErrorBlock,
     FormErrors,
@@ -19,8 +18,8 @@ from dss.core.forms.models import (
 from dss.core.forms.service import (
     answer_for_failed_call,
     answer_for_form_errors,
-    answer_for_init_form,
     answer_for_unknown_form,
+    answer_with_form,
     answer_with_text,
     end_for_already_filed,
     end_for_call_cause,
@@ -199,12 +198,12 @@ def test_the_init_form_goes_out_as_a_new_offer_under_its_text() -> None:
     init_form = build_grievance_forms().find(PMKISAN_INIT)
     assert init_form is not None
 
-    told, offered = answer_for_init_form(init_form, "Enter the password.").content
+    offer = offer_form(init_form)
+
+    told, offered = answer_with_form(offer, "Enter the password.").content
 
     assert told == TextBlock(text="Enter the password.")
-    assert isinstance(offered, FormBlock)
-    assert offered.form == init_form
-    assert offered.form_id
+    assert offered == offer
 
 
 @pytest.mark.parametrize(
