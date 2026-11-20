@@ -39,3 +39,21 @@ def test_session_state_round_trips_through_json() -> None:
     restored = SessionState.model_validate_json(state.model_dump_json())
 
     assert restored == state
+
+
+def test_an_entry_saved_before_the_challenge_method_still_reads() -> None:
+    state = SessionState(
+        forms={
+            "f1": FormAwaitingInit(
+                submission=_SUBMISSION,
+                provider=grievance_provider("pmkisan", "PM-KISAN"),
+                awaited_at=_NOW,
+            )
+        }
+    )
+    saved = state.model_dump(mode="json")
+    del saved["forms"]["f1"]["challenge_method"]
+
+    restored = SessionState.model_validate(saved)
+
+    assert restored == state

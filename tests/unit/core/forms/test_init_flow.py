@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from dss.config.clarification_text_loader import load_clarification_text
+from dss.core.forms.challenge import ChallengeMethod, IssuedChallenge
 from dss.core.forms.init_flow import (
     FlowDecision,
     InitCall,
@@ -19,9 +20,9 @@ from dss.core.forms.init_flow import (
     end_for_failed_init,
     end_for_session_not_kept,
     find_init_call,
-    find_init_failure,
     find_waiting_flow,
     outcome_of_failed_call,
+    read_init_reply,
     with_details_form_done,
 )
 from dss.core.forms.models import (
@@ -167,10 +168,10 @@ def test_details_without_a_value_init_sends_are_not_configured() -> None:
     assert isinstance(find_init_call(details, _FORMS), InitNotConfigured)
 
 
-def test_an_init_reply_with_a_challenge_is_no_failure() -> None:
+def test_an_init_reply_with_a_challenge_gives_the_challenge() -> None:
     reply = _reply({"challenge": {"issued": {"method": "OTP"}}})
 
-    assert find_init_failure(reply) is None
+    assert read_init_reply(reply) == IssuedChallenge(method=ChallengeMethod.OTP)
 
 
 @pytest.mark.parametrize(
@@ -178,13 +179,13 @@ def test_an_init_reply_with_a_challenge_is_no_failure() -> None:
     [{}, {"challenge": {}}, {"challenge": "OTP"}, {"enrolmentId": "x"}],
 )
 def test_an_init_reply_without_a_challenge_is_a_failure(attributes: dict) -> None:
-    assert isinstance(find_init_failure(_reply(attributes)), InitReplyWithoutChallenge)
+    assert isinstance(read_init_reply(_reply(attributes)), InitReplyWithoutChallenge)
 
 
 def test_a_failed_init_call_is_its_own_failure() -> None:
     failure = _failure(503)
 
-    assert find_init_failure(failure) is failure
+    assert read_init_reply(failure) is failure
 
 
 def _details_handed_back(text: str) -> tuple[TextBlock, FormErrorBlock]:
@@ -262,7 +263,10 @@ def _waiting(
     details: FormSubmission = _DETAILS, *, awaited_at: datetime = _AWAITED_AT
 ) -> FormAwaitingInit:
     return FormAwaitingInit(
-        submission=details, provider=_PROVIDER, awaited_at=awaited_at
+        submission=details,
+        provider=_PROVIDER,
+        challenge_method=ChallengeMethod.OTP,
+        awaited_at=awaited_at,
     )
 
 
@@ -274,12 +278,13 @@ def _sent_init(forms: FormRecords) -> FlowDecision:
         _DETAILS,
         provider=_PROVIDER,
         init=init,
+        challenge=IssuedChallenge(method=ChallengeMethod.OTP),
         text=_TEXT,
         now=_NOW,
     )
 
 
-def test_a_sent_init_leaves_the_details_waiting_with_their_provider() -> None:
+def test_a_sent_init_leaves_the_details_waiting_with_provider_and_method() -> None:
     done = FormDone(submission=_DETAILS.model_copy(update={"form_id": "filed"}))
 
     decision = _sent_init({"filed": done})
