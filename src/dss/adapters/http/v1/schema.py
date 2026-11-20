@@ -98,6 +98,17 @@ class FormContent(_WireIn):
     fields: list[InputFormField] = []
 
 
+class FormActionContent(_WireIn):
+    """A button the farmer pressed on an offered form, e.g. Resend OTP. In the
+    history it is only a reference."""
+
+    type: Literal["form_action"]
+    form_id: str
+    context: InputFormContext
+    name: str
+    action_id: str | None = None
+
+
 class FormErrorContent(_WireIn):
     """The DSS's own reply handing a form back, echoed in the history. Only a
     reference: its fields are not read."""
@@ -109,7 +120,8 @@ class FormErrorContent(_WireIn):
 
 
 type InputContent = Annotated[
-    TextContent | FormContent | FormErrorContent, Field(discriminator="type")
+    TextContent | FormContent | FormActionContent | FormErrorContent,
+    Field(discriminator="type"),
 ]
 
 
@@ -271,6 +283,13 @@ class OutputFormContext(_WireOut):
     action: str
 
 
+class OutputFormAction(_WireOut):
+    """A button beside submit. A client skips a name it does not know."""
+
+    name: str
+    label: str
+
+
 class OutputForm(_WireOut):
     """An empty form for the farmer to fill in (#205). `context` comes back
     verbatim with the submission, so the DSS can find the form again."""
@@ -279,6 +298,7 @@ class OutputForm(_WireOut):
     form_id: str
     context: OutputFormContext
     fields: list[OutputFormField]
+    actions: list[OutputFormAction] = []
 
 
 class OutputFormErrorField(_WireOut):

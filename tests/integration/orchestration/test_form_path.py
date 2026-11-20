@@ -18,6 +18,7 @@ from dss.core.forms.models import (
     ChallengeMethod,
     FieldErrorEntry,
     FieldValue,
+    FormAction,
     FormAwaitingInit,
     FormBlock,
     FormContext,
@@ -53,6 +54,7 @@ from dss.core.shared.models import (
 )
 from dss.core.shared.network import NetworkTransactionID
 from dss.core.shared.session_state import SessionState
+from dss.orchestration.form_action_path import FormActionPath
 from dss.orchestration.form_path import FormPath, FormPathComponents
 from dss.orchestration.orchestrator import Orchestrator
 from dss.orchestration.redaction import RedactTexts, pass_through, redact_texts
@@ -227,19 +229,29 @@ def _build_orchestrator_and_turn_sink(  # noqa: PLR0913
         localize=localize or FakeLocalizer(),
         invocation_for=lambda _turn: invocation or RecordingActionInvocation(),
     )
+    forms = build_form_registry([pack])
     path = FormPath(
         moderation_llm=moderation_llm or _FakeModerationLLM(),
         prompts=FakePromptProvider(),
         policies=policies or [],
-        forms=build_form_registry([pack]),
+        forms=forms,
         scheme_catalog=FakeSchemeCatalog(_PMFBY),
         components=components,
         turns=turns,
         telemetry=telemetry or _StageOutcomes(),
         clarification_text=load_clarification_text(),
     )
+    action_path = FormActionPath(
+        forms=forms,
+        scheme_catalog=FakeSchemeCatalog(_PMFBY),
+        redact=redact,
+        localize=components.localize,
+        invocation_for=components.invocation_for,
+        turns=turns,
+        clarification_text=load_clarification_text(),
+    )
     orchestrator = Orchestrator(
-        paths={FormSubmission: path},
+        paths={FormSubmission: path, FormAction: action_path},
         session_busy_answer=answer_for_session_busy(load_clarification_text()),
         sessions=sessions or NoSessionStore(),
     )
@@ -803,6 +815,7 @@ def _save_waiting(
     *,
     context: FormContext = _PMKISAN_SUPPORT,
     values: Mapping[str, str] = _KISAN_VALUES,
+    challenge_method: ChallengeMethod | None = ChallengeMethod.OTP,
 ) -> None:
     details = _form_turn(values, context=context, form_id=form_id).input
     assert isinstance(details, FormSubmission)
@@ -810,7 +823,7 @@ def _save_waiting(
         _stored_state(store).forms,
         details,
         provider=_KISAN_PROVIDER,
-        challenge_method=ChallengeMethod.OTP,
+        challenge_method=challenge_method,
         now=datetime(2026, 11, 10, 9, 30, tzinfo=UTC),
     )
     store.values["c1:s1"] = SessionState(forms=waiting).model_dump_json()

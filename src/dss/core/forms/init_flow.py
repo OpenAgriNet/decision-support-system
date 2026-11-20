@@ -9,16 +9,20 @@ from dss.core.channel.models import ClarificationText, ComposedAnswer
 from dss.core.forms.challenge import (
     InitReplyWithoutChallenge,
     IssuedChallenge,
+    actions_for,
     known_method_of,
     labelled_for,
     read_issued_challenge,
 )
 from dss.core.forms.models import (
     ActionSchema,
+    ChallengeMethod,
     FailedCallOutcome,
     FieldErrorEntry,
     FlowEnding,
+    FormActionName,
     FormAwaitingInit,
+    FormBlock,
     FormContext,
     FormDefinition,
     FormErrorBlock,
@@ -29,12 +33,13 @@ from dss.core.forms.models import (
 from dss.core.forms.registry import FormLookup
 from dss.core.forms.service import (
     TextChoice,
-    answer_for_init_form,
+    answer_with_form,
     answer_with_text,
     clear_awaiting_init_record,
     end_for_call_cause,
     find_awaiting_init,
     is_auth_refused,
+    offer_form,
     validate_submission,
     with_form_done,
     with_init_awaited,
@@ -131,22 +136,112 @@ def decide_after_sent_init(  # noqa: PLR0913
     text: ClarificationText,
     now: datetime,
 ) -> FlowDecision:
+    method = known_method_of(challenge)
     return FlowDecision(
         forms=with_init_awaited(
             forms,
             submission,
             provider=provider,
-            challenge_method=known_method_of(challenge),
+            challenge_method=method,
             now=now,
         ),
         ending=FlowEnding(
             status=TurnStatus.REQUIRES_INPUT,
             cause=None,
-            answer=answer_for_init_form(
-                labelled_for(init.init_form, known_method_of(challenge)),
+            answer=answer_with_form(
+                offer_form(
+                    labelled_for(init.init_form, method),
+                    actions=actions_for(method),
+                ),
                 text.init_response_needed,
             ),
         ),
+    )
+
+
+def decide_after_resent_init(  # noqa: PLR0913
+    forms: FormRecords,
+    flow: WaitingFlow,
+    *,
+    form_id: str,
+    init_form: FormDefinition,
+    challenge: IssuedChallenge,
+    text: ClarificationText,
+    now: datetime,
+) -> FlowDecision:
+    method = known_method_of(challenge)
+    return FlowDecision(
+        forms=with_init_awaited(
+            forms,
+            flow.entry.submission,
+            provider=flow.entry.provider,
+            challenge_method=method,
+            now=now,
+        ),
+        ending=FlowEnding(
+            status=TurnStatus.REQUIRES_INPUT,
+            cause=None,
+            answer=answer_with_form(
+                _init_form_again(form_id, init_form, method),
+                text.init_resent,
+            ),
+        ),
+    )
+
+
+# The waiting entry stays: the OTP already sent may still work.
+def end_for_failed_resend(
+    failure: Failure | InitReplyWithoutChallenge,
+    flow: WaitingFlow,
+    *,
+    form_id: str,
+    init_form: FormDefinition,
+    text: ClarificationText,
+) -> FlowEnding:
+    def offer() -> FormBlock:
+        return _init_form_again(form_id, init_form, flow.entry.challenge_method)
+
+    match failure:
+        case Failure() if is_auth_refused(failure):
+            return _ended_by_our_fault(text)
+        case InitReplyWithoutChallenge():
+            return _ended_with_resend_not_sent(Cause.PROVIDER_REJECTED, offer(), text)
+        case Failure():
+            return _ended_with_resend_not_sent(
+                _cause_for_failed_init(failure),
+                offer(),
+                text,
+                retry_after_seconds=failure.retry_after_seconds,
+            )
+
+
+def _ended_with_resend_not_sent(
+    cause: Cause,
+    offer: FormBlock,
+    text: ClarificationText,
+    *,
+    retry_after_seconds: int | None = None,
+) -> FlowEnding:
+    return FlowEnding(
+        status=TurnStatus.UNAVAILABLE,
+        cause=cause,
+        answer=answer_with_form(offer, text.init_resend_failed),
+        retry_after_seconds=retry_after_seconds,
+    )
+
+
+def offers_action(flow: WaitingFlow, name: FormActionName) -> bool:
+    offered = actions_for(flow.entry.challenge_method)
+    return any(action.name is name for action in offered)
+
+
+def _init_form_again(
+    form_id: str, init_form: FormDefinition, method: ChallengeMethod | None
+) -> FormBlock:
+    return FormBlock(
+        form_id=form_id,
+        form=labelled_for(init_form, method),
+        actions=actions_for(method),
     )
 
 

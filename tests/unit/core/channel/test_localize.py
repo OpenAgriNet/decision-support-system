@@ -16,7 +16,17 @@ from dss.core.channel.localize import (
     localize_answer,
 )
 from dss.core.channel.models import ComposedAnswer
-from dss.core.forms.models import FieldErrorEntry, FormContext, FormErrorBlock
+from dss.core.forms.models import (
+    FieldDefinition,
+    FieldErrorEntry,
+    FieldKind,
+    FormActionName,
+    FormActionOffer,
+    FormBlock,
+    FormContext,
+    FormDefinition,
+    FormErrorBlock,
+)
 from dss.core.shared.language import LanguageTag
 from dss.core.shared.models import (
     RefusalBlock,
@@ -181,6 +191,37 @@ async def test_a_form_error_block_has_its_messages_localized() -> None:
             label="Applicant mobile",
             error="localized Applicant mobile is not in the right format.",
         ),
+    )
+
+
+async def test_a_form_block_has_its_labels_and_buttons_localized() -> None:
+    """The farmer reads the labels and the buttons; the field names go back
+    with the submission and stay as they are."""
+
+    localize = build_localizer(llm=_FakeLLM(), prompts=FakePromptProvider())
+    otp = FieldDefinition(
+        name="challenge.response.value", label="Enter OTP", kind=FieldKind.SECRET
+    )
+    block = FormBlock(
+        form_id="otp-1",
+        form=FormDefinition(
+            context=FormContext(scheme="PM-KISAN", category="Grievance", action="init"),
+            fields=(otp,),
+        ),
+        actions=(FormActionOffer(name=FormActionName.RESEND_INIT, label="Resend OTP"),),
+    )
+
+    localized = await localize_answer(
+        ComposedAnswer(content=(block,)), localize, turn=_turn("hi")
+    )
+
+    (form,) = localized.content
+    assert isinstance(form, FormBlock)
+    assert form.form.fields == (
+        otp.model_copy(update={"label": "localized Enter OTP"}),
+    )
+    assert form.actions == (
+        FormActionOffer(name=FormActionName.RESEND_INIT, label="localized Resend OTP"),
     )
 
 

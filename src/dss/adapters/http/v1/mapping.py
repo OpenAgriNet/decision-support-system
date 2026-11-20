@@ -10,6 +10,8 @@ from dss.adapters.http.v1 import schema
 from dss.core.forms.models import (
     FieldDefinition,
     FieldValue,
+    FormAction,
+    FormActionName,
     FormBlock,
     FormContext,
     FormErrorBlock,
@@ -130,6 +132,26 @@ def _submission(parts: Sequence[schema.InputContent]) -> FormSubmission:
     raise ValueError("a message carries one form")
 
 
+def _form_action(parts: Sequence[schema.InputContent]) -> FormAction:
+    match parts:
+        case [schema.FormActionContent(action_id=None)]:
+            raise ValueError("a pressed button needs an actionId")
+        case [schema.FormActionContent(action_id=str() as action_id) as pressed]:
+            return FormAction(
+                form_id=pressed.form_id,
+                context=_form_context(pressed.context),
+                name=_action_name(pressed.name),
+                action_id=action_id,
+            )
+    raise ValueError("a message carries one pressed button")
+
+
+def _action_name(name: str) -> FormActionName:
+    if name not in FormActionName:
+        raise ValueError(f"{name!r} is not a button the DSS offers")
+    return FormActionName(name)
+
+
 def _field_value(field: schema.InputFormField) -> FieldValue:
     if field.value is None:
         raise ValueError(f"the submitted field {field.name!r} needs a value")
@@ -141,22 +163,29 @@ def _history_message(message: schema.InputMessage) -> ConversationMessage:
     any. The form's fields are never read from history: the DSS holds no
     values between turns."""
 
-    reference = next(
-        (
-            FormReference(
+    references = (_form_reference(part) for part in message.content)
+    reference = next((ref for ref in references if ref is not None), None)
+    return ConversationMessage(
+        role=message.role, text=_joined_text(message.content), reference=reference
+    )
+
+
+def _form_reference(part: schema.InputContent) -> FormReference | None:
+    match part:
+        case schema.FormContent() | schema.FormErrorContent():
+            return FormReference(
                 form_id=part.form_id,
                 context=_form_context(part.context),
                 submission_id=part.submission_id,
                 item=part.type,
             )
-            for part in message.content
-            if isinstance(part, schema.FormContent | schema.FormErrorContent)
-        ),
-        None,
-    )
-    return ConversationMessage(
-        role=message.role, text=_joined_text(message.content), reference=reference
-    )
+        case schema.FormActionContent():
+            return FormReference(
+                form_id=part.form_id,
+                context=_form_context(part.context),
+                item=part.type,
+            )
+    return None
 
 
 # How each kind of item becomes the turn's input. A kind absent here is not
@@ -164,6 +193,7 @@ def _history_message(message: schema.InputMessage) -> ConversationMessage:
 _INPUT_FOR: Mapping[type, Callable[[Sequence[schema.InputContent]], TurnInput]] = {
     schema.TextContent: _text_query,
     schema.FormContent: _submission,
+    schema.FormActionContent: _form_action,
 }
 
 
@@ -361,6 +391,10 @@ def _form(block: FormBlock) -> schema.OutputForm:
             scheme=context.scheme, category=context.category, action=context.action
         ),
         fields=[_form_field(field) for field in block.form.fields],
+        actions=[
+            schema.OutputFormAction(name=action.name.value, label=action.label)
+            for action in block.actions
+        ],
     )
 
 

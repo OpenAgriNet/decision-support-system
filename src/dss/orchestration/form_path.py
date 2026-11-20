@@ -13,10 +13,10 @@ from dss.adapters.observability.tracing import (
 )
 from dss.core.channel.localize import LocalizeText
 from dss.core.channel.models import ClarificationText, ComposedAnswer
+from dss.core.forms.challenge import InitReplyWithoutChallenge
 from dss.core.forms.init_flow import (
     FlowDecision,
     InitCall,
-    InitReplyWithoutChallenge,
     NoInitPending,
     SavedDetailsUnusable,
     WaitingFlow,
@@ -50,7 +50,6 @@ from dss.core.forms.service import (
     end_for_no_provider,
     end_for_unknown_form,
     free_text_of,
-    is_auth_refused,
     is_done,
     mask_pii_fields,
     validate_submission,
@@ -88,6 +87,8 @@ from dss.orchestration.form_turn import (
     ask_for_form_context,
     call_traced_provider_action,
     redact_texts,
+    warn_if_auth_refused,
+    warn_if_unknown_challenge,
 )
 from dss.orchestration.orchestrator import (
     compose_answer,
@@ -95,7 +96,6 @@ from dss.orchestration.orchestrator import (
     refusal_for,
     reveal_to_farmer,
 )
-from dss.orchestration.provider_action import warn_auth_refused
 from dss.orchestration.redaction import RedactTexts
 from dss.orchestration.session import Session
 from dss.orchestration.stage_content import (
@@ -267,7 +267,7 @@ class FormPath:
             visibility=redaction.visibility,
         )
         if isinstance(response, Failure):
-            _warn_if_auth_refused(response, form_turn.ctx)
+            warn_if_auth_refused(response, form_turn.ctx)
             return await self._finish_turn(
                 end_for_failed_call(
                     redaction.turn.input,
@@ -329,14 +329,9 @@ class FormPath:
         # The saved details are a second form: masked too, and their tags held
         # with the turn's, so the answer can reveal what the provider echoes.
         details = mask_pii_fields(flow.details)
-        held = redaction.visibility
         redaction = replace(
             redaction,
-            visibility=Visibility(
-                values={**held.values, **details.visibility.values},
-                never_concealed=held.never_concealed
-                | details.visibility.never_concealed,
-            ),
+            visibility=redaction.visibility.merged_with(details.visibility),
         )
         # Removed before the call: a crash after it must not leave a response
         # that may have reached the provider open to be used again. A failure
@@ -351,7 +346,7 @@ class FormPath:
             init_values=init_response.values,
         )
         if isinstance(response, Failure):
-            _warn_if_auth_refused(response, form_turn.ctx)
+            warn_if_auth_refused(response, form_turn.ctx)
             return await self._update_forms_and_end(
                 decide_after_failed_init_response(
                     session.forms,
@@ -434,8 +429,9 @@ class FormPath:
             visibility=redaction.visibility,
         )
         init_reply = read_init_reply(reply)
+        warn_if_unknown_challenge(init_reply)
         if isinstance(init_reply, Failure | InitReplyWithoutChallenge):
-            _warn_if_auth_refused(init_reply, form_turn.ctx)
+            warn_if_auth_refused(init_reply, form_turn.ctx)
             return await self._finish_turn(
                 end_for_failed_init(
                     init_reply, details=submission, text=self._clarification_text
@@ -545,10 +541,7 @@ class FormPath:
             turn=texts.turn,
             form=form,
             free_text=texts.free_text,
-            visibility=Visibility(
-                values={**texts.visibility.values, **held.values},
-                never_concealed=texts.visibility.never_concealed | held.never_concealed,
-            ),
+            visibility=texts.visibility.merged_with(held),
         )
 
     async def _redact_texts(
@@ -607,13 +600,6 @@ def _free_text_of(
     form: ValidSubmission | FormErrors | UnknownForm,
 ) -> tuple[str, ...]:
     return free_text_of(form) if isinstance(form, ValidSubmission) else ()
-
-
-def _warn_if_auth_refused(
-    failure: Failure | InitReplyWithoutChallenge, ctx: TurnContext
-) -> None:
-    if isinstance(failure, Failure) and is_auth_refused(failure):
-        warn_auth_refused(failure, request_id=ctx.trace_id)
 
 
 def _count(discovery: DiscoveryResult) -> int:

@@ -26,6 +26,7 @@ from dss.core.forms.models import (
     FieldSource,
     FieldValue,
     FlowEnding,
+    FormActionOffer,
     FormAwaitingInit,
     FormBlock,
     FormContext,
@@ -76,11 +77,13 @@ class _Registration:
     skipped: tuple[SchemaPackSkipped, ...]
 
 
-def offer_form(definition: FormDefinition) -> FormBlock:
+def offer_form(
+    definition: FormDefinition, *, actions: tuple[FormActionOffer, ...] = ()
+) -> FormBlock:
     """A new offer each call: two offers of one form type are two forms to
     fill in, and a submission names the offer it answers."""
 
-    return FormBlock(form_id=uuid4().hex, form=definition)
+    return FormBlock(form_id=uuid4().hex, form=definition, actions=actions)
 
 
 def build_form_registry(packs: Sequence[SchemaPackFiles]) -> FormRegistry:
@@ -550,8 +553,8 @@ def end_for_call_cause(
     )
 
 
-def answer_for_init_form(init_form: FormDefinition, text: str) -> ComposedAnswer:
-    return ComposedAnswer(content=(TextBlock(text=text), offer_form(init_form)))
+def answer_with_form(offer: FormBlock, text: str) -> ComposedAnswer:
+    return ComposedAnswer(content=(TextBlock(text=text), offer))
 
 
 def end_for_form_errors(errors: FormErrors, text: ClarificationText) -> FlowEnding:

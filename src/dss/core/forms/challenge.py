@@ -5,7 +5,12 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel, ValidationError
 
-from dss.core.forms.models import ChallengeMethod, FormDefinition
+from dss.core.forms.models import (
+    ChallengeMethod,
+    FormActionName,
+    FormActionOffer,
+    FormDefinition,
+)
 
 
 @dataclass(frozen=True)
@@ -64,3 +69,15 @@ def labelled_for(
     if method is ChallengeMethod.OTP:
         return init_form.with_label(_OTP_FIELD, _OTP_LABEL)
     return init_form
+
+
+# What the farmer may press beside an init form's submit, by what init sent.
+_ACTIONS_FOR_METHOD: Mapping[ChallengeMethod | None, tuple[FormActionOffer, ...]] = {
+    ChallengeMethod.OTP: (
+        FormActionOffer(name=FormActionName.RESEND_INIT, label="Resend OTP"),
+    ),
+}
+
+
+def actions_for(method: ChallengeMethod | None) -> tuple[FormActionOffer, ...]:
+    return _ACTIONS_FOR_METHOD.get(method, ())
