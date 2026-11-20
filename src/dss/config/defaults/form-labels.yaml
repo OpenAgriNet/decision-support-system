@@ -1,0 +1,4 @@
+# A field's label, by scheme and pack path, where the path in words reads
+# badly. A field not listed here is labelled with its path in words.
+PM-KISAN:
+  challenge.response.value: Enter OTP

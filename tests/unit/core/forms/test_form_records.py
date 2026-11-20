@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+from dss.core.forms.challenge import ChallengeMethod
 from dss.core.forms.models import (
     FieldValue,
     FormAwaitingInit,
@@ -40,7 +41,10 @@ def _submission(form_id: str = "f1") -> FormSubmission:
 
 def _waiting(form_id: str = "f1") -> FormAwaitingInit:
     return FormAwaitingInit(
-        submission=_submission(form_id), provider=_PROVIDER, awaited_at=_NOW
+        submission=_submission(form_id),
+        provider=_PROVIDER,
+        challenge_method=ChallengeMethod.OTP,
+        awaited_at=_NOW,
     )
 
 
@@ -92,17 +96,29 @@ def test_a_done_form_is_kept_under_its_form_id_with_no_value() -> None:
     assert [value.value for value in done["f1"].submission.values] == [WITHHELD]
 
 
-def test_a_form_awaiting_init_keeps_its_submission_and_provider() -> None:
-    waiting = with_init_awaited({}, _submission("f1"), provider=_PROVIDER, now=_NOW)
+def test_a_form_awaiting_init_keeps_its_submission_provider_and_method() -> None:
+    waiting = with_init_awaited(
+        {},
+        _submission("f1"),
+        provider=_PROVIDER,
+        challenge_method=ChallengeMethod.OTP,
+        now=_NOW,
+    )
 
     assert waiting == {"f1": _waiting("f1")}
 
 
 def test_an_entry_awaited_again_differs_from_the_one_before() -> None:
-    first = with_init_awaited({}, _submission(), provider=_PROVIDER, now=_NOW)
+    first = with_init_awaited(
+        {}, _submission(), provider=_PROVIDER, challenge_method=None, now=_NOW
+    )
 
     again = with_init_awaited(
-        first, _submission(), provider=_PROVIDER, now=_NOW + timedelta(seconds=1)
+        first,
+        _submission(),
+        provider=_PROVIDER,
+        challenge_method=None,
+        now=_NOW + timedelta(seconds=1),
     )
 
     assert again != first

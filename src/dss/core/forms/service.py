@@ -13,7 +13,9 @@ import yaml
 
 from dss.core.channel.models import ClarificationText, ComposedAnswer
 from dss.core.channel.service import answer_for_unserved_asks
+from dss.core.forms.challenge import ChallengeMethod
 from dss.core.forms.models import (
+    NO_FORM_LABELS,
     ActionField,
     ActionSchema,
     FieldDefinition,
@@ -32,6 +34,7 @@ from dss.core.forms.models import (
     FormDone,
     FormErrorBlock,
     FormErrors,
+    FormLabels,
     FormRecords,
     FormSubmission,
     JsonScalar,
@@ -82,7 +85,9 @@ def offer_form(definition: FormDefinition) -> FormBlock:
     return FormBlock(form_id=uuid4().hex, form=definition)
 
 
-def build_form_registry(packs: Sequence[SchemaPackFiles]) -> FormRegistry:
+def build_form_registry(
+    packs: Sequence[SchemaPackFiles], *, labels: FormLabels = NO_FORM_LABELS
+) -> FormRegistry:
     """Never raises. A pack it cannot read is left out and named in
     ``skipped``. A catalog pack is ignored. Of two forms for one context, the
     first pack's wins."""
@@ -92,7 +97,9 @@ def build_form_registry(packs: Sequence[SchemaPackFiles]) -> FormRegistry:
     unreadable = tuple(o for o in pack_outcomes if isinstance(o, SchemaPackSkipped))
     registration = _register_first_per_context(parsed)
     return FormRegistry(
-        registration.schemas, skipped=(*unreadable, *registration.skipped)
+        registration.schemas,
+        labels=labels,
+        skipped=(*unreadable, *registration.skipped),
     )
 
 
@@ -805,7 +812,13 @@ def with_init_awaited(
     submission: FormSubmission,
     *,
     provider: ProviderCapability,
+    challenge_method: ChallengeMethod | None,
     now: datetime,
 ) -> FormRecords:
-    waiting = FormAwaitingInit(submission=submission, provider=provider, awaited_at=now)
+    waiting = FormAwaitingInit(
+        submission=submission,
+        provider=provider,
+        challenge_method=challenge_method,
+        awaited_at=now,
+    )
     return {**forms, submission.form_id: waiting}

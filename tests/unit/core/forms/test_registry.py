@@ -8,6 +8,8 @@ from dss.core.forms.models import (
     FieldKind,
     FormContext,
     FormDefinition,
+    FormLabels,
+    LabelledField,
 )
 from dss.core.forms.registry import FormLookup, FormRegistry
 from dss.core.forms.service import build_form_registry
@@ -237,3 +239,29 @@ def test_the_registry_keeps_the_schema_the_form_was_cut_from() -> None:
     ]
     assert registry.action_schema(PMFBY_STATUS) is not None
     assert FormRegistry().action_schema(PMFBY_SUPPORT) is None
+
+
+def test_the_registry_labels_its_forms_with_the_given_labels() -> None:
+    labels = FormLabels(by_scheme={"PM-KISAN": {"challenge.response.value": "OTP"}})
+
+    registry = build_form_registry([build_grievance_pack()], labels=labels)
+
+    init_form = registry.find(PMKISAN_INIT)
+    assert init_form is not None
+    assert [field.label for field in init_form.fields] == ["OTP"]
+
+
+def test_the_registry_names_labels_that_match_no_field() -> None:
+    labels = FormLabels(
+        by_scheme={
+            "PM-KISAN": {"challenge.response.value": "OTP", "challenge.typo": "x"},
+            "NO-SUCH-SCHEME": {"enrolmentId": "y"},
+        }
+    )
+
+    registry = build_form_registry([build_grievance_pack()], labels=labels)
+
+    assert registry.unused_labels == (
+        LabelledField(scheme="PM-KISAN", path="challenge.typo"),
+        LabelledField(scheme="NO-SUCH-SCHEME", path="enrolmentId"),
+    )
