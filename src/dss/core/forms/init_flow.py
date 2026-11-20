@@ -6,6 +6,7 @@ from datetime import datetime
 from http import HTTPStatus
 
 from dss.core.channel.models import ClarificationText, ComposedAnswer
+from dss.core.forms.challenge import IssuedChallenge, read_issued_challenge
 from dss.core.forms.models import (
     ActionSchema,
     FailedCallOutcome,
@@ -36,10 +37,6 @@ from dss.core.intent.models import Ask
 from dss.core.planner.models import NO_READABLE_REPLY, Failure
 from dss.core.provider_discovery.models import DiscoveredAnswer, ProviderCapability
 from dss.core.shared.models import Cause, ProviderAction, TextBlock, TurnStatus
-
-# The pack does not say what init returns yet; v2 packs will. Until then:
-# what the init form answers is issued under `challenge.issued`.
-_INIT_REPLY_PATH = ("challenge", "issued")
 
 type AskFor = Callable[[FormContext], Ask | None]
 
@@ -93,23 +90,13 @@ def _has_values_for(schema: ActionSchema, values: Mapping[str, str]) -> bool:
     return all(field.path in values for field in schema.request_fields())
 
 
-def find_init_failure(
+def read_init_reply(
     reply: DiscoveredAnswer | Failure,
-) -> Failure | InitReplyWithoutChallenge | None:
+) -> IssuedChallenge | Failure | InitReplyWithoutChallenge:
     if isinstance(reply, Failure):
         return reply
-    if not _has_init_challenge(reply.attributes):
-        return InitReplyWithoutChallenge()
-    return None
-
-
-def _has_init_challenge(attributes: Mapping[str, object]) -> bool:
-    node: object = attributes
-    for segment in _INIT_REPLY_PATH:
-        if not isinstance(node, Mapping):
-            return False
-        node = node.get(segment)
-    return isinstance(node, Mapping)
+    challenge = read_issued_challenge(reply.attributes)
+    return InitReplyWithoutChallenge() if challenge is None else challenge
 
 
 def end_for_failed_init(
@@ -140,11 +127,18 @@ def decide_after_sent_init(  # noqa: PLR0913
     *,
     provider: ProviderCapability,
     init: InitCall,
+    challenge: IssuedChallenge,
     text: ClarificationText,
     now: datetime,
 ) -> FlowDecision:
     return FlowDecision(
-        forms=with_init_awaited(forms, submission, provider=provider, now=now),
+        forms=with_init_awaited(
+            forms,
+            submission,
+            provider=provider,
+            challenge_method=challenge.method,
+            now=now,
+        ),
         ending=FlowEnding(
             status=TurnStatus.REQUIRES_INPUT,
             cause=None,
@@ -286,7 +280,11 @@ def decide_after_failed_init_response(  # noqa: PLR0913
         return FlowDecision(forms=forms, ending=_ended_for_good(exit_for_failure, text))
     return FlowDecision(
         forms=with_init_awaited(
-            forms, flow.entry.submission, provider=flow.entry.provider, now=now
+            forms,
+            flow.entry.submission,
+            provider=flow.entry.provider,
+            challenge_method=flow.entry.challenge_method,
+            now=now,
         ),
         ending=_ended_with_init_form_back(
             exit_for_failure, failure, init_response, init_form, text

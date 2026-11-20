@@ -3,7 +3,14 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Protocol
 
-from dss.core.forms.models import ActionSchema, FormContext, FormDefinition
+from dss.core.forms.models import (
+    NO_FORM_LABELS,
+    ActionSchema,
+    FormContext,
+    FormDefinition,
+    FormLabels,
+    LabelledField,
+)
 from dss.core.schema_packs.models import SchemaPackSkipped
 from dss.core.shared.models import ProviderAction
 
@@ -26,6 +33,7 @@ class FormRegistry:
         self,
         schemas: Iterable[ActionSchema] = (),
         *,
+        labels: FormLabels = NO_FORM_LABELS,
         skipped: tuple[SchemaPackSkipped, ...] = (),
     ) -> None:
         self._schemas: dict[FormContext, ActionSchema] = {}
@@ -34,11 +42,12 @@ class FormRegistry:
             if schema.context in self._schemas:
                 raise ValueError(f"two forms for {schema.context}")
             self._schemas[schema.context] = schema
-            for form in _forms_from(schema):
+            for form in _forms_from(schema, labels):
                 # Support and status wait for one init: the first one's
                 # fields make its form.
                 self._forms.setdefault(form.context, form)
         self._skipped = skipped
+        self._unused_labels = labels.unused_by(self._forms.values())
 
     def find(self, context: FormContext) -> FormDefinition | None:
         return self._forms.get(context)
@@ -59,14 +68,26 @@ class FormRegistry:
 
         return self._skipped
 
+    @property
+    def unused_labels(self) -> tuple[LabelledField, ...]:
+        """Labels that match no form field, for an operator: a misspelt one
+        silently leaves the path in words."""
 
-def _forms_from(schema: ActionSchema) -> tuple[FormDefinition, ...]:
+        return self._unused_labels
+
+
+def _forms_from(schema: ActionSchema, labels: FormLabels) -> tuple[FormDefinition, ...]:
     # What init sends comes from the details form; its own form is what the
     # farmer fills once it has run.
     if schema.context.action == ProviderAction.INIT:
         return ()
-    details = FormDefinition.from_fields(schema.context, schema.request_fields())
+    details = FormDefinition.from_fields(
+        schema.context, schema.request_fields(), labels=labels
+    )
     if not schema.needs_init():
         return (details,)
     init = schema.context.model_copy(update={"action": ProviderAction.INIT.value})
-    return (details, FormDefinition.from_fields(init, schema.init_fields()))
+    return (
+        details,
+        FormDefinition.from_fields(init, schema.init_fields(), labels=labels),
+    )
