@@ -8,7 +8,7 @@ from dataclasses import field as dataclass_field
 from datetime import datetime
 from enum import Enum
 
-from dss.core.intent.models import Ask, AskId
+from dss.core.intent.models import Ask, AskId, SubjectCategory
 from dss.core.provider_preferences.models import AskPriority
 
 # A resource's `@type`, like `openagrinet:MandiPrice`. Not an enum: the set is
@@ -330,6 +330,10 @@ class DiscoveryResult:
     @property
     def serves_any_ask(self) -> bool:
         return any(ask.is_served for ask in self.asks)
+
+    @property
+    def asked_categories(self) -> frozenset[SubjectCategory]:
+        return frozenset(discovered.ask.subject_categories for discovered in self.asks)
 
     def find(self, ask_id: AskId) -> DiscoveredAsk | None:
         return next((ask for ask in self.asks if ask.ask.id == ask_id), None)

@@ -26,8 +26,8 @@ from dss.core.settlement.models import (
     Settled,
     Slot,
 )
-from tests.support.asks import an_ask
-from tests.support.evidence import attempted
+from tests.support.asks import an_ask, numbered
+from tests.support.evidence import attempted, build_evidence
 
 
 def _results(evidence: Evidence) -> list[Result]:
@@ -529,3 +529,14 @@ def test_merge_refuses_a_settled_ask_without_evidence() -> None:
 
     with pytest.raises(ValueError, match="no evidence for settled ask 1"):
         merge_unsettled(_RAIN_WAITS_POTATO_SETTLED, settled=settled)
+
+
+def test_evidence_names_each_category_its_asks_are_about() -> None:
+    evidence = build_evidence(
+        asks=numbered(
+            an_ask(subject_categories=SubjectCategory.MARKET),
+            an_ask(subject_categories=SubjectCategory.CROP),
+        )
+    )
+
+    assert evidence.asked_categories == {SubjectCategory.MARKET, SubjectCategory.CROP}

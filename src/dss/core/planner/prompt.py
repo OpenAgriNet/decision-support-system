@@ -44,8 +44,8 @@ def guidance_section(skills: Sequence[Skill], *, category_guidance: str = "") ->
             "You have no skills loaded and no tools to call. Report that this "
             "turn cannot be served.\n\n"
         )
-    parts = [skill.guidance.strip() for skill in skills]
-    body = "\n\n".join([*parts, category_guidance] if category_guidance else parts)
+    sections = (*(skill.guidance.strip() for skill in skills), category_guidance)
+    body = "\n\n".join(section for section in sections if section)
     return f"# Guidance\n\n{body}\n\n"
 
 

@@ -309,17 +309,26 @@ def _load_language(
     skills = tuple(
         load_skill_file(_resolved(base, skill_path)) for skill_path in entry.skills
     )
-    category_guidance = {
-        _guidance_category(category, label): _read_category_guidance(
-            _resolved(base, path), label
-        )
-        for category, path in entry.category_guidance.items()
-    }
     return _LanguageEntry(
         template=environment.from_string(text),
         skills=skills,
-        category_guidance=category_guidance,
+        category_guidance=_load_category_guidance(
+            entry.category_guidance, base=base, label=label
+        ),
     )
+
+
+def _load_category_guidance(
+    paths: Mapping[str, str], *, base: Path, label: str
+) -> Mapping[SubjectCategory, str]:
+    """Kept in configured order, the order a turn's guidance is joined in."""
+
+    return {
+        _guidance_category(category, label): _read_category_guidance(
+            _resolved(base, path), label
+        )
+        for category, path in paths.items()
+    }
 
 
 def _guidance_category(category: str, label: str) -> SubjectCategory:
@@ -329,10 +338,9 @@ def _guidance_category(category: str, label: str) -> SubjectCategory:
     try:
         return SubjectCategory(category)
     except ValueError:
-        categories = ", ".join(category.value for category in SubjectCategory)
         raise ValueError(
             f"prompt {label} has guidance for {category!r}, which is not an "
-            f"intent category ({categories})"
+            f"intent category ({', '.join(SubjectCategory)})"
         ) from None
 
 

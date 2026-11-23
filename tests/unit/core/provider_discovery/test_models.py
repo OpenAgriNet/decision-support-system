@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from dss.core.intent.models import SubjectCategory
 from dss.core.provider_discovery.models import (
     NOTHING_FOUND,
     AnswerSource,
@@ -19,6 +20,7 @@ from dss.core.provider_discovery.models import (
     Validity,
 )
 from tests.support.asks import an_ask
+from tests.support.discovery import a_discovery, discovered
 
 NOW = datetime(2026, 8, 26, 12, 0, 0, tzinfo=UTC)
 
@@ -85,6 +87,19 @@ def test_two_entries_for_one_ask_are_refused() -> None:
 
     with pytest.raises(ValueError, match="two entries for ask 1"):
         DiscoveryResult(asks=(twice, twice), events=())
+
+
+def test_a_discovery_names_each_category_its_asks_are_about_once() -> None:
+    discovery = a_discovery(
+        discovered(an_ask(id=0, subject_categories=SubjectCategory.MARKET)),
+        discovered(an_ask(id=1, subject_categories=SubjectCategory.WEATHER)),
+        discovered(an_ask(id=2, subject_categories=SubjectCategory.MARKET)),
+    )
+
+    assert discovery.asked_categories == {
+        SubjectCategory.MARKET,
+        SubjectCategory.WEATHER,
+    }
 
 
 def test_within_validity_returns_a_new_ask_without_the_answers_outside_it() -> None:
