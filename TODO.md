@@ -320,6 +320,14 @@
   choose. But the form step reads the action from the ask, finds none, and
   shows no form. No such category exists today. Fix: with one kind of form,
   that kind is the action.
+- **An unanswered ask does not offer what else we can do.** "I want to
+  check the status of PMFBY" fits an application or a complaint. Intent
+  reads it as a Scheme ask, and forms are looked up by the ask's own
+  category, so the farmer gets "not found" and never sees the complaint
+  status form. Do this when the capabilities API replaces
+  `subjectCategories`: the planner then knows everything the DSS can do.
+  When an ask has no answer, it picks the next step that fits the farmer's
+  words and the history, and the composer asks the farmer about it.
 
 ## Transport
 
