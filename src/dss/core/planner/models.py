@@ -10,7 +10,7 @@ import anyio
 from pydantic import BaseModel, ConfigDict
 
 from dss.core.forms.models import FormDefinition
-from dss.core.intent.models import Ask, AskId
+from dss.core.intent.models import Ask, AskId, SubjectCategory
 from dss.core.moderation.models import ModerationDecision
 from dss.core.settlement.models import CannotServe, NeedsClarification
 
@@ -215,6 +215,10 @@ class Evidence:
     # Always empty for now: refusal and no-match fill it once they reach the
     # composer. Added early so they add a kind of note, not a new shape.
     turn_note: TurnNote | None = None
+
+    @property
+    def asked_categories(self) -> frozenset[SubjectCategory]:
+        return frozenset(entry.ask.subject_categories for entry in self.ask_evidences)
 
     @property
     def sources(self) -> tuple[Source, ...]:
