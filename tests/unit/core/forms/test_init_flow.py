@@ -270,7 +270,9 @@ def _waiting(
     )
 
 
-def _sent_init(forms: FormRecords) -> FlowDecision:
+def _sent_init(
+    forms: FormRecords, *, method: ChallengeMethod | None = ChallengeMethod.OTP
+) -> FlowDecision:
     init = find_init_call(_valid(_DETAILS), _FORMS)
     assert isinstance(init, InitCall)
     return decide_after_sent_init(
@@ -278,7 +280,7 @@ def _sent_init(forms: FormRecords) -> FlowDecision:
         _DETAILS,
         provider=_PROVIDER,
         init=init,
-        challenge=IssuedChallenge(method=ChallengeMethod.OTP),
+        challenge=IssuedChallenge(method=method),
         text=_TEXT,
         now=_NOW,
     )
@@ -299,6 +301,15 @@ def test_a_sent_init_asks_for_the_init_form() -> None:
     assert decision.ending.cause is None
     told, offered = decision.ending.answer.content
     assert told == TextBlock(text=_TEXT.init_response_needed)
+    assert isinstance(offered, FormBlock)
+    assert offered.form.context == PMKISAN_INIT
+    assert [field.label for field in offered.form.fields] == ["Enter OTP"]
+
+
+def test_an_unknown_challenge_keeps_the_path_in_words() -> None:
+    decision = _sent_init({}, method=None)
+
+    _, offered = decision.ending.answer.content
     assert isinstance(offered, FormBlock)
     assert offered.form == _FORMS.find(PMKISAN_INIT)
 

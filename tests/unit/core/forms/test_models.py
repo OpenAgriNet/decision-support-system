@@ -12,7 +12,6 @@ from dss.core.forms.models import (
     FormBlock,
     FormContext,
     FormDefinition,
-    FormLabels,
     Option,
 )
 from dss.core.shared.models import Claim, TurnFinished, TurnOutcome, TurnStatus
@@ -181,26 +180,6 @@ def test_options_make_a_select_however_long_the_answer() -> None:
 )
 def test_the_label_is_the_path_in_words(path: str, label: str) -> None:
     assert _form_of(_farmer(path)).fields[0].label == label
-
-
-def test_a_label_set_for_the_scheme_replaces_the_path_in_words() -> None:
-    labels = FormLabels(by_scheme={"PMFBY": {"cropYear": "Season year"}})
-
-    form = FormDefinition.from_fields(
-        _PMFBY_GRIEVANCE, (_farmer("cropYear"),), labels=labels
-    )
-
-    assert form.fields[0].label == "Season year"
-
-
-def test_a_label_set_for_another_scheme_is_not_used() -> None:
-    labels = FormLabels(by_scheme={"PM-KISAN": {"cropYear": "Season year"}})
-
-    form = FormDefinition.from_fields(
-        _PMFBY_GRIEVANCE, (_farmer("cropYear"),), labels=labels
-    )
-
-    assert form.fields[0].label == "Crop year"
 
 
 def test_init_fields_are_kept_apart_from_the_request_fields() -> None:

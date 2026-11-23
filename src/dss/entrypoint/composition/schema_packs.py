@@ -16,7 +16,6 @@ from dss.adapters.schema_packs.filesystem import (
     FilesystemSchemaPackSource,
     has_packs,
 )
-from dss.config.form_labels_loader import load_form_labels
 from dss.config.schema_pack_fetch import SchemaPackFetchFailedError, fetch_packs
 from dss.config.settings import Settings
 from dss.core.forms.registry import FormRegistry
@@ -195,18 +194,11 @@ def boot_forms(settings: Settings) -> FormRegistry:
         return FormRegistry()
 
     source = FilesystemSchemaPackSource(root=directory)
-    registry = build_form_registry(
-        _run_on_fresh_loop(source.fetch_packs), labels=load_form_labels()
-    )
+    registry = build_form_registry(_run_on_fresh_loop(source.fetch_packs))
     for skip in source.skipped_packs():
         logger.warning("pack %r unreadable: %s", skip.pack_name, skip.reason)
     for skip in registry.skipped:
         logger.warning("form left out of pack %r: %s", skip.pack_name, skip.reason)
-    for unused in registry.unused_labels:
-        logger.warning(
-            "form label matches no field",
-            extra={"scheme": unused.scheme, "field_path": unused.path},
-        )
     if not registry:
         # A folder from an older fetch has catalog packs but no API pack.
         logger.warning(

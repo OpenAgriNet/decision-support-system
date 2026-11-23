@@ -89,39 +89,6 @@ class FieldDefinition(BaseModel):
     pii_class: str | None = None
 
 
-@dataclass(frozen=True)
-class LabelledField:
-    scheme: str
-    path: str
-
-
-class FormLabels(BaseModel):
-    """The pack has no titles yet."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    by_scheme: Mapping[str, Mapping[str, str]] = {}
-
-    def label_for(self, scheme: str, path: str) -> str:
-        return self.by_scheme.get(scheme, {}).get(path) or _label_for(path)
-
-    def unused_by(self, forms: Iterable[FormDefinition]) -> tuple[LabelledField, ...]:
-        used = {
-            LabelledField(form.context.scheme, field.name)
-            for form in forms
-            for field in form.fields
-        }
-        return tuple(
-            LabelledField(scheme, path)
-            for scheme, paths in self.by_scheme.items()
-            for path in paths
-            if LabelledField(scheme, path) not in used
-        )
-
-
-NO_FORM_LABELS = FormLabels()
-
-
 class FormDefinition(BaseModel):
     """One form as the registry holds it, cut from one API schema pack for one
     action. ``fields`` are the farmer's; the catalog supplies the rest."""
@@ -133,24 +100,21 @@ class FormDefinition(BaseModel):
 
     @classmethod
     def from_fields(
-        cls,
-        context: FormContext,
-        fields: Iterable[ActionField],
-        *,
-        labels: FormLabels = NO_FORM_LABELS,
+        cls, context: FormContext, fields: Iterable[ActionField]
     ) -> FormDefinition:
         return cls(
-            context=context,
-            fields=tuple(
-                _to_form_field(
-                    field, label=labels.label_for(context.scheme, field.path)
-                )
-                for field in fields
-            ),
+            context=context, fields=tuple(_to_form_field(field) for field in fields)
         )
 
     def field(self, name: str) -> FieldDefinition | None:
         return next((field for field in self.fields if field.name == name), None)
+
+    def with_label(self, name: str, label: str) -> FormDefinition:
+        fields = tuple(
+            field.model_copy(update={"label": label}) if field.name == name else field
+            for field in self.fields
+        )
+        return self.model_copy(update={"fields": fields})
 
 
 type JsonScalar = str | int | float | bool
@@ -215,10 +179,10 @@ _WORD_BREAK = re.compile(
 )
 
 
-def _to_form_field(field: ActionField, *, label: str) -> FieldDefinition:
+def _to_form_field(field: ActionField) -> FieldDefinition:
     return FieldDefinition(
         name=field.path,
-        label=label,
+        label=_label_for(field.path),
         kind=_kind_for(field),
         rules=FieldRules(
             required=True,
