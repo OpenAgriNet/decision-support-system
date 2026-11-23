@@ -19,28 +19,16 @@ from dss.core.provider_discovery.models import ProviderCapability
 # values are already in the catalog, so there is nothing to select.
 _ON_DEMAND = "OnDemand"
 
-# TODO(#55): remove all three of these with the pack fix.
-#
 # Agmarknet refuses a MandiPrice select without a validity window —
 # `SCH_INVALID_FORMAT: this capability needs a validity window; it reports
-# prices over a date range`. The pack disagrees: `profile.json` lists
-# `validity` under `result_fields` only, and `attributes.yaml` describes it as
-# "the period during which a current price snapshot should be treated as
-# applicable" — a property of the answer, not of the question. No pack lists
-# `validity` as filterable, so this cannot come from the model: it would be
-# refused by `validate_arguments`, which runs before this module.
-#
-# Only `profile.json` disagrees, though. `attributes.yaml` accepts the field
-# on a select — a body carrying this window validates against the pack's own
-# schema — so what is being worked around is the filterable list, not the
-# contract. That is why the fix upstream is a one-line `filterable_paths`
-# entry rather than a schema change.
+# prices over a date range`. The pack lists `validity.startsAt` and
+# `validity.endsAt` as filterable, so the planner sets the window from the
+# dates in the question, as the Market guidance tells it. The model may still
+# leave it out, so a select without one gets the week up to today.
 #
 # Scoped to MandiPrice deliberately. WeatherObservation also declares
 # `validity` as a result field and answers correctly today without one, so
-# sending it there would turn a working call into a NACK. When the pack
-# settles what a caller may send, this goes and the field comes from
-# `filterable_paths` like every other.
+# sending it there would turn a working call into a NACK.
 _VALIDITY_EXCEPTION_CAPABILITY = "openagrinet:MandiPrice"
 # The provider publishes its own `validity` in IST, and a mandi's trading day
 # is a local day rather than a UTC one — a UTC window would start and end at
@@ -199,7 +187,7 @@ def build_resource_attributes(  # noqa: PLR0913
     schema_context_index: dict[str, str],
     filterable: tuple[str, ...],
     declared: tuple[str, ...] = (),
-    priced_on: date | None = None,
+    today: date | None = None,
 ) -> dict:
     """Build the full resourceAttributes object: structural fields first, the
     model's fields merged on top — but structural fields always win.
@@ -296,21 +284,12 @@ def build_resource_attributes(  # noqa: PLR0913
     # WeatherObservation is the one pack that offers `location.geo`, and the
     # one where this went wrong — so this is the rule the others already follow
     # by accident, made explicit.
-    # TODO(#55): remove with the pack fix — see `_VALIDITY_EXCEPTION_CAPABILITY`.
-    #
-    # Last, like the resolved place, and for the same reason: what the pack
-    # declares about `validity` describes an answer, so anything echoed or
-    # model-filled under that name is not the window the provider is asking
-    # for. `priced_on` is only absent in tests that predate this.
-    #
-    # The day the farmer asked about, which is today only by default — the
-    # caller resolves "yesterday" or a named date before this. A window is
-    # what the provider wants, so even one day arrives as a start and an end.
+    # Last, like the resolved place: the model's own window, or the week up
+    # to today when it sent none — never one echoed from the advertisement,
+    # which describes an answer, not what is asked for. `today` is only absent
+    # in tests that predate this.
     validity: dict = {}
-    if (
-        capability.capability == _VALIDITY_EXCEPTION_CAPABILITY
-        and priced_on is not None
-    ):
-        validity["validity"] = _validity_window(priced_on)
+    if capability.capability == _VALIDITY_EXCEPTION_CAPABILITY and today is not None:
+        validity["validity"] = model_filled.get("validity") or _validity_window(today)
 
     return {**echoed, **reconciled, **structural, **resolved_location, **validity}

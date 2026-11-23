@@ -13,6 +13,7 @@ would merge the two components the design deliberately splits.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from datetime import date
 from typing import Protocol
 
 from pydantic_ai.models import Model
@@ -31,6 +32,7 @@ from dss.core.planner.prompt import (
     answers_section,
     asks_section,
     build_user_message,
+    format_day,
     guidance_section,
 )
 from dss.core.planner.validation import DomainSchema
@@ -39,7 +41,7 @@ from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import TextQuery, TurnInput, UserTurn
 from dss.observability.stages import Stage
 from dss.observability.trace_log import log_external_response, trace_agent_call
-from dss.orchestration.planner import PlannerDeps, build_planner_agent
+from dss.orchestration.planner import PlannerDeps, build_planner_agent, utc_today
 from dss.ports.invocation import CapabilityInvocation
 from dss.ports.prompts import PromptIdentifier, PromptProvider
 
@@ -74,6 +76,7 @@ def build_plan(  # noqa: PLR0913
     temperature: float = 0.0,
     timeout_seconds: float = 30.0,
     retries: int = 3,
+    today: Callable[[], date] = utc_today,
 ) -> Plan:
     """Bake in the per-deployment configuration; return the per-turn callable.
 
@@ -126,6 +129,7 @@ def build_plan(  # noqa: PLR0913
                     "guidance_section": guidance_section(skills),
                     "asks_section": asks_section(asks, awaiting=frozenset(awaiting)),
                     "answers_section": answers_section(direct_answers),
+                    "today": format_day(today()),
                 },
             ),
         )
@@ -137,6 +141,7 @@ def build_plan(  # noqa: PLR0913
             invocation=invocation_for(turn),
             verdict=verdict,
             visibility=visibility,
+            today=today,
         )
         # Our own counter, so a run that fails after several paid round-trips
         # still reports them.

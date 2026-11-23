@@ -26,12 +26,19 @@ wired in ``orchestration/planner.py``.
 from __future__ import annotations
 
 from collections.abc import Collection, Sequence
+from datetime import date
 
 from dss.core.intent.models import Ask, AskId
 from dss.core.planner.markers import CONVERSATION, RETRIEVED_DATA, wrap_as_data
 from dss.core.planner.models import Skill
 from dss.core.provider_discovery.models import DiscoveredAnswer
 from dss.core.shared.models import ConversationMessage
+
+
+def format_day(day: date) -> str:
+    """The weekday too, so the model can count back to "last Monday"."""
+
+    return f"{day.isoformat()} ({day:%A})"
 
 
 def guidance_section(skills: Sequence[Skill]) -> str:

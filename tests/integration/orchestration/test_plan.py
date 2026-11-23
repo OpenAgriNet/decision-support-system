@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import replace
+from datetime import date
 
 import pytest
 from pydantic_ai.messages import (
@@ -301,6 +302,30 @@ async def test_an_ask_about_anything_else_brings_no_market_guidance() -> None:
     )
 
     assert MARKET_GUIDANCE not in await _planner_prompt_for(weather)
+
+
+async def test_the_planner_prompt_is_told_the_day_its_clock_reads() -> None:
+    """The Market guidance has the model work a price window out from it."""
+
+    prompts = FakePromptProvider(skills=(SKILL,))
+    plan = build_plan(
+        schemas=SCHEMAS,
+        schema_context_index={},
+        invocation_for=lambda _turn: _FakeInvocation(),
+        identity=IDENTITY,
+        prompts=prompts,
+        model=FunctionModel(_answers_without_calling),
+        today=lambda: date(2026, 11, 23),
+    )
+
+    await plan(
+        _turn(),
+        discovery=a_discovery(discovered(PRICE_ASK, capabilities=(CAPABILITY,))),
+        verdict=_cleared_verdict(),
+    )
+
+    (_, _, values), *_ = prompts.calls
+    assert values["today"] == "2026-11-23 (Monday)"
 
 
 DIRECT_ANSWER = DiscoveredAnswer(

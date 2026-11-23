@@ -51,7 +51,13 @@ CAPABILITY = build_capability(
 SCHEMAS = {
     "openagrinet:MandiPrice": DomainSchema(
         type="MandiPrice",
-        filterable=("commodity.code", "market.marketCode", "market.state"),
+        filterable=(
+            "commodity.code",
+            "market.marketCode",
+            "market.state",
+            "validity.startsAt",
+            "validity.endsAt",
+        ),
     )
 }
 
@@ -478,9 +484,7 @@ async def test_select_states_the_ask_category_not_the_advertised_one() -> None:
 
 
 async def test_a_mandi_select_carries_a_validity_window() -> None:
-    """TODO(#55): remove with the pack fix.
-
-    The seam, not either side of it. `build_resource_attributes` adds the
+    """The seam, not either side of it. `build_resource_attributes` adds the
     window, but only when the tool hands it a date — and nothing did, so the
     unit test passed while every real select still went out without one.
     Agmarknet refuses those: `SCH_INVALID_FORMAT: this capability needs a
@@ -503,3 +507,46 @@ async def test_a_mandi_select_carries_a_validity_window() -> None:
         "startsAt": "2026-09-10T00:00:00+05:30",
         "endsAt": "2026-09-17T23:59:59+05:30",
     }
+
+
+_AUGUST_WINDOW = {
+    "startsAt": "2026-08-01T00:00:00+05:30",
+    "endsAt": "2026-08-20T23:59:59+05:30",
+}
+
+
+def _calls_select_for_august(
+    messages: list[ModelMessage], info: AgentInfo
+) -> ModelResponse:
+    if len(messages) == 1:
+        return ModelResponse(
+            parts=[
+                ToolCallPart(
+                    tool_name="select",
+                    args={
+                        "ask_id": 0,
+                        "resource_id": "res:agmarknet:daily-price",
+                        "resource_attributes": {
+                            "commodity": {"code": "PADDY"},
+                            "validity": _AUGUST_WINDOW,
+                        },
+                    },
+                )
+            ]
+        )
+    return ModelResponse(parts=[TextPart(content="Paddy prices for August.")])
+
+
+async def test_a_mandi_select_asks_for_the_window_the_model_sets() -> None:
+    """The Market guidance has the model set the window from the question's
+    dates; it reaches the provider as written, not replaced by the default."""
+
+    invocation = _FakeInvocation()
+    agent = build_planner_agent(skills=(_skill_with("select"),))
+    deps = _deps(invocation)
+    deps.today = lambda: date(2026, 9, 17)
+
+    with agent.override(model=FunctionModel(_calls_select_for_august)):
+        await agent.run("price of paddy from 1 to 20 August", deps=deps)
+
+    assert invocation.calls[0]["validity"] == _AUGUST_WINDOW

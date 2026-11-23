@@ -35,6 +35,8 @@ _MANDI_FILTERABLE = (
     "market.marketCode",
     "market.state",
     "arrivalDate",
+    "validity.startsAt",
+    "validity.endsAt",
 )
 
 
@@ -607,26 +609,15 @@ def test_the_subject_category_comes_from_the_ask_not_the_advertisement() -> None
     assert resource_attributes["subjectCategories"] == ["Scheme"]
 
 
-def test_mandi_price_carries_a_validity_window_the_pack_does_not_offer() -> None:
-    """TODO(#55): remove with the pack fix.
-
-    Agmarknet refuses a MandiPrice select without one —
+def test_a_mandi_price_without_the_models_window_asks_for_the_week_up_to_today() -> (
+    None
+):
+    """Agmarknet refuses a MandiPrice select without one —
     `SCH_INVALID_FORMAT: this capability needs a validity window; it reports
-    prices over a date range` — but `MandiPrice`'s `profile.json` lists
-    `validity` under `result_fields` only, and its `attributes.yaml` calls it
-    "the period during which a current price snapshot should be treated as
-    applicable". By the pack it is an answer; by the provider it is required
-    on the request.
+    prices over a date range` — and the model may leave it out.
 
-    Sent from here rather than by the model: the field is not filterable, so
-    `validate_arguments` runs before this and would refuse it. Today's date,
-    because the turn carries no date and the provider advertised a current
-    snapshot — opened back a week, because a market that has not reported
-    today often has a price from a few days ago.
-
-    Scoped to MandiPrice on purpose. No other pack declares `validity` as
-    anything a caller may send, and WeatherObservation answers today without
-    one — adding it there would turn a working call into a NACK.
+    A week, because a market that has not reported today often has a price
+    from a few days ago.
     """
 
     resource_attributes = build_resource_attributes(
@@ -636,7 +627,7 @@ def test_mandi_price_carries_a_validity_window_the_pack_does_not_offer() -> None
         model_filled={},
         schema_context_index=_SCHEMA_CONTEXT_INDEX,
         filterable=_MANDI_FILTERABLE,
-        priced_on=date(2026, 9, 17),
+        today=date(2026, 9, 17),
     )
 
     assert resource_attributes["validity"] == {
@@ -645,10 +636,29 @@ def test_mandi_price_carries_a_validity_window_the_pack_does_not_offer() -> None
     }
 
 
-def test_no_other_capability_gets_a_validity_window() -> None:
-    """TODO(#55): remove with the pack fix.
+def test_a_mandi_price_asks_for_the_models_own_window() -> None:
+    """The planner works the window out from the question's dates."""
 
-    The exception is the whole risk here, so its edge is what needs pinning.
+    asked = {
+        "startsAt": "2026-08-01T00:00:00+05:30",
+        "endsAt": "2026-08-20T23:59:59+05:30",
+    }
+
+    resource_attributes = build_resource_attributes(
+        capability=_capability(),
+        subject_category="Market",
+        place=None,
+        model_filled={"validity": asked},
+        schema_context_index=_SCHEMA_CONTEXT_INDEX,
+        filterable=_MANDI_FILTERABLE,
+        today=date(2026, 9, 17),
+    )
+
+    assert resource_attributes["validity"] == asked
+
+
+def test_no_other_capability_gets_a_validity_window() -> None:
+    """The exception is the whole risk here, so its edge is what needs pinning.
     `WeatherObservation` also declares `validity` as a result field and
     answers correctly today without one — sending it there would put a
     non-filterable field in a working call and earn a fresh NACK.
@@ -675,7 +685,7 @@ def test_no_other_capability_gets_a_validity_window() -> None:
             )
         },
         filterable=("supportedParameters",),
-        priced_on=date(2026, 9, 17),
+        today=date(2026, 9, 17),
     )
 
     assert "validity" not in resource_attributes
