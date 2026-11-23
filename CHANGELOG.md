@@ -29,6 +29,10 @@
   (#242, ADR-0025)
 - A mandi price is asked for over the past week, not today alone, so a
   market that has not reported today still has a recent price (#242)
+- A mandi price follows the dates in the question. The planner sets the
+  window from the Market guidance: a named period as asked, the week up to a
+  named day, and the week up to today when no day is named or it is after
+  today. The planner's prompt now says today's date (#242)
 - A mandi answer gives the asked market's latest price. When that market has
   none, it gives the latest price of the other markets in the same district.
   The answer names each market and the date of its price. This is Market

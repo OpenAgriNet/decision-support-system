@@ -10,7 +10,7 @@
 ## 1. Context and Problem Statement
 
 Some answers need rules that only make sense for one kind of question. A
-mandi price reply covers a whole district over a week, so the answer must
+mandi price reply covers a whole district over several days, so the answer must
 pick the asked market's price, or say it had none and give the others', each
 with its market and date (#242). Put into a component's general prompt, or
 into the planner's code, that rule runs on every turn — a weather or scheme answer carries mandi
@@ -68,8 +68,9 @@ Chosen option: **1**.
   placeholder in its template. A skill may use no other value, and guidance
   with no slot in the template or a skill refuses to boot. Market is the
   first category with guidance.
-  The planner is told other markets' prices in the district still answer the
-  ask, so it keeps them. The composer is told to give the asked market's
+  The planner is told which days to ask prices for, worked out from the
+  question's dates and today's date, and that other markets' prices in the
+  district still answer the ask, so it keeps them. The composer is told to give the asked market's
   latest price, or say it had none and give each other market's latest, and
   to name the market and date of every price.
 
@@ -83,7 +84,7 @@ Chosen option: **1**.
   rules change prompt text, never the flow.
 - **Bad:** following a category's rules is up to the model, not code. Picking
   the asked market's latest price is no longer guaranteed, and the composer
-  reads every market's rows for the week, which costs more tokens.
+  reads every market's rows for those days, which costs more tokens.
 - **Bad:** guidance is chosen by category, not by what was found. A
   Market ask that ends with no data still gets the market rules — harmless,
   since they only speak about prices that are there.
@@ -96,10 +97,15 @@ A category's rules are prompt text, chosen by intent's category. The planner's
 and the composer's code carry no branch for a category or a data type.
 
 One exception stays, and it is not a rule about answers. Agmarknet refuses
-a MandiPrice `/select` without a validity window, so
-`core/planner/resource_attributes.py` adds one when the capability called is
-`openagrinet:MandiPrice`. It was there before #242, which only widened it to
-a week. It is keyed on the data type, not the category, because it is a fact
-about that endpoint: another Market resource without the rule must not get
-it. It goes when the schema pack fix (#55) lets the window come from the
-pack.
+a MandiPrice `/select` without a validity window. The pack lists `validity`
+as a field a caller may send, so the planner sets it, and the Market
+guidance says which days: a named period as asked, the week up to a named
+day, and the week up to today when no day is named or it is after today. The
+planner's prompt carries today's date, for any capability, so it can work
+the days out.
+
+The model may still leave the window out, so
+`core/planner/resource_attributes.py` adds the week up to today when the
+capability called is `openagrinet:MandiPrice` and no window was sent. It is
+keyed on the data type, not the category, because it is a fact about that
+endpoint: another Market resource without the rule must not get it.

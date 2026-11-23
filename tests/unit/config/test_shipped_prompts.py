@@ -69,6 +69,7 @@ def _planner_prompt(**overrides) -> str:
         "guidance_section": guidance_section(()),
         "asks_section": asks_section(()),
         "answers_section": answers_section({}),
+        "today": "2026-11-23 (Monday)",
     } | overrides
     return _service().get_prompt(
         PromptIdentifier.PLANNER, lang=LanguageTag("en"), placeholder_values=kwargs
@@ -458,7 +459,12 @@ def test_the_planner_s_market_guidance_ships_outside_its_prompt() -> None:
     )
 
     assert "select_next" in guidance
+    assert "validity" in guidance
     assert guidance not in _planner_prompt()
+
+
+def test_the_planner_is_told_today_to_work_out_the_days_asked_about() -> None:
+    assert "Today is 2026-11-23 (Monday)." in _planner_prompt()
 
 
 @pytest.mark.parametrize("lang", ["en", "hi"])
@@ -547,6 +553,7 @@ def test_planner_hindi_demo_keeps_the_marker_names_in_english() -> None:
             "guidance_section": guidance_section(()),
             "asks_section": "",
             "answers_section": "",
+            "today": "2026-11-23 (Monday)",
         },
     )
 

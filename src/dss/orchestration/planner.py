@@ -48,6 +48,10 @@ from dss.ports.invocation import (
 )
 
 
+def utc_today() -> date:
+    return datetime.now(UTC).date()
+
+
 @dataclass
 class PlannerDeps:
     """Everything the agent's tools need for one turn. A plain object passed
@@ -66,10 +70,10 @@ class PlannerDeps:
     # `select`; nothing in a tool reads it. Holds nothing unless handed one, so
     # a caller that forgets it sends tags, not values.
     visibility: Visibility = NOTHING_HELD
-    # TODO(#55): remove with the pack fix — only the MandiPrice validity
-    # exception in `build_resource_attributes` reads this. Injected rather
-    # than called inside core so a test can fix the day.
-    today: Callable[[], date] = lambda: datetime.now(UTC).date()
+    # Only the MandiPrice validity fallback in `build_resource_attributes`
+    # reads this. Injected rather than called inside core so a test can fix
+    # the day.
+    today: Callable[[], date] = utc_today
     raw_answers: list[tuple[AskId, DiscoveredAnswer]] = field(default_factory=list)
     failures: list[Failure] = field(default_factory=list)
     next_choices: NextChoices = field(default_factory=NextChoices)
@@ -232,12 +236,7 @@ def _build_attributes(
         # lets a caller filter on: `AgricultureFacility` declares `location`
         # and leaves it out of `filterable_paths`.
         declared=tuple(selected.schema.field_types),
-        # TODO(#55): remove with the pack fix.
-        #
-        # The week up to today. Nothing reads a date out of the question
-        # yet, so a farmer asking about last month still gets this week —
-        # `arrivalDate` is filterable and is where that will come from.
-        priced_on=deps.today(),
+        today=deps.today(),
     )
 
 
