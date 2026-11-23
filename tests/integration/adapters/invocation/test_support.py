@@ -4,6 +4,7 @@ ride in, the reply they come back in, and how a failed filing is reported."""
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 
 import httpx
 import pytest
@@ -123,7 +124,9 @@ class _Replies:
         return httpx.Response(200, json=_FILED)
 
 
-def _invocation(handler: _Replies, **kwargs) -> HttpCapabilityInvocation:
+def _invocation(
+    handler: Callable[[httpx.Request], httpx.Response], **kwargs
+) -> HttpCapabilityInvocation:
     return HttpCapabilityInvocation(
         client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
         base_url="https://provider-network-vistaar.da.gov.in/oan",
@@ -151,13 +154,35 @@ async def test_the_wire_names_the_bpp_as_receiver() -> None:
     assert handler.receiver_ids == ["provider-network-vistaar.da.gov.in"]
 
 
-async def test_a_transient_failure_is_retried_as_a_select_is() -> None:
+async def test_a_filing_the_provider_did_not_take_in_is_retried() -> None:
     handler = _Replies(429, fail_times=2)
 
     reply = await _invocation(handler).support(PROVIDER, ATTRIBUTES, "txn-1")
 
     assert handler.calls == 3
     assert reply.attributes["case"]["ticketNo"] == "100626000099001"
+
+
+async def test_support_is_not_retried_after_a_5xx() -> None:
+    handler = _Replies(503, fail_times=99)
+
+    with pytest.raises(ProviderActionFailedError):
+        await _invocation(handler).support(PROVIDER, ATTRIBUTES, "txn-1")
+
+    assert handler.calls == 1
+
+
+async def test_support_is_not_retried_after_a_read_timeout() -> None:
+    calls: list[httpx.Request] = []
+
+    def time_out(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        raise httpx.ReadTimeout("timed out", request=request)
+
+    with pytest.raises(ProviderActionFailedError):
+        await _invocation(time_out).support(PROVIDER, ATTRIBUTES, "txn-1")
+
+    assert len(calls) == 1
 
 
 async def test_a_rejected_filing_is_a_defect_with_no_retry_hint() -> None:

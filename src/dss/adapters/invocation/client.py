@@ -18,6 +18,7 @@ import httpx
 from pydantic import ValidationError
 
 from dss.adapters.http_client import HttpClient, RetryPredicate
+from dss.adapters.invocation.failures import was_not_taken_in
 from dss.adapters.invocation.replies import (
     read_commitment_attributes,
     read_select_answers,
@@ -396,9 +397,7 @@ class HttpCapabilityInvocation:
         *,
         visibility: Visibility = NOTHING_HELD,
     ) -> ActionReply:
-        """Call /support, retrying a transient failure exactly as `select`
-        does. The path is the Beckn convention; the pack's README never names
-        it."""
+        """The path is the Beckn convention; the pack's README never names it."""
 
         with _record_provider_call("dss.support", capability):
             # One message id for the whole filing, kept across the retries: a
@@ -419,7 +418,7 @@ class HttpCapabilityInvocation:
                     capability=capability,
                     visibility=visibility,
                     retries=self._retries,
-                    should_retry=_is_transient_and_no_retry_after,
+                    should_retry=_was_not_taken_in_and_no_retry_after,
                 )
             except httpx.HTTPError as error:
                 raise _as_action_error(
@@ -447,8 +446,7 @@ class HttpCapabilityInvocation:
         *,
         visibility: Visibility = NOTHING_HELD,
     ) -> ActionReply:
-        """Call /status, retrying a transient failure exactly as `select`
-        does. The path is the Beckn convention, as `/support` is."""
+        """The path is the Beckn convention, as `/support` is."""
 
         with _record_provider_call("dss.status", capability):
             # One message and one contract for the whole read, kept across
@@ -588,11 +586,18 @@ def _is_transient(error: httpx.HTTPError) -> bool:
 
 # The provider named its own time: it is passed up, and the caller decides when.
 def _is_transient_and_no_retry_after(error: httpx.HTTPError) -> bool:
-    has_retry_after = (
+    return _is_transient(error) and not _has_retry_after(error)
+
+
+def _was_not_taken_in_and_no_retry_after(error: httpx.HTTPError) -> bool:
+    return was_not_taken_in(error) and not _has_retry_after(error)
+
+
+def _has_retry_after(error: httpx.HTTPError) -> bool:
+    return (
         isinstance(error, httpx.HTTPStatusError)
         and _retry_after_seconds(error.response) is not None
     )
-    return _is_transient(error) and not has_retry_after
 
 
 def _as_select_error(

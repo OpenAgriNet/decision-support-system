@@ -24,6 +24,9 @@
 ### Fixed
 - `init` and `status` now send an offer on their commitment, as `select`
   does. PM-KISAN refused `init` without one (#207)
+- A complaint filing is sent again only when it surely never reached the
+  provider. After a timeout or a server error it is not resent, so it cannot
+  be filed twice (#207)
 
 ## [0.3.0] - 2026-11-17
 

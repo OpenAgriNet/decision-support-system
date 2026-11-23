@@ -148,14 +148,15 @@ _SUPPORT_REPLY = {
 
 
 class _FailsTwiceThenReplies:
-    def __init__(self, reply: dict) -> None:
+    def __init__(self, reply: dict, *, failure_status: int) -> None:
         self._reply = reply
+        self._failure_status = failure_status
         self.bodies: list[bytes] = []
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         self.bodies.append(request.content)
         if len(self.bodies) <= 2:
-            return httpx.Response(503, json={"error": "simulated"})
+            return httpx.Response(self._failure_status, json={"error": "simulated"})
         return httpx.Response(200, json=self._reply)
 
 
@@ -163,12 +164,15 @@ def _body_lines(caplog, event: str) -> list[logging.LogRecord]:
     return [r for r in caplog.records if getattr(r, "event", "") == event]
 
 
+# `support` resends only a request the provider surely did not take in.
 @pytest.mark.parametrize(
-    ("action", "reply"),
-    [("select", _SELECT_REPLY), ("support", _SUPPORT_REPLY)],
+    ("action", "reply", "failure_status"),
+    [("select", _SELECT_REPLY, 503), ("support", _SUPPORT_REPLY, 429)],
 )
-async def test_a_retry_resends_the_same_body(action: str, reply: dict) -> None:
-    handler = _FailsTwiceThenReplies(reply)
+async def test_a_retry_resends_the_same_body(
+    action: str, reply: dict, failure_status: int
+) -> None:
+    handler = _FailsTwiceThenReplies(reply, failure_status=failure_status)
 
     await getattr(_invocation(handler), action)(CAPABILITY, {}, "txn-1")
 
@@ -179,17 +183,17 @@ async def test_a_retry_resends_the_same_body(action: str, reply: dict) -> None:
     assert first["context"]["timestamp"]
 
 
+# `support` resends only a request the provider surely did not take in.
 @pytest.mark.parametrize(
-    ("action", "reply"),
-    [("select", _SELECT_REPLY), ("support", _SUPPORT_REPLY)],
+    ("action", "reply", "failure_status"),
+    [("select", _SELECT_REPLY, 503), ("support", _SUPPORT_REPLY, 429)],
 )
 async def test_the_bodies_are_logged_once_per_call(
-    caplog, action: str, reply: dict
+    caplog, action: str, reply: dict, failure_status: int
 ) -> None:
+    handler = _FailsTwiceThenReplies(reply, failure_status=failure_status)
     with caplog.at_level(logging.DEBUG, logger="dss.trace"):
-        await getattr(_invocation(_FailsTwiceThenReplies(reply)), action)(
-            CAPABILITY, {}, "txn-1"
-        )
+        await getattr(_invocation(handler), action)(CAPABILITY, {}, "txn-1")
 
     assert len(_body_lines(caplog, "request_body")) == 1
     assert len(_body_lines(caplog, "response_body")) == 1
