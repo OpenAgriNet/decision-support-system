@@ -4,6 +4,9 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from http import HTTPStatus
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from dss.core.channel.models import ClarificationText, ComposedAnswer
 from dss.core.forms.models import (
@@ -37,9 +40,20 @@ from dss.core.planner.models import NO_READABLE_REPLY, Failure
 from dss.core.provider_discovery.models import DiscoveredAnswer, ProviderCapability
 from dss.core.shared.models import Cause, ProviderAction, TextBlock, TurnStatus
 
+
 # The pack does not say what init returns yet; v2 packs will. Until then:
 # what the init form answers is issued under `challenge.issued`.
-_INIT_REPLY_PATH = ("challenge", "issued")
+class _Challenge(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    issued: dict[str, Any]
+
+
+class _InitReply(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    challenge: _Challenge
+
 
 type AskFor = Callable[[FormContext], Ask | None]
 
@@ -104,12 +118,11 @@ def find_init_failure(
 
 
 def _has_init_challenge(attributes: Mapping[str, object]) -> bool:
-    node: object = attributes
-    for segment in _INIT_REPLY_PATH:
-        if not isinstance(node, Mapping):
-            return False
-        node = node.get(segment)
-    return isinstance(node, Mapping)
+    try:
+        _InitReply.model_validate(attributes)
+    except ValidationError:
+        return False
+    return True
 
 
 def end_for_failed_init(

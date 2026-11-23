@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 
 import httpx
+import pytest
 
 from dss.adapters.discovery.client import HttpCapabilityDiscovery
 from dss.core.provider_discovery.models import FailureClass, ProviderQuery
@@ -159,12 +160,39 @@ async def test_a_non_2xx_response_is_returned_as_a_failure() -> None:
     assert result.capabilities == ()
 
 
-async def test_a_response_that_cannot_be_mapped_is_returned_as_a_defect() -> None:
+def _direct_response_with_source(source: object) -> dict:
+    response = json.loads((FIXTURES / "discover_response_direct.json").read_text())
+    response["message"]["catalogs"][0]["resources"][0]["resourceAttributes"][
+        "source"
+    ] = source
+    return response
+
+
+@pytest.mark.parametrize(
+    "response_body",
+    [
+        {"message": {"catalogs": [{}]}},
+        _direct_response_with_source({"sourceName": "AGMARKNET"}),
+        _direct_response_with_source("AGMARKNET"),
+        _direct_response_with_source(["AGMARKNET"]),
+        _direct_response_with_source({"sourceId": "s", "sourceUri": 5}),
+    ],
+    ids=[
+        "no-catalog-fields",
+        "source-without-id",
+        "source-a-string",
+        "source-a-list",
+        "source-uri-not-text",
+    ],
+)
+async def test_a_response_that_cannot_be_mapped_is_returned_as_a_defect(
+    response_body: dict,
+) -> None:
     """A 200 carrying a shape we can't read must not raise: discover()
     failing by exception would cancel every sibling query in the caller's
     task group. It's a defect on one side or the other, never retry-worthy.
     """
-    discovery = _discovery(_client_returning({"message": {"catalogs": [{}]}}))
+    discovery = _discovery(_client_returning(response_body))
     query = ProviderQuery(
         capabilities=("openagrinet:WeatherObservation",),
         subject_category="Weather",

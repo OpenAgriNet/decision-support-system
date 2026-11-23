@@ -11,7 +11,6 @@ import pytest
 from dss.adapters.invocation.client import (
     HttpCapabilityInvocation,
     build_support_request,
-    map_support_response,
 )
 from dss.core.provider_discovery.models import FailureClass
 from dss.core.shared.models import ProviderAction
@@ -94,15 +93,6 @@ _FILED = {
         }
     }
 }
-
-
-def test_the_reply_is_the_first_support_channel() -> None:
-    assert map_support_response(_FILED) == _FILED["message"]["support"]["channels"][0]
-
-
-def test_a_channel_that_is_not_an_object_is_malformed() -> None:
-    with pytest.raises(TypeError):
-        map_support_response({"message": {"support": {"channels": ["ticket"]}}})
 
 
 class _Replies:

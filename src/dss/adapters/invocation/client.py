@@ -6,6 +6,7 @@ assembled by the caller; this module only wraps them in the network envelope.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -14,14 +15,19 @@ from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 import httpx
+from pydantic import ValidationError
 
 from dss.adapters.http_client import HttpClient, RetryPredicate
+from dss.adapters.invocation.replies import (
+    read_commitment_attributes,
+    read_select_answers,
+    read_support_channel,
+)
 from dss.adapters.network import SelectContext
 from dss.adapters.network.models import InitContext, StatusContext, SupportContext
 from dss.adapters.network_common import (
     NO_STATUS_CODE,
     classify_status_code,
-    extract_source_reference,
 )
 from dss.adapters.observability.tracing import open_span
 from dss.core.forms.models import ActionReply
@@ -61,10 +67,7 @@ __all__ = [
     "build_support_request",
 ]
 
-# A 200 whose body we cannot read. KeyError/IndexError for a missing key or
-# an empty commitments list, TypeError for a wrong shape, ValueError because
-# json.JSONDecodeError is one — a body that is not JSON at all.
-_MALFORMED_RESPONSE = (KeyError, IndexError, TypeError, ValueError)
+_MALFORMED_RESPONSE = (json.JSONDecodeError, UnicodeDecodeError, ValidationError)
 
 _DEFAULT_STATUS_DESCRIPTOR = {"code": "DRAFT", "name": "Draft"}
 _DEFAULT_OFFER_ID = "offer:open-data"
@@ -165,17 +168,6 @@ def build_support_request(  # noqa: PLR0913
     }
 
 
-def map_support_response(response: dict[str, Any]) -> dict[str, Any]:
-    """The reply rides where the request did: the first support channel."""
-
-    attributes = response["message"]["support"]["channels"][0]
-    if not isinstance(attributes, dict):
-        raise TypeError(
-            f"support channel is {type(attributes).__name__}, not an object"
-        )
-    return attributes
-
-
 def build_status_request(  # noqa: PLR0913
     capability: ProviderCapability,
     attributes: dict,
@@ -261,85 +253,6 @@ def _commitment_message(
     }
 
 
-def _first_commitment_attributes(response: dict[str, Any]) -> dict[str, Any]:
-    commitment = response["message"]["contract"]["commitments"][0]
-    attributes = commitment["commitmentAttributes"]
-    if not isinstance(attributes, dict):
-        raise TypeError(
-            f"commitmentAttributes is {type(attributes).__name__}, not an object"
-        )
-    return attributes
-
-
-def map_select_response(
-    response: dict[str, Any], *, provider_id: str, provider_name: str
-) -> list[DiscoveredAnswer]:
-    """The provider may assign its own resource id in the response — distinct
-    from the discovered id we named in the request. A search resource answers
-    with one id per result found, not the id that was selected.
-
-    Every resource goes into ``attributes["resources"]``, even when there is
-    only one, so the model always reads the same shape. A forecast sends one
-    resource per day, and the model needs all of them.
-
-    Resources are grouped by the document they came from, one answer per
-    document. A forecast's five days share a source and stay one answer. A
-    knowledge search returning passages from two documents becomes two, because
-    a single answer carries a single source: lumping them together made every
-    passage inherit the first one's, and half the advice was then cited to a
-    document it never came from.
-
-    Resources from every commitment are read, and a response committing to
-    nothing yields no answers — an empty 200 is a real answer shape, not a body
-    we failed to parse.
-    """
-
-    grouped: dict[tuple[str | None, str | None, str | None], list[dict[str, Any]]] = {}
-    for commitment in response["message"]["contract"]["commitments"]:
-        for resource in commitment["resources"]:
-            attributes = resource["resourceAttributes"]
-            reference = extract_source_reference(attributes) or (None, None, None)
-            grouped.setdefault(reference, []).append(resource)
-
-    return [
-        _to_answer(
-            resources,
-            provider_id=provider_id,
-            provider_name=provider_name,
-            reference=reference,
-        )
-        for reference, resources in grouped.items()
-    ]
-
-
-def _to_answer(
-    resources: list[dict[str, Any]],
-    *,
-    provider_id: str,
-    provider_name: str,
-    reference: tuple[str | None, str | None, str | None],
-) -> DiscoveredAnswer:
-    source_id, source_name, source_url = reference
-    first = resources[0]["resourceAttributes"]
-    return DiscoveredAnswer(
-        provider_id=provider_id,
-        provider_name=provider_name,
-        capability=first["@type"],
-        resource_id=resources[0]["id"],
-        attributes={
-            "resources": [
-                {"id": resource["id"], **resource["resourceAttributes"]}
-                for resource in resources
-            ]
-        },
-        # Each resource keeps its own validity in `attributes`.
-        validity=None,
-        source_id=source_id,
-        source_name=source_name,
-        source_url=source_url,
-    )
-
-
 class HttpCapabilityInvocation:
     """Implements CapabilityInvocation over the Network Adapter's /select.
 
@@ -408,11 +321,11 @@ class HttpCapabilityInvocation:
                 ) from error
             # Inside a guard, not after it: the port promises "an answer or
             # SelectFailedError", and a 200 with an unreadable body would
-            # otherwise raise KeyError/IndexError straight past the planner
+            # otherwise raise a ValidationError straight past the planner
             # tool's handler and abort the whole run, losing every other ask's
             # answers. Same treatment the discovery adapter gives its own mapper.
             try:
-                answers = map_select_response(
+                answers = read_select_answers(
                     visibility.conceal_body(response.json()),
                     provider_id=capability.provider_id,
                     provider_name=capability.provider_name,
@@ -462,7 +375,7 @@ class HttpCapabilityInvocation:
                     ProviderAction.INIT, capability, error
                 ) from error
             try:
-                attributes_back = _first_commitment_attributes(
+                attributes_back = read_commitment_attributes(
                     visibility.conceal_body(response.json())
                 )
             except _MALFORMED_RESPONSE as exc:
@@ -513,7 +426,7 @@ class HttpCapabilityInvocation:
                     ProviderAction.SUPPORT, capability, error
                 ) from error
             try:
-                attributes_back = map_support_response(
+                attributes_back = read_support_channel(
                     visibility.conceal_body(response.json())
                 )
             except _MALFORMED_RESPONSE as exc:
@@ -564,7 +477,7 @@ class HttpCapabilityInvocation:
                     ProviderAction.STATUS, capability, error
                 ) from error
             try:
-                attributes_back = _first_commitment_attributes(
+                attributes_back = read_commitment_attributes(
                     visibility.conceal_body(response.json())
                 )
             except _MALFORMED_RESPONSE as exc:

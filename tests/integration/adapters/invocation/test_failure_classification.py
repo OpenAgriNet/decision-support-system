@@ -6,6 +6,8 @@ discover already uses.
 
 from __future__ import annotations
 
+import json
+
 import httpx
 import pytest
 
@@ -87,9 +89,11 @@ async def test_a_connection_error_raises_selectfailed_transient() -> None:
     assert "connection refused" in exc_info.value.detail
 
 
-def _invocation_returning_body(body: dict) -> HttpCapabilityInvocation:
+def _invocation_returning_body(body: dict | bytes) -> HttpCapabilityInvocation:
+    content = body if isinstance(body, bytes) else json.dumps(body).encode()
+
     def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json=body)
+        return httpx.Response(200, content=content)
 
     return HttpCapabilityInvocation(
         client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
@@ -109,11 +113,34 @@ def _invocation_returning_body(body: dict) -> HttpCapabilityInvocation:
             "resource missing resourceAttributes",
             {"message": {"contract": {"commitments": [{"resources": [{"id": "r"}]}]}}},
         ),
+        ("not UTF-8", b"\x80<html>gateway splash page</html>"),
+        (
+            "source without a sourceId",
+            {
+                "message": {
+                    "contract": {
+                        "commitments": [
+                            {
+                                "resources": [
+                                    {
+                                        "id": "r",
+                                        "resourceAttributes": {
+                                            "@type": "openagrinet:WeatherObservation",
+                                            "source": {"sourceName": "IMD"},
+                                        },
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                }
+            },
+        ),
     ],
     ids=lambda value: value if isinstance(value, str) else "",
 )
 async def test_a_malformed_200_raises_selectfailed_not_a_bare_keyerror(
-    label: str, body: dict
+    label: str, body: dict | bytes
 ) -> None:
     """The port's contract is "an answer or ``SelectFailedError``". The response
     mapper sat outside the try, so a 200 with an unreadable body raised

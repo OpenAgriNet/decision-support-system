@@ -165,11 +165,7 @@ def _to_capability(
 def _to_answer(catalog: dict[str, Any], resource: dict[str, Any]) -> DiscoveredAnswer:
     provider = catalog["provider"]
     attributes = resource["resourceAttributes"]
-    source_id, source_name, source_url = extract_source_reference(attributes) or (
-        None,
-        None,
-        None,
-    )
+    source = extract_source_reference(attributes)
     return DiscoveredAnswer(
         provider_id=provider["id"],
         provider_name=provider["descriptor"]["name"],
@@ -177,9 +173,9 @@ def _to_answer(catalog: dict[str, Any], resource: dict[str, Any]) -> DiscoveredA
         resource_id=resource["id"],
         attributes=attributes,
         validity=extract_validity(attributes),
-        source_id=source_id,
-        source_name=source_name,
-        source_url=source_url,
+        source_id=source.source_id if source else None,
+        source_name=source.source_name if source else None,
+        source_url=source.source_url if source else None,
     )
 
 
