@@ -54,7 +54,7 @@ from dss.core.shared.models import (
     UserTurn,
 )
 from dss.ports.prompts import PromptIdentifier
-from tests.support.asks import an_ask
+from tests.support.asks import an_ask, numbered
 from tests.support.evidence import build_evidence
 from tests.support.fakes import FakePromptProvider
 
@@ -464,10 +464,7 @@ def _guidance_given(*categories: SubjectCategory) -> str:
             SubjectCategory.WEATHER: "Give rain in millimetres.",
         }
     )
-    asks = [
-        Ask(subject_categories=category, interaction_type=InteractionType.OBSERVE)
-        for category in categories
-    ]
+    asks = numbered(*(an_ask(subject_categories=category) for category in categories))
     turn = UserTurn(
         input=TextQuery(text="q"),
         session_id="s1",
