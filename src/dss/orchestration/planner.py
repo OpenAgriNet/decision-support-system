@@ -30,7 +30,6 @@ from dss.core.provider_discovery.models import (
     DiscoveredAnswer,
     DiscoveredAsk,
     DiscoveryResult,
-    FailureClass,
     NetworkSchemaType,
     ProviderCapability,
 )
@@ -42,10 +41,7 @@ from dss.core.provider_preferences.next_choice import (
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import UserTurn
 from dss.observability.trace_log import log_event
-from dss.ports.invocation import (
-    CapabilityInvocation,
-    SelectFailedError,
-)
+from dss.ports.invocation import CapabilityInvocation, ProviderCallFailedError
 
 
 @dataclass
@@ -332,7 +328,7 @@ async def _consult_all(
 
     A provider that fails its call comes back as a `Consulted` carrying the
     failure, because one unreachable provider must not cost the farmer the
-    answer another one had. Only `SelectFailedError` is caught — the adapter's
+    answer another one had. Only `ProviderCallFailedError` is caught — the adapter's
     "reached the end of retrying" signal. Anything else is a defect or a
     wiring mistake (`_UnwiredInvocation` raises one on purpose), and those
     stay loud: the group cancels and the turn fails rather than reporting a
@@ -350,7 +346,7 @@ async def _consult_all(
                 deps.turn.transaction_id,
                 visibility=deps.visibility,
             )
-        except SelectFailedError as exc:
+        except ProviderCallFailedError as exc:
             # The adapter has already retried and given up.
             outcome.failure = exc
             return
@@ -396,15 +392,9 @@ def _log_consultation(
             resource_id=one.capability.resource_id,
             results=len(one.answers),
             failed=one.failure is not None,
-            detail=_detail(one.failure),
+            failure_kind=one.failure.kind if one.failure else "-",
             used=one is chosen,
         )
-
-
-def _detail(failure: SelectFailedError | None) -> str:
-    if failure is None:
-        return "-"
-    return str(failure.detail or failure.status_code)
 
 
 def _nothing_came_back(
@@ -434,9 +424,8 @@ def _nothing_came_back(
             Failure(
                 ask_id=ask_id,
                 capability=one.failure.capability,
-                reason=_detail(one.failure),
-                retryable=one.failure.failure_class is FailureClass.TRANSIENT,
-                status_code=one.failure.status_code,
+                kind=one.failure.kind,
+                reason=one.failure.reason,
             )
         )
 

@@ -18,7 +18,8 @@ from collections.abc import Callable
 import httpx
 import pytest
 
-from dss.adapters.invocation.client import HttpCapabilityInvocation, SelectFailedError
+from dss.adapters.invocation.client import HttpCapabilityInvocation
+from dss.ports.invocation import ProviderCallFailedError
 from tests.support.providers import build_capability
 
 CAPABILITY = build_capability(
@@ -95,7 +96,7 @@ async def test_a_transient_failure_is_retried_until_it_succeeds() -> None:
 async def test_a_transient_failure_gives_up_after_the_configured_attempts() -> None:
     handler = _CountingHandler(429, fail_times=99)
 
-    with pytest.raises(SelectFailedError):
+    with pytest.raises(ProviderCallFailedError):
         await _invocation(handler).select(CAPABILITY, {}, "txn-1")
 
     assert handler.calls == 3  # the default
@@ -104,7 +105,7 @@ async def test_a_transient_failure_gives_up_after_the_configured_attempts() -> N
 async def test_the_attempt_count_is_configurable() -> None:
     handler = _CountingHandler(429, fail_times=99)
 
-    with pytest.raises(SelectFailedError):
+    with pytest.raises(ProviderCallFailedError):
         await _invocation(handler, attempts=2).select(CAPABILITY, {}, "txn-1")
 
     assert handler.calls == 2
@@ -116,7 +117,7 @@ async def test_a_defect_is_not_retried() -> None:
 
     handler = _CountingHandler(400, fail_times=99)
 
-    with pytest.raises(SelectFailedError):
+    with pytest.raises(ProviderCallFailedError):
         await _invocation(handler).select(CAPABILITY, {}, "txn-1")
 
     assert handler.calls == 1
@@ -130,7 +131,7 @@ async def test_giving_up_is_logged_as_a_warning(caplog) -> None:
 
     with (
         caplog.at_level(logging.WARNING, logger="dss.trace"),
-        pytest.raises(SelectFailedError),
+        pytest.raises(ProviderCallFailedError),
     ):
         await _invocation(handler).select(CAPABILITY, {}, "txn-1")
 
@@ -139,7 +140,7 @@ async def test_giving_up_is_logged_as_a_warning(caplog) -> None:
     ]
     assert line.levelno == logging.WARNING
     assert line.provider_id == "mausamgram"
-    assert line.status_code == 429
+    assert line.failure_kind == "not_sent"
 
 
 _SUPPORT_REPLY = {

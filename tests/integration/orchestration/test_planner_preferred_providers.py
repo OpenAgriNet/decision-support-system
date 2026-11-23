@@ -30,16 +30,17 @@ from dss.core.intent.models import (
 from dss.core.moderation.models import ModerationDecision, Outcome
 from dss.core.planner.models import Skill, Verdict
 from dss.core.planner.validation import DomainSchema
-from dss.core.provider_discovery.models import (
-    DiscoveredAnswer,
-    FailureClass,
-    ProviderCapability,
-)
+from dss.core.provider_discovery.models import DiscoveredAnswer, ProviderCapability
 from dss.core.provider_preferences.models import AskPriority
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
-from dss.core.shared.models import Geometry, TextQuery, UserTurn
+from dss.core.shared.models import (
+    Geometry,
+    ProviderFailureKind,
+    TextQuery,
+    UserTurn,
+)
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
-from dss.ports.invocation import SelectFailedError
+from dss.ports.invocation import ProviderCallFailedError
 from tests.support.asks import an_ask, numbered
 from tests.support.discovery import a_discovery, a_priority, discovered
 from tests.support.providers import build_capability
@@ -71,7 +72,7 @@ MAUSAMGRAM = _capability("mausamgram")
 
 
 class _FakeInvocation:
-    """Answers per provider: a list of answers, or a `SelectFailedError` to raise.
+    """Answers per provider: a list of answers, or a `ProviderCallFailedError` to raise.
 
     A provider missing from `answers` returns nothing, which is the "reached
     them, they had nothing" case the ranking has to walk past.
@@ -91,7 +92,7 @@ class _FakeInvocation:
     ):
         self.called.append(capability.provider_id)
         reply = self._answers.get(capability.provider_id, ())
-        if isinstance(reply, SelectFailedError):
+        if isinstance(reply, ProviderCallFailedError):
             raise reply
         return reply
 
@@ -107,8 +108,10 @@ def _answer(provider: str, temperature: int) -> DiscoveredAnswer:
     )
 
 
-def _unreachable() -> SelectFailedError:
-    return SelectFailedError(WEATHER, 503, FailureClass.TRANSIENT, "upstream is down")
+def _unreachable() -> ProviderCallFailedError:
+    return ProviderCallFailedError(
+        "select", WEATHER, ProviderFailureKind.NOT_SENT, reason="upstream is down"
+    )
 
 
 RAIN_ASK = an_ask(
@@ -338,7 +341,9 @@ async def test_an_ask_nobody_could_be_reached_for_is_recorded_as_a_failure() -> 
 
     assert deps.raw_answers == []
     assert [failure.ask_id for failure in deps.failures] == [0, 0]
-    assert all(failure.retryable for failure in deps.failures)
+    assert all(
+        failure.kind is ProviderFailureKind.NOT_SENT for failure in deps.failures
+    )
 
 
 async def test_an_unranked_ask_calls_only_the_candidate_the_model_named() -> None:

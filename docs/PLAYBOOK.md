@@ -542,7 +542,9 @@ the farmer's.
 | What happened | `outcome` | `content` |
 |---|---|---|
 | a value is wrong | `requires_input`, cause `invalid_input` | text, then `form_error` with the fields to fix, each with a message |
-| the desk could not take it | `unavailable`, cause `provider_unavailable` or `provider_rejected`; `error.retryable` says which, `error.retryAfterSeconds` only when the desk sent `Retry-After` | text, then `form_error` with no fields |
+| the provider did not take it, or refused it | `unavailable`, cause `provider_unavailable` or `provider_rejected`; `error.retryable` says which, `error.retryAfterSeconds` only when the provider sent `Retry-After` | text, then `form_error` with no fields |
+| it may have gone through (a timeout, a 5xx, a reply the DSS cannot read) | `unavailable`, cause `provider_outcome_unknown`, `error.retryable: false` | text only: no form back, so it cannot be filed twice |
+| the network refused the DSS's own credentials (401, 403) | `unavailable`, cause `internal` | text only: "something went wrong on our side" |
 | filed | `answered` | text: the ticket number and the filing date |
 
 Earlier `form` and `form_error` items in the history are read as references

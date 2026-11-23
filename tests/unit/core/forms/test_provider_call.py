@@ -9,10 +9,8 @@ from dss.core.forms.service import (
     build_action_attributes,
     candidates_for_scheme,
     discovery_for_scheme,
-    is_auth_refused,
     without_farmer_values,
 )
-from dss.core.planner.models import Failure
 from tests.support.discovery import a_discovery, discovered
 from tests.support.grievance_pack import (
     PMFBY_STATUS,
@@ -220,21 +218,3 @@ def test_init_values_for_an_action_needing_none_are_refused() -> None:
             _PMKISAN_DETAILS,
             init_values={"challenge.response.value": "4821"},
         )
-
-
-@pytest.mark.parametrize(
-    ("status_code", "expected"),
-    [(401, True), (403, True), (400, False), (422, False), (503, False), (None, False)],
-)
-def test_only_401_and_403_say_our_own_credentials_were_refused(
-    status_code: int | None, expected: bool
-) -> None:
-    failure = Failure(
-        ask_id=0,
-        capability="openagrinet:Grievance",
-        reason="call failed",
-        retryable=False,
-        status_code=status_code,
-    )
-
-    assert is_auth_refused(failure) is expected

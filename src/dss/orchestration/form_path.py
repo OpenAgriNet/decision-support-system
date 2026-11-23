@@ -50,7 +50,6 @@ from dss.core.forms.service import (
     end_for_no_provider,
     end_for_unknown_form,
     free_text_of,
-    is_auth_refused,
     is_done,
     mask_pii_fields,
     validate_submission,
@@ -73,6 +72,7 @@ from dss.core.redaction.turn import surrounding_texts_of, with_surrounding_texts
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import (
     ProviderAction,
+    ProviderFailureKind,
     TurnContext,
     TurnEvent,
     TurnFinished,
@@ -286,7 +286,7 @@ class FormPath:
                     redaction.turn.input,
                     response,
                     self._clarification_text,
-                    action=form.action,
+                    action=ProviderAction(form.action.context.action),
                 ),
                 form_turn,
             )
@@ -662,7 +662,10 @@ def _free_text_of(
 def _warn_if_auth_refused(
     failure: Failure | InitReplyWithoutChallenge, ctx: TurnContext
 ) -> None:
-    if isinstance(failure, Failure) and is_auth_refused(failure):
+    if (
+        isinstance(failure, Failure)
+        and failure.kind is ProviderFailureKind.UNAUTHORISED
+    ):
         warn_auth_refused(failure, request_id=ctx.trace_id)
 
 

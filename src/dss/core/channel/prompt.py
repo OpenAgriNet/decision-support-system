@@ -206,7 +206,7 @@ def _render_failures(ask_evidence: AskEvidence) -> list[str]:
         case Attempted(failures=failures):
             label = _place_label(ask_evidence.ask)
             return [
-                f"{_failure_lead(failure)}{label}: {failure.reason}"
+                f"{_failure_lead(failure)}{label}: {failure.reason or failure.kind}"
                 for failure in failures
             ]
     return []

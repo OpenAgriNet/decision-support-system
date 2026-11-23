@@ -34,11 +34,8 @@ from dss.core.provider_discovery.models import (
     ProviderQueryResult,
 )
 from dss.core.provider_discovery.schema_pack_cache import SchemaPackCache
-from dss.core.shared.models import Geometry
-from dss.ports.invocation import (
-    ProviderActionFailedError,
-    SelectFailedError,
-)
+from dss.core.shared.models import Geometry, ProviderFailureKind
+from dss.ports.invocation import ProviderCallFailedError
 from tests.support.pack_schema import FIXTURE_PACK_ROOT, validate_resource_attributes
 from tests.support.providers import build_capability
 from tools.mock_network.app import DEFAULT_QUESTIONS, MOCK_OTP, build_mock_app
@@ -502,10 +499,10 @@ async def test_a_select_the_mock_cannot_answer_is_refused_and_counted(
     attrs = _planner_attributes(capability, {})
     no_location = {k: v for k, v in attrs.items() if k != "location"}
 
-    with pytest.raises(SelectFailedError) as failed:
+    with pytest.raises(ProviderCallFailedError) as failed:
         await invocation.select(capability, no_location, "txn-miss")
 
-    assert failed.value.status_code == 400
+    assert failed.value.kind is ProviderFailureKind.REFUSED
     misses = (await client.get("/_bench/misses")).json()
     assert misses == {"count": 1, "transactionIds": ["txn-miss"]}
 
@@ -618,12 +615,12 @@ async def test_status_refuses_a_case_it_does_not_hold(
     invocation = _grievance_invocation(pack_dir)
     await invocation.support(_DESK, _FILING, "txn-file")
 
-    with pytest.raises(ProviderActionFailedError) as failed:
+    with pytest.raises(ProviderCallFailedError) as failed:
         await invocation.status(
             _DESK, {"applicantMobile": mobile, "case": {"ticketNo": ticket}}, "txn"
         )
 
-    assert failed.value.status_code == 400
+    assert failed.value.kind is ProviderFailureKind.REFUSED
 
 
 _PM_KISAN = build_capability(
@@ -728,24 +725,24 @@ async def test_pm_kisan_support_and_status_accept_the_mock_otp(
 async def test_pm_kisan_support_refuses_any_other_otp(pack_dir: Path) -> None:
     invocation = _grievance_invocation(pack_dir)
 
-    with pytest.raises(ProviderActionFailedError) as failed:
+    with pytest.raises(ProviderCallFailedError) as failed:
         await invocation.support(_PM_KISAN, _pm_kisan_filing("9999"), "txn-file")
 
-    assert failed.value.status_code == 400
+    assert failed.value.kind is ProviderFailureKind.REFUSED
 
 
 async def test_pm_kisan_status_refuses_any_other_otp(pack_dir: Path) -> None:
     invocation = _grievance_invocation(pack_dir)
     filed = await invocation.support(_PM_KISAN, _pm_kisan_filing(MOCK_OTP), "txn-file")
 
-    with pytest.raises(ProviderActionFailedError) as failed:
+    with pytest.raises(ProviderCallFailedError) as failed:
         await invocation.status(
             _PM_KISAN,
             _pm_kisan_read("9999", _filed_on(filed)),
             "txn-check",
         )
 
-    assert failed.value.status_code == 400
+    assert failed.value.kind is ProviderFailureKind.REFUSED
 
 
 async def test_init_refuses_a_scheme_with_no_otp(pack_dir: Path) -> None:
@@ -772,20 +769,20 @@ async def test_pm_kisan_status_with_no_enrolment_finds_no_case(
         if key != "enrolmentId"
     }
 
-    with pytest.raises(ProviderActionFailedError) as failed:
+    with pytest.raises(ProviderCallFailedError) as failed:
         await invocation.status(_PM_KISAN, read, "txn-check")
 
-    assert failed.value.status_code == 400
+    assert failed.value.kind is ProviderFailureKind.REFUSED
 
 
 async def test_a_challenge_that_is_not_an_object_is_refused(pack_dir: Path) -> None:
     invocation = _grievance_invocation(pack_dir)
     filing = {**_pm_kisan_filing(MOCK_OTP), "challenge": MOCK_OTP}
 
-    with pytest.raises(ProviderActionFailedError) as failed:
+    with pytest.raises(ProviderCallFailedError) as failed:
         await invocation.support(_PM_KISAN, filing, "txn-file")
 
-    assert failed.value.status_code == 400
+    assert failed.value.kind is ProviderFailureKind.REFUSED
 
 
 async def test_neither_pm_kisan_reply_sends_the_otp_back(pack_dir: Path) -> None:

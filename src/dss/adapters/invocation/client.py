@@ -18,7 +18,7 @@ import httpx
 from pydantic import ValidationError
 
 from dss.adapters.http_client import HttpClient, RetryPredicate
-from dss.adapters.invocation.failures import was_not_taken_in
+from dss.adapters.invocation.failures import kind_of, reason_of, was_not_taken_in
 from dss.adapters.invocation.replies import (
     read_commitment_attributes,
     read_select_answers,
@@ -26,10 +26,7 @@ from dss.adapters.invocation.replies import (
 )
 from dss.adapters.network import SelectContext
 from dss.adapters.network.models import InitContext, StatusContext, SupportContext
-from dss.adapters.network_common import (
-    NO_STATUS_CODE,
-    classify_status_code,
-)
+from dss.adapters.network_common import classify_status_code
 from dss.adapters.observability.tracing import open_span
 from dss.core.forms.models import ActionReply
 from dss.core.provider_discovery.models import (
@@ -38,7 +35,7 @@ from dss.core.provider_discovery.models import (
     ProviderCapability,
 )
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
-from dss.core.shared.models import ProviderAction
+from dss.core.shared.models import ProviderFailureKind
 from dss.core.shared.network import NetworkTransactionID
 from dss.observability.trace_log import (
     log_external_request,
@@ -46,22 +43,17 @@ from dss.observability.trace_log import (
     log_failure,
 )
 
-# Defined on the port, not here: a failed select is part of the contract, so
+# Defined on the port, not here: a failed call is part of the contract, so
 # a caller can catch it without importing this adapter. Re-exported because
 # this module raises it.
-from dss.ports.invocation import (
-    ProviderActionFailedError,
-    ProviderCallFailedError,
-    SelectFailedError,
-)
+from dss.ports.invocation import ProviderCallFailedError, ProviderEndpoint
 
 if TYPE_CHECKING:
     from opentelemetry.trace import Span
 
 __all__ = [
     "HttpCapabilityInvocation",
-    "ProviderActionFailedError",
-    "SelectFailedError",
+    "ProviderCallFailedError",
     "build_init_request",
     "build_select_request",
     "build_status_request",
@@ -291,7 +283,7 @@ class HttpCapabilityInvocation:
         """Call /select, retrying a transient failure.
 
         ``resource_attributes`` holds tags. ``visibility.reveal`` swaps the real
-        values in on the wire only; the logs, a failure's detail and the answer
+        values in on the wire only; the logs, a failure's reason and the answer
         hold the tags. Without a map nothing is revealed, so a provider gets the tag.
         """
 
@@ -317,14 +309,10 @@ class HttpCapabilityInvocation:
                     should_retry=_is_transient,
                 )
             except httpx.HTTPError as error:
-                raise _as_select_error(
-                    capability, error, visibility=visibility
+                raise _as_call_error(
+                    "select", capability, error, visibility=visibility
                 ) from error
-            # Inside a guard, not after it: the port promises "an answer or
-            # SelectFailedError", and a 200 with an unreadable body would
-            # otherwise raise a ValidationError straight past the planner
-            # tool's handler and abort the whole run, losing every other ask's
-            # answers. Same treatment the discovery adapter gives its own mapper.
+            # Guarded: an unreadable 200 must not escape the planner's handler.
             try:
                 answers = read_select_answers(
                     visibility.conceal_body(response.json()),
@@ -332,14 +320,7 @@ class HttpCapabilityInvocation:
                     provider_name=capability.provider_name,
                 )
             except _MALFORMED_RESPONSE as exc:
-                raise SelectFailedError(
-                    capability.capability,
-                    NO_STATUS_CODE,
-                    # A defect, never transient: the same body reads the same
-                    # way, so retrying would only delay the failure.
-                    FailureClass.DEFECT,
-                    f"malformed response: {exc!r}",
-                ) from exc
+                raise _unreadable_reply_error("select", capability) from exc
             for key, value in _select_outcome(answers).items():
                 call.set_attribute(key, value)
             return answers
@@ -372,21 +353,15 @@ class HttpCapabilityInvocation:
                     visibility=visibility,
                 )
             except httpx.HTTPError as error:
-                raise _as_action_error(
-                    ProviderAction.INIT, capability, error
+                raise _as_call_error(
+                    "init", capability, error, visibility=visibility
                 ) from error
             try:
                 attributes_back = read_commitment_attributes(
                     visibility.conceal_body(response.json())
                 )
             except _MALFORMED_RESPONSE as exc:
-                # A defect, never transient: the same body reads the same way.
-                raise ProviderActionFailedError(
-                    ProviderAction.INIT,
-                    capability.capability,
-                    NO_STATUS_CODE,
-                    FailureClass.DEFECT,
-                ) from exc
+                raise _unreadable_reply_error("init", capability) from exc
             return ActionReply(attributes=attributes_back)
 
     async def support(
@@ -421,21 +396,15 @@ class HttpCapabilityInvocation:
                     should_retry=_was_not_taken_in_and_no_retry_after,
                 )
             except httpx.HTTPError as error:
-                raise _as_action_error(
-                    ProviderAction.SUPPORT, capability, error
+                raise _as_call_error(
+                    "support", capability, error, visibility=visibility
                 ) from error
             try:
                 attributes_back = read_support_channel(
                     visibility.conceal_body(response.json())
                 )
             except _MALFORMED_RESPONSE as exc:
-                # A defect, never transient: the same body reads the same way.
-                raise ProviderActionFailedError(
-                    ProviderAction.SUPPORT,
-                    capability.capability,
-                    NO_STATUS_CODE,
-                    FailureClass.DEFECT,
-                ) from exc
+                raise _unreadable_reply_error("support", capability) from exc
             return ActionReply(attributes=attributes_back)
 
     async def status(
@@ -471,21 +440,15 @@ class HttpCapabilityInvocation:
                     should_retry=_is_transient_and_no_retry_after,
                 )
             except httpx.HTTPError as error:
-                raise _as_action_error(
-                    ProviderAction.STATUS, capability, error
+                raise _as_call_error(
+                    "status", capability, error, visibility=visibility
                 ) from error
             try:
                 attributes_back = read_commitment_attributes(
                     visibility.conceal_body(response.json())
                 )
             except _MALFORMED_RESPONSE as exc:
-                # A defect, never transient: the same body reads the same way.
-                raise ProviderActionFailedError(
-                    ProviderAction.STATUS,
-                    capability.capability,
-                    NO_STATUS_CODE,
-                    FailureClass.DEFECT,
-                ) from exc
+                raise _unreadable_reply_error("status", capability) from exc
             return ActionReply(attributes=attributes_back)
 
     async def _post(  # noqa: PLR0913
@@ -566,7 +529,7 @@ def _record_provider_call(
         try:
             yield call
         except ProviderCallFailedError as failure:
-            call.set_attribute("failure_class", failure.failure_class.value)
+            call.set_attribute("failure_kind", failure.kind.value)
             _log_given_up(capability, failure)
             raise
 
@@ -600,36 +563,19 @@ def _has_retry_after(error: httpx.HTTPError) -> bool:
     )
 
 
-def _as_select_error(
+def _as_call_error(
+    endpoint: ProviderEndpoint,
     capability: ProviderCapability,
     error: httpx.HTTPError,
     *,
     visibility: Visibility,
-) -> SelectFailedError:
-    status_code = _status_code_of(error)
-    # The detail reaches the planner's prompt.
-    detail = (
-        error.response.text if isinstance(error, httpx.HTTPStatusError) else str(error)
-    )
-    return SelectFailedError(
+) -> ProviderCallFailedError:
+    reason = reason_of(error)
+    return ProviderCallFailedError(
+        endpoint,
         capability.capability,
-        status_code,
-        classify_status_code(status_code),
-        visibility.conceal(detail),
-    )
-
-
-def _as_action_error(
-    action: ProviderAction,
-    capability: ProviderCapability,
-    error: httpx.HTTPError,
-) -> ProviderActionFailedError:
-    status_code = _status_code_of(error)
-    return ProviderActionFailedError(
-        action,
-        capability.capability,
-        status_code,
-        classify_status_code(status_code),
+        kind_of(error),
+        reason=visibility.conceal(reason) if reason is not None else None,
         retry_after_seconds=(
             _retry_after_seconds(error.response)
             if isinstance(error, httpx.HTTPStatusError)
@@ -638,10 +584,12 @@ def _as_action_error(
     )
 
 
-def _status_code_of(error: httpx.HTTPError) -> int:
-    if isinstance(error, httpx.HTTPStatusError):
-        return error.response.status_code
-    return NO_STATUS_CODE
+def _unreadable_reply_error(
+    endpoint: ProviderEndpoint, capability: ProviderCapability
+) -> ProviderCallFailedError:
+    return ProviderCallFailedError(
+        endpoint, capability.capability, ProviderFailureKind.OUTCOME_UNKNOWN
+    )
 
 
 def _log_failed_response(
@@ -679,8 +627,7 @@ def _log_given_up(
         event="provider_call_failed",
         provider_id=capability.provider_id,
         capability=capability.capability,
-        status_code=failure.status_code,
-        failure_class=failure.failure_class.value,
+        failure_kind=failure.kind.value,
     )
 
 

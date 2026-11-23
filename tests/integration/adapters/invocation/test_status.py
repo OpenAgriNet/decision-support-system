@@ -12,9 +12,8 @@ from dss.adapters.invocation.client import (
     HttpCapabilityInvocation,
     build_status_request,
 )
-from dss.core.provider_discovery.models import FailureClass
-from dss.core.shared.models import ProviderAction
-from dss.ports.invocation import ProviderActionFailedError
+from dss.core.shared.models import ProviderFailureKind
+from dss.ports.invocation import ProviderCallFailedError
 from tests.support.providers import build_capability
 
 SENDER_ID = "seeker-network-vistaar.da.gov.in"
@@ -196,42 +195,41 @@ async def test_a_transient_failure_is_retried_as_a_select_is() -> None:
     assert reply.attributes["case"]["cropName"] == "Paddy"
 
 
-async def test_a_rejected_read_is_a_defect_and_not_retried() -> None:
+async def test_a_rejected_read_is_refused_and_not_retried() -> None:
     """How a desk says it has no such case: the form path tells the farmer
     no complaint was found for that ticket and phone."""
 
     handler = _Replies(400, fail_times=99)
 
-    with pytest.raises(ProviderActionFailedError) as failed:
+    with pytest.raises(ProviderCallFailedError) as failed:
         await _invocation(handler).status(PROVIDER, ATTRIBUTES, "txn-1")
 
-    assert failed.value.action is ProviderAction.STATUS
+    assert failed.value.endpoint == "status"
     assert handler.calls == 1
-    assert failed.value.failure_class is FailureClass.DEFECT
-    assert failed.value.status_code == 400
+    assert failed.value.kind is ProviderFailureKind.REFUSED
     assert failed.value.retry_after_seconds is None
 
 
-async def test_an_unreadable_reply_is_a_defect_and_not_retried() -> None:
+async def test_an_unreadable_reply_is_outcome_unknown_and_not_retried() -> None:
     handler = _Replies(200, fail_times=99)
 
-    with pytest.raises(ProviderActionFailedError) as failed:
+    with pytest.raises(ProviderCallFailedError) as failed:
         await _invocation(handler).status(PROVIDER, ATTRIBUTES, "txn-1")
 
-    assert failed.value.action is ProviderAction.STATUS
+    assert failed.value.endpoint == "status"
     assert handler.calls == 1
-    assert failed.value.failure_class is FailureClass.DEFECT
+    assert failed.value.kind is ProviderFailureKind.OUTCOME_UNKNOWN
 
 
 async def test_a_provider_naming_its_own_time_is_not_retried() -> None:
     handler = _Replies(503, fail_times=99, headers={"Retry-After": "120"})
 
-    with pytest.raises(ProviderActionFailedError) as failed:
+    with pytest.raises(ProviderCallFailedError) as failed:
         await _invocation(handler).status(PROVIDER, ATTRIBUTES, "txn-1")
 
-    assert failed.value.action is ProviderAction.STATUS
+    assert failed.value.endpoint == "status"
     assert handler.calls == 1
-    assert failed.value.failure_class is FailureClass.TRANSIENT
+    assert failed.value.kind is ProviderFailureKind.OUTCOME_UNKNOWN
     assert failed.value.retry_after_seconds == 120
 
 

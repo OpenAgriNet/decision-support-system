@@ -16,7 +16,8 @@ from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import StatusCode
 
-from dss.adapters.invocation.client import HttpCapabilityInvocation, SelectFailedError
+from dss.adapters.invocation.client import HttpCapabilityInvocation
+from dss.ports.invocation import ProviderCallFailedError
 from tests.support.providers import build_capability
 
 CAPABILITY = build_capability(
@@ -56,7 +57,7 @@ async def test_every_attempt_gets_its_own_span_under_the_call(spans) -> None:
     def always_429(request: httpx.Request) -> httpx.Response:
         return httpx.Response(429, json={"error": "simulated"})
 
-    with pytest.raises(SelectFailedError):
+    with pytest.raises(ProviderCallFailedError):
         await _invocation(always_429).select(CAPABILITY, {}, "txn-1")
 
     finished = spans.get_finished_spans()
@@ -152,16 +153,16 @@ async def test_an_empty_answer_is_marked_as_one(spans) -> None:
     assert call.attributes["answered"] is False
 
 
-async def test_a_failed_call_says_how_it_failed_by_class(spans) -> None:
+async def test_a_failed_call_says_how_it_failed_by_kind(spans) -> None:
     """Provider error text may echo the farmer's query."""
 
     def forbidden(request: httpx.Request) -> httpx.Response:
         return httpx.Response(403, json={"error": "secret-query-echo"})
 
-    with pytest.raises(SelectFailedError):
+    with pytest.raises(ProviderCallFailedError):
         await _invocation(forbidden).select(CAPABILITY, {}, "txn-1")
 
     call = next(s for s in spans.get_finished_spans() if s.name == "dss.select")
-    assert call.attributes["failure_class"] == "defect"
+    assert call.attributes["failure_kind"] == "unauthorised"
     assert "answered" not in call.attributes
     assert "secret-query-echo" not in str(dict(call.attributes))

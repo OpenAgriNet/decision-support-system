@@ -7,9 +7,8 @@ from dss.adapters.invocation.client import (
     HttpCapabilityInvocation,
     build_init_request,
 )
-from dss.core.provider_discovery.models import FailureClass
-from dss.core.shared.models import ProviderAction
-from dss.ports.invocation import ProviderActionFailedError
+from dss.core.shared.models import ProviderFailureKind
+from dss.ports.invocation import ProviderCallFailedError
 from tests.support.providers import build_capability
 
 SENDER_ID = "seeker-network-vistaar.da.gov.in"
@@ -136,20 +135,19 @@ async def test_a_transient_failure_is_sent_once_only() -> None:
     # Each try can text the farmer a new OTP.
     handler = _Replies(503)
 
-    with pytest.raises(ProviderActionFailedError) as failed:
+    with pytest.raises(ProviderCallFailedError) as failed:
         await _invocation(handler).init(PROVIDER, ATTRIBUTES, "txn-1")
 
-    assert failed.value.action is ProviderAction.INIT
+    assert failed.value.endpoint == "init"
     assert handler.paths == ["/oan/init"]
-    assert failed.value.failure_class is FailureClass.TRANSIENT
-    assert failed.value.status_code == 503
+    assert failed.value.kind is ProviderFailureKind.OUTCOME_UNKNOWN
 
 
-async def test_an_unreadable_reply_is_a_defect() -> None:
+async def test_an_unreadable_reply_is_outcome_unknown() -> None:
     handler = _Replies(200, body={"message": {}})
 
-    with pytest.raises(ProviderActionFailedError) as failed:
+    with pytest.raises(ProviderCallFailedError) as failed:
         await _invocation(handler).init(PROVIDER, ATTRIBUTES, "txn-1")
 
-    assert failed.value.action is ProviderAction.INIT
-    assert failed.value.failure_class is FailureClass.DEFECT
+    assert failed.value.endpoint == "init"
+    assert failed.value.kind is ProviderFailureKind.OUTCOME_UNKNOWN

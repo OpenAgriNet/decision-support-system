@@ -15,7 +15,9 @@ import httpx
 import pytest
 from pytest_httpserver import HTTPServer
 
-from dss.adapters.invocation.client import HttpCapabilityInvocation, SelectFailedError
+from dss.adapters.invocation.client import HttpCapabilityInvocation
+from dss.core.shared.models import ProviderFailureKind
+from dss.ports.invocation import ProviderCallFailedError
 from tests.support.providers import build_capability
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -57,7 +59,7 @@ async def test_select_against_a_real_local_server(httpserver: HTTPServer) -> Non
     assert answer.resource_id == "res:mausamgram:forecast:2026-08-26"
 
 
-async def test_a_real_429_response_raises_selectfailed(httpserver: HTTPServer) -> None:
+async def test_a_real_429_response_is_not_sent(httpserver: HTTPServer) -> None:
     httpserver.expect_request("/select", method="POST").respond_with_json(
         {"error": "rate limited"}, status=429
     )
@@ -71,10 +73,10 @@ async def test_a_real_429_response_raises_selectfailed(httpserver: HTTPServer) -
             attempts=1,  # classification, not retry — see test_retry.py
         )
 
-        with pytest.raises(SelectFailedError) as exc_info:
+        with pytest.raises(ProviderCallFailedError) as exc_info:
             await invocation.select(CAPABILITY, {}, transaction_id="txn-test")
 
-    assert exc_info.value.status_code == 429
+    assert exc_info.value.kind is ProviderFailureKind.NOT_SENT
 
 
 async def test_the_outbound_request_is_logged(httpserver: HTTPServer, caplog) -> None:

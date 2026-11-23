@@ -13,8 +13,9 @@ import logging
 import httpx
 import pytest
 
-from dss.adapters.invocation.client import HttpCapabilityInvocation, SelectFailedError
+from dss.adapters.invocation.client import HttpCapabilityInvocation
 from dss.core.redaction.visibility import Visibility
+from dss.ports.invocation import ProviderCallFailedError
 from tests.support.providers import build_capability
 
 CAPABILITY = build_capability(
@@ -146,10 +147,10 @@ async def test_the_logs_show_tags_never_the_value(caplog) -> None:
     assert PHONE not in logged
 
 
-async def test_a_failed_call_does_not_carry_the_value_in_its_detail() -> None:
+async def test_a_failed_call_does_not_carry_the_value_in_its_reason() -> None:
     provider = _Provider(httpx.Response(400, text=f"bad phone {PHONE}"))
 
-    with pytest.raises(SelectFailedError) as failed:
+    with pytest.raises(ProviderCallFailedError) as failed:
         await _invocation(provider).select(
             CAPABILITY,
             {"applicant": {"phone": "«phone_1»"}},
@@ -157,5 +158,5 @@ async def test_a_failed_call_does_not_carry_the_value_in_its_detail() -> None:
             visibility=REVEAL,
         )
 
-    # The detail reaches the planner's prompt; the value must not.
-    assert PHONE not in (failed.value.detail or "")
+    # The reason reaches the planner's prompt; the value must not.
+    assert failed.value.reason == "bad phone «phone_1»"

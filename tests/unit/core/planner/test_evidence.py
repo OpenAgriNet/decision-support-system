@@ -26,6 +26,7 @@ from dss.core.settlement.models import (
     Settled,
     Slot,
 )
+from dss.core.shared.models import ProviderFailureKind
 from tests.support.asks import an_ask
 from tests.support.evidence import attempted
 
@@ -264,7 +265,7 @@ def test_results_and_failures_sit_under_the_ask_they_are_about() -> None:
         ask_id=0,
         capability="openagrinet:MandiPrice",
         reason="too many requests",
-        retryable=True,
+        kind=ProviderFailureKind.OUTCOME_UNKNOWN,
     )
 
     evidence = assemble_evidence(
@@ -338,7 +339,10 @@ def test_a_form_for_an_ask_the_turn_lacks_is_refused() -> None:
 
 def test_a_failure_for_an_ask_the_turn_lacks_is_refused() -> None:
     failure = Failure(
-        ask_id=2, capability="MandiPrice", reason="timeout", retryable=True
+        ask_id=2,
+        capability="MandiPrice",
+        kind=ProviderFailureKind.OUTCOME_UNKNOWN,
+        reason="timeout",
     )
 
     with pytest.raises(ValueError, match="ask 2 "):
@@ -368,7 +372,7 @@ def test_failures_are_carried_onto_the_evidence() -> None:
         ask_id=0,
         capability="openagrinet:MandiPrice",
         reason="too many requests",
-        retryable=True,
+        kind=ProviderFailureKind.OUTCOME_UNKNOWN,
     )
 
     evidence = assemble_evidence([], failures=[failure], asks=(PRICE_ASK,))

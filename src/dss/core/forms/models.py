@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
@@ -10,7 +10,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from dss.core.channel.models import ComposedAnswer
+from dss.core.channel.models import ClarificationText, ComposedAnswer
 from dss.core.provider_discovery.models import ProviderCapability
 from dss.core.redaction.visibility import Visibility
 from dss.core.shared.models import (
@@ -297,13 +297,6 @@ class FormErrorBlock(OutputBlock):
     fields: tuple[FieldErrorEntry, ...] = ()
 
 
-class FailedCallOutcome(StrEnum):
-    REFUSED = "refused"
-    NOT_SENT = "not_sent"
-    # It may have reached the provider, so sending it again might file twice.
-    OUTCOME_UNKNOWN = "outcome_unknown"
-
-
 # How a form flow's turn ends when no answer is composed from evidence.
 class FlowEnding(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -312,6 +305,17 @@ class FlowEnding(BaseModel):
     cause: Cause | None
     answer: ComposedAnswer
     retry_after_seconds: int | None = None
+
+
+type TextChoice = Callable[[ClarificationText], str]
+
+
+@dataclass(frozen=True)
+class FailureExit:
+    status: TurnStatus
+    cause: Cause
+    text: TextChoice
+    hands_form_back: bool
 
 
 @dataclass(frozen=True)

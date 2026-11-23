@@ -20,6 +20,15 @@
 - `--ref` is removed from the fetch script; passing it now fails as an
   unknown argument. `DSS_SCHEMA_PACK_REF` and `SCHEMA_PACK_REF` are removed
   and ignored if still set (#252)
+- A failed provider call is read by its kind, not its HTTP status code: not
+  sent, refused, outcome unknown, or our own credentials refused.
+  The `provider_call_failed` log line, the auth warning and the planner's
+  trace line name the kind. The provider-call span attribute `failure_class`
+  is now `failure_kind`. Only the invocation adapter's own lines keep the
+  status code (#207)
+- The fixed texts no longer say "desk" or "grievance". A refused filing says
+  "The provider did not accept your complaint. Check the details and send it
+  again." instead of "try again later" (#207)
 
 ### Fixed
 - `init` and `status` now send an offer on their commitment, as `select`
@@ -27,6 +36,19 @@
 - A complaint filing is sent again only when it surely never reached the
   provider. After a timeout or a server error it is not resent, so it cannot
   be filed twice (#207)
+- A filing or status check the provider refuses with a 404, 409 or 422 now
+  says it was rejected, not "try again later" (#207)
+- When the network refuses the DSS's own credentials (401, 403) on a filing or
+  status check, the farmer hears "something went wrong on our side", with no
+  form back, not "rejected" (#207)
+- A filing that timed out, got a server error, or got a reply the DSS cannot
+  read hands no form back. It says "We could not confirm whether this went
+  through. Check before sending it again.", so it cannot be filed twice (#207)
+- A status check whose reply the DSS cannot read says "try again later", not
+  "rejected" (#207)
+- A refused connection is read as "not sent", not "outcome unknown". On the
+  call with the OTP, the OTP form stays waiting instead of ending the flow
+  (#207)
 
 ## [0.3.0] - 2026-11-17
 

@@ -1,7 +1,7 @@
 """Tier 3 — a provider failure must not fail the turn.
 
 The adapter has already retried and given up by the time the tool sees a
-``SelectFailedError``. The loop still has to continue: other asks may have other
+``ProviderCallFailedError``. The loop still has to continue: other asks may have other
 providers, and one unreachable mandi is not a reason to answer nothing.
 """
 
@@ -17,19 +17,15 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
-from dss.adapters.invocation.client import SelectFailedError
 from dss.core.intent.models import InteractionType, SubjectCategory
 from dss.core.moderation.models import ModerationDecision, Outcome
 from dss.core.planner.models import Skill, Verdict
 from dss.core.planner.validation import DomainSchema
-from dss.core.provider_discovery.models import (
-    DiscoveredAnswer,
-    FailureClass,
-    ProviderCapability,
-)
+from dss.core.provider_discovery.models import DiscoveredAnswer, ProviderCapability
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
-from dss.core.shared.models import TextQuery, UserTurn
+from dss.core.shared.models import ProviderFailureKind, TextQuery, UserTurn
 from dss.orchestration.planner import PlannerDeps, build_planner_agent
+from dss.ports.invocation import ProviderCallFailedError
 from tests.support.asks import an_ask
 from tests.support.discovery import a_discovery, discovered
 from tests.support.providers import build_capability
@@ -64,11 +60,11 @@ class _FailingInvocation:
         visibility: Visibility = NOTHING_HELD,
     ) -> DiscoveredAnswer:
         self.calls += 1
-        raise SelectFailedError(
+        raise ProviderCallFailedError(
+            "select",
             capability.capability,
-            429,
-            FailureClass.TRANSIENT,
-            "too many requests",
+            ProviderFailureKind.NOT_SENT,
+            reason="too many requests",
         )
 
 
@@ -162,8 +158,8 @@ async def test_the_failure_is_recorded_for_the_evidence() -> None:
     [failure] = deps.failures
     assert failure.ask_id == 0
     assert failure.capability == "openagrinet:MandiPrice"
-    assert failure.retryable is True
-    assert failure.status_code == 429
+    assert failure.kind is ProviderFailureKind.NOT_SENT
+    assert failure.reason == "too many requests"
 
 
 def _calls_unindexed_then_answers(

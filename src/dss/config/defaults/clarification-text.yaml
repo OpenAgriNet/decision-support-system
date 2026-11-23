@@ -11,9 +11,9 @@ field_not_an_option: "{label} must be one of the given choices."
 field_duplicate: "{label} was sent more than once."
 field_unknown: "{label} is not part of this form."
 not_filed: Your complaint was not filed. Please try again later.
-not_filed_rejected: The desk could not take your complaint as sent. Please try again later.
+not_filed_rejected: The provider did not accept your complaint. Check the details and send it again.
 status_not_checked: We could not check your complaint's status right now. Please try again later.
-status_not_found: No complaint was found for that ticket number and phone. You need to file a grievance request first.
+status_not_found: No complaint was found for that ticket number and phone. File a complaint first.
 # A form turn that waited too long while another turn held its session.
 session_busy: Another message from you is still being handled. Try again.
 already_filed: This form was already sent. Your earlier request stands.

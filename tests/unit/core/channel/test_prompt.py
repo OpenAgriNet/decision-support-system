@@ -17,6 +17,7 @@ from dss.core.forms.models import (
     FormSubmission,
 )
 from dss.core.intent.models import (
+    AskId,
     GuessedScheme,
     InteractionType,
     PlaceSource,
@@ -50,6 +51,7 @@ from dss.core.shared.models import (
     ConversationMessage,
     Geometry,
     ProviderAction,
+    ProviderFailureKind,
     TextQuery,
     UserTurn,
 )
@@ -186,7 +188,7 @@ def test_a_failure_is_labelled_with_its_asks_resolved_place() -> None:
                 ask_id=0,
                 capability="openagrinet:WeatherObservation",
                 reason="timeout",
-                retryable=True,
+                kind=ProviderFailureKind.OUTCOME_UNKNOWN,
             ),
         ),
     )
@@ -194,6 +196,26 @@ def test_a_failure_is_labelled_with_its_asks_resolved_place() -> None:
     rendered = render_evidence(evidence)
 
     assert "Anand" in rendered
+
+
+def test_a_failure_with_no_reply_body_is_rendered_by_its_kind() -> None:
+    evidence = build_evidence(
+        asks=(an_ask(),),
+        results=(),
+        failures=(
+            Failure(
+                ask_id=AskId(0),
+                capability="openagrinet:WeatherObservation",
+                reason=None,
+                kind=ProviderFailureKind.NOT_SENT,
+            ),
+        ),
+    )
+
+    rendered = render_evidence(evidence)
+
+    assert "not_sent" in rendered
+    assert "None" not in rendered
 
 
 def test_an_ask_awaiting_a_form_is_rendered_as_such() -> None:
