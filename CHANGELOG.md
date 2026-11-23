@@ -29,6 +29,10 @@
 - The fixed texts no longer say "desk" or "grievance". A refused filing says
   "The provider did not accept your complaint. Check the details and send it
   again." instead of "try again later" (#207)
+- When a provider says why a form failed, the farmer first hears that reason
+  in a sentence or two, then the usual text. A wrong OTP on a status check
+  still ends the check, but the farmer hears why. If writing the reason
+  fails, the usual text is shown alone (#207)
 
 ### Fixed
 - `init` and `status` now send an offer on their commitment, as `select`

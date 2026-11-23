@@ -218,6 +218,48 @@ def test_a_failure_with_no_reply_body_is_rendered_by_its_kind() -> None:
     assert "None" not in rendered
 
 
+def test_a_refusal_leads_with_turned_down() -> None:
+    reason = "No PMFBY application was found for this application number."
+    evidence = build_evidence(
+        asks=(an_ask(),),
+        results=(),
+        failures=(
+            Failure(
+                ask_id=AskId(0),
+                capability="openagrinet:Grievance",
+                reason=reason,
+                kind=ProviderFailureKind.REFUSED,
+            ),
+        ),
+    )
+
+    rendered = render_evidence(evidence)
+
+    assert f"The provider turned this down for openagrinet:Grievance: {reason}" in (
+        rendered
+    )
+
+
+def test_a_refusal_of_our_credentials_never_shows_its_body() -> None:
+    evidence = build_evidence(
+        asks=(an_ask(),),
+        results=(),
+        failures=(
+            Failure(
+                ask_id=AskId(0),
+                capability="openagrinet:WeatherObservation",
+                reason="invalid api key k-123",
+                kind=ProviderFailureKind.UNAUTHORISED,
+            ),
+        ),
+    )
+
+    rendered = render_evidence(evidence)
+
+    assert "unauthorised" in rendered
+    assert "k-123" not in rendered
+
+
 def test_an_ask_awaiting_a_form_is_rendered_as_such() -> None:
     """Neither a result nor a gap: the composer must point at the form, not
     apologise for it."""

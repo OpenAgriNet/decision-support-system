@@ -13,6 +13,7 @@ from dss.adapters.observability.tracing import (
 )
 from dss.core.channel.localize import LocalizeText, localize_answer
 from dss.core.channel.models import ClarificationText, ComposedAnswer
+from dss.core.channel.prompt import farmer_safe_reason
 from dss.core.forms.init_flow import (
     FlowDecision,
     InitCall,
@@ -88,7 +89,7 @@ from dss.orchestration.orchestrator import (
     build_turn_finished,
     compose_answer,
     note_stage,
-    outcome_for,
+    outcome_of_ending,
     refusal_for,
     reveal_to_farmer,
     spoken_text,
@@ -255,7 +256,7 @@ class FormPath:
         if form.action.needs_init():
             return await self._send_init_and_await_response(
                 form_turn,
-                form.details,
+                form,
                 provider=provider,
                 redaction=redaction,
                 session=session,
@@ -281,14 +282,14 @@ class FormPath:
         )
         if isinstance(response, Failure):
             _warn_if_auth_refused(response, form_turn.ctx)
-            return await self._finish_turn(
-                end_for_failed_call(
-                    redaction.turn.input,
-                    response,
-                    self._clarification_text,
-                    action=ProviderAction(form.action.context.action),
-                ),
-                form_turn,
+            ending = end_for_failed_call(
+                redaction.turn.input,
+                response,
+                self._clarification_text,
+                action=ProviderAction(form.action.context.action),
+            )
+            return await self._end_failed_call(
+                response, ending, form.ask, redaction, form_turn
             )
         # Before the answer streams: a closed screen must still leave it done.
         session.update_forms(with_form_done(session.forms, redaction.turn.input))
@@ -365,18 +366,18 @@ class FormPath:
         )
         if isinstance(response, Failure):
             _warn_if_auth_refused(response, form_turn.ctx)
-            return await self._update_forms_and_end(
-                decide_after_failed_init_response(
-                    session.forms,
-                    flow,
-                    response,
-                    init_response=redaction.turn.input,
-                    init_form=init_response.definition,
-                    text=self._clarification_text,
-                    now=datetime.now(UTC),
-                ),
-                session,
-                form_turn,
+            decision = decide_after_failed_init_response(
+                session.forms,
+                flow,
+                response,
+                init_response=redaction.turn.input,
+                init_form=init_response.definition,
+                text=self._clarification_text,
+                now=datetime.now(UTC),
+            )
+            session.update_forms(decision.forms)
+            return await self._end_failed_call(
+                response, decision.ending, flow.ask, redaction, form_turn
             )
         session.update_forms(with_details_form_done(session.forms, flow))
         return self._stream_provider_answer(response, flow.ask, redaction, form_turn)
@@ -391,8 +392,26 @@ class FormPath:
         evidence = assemble_evidence([(ask.id, response)], asks=(ask,))
         return self._stream_answer(evidence, redaction, form_turn)
 
+    async def _end_failed_call(
+        self,
+        failure: Failure,
+        ending: FlowEnding,
+        ask: Ask,
+        redaction: _Redacted,
+        form_turn: _FormTurn,
+    ) -> _Reply:
+        if farmer_safe_reason(failure) is None:
+            return await self._finish_turn(ending, form_turn)
+        evidence = assemble_evidence((), asks=(ask,), failures=(failure,))
+        return self._stream_answer(evidence, redaction, form_turn, ending=ending)
+
     async def _stream_answer(
-        self, evidence: Evidence, redaction: _Redacted, form_turn: _FormTurn
+        self,
+        evidence: Evidence,
+        redaction: _Redacted,
+        form_turn: _FormTurn,
+        *,
+        ending: FlowEnding | None = None,
     ) -> AsyncGenerator[TurnEvent]:
         # The record only ever sees the tagged turn.
         recorded = replace(form_turn, turn=redaction.turn)
@@ -407,6 +426,7 @@ class FormPath:
                     localize=self._components.localize,
                     ctx=form_turn.ctx,
                     recorder=form_turn.recorder,
+                    ending=ending,
                 )
             ) as core_events,
             aclosing(
@@ -424,13 +444,14 @@ class FormPath:
     async def _send_init_and_await_response(
         self,
         form_turn: _FormTurn,
-        details: ValidSubmission,
+        form: _FormToSend,
         *,
         provider: ProviderCapability,
         redaction: _Redacted,
         session: Session,
-    ) -> TurnFinished:
+    ) -> _Reply:
         submission = redaction.turn.input
+        details = form.details
         init = find_init_call(details, self._forms)
         if not isinstance(init, InitCall):
             return await self._finish_turn(
@@ -449,12 +470,14 @@ class FormPath:
         failure = find_init_failure(reply)
         if failure is not None:
             _warn_if_auth_refused(failure, form_turn.ctx)
-            return await self._finish_turn(
-                end_for_failed_init(
-                    failure, details=submission, text=self._clarification_text
-                ),
-                form_turn,
+            ending = end_for_failed_init(
+                failure, details=submission, text=self._clarification_text
             )
+            if isinstance(failure, Failure):
+                return await self._end_failed_call(
+                    failure, ending, form.ask, redaction, form_turn
+                )
+            return await self._finish_turn(ending, form_turn)
         return await self._update_forms_and_end(
             # The details are kept as typed, not masked: the call after the init
             # response needs the real values, and the tags last one turn. A done
@@ -480,12 +503,9 @@ class FormPath:
     async def _finish_turn(
         self, ending: FlowEnding, form_turn: _FormTurn
     ) -> TurnFinished:
-        outcome = outcome_for(
-            ending.status,
-            ending.cause,
-            retry_after_seconds=ending.retry_after_seconds,
+        return await self._finish_with_outcome(
+            outcome_of_ending(ending), ending.answer, form_turn
         )
-        return await self._finish_with_outcome(outcome, ending.answer, form_turn)
 
     async def _call_provider_action(  # noqa: PLR0913
         self,

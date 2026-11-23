@@ -5,6 +5,7 @@ from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
+from unittest.mock import patch
 
 import anyio
 import pytest
@@ -27,6 +28,7 @@ from dss.core.forms.models import (
 )
 from dss.core.forms.service import WITHHELD, build_form_registry, with_init_awaited
 from dss.core.intent.models import Ask, InteractionType, Scheme, SubjectCategory
+from dss.core.planner.models import Failure
 from dss.core.policy.models import Policy
 from dss.core.provider_discovery.models import (
     DiscoveredAnswer,
@@ -673,6 +675,131 @@ async def test_a_support_call_the_provider_refused_is_not_retryable() -> None:
     assert kept.fields == ()
 
 
+_NO_APPLICATION = "No PMFBY application was found for this application number."
+_EXPLAINED = "The provider found no application with that number."
+
+
+def _composed_text(block: object) -> str:
+    assert isinstance(block, TextBlock)
+    return block.text
+
+
+def _failure_the_composer_saw(compose: _FakeCompose) -> Failure:
+    (ask,) = compose.evidence.ask_evidences
+    (failure,) = attempted(ask).failures
+    return failure
+
+
+async def test_a_refused_filing_with_a_body_is_composed() -> None:
+    compose = _FakeCompose(_EXPLAINED)
+    orch, turns = _build_orchestrator_and_turn_sink(
+        invocation=_support_fails(ProviderFailureKind.REFUSED, reason=_NO_APPLICATION),
+        compose=compose,
+    )
+
+    events = await _collect(orch, _form_turn(_VALUES))
+
+    finished = _finished(events)
+    assert finished.outcome.status is TurnStatus.UNAVAILABLE
+    assert finished.outcome.cause is Cause.PROVIDER_REJECTED
+    composed, fixed, kept = finished.content
+    assert _composed_text(composed) == _EXPLAINED
+    assert fixed == TextBlock(text=load_clarification_text().not_filed_rejected)
+    assert kept == FormErrorBlock(
+        form_id="offer-1", context=_PMFBY_SUPPORT, submission_id="submission-1"
+    )
+    assert _failure_the_composer_saw(compose).reason == _NO_APPLICATION
+    assert turns.records["t1"].finished == finished
+
+
+async def test_a_filing_that_may_have_gone_through_is_composed_without_the_form() -> (
+    None
+):
+    compose = _FakeCompose(_EXPLAINED)
+    orch, _ = _build_orchestrator_and_turn_sink(
+        invocation=_support_fails(
+            ProviderFailureKind.OUTCOME_UNKNOWN, reason="upstream timed out"
+        ),
+        compose=compose,
+    )
+
+    finished = _finished(await _collect(orch, _form_turn(_VALUES)))
+
+    assert finished.outcome.cause is Cause.PROVIDER_OUTCOME_UNKNOWN
+    composed, fixed = finished.content
+    assert _composed_text(composed) == _EXPLAINED
+    assert fixed == TextBlock(text=load_clarification_text().outcome_unknown)
+
+
+async def test_a_failure_without_a_body_keeps_the_fixed_text() -> None:
+    compose = _FakeCompose("must not be written")
+    orch, _ = _build_orchestrator_and_turn_sink(
+        invocation=_support_refused(), compose=compose
+    )
+
+    finished = _finished(await _collect(orch, _form_turn(_VALUES)))
+
+    told, _kept = finished.content
+    assert told == TextBlock(text=load_clarification_text().not_filed_rejected)
+    assert compose.calls == 0
+
+
+async def test_an_internal_error_is_never_composed() -> None:
+    compose = _FakeCompose("must not be written")
+    orch, _ = _build_orchestrator_and_turn_sink(
+        invocation=_support_fails(
+            ProviderFailureKind.UNAUTHORISED, reason="bad api key k-123"
+        ),
+        compose=compose,
+    )
+
+    finished = _finished(await _collect(orch, _form_turn(_VALUES)))
+
+    assert finished.outcome.cause is Cause.INTERNAL
+    assert finished.content == (TextBlock(text=load_clarification_text().went_wrong),)
+    assert compose.calls == 0
+
+
+async def test_the_composer_failing_falls_back_to_the_fixed_text() -> None:
+    compose = _FakeCompose(_EXPLAINED, fail_after=0)
+    orch, turns = _build_orchestrator_and_turn_sink(
+        invocation=_support_fails(ProviderFailureKind.REFUSED, reason=_NO_APPLICATION),
+        compose=compose,
+    )
+
+    finished = _finished(await _collect(orch, _form_turn(_VALUES)))
+
+    assert compose.calls == 1
+    assert finished.outcome.status is TurnStatus.UNAVAILABLE
+    assert finished.outcome.cause is Cause.PROVIDER_REJECTED
+    told, kept = finished.content
+    assert told == TextBlock(text=load_clarification_text().not_filed_rejected)
+    assert isinstance(kept, FormErrorBlock)
+    assert turns.records["t1"].finished == finished
+
+
+async def test_the_composer_failing_midway_keeps_its_text_and_the_ending() -> None:
+    compose = _FakeCompose(
+        _EXPLAINED, chunks=("The provider found ", "no application."), fail_after=1
+    )
+    orch, turns = _build_orchestrator_and_turn_sink(
+        invocation=_support_fails(ProviderFailureKind.REFUSED, reason=_NO_APPLICATION),
+        compose=compose,
+    )
+
+    with patch.object(turns, "closed", wraps=turns.closed) as closed:
+        finished = _finished(await _collect(orch, _form_turn(_VALUES)))
+
+    assert finished.outcome.status is TurnStatus.UNAVAILABLE
+    assert finished.outcome.cause is Cause.PROVIDER_REJECTED
+    composed, fixed, kept = finished.content
+    assert _composed_text(composed) == "The provider found "
+    assert fixed == TextBlock(text=load_clarification_text().not_filed_rejected)
+    assert isinstance(kept, FormErrorBlock)
+    assert closed.call_count == 1
+    assert turns.records["t1"].finished == finished
+
+
 def _auth_refusals(caplog: pytest.LogCaptureFixture) -> list[object]:
     return [
         getattr(record, "request_id", None)
@@ -986,6 +1113,28 @@ async def test_an_init_refusing_our_credentials_is_an_internal_error(caplog) -> 
     assert _auth_refusals(caplog) == ["t1"]
 
 
+async def test_an_init_refused_with_a_body_is_composed() -> None:
+    compose = _FakeCompose(_EXPLAINED)
+    invocation = RecordingActionInvocation(
+        failure=ProviderCallFailedError(
+            "init",
+            "openagrinet:Grievance",
+            ProviderFailureKind.REFUSED,
+            reason=_NO_APPLICATION,
+        )
+    )
+    orch, _, _ = _build_kisan_orchestrator(invocation, compose=compose)
+
+    finished = _finished(await _collect(orch, _kisan_details_turn()))
+
+    assert finished.outcome.cause is Cause.PROVIDER_REJECTED
+    composed, fixed, kept = finished.content
+    assert _composed_text(composed) == _EXPLAINED
+    assert fixed == TextBlock(text=load_clarification_text().init_rejected)
+    assert isinstance(kept, FormErrorBlock)
+    assert _failure_the_composer_saw(compose).reason == _NO_APPLICATION
+
+
 async def test_the_same_details_form_sent_again_while_waiting_sends_a_new_init() -> (
     None
 ):
@@ -1208,6 +1357,29 @@ async def test_our_credentials_refused_with_an_init_response_are_logged(
     assert finished.outcome.cause is Cause.INTERNAL
     assert _stored_state(store).forms == {}
     assert _auth_refusals(caplog) == ["t1"]
+
+
+async def test_a_refused_status_check_after_the_otp_is_composed_and_ends() -> None:
+    compose = _FakeCompose("The provider says the OTP was wrong.")
+    refused = ProviderCallFailedError(
+        "status",
+        "openagrinet:Grievance",
+        ProviderFailureKind.REFUSED,
+        reason="wrong or missing OTP",
+    )
+    orch, store, _ = _build_kisan_orchestrator(
+        RecordingActionInvocation(failures={ProviderAction.STATUS: refused}),
+        compose=compose,
+    )
+    _save_waiting(store, "offer-1", context=_PMKISAN_STATUS, values=_KISAN_LOOKUP)
+
+    finished = _finished(await _collect(orch, _init_response_turn()))
+
+    composed, fixed = finished.content
+    assert _composed_text(composed) == "The provider says the OTP was wrong."
+    assert fixed == TextBlock(text=load_clarification_text().case_not_found)
+    assert _failure_the_composer_saw(compose).reason == "wrong or missing OTP"
+    assert _stored_state(store).forms == {}
 
 
 class _SupportInFlight(RecordingActionInvocation):

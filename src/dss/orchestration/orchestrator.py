@@ -50,6 +50,7 @@ before it touches a provider.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import (
     AsyncGenerator,
     AsyncIterator,
@@ -77,7 +78,7 @@ from dss.core.channel.service import (
     no_match_answer,
     pick_lists,
 )
-from dss.core.forms.models import FormDefinition
+from dss.core.forms.models import FlowEnding, FormDefinition
 from dss.core.forms.registry import FormLookup
 from dss.core.forms.service import offer_form
 from dss.core.intent.models import AskId, Intent
@@ -132,6 +133,8 @@ from dss.ports.prompts import PromptProvider
 from dss.ports.scheme_catalog import SchemeCatalog
 from dss.ports.sinks import TelemetrySink, TurnSink
 
+logger = logging.getLogger(__name__)
+
 # A moderation outcome is not a turn status: `CLARIFY` means the DSS understood
 # and needs more from the farmer, which the contract calls `requires_input`.
 _STATUS_FOR = {
@@ -165,6 +168,12 @@ def outcome_for(
         cause=cause,
         confidence=_STUB_CONFIDENCE[status],
         retry_after_seconds=retry_after_seconds,
+    )
+
+
+def outcome_of_ending(ending: FlowEnding) -> TurnOutcome:
+    return outcome_for(
+        ending.status, ending.cause, retry_after_seconds=ending.retry_after_seconds
     )
 
 
@@ -608,32 +617,43 @@ async def compose_answer(  # noqa: PLR0913
     ctx: TurnContext,
     recorder: TurnRecorder,
     pick_lists: Sequence[TextBlock] = (),
+    ending: FlowEnding | None = None,
 ) -> AsyncGenerator[CoreEvent]:
     """The answer as the composer writes it, then its claim, the forms
-    offered, and the outcome read off the evidence.
+    offered, and the outcome.
 
     Each pick list follows the claim. The composer asks the question. The
     list shows the exact choices."""
 
     answer_stream = AnswerStream()
     numbers = CitationNumbers(source.id for source in evidence.sources)
-    async with aclosing(
-        _write_answer(
-            evidence,
-            turn=turn,
-            compose=compose,
-            numbers=numbers,
-            ctx=ctx,
+    try:
+        async with aclosing(
+            _write_answer(
+                evidence,
+                turn=turn,
+                compose=compose,
+                numbers=numbers,
+                ctx=ctx,
+            )
+        ) as pieces:
+            async for piece in pieces:
+                yield answer_stream.add_piece(piece)
+    except Exception as error:
+        if ending is None:
+            raise
+        logger.warning(
+            "composer_failed",
+            extra={"error_type": type(error).__name__},
         )
-    ) as pieces:
-        async for piece in pieces:
-            yield answer_stream.add_piece(piece)
+        if answer_stream.written:
+            yield _claim_composed(answer_stream, numbers, evidence)
+        async for event in _end_with(ending, answer_stream, localize, turn=turn):
+            yield event
+        return
 
-    answer = answer_from_evidence(numbers.composed, evidence)
     recorder.composed()
-    # One block: the composer's prose is never split (`answer_from_evidence`).
-    (block,) = answer.content
-    yield answer_stream.claim(block, answer.sources)
+    yield _claim_composed(answer_stream, numbers, evidence)
     for definition in evidence.awaiting_forms:
         yield answer_stream.add_block(offer_form(definition))
     # Streamed, like the composer's text: the farmer's copy of a text block is
@@ -641,9 +661,38 @@ async def compose_answer(  # noqa: PLR0913
     for pick_list in pick_lists:
         yield answer_stream.add_piece(await localize(pick_list.text, turn=turn))
         yield answer_stream.claim(pick_list, ())
-
+    if ending is not None:
+        async for event in _end_with(ending, answer_stream, localize, turn=turn):
+            yield event
+        return
     status, cause = _status_for(evidence)
     yield answer_stream.finish(outcome_for(status, cause))
+
+
+def _claim_composed(
+    answer_stream: AnswerStream, numbers: CitationNumbers, evidence: Evidence
+) -> CoreEvent:
+    answer = answer_from_evidence(numbers.composed, evidence)
+    # One block: the composer's prose is never split (`answer_from_evidence`).
+    (block,) = answer.content
+    return answer_stream.claim(block, answer.sources)
+
+
+async def _end_with(
+    ending: FlowEnding,
+    answer_stream: AnswerStream,
+    localize: LocalizeText,
+    *,
+    turn: UserTurn,
+) -> AsyncGenerator[CoreEvent]:
+    fixed = await localize_answer(ending.answer, localize, turn=turn)
+    for block in fixed.content:
+        if isinstance(block, TextBlock):
+            yield answer_stream.add_piece(block.text)
+            yield answer_stream.claim(block, ())
+        else:
+            yield answer_stream.add_block(block)
+    yield answer_stream.finish(outcome_of_ending(ending))
 
 
 async def _write_answer(
