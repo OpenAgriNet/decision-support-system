@@ -14,7 +14,6 @@ from pathlib import Path
 import pytest
 from dotenv import dotenv_values
 
-from dss.adapters.llm.pydantic_ai_provider import PydanticAILLMProvider
 from dss.adapters.scheme_catalog.csv_file import load_scheme_catalog
 from dss.config.prompt_service import build_prompt_service
 from dss.config.settings import Settings
@@ -33,8 +32,8 @@ from dss.core.shared.models import (
     TextQuery,
     UserTurn,
 )
-from dss.entrypoint.composition.root import _resolve_model
-from dss.observability.stages import Stage
+from dss.entrypoint.composition.root import _intent_llm
+from dss.ports.llm import LLMProvider
 from tests.support.live_model import missing_model_key
 
 _REPO = Path(__file__).parents[3]
@@ -64,16 +63,9 @@ def _live_env(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv(name, value)
 
 
-def _live_llm() -> PydanticAILLMProvider:
-    settings = Settings()
-    return PydanticAILLMProvider(
-        _resolve_model(settings.intent_model, settings),
-        name="intent-classifier",
-        stage=Stage.INTENT,
-        temperature=settings.intent_temperature,
-        timeout=settings.intent_timeout_seconds,
-        retries=settings.intent_retries,
-    )
+def _live_llm() -> LLMProvider:
+    # The app's own binding: how the model is asked is part of what is tested.
+    return _intent_llm(Settings())
 
 
 def _turn(

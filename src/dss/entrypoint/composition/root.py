@@ -791,6 +791,9 @@ def _intent_llm(settings: Settings) -> LLMProvider:
         temperature=settings.intent_temperature,
         timeout=settings.intent_timeout_seconds,
         retries=settings.intent_retries,
+        # Most of an ask's fields have a default, and a small model leaves
+        # those out: a scheme it never wrote down read as no scheme named.
+        output_mode="strict_tool",
     )
 
 

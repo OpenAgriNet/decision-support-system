@@ -24,6 +24,10 @@
 ### Fixed
 - `init` and `status` now send an offer on their commitment, as `select`
   does. PM-KISAN refused `init` without one (#207)
+- The assistant no longer asks "Which scheme?" after the farmer named the
+  scheme. A small intent model left the scheme out of its reply; it must now
+  write every field. The reply uses shorter field names, so this step is not
+  slower. The intent model must support strict tool calls (#257)
 
 ## [0.3.0] - 2026-11-17
 

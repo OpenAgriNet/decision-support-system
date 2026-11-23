@@ -18,7 +18,7 @@ from typing import Literal
 import httpx
 from openai import AsyncOpenAI
 from opentelemetry.propagate import inject
-from pydantic_ai import Agent, NativeOutput, PromptedOutput
+from pydantic_ai import Agent, NativeOutput, PromptedOutput, ToolOutput
 from pydantic_ai.models import Model
 from pydantic_ai.models.openai import OpenAIChatModel, OpenAIResponsesModel
 from pydantic_ai.providers.openai import OpenAIProvider
@@ -38,7 +38,9 @@ from dss.ports.llm import SchemaT
 # supports tools. ``native`` uses the provider's JSON-schema response format.
 # ``prompted`` puts the schema in the prompt and parses JSON from plain text — the
 # only mode that works against a model/endpoint that does not support tools.
-OutputMode = Literal["tool", "native", "prompted"]
+# ``strict_tool`` is ``tool`` with every field required: a small model leaves out
+# a field it may leave out, and that reads the same as "none".
+OutputMode = Literal["tool", "strict_tool", "native", "prompted"]
 
 # A built model, or a model name Pydantic AI resolves itself.
 type ModelBinding = Model | str
@@ -76,11 +78,18 @@ class PydanticAILLMProvider:
 
     def _output_type(
         self, schema: type[SchemaT]
-    ) -> type[SchemaT] | PromptedOutput[SchemaT] | NativeOutput[SchemaT]:
+    ) -> (
+        type[SchemaT]
+        | PromptedOutput[SchemaT]
+        | NativeOutput[SchemaT]
+        | ToolOutput[SchemaT]
+    ):
         if self._output_mode == "prompted":
             return PromptedOutput(schema)
         if self._output_mode == "native":
             return NativeOutput(schema)
+        if self._output_mode == "strict_tool":
+            return ToolOutput(schema, strict=True)
         return schema  # "tool" — Pydantic AI's default for a bare schema
 
     def _agent(self, system_prompt: str, **kwargs: object) -> Agent:
