@@ -280,6 +280,29 @@ Redis too, which carries the flow from one turn to the next). Then:
 
 Any other OTP is refused by the mock, and the DSS hands the OTP form back.
 
+To see how the DSS handles a provider failure, type one of these words into
+the grievance description, like `FAIL-404 claim not paid`. The mock answers
+the filing with that failure. For PM-KISAN that is the filing after the OTP:
+`/init` cannot carry a word, because the enrolment id takes letters and digits
+only.
+
+| Type | The mock answers |
+|---|---|
+| `FAIL-404` | 404, the PMFBY provider's own "No PMFBY application was found" reply |
+| `FAIL-500` | 500, "The provider's system failed." |
+| `FAIL-429` | 429 with `Retry-After: 30`, no body |
+| `FAIL-403` | 403, `{"message":"forbidden"}` |
+| `SLOW` | waits 10 s, longer than the DSS waits, then answers as usual |
+
+`SLOW` has no hyphen, so it also works inside a PM-KISAN enrolment id, like
+`SLOW123456`. That slows `/init`: the DSS stops waiting after 5 s, so a status
+check or a filing ends there, before the OTP, with "We could not reach the
+provider to start this."
+
+A status check cannot carry one: its fields take only digits, or letters and
+digits. Send a ticket this mock never filed instead; it is refused as not
+found.
+
 A question intent classifies into a category the mock does not serve comes
 back `no_match` — which is the honest answer, and worth telling apart from a
 wiring fault. Two places to look, in order:

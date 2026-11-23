@@ -31,15 +31,19 @@ both. Verified against `discover_providers`:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import tomllib
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from itertools import count
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 
 from tools.mock_network.catalog import requested_types
 from tools.mock_network.generators import (
@@ -57,6 +61,37 @@ DEFAULT_QUESTIONS = Path(__file__).parents[2] / "benchmarks" / "questions.toml"
 # The one OTP PM-KISAN's mock accepts: no SMS is ever sent, so a tester types this.
 MOCK_OTP = "1234"
 _OTP_LIFETIME = timedelta(minutes=5)
+
+
+@dataclass(frozen=True)
+class _ForcedReply:
+    status: int
+    body: dict[str, Any] | None = None
+    headers: Mapping[str, str] = field(default_factory=dict)
+
+
+def _nack(code: str, message: str) -> dict[str, Any]:
+    return {"message": {"status": "NACK", "error": {"code": code, "message": message}}}
+
+
+# The 404 body is the one the PMFBY provider sends in production.
+_FORCED_REPLIES: Mapping[str, _ForcedReply] = {
+    "FAIL-404": _ForcedReply(
+        404,
+        _nack(
+            "BIZ_GENERIC_ERROR",
+            "No PMFBY application was found for this application number.",
+        ),
+    ),
+    "FAIL-500": _ForcedReply(
+        500, _nack("INTERNAL_ERROR", "The provider's system failed.")
+    ),
+    "FAIL-429": _ForcedReply(429, headers={"Retry-After": "30"}),
+    "FAIL-403": _ForcedReply(403, {"message": "forbidden"}),
+}
+_SLOW = "SLOW"
+# Past the DSS's 5 s `select_timeout_seconds`, so the call times out.
+_SLOW_SECONDS = 10
 
 # Which recorded catalog answers which capability. A `@type` with no entry is
 # a provider nobody serves — an empty catalog, which is what the real network
@@ -158,23 +193,72 @@ def _add_grievance_routes(app: FastAPI) -> None:
     ticket_numbers = count(1)
     cases: dict[str, dict[str, Any]] = {}
 
-    @app.post("/init")
-    async def init(request: Request) -> dict[str, Any]:
-        return _issue_challenge(await request.json())
+    @app.post("/init", response_model=None)
+    async def init(request: Request) -> dict[str, Any] | Response:
+        body = await request.json()
+        if forced := await _wait_then_force_reply(_commitment_attributes(body)):
+            return forced
+        return _issue_challenge(body)
 
-    @app.post("/support")
-    async def support(request: Request) -> dict[str, Any]:
+    @app.post("/support", response_model=None)
+    async def support(request: Request) -> dict[str, Any] | Response:
         body = await request.json()
         filed = body["message"]["support"]["channels"][0]
+        if forced := await _wait_then_force_reply(filed):
+            return forced
         _refuse_a_wrong_otp(filed)
         reply = _on_support(body, _without_otp(filed), _ticket_no(next(ticket_numbers)))
         registered = reply["message"]["support"]["channels"][0]
         cases[registered["case"]["ticketNo"]] = registered
         return reply
 
-    @app.post("/status")
-    async def status(request: Request) -> dict[str, Any]:
-        return _read_case(await request.json(), cases)
+    @app.post("/status", response_model=None)
+    async def status(request: Request) -> dict[str, Any] | Response:
+        body = await request.json()
+        if forced := await _wait_then_force_reply(_commitment_attributes(body)):
+            return forced
+        return _read_case(body, cases)
+
+
+async def _wait_then_force_reply(attributes: dict[str, Any]) -> Response | None:
+    values = _string_values(attributes)
+    if _any_contains(values, _SLOW):
+        await asyncio.sleep(_SLOW_SECONDS)
+    forced = next(
+        (
+            reply
+            for trigger, reply in _FORCED_REPLIES.items()
+            if _any_contains(values, trigger)
+        ),
+        None,
+    )
+    return None if forced is None else _as_response(forced)
+
+
+def _any_contains(values: list[str], trigger: str) -> bool:
+    return any(trigger in value for value in values)
+
+
+def _as_response(forced: _ForcedReply) -> Response:
+    if forced.body is None:
+        return Response(status_code=forced.status, headers=dict(forced.headers))
+    return JSONResponse(
+        forced.body, status_code=forced.status, headers=dict(forced.headers)
+    )
+
+
+def _string_values(attributes: Any) -> list[str]:
+    if isinstance(attributes, str):
+        return [attributes]
+    if isinstance(attributes, dict):
+        return [v for value in attributes.values() for v in _string_values(value)]
+    if isinstance(attributes, list):
+        return [v for value in attributes for v in _string_values(value)]
+    return []
+
+
+def _commitment_attributes(body: dict[str, Any]) -> dict[str, Any]:
+    return body["message"]["contract"]["commitments"][0]["commitmentAttributes"]
 
 
 def _selected_type(body: dict[str, Any]) -> str | None:

@@ -795,3 +795,79 @@ async def test_neither_pm_kisan_reply_sends_the_otp_back(pack_dir: Path) -> None
 
     assert "challenge" not in filed.attributes
     assert "challenge" not in read.attributes
+
+
+_PROVIDER_NOT_FOUND = {
+    "message": {
+        "status": "NACK",
+        "error": {
+            "code": "BIZ_GENERIC_ERROR",
+            "message": "No PMFBY application was found for this application number.",
+        },
+    }
+}
+
+
+def _support_body(channel: dict) -> dict:
+    return {
+        "context": {"action": "support", "transactionId": "txn-file"},
+        "message": {"support": {"channels": [channel]}},
+    }
+
+
+@pytest.mark.parametrize(
+    ("trigger", "status", "body", "retry_after"),
+    [
+        ("FAIL-404", 404, _PROVIDER_NOT_FOUND, None),
+        (
+            "FAIL-500",
+            500,
+            {
+                "message": {
+                    "status": "NACK",
+                    "error": {
+                        "code": "INTERNAL_ERROR",
+                        "message": "The provider's system failed.",
+                    },
+                }
+            },
+            None,
+        ),
+        ("FAIL-429", 429, None, "30"),
+        ("FAIL-403", 403, {"message": "forbidden"}, None),
+    ],
+)
+async def test_a_trigger_value_forces_its_reply(
+    pack_dir: Path,
+    trigger: str,
+    status: int,
+    body: dict | None,
+    retry_after: str | None,
+) -> None:
+    filing = {**_FILING, "grievance": {"description": f"{trigger} claim not paid"}}
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=build_mock_app(pack_dir=pack_dir)),
+        base_url="http://mock.test",
+    ) as client:
+        response = await client.post("/support", json=_support_body(filing))
+
+    assert response.status_code == status
+    assert (response.json() if response.content else None) == body
+    assert response.headers.get("Retry-After") == retry_after
+
+
+async def test_the_404_trigger_reaches_the_dss_as_a_refusal_with_its_body(
+    pack_dir: Path,
+) -> None:
+    invocation = _grievance_invocation(pack_dir)
+
+    with pytest.raises(ProviderCallFailedError) as failed:
+        await invocation.support(
+            _DESK,
+            {**_FILING, "grievance": {"description": "FAIL-404 claim not paid"}},
+            "txn-file",
+        )
+
+    assert failed.value.kind is ProviderFailureKind.REFUSED
+    assert "No PMFBY application was found" in (failed.value.reason or "")
