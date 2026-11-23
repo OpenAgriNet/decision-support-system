@@ -25,7 +25,7 @@ from dss.core.forms.models import (
     FormContext,
     FormDefinition,
 )
-from dss.core.intent.models import InteractionType, SubjectCategory
+from dss.core.intent.models import Ask, InteractionType, SubjectCategory
 from dss.core.moderation.models import ModerationDecision, Outcome, ReasonCode
 from dss.core.planner.models import AwaitingInput, Identity, Skill, Verdict
 from dss.core.planner.validation import DomainSchema
@@ -283,10 +283,7 @@ async def _planner_prompt_for(ask: Ask) -> str:
 
     await plan(
         _turn(),
-        intent=Intent(asks=(ask,), confidence=0.9),
-        discovery=DiscoveryResult(
-            answers={}, capabilities={0: (CAPABILITY,)}, failures={}, events=()
-        ),
+        discovery=a_discovery(discovered(ask, capabilities=(CAPABILITY,))),
         verdict=_cleared_verdict(),
     )
 
