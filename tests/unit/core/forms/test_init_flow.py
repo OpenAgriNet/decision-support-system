@@ -463,7 +463,7 @@ def _init_form_handed_back(told: str) -> tuple[TextBlock, FormErrorBlock]:
             fields=(
                 FieldErrorEntry(
                     name="challenge.response.value",
-                    label="Challenge response value",
+                    label="Enter OTP",
                     error=_TEXT.field_recheck,
                 ),
             ),

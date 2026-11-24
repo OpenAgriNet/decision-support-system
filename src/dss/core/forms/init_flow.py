@@ -290,7 +290,11 @@ def decide_after_failed_init_response(  # noqa: PLR0913
             now=now,
         ),
         ending=_ended_with_init_form_back(
-            exit_for_failure, failure, init_response, init_form, text
+            exit_for_failure,
+            failure,
+            init_response,
+            labelled_for(init_form, flow.entry.challenge_method),
+            text,
         ),
     )
 
