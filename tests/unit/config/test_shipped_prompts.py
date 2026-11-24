@@ -38,7 +38,10 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 def _service() -> PromptService:
-    return build_prompt_service(_REPO_ROOT / "configs" / "prompts.yaml")
+    return build_prompt_service(
+        _REPO_ROOT / "configs" / "prompts.yaml",
+        category_guidance_dir=_REPO_ROOT / "category_guidance",
+    )
 
 
 def _intent_prompt(
@@ -456,7 +459,7 @@ def _market_skill(lang: str) -> tuple[dict, str]:
     body."""
 
     offered = _service().get_capability_skills(
-        PromptIdentifier.PLANNER, LanguageTag(lang), {SubjectCategory.MARKET}
+        LanguageTag(lang), {SubjectCategory.MARKET}
     )
     assert offered is not None
     assert offered.names == ("market",)
@@ -488,9 +491,7 @@ def test_the_hindi_market_skill_is_its_own() -> None:
 
 def test_a_turn_about_anything_else_offers_the_planner_no_skill() -> None:
     assert (
-        _service().get_capability_skills(
-            PromptIdentifier.PLANNER, LanguageTag("en"), {SubjectCategory.CROP}
-        )
+        _service().get_capability_skills(LanguageTag("en"), {SubjectCategory.CROP})
         is None
     )
 

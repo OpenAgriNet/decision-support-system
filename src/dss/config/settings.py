@@ -206,6 +206,13 @@ class Settings(BaseSettings):
     # on a different config.
     prompt_config_path: Path = Path("configs/prompts.yaml")
 
+    # The planner's Agent Skills, one folder per language holding one
+    # `<category>/SKILL.md` per intent category (ADR-0025). Relative to the
+    # working directory like `prompt_config_path`. A deployment that mounts its
+    # own sets DSS_CATEGORY_GUIDANCE_DIR; missing → raise, never boot without
+    # the rules it was given.
+    category_guidance_dir: Path = Path("category_guidance")
+
     # The registry that holds each sender's provider ranking, per capability
     # (ADR-0019, ADR-0020). The DSS holds no rankings of its own: set, it asks
     # the registry on every turn — one search fetching the sender's row and

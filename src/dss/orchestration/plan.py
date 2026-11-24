@@ -118,7 +118,7 @@ def build_plan(  # noqa: PLR0913
             model=model,
             retries=retries,
             capability_skills=prompts.get_capability_skills(
-                PromptIdentifier.PLANNER, turn.target_lang, discovery.asked_categories
+                turn.target_lang, discovery.asked_categories
             ),
             system_prompt=prompts.get_prompt(
                 PromptIdentifier.PLANNER,

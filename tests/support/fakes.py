@@ -181,10 +181,7 @@ class FakePromptProvider:
         return self._skills
 
     def get_capability_skills(
-        self,
-        prompt_identifier: PromptIdentifier,
-        lang: LanguageTag,
-        categories: Collection[SubjectCategory],
+        self, lang: LanguageTag, categories: Collection[SubjectCategory]
     ) -> CapabilitySkills | None:
         """The configured skills named, as the real library names them, for
         an asked category."""
