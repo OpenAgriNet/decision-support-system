@@ -5,7 +5,11 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from dss.config.clarification_text_loader import load_clarification_text
-from dss.core.forms.challenge import ChallengeMethod, IssuedChallenge
+from dss.core.forms.challenge import (
+    ChallengeMethod,
+    IssuedChallenge,
+    UnknownChallenge,
+)
 from dss.core.forms.init_flow import (
     FlowDecision,
     InitCall,
@@ -171,7 +175,7 @@ def test_details_without_a_value_init_sends_are_not_configured() -> None:
 def test_an_init_reply_with_a_challenge_gives_the_challenge() -> None:
     reply = _reply({"challenge": {"issued": {"method": "OTP"}}})
 
-    assert read_init_reply(reply) == IssuedChallenge(method=ChallengeMethod.OTP)
+    assert read_init_reply(reply) is ChallengeMethod.OTP
 
 
 @pytest.mark.parametrize(
@@ -271,7 +275,7 @@ def _waiting(
 
 
 def _sent_init(
-    forms: FormRecords, *, method: ChallengeMethod | None = ChallengeMethod.OTP
+    forms: FormRecords, *, challenge: IssuedChallenge = ChallengeMethod.OTP
 ) -> FlowDecision:
     init = find_init_call(_valid(_DETAILS), _FORMS)
     assert isinstance(init, InitCall)
@@ -280,7 +284,7 @@ def _sent_init(
         _DETAILS,
         provider=_PROVIDER,
         init=init,
-        challenge=IssuedChallenge(method=method),
+        challenge=challenge,
         text=_TEXT,
         now=_NOW,
     )
@@ -307,7 +311,7 @@ def test_a_sent_init_asks_for_the_init_form() -> None:
 
 
 def test_an_unknown_challenge_keeps_the_path_in_words() -> None:
-    decision = _sent_init({}, method=None)
+    decision = _sent_init({}, challenge=UnknownChallenge(sent_method="FACE"))
 
     _, offered = decision.ending.answer.content
     assert isinstance(offered, FormBlock)

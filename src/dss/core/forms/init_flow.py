@@ -8,7 +8,9 @@ from http import HTTPStatus
 from dss.core.channel.models import ClarificationText, ComposedAnswer
 from dss.core.forms.challenge import (
     ChallengeMethod,
+    InitReplyWithoutChallenge,
     IssuedChallenge,
+    known_method_of,
     read_issued_challenge,
 )
 from dss.core.forms.models import (
@@ -62,11 +64,6 @@ class InitNotConfigured:
     pass
 
 
-@dataclass(frozen=True)
-class InitReplyWithoutChallenge:
-    pass
-
-
 type InitFailure = Failure | InitReplyWithoutChallenge | InitNotConfigured
 
 
@@ -99,8 +96,7 @@ def read_init_reply(
 ) -> IssuedChallenge | Failure | InitReplyWithoutChallenge:
     if isinstance(reply, Failure):
         return reply
-    challenge = read_issued_challenge(reply.attributes)
-    return InitReplyWithoutChallenge() if challenge is None else challenge
+    return read_issued_challenge(reply.attributes)
 
 
 def end_for_failed_init(
@@ -140,14 +136,14 @@ def decide_after_sent_init(  # noqa: PLR0913
             forms,
             submission,
             provider=provider,
-            challenge_method=challenge.method,
+            challenge_method=known_method_of(challenge),
             now=now,
         ),
         ending=FlowEnding(
             status=TurnStatus.REQUIRES_INPUT,
             cause=None,
             answer=answer_for_init_form(
-                _labelled_for(init.init_form, challenge.method),
+                _labelled_for(init.init_form, known_method_of(challenge)),
                 text.init_response_needed,
             ),
         ),

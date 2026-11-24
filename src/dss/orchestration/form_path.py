@@ -13,7 +13,6 @@ from dss.adapters.observability.tracing import (
 )
 from dss.core.channel.localize import LocalizeText, localize_answer
 from dss.core.channel.models import ClarificationText, ComposedAnswer
-from dss.core.forms.challenge import IssuedChallenge
 from dss.core.forms.init_flow import (
     FlowDecision,
     InitCall,
@@ -448,7 +447,7 @@ class FormPath:
             visibility=redaction.visibility,
         )
         init_reply = read_init_reply(reply)
-        if not isinstance(init_reply, IssuedChallenge):
+        if isinstance(init_reply, Failure | InitReplyWithoutChallenge):
             _warn_if_auth_refused(init_reply, form_turn.ctx)
             return await self._finish_turn(
                 end_for_failed_init(
