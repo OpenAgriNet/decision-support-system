@@ -23,6 +23,7 @@ depend on this Protocol the same way it depends on ``LLMProvider``.
 from __future__ import annotations
 
 from collections.abc import Collection, Mapping
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Protocol, runtime_checkable
 
@@ -50,6 +51,16 @@ class PromptIdentifier(StrEnum):
     TRANSLATOR = "translator"
 
 
+@dataclass(frozen=True)
+class CapabilitySkills:
+    """The Agent Skills a turn may load: those in the ``library_path`` folder
+    named for the intent categories its asks are about. The model reads one
+    only when it loads it."""
+
+    library_path: str
+    names: tuple[str, ...]
+
+
 @runtime_checkable
 class PromptProvider(Protocol):
     def get_prompt(
@@ -63,14 +74,21 @@ class PromptProvider(Protocol):
         ...
 
     def get_skills(
+        self, prompt_identifier: PromptIdentifier, lang: LanguageTag
+    ) -> tuple[Skill, ...]:
+        """The skills configured beside that prompt, with the same language
+        fallback. Empty for components that declare none."""
+        ...
+
+    def get_capability_skills(
         self,
         prompt_identifier: PromptIdentifier,
         lang: LanguageTag,
-        categories: Collection[SubjectCategory] = frozenset(),
-    ) -> tuple[Skill, ...]:
-        """The skills configured beside that prompt, with the same language
-        fallback. Empty for components that declare none. A skill's
-        ``{{ category_guidance }}`` holds the guidance for ``categories``."""
+        categories: Collection[SubjectCategory],
+    ) -> CapabilitySkills | None:
+        """The Agent Skills configured beside that prompt for those intent
+        categories, with the same language fallback. ``None`` when none of
+        them has one."""
         ...
 
     def get_category_guidance(

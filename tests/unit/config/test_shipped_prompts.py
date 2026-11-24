@@ -18,6 +18,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import yaml
 
 from dss.config.prompt_service import PromptService, build_prompt_service
 from dss.core.forms.models import FormContext, FormReference
@@ -462,54 +463,60 @@ def test_the_hindi_market_guidance_is_its_own() -> None:
 # --- planner (moved from tests/unit/core/planner/test_prompt.py) -----------
 
 
-def test_the_planner_s_market_guidance_ships_outside_its_prompt() -> None:
-    """Without it the planner reads other markets' prices as the wrong place
-    and drops them; with it in the general prompt, every turn carries it."""
+def _market_skill(lang: str) -> tuple[dict, str]:
+    """The planner's Market skill as the model would load it: frontmatter and
+    body."""
 
-    guidance = _service().get_category_guidance(
-        PromptIdentifier.PLANNER, LanguageTag("en"), {SubjectCategory.MARKET}
+    offered = _service().get_capability_skills(
+        PromptIdentifier.PLANNER, LanguageTag(lang), {SubjectCategory.MARKET}
+    )
+    assert offered is not None
+    assert offered.names == ("market",)
+    text = (Path(offered.library_path) / "market" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    _, frontmatter, body = text.split("---\n", 2)
+    return yaml.safe_load(frontmatter), body
+
+
+@pytest.mark.parametrize("lang", ["en", "hi"])
+def test_a_market_turn_offers_the_planner_the_market_skill(lang: str) -> None:
+    """Without it the planner sends no window of its own and reads other
+    markets' prices as the wrong place."""
+
+    frontmatter, body = _market_skill(lang)
+
+    assert frontmatter["name"] == "market"
+    assert frontmatter["description"]
+    assert "validity" in body
+    assert "select_next" in body
+
+
+def test_the_hindi_market_skill_is_its_own() -> None:
+    _, body = _market_skill("hi")
+
+    assert "मंडी" in body
+
+
+def test_a_turn_about_anything_else_offers_the_planner_no_skill() -> None:
+    assert (
+        _service().get_capability_skills(
+            PromptIdentifier.PLANNER, LanguageTag("en"), {SubjectCategory.CROP}
+        )
+        is None
     )
 
-    assert "select_next" in guidance
-    assert "validity" in guidance
-    assert guidance not in _planner_prompt()
+
+@pytest.mark.parametrize("lang", ["en", "hi"])
+def test_the_planner_is_told_to_load_a_listed_skill_before_select(lang: str) -> None:
+    skills = _service().get_skills(PromptIdentifier.PLANNER, LanguageTag(lang))
+
+    assert any("load_capability" in skill.guidance for skill in skills)
+    assert all("{{" not in skill.guidance for skill in skills)
 
 
 def test_the_planner_is_told_today_to_work_out_the_days_asked_about() -> None:
     assert "Today is 2026-11-23 (Monday)." in _planner_prompt()
-
-
-@pytest.mark.parametrize("lang", ["en", "hi"])
-def test_the_planner_skill_carries_the_market_guidance_on_a_market_turn(
-    lang: str,
-) -> None:
-    service = _service()
-    guidance = service.get_category_guidance(
-        PromptIdentifier.PLANNER, LanguageTag(lang), {SubjectCategory.MARKET}
-    )
-
-    skills = service.get_skills(
-        PromptIdentifier.PLANNER, LanguageTag(lang), {SubjectCategory.MARKET}
-    )
-
-    assert any(guidance in skill.guidance for skill in skills)
-
-
-def test_the_planner_skill_carries_no_slot_on_a_turn_about_anything_else() -> None:
-    skills = _service().get_skills(
-        PromptIdentifier.PLANNER, LanguageTag("en"), {SubjectCategory.CROP}
-    )
-
-    assert all("category_guidance" not in skill.guidance for skill in skills)
-    assert all("Market prices" not in skill.guidance for skill in skills)
-
-
-def test_the_planner_s_hindi_market_guidance_is_its_own() -> None:
-    hindi = _service().get_category_guidance(
-        PromptIdentifier.PLANNER, LanguageTag("hi"), {SubjectCategory.MARKET}
-    )
-
-    assert "मंडी" in hindi
 
 
 def test_planner_prompt_includes_identity() -> None:

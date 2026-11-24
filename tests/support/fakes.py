@@ -8,7 +8,7 @@ fails, which is the point of having a contract at all.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Collection, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Literal
 
 from dss.core.forms.models import ActionReply
@@ -28,7 +28,7 @@ from dss.core.shared.models import (
 )
 from dss.core.shared.network import NetworkTransactionID
 from dss.ports.area_lookup import AreaMatch
-from dss.ports.prompts import PromptIdentifier
+from dss.ports.prompts import CapabilitySkills, PromptIdentifier
 
 
 class FakeSchemeCatalog:
@@ -150,9 +150,11 @@ class FakePromptProvider:
         self,
         skills: Sequence[Skill] = (),
         category_guidance: Mapping[SubjectCategory, str] | None = None,
+        capability_skills: CapabilitySkills | None = None,
     ) -> None:
         self._skills = tuple(skills)
         self._category_guidance = dict(category_guidance or {})
+        self._capability_skills = capability_skills
         self.calls: list[tuple[PromptIdentifier, LanguageTag, dict[str, Any]]] = []
 
     def get_prompt(
@@ -174,24 +176,24 @@ class FakePromptProvider:
         return "\n".join(lines)
 
     def get_skills(
+        self, prompt_identifier: PromptIdentifier, lang: LanguageTag
+    ) -> tuple[Skill, ...]:
+        return self._skills
+
+    def get_capability_skills(
         self,
         prompt_identifier: PromptIdentifier,
         lang: LanguageTag,
-        categories: Collection[SubjectCategory] = frozenset(),
-    ) -> tuple[Skill, ...]:
-        category_guidance = self.get_category_guidance(
-            prompt_identifier, lang, categories
-        )
-        return tuple(
-            skill.model_copy(
-                update={
-                    "guidance": skill.guidance.replace(
-                        "{{ category_guidance }}", category_guidance
-                    )
-                }
-            )
-            for skill in self._skills
-        )
+        categories: Collection[SubjectCategory],
+    ) -> CapabilitySkills | None:
+        """The configured skills named, as the real library names them, for
+        an asked category."""
+
+        if self._capability_skills is None:
+            return None
+        asked = {category.value.lower() for category in categories}
+        names = tuple(name for name in self._capability_skills.names if name in asked)
+        return replace(self._capability_skills, names=names) if names else None
 
     def get_category_guidance(
         self,

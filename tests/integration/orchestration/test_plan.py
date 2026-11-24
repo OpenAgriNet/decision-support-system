@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 from dataclasses import replace
 from datetime import date
+from pathlib import Path
 
 import pytest
 from pydantic_ai.messages import (
@@ -37,6 +38,7 @@ from dss.core.provider_discovery.models import (
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import ConversationMessage, TextQuery, UserTurn
 from dss.orchestration.plan import build_plan
+from dss.ports.prompts import CapabilitySkills
 from tests.support.asks import an_ask, numbered
 from tests.support.discovery import a_discovery, discovered
 from tests.support.evidence import attempted
@@ -260,26 +262,34 @@ async def test_the_prompt_carries_the_identity_and_the_marked_history() -> None:
     assert "Already known" not in everything
 
 
-MARKET_GUIDANCE = "Other markets in the district answer a price ask too."
+async def _skills_offered_for(ask: Ask, tmp_path: Path) -> str:
+    """The skill catalog the planner model is shown, read off the run."""
 
+    (tmp_path / "market").mkdir()
+    (tmp_path / "market" / "SKILL.md").write_text(
+        "---\nname: market\ndescription: Mandi price rules.\n---\n\nSend validity.\n",
+        encoding="utf-8",
+    )
+    shown: list[str] = []
 
-async def _planner_prompt_for(ask: Ask) -> str:
-    skill_with_a_slot = SKILL.model_copy(
-        update={"guidance": f"{SKILL.guidance}\n\n{{{{ category_guidance }}}}"}
-    )
-    prompts = FakePromptProvider(
-        skills=(skill_with_a_slot,),
-        category_guidance={SubjectCategory.MARKET: MARKET_GUIDANCE},
-    )
+    def answers_noting_instructions(
+        messages: list[ModelMessage], info: AgentInfo
+    ) -> ModelResponse:
+        shown.append(info.instructions or "")
+        return _answers_without_calling(messages, info)
+
     plan = build_plan(
         schemas=SCHEMAS,
-        schema_context_index={
-            "openagrinet:MandiPrice": "https://schemas.openagrinet.global/schema/MandiPrice/0.1/context.jsonld"
-        },
+        schema_context_index={},
         invocation_for=lambda _turn: _FakeInvocation(),
         identity=IDENTITY,
-        prompts=prompts,
-        model=FunctionModel(_answers_without_calling),
+        prompts=FakePromptProvider(
+            skills=(SKILL,),
+            capability_skills=CapabilitySkills(
+                library_path=str(tmp_path), names=("market",)
+            ),
+        ),
+        model=FunctionModel(answers_noting_instructions),
     )
 
     await plan(
@@ -288,20 +298,25 @@ async def _planner_prompt_for(ask: Ask) -> str:
         verdict=_cleared_verdict(),
     )
 
-    (_, _, values), *_ = prompts.calls
-    return values["guidance_section"]
+    return "\n".join(shown)
 
 
-async def test_a_market_ask_brings_the_market_guidance_to_the_planner() -> None:
-    assert MARKET_GUIDANCE in await _planner_prompt_for(PRICE_ASK)
+async def test_a_market_ask_offers_the_planner_the_market_skill(
+    tmp_path: Path,
+) -> None:
+    assert "market: Mandi price rules." in await _skills_offered_for(
+        PRICE_ASK, tmp_path
+    )
 
 
-async def test_an_ask_about_anything_else_brings_no_market_guidance() -> None:
+async def test_an_ask_about_anything_else_offers_no_market_skill(
+    tmp_path: Path,
+) -> None:
     weather = PRICE_ASK.model_copy(
         update={"subject_categories": SubjectCategory.WEATHER}
     )
 
-    assert MARKET_GUIDANCE not in await _planner_prompt_for(weather)
+    assert "market:" not in await _skills_offered_for(weather, tmp_path)
 
 
 async def test_the_planner_prompt_is_told_the_day_its_clock_reads() -> None:

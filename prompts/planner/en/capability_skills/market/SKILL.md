@@ -1,3 +1,8 @@
+---
+name: market
+description: "How to ask for mandi prices and read the reply. Load it before a mandi price select: it says which days to send as validity, and why other markets' prices still answer the ask."
+---
+
 ## Market prices
 
 Send `validity` on a mandi price `select`: the days to get prices for.
