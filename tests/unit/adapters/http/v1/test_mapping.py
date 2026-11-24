@@ -374,6 +374,15 @@ def test_a_pressed_button_needs_an_action_id(a_body):
         mapping.to_user_turn(body)
 
 
+def test_one_message_carries_one_pressed_button(a_body):
+    pressed = _form_action_item()
+    thread = [{"role": "user", "content": [pressed, pressed]}]
+    body = schema.TurnRequest.model_validate(a_body(message__input=thread))
+
+    with pytest.raises(ValueError, match="one pressed button"):
+        mapping.to_user_turn(body)
+
+
 def test_a_button_the_dss_does_not_offer_is_refused(a_body):
     thread = [{"role": "user", "content": [_form_action_item(name="cancel")]}]
     body = schema.TurnRequest.model_validate(a_body(message__input=thread))

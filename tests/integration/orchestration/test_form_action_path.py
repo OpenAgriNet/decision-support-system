@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import yaml
+
 from dss.config.clarification_text_loader import load_clarification_text
 from dss.core.forms.models import (
     FormAction,
@@ -14,6 +16,7 @@ from dss.core.forms.models import (
 from dss.core.shared.models import (
     Cause,
     ProviderAction,
+    TextBlock,
     TurnStatus,
     UserTurn,
 )
@@ -21,6 +24,7 @@ from tests.support.fakes import RecordingActionInvocation
 
 from .test_form_path import (
     _CHALLENGE,
+    _GRIEVANCE_YAML,
     _KISAN_PROVIDER,
     _KISAN_VALUES,
     _OTP,
@@ -104,6 +108,24 @@ async def test_a_button_the_waiting_form_never_offered_sends_nothing() -> None:
     finished = _finished(await _collect(orch, _resend_turn()))
 
     assert finished.outcome.cause is Cause.NO_INIT_PENDING
+    assert invocation.calls == []
+
+
+async def test_a_resend_with_no_init_in_the_pack_sends_nothing() -> None:
+    attributes = yaml.safe_load(_GRIEVANCE_YAML)
+    del attributes["components"]["schemas"]["Grievance"]["x-oan-schema-by-action"][
+        "init"
+    ]
+    invocation = RecordingActionInvocation(_CHALLENGE)
+    orch, store, _ = _build_kisan_orchestrator(
+        invocation, attributes_yaml=yaml.safe_dump(attributes)
+    )
+    _save_waiting(store, "offer-1")
+
+    finished = _finished(await _collect(orch, _resend_turn()))
+
+    assert finished.outcome.cause is Cause.INTERNAL
+    assert finished.content == (TextBlock(text=_TEXT.went_wrong),)
     assert invocation.calls == []
 
 

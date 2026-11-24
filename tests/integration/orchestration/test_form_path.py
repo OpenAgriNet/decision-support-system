@@ -875,6 +875,22 @@ async def test_after_init_the_details_form_waits_with_its_provider() -> None:
     assert entry.challenge_method is ChallengeMethod.OTP
 
 
+async def test_an_init_with_a_method_we_do_not_know_still_waits_and_says_why(
+    caplog,
+) -> None:
+    caplog.set_level(logging.WARNING)
+    unknown = {"challenge": {"issued": {"method": "FACE"}}}
+    orch, store, _ = _build_kisan_orchestrator(RecordingActionInvocation(unknown))
+
+    finished = _finished(await _collect(orch, _kisan_details_turn()))
+
+    assert finished.outcome.status is TurnStatus.REQUIRES_INPUT
+    assert isinstance(_stored_state(store).forms["offer-1"], FormAwaitingInit)
+    (warning,) = [r for r in caplog.records if r.name.endswith("form_turn")]
+    assert warning.getMessage() == "init challenge method not known"
+    assert warning.challenge_method == "FACE"
+
+
 @pytest.mark.parametrize(
     "sessions",
     [NoSessionStore(), SessionStore(UnreachableStore())],
