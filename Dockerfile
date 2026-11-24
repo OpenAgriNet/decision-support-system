@@ -16,10 +16,10 @@ COPY README.md ./
 COPY src/ ./src/
 # The prompt registry, the per-language templates it names, and the
 # planner's Agent Skills. WORKDIR is /app, so the settings defaults
-# (configs/prompts.yaml, category_guidance/) resolve to these.
+# (configs/prompts.yaml, capability_tools/) resolve to these.
 COPY configs/ ./configs/
 COPY prompts/ ./prompts/
-COPY category_guidance/ ./category_guidance/
+COPY capability_tools/ ./capability_tools/
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen

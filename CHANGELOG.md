@@ -24,18 +24,19 @@
   it had none and gives each other place's latest, naming the place and
   date of every figure. A mandi price reply covers a whole district over
   several days (#242)
-- The planner is offered an Agent Skill for each intent category the turn
-  asks about, from `category_guidance/<lang>/` (set by
-  `DSS_CATEGORY_GUIDANCE_DIR`), and loads it with `load_capability` when it
+- The planner is offered a capability tool, an Agent Skill, for each intent
+  category the turn asks about, from `capability_tools/<lang>/` (set by
+  `DSS_CAPABILITY_TOOLS_DIR`), and loads it with `load_capability` when it
   needs it. Market is the first.
   Adds `pydantic-ai-harness` 0.54.0, which pins `pydantic-ai-slim` 2.54.0
   (#242, ADR-0025)
 - A mandi price is asked for over the past week, not today alone, so a
   market that has not reported today still has a recent price (#242)
 - A mandi price follows the dates in the question. The planner sets the
-  window from the Market guidance: a named period as asked, the week up to a
+  window from the Market skill: a named period as asked, the week up to a
   named day, and the week up to today when no day is named or it is after
-  today. The planner's prompt now says today's date (#242)
+  today. The planner's prompt now says today's date, in
+  `DSS_LOCAL_TIMEZONE` (Asia/Kolkata by default) (#242)
 - A mandi answer gives the asked market's latest price. When that market has
   none, it gives the latest price of the other markets in the same district.
   The answer names each market and the date of its price. This is Market

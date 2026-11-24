@@ -38,11 +38,11 @@ from dss.core.provider_discovery.models import (
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import ConversationMessage, TextQuery, UserTurn
 from dss.orchestration.plan import build_plan
-from dss.ports.prompts import CapabilitySkills
+from dss.ports.capability_tools import CapabilityTools
 from tests.support.asks import an_ask, numbered
 from tests.support.discovery import a_discovery, discovered
 from tests.support.evidence import attempted
-from tests.support.fakes import FakePromptProvider
+from tests.support.fakes import FakeCapabilityTools, FakePromptProvider
 from tests.support.providers import build_capability
 
 CAPABILITY = build_capability(
@@ -283,11 +283,9 @@ async def _skills_offered_for(ask: Ask, tmp_path: Path) -> str:
         schema_context_index={},
         invocation_for=lambda _turn: _FakeInvocation(),
         identity=IDENTITY,
-        prompts=FakePromptProvider(
-            skills=(SKILL,),
-            capability_skills=CapabilitySkills(
-                library_path=str(tmp_path), names=("market",)
-            ),
+        prompts=FakePromptProvider(skills=(SKILL,)),
+        capability_tools=FakeCapabilityTools(
+            CapabilityTools(library_path=str(tmp_path), names=("market",))
         ),
         model=FunctionModel(answers_noting_instructions),
     )

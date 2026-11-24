@@ -26,8 +26,8 @@
 # component back on English for Hindi farmers, delete its `hi:` entry.
 #
 # The planner's Agent Skills, one per intent category, are not named here:
-# they live in the folder DSS_CATEGORY_GUIDANCE_DIR names
-# (`category_guidance/` by default), as `<lang>/<category in lowercase>/SKILL.md`.
+# they live in the folder DSS_CAPABILITY_TOOLS_DIR names
+# (`capability_tools/` by default), as `<lang>/<category in lowercase>/SKILL.md`.
 
 intent:
   placeholders:

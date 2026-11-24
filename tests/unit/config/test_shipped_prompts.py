@@ -20,6 +20,10 @@ from pathlib import Path
 import pytest
 import yaml
 
+from dss.config.capability_tools_service import (
+    CapabilityToolsService,
+    build_capability_tools_service,
+)
 from dss.config.prompt_service import PromptService, build_prompt_service
 from dss.core.forms.models import FormContext, FormReference
 from dss.core.intent.models import (
@@ -39,10 +43,11 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 def _service() -> PromptService:
-    return build_prompt_service(
-        _REPO_ROOT / "configs" / "prompts.yaml",
-        category_guidance_dir=_REPO_ROOT / "category_guidance",
-    )
+    return build_prompt_service(_REPO_ROOT / "configs" / "prompts.yaml")
+
+
+def _capability_tools() -> CapabilityToolsService:
+    return build_capability_tools_service(_REPO_ROOT / "capability_tools")
 
 
 def _intent_prompt(
@@ -454,7 +459,7 @@ def _market_skill(lang: str) -> tuple[dict, str]:
     """The planner's Market skill as the model would load it: frontmatter and
     body."""
 
-    offered = _service().get_capability_skills(
+    offered = _capability_tools().get_capability_tools(
         LanguageTag(lang), {SubjectCategory.MARKET}
     )
     assert offered is not None
@@ -487,7 +492,9 @@ def test_the_hindi_market_skill_is_its_own() -> None:
 
 def test_a_turn_about_anything_else_offers_the_planner_no_skill() -> None:
     assert (
-        _service().get_capability_skills(LanguageTag("en"), {SubjectCategory.CROP})
+        _capability_tools().get_capability_tools(
+            LanguageTag("en"), {SubjectCategory.CROP}
+        )
         is None
     )
 

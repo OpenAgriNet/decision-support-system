@@ -209,9 +209,14 @@ class Settings(BaseSettings):
     # The planner's Agent Skills, one folder per language holding one
     # `<category>/SKILL.md` per intent category (ADR-0025). Relative to the
     # working directory like `prompt_config_path`. A deployment that mounts its
-    # own sets DSS_CATEGORY_GUIDANCE_DIR; missing → raise, never boot without
+    # own sets DSS_CAPABILITY_TOOLS_DIR; missing → raise, never boot without
     # the rules it was given.
-    category_guidance_dir: Path = Path("category_guidance")
+    capability_tools_dir: Path = Path("capability_tools")
+
+    # The clock the planner reads today's date from, as an IANA name. The
+    # network's providers date their data in India time, and a UTC date is a
+    # day behind it from 00:00 to 05:30 IST. An unknown name stops the boot.
+    local_timezone: str = "Asia/Kolkata"
 
     # The registry that holds each sender's provider ranking, per capability
     # (ADR-0019, ADR-0020). The DSS holds no rankings of its own: set, it asks
