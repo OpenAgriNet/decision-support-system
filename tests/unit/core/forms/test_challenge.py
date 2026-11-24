@@ -5,11 +5,11 @@ from __future__ import annotations
 import pytest
 
 from dss.core.forms.challenge import (
-    ChallengeMethod,
     InitReplyWithoutChallenge,
     UnknownChallenge,
     read_issued_challenge,
 )
+from dss.core.forms.models import ChallengeMethod
 
 
 def test_an_otp_challenge_is_read_with_its_method() -> None:

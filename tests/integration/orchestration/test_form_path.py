@@ -13,9 +13,9 @@ import yaml
 from dss.adapters.sinks.memory import MemoryTurnSink
 from dss.config.clarification_text_loader import load_clarification_text
 from dss.core.channel.service import answer_for_session_busy
-from dss.core.forms.challenge import ChallengeMethod
 from dss.core.forms.models import (
     ActionReply,
+    ChallengeMethod,
     FieldErrorEntry,
     FieldValue,
     FormAwaitingInit,

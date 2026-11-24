@@ -6,7 +6,6 @@ import pytest
 
 from dss.config.clarification_text_loader import load_clarification_text
 from dss.core.forms.challenge import (
-    ChallengeMethod,
     IssuedChallenge,
     UnknownChallenge,
 )
@@ -31,6 +30,7 @@ from dss.core.forms.init_flow import (
 )
 from dss.core.forms.models import (
     ActionSchema,
+    ChallengeMethod,
     FailedCallOutcome,
     FieldErrorEntry,
     FieldValue,

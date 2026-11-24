@@ -11,7 +11,6 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from dss.core.channel.models import ComposedAnswer
-from dss.core.forms.challenge import ChallengeMethod
 from dss.core.provider_discovery.models import ProviderCapability
 from dss.core.redaction.visibility import Visibility
 from dss.core.shared.models import (
@@ -362,6 +361,10 @@ _FORM_NOTE: Mapping[tuple[FormItem, Role], str] = {
     ("form_error", "assistant"): "a form was handed back with errors",
     ("form_error", "user"): "a form was handed back with errors",
 }
+
+
+class ChallengeMethod(StrEnum):
+    OTP = "OTP"
 
 
 class FormStatus(StrEnum):

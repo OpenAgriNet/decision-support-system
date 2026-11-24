@@ -13,10 +13,10 @@ import yaml
 
 from dss.core.channel.models import ClarificationText, ComposedAnswer
 from dss.core.channel.service import answer_for_unserved_asks
-from dss.core.forms.challenge import ChallengeMethod
 from dss.core.forms.models import (
     ActionField,
     ActionSchema,
+    ChallengeMethod,
     FieldDefinition,
     FieldError,
     FieldErrorCode,

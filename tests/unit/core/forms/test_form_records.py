@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from dss.core.forms.challenge import ChallengeMethod
 from dss.core.forms.models import (
+    ChallengeMethod,
     FieldValue,
     FormAwaitingInit,
     FormContext,

@@ -4,13 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from enum import StrEnum
 
 from pydantic import BaseModel, ValidationError
 
-
-class ChallengeMethod(StrEnum):
-    OTP = "OTP"
+from dss.core.forms.models import ChallengeMethod, FormDefinition
 
 
 @dataclass(frozen=True)
@@ -56,3 +53,16 @@ def read_issued_challenge(
 
 def known_method_of(challenge: IssuedChallenge) -> ChallengeMethod | None:
     return challenge if isinstance(challenge, ChallengeMethod) else None
+
+
+# The pack has no titles yet, and its path in words reads badly to a farmer.
+_OTP_FIELD = "challenge.response.value"
+_OTP_LABEL = "Enter OTP"
+
+
+def labelled_for(
+    init_form: FormDefinition, method: ChallengeMethod | None
+) -> FormDefinition:
+    if method is ChallengeMethod.OTP:
+        return init_form.with_label(_OTP_FIELD, _OTP_LABEL)
+    return init_form

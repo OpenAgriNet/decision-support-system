@@ -7,10 +7,10 @@ from http import HTTPStatus
 
 from dss.core.channel.models import ClarificationText, ComposedAnswer
 from dss.core.forms.challenge import (
-    ChallengeMethod,
     InitReplyWithoutChallenge,
     IssuedChallenge,
     known_method_of,
+    labelled_for,
     read_issued_challenge,
 )
 from dss.core.forms.models import (
@@ -143,24 +143,11 @@ def decide_after_sent_init(  # noqa: PLR0913
             status=TurnStatus.REQUIRES_INPUT,
             cause=None,
             answer=answer_for_init_form(
-                _labelled_for(init.init_form, known_method_of(challenge)),
+                labelled_for(init.init_form, known_method_of(challenge)),
                 text.init_response_needed,
             ),
         ),
     )
-
-
-# The pack has no titles yet, and its path in words reads badly to a farmer.
-_OTP_FIELD = "challenge.response.value"
-_OTP_LABEL = "Enter OTP"
-
-
-def _labelled_for(
-    init_form: FormDefinition, method: ChallengeMethod | None
-) -> FormDefinition:
-    if method is ChallengeMethod.OTP:
-        return init_form.with_label(_OTP_FIELD, _OTP_LABEL)
-    return init_form
 
 
 # Internal, not provider_unavailable: the provider is fine; the DSS cannot
