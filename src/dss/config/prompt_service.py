@@ -2,10 +2,9 @@
 
 ``configs/prompts.yaml`` names, per LLM component and per language, which
 template under ``prompts/`` is the system prompt (and, for the planner, which
-skill files ride with it; for any component, which guidance is added for
-which intent category). The planner's Agent Skills, one per intent category,
-come from a separate folder (``category_guidance/`` by default). This module
-loads both once at boot and answers
+skill files ride with it). The planner's Agent Skills, one per intent
+category, come from a separate folder (``category_guidance/`` by default).
+This module loads both once at boot and answers
 ``get_prompt(PromptIdentifier.INTENT, lang=LanguageTag("hi"),
 placeholder_values={...})`` per turn.
 
@@ -23,9 +22,8 @@ The two properties the design leans on:
   template parses, that every template uses all of its component's declared
   ``placeholders`` and nothing else (``str.format``'s silently-dropped
   placeholder is the bug this guards against — see the old
-  ``core/planner/prompt._checked``), that every skill file parses, that
-  configured category guidance has a placeholder to go into, and that every
-  Agent Skill is under a language tag and named for an intent category.
+  ``core/planner/prompt._checked``), that every skill file parses, and that
+  every Agent Skill is under a language tag and named for an intent category.
 
 Rendering is Jinja2 with ``StrictUndefined``: a value the template needs but
 the caller did not send raises instead of printing nothing.
@@ -64,10 +62,7 @@ DEFAULT_CONFIG = Path("configs/prompts.yaml")
 # The language every component must ship and every turn can fall back to.
 FALLBACK_LANGUAGE = ENGLISH
 
-# The placeholder a component's category guidance goes into.
-CATEGORY_GUIDANCE = "category_guidance"
-
-# What marks a folder in a capability skills library as an Agent Skill.
+# What marks a folder in a language's skill folder as an Agent Skill.
 _SKILL_FILE = "SKILL.md"
 
 
@@ -81,8 +76,6 @@ class _LanguageSpec(BaseModel):
 
     system_prompt: str
     skills: tuple[str, ...] = ()
-    # Intent category → guidance file, in the order the guidance is added.
-    category_guidance: dict[str, str] = {}
 
 
 class _ComponentSpec(BaseModel):
@@ -107,7 +100,6 @@ class _LanguageEntry:
 
     template: Template
     skills: tuple[Skill, ...]
-    category_guidance: Mapping[SubjectCategory, str]
 
 
 @dataclass(frozen=True)
@@ -127,10 +119,10 @@ class PromptService:
     def __init__(
         self,
         components: dict[str, _ComponentPrompts],
-        capability_skills: Mapping[LanguageTag, _CapabilitySkillLibrary] | None = None,
+        capability_skills: Mapping[LanguageTag, _CapabilitySkillLibrary],
     ) -> None:
         self._components = components
-        self._capability_skills = dict(capability_skills or {})
+        self._capability_skills = capability_skills
 
     def get_prompt(
         self,
@@ -161,11 +153,11 @@ class PromptService:
     ) -> tuple[Skill, ...]:
         component = self._components[prompt_identifier.value]
         served = self._resolve(prompt_identifier, component, lang)
-        # A language entry may override the prompt alone. Its skills then come
-        # from English — "each prompt falls back on its own" holds per file.
         skills = component.languages[served].skills
         if skills or served == FALLBACK_LANGUAGE:
             return skills
+        # A language entry may override the prompt alone. Its skills then come
+        # from English — "each prompt falls back on its own" holds per file.
         return component.languages[FALLBACK_LANGUAGE].skills
 
     def get_capability_skills(
@@ -189,24 +181,6 @@ class PromptService:
         if not names:
             return None
         return CapabilitySkills(library_path=str(library.library), names=names)
-
-    def get_category_guidance(
-        self,
-        prompt_identifier: PromptIdentifier,
-        lang: LanguageTag,
-        categories: Collection[SubjectCategory],
-    ) -> str:
-        component = self._components[prompt_identifier.value]
-        served = self._resolve(prompt_identifier, component, lang)
-        guidance_by_category = (
-            component.languages[served].category_guidance
-            or component.languages[FALLBACK_LANGUAGE].category_guidance
-        )
-        return "\n\n".join(
-            guidance
-            for category, guidance in guidance_by_category.items()
-            if category in categories
-        )
 
     def languages_for(
         self, prompt_identifier: PromptIdentifier
@@ -361,19 +335,7 @@ def _load_language(
     skills = tuple(
         load_skill_file(_resolved(base, skill_path)) for skill_path in entry.skills
     )
-    category_guidance = _load_category_guidance(
-        entry.category_guidance, base=base, label=label
-    )
-    if category_guidance and CATEGORY_GUIDANCE not in placeholders:
-        raise ValueError(
-            f"prompt {label} has category guidance but its template does not "
-            f"use {CATEGORY_GUIDANCE} — it would never be read"
-        )
-    return _LanguageEntry(
-        template=environment.from_string(text),
-        skills=skills,
-        category_guidance=category_guidance,
-    )
+    return _LanguageEntry(template=environment.from_string(text), skills=skills)
 
 
 def _load_capability_skill_libraries(
@@ -427,40 +389,6 @@ def _skill_category(skill_name: str, label: str) -> SubjectCategory:
             f"category guidance {label} has skill {skill_name!r}, which is not "
             f"an intent category in lowercase ({', '.join(by_skill_name)})"
         ) from None
-
-
-def _load_category_guidance(
-    paths: Mapping[str, str], *, base: Path, label: str
-) -> Mapping[SubjectCategory, str]:
-    """Kept in configured order, the order a turn's guidance is joined in."""
-
-    return {
-        _guidance_category(category, label): _read_category_guidance(
-            _resolved(base, path), label
-        )
-        for category, path in paths.items()
-    }
-
-
-def _guidance_category(category: str, label: str) -> SubjectCategory:
-    """Guidance keyed by a name intent never produces would never be added —
-    so it refuses to boot rather than sit there unread."""
-
-    try:
-        return SubjectCategory(category)
-    except ValueError:
-        raise ValueError(
-            f"prompt {label} has guidance for {category!r}, which is not an "
-            f"intent category ({', '.join(SubjectCategory)})"
-        ) from None
-
-
-def _read_category_guidance(path: Path, label: str) -> str:
-    if not path.exists():
-        raise FileNotFoundError(
-            f"prompt {label} points at category guidance {path} but no file is there"
-        )
-    return path.read_text(encoding="utf-8").strip()
 
 
 def _resolved(base: Path, path: str) -> Path:

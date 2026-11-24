@@ -34,8 +34,8 @@ which category's rules a turn needs.
 
 1. **Category guidance in the prompt registry.** `configs/prompts.yaml` maps an
    intent category to a guidance file, per component and language. The
-   guidance for the categories the turn's asks carry goes into the
-   component's prompt in one place.
+   guidance for the categories the turn's asks carry goes into a
+   `{{ category_guidance }}` placeholder in the component's prompt.
 2. **`{% if %}` branches in the template.** Every category's text stays inside
    the general prompt file, so the file grows with each category and the
    reviewer still reads them all.
@@ -46,29 +46,18 @@ which category's rules a turn needs.
    review asked for the planner to stay free of any one capability.
 4. **An Agent Skill per category, chosen by intent.** The planner is offered
    the category's skill through the Agent Skills capability of
-   `pydantic-ai-harness` (`Skills`), and loads it when it needs it. The
-   composer is not an agent with tools, so it still needs option 1.
-5. **A slot in the planner's existing skill**, filled like the composer's
+   `pydantic-ai-harness` (`Skills`), and loads it when it needs it.
+5. **A slot in the planner's existing skill**, filled like option 1's
    placeholder. One mechanism for both components, but every skill file
    becomes a template, and the registry needs code to fill and check it.
 
 ## 4. Decision Outcome
 
-Chosen options: **1** for the composer, **4** for the planner. Option 5 was
-built first; review asked for the planner's rules to load as a skill rather
-than be joined into one by our code.
+Chosen option: **4**, for the planner. Options 1 and 5 were built first;
+review asked for the planner's rules to load as a skill rather than be
+joined into its prompt by our code, and for the composer to carry no
+category guidance at all.
 
-- **Config.** A language entry may carry `category_guidance: {<category>: <file>}`. The
-  key must be an intent category, and the file must exist, or the DSS refuses
-  to boot. A language with no `category_guidance` uses English's, as skills do.
-- **Port.** `PromptProvider.get_category_guidance(identifier, lang, categories)`
-  returns the guidance for those categories, in configured order, joined by a
-  blank line — or nothing.
-- **Composer.** It is given the guidance for the subject categories of the
-  turn's asks, in a `{{ category_guidance }}` placeholder in its template.
-  Guidance with no placeholder to go into refuses to boot. It is told to give
-  the asked market's latest price, or say it had none and give each other
-  market's latest, and to name the market and date of every price.
 - **Planner.** Its Agent Skills live outside the prompt registry, in the
   folder `DSS_CATEGORY_GUIDANCE_DIR` names (`category_guidance/` at the repo
   root by default): one folder per language, each holding one
@@ -85,21 +74,25 @@ than be joined into one by our code.
   tools. The Market skill tells the planner which days to ask prices for,
   from the question's dates and today's date, and that other markets'
   prices in the district still answer the ask, so it keeps them.
+- **Composer.** It gets no category guidance. One general rule in its prompt
+  covers what the Market guidance said: data may cover more places or days
+  than asked, so give the asked place's latest figure, or say it had none and
+  give each other place's latest, naming the place and date of every figure.
 
 ## 5. Consequences
 
-- **Good:** a turn about weather no longer reads mandi rules. Adding guidance
-  for a category is a file and a config line, per language.
-- **Good:** the same mechanism serves any component that asks for its
-  guidance; the planner and the composer do today.
+- **Good:** a turn about weather is not offered the Market skill. Adding a
+  category's rules for the planner is a `SKILL.md`, per language, with no
+  config line.
 - **Good:** the planner's and the composer's code stay generic. A category's
   rules change prompt text, never the flow.
 - **Bad:** following a category's rules is up to the model, not code. Picking
   the asked market's latest price is no longer guaranteed, and the composer
   reads every market's rows for those days, which costs more tokens.
-- **Bad:** guidance is chosen by category, not by what was found. A
-  Market ask that ends with no data still gets the market rules — harmless,
-  since they only speak about prices that are there.
+- **Bad:** the composer's rule is general, so it is read on every turn, and a
+  category that needs composer rules of its own has no place for them yet.
+- **Bad:** skills are chosen by category, not by what was found. A Market
+  ask that ends with no data is still offered the Market skill.
 - **Bad:** the planner reads its category's rules only if it loads the
   skill. A turn where it does not gets no Market rules, and one where it does
   costs one more model round trip.
@@ -121,7 +114,7 @@ and the composer's code carry no branch for a category or a data type.
 One exception stays, and it is not a rule about answers. Agmarknet refuses
 a MandiPrice `/select` without a validity window. The pack lists `validity`
 as a field a caller may send, so the planner sets it, and the Market
-guidance says which days: a named period as asked, the week up to a named
+skill says which days: a named period as asked, the week up to a named
 day, and the week up to today when no day is named or it is after today. The
 planner's prompt carries today's date, for any capability, so it can work
 the days out.

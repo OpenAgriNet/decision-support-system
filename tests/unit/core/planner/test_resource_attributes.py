@@ -609,9 +609,7 @@ def test_the_subject_category_comes_from_the_ask_not_the_advertisement() -> None
     assert resource_attributes["subjectCategories"] == ["Scheme"]
 
 
-def test_a_mandi_price_without_the_models_window_asks_for_the_week_up_to_today() -> (
-    None
-):
+def test_a_mandi_price_with_no_window_asks_for_the_week_up_to_today() -> None:
     """Agmarknet refuses a MandiPrice select without one —
     `SCH_INVALID_FORMAT: this capability needs a validity window; it reports
     prices over a date range` — and the model may leave it out.

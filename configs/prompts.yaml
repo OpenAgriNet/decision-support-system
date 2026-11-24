@@ -25,13 +25,9 @@
 # a demo in its header and is pending review by a Hindi speaker. To put any
 # component back on English for Hindi farmers, delete its `hi:` entry.
 #
-# `category_guidance` adds guidance for one intent category, only on a turn
-# intent found asking about it — so the prompt stays general, and a
-# category's rules ride along only when needed. Keys are intent categories (Market, Weather, ...).
-#
-# The planner's Agent Skills are not named here: they live in the folder
-# DSS_CATEGORY_GUIDANCE_DIR names (`category_guidance/` by default), as
-# `<lang>/<category in lowercase>/SKILL.md`.
+# The planner's Agent Skills, one per intent category, are not named here:
+# they live in the folder DSS_CATEGORY_GUIDANCE_DIR names
+# (`category_guidance/` by default), as `<lang>/<category in lowercase>/SKILL.md`.
 
 intent:
   placeholders:
@@ -80,16 +76,11 @@ composer:
     - persona
     - boundaries
     - target_lang
-    - category_guidance
   language_prompts:
     en:
       system_prompt: prompts/composer/en/prompt.j2
-      category_guidance:
-        Market: prompts/composer/en/category_guidance/market.md
     hi:
       system_prompt: prompts/composer/hi/prompt.j2
-      category_guidance:
-        Market: prompts/composer/hi/category_guidance/market.md
 
 # Renders system-authored text — refusals, clarification questions, the
 # no-provider answers — in the turn's target language (ADR-0018). English

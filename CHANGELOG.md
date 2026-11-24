@@ -20,16 +20,14 @@
 - `--ref` is removed from the fetch script; passing it now fails as an
   unknown argument. `DSS_SCHEMA_PACK_REF` and `SCHEMA_PACK_REF` are removed
   and ignored if still set (#252)
-- The composer's prompt carries guidance for an intent category only on a
-  turn intent found asking about it. `configs/prompts.yaml` maps a category
-  to a guidance file per language under `category_guidance`, and it goes
-  where the template writes `{{ category_guidance }}`. The mandi price rule
-  moves out of the composer's general prompt into the Market guidance
-  (#242, ADR-0025)
+- The composer gives the latest figure for the place asked about, or says
+  it had none and gives each other place's latest, naming the place and
+  date of every figure. A mandi price reply covers a whole district over
+  several days (#242)
 - The planner is offered an Agent Skill for each intent category the turn
   asks about, from `category_guidance/<lang>/` (set by
-  `DSS_CATEGORY_GUIDANCE_DIR`), and
-  loads it with `load_capability` when it needs it. Market is the first.
+  `DSS_CATEGORY_GUIDANCE_DIR`), and loads it with `load_capability` when it
+  needs it. Market is the first.
   Adds `pydantic-ai-harness` 0.54.0, which pins `pydantic-ai-slim` 2.54.0
   (#242, ADR-0025)
 - A mandi price is asked for over the past week, not today alone, so a

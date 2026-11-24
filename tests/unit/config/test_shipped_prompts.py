@@ -89,7 +89,6 @@ def _composer_prompt() -> str:
             "persona": "A calm, practical farm advisor.",
             "boundaries": "Never gives financial or legal advice.",
             "target_lang": "en",
-            "category_guidance": "",
         },
     )
 
@@ -399,7 +398,6 @@ def test_composer_prompt_carries_identity_and_target_language() -> None:
             "persona": "A calm advisor.",
             "boundaries": "Never gives legal advice.",
             "target_lang": "mr",
-            "category_guidance": "",
         },
     )
 
@@ -420,35 +418,21 @@ def test_composer_hindi_demo_keeps_the_citation_form() -> None:
             "persona": "p",
             "boundaries": "b",
             "target_lang": "hi",
-            "category_guidance": "",
         },
     )
 
     assert "[1]" in prompt
 
 
-def test_the_market_guidance_ships_outside_the_composer_prompt() -> None:
-    """Mandi rules reach the composer only on a turn intent found asking
-    about a market; the general prompt carries none of them."""
+def test_composer_prompt_gives_the_asked_place_latest_figure_first() -> None:
+    """A mandi price reply covers the asked market's whole district over a
+    week: the asked market's latest price answers, and other markets' prices
+    still do when it has none."""
 
-    service = _service()
-    guidance = service.get_category_guidance(
-        PromptIdentifier.COMPOSER, LanguageTag("en"), {SubjectCategory.MARKET}
-    )
-
-    assert "market" in guidance
-    assert "date" in guidance
-    assert guidance not in _composer_prompt()
-
-
-def test_the_hindi_market_guidance_is_its_own() -> None:
-    service = _service()
-
-    hindi = service.get_category_guidance(
-        PromptIdentifier.COMPOSER, LanguageTag("hi"), {SubjectCategory.MARKET}
-    )
-
-    assert "मंडी" in hindi
+    prompt = _composer_prompt().lower()
+    assert "latest figure for the place asked about" in prompt
+    assert "each other place's latest" in prompt
+    assert "name the place and the date of" in prompt
 
 
 # --- planner (moved from tests/unit/core/planner/test_prompt.py) -----------
