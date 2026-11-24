@@ -28,6 +28,10 @@
 # `category_guidance` adds guidance for one intent category, only on a turn
 # intent found asking about it — so the prompt stays general, and a
 # category's rules ride along only when needed. Keys are intent categories (Market, Weather, ...).
+#
+# `capability_skills` is a folder of Agent Skills for the planner, one per
+# intent category, each `<category in lowercase>/SKILL.md`. A turn offers the
+# skills for the categories intent found; the model loads one when it needs it.
 
 intent:
   placeholders:
@@ -65,14 +69,12 @@ planner:
       system_prompt: prompts/planner/en/prompt.j2
       skills:
         - prompts/planner/en/skills/provider-invocation.md
-      category_guidance:
-        Market: prompts/planner/en/category_guidance/market.md
+      capability_skills: prompts/planner/en/capability_skills
     hi:
       system_prompt: prompts/planner/hi/prompt.j2
       skills:
         - prompts/planner/hi/skills/provider-invocation.md
-      category_guidance:
-        Market: prompts/planner/hi/category_guidance/market.md
+      capability_skills: prompts/planner/hi/capability_skills
 
 composer:
   placeholders:

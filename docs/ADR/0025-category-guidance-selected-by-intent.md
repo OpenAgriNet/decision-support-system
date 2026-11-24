@@ -44,16 +44,19 @@ which category's rules a turn needs.
    change the rules, and they skip the per-language mechanism. An earlier
    version of #242 picked the asked market's prices in the planner's code;
    review asked for the planner to stay free of any one capability.
-4. **A whole skill per category, chosen by intent** ("skill discovery"). A
-   skill binds tools and sets out how to call providers; the Market rules
-   are a few lines that adjust that one procedure, not a new one. And the
-   composer has no skills, so it would still need option 1. A slot in the
-   existing skill gives the planner the same per-category selection with one
-   mechanism for both components.
+4. **An Agent Skill per category, chosen by intent.** The planner is offered
+   the category's skill through the Agent Skills capability of
+   `pydantic-ai-harness` (`Skills`), and loads it when it needs it. The
+   composer is not an agent with tools, so it still needs option 1.
+5. **A slot in the planner's existing skill**, filled like the composer's
+   placeholder. One mechanism for both components, but every skill file
+   becomes a template, and the registry needs code to fill and check it.
 
 ## 4. Decision Outcome
 
-Chosen option: **1**.
+Chosen options: **1** for the composer, **4** for the planner. Option 5 was
+built first; review asked for the planner's rules to load as a skill rather
+than be joined into one by our code.
 
 - **Config.** A language entry may carry `category_guidance: {<category>: <file>}`. The
   key must be an intent category, and the file must exist, or the DSS refuses
@@ -61,18 +64,24 @@ Chosen option: **1**.
 - **Port.** `PromptProvider.get_category_guidance(identifier, lang, categories)`
   returns the guidance for those categories, in configured order, joined by a
   blank line — or nothing.
-- **Planner and composer.** Both are given the guidance for the subject
-  categories of the turn's asks, in a `{{ category_guidance }}` slot. The
-  planner's slot is in its skill (`provider-invocation.md`), so its prompt
-  template is unchanged. The composer has no skills, so the slot is a
-  placeholder in its template. A skill may use no other value, and guidance
-  with no slot in the template or a skill refuses to boot. Market is the
-  first category with guidance.
-  The planner is told which days to ask prices for, worked out from the
-  question's dates and today's date, and that other markets' prices in the
-  district still answer the ask, so it keeps them. The composer is told to give the asked market's
-  latest price, or say it had none and give each other market's latest, and
-  to name the market and date of every price.
+- **Composer.** It is given the guidance for the subject categories of the
+  turn's asks, in a `{{ category_guidance }}` placeholder in its template.
+  Guidance with no placeholder to go into refuses to boot. It is told to give
+  the asked market's latest price, or say it had none and give each other
+  market's latest, and to name the market and date of every price.
+- **Planner.** A language entry may carry `capability_skills: <folder>`, a
+  folder of Agent Skills, one per intent category, each
+  `<category in lowercase>/SKILL.md` (`market/SKILL.md`). A folder named for
+  no intent category, or a missing folder, refuses to boot.
+  `PromptProvider.get_capability_skills(identifier, lang, categories)` names
+  the skills for the turn's categories, and the planner agent is built with
+  `Skills(..., include=those names)`. The model sees each offered skill's
+  name and description, and loads its rules with `load_capability`; its
+  skill tells it to load a listed one before `select`. The library is read
+  through a read-only workspace of its own, so the planner gets no file
+  tools. The Market skill tells the planner which days to ask prices for,
+  from the question's dates and today's date, and that other markets'
+  prices in the district still answer the ask, so it keeps them.
 
 ## 5. Consequences
 
@@ -88,6 +97,16 @@ Chosen option: **1**.
 - **Bad:** guidance is chosen by category, not by what was found. A
   Market ask that ends with no data still gets the market rules — harmless,
   since they only speak about prices that are there.
+- **Bad:** the planner reads its category's rules only if it loads the
+  skill. A turn where it does not gets no Market rules, and one where it does
+  costs one more model round trip.
+- **Bad:** a new dependency. `pydantic-ai-harness` pins one exact
+  `pydantic-ai-slim` version per release (0.54.0 pins 2.54.0), so the two
+  are upgraded together. It is pre-1.0, and its API may change between minor
+  releases.
+- **Neutral:** two kinds of skill now sit beside each other: the planner's
+  own (`skills:`, always in its prompt, binding its tools) and Agent Skills
+  (`capability_skills:`, loaded on demand, instructions only).
 - **Neutral:** the one category-specific line of code left is the MandiPrice
   validity window. See §6.
 

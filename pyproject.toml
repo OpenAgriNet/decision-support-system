@@ -55,6 +55,10 @@ dependencies = [
     # The session state store (ADR-0022): key-value with a TTL, and its one-server
     # lock, so the DSS does not hand-roll locking.
     "redis>=8.1",
+    # Agent Skills for the planner, loaded per intent category (ADR-0025).
+    # Each release pins one exact pydantic-ai-slim (0.54.0 pins 2.54.0), so the
+    # two are upgraded together.
+    "pydantic-ai-harness[skills]==0.54.0",
 ]
 
 [build-system]

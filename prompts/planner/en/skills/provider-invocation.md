@@ -54,6 +54,8 @@ next preferred provider's data; it calls nobody new. Judge that data the same
 way. Stop when the data answers the ask or `select_next` says no provider is
 left.
 
-{{ category_guidance }}
+When a capability is listed for the kind of question an ask is, load it
+with `load_capability` before you call `select` for that ask. It says how
+to ask for that data and how to read what comes back.
 
 Stop once every ask you can answer has been answered.
