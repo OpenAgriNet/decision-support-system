@@ -7,7 +7,8 @@ Draft 2. Rewritten after review.
 ## 1. What this is
 
 A farmer asks a question, in their own language. The DSS works out what they need, finds who
-can answer, and returns an answer with its sources. It stores nothing.
+can answer, and returns an answer with its sources. It keeps no conversation. It holds a
+short-lived session, which form flows need (ADR-0022).
 
 So where does this thing actually live?
 
@@ -33,19 +34,20 @@ One `POST`, many events back on the same open connection. Server-Sent Events.
 
 1. Experience posts the query. The connection stays open.
 2. The DSS runs the turn. Nothing is sent yet.
-3. The composer starts writing claims. Each goes out as it is ready.
+3. The composer starts writing. Each piece goes out as it is ready.
 4. One terminal event. The connection closes.
+
+The caller can also ask for one JSON body in place of the stream. The `Accept` header picks.
 
 Experience does the same to its own caller — it forwards each chunk as it arrives.
 
-**The stream cannot be resumed today.** If the connection drops mid-turn, the DSS finishes the
-turn and stores the answer. The caller re-issues with the same session id and finds it in
-history.
+**The stream cannot be resumed today.** If the connection drops mid-turn, the DSS stops the
+turn. The caller asks again.
 
 **Two connections can drop, not one** — farmer to Experience, and Experience to DSS. The
 farmer's is the fragile one: patchy mobile data, a dropped voice call.
 
-**Resumability is open.** [Open #12]
+**Resumability is open.** [Open #11]
 
 So how does one question actually get answered?
 
@@ -53,114 +55,128 @@ So how does one question actually get answered?
 
 ## 3. The shape of a turn
 
-```
-UserTurn
-   ↓
-Intent Agent ──────┬──────────┬──────────┬──────────────┐
-   ↓               ↓          ↓          ↓              ↓
-Taxonomy       Skills      Provider    Tool         Moderation
-             Discovery    Discovery  Discovery          ↓
-                   ↓          ↓          ↓        Future[verdict]
-                Skills   Provider     Tool              │
-                         Candidates  Candidates         │
-                   └──────────┴──────────┴──────────────┘
-                              ↓
-                       Planner Agent
-                              ↓
-                            Plan
-                              ↓
-                      Plan Executioner      ← only outside calls
-                              ↓
-                          Evidence
-                              ↓
-                     Response Composer      ← streams claims
-                              ↓
-                           Answer
-                              ↓
-                    Channel Response        ← shapes for voice/chat/sms
-                              ↓
-                         what the farmer gets
-```
+![The turn spine](images/dss-orchestration.png)
+
+Source: [dss-orchestration.excalidraw](dss-orchestration.excalidraw). Grey dashed boxes are
+planned and not built yet.
 
 ### What comes in
 
 ```python
 class UserTurn:
-    query: str
-    history: tuple[HistoryEntry, ...]
-    subject_ref: SubjectRef
+    input: TurnInput                  # what the user sent: text, or a filled form
+    session_id: str
+    transaction_id: str               # the caller's id for this turn
+    source_lang: LanguageTag          # language the user spoke or typed
+    target_lang: LanguageTag          # language the answer comes back in
+    channel: str                      # web / whatsapp / voice / ...
+    sender_id: str | None             # which application sent the turn, never the user
+    user: UserDetails
+    history: list[ConversationMessage]
     location: Location | None
+    response_max_chars: int | None    # the longest answer the caller wants
 
 
-class HistoryEntry:
-    role: Role                   # who said it — the model needs to know
-    content: str
+class TextQuery(TurnInput):           # a sentence
+    text: str
 
 
-class Role(StrEnum):
-    USER = "user"
-    ASSISTANT = "assistant"
+class UserDetails:                    # every field optional
+    user_id: str | None
+    phone: str | None
+    reference: ReferenceToken | None
 
 
-class SubjectRef:
-    user_id: str
-    ref: SecretStr | None        # never printed in logs
+class ReferenceToken:                 # passed on to a provider, never opened
+    value: str
     issuer: str | None
     expires_at: datetime | None
 
 
-class Location:
-    district: str | None
-    state: str | None
-    lat: float | None            # rounded to 2 decimals (~1 km)
-    lon: float | None
+class ConversationMessage:
+    role: Role                        # "user" or "assistant"
+    text: str
+    reference: MessageReference | None   # a form offered or sent, never its values
+
+
+class Location:                       # every field optional
+    region: str | None                # ISO 3166-2, "IN-GJ"
+    area: str | None                  # local name, "Anand"
+    geometry: Geometry | None         # a point, [lon, lat]
 ```
 
-**Changes from draft 1:**
-- `memory` **removed** — nothing reads it. Add it when something does.
-- `ref` is `SecretStr` — prints as `**********`, cannot leak into a log by accident.
-- lat/long - open question on rounding. [Open #8]
-- `role` is an enum, not a string.
+**Changes since draft 2:**
+- `query` became `input`. It is text or a filled form. A form turn takes its own path.
+- Language, channel and session moved here from `TurnContext`.
+- `subject_ref` became `user`. A turn need not be tied to a person.
+- `location` has no level words such as district or state. Rounding is still open. [Open #8]
+- `sender_id` names the calling application. It picks whose provider ranking applies.
 
 **Rules**
-- `history` is untrusted.It's considered as a Data, never instructions.
+- `history` is untrusted. It is data, never instructions.
+- A form in `history` shows as one fixed line, never its values.
 - `location` is optional with no default — two of three deployments cannot fill it.
-- The DSS never opens `subject_ref.ref`.
+- The DSS never opens `user.reference`. An expired one counts as absent.
 
 ### How a turn ends
 
-Four ways out. Not moderation-specific — several components can land on one of these.
+Two things, not one. Moderation gives a **gate outcome**. The turn itself ends in a **status**,
+which is what the caller is told.
 
 ```python
-class Outcome(StrEnum):
-    PROCEED = "proceed"          # answered
-    REJECT = "reject"            # will not answer
-    CLARIFY = "clarify"          # need more from the farmer
-    NO_MATCH = "no_match"        # nothing found that can answer
+class Outcome(StrEnum):              # moderation's gate
+    PROCEED = "proceed"
+    REJECT = "reject"
+    CLARIFY = "clarify"
+    NO_MATCH = "no_match"
+
+
+class TurnStatus(StrEnum):           # what the caller is told
+    ANSWERED = "answered"
+    PARTIALLY_ANSWERED = "partially_answered"
+    REJECTED = "rejected"
+    NO_MATCH = "no_match"
+    REQUIRES_INPUT = "requires_input"
+    UNAVAILABLE = "unavailable"
 ```
 
-Moderation can set `REJECT` or `CLARIFY`. A policy at any checkpoint can too. The Planner sets
-`NO_MATCH` when nothing serves the ask. The orchestrator decides which path the turn took,
-because only it sees the whole turn.
+| Status | When |
+|---|---|
+| `answered` | every ask was served |
+| `partially_answered` | some asks were served, some were not |
+| `requires_input` | the DSS needs something from the user: an answer to a question, or a form to fill. Moderation's `CLARIFY` also ends here. |
+| `rejected` | moderation said `REJECT` |
+| `no_match` | nothing was understood, or nobody serves any ask |
+| `unavailable` | a provider exists but could not be reached, or the session is busy with another turn |
 
-**Only `PROCEED` streams.** The other three send one message and stop.
+A status can carry a `cause`, such as `provider_unavailable`.
 
-Every component writes to two sinks. Not drawn.
+The orchestrator reads the status off what the turn gathered. It adds no rule of its own.
 
-The **TurnSink** holds the record of the turn — what was asked, what was found, what was
-answered, what was refused. Required. This is the audit trail.
+**Only a turn that reaches the composer streams.** A refusal, a no-match and a busy session
+send one message and stop.
 
-The **TelemetrySink** holds spans, timings and token counts. Optional. Defaults to stdout, so a
-bare deployment still works. An adopter binds a tracing backend of their own.
+The orchestrator writes to two sinks. Components do not. Not drawn.
 
-`TurnContext` carries `trace_id` and `session_id`. Both sinks write them, so one turn can be
-read across the two. The entrypoint makes the `trace_id`, and the telemetry adapter must use
-that same id — if the backend makes its own, the join breaks.
+The **TurnSink** holds the record of the turn. It is written twice: when the turn opens, with
+the question, and when it closes, with the answer and the status. Required. This is the audit
+trail, so a write that fails fails the turn.
 
-Farmer content goes to the TurnSink only. Tracing backends capture prompt text by default, and
-the prompt holds the query — so the adapter must mask it. [Open #11]
+The record holds tags, not the user's own values. Redaction runs first, so a phone number is
+already a tag when the turn is recorded.
 
-The record's shape is not decided yet.
+The **TelemetrySink** holds each stage's name and outcome. Optional. Defaults to stdout, so a
+bare deployment still works. A write that fails is dropped and the turn goes on. User content
+must never reach it.
+
+Traces, metrics and logs are a third thing. They go over OpenTelemetry to one endpoint, and a
+collector sends them on (ADR-0014). `core/` never opens a span.
+
+`TurnContext` carries `trace_id` and `session_id`. The `trace_id` is the caller's own
+transaction id, so one turn can be followed from the caller, through both sinks, into the
+traces.
+
+What a trace may hold of the user's words is still open. [Open #10]
 
 One query can hold several questions:
 
@@ -168,16 +184,31 @@ One query can hold several questions:
 
 ```python
 asks = (
-    Ask(agriculture_subjects="potato",   subject_categories=MARKET, interaction_type=OBSERVE, place=None),
-    Ask(agriculture_subjects="PM-KISAN", subject_categories=SCHEME, interaction_type=ADVISE,  place=None),
-    Ask(agriculture_subjects="potato",   subject_categories=CROP,   interaction_type=ADVISE,  place=None),
+    Ask(id=0, agriculture_subjects="potato",   subject_categories=MARKET, interaction_type=OBSERVE),
+    Ask(id=1, agriculture_subjects="PM-KISAN", subject_categories=SCHEME, interaction_type=OBSERVE),
+    Ask(id=2, agriculture_subjects="potato",   subject_categories=CROP,   interaction_type=ADVISE),
 )
 ```
 
-Each ask becomes a plan step, gets executed, and feeds one answer.
+The `id` is given once and never changes. Every later step names the ask by it.
 
-There's a hard line halfway down that diagram: everything up to `Plan` can be thrown away.
-Everything from `Plan Executioner` onward cannot — a Provider call may already have happened.
+An ask can also carry three facts: a `place`, a `scheme` and an `action`. Each is empty when
+the ask does not need it. Section 6 covers them.
+
+Each ask is handled on its own. It gets its own providers, its own calls and its own part of
+the answer.
+
+There is a hard line halfway down that diagram: the barrier. Everything above it can be thrown
+away. That includes a discovery query, which only reads. Everything below it cannot — a Provider
+call may already have happened.
+
+Today the Planner sits below the line, because it builds the plan and also makes the calls. It
+starts only when moderation says `PROCEED`.
+
+*Future scope:* when the Plan Executioner is built, the line moves down to sit above it. The
+Planner may then build a plan while moderation is still deciding. We want to try that, but it
+is not built.
+
 That barrier shapes who is allowed to call whom.
 
 ---
@@ -192,20 +223,14 @@ each other — every one takes plain objects and returns plain objects.
 
 ```python
 class TurnContext:
-    trace_id: str
+    trace_id: str      # the caller's transaction id, sent back as traceId
+    message_id: str    # the caller's, or one the entrypoint makes
     session_id: str
-    source_lang: str
-    target_lang: str
-    channel: Channel
-    tenant: str
-
-
-class Channel(StrEnum):
-    WEB = "web"
-    WHATSAPP = "whatsapp"
-    VOICE = "voice"
-    SMS = "sms"
+    sender_id: str     # who called; picks the provider preference
 ```
+
+`TurnContext` holds the ids an answer is filed under. The languages and the channel are on
+`UserTurn`, since they describe the question.
 
 Illustration only — not the implementation. It shows who calls what and what is held:
 
@@ -214,14 +239,12 @@ async def run_turn(turn: UserTurn, ctx: TurnContext) -> AsyncIterator[ChannelChu
     intent = await classify(turn, taxonomy, ctx)
 
     skills_task                = discover_skills(turn, intent, ctx)
-    provider_candidates_task   = discover_providers(intent, turn, ctx)     # all four run together
-    tool_candidates_task       = discover_tools(intent, tool_index, ctx)
+    provider_candidates_task   = discover_providers(intent, turn, ctx)     # all three run together
     moderation_verdict_task    = moderate(turn, intent, ctx)
     skills     = await skills_task
     discovered = await provider_candidates_task      # DiscoveryResult
-    tools      = await tool_candidates_task
 
-    plan     = await plan_turn(turn, intent, skills, discovered, tools, schemas,
+    plan     = await plan_turn(turn, intent, skills, discovered, schemas,
                                moderation_verdict_task, ctx)
     evidence = await execute(plan, ctx)
     answer   = compose_response(evidence, plan, identity, ctx)
@@ -246,36 +269,54 @@ avoid adopter adding the code, instead they should be able to extend by configs,
 
     *Reason why we should avoid extention via code is simply because you will not be able to control what kind of code adopter will run, though we can provide some reference, test suits etc, there can still be loop holes. So we should come back to this point when we have a strong reason to allow and with proper governance and quality and security checks in place*
 
-### Implementation status (this branch — ADR-0006)
+### What runs today
 
-The illustration above is the target. What this branch actually ships is the
-**skeleton**, wiring only the components that exist:
+The illustration above is the target. This is what the code runs:
 
 ```python
-async def run_turn(turn: UserTurn, components: OrchestratorComponents,
-                   *, now: datetime) -> TurnResult:
-    intent, decision = await (classify ∥ moderate)   # anyio task group (ADR-0003/0005)
-    if decision.outcome is not PROCEED:               # the barrier
-        return TurnResult(outcome=decision.outcome, intent=Intent(), plan=None)
-    discovered = await discover_providers(intent, turn, now)   # read-only
-    plan       = await plan_turn(turn, intent, discovered, decision)
-    return TurnResult(outcome=outcome_for(decision, plan), intent=intent, plan=plan)
+async def run(turn, ctx):                    # one turn at a time per session
+    turn, real_values = redact(turn)
+    turn = translate_in(turn)
+
+    decision ∥ (intent → places → settlement → discovery)    # run side by side
+    if decision.outcome is not PROCEED:      # the barrier
+        return refusal(decision)             # one message, no stream
+
+    evidence = plan(turn, discovery, decision)    # builds the plan and runs it
+    for piece in compose(evidence, turn):
+        yield reveal(translate_out(piece), real_values)
+    yield TurnFinished(status_for(evidence))
 ```
 
-- **Concurrency is `anyio`**, not `asyncio` — consistent with the rest of `core`
-  (ADR-0005). Intent and moderation run in one task group.
-- **The barrier is enforced by the gate**, not by passing an awaitable into the
-  planner: nothing side-effecting runs until moderation clears, so discovery and the
-  planner are reached only on `PROCEED`.
-- **The planner owns plan creation *and* execution** — there is no separate
-  executioner step in the code.
-- **No placeholders for unbuilt components.** Skills/tool discovery, response
-  composition, channel shaping and review are *not* stubbed; the orchestrator stops
-  at the planner's `TurnResult` and those steps are added when their components land.
-  So `run_turn` returns a `TurnResult` today, not the streamed `ChannelChunk`s the
-  target draws.
-- **Composition, not config**, decides which components run: they are wired once in
-  `build_components(...)` behind `ports`; this module never imports the framework.
+- **Moderation runs beside the rest.** Intent, place lookup, settlement and discovery run in
+  one chain. Moderation runs next to that chain (`anyio`, ADR-0005).
+- **The barrier is a gate.** The planner is reached only on `PROCEED`. Discovery may have run
+  by then. It only reads.
+- **The planner builds the plan and runs it.** There is no separate executioner.
+- **A form turn takes its own path.** The orchestrator picks the path by the kind of input.
+- **Not built:** Skills Discovery, Plan Executioner, Reviewer, Channel Response. They have
+  no stubs in the code.
+- **Wiring is code, not config.** The components are built once at startup, behind `ports`.
+
+### The form flow
+
+Some asks end in an action on a provider, not an answer: filing a grievance (`support`) or
+checking one (`status`). The provider needs facts from the user, so the DSS sends a form.
+
+1. **A text turn offers the form.** Intent finds the scheme and the action. Settlement finds
+   the form for them, from the schema pack. The answer carries the form, and the turn ends as
+   `requires_input`.
+2. **A form turn sends it back.** The values are checked against the form and redacted.
+   Moderation judges the free text.
+3. **The DSS finds the provider** for the scheme and calls `support` or `status`.
+4. **The composer streams the provider's reply.**
+
+**Some schemes need a first step.** When the pack says so, the DSS calls `init` first, for
+example to send the user an OTP. A second, small form takes the user's reply. Then the real
+call is made.
+
+**A form is filed once.** The session remembers a filed form. This is why form flows need the
+session store (ADR-0022).
 
 Before the orchestrator can run a single turn, some things have to exist already.
 
@@ -285,26 +326,39 @@ Before the orchestrator can run a single turn, some things have to exist already
 
 Built once, before any turn.
 
-| Built | From | Refreshed |
-|---|---|---|
-| `Policies` | DSS defaults + adopter's own | restart |
-| `Taxonomy` | schema categories + adopter's subjects | interval, and/or an API call |
-| `DomainSchemas` | `network-specs` packs | interval and/or API call |
-| **Tool index** | each MCP server's `tools/list` | on `tools/list_changed` and/or API call |
+| Built | From |
+|---|---|
+| `Policies` | DSS defaults + adopter's own |
+| `Taxonomy` | categories: from schema and subjects: planned |
+| Schema packs | `network-specs` packs, read from disk. Fetched first if the folder is empty |
+| Scheme list | `configs/schemes.csv` |
+| Place list | the area CSV |
+| Prompts and skills | `configs/prompts.yaml`. Checked at startup |
+
+Today all of this is read once at startup. A change needs a restart.
+
+*Future scope:* refresh on an interval, or by an API call, without a restart.
 
 ### Policies
 
-A policy is a rule saying what the DSS must not do. Loaded and validated at startup, then
-checked at fixed points in the turn.
+A policy is a rule saying what the DSS must not do. Loaded and checked at startup, then
+applied at fixed points in the turn.
 
 ```python
-class Policy:
-    id: str                      # "acme/no-pesticide-dosage"
-    checkpoint: Checkpoint       # where it is checked
-    evaluation: EvaluationKind   # DETERMINISTIC or LLM
-    on_violation: Outcome        # REJECT or CLARIFY. never PROCEED
+class Policy:                    # every policy has these
+    id: str                      # "no-pesticide-dosage"
+    checkpoint: Checkpoint       # where it is applied. MODERATION by default
+    description: str
     fail_mode: FailMode          # CLOSED by default
-    overridable: bool
+
+class WordCheckPolicy(Policy):   # no model
+    words: list[str]
+    warning: str                 # told to the user when a word is taken out
+
+class LlmPolicy(Policy):         # judged by a model
+    on_violation: Outcome        # the gate outcome from section 3
+    signals: list[str]
+    examples: list[PolicyExample]
 
 
 class Checkpoint(StrEnum):
@@ -313,96 +367,68 @@ class Checkpoint(StrEnum):
     POST_RESPONSE = "post_response"
 ```
 
-`Outcome` is the same enum as **3. How a turn ends**.
-
-**Two kinds.** A deterministic policy is a list of conditions over fields — cheap, exact, no
-model. An LLM policy gives signals and examples instead, for what conditions cannot express.
+**Two kinds.** A word check takes listed words out of the question and warns the user. It
+never refuses the turn (ADR-0002). An LLM policy gives signals and examples, and a model judges
+the question against them.
 
 **Three checkpoints, one built.** Moderation exists. Pre-tool-call and post-response are named
-but not designed. See **6.2 Moderation**.
+but not designed. See **6.3 Moderation**.
 
-**`fail_mode` is what happens when the check itself breaks.** `CLOSED` blocks the turn — safe,
-but an outage then refuses legitimate farmers. `CLOSED` is the default.
+**`fail_mode` is what happens when the check itself breaks.** `CLOSED` blocks the turn. That is
+safe, but an outage then refuses honest users. `CLOSED` is the default.
 
-**Adopters extend, not replace.** Adopter policy ids are namespaced by tenant. `overridable:
-false` cannot be turned off. `extends` adds values to a list the DSS ships rather than
-replacing it.
+**One pack is loaded.** The DSS ships a default pack. An adopter can point
+`DSS_POLICY_CONFIG_PATH` at their own, and it is used in place of the default. A misspelled
+field or a missing file stops the startup.
 
-Full schema, operators, and the loader: `0003-policy-schema.md`.
+*Future scope:* an adopter adds to the DSS pack instead of replacing it. Some DSS policies
+cannot be turned off.
+
+Full schema and the loader: `0003-policy-schema.md`.
 
 ### Taxonomy
 
-```python
-class Taxonomy:
-    categories: tuple[str, ...]    # must be from the schema's seven
-    subjects: tuple[str, ...]      # open. may be empty.
-```
+Planned. The model is to be added.
 
-Categories come from the schema. Subjects come from the adopter.
+Today Intent uses the categories from the schema. See **6.1 Intent**.
 
-**Categories are constrained.** The schema defines seven(for now) — `Crop`, `Livestock`, `Weather`,
-`Market`, `Scheme`, `Knowledge`, `Service`. It is the `subjectCategories` enum in
-`schema/AgricultureResource/v0.1/attributes.yaml`. An adopter can narrow to a subset but cannot
-add any new category which is not defined in schema. A category outside the schema is a config error, caught at startup.
+### Schema packs
 
-**Subjects are open.** The schema expects a `subjectId` from a governed taxonomy but ships no
-list of them. So the adopter's list is the only source. [Open #7]
+A schema pack says what one kind of thing on the network looks like. The network owns the
+packs ([network-specs](https://github.com/OpenAgriNet/network-specs/tree/main)). The DSS reads
+them and never writes them. [Dependencies #1]
 
-**Both can be refreshed.** The seven categories are not frozen — the network can add a category. When it
-does, Adopter should be able to refresh local cache to get the new category -  that can be done at certain interval and/or through API call. Also once the category is added to schema, adopter should be able to update 
-subject list again newly added category.
+The packs are read from disk at startup. If the folder is empty, they are fetched first. A
+pack that cannot be read is skipped and logged.
 
-**Coarse and fine, on the same record.** Both fields are inherited from `AgricultureResource`,
-so every published thing carries them. A provider that names no subjects covers its categories
-broadly; naming subjects narrows it. The DSS filters the same way — category first, subject to
-narrow.
+The DSS uses a pack in three ways:
 
-**Two axes, one array.** `subjectCategories` reads as a vertical and a horizontal collapsed into
-one list. `Crop`, `Livestock`, `Weather`, `Market`, `Scheme` are **verticals** — what a capability
-is about. `Knowledge` and `Service` are **horizontals** — what kind of thing it is.
-`["Crop", "Knowledge"]` is knowledge about crops; `["Market"]` alone is market data with no
-horizontal. Provider Discovery resolves `@type` from the pair — see **6.4**. The encoding may
-change; the two-axis direction holds.
+- **To find providers.** An index maps an ask's category and interaction to the pack's
+  `@type`. Discovery searches for that type. The pack also says whether the ask needs a place.
+- **To call a provider.** The planner sees the fields it may filter on. Its choice is checked
+  against the pack before the call. The DSS adds `@context` and `@type` from the pack.
+- **To build forms.** A pack that ends in an action gives the form the user fills.
 
-Intent is the only reader. `Ask.category` must be one of `categories`; a category not in the
-taxonomy is dropped. `Ask.subject` stays the farmer's own word. See **6.1 Intent**.
+*Future scope (proposed):* the network spec defines only the envelope. The provider maps its
+own API with very few fields. The contract carries enough description for the model to tell
+which API to call, and how.
 
-### DomainSchemas
+See **6.5 Provider Discovery** and **6.6 Planner Agent**.
 
-Read from the network's schema files — [Dependencies #1]
+### Prompts and skills
 
-[`Domain Schema`](https://github.com/OpenAgriNet/network-specs/tree/main).
-The DSS reads them, never authors them. (Please check sub-branch if you don't find it in the `main`. #TODO: This should be removed)
+Each model component has a prompt per language. `configs/prompts.yaml` names them. English is
+required. A language with no prompt of its own falls back to English (ADR-0018).
 
-The shape and how the planner uses it: see **6.6 Planner Agent**.
+A skill is a markdown file: a short header, then the guidance. The header names the tools the
+skill needs. The same config file names the planner's skills, per language. One ships today:
+`provider-invocation`. It is about how to call the network.
 
-### Tool index
+Both are checked at startup. A missing file, a missing header field or a wrong placeholder
+stops the startup.
 
-```python
-class Tool:
-    name: str                    # "soil_lookup"
-    namespace: str               # "acme"
-    description: str
-    server_id: str
-```
-
-Call `tools/list` on each MCP server. Index each tool's name, namespace, description and
-parameter names.
-
-**Keyword search, not embeddings.** BM25. No vector store, no embedding model.
-
-**Refrashable`.**  Listen for `tools/list_changed - A server can add or drop tools while running. Api can be added on top this for manual refresh or cron based refresh to reconciliation.
-
-Below schema is not `confirmed` yet.
-```python
-class ToolIndex(Protocol):       # a port — no framework type crosses it
-    def search(self, terms: Sequence[str], limit: int) -> tuple[Tool, ...]: ...
-    def refresh(self, server_id: str) -> None: ...
-```
-
-The MCP client and the index live in the adapter. `core/` only sees `tuple[Tool, ...]`.
-
-`Assumption` There will be on MCP server per local network adopter, though design will allow for more.
+*Future scope:* behaviour skills. An admin adds skills per topic, to shape how the DSS behaves
+for a use case. Skills Discovery then picks the ones a turn needs. See **6.4 Skills**.
 
 With that in place, here is what each component in the diagram actually does.
 
@@ -438,13 +464,17 @@ class SubjectCategory(StrEnum):
     MARKET = "Market"
     SCHEME = "Scheme"
     FACILITY = "Facility"
+    GRIEVANCE = "Grievance"    # a complaint. Ends in a form, not an answer
 
 
 class Ask:
+    id: AskId                  # given once, never changes
     agriculture_subjects: str | None
     subject_categories: SubjectCategory
     interaction_type: InteractionType
-    place: ResolvedPlace | AmbiguousPlace | UnresolvedPlace | None   # see 1a
+    place: ResolvedPlace | AmbiguousPlace | UnresolvedPlace | None   # see Filling the place
+    scheme: Scheme | GuessedScheme | UnlistedScheme | None
+    action: RequestedAction | UnclearAction | None
 
 
 class Intent:
@@ -456,37 +486,58 @@ class Intent:
 classify_intent(turn: UserTurn, llm: LLMProvider) -> Intent
 ```
 
+**An ask may carry three facts.**
+- `place`: where the ask is about. Empty when no place applies.
+- `scheme`: a `Scheme` when the user named one on the scheme list. A `GuessedScheme` is the
+  closest match, and must be confirmed with the user. An `UnlistedScheme` is a name that is not
+  on the list.
+- `action`: `support` raises something new. `status` checks one already raised. `unclear`
+  means the user wants something done but did not say which. Empty means they only want an
+  answer.
+
+The model never makes up a scheme. It picks a code from the list it is shown, and code turns
+that into the scheme.
+
+Settlement checks these facts before any provider is searched for (ADR-0023).
+
+*Future scope:* an ask will also carry a `capability`, beside its subject. The list of
+capabilities will come from the network API, the same way the categories do, and Intent will
+pick from it. Examples: `KnowledgeAdvisory`, `MarketPrice`, `WeatherObservation`,
+`WeatherForecast`, `GrievanceFiling`, `GrievanceStatusCheck`, `SchemeEligibilityCheck`.
+
 **One sentence can hold several questions.** Each becomes an ask.
 
 *"what is the price of potato? am I eligible for PM-KISAN? and when should I sow potato?"*
 
 ```python
 asks = (
-    Ask(agriculture_subjects="potato",   subject_categories=MARKET, interaction_type=OBSERVE, place=None),
-    Ask(agriculture_subjects="PM-KISAN", subject_categories=SCHEME, interaction_type=ADVISE,  place=None),
-    Ask(agriculture_subjects="potato",   subject_categories=CROP,   interaction_type=ADVISE,  place=None),
+    Ask(id=0, agriculture_subjects="potato",   subject_categories=MARKET, interaction_type=OBSERVE),
+    Ask(id=1, agriculture_subjects="PM-KISAN", subject_categories=SCHEME, interaction_type=OBSERVE),
+    Ask(id=2, agriculture_subjects="potato",   subject_categories=CROP,   interaction_type=ADVISE),
 )
 ```
 
 **Rules**
 - Empty `asks` means "understood nothing". A valid answer, not an error.
-- A category not in the taxonomy is dropped.
+- The category must be one from the list.
 - `agriculture_subjects` is the farmer's own word. Nothing resolves it to an id — see [Open #7].
 - The ask carries no query text. The query stays whole in `UserTurn`.
-- One ask becomes one plan step.
+- Each ask is handled on its own.
 - Three asks does not mean low confidence.
 - A timeout must raise. Never return a made-up Intent.
-- `place` is never invented. Intent classification never produces a coordinate — see 1a for
-  how `place` gets filled and why that is a separate step, not something Intent does itself.
+- `place` is never invented. The model never produces a coordinate. See **Filling the place**
+  below.
 
-### 1a. Place resolution
+#### Filling the place
 
-Runs between Intent and Provider Discovery.
+Intent's result carries a place for each ask. The model returns the place as words. A lookup
+that runs right after it turns the words into a place. The model never produces a coordinate,
+because a model asked for one invents it.
+
+*Future scope:* the lookup becomes a tool that Intent calls.
 
 **Place is per ask, not per turn.** Each ask carries its own `place` — a turn naming two
-places is two asks, each grounded where it says. Intent itself never fills this field: a model
-asked to produce a coordinate invents one, so place resolution is a separate step with its own
-lookup, not a prompt instruction Intent follows.
+places is two asks, each grounded where it says.
 
 *"Wheat price in Pune, and will it rain in Anand?"* is two asks, two places:
 
@@ -502,27 +553,6 @@ asks = (
 A farmer who names no place at all still gets an answer if their device sent a location, or
 the platform already asserts one — see precedence below.
 
-```
-UserTurn ── query, location ──▶ ┌──────────────┐
-                                 │    Intent     │──▶ Ask.place = None (unfilled)
-                                 └──────────────┘
-                                        │
-                                        ▼
-                                 ┌──────────────┐      ┌─────────────┐
-                                 │ Place         │◀────▶│ AreaLookup  │
-                                 │ Resolution    │      │   (port)    │
-                                 └──────────────┘      └─────────────┘
-                                        │
-                                        ▼
-                              Ask.place = ResolvedPlace
-                                       | AmbiguousPlace
-                                       | UnresolvedPlace
-                                       | None
-                                        │
-                                        ▼
-                                 Provider Discovery
-```
-
 **A resolved place is a chain of ancestors, coarsest first, no level words** — e.g.
 `within=("India", "Maharashtra", "Pune")`. Nothing says "state" or "district": a Kenya adopter
 fills the same chain with counties, code unchanged. Same idea as GeoNames, Who's On First,
@@ -534,6 +564,7 @@ class PlaceSource(StrEnum):
     CARRIED = "carried"                      # carried across turns in the same session
     ASSERTED_AREA = "asserted_area"          # platform's turn.location.area
     ASSERTED_GEOMETRY = "asserted_geometry"  # device's turn.location.geometry
+    NEAR_USER = "near_user"                  # a whole state was named; this is the user's own place in it
 
 
 class ResolvedPlace:
@@ -550,6 +581,7 @@ class AmbiguousPlace:             # a name that matched more than one place
 
 class UnresolvedPlace:            # a name the index does not carry
     unresolved_name: str
+    region: str | None            # set when the name is a whole state: ask for a smaller place
 ```
 
 **Three outcomes when a place doesn't resolve, not one.** `AmbiguousPlace` (name matched
@@ -559,10 +591,10 @@ flag.
 
 **Precedence, per ask:**
 ```
-place this ask names itself
-  > place a sibling ask in this turn already resolved
+place the ask names (this turn, or carried from earlier)
   > device geometry (turn.location.geometry)
   > platform-asserted area (turn.location.area)
+  > place a sibling ask in this turn already resolved
   > nothing
 ```
 
@@ -588,114 +620,142 @@ converges on `AreaLookup` supporting more than a static file:
 | Implementation | What it is |
 |---|---|
 | CSV (shipped default) | A local index built from an LGD-style snapshot, read once at startup. Works with no network dependency. |
-| MCP tool | An adopter-supplied resolver that calls any API endpoint (a geocoding service, an internal gazetteer) behind the same `AreaLookup` port. |
+| Photon | An OpenStreetMap place search over HTTP. Tried after the CSV, when it is set up. |
 
-An adopter picks or overrides which one a deployment uses; `core/` only ever sees the port,
-never which implementation answered.
+*Future scope:* an adopter can add their own place resolution as an MCP tool. This comes once
+MCP tools integration is enabled.
+
+`core/` only ever sees the port, never which implementation answered.
 
 **Rules**
-- Only place resolution builds a filled `Ask` — Intent never does.
+- Only the lookup builds a filled `Ask`. The model never does.
 - A name the farmer gave can fail loud (`AmbiguousPlace`/`UnresolvedPlace`). A fallback
   (device/asserted) never fails loud — it resolves or leaves `place` as `None`.
 - `within` never contains a level word.
 
-### 2. Moderation
+### 2. Settlement
 
-Moderation decides whether a question should be answered at all — before anything is fetched.
+Settlement checks that each ask has the facts it needs, before any provider is searched for.
+It is code, not a model (ADR-0023).
 
-One component, two parts. Harm does not read Intent.
+**Three facts.** A place, a scheme and an action. The schema packs say whether an ask needs a
+place. The forms say whether it needs a scheme and an action.
 
-`Outcome` is defined in **3. The shape of a turn** — Moderation is one of several components
-that can set it.
+**Three results, one per ask.**
+
+| Result | What happens |
+|---|---|
+| `Settled` | the ask is searched and answered |
+| `NeedsClarification` | the user gets one question about the open fact |
+| `CannotServe` | the user is told the DSS cannot do this, for example a scheme with no form here |
+
+**One unclear ask does not hold the rest back.** The question goes out beside the answers to
+the other asks. The composer words it.
+
+**It keeps no state today.** The user's reply comes back in the history of the next turn.
+
+*Future scope:* the same approach for fields that are not fixed. Today the three facts are
+fixed in the code. A form filled by text, or a provider's own API contract, brings its own
+fields. Each of those will be settled the same way: asked for when it is missing.
+
+*Future scope:* settlement keeps its state in the session store.
+
+### 3. Moderation
+
+Moderation decides whether a question should be answered at all, before any provider is
+called.
+
+It runs beside Intent and does not read Intent's result (ADR-0003). It sees the turn only.
 
 ```python
-class ModerationVerdict:
-    outcome: Outcome
-    reason: ReasonCode | None
-    policy_id: str | None
-    refused: tuple[Refused, ...]     # what we will not answer, and why
-    unsupported: tuple[ActionType, ...]
-
-
-class Refused:
-    what: str                        # "gold prices"
-    reason: str                      # "outside agriculture"
+class ModerationDecision:
+    outcome: Outcome                  # the gate outcome from section 3
+    reason_code: ReasonCode | None    # required unless PROCEED
+    violated_policy_id: str | None
+    sanitized_query: str | None       # the question with listed words taken out
+    warnings: list[str]
+    frustration_detected: bool
 
 
 class ReasonCode(StrEnum):
-    # harm — reads the query only
+    # harm — a policy fired
     UNSAFE_ILLEGAL = "unsafe_illegal"
     ROLE_OBFUSCATION = "role_obfuscation"
     POLITICAL_CONTROVERSIAL = "political_controversial"
     EXTERNAL_REFERENCE = "external_reference"
     ADOPTER_POLICY = "adopter_policy"
-    # scope — reads Intent
+    # scope — named, not checked yet
     DOMAIN_UNMAPPED = "domain_unmapped"
     INTENT_LOW_CONFIDENCE = "intent_low_confidence"
     UNSUPPORTED_ACTION_TYPE = "unsupported_action_type"
     # infrastructure
-    UNAVAILABLE = "unavailable"
+    MODERATION_UNAVAILABLE = "moderation_unavailable"
 ```
 
 ```python
-check_harm(turn: UserTurn, ctx: TurnContext) -> HarmVerdict
-check_scope(turn: UserTurn, intent: Intent, ctx: TurnContext) -> ScopeVerdict
-moderate(turn, intent, ctx) -> ModerationVerdict      # runs both, one LLM call
+moderate(context: ModerationContext, policies, llm, prompts) -> ModerationDecision
 ```
 
-**`refused` is the partial case.** "Price of potato and gold" — potato proceeds, gold is
-refused. Not a rejection. The composer needs `refused` so it can say so.
+**Two steps, in order.**
+1. Word checks, in code. Listed words are taken out and the user is warned. The turn goes on.
+2. LLM policies, in one model call, over the cleaned question. A policy that fires rejects the
+   turn.
+
+**A cleaned turn still proceeds.** `sanitized_query`, `warnings` and `frustration_detected`
+are set only on `PROCEED`. A rejected turn carries none of them.
 
 **Rules**
-- Harm sees the last 3 turns, wrapped in markers:
-  ```
-  <BEGIN CONVERSATION>
-  User: ...
-  Assistant: ...
-  <END CONVERSATION>
-  ```
-  *Fake history pasted inside one message is a known attack. The markers are the defence.*
-
-- Judges **only the current message**. History is context.
-- Harm and scope share **one** LLM call.
-- Fails closed. A timeout blocks the turn.
+- Judges only the current message. The last 6 history messages are shown for reference.
+- All LLM policies share one model call.
+- Fails closed. If the model call fails, the turn is rejected, unless every LLM policy is set
+  to fail open.
 - No bot identity in the prompt.
 
-### 3. Skills Discovery
+*Future scope:* a scope check that reads Intent. It refuses one part of a question and lets
+the rest go on, as in "price of potato and gold". The reason codes for it exist. The check
+does not.
 
-Skills hold the know-how a tool definition cannot — how to think about a question, not what to
-call. Today all of it sits in one prompt, so every turn pays for every rule. A skill is that
-guidance split up, so a turn only carries what it needs.
+### 4. Skills
+
+A skill holds know-how a tool definition cannot: how to go about a question, not only what to
+call.
 
 ```python
 class Skill:
-    id: str
+    id: str                        # "provider-invocation"
     domain: str
-    guidance: str                # goes into the planner prompt
-
-
-class Skills:
-    selected: tuple[Skill, ...]
+    description: str
+    guidance: str                  # goes into the planner's prompt
+    tool_names: tuple[str, ...]    # the tools this skill brings
 ```
+
+**How skills are used today.**
+- Skills are named in config and loaded at startup. See section 5.
+- Every turn gets all of them. Nothing picks.
+- The guidance goes into the planner's prompt.
+- The planner gets only the tools its skills name. A tool that no skill names is never shown
+  to the model.
+
+One skill ships: `provider-invocation`. It teaches the planner how to call the network. It
+brings three tools: `describe_capability`, `select` and `select_next`.
+
+**Future scope: behaviour skills.** An admin adds skills per topic, to shape how the DSS
+behaves for a use case. For example: for mandi questions, an adopter can change the validity
+period, which sets the window for the price information.
+
+**Future scope: Skills Discovery.** With many skills, a turn should carry only the ones it
+needs. Skills Discovery picks them per turn.
 
 ```python
 discover_skills(turn: UserTurn, intent: Intent, ctx: TurnContext) -> Skills
 ```
 
-**Skills are read, tools are called.** A skill is guidance in a prompt — "for pest questions,
-ask which crop first." It does not execute.
+It stays local: it picks from what this deployment already has. How it picks is open.
 
-**Must stay local.** Picks from what this deployment already has.
+**Future scope: turning a skill off.** An adopter lists the skills to switch off in config. A
+safety-critical skill cannot be switched off.
 
-**Adopters add, override, or disable.** Skills are the only primitive that can be disabled — a
-tenant lists ids to switch off in `/config/skills.yaml`. A disabled skill leaves routing
-entirely: no prompt tokens, no lookup, no taxonomy slot. Every shipped skill declares
-`disableable` (default `true`); safety-critical ones set it `false` and config validation
-rejects attempts to disable them.
-
-**How skills get filtered is open.** 
-
-### 4. Provider Discovery
+### 5. Provider Discovery
 
 Finds which Providers can serve an ask. It does not call them, and it does not plan.
 
@@ -705,193 +765,89 @@ class ProviderCapability:            # a capability offered by a named provider
     provider_name: str
     capability: str                  # the resource's @type
     resource_id: str                 # which resource `select` commits to
-    offer_id: str                    # TODO: ecommerce term, needs an OAN name
-    kind: ProviderKind
+    bpp_id: str                      # where the provider is reached
+    bpp_uri: str
+    advertised: dict                 # the values the provider says it serves
 
 
 class DiscoveredAnswer:              # informationMode: Direct — values already present
     provider_id: str
+    provider_name: str
     capability: str
-    resource_attributes: dict        # the published values
-    validity: TimePeriod | None
-    generated_at: datetime | None
-
-
-class ProviderKind(StrEnum):
-    LOCAL = "local"                  # this deployment's own network
-    REMOTE = "remote"                # reached through a federated discovery service
+    resource_id: str
+    attributes: dict                 # the published values
+    validity: Validity | None
 
 
 class DiscoveryFailure:
-    ask_index: int
-    kind: FailureKind                # TRANSIENT or DEFECT
-    code: str                        # "429", "BIZ_NO_RESULTS_FOUND"
+    capability: str
+    status_code: int
+    failure_class: FailureClass      # TRANSIENT or DEFECT
+
+
+class DiscoveredAsk:                 # one per ask
+    ask: Ask
+    query: ProviderQuery | None      # None: the ask was never searched
+    answers: tuple[DiscoveredAnswer, ...]         # Direct — no call needed
+    capabilities: tuple[ProviderCapability, ...]  # OnDemand — must select
+    failures: tuple[DiscoveryFailure, ...]
+    priority: AskPriority | None     # what the sender's preference did to this ask
 
 
 class DiscoveryResult:
-    answers: dict[int, tuple[DiscoveredAnswer, ...]]         # Direct — no call needed
-    capabilities: dict[int, tuple[ProviderCapability, ...]]  # OnDemand — must select
-    failures: dict[int, tuple[DiscoveryFailure, ...]]
-    events: tuple[DiscoveryEvent, ...]                       # for the sinks
+    asks: tuple[DiscoveredAsk, ...]  # one per ask, in order
+    events: tuple[DiscoveryEvent, ...]
 ```
 
 ```python
-discover(intent, turn, ctx, discovery: CapabilityDiscovery) -> DiscoveryResult
+discover_providers(asks, turn, discovery: CapabilityDiscovery, ...) -> DiscoveryResult
 ```
 
-**Candidates, not a choice.** The planner picks which one a step uses.
+**What it does.** For each settled ask, it asks the network who can serve it. It does not call
+a provider, and it does not plan.
 
-**A capability, not a Provider.** One provider publishes many resources, each with its own
-`@type`. So the unit is a provider-capability pair, not a Provider — `Provider` stays what the
-architecture doc means by it, a network participant. Provider-level affinity is a `groupby` on
-`provider_id`.
+**How it searches.** The ask's category and interaction give the pack type to look for. A
+place is added when the pack needs one. Two asks that search the same thing share one call.
 
-**Two kinds of result, because the catalog holds two kinds of thing.** Every resource declares
-`informationMode`. `Direct` means the values are already in the catalog, cached at the discovery
-service — no Provider call. `OnDemand` means the catalog advertises what the Provider *can*
-return, and a `select` is required. They have different failure modes: a `Direct` answer can be
-stale but cannot fail; an `OnDemand` `select` cannot be stale but can fail after
-`timeoutMs × retryMax`. Separate types keep a consumer from reading `supportedParameters` as if
-it were an answer.
+**Two kinds of result.** A `Direct` answer already holds the values, so no provider call is
+needed. An `OnDemand` capability says what a provider can return, and needs a `select`. A
+`Direct` answer past its validity is dropped.
 
-**Expired `Direct` answers are dropped, and the fallback is recorded.** `informationMode` says
-nothing about freshness — `validity` does. A `Direct` resource outside its window is dropped; if
-an `OnDemand` capability exists on the same `provider_id` + `capability`, the substitution is
-recorded so a cache-miss `select` is distinguishable from a normal one.
+**Ranked by preference.** A sender can say which providers it wants, best first. The ranking
+is applied once, on the way out of discovery (ADR-0019, ADR-0020).
 
-**`kind` is where the record came from, not where the Provider runs.** The network is
-decentralised: this deployment has its own discovery registry, and also learns about Providers
-from remote discovery services. Every Provider speaks the same schema either way.
+**Failures are data.** One ask failing leaves the others intact. The composer can tell "nobody
+serves this" from "we could not reach discovery".
 
-**Runs alongside Skills and Moderation.** It needs only the intent, so it does not wait for a
-plan.
-
-**One query per ask, deduplicated by query value.** Each ask gets its own query; identical
-queries are issued once and their result maps back to every ask that produced it. With no
-`textSearch` and no subject filter, two asks in the same vertical produce byte-identical
-queries — the normal case for a multi-ask turn. So `ProviderQuery` is a value type with no
-turn-specific fields; ids and timestamps live in the envelope the adapter builds. Results are
-keyed by the ask's position. No asks, no queries.
-
-Filters come from the ask plus turn context:
-
-| Filter | From |
-|---|---|
-| `@type` | `Ask.category` (vertical) + `Ask.action_type` (horizontal) |
-| `languages` | `ctx.target_lang` |
-| `coverageAreas` | `turn.location` |
-
-**`@type` is resolved from the two axes, through the cached schema.** The vertical comes from
-`Ask.category`, the horizontal from `Ask.action_type` — see the two-axes note in **5. Taxonomy**.
-The DSS indexes each cached `network-specs` pack by the categories it serves and resolves the
-pair to one or more `@type` values. Normally one; several when the pair cannot be pinned
-(`Market` + `LOOKUP` may hit both `MandiPrice` and `MarketIntelligence`). Forcing one-to-one
-would make the mapping lie. Not a static map — a new pack is picked up by schema refresh.
-
-**The category index is inferred, not declared.** No pack declares which categories it serves:
-`subjectCategories` appears in one `attributes.yaml` (the base) and no pack narrows it. So the
-index is built from each pack's `examples/`, which makes it a convention rather than a contract.
-The upstream fix is one `subject_categories` key per `profile.json` in `network-specs`. When an
-observed category contradicts the index, record the divergence — do not widen the map. [Open #15]
-
-**No subject filtering here.** `Ask.subject` is the farmer's own word, and nothing resolves it to
-a governed id — string equality fails "rice" against "paddy". Semantic matching needs a model,
-and there is no subject glossary yet. So the whole vertical is passed through and the planner
-judges relevance. [Open #7]
-
-**No `textSearch`.** The network does not support it yet. It was the only signal that ranks —
-filters narrow, never rank — so discovery returns an unordered set and ordering falls entirely to
-`provider_selector` config order. [Open #10]
-
-**Failures are data, and classified.** `429`/`500`/`NET_*` are transient — that ask degrades to
-no candidates. `400`/`401`/`403` are a defect on our side: a malformed query or bad credentials,
-which is every turn for that capability, not a per-turn anomaly. Both are recorded; one ask
-failing leaves the others intact. The composer must be able to tell "nobody serves this" from
-"we could not reach discovery" — same empty result, different statements.
-
-**Every outside call goes through the network adapter** — discovery, the Beckn registry, and
-Provider invocation alike. No component talks to the network itself. The adapter is a separately
-deployed service; the DSS holds a client for it, behind two ports:
-
-```python
-class CapabilityDiscovery(Protocol):     # read-only — may cross the barrier
-    async def discover(self, query: ProviderQuery, transaction_id: NetworkTransactionID) -> ProviderQueryResult: ...
-
-
-class CapabilityInvocation(Protocol):    # side-effecting — executioner only
-    async def select(self, capability: ProviderCapability, ...) -> DiscoveredAnswer: ...
-```
-
-Two ports, not one, so the barrier is enforced by type: a component holding only
-`CapabilityDiscovery` cannot invoke a Provider. Protocol shapes — JSONPath, spatial operators,
-`[longitude, latitude]` ordering, the envelope — are composed in the adapter. `core/` sends
-domain fields and never sees them. `kind` is set there too, from the responding host URL.
-
-**Read-only, so it may cross the barrier.** The barrier blocks calls with side effects. A
-Provider call may already have happened and cannot be taken back; a discovery query can be
-thrown away.
-
-**An ask nobody can answer** gets no step. The composer says so.
-
-### 5. Tool Discovery
-
-Finds which MCP tools might help. Local only — no network call.
-
-```python
-class ToolCandidates:
-    by_ask: dict[int, tuple[Tool, ...]]
-```
-
-```python
-discover_tools(intent: Intent, index: ToolIndex, ctx: TurnContext) -> ToolCandidates
-```
-
-**Only filters past a threshold.** Ten tools or fewer: pass them all to the planner. More than
-that: search. Filtering a short list costs accuracy for no gain. Anthropic's own threshold for
-switching on tool search is the same — 10 tools, or 10K tokens of definitions.
-
-```yaml
-tool_discovery:
-  filter_above: 10
-```
-
-**Per ask, when filtering:** narrow by namespace, then BM25 over the index. Search terms come
-from the ask — subject, category, action type — plus the farmer's words for that clause.
-
-**Providers answer the question. Tools extend what we can do.** A Provider serves the farmer's
-ask; a tool is adopter capability beyond what the DPG ships. Both end up as steps, and the
-executioner resolves which is which.
-
-**Runs alongside Skills, Provider Discovery and Moderation.** Needs only the intent.
-
-#### Picking among candidates — a strategy port
-
-Several Providers may answer the same ask. Choosing is a port, not fixed logic.
-
-```yaml
-ports:
-  provider_selector: oan_dss.adapters.selection:FirstMatch   # shipped default
-```
-
-| Strategy | What it does |
-|---|---|
-| `FirstMatch` | **default** — first local tool, else first remote Provider |
-| `FirstMatchLocal` | first local tool only |
-| `FirstMatchRemote` | first network Provider only |
-| `LocalAllAndMerge` | all local tools, merged |
-| `RemoteAllAndMerge` | all network Providers, merged |
-| `CallAllAndMerge` | everything, merged |
-
-Within a kind, config order decides. `on_empty` falls back to the next candidate.
-
-**We cannot rank by quality.** Discovery tells us coverage and language, never how good a
-Provider is. `generatedAt` arrives in the response, not in discovery, so freshness can only
-break a tie after the calls are made. [Open #10]
+**Read-only, so it may run before the verdict.** A discovery query can be thrown away. A
+provider call cannot.
 
 ### 6. Planner Agent
 
-Discovery says who could answer. The planner decides what to actually call, in what order, and
-what is still missing.
+Discovery says who could answer. The planner decides what to call.
+
+**Today it builds the plan and runs it.** It is a model with tools. For each ask it:
+1. looks at the candidates and the fields it may set (`describe_capability`),
+2. calls the providers for the ask (`select`),
+3. moves to the next ranked provider when the data cannot answer the ask (`select_next`).
+
+It returns `Evidence`: what was found for each ask, and from which source.
+
+It calls `select` only. `support` and `status` are called on the form path. See "The form
+flow" in section 4.
+
+**What it is given.** The turn, the settled asks, the discovery result and its skills.
+
+**Checked against the pack.** The fields the model sets are checked against the schema pack
+before the call. `@context` and `@type` come from the pack, never from the model.
+
+**It starts only on `PROCEED`.** A provider call cannot be taken back.
+
+**It writes no user-facing text.** The composer does.
+
+#### Future scope: the plan as data
+
+The planner will only build a plan. The Plan Executioner will run it.
 
 ```python
 class Plan:
@@ -925,7 +881,6 @@ async def plan(
     intent: Intent,
     skills: Skills,
     discovered: DiscoveryResult,              # Direct answers, OnDemand capabilities, failures
-    tools: ToolCandidates,                    # MCP tools that might help
     schemas: DomainSchemas,                   # only the capabilities discovered
     verdict: Awaitable[ModerationVerdict],    # not awaited yet
     ctx: TurnContext,
@@ -934,61 +889,16 @@ async def plan(
     await verdict          # ← the barrier, at the last moment
 ```
 
-**Only the schemas this turn needs.** The cache holds every schema. The planner gets the ones
-for capabilities in `discovered`, nothing more — the rest would be prompt tokens for
-capabilities it cannot call. How that filtering works is not decided. [Open #13]
-
-#### DomainSchemas — the network schema input
-
-```python
-class DomainSchema:
-    type: str                        # "openagrinet:MandiPriceCapability"
-    filterable: tuple[str, ...]      # from profile.json filterable_paths
-    required: tuple[str, ...]        # filters that must be supplied
-
-
-class DomainSchemas:
-    by_type: dict[str, DomainSchema]
-```
-
-**The DSS reads domain schemas. It never authors them.** Schema management lives outside the
-DSS, in `network-specs`. Read-only dependency behind a port, same as taxonomy.
-
-**Cached and refreshed on an interval**, like taxonomy. Network-sourced, so dynamically
-resolvable per D1. A stale cache serves the last good copy rather than failing the turn.
-
 **Rules**
 - The plan is **data**, not code. The runtime reads it. No `eval`.
 - Must serve every ask in `intent.asks`, or report why not.
 - One step, one capability. Three tools means three steps.
 - Validated before running: does the capability exist, are inputs filled, is the graph acyclic.
 
-**`missing` and `steps` are independent (D21).** There is no separate `Clarification` type. A
-plan may carry steps, missing inputs, or both:
-
-| `steps` | `missing` | What happens |
-|---|---|---|
-| some | empty | run it, answer |
-| some | some | **run what we can, ask about the rest** — the farmer gets something |
-| empty | some | pure clarification — `NEEDS_CLARIFICATION` |
-| empty | empty | nothing to do — `NO_MATCH` |
-
-- The **planner** detects a missing input, not intent. Intent does not know which capability
-  will be chosen, and two providers in the same domain may need different inputs. The planner
-  reads the capability's input schema and finds the hole.
-- `missing` means ask the farmer, do not guess.
-- A step whose input is missing is **not** emitted. Steps that can run, run.
-
-**`name` is the domain schema's filter name** — `"commodity"`. The schema is shared across every
-Provider serving that domain, so there is one vocabulary and no per-Provider mapping.
-
-The composer writes the question, in `ctx.target_lang`. The planner does not write user-facing
-text.
-
-*Later if needed:* `options` (a short value list, once something can fill it) and a render hint
-for non-text input. Both are fields with defaults — cheap to add.
-
 ### 7. Plan Executioner
+
+*Planned. Not built.* Today the planner makes the calls and returns `Evidence`. In the code
+the evidence is filed per ask, not per plan step.
 
 The plan says what to call. The executioner is the only thing that actually calls it, and the
 only thing that touches the outside world.
@@ -1036,44 +946,45 @@ execute(plan: Plan, ctx: TurnContext) -> Evidence
 
 ### 8. Response Composer
 
+The composer writes the answer from the evidence. It is the only component that writes to the
+user.
+
 ```python
-class Answer:
-    claims: tuple[Claim, ...]
+class ComposedAnswer:
+    content: tuple[OutputBlock, ...]   # text, a form, or a form handed back
     sources: tuple[Source, ...]
-    confidence: Confidence
-    refused: tuple[Refused, ...]
-    limitations: tuple[str, ...]
-
-
-class Claim:
-    text: str                        # one sentence
-    source_id: str | None            # None for connective sentences
-
-
-class Confidence(StrEnum):
-    HIGH = "high"
-    LOW = "low"
-```
-
-```python
-compose(evidence: Evidence, plan: Plan, identity: Identity, ctx: TurnContext) -> AsyncIterator[Claim]
 
 
 class Identity:
-    name: str                        # "Kisan Mitra"
+    name: str                          # "Kisan Mitra"
     persona: str
     boundaries: str
 ```
 
-**Rules**
-- Streams **claims**, not characters. Each claim is complete when emitted.
-- Cites where it can. Uncited connective sentences are fine — loose for now.
-- Says what it refused, from `refused`.
-- Says "I don't know" when `sufficient=False`.
-- Keeps the Provider's meaning. Rewording fine, changing facts not.
-- Identity goes here and nowhere else.
+**It streams.** A piece goes out as soon as the model writes it. Joining the pieces gives the
+whole answer (ADR-0011).
+
+**It cites.** A `[n]` marker points at a source. The markers are moved to the end of each
+paragraph.
+
+**It answers each ask.** An answered ask gets its answer. An unclear ask gets one question. An
+ask nobody serves is told so.
+
+**It keeps the provider's meaning.** Rewording is fine. Changing facts is not.
+
+**It never invents.** When the evidence cannot answer, it says so.
+
+**No second try part-way.** Once pieces are out, a retry would write a different answer over
+the first. A failure part-way fails the turn.
+
+**Identity goes here and nowhere else.**
+
+*Future scope:* the answer is split into small statements, each tied to its source. The
+Reviewer can then check each statement against the source it names.
 
 ### 9. Response Reviewer — optional port
+
+*Planned. Not built.*
 
 ```python
 class ReviewVerdict:
@@ -1101,6 +1012,8 @@ review(answer: Answer, evidence: Evidence, ctx: TurnContext) -> ReviewVerdict
 *We need to revisit this*
 
 ### 10. Channel Response — what it gets
+
+*Planned. Not built.*
 
 **This is the answer to the question.** The channel component receives:
 
@@ -1151,233 +1064,53 @@ class Status(StrEnum):
 
 Same `Answer` in, four different outputs. The composer never learns which channel it served.
 
-That's each piece on its own. Here is all eleven working on one real question.
+### 11. Redaction and translation — the edge
+
+Two steps wrap the turn. They run on the way in, and again on the way out.
+
+**Redaction.** It runs first. Each personal value in the question and the history becomes a
+numbered tag, such as `«phone_1»`. Every later step, and every model, sees only tags. A rule
+decides which real values are kept for a provider call and which are destroyed. On the way
+out, the tags in the answer become the user's own values again.
+
+**Translation.** It runs only for a language that has a route in config. The question is
+translated into the language the pipeline works in. The answer is translated back, piece by
+piece, as it streams.
+
+Both are optional. With neither set up, the turn passes through unchanged.
+
+*Future scope:* redaction by a model, for personal information that is too complex for the
+rules to find. And encryption of personal data.
+
+That's each piece on its own. Here is one real question, end to end.
 
 ---
 
 ## 7. One real question, end to end
 
-> *"I am planning to sow potato, can you tell me which soil is best? Also, what is the price of
-> potato and gold?"*
+> *"Will it rain in Anand this week? And when should I sow potato?"*
 
-Three asks. Two agriculture, one not.
+Two asks. This is what happens today.
 
-### 1. UserTurn — in
+| Step | What happens |
+|---|---|
+| Entrypoint | Builds the `UserTurn` and the `TurnContext`. |
+| Redaction | No personal values in the question. Nothing changes. |
+| Translate in | The question is in English. Nothing changes. |
+| Intent | Two asks. Ask 0: `Weather`, `observe`, place Anand. Ask 1: `Crop`, `advise`, subject potato. |
+| Settlement | Ask 0 needs a place and has one. Ask 1 needs none. Both are settled. |
+| Provider Discovery | One search per ask. Each finds a provider that can serve it. |
+| Moderation | Runs beside the three steps above. Says `PROCEED`. |
+| Planner | For each ask it looks at the candidates, then calls `select`. It returns the evidence: two results, two sources. |
+| Response Composer | Streams the answer. The rain forecast cites `[1]`. The sowing advice cites `[2]`. |
+| Translate out, reveal | Nothing to translate, no tags to turn back. |
+| End | The turn ends as `answered`. |
 
-```python
-UserTurn(
-    query="I am planning to sow potato, can you tell me which soil is best? "
-          "Also, what is the price of potato and gold?",
-    history=(),
-    subject_ref=SubjectRef(user_id="u-8821", ref=SecretStr("****"), ...),
-    location=Location(district="Anand", state="Gujarat", lat=22.56, lon=72.93),
-)
+**If the user had not named a place,** and sent no location, Settlement would stop ask 0. The
+user would get the sowing answer and one question: which place?
 
-TurnContext(trace_id="t-4f2a", session_id="s-19", source_lang="en",
-            target_lang="en", channel=Channel.WHATSAPP, tenant="gj")
-```
-
-### 2. Intent
-
-**In:** `UserTurn`, `Taxonomy`, `ctx`
-
-```python
-Intent(
-    asks=(
-        Ask(subject="potato", category="Crop",   action_type=ActionType.ADVISORY),
-        Ask(subject="potato", category="Market", action_type=ActionType.LOOKUP),
-    ),
-    confidence=0.91,
-)
-```
-
-Gold has no category in the taxonomy, so no ask is made for it. Intent does not refuse — that is
-moderation.
-
-### 3. Moderation
-
-**In:** `UserTurn`, `Intent`, `ctx` — one LLM call, harm + scope
-
-```python
-ModerationVerdict(
-    outcome=Outcome.PROCEED,
-    reason=None,
-    policy_id=None,
-    refused=(Refused(what="gold prices", reason="outside agriculture"),),
-    unsupported=(),
-)
-```
-
-**The partial case.** Not a rejection — potato proceeds, gold is refused and carried forward so
-the composer can say so.
-
-### 4. Skills Discovery
-
-**In:** `UserTurn`, `Intent`, `ctx`
-
-```python
-Skills(selected=(
-    Skill(id="soil-advisory", domain="Crop",
-          guidance="For sowing questions, state soil type, pH range and drainage."),
-))
-```
-
-Local only. No network call before the barrier.
-
-### 5. Provider Discovery
-
-**In:** `Intent`, `UserTurn`, `ctx` — one query per ask, run together
-
-Ask 0 is `Crop` + `ADVISORY` → `openagrinet:KnowledgeAdvisory`. Ask 1 is `Market` + `LOOKUP` →
-`openagrinet:MandiPrice` and `openagrinet:MarketIntelligence`, since the pair cannot be pinned.
-Two distinct queries.
-
-```python
-DiscoveryResult(
-    answers={},                       # nothing Direct in the catalog today
-    capabilities={
-        0: (ProviderCapability(provider_id="krishi-kb", provider_name="Krishi Knowledge Base",
-                               capability="openagrinet:KnowledgeAdvisory",
-                               resource_id="res:krishi-kb:crop-advisory",
-                               offer_id="offer:krishi-kb:open", kind=LOCAL),),
-        1: (ProviderCapability(provider_id="agmarknet", provider_name="Agmarknet",
-                               capability="openagrinet:MandiPrice",
-                               resource_id="res:agmarknet:daily-price",
-                               offer_id="offer:agmarknet:open", kind=REMOTE),),
-    },
-    failures={},
-    events=(),
-)
-```
-
-Gold produced no ask, so there is nothing to look up. Subject — "potato" — was not sent as a
-filter and is not matched here; the planner narrows on it.
-
-### 6. Tool Discovery
-
-**In:** `Intent`, `ToolIndex`, `ctx` — local, no network call
-
-Under 10 tools in this deployment, so no filtering. All of them go through.
-
-```python
-ToolCandidates(tools=(
-    Tool(name="soil_lookup", namespace="acme",
-         description="Soil type and pH by district", server_id="acme-mcp"),
-))
-```
-
-### 7. Planner
-
-**In:** `UserTurn`, `Intent`, `Skills`, `DiscoveryResult`, `ToolCandidates`,
-`DomainSchemas`, `Awaitable[verdict]`, `ctx`
-
-The schemas it reads:
-
-```python
-DomainSchema(type="openagrinet:KnowledgeRetrievalCapability",
-             filterable=("subjectCategories", "agricultureSubjects.subjectId", "languages"),
-             required=("subjectCategories",))
-
-DomainSchema(type="openagrinet:MandiPriceCapability",
-             filterable=("commodity.code", "market.marketCode", "market.state", "arrivalDate"),
-             required=("commodity.code", "market.state"))
-```
-
-One step per ask. Ask 0 has everything. Ask 1 has `commodity.code="potato"` from the query and
-`market.state="Gujarat"` from `location`. Both fillable.
-
-```python
-Plan(
-    steps=(
-        Step(id=1, capability="openagrinet:KnowledgeRetrievalCapability",
-             inputs={"subjectCategories": "Crop",
-                     "agricultureSubjects.descriptor.code": "potato"},
-             depends_on=(), on_empty=None),
-        Step(id=2, capability="openagrinet:MandiPriceCapability",
-             inputs={"commodity.code": "potato", "market.state": "Gujarat"},
-             depends_on=(), on_empty=None),
-    ),
-    skills=(Skill(id="soil-advisory", ...),),
-    serves=(0, 1),
-    refused=(Refused(what="gold prices", reason="outside agriculture"),),
-    missing=(),
-)
-```
-
-Filtering is on `descriptor.code`, not `subjectId` — there is no way to resolve "potato" to a
-governed id. See [Open #7].
-
-Two independent steps — the executor runs them in parallel. `await verdict` happens last.
-
-**The `missing` variant:** had `location` been `None`, `market.state` is unfillable → step 2 is
-not emitted, and `missing=(MissingInput(name="market.state"),)`. Step 1 still runs. The farmer
-gets the soil answer plus "which district?".
-
-### 8. Plan Executioner
-
-**In:** `Plan`, `ctx`. The only component that touches the outside world. No LLM.
-
-```python
-Evidence(
-    sources=(Source(id="1", name="ICAR Potato Guide", kind="document", url="…"),
-             Source(id="2", name="Agmarknet", kind="provider", url=None)),
-    results=(
-        Result(step_id=1, source_id="1",
-               data={"soilType": "sandy loam", "phRange": "5.2–6.4",
-                     "drainage": "well-drained"}),
-        Result(step_id=2, source_id="2",
-               data={"commodity": "Potato", "market": {"marketName": "Anand"},
-                     "prices": {"modal": 1450, "unit": "INR/quintal"},
-                     "arrivalDate": "2026-08-25"}),
-    ),
-    served=(0, 1),
-    failed=(),
-    sufficient=True,
-)
-```
-
-### 9. Response Composer
-
-**In:** `Evidence`, `Plan`, `Identity`, `ctx` — streams claims
-
-```python
-Answer(
-    claims=(
-        Claim(text="Potato grows best in well-drained sandy loam soil.", source_id="1"),
-        Claim(text="Keep soil pH between 5.2 and 6.4.", source_id="1"),
-        Claim(text="Potato is ₹1,450 per quintal at Anand mandi today.", source_id="2"),
-        Claim(text="I cannot help with gold prices.", source_id=None),
-    ),
-    sources=(Source(id="1", ...), Source(id="2", ...)),
-    confidence=Confidence.HIGH,
-    refused=(Refused(what="gold prices", reason="outside agriculture"),),
-    limitations=(),
-)
-```
-
-### 10. Response Reviewer — optional
-
-**In:** `Answer`, `Evidence`, `ctx` → `ReviewVerdict(grounded=True, violations=())`
-
-Does not block the stream. Logs only.
-
-### 11. Channel Response
-
-**In:** `Answer` + `ctx.channel` + `ctx.target_lang`. Not the plan, not the evidence.
-
-WhatsApp — inline markers and a source list:
-
-```
-Potato grows best in well-drained sandy loam soil. [1]
-Keep soil pH between 5.2 and 6.4. [1]
-Potato is ₹1,450 per quintal at Anand mandi today. [2]
-I cannot help with gold prices.
-
-[1] ICAR Potato Guide  [2] Agmarknet
-```
-
-Same `Answer` on voice: markers stripped, claims grouped into speakable phrases. On SMS:
-trimmed, no markers.
+**If moderation had said `REJECT`,** the planner would never start. The user would get one
+refusal message, with no stream.
 
 ---
 
@@ -1385,7 +1118,7 @@ trimmed, no markers.
 
 1. Current struture for policy might not work for Response, need to check on this later.
 2. **Regeneration limit** — if review can trigger a rewrite, how many before giving up?
-3. **Required filters** — `network-specs` marks what you *may* filter on, not what you *must* send. `DomainSchema.required` still has no source. The packs do carry JSON Schema `required:`, but it is a different fact: it is gated on `informationMode` and constrains what a **publisher** must include in its catalog record — not what a **consumer** must supply at query time. There is no `required_filters` (or equivalent) key anywhere in the packs. So any broad query is legal, and every filter is a narrowing choice — a wrong guess excludes a Provider that could have answered, which is a false negative we cannot see. Open: where `DomainSchema.required` gets its values — a new key in `profile.json`, or the planner deriving them from what the capability needs in order to return a useful answer.
+3. **Required filters** — `network-specs` marks what you *may* filter on, not what you *must* send. The pack does not say which fields must be sent. The packs do carry JSON Schema `required:`, but it is a different fact: it is gated on `informationMode` and constrains what a **publisher** must include in its catalog record — not what a **consumer** must supply at query time. There is no `required_filters` (or equivalent) key anywhere in the packs. So any broad query is legal, and every filter is a narrowing choice — a wrong guess excludes a Provider that could have answered, which is a false negative we cannot see. Open: where the required fields come from — a new key in `profile.json`, or the planner deriving them from what the capability needs in order to return a useful answer.
 4. **Operator-validity table** — 0003 refers to one, never prints it.
 5. **Language validation** — Gujarati script correctness, deferred. English only for now.
 6. **Does a conversation need a summary, and who keeps it?** Keeping it in memory means it is
@@ -1397,20 +1130,11 @@ trimmed, no markers.
 8. **Rounding lat/long.** Should it be rounded so a farmer is not identified by exact location,
    and if so to what range? This sits with the Experience layer — the DSS receives what it is
    given.
-9. **Nothing serves `ACT` yet.** Every schema type is advisory, observation, or resource. No
-   Provider type books or submits anything. So an `ACT` ask finds no Provider and gets no step —
-   the normal no-match path, but worth knowing it is the only outcome today.
-10. **Which Provider do we call, and how do we rank answers?** Several can serve one ask, and
-    discovery tells us nothing about quality — only coverage, language and capability type. We
-    learn how fresh an answer is after the call, not before. And if two Providers report
-    different prices, nothing decides which is right.
-
-    Sharper now that `textSearch` is out: it was the *only* signal that ranks, so discovery
-    returns a genuinely unordered set and `provider_selector` config order is the whole
-    ordering story. Nothing in the DSS ranks anything today. Also unresolved: **who** selects.
-    **6.4** says the planner picks; **6.5** puts the choice in a `provider_selector` port. Those
-    cannot both be true.
-11. **What may telemetry hold, and for how long?** Farmer content reaches the sinks. Open:
+9. **How do we rank answers by quality?** A sender's preference now decides which providers
+   are called, and in what order (ADR-0019). Still open: discovery tells us nothing about
+   quality. We learn how fresh an answer is after the call, not before. And if two providers
+   report different prices, nothing decides which is right.
+10. **What may telemetry hold, and for how long?** Farmer content reaches the sinks. Open:
     masking before write, who may query it, and whether reads are audited.
 
     **Partly answered, and worth reading as a decision rather than a default.** ADR-0007 ships
@@ -1424,32 +1148,24 @@ trimmed, no markers.
     So the retention window is settled and masking is not. When masking is built it belongs in
     front of the OTLP exporter, as a span processor — that is the sink layer, and it is the one
     place every write passes through.
-12. **Can a dropped stream be resumed?** Not today. The known pattern is to buffer each claim
+11. **Can a dropped stream be resumed?** Not today. The known pattern is to buffer each claim
     against `trace_id` as it is emitted, so generation finishes whether anyone is listening and
     any replica can serve the rest on reconnect. Matters most on voice, where a dropped call
     means the whole answer is spoken again.
-13. **How do we filter schemas down to what a turn needs?** The planner should get only the
-    schemas for capabilities in `discovered`, not the whole cache. Where that filtering happens,
-    and what it keys on, is undecided.
-14. **Who decides `sufficient`?** It is a judgement, and the executioner has no LLM. The
+12. **Who decides `sufficient`?** It is a judgement, and the executioner has no LLM. The
     architecture doc puts sufficiency with the planner, but the field sits on `Evidence`. To be
     settled during implementation.
-15. **Nothing declares which categories a schema pack serves.** `subjectCategories` is declared
+13. **Nothing declares which categories a schema pack serves.** `subjectCategories` is declared
     once, on the base `AgricultureResource`, and no pack narrows it — so a `MandiPrice` resource
-    tagged `["Scheme"]` would validate. **6.4** resolves `@type` from a category index inferred
+    tagged `["Scheme"]` would validate. **6.5** resolves `@type` from a category index inferred
     from each pack's `examples/`, which makes the index a convention rather than a contract. The
     upstream fix is one `subject_categories` key per `profile.json` in `network-specs`; until
     then, an observed category outside the index is recorded as a divergence and the map is not
     widened. Also: two of the seven categories, `Livestock` and `Scheme`, have no pack of their
     own — they appear only as secondary categories on `KnowledgeResource`.
-16. **A turn proceeds if any one ask resolves a place.** Each ambiguous or unresolved sibling
+14. **A turn proceeds if any one ask resolves a place.** Each ambiguous or unresolved sibling
     ask is reported as a failure ("place not found" / "matches several places") and no provider
     is called for it; the turn ends `partially_answered`.
 
 ## 9. Dependencies 
 1. As of now we are considering to read it from GitHub Repo, but if there are some change in the schema location we would need to change as well.
-
-## 10. Assumption
-
-1. We are using Lookup instead of Observe as there was comment if we can use some other word instead of Observ,
-we will update once we settle on name.
