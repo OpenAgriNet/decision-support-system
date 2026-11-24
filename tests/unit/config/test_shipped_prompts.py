@@ -22,6 +22,7 @@ import pytest
 from dss.config.prompt_service import PromptService, build_prompt_service
 from dss.core.forms.models import FormContext, FormReference
 from dss.core.intent.models import (
+    ClassifiedAsk,
     InteractionType,
     Scheme,
     SchemeEntry,
@@ -43,10 +44,12 @@ def _service() -> PromptService:
 def _intent_prompt(
     history: tuple[ConversationMessage, ...] = (),
     schemes: tuple[SchemeEntry, ...] = (),
+    *,
+    lang: str = "en",
 ) -> str:
     return _service().get_prompt(
         PromptIdentifier.INTENT,
-        lang=LanguageTag("en"),
+        lang=LanguageTag(lang),
         placeholder_values={
             "categories": ", ".join(c.value for c in SubjectCategory),
             "interactions": ", ".join(i.value for i in InteractionType),
@@ -211,7 +214,7 @@ def test_intent_prompt_asks_for_the_place_name_in_english() -> None:
 
     prompt = _intent_prompt()
 
-    assert "place_name" in prompt
+    assert "place:" in prompt
     assert "English" in prompt
 
 
@@ -229,7 +232,7 @@ def test_intent_prompt_asks_the_model_to_flag_a_carried_place() -> None:
     labelled as named this turn.
     """
 
-    assert "place_from_history" in _intent_prompt()
+    assert "from_history" in _intent_prompt()
 
 
 def test_intent_prompt_carries_only_a_place_the_user_said() -> None:
@@ -345,25 +348,34 @@ def test_intent_prompt_keeps_the_subject_in_the_user_s_own_words() -> None:
     assert "Copy the user's own words" in _intent_prompt()
 
 
+@pytest.mark.parametrize("lang", ["en", "hi"])
+def test_intent_prompt_names_fields_as_the_model_writes_them(lang: str) -> None:
+    """The model is sent short field names. A prompt that explains the long
+    one explains a field the model cannot see."""
+
+    prompt = _intent_prompt(lang=lang)
+
+    renamed = {
+        name: field.validation_alias
+        for name, field in ClassifiedAsk.model_fields.items()
+        if field.validation_alias
+    }
+    assert renamed
+    for name, written_as in renamed.items():
+        assert name not in prompt
+        assert str(written_as) in prompt
+
+
 def test_intent_hindi_demo_keeps_the_output_contract_in_english() -> None:
     """The output schema's tokens are English whatever the prompt's language:
     enum values, field names, and the instruction to transliterate places.
     Scheme names stay as the farmer would type them (acceptance criterion)."""
 
-    prompt = _service().get_prompt(
-        PromptIdentifier.INTENT,
-        lang=LanguageTag("hi"),
-        placeholder_values={
-            "categories": ", ".join(c.value for c in SubjectCategory),
-            "interactions": ", ".join(i.value for i in InteractionType),
-            "history": (),
-            "schemes": (),
-        },
-    )
+    prompt = _intent_prompt(lang="hi")
 
     for category in SubjectCategory:
         assert category.value in prompt
-    for field in ("place_name", "place_from_history", "agriculture_subjects"):
+    for field in ("place:", "from_history", "subject:"):
         assert field in prompt
     assert "PM-KISAN" in prompt
 

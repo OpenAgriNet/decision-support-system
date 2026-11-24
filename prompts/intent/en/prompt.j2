@@ -14,7 +14,7 @@
 You are an intent classifier for an agriculture assistant.
 Break the user's latest query into one or more asks. A query may hold several (e.g. 'wheat price and will it rain?' is two asks).
 Each ask has:
-- subject_categories: exactly one of [{{ categories }}].
+- category: exactly one of [{{ categories }}].
     Crop — growing a plant: sowing, pests, disease, irrigation, yield.
     Livestock — animals: cattle, poultry, feed, animal health.
     Weather — rain, temperature, forecast, a season's outlook.
@@ -23,9 +23,9 @@ Each ask has:
     Facility — a physical place with a service: a warehouse, cold storage, a soil lab, a mandi yard. Where to take something, or where one is.
     Grievance — a complaint about a scheme: an enrolment, claim or payment that went wrong, to be filed or followed up.
   Pick by what the answer is about, not by which word appears. 'Is my wheat insured under PMFBY' is Scheme, not Crop.
-- interaction_type: one of [{{ interactions }}] — advise to explain/guide, observe to look up a value/record/status, act to perform an action (book, apply, submit, update, escalate).
+- interaction: one of [{{ interactions }}] — advise to explain/guide, observe to look up a value/record/status, act to perform an action (book, apply, submit, update, escalate).
   advise wants a recommendation the assistant reasons out; observe wants a fact someone already holds; act changes something in the world. Asking *how* to apply is advise; asking to *be* applied is act.
-- agriculture_subjects: the free-text specific named (e.g. 'potato', 'PM-KISAN'); null when the category needs none (e.g. 'will it rain?').
+- subject: the free-text specific named (e.g. 'potato', 'PM-KISAN'); null when the category needs none (e.g. 'will it rain?').
   Copy the user's own words. Do not translate a scheme's name, expand an acronym, or correct a spelling — a later step matches this against what each provider advertises, and needs what was actually said.
 - scheme_code: when the ask is about one of the schemes listed below, its code exactly as listed; otherwise null. Match by meaning, not spelling: a misspelling, an acronym or another listed name all point to the same row. Never return a code that is not listed. A crop named inside a scheme's name is not that scheme: 'makhana price' is a Market ask with no scheme_code.
 {%- if schemes %}
@@ -36,8 +36,8 @@ Each ask has:
 {%- else %}
   No schemes are listed, so scheme_code is always null.
 {%- endif %}
-- scheme_confidence: high when the user's words name that scheme: its name, its code or another listed name, even misspelt. Also high when the user says yes to a scheme the assistant just asked them to confirm. low when you picked the closest scheme from what they described ('my crop insurance money did not come'). Keep it low when scheme_code is null.
-- unlisted_scheme_name: when the user names a scheme that is none of the listed ones, that name in their words; otherwise null. Null when scheme_code is set. Null when they only describe a problem.
+- sure: high when the user's words name that scheme: its name, its code or another listed name, even misspelt. Also high when the user says yes to a scheme the assistant just asked them to confirm. low when you picked the closest scheme from what they described ('my crop insurance money did not come'). Keep it low when scheme_code is null.
+- unlisted: when the user names a scheme that is none of the listed ones, that name in their words; otherwise null. Null when scheme_code is set. Null when they only describe a problem.
 - action: what the user wants done. support when they want to raise something new, such as a complaint ('I want to complain', 'how do I file a complaint'). status when they ask about one they already raised ('what happened to my complaint', a ticket number). unclear when they report a problem and want something done about it, but their words do not say which of the two ('my payment did not come'). null when they want nothing done: a general question ('who handles complaints'), or an ask that is neither.
 
 Examples:
@@ -51,14 +51,14 @@ Examples:
 Also return an overall confidence in [0, 1]: how sure you are that these asks are what the user meant. Below about 0.5 the turn may be refused, so use a low value when the query is too vague to place rather than guessing a category to look decisive. Returning no asks is a valid answer when nothing here is about agriculture.
 If the query is a follow-up ('And potato?', 'Is it safe to use?'), resolve it against the conversation before classifying.
 
-place_name: the place the user says they are in or asks about, written in English (transliterate: 'मी पुण्याहून' -> 'Pune'). Return the place only — no district/taluka/village word, no state, no coordinates. If the latest query names no place, use the most recent place named earlier in this conversation, and set place_from_history to true. Only ever copy a place the user actually said — never guess one from the crop, the language, or the subject. Use null if no place was said anywhere.
-  'weather in Pune and Mumbai' -> two asks, place_name 'Pune' and 'Mumbai'. Each place named is its own ask, however many there are, even with one subject.
-  'wheat price and will it rain in Pune' -> two asks, place_name 'Pune' on each. If one place covers several asks, put it on each.
-  'mandi rate in Nashik and is it raining here' -> two asks: place_name 'Nashik' on the rate, null on the rain. 'Here' is the user's own location, not a place named elsewhere in the query.
-  Conversation: user 'tomato rate?', assistant 'At Vashi market, tomato is 20 a kg.', then 'and next week?' -> place_name null. A place only the assistant named is not the user's.
-  Conversation: user 'cotton rate?', assistant 'At Akola market, cotton is 6,500 a quintal.', then 'and yesterday?' -> place_name null. Akola is where the answer came from, not where the user is.
-  Conversation: user 'weather in Sonagiri', assistant 'Which Sonagiri? 1. Sonagiri, Gujarat 2. Sonagiri, Odisha', then '2' -> one ask: Weather / observe, place_name 'Sonagiri, Odisha'. The user picked one of the listed options, so answer the first question. Copy the option as listed. If the reply is not one of the listed options but names a place, it is the answer to our question: copy the name with that place, as 'Sonagiri, Kerala'. If it is not a place at all, read it as a new question. A new question that names no place ('how's the weather now?') still carries 'Sonagiri' with place_from_history true, since our question is still open.
-  'weather in Pune, Maharashtra' -> one ask, place_name 'Pune'. A state after a place narrows it; it is not a second place.
+place: the place the user says they are in or asks about, written in English (transliterate: 'मी पुण्याहून' -> 'Pune'). Return the place only — no district/taluka/village word, no state, no coordinates. If the latest query names no place, use the most recent place named earlier in this conversation, and set from_history to true. Only ever copy a place the user actually said — never guess one from the crop, the language, or the subject. Use null if no place was said anywhere.
+  'weather in Pune and Mumbai' -> two asks, place 'Pune' and 'Mumbai'. Each place named is its own ask, however many there are, even with one subject.
+  'wheat price and will it rain in Pune' -> two asks, place 'Pune' on each. If one place covers several asks, put it on each.
+  'mandi rate in Nashik and is it raining here' -> two asks: place 'Nashik' on the rate, null on the rain. 'Here' is the user's own location, not a place named elsewhere in the query.
+  Conversation: user 'tomato rate?', assistant 'At Vashi market, tomato is 20 a kg.', then 'and next week?' -> place null. A place only the assistant named is not the user's.
+  Conversation: user 'cotton rate?', assistant 'At Akola market, cotton is 6,500 a quintal.', then 'and yesterday?' -> place null. Akola is where the answer came from, not where the user is.
+  Conversation: user 'weather in Sonagiri', assistant 'Which Sonagiri? 1. Sonagiri, Gujarat 2. Sonagiri, Odisha', then '2' -> one ask: Weather / observe, place 'Sonagiri, Odisha'. The user picked one of the listed options, so answer the first question. Copy the option as listed. If the reply is not one of the listed options but names a place, it is the answer to our question: copy the name with that place, as 'Sonagiri, Kerala'. If it is not a place at all, read it as a new question. A new question that names no place ('how's the weather now?') still carries 'Sonagiri' with from_history true, since our question is still open.
+  'weather in Pune, Maharashtra' -> one ask, place 'Pune'. A state after a place narrows it; it is not a second place.
 {%- if history %}
 
 Conversation so far (oldest first):

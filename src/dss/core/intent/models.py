@@ -216,37 +216,41 @@ class Ask(BaseModel):
 class ClassifiedAsk(BaseModel):
     """One ask from the user's query, in words only.
 
-    ``place_name`` is the place the user named or asked about, in English,
-    or null when the ask names no place.
+    ``place`` is the place the user named or asked about, in English, or
+    null when the ask names no place.
 
     ``scheme_code`` is the code of the listed scheme this ask is about, or
     null when it names none of them.
 
-    ``scheme_confidence`` is high when the user's words name that scheme: its
-    name, its code or another listed name, even misspelt. It is low when you
-    only picked the closest one.
+    ``sure`` is high when the user's words name that scheme: its name, its
+    code or another listed name, even misspelt. It is low when you only
+    picked the closest one.
 
-    ``unlisted_scheme_name`` is the scheme the user named, in their words,
-    when it is none of the listed schemes. Null otherwise.
+    ``unlisted`` is the scheme the user named, in their words, when it is
+    none of the listed schemes. Null otherwise.
 
     ``action`` is what the user wants done: support to raise something new,
     status to check one already raised, unclear when they want something
     done but their words do not say which. Null when they want nothing done.
     """
 
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    # The model writes each field's alias, code reads the name. A reply takes
+    # as long as the tokens in it, and most of them were field names.
+    model_config = ConfigDict(extra="forbid", frozen=True, validate_by_name=True)
 
-    agriculture_subjects: str | None = None
-    subject_categories: SubjectCategory
-    interaction_type: InteractionType
-    place_name: str | None = None
+    agriculture_subjects: str | None = Field(default=None, validation_alias="subject")
+    subject_categories: SubjectCategory = Field(validation_alias="category")
+    interaction_type: InteractionType = Field(validation_alias="interaction")
+    place_name: str | None = Field(default=None, validation_alias="place")
     # True when place_name came from an earlier turn, not the latest query.
     # Only the model can tell: it read both, in whatever language they were.
-    place_from_history: bool = False
+    place_from_history: bool = Field(default=False, validation_alias="from_history")
     scheme_code: str | None = None
     # Low when left out: a scheme the model did not vouch for is confirmed.
-    scheme_confidence: SchemeConfidence = SchemeConfidence.LOW
-    unlisted_scheme_name: str | None = None
+    scheme_confidence: SchemeConfidence = Field(
+        default=SchemeConfidence.LOW, validation_alias="sure"
+    )
+    unlisted_scheme_name: str | None = Field(default=None, validation_alias="unlisted")
     action: RequestedAction | UnclearAction | None = None
     # Set by `classify_intent` from the catalog, never by the model: hidden
     # from the schema it is shown, so a code it invents never becomes a scheme.

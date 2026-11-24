@@ -22,7 +22,6 @@ import pytest
 from dotenv import dotenv_values
 
 from dss.adapters.area_lookup.csv_lookup import CsvAreaLookup
-from dss.adapters.llm.pydantic_ai_provider import PydanticAILLMProvider
 from dss.config.clarification_text_loader import load_clarification_text
 from dss.config.settings import DEFAULT_AREA_CSV, Settings
 from dss.core.channel.service import pick_lists
@@ -42,8 +41,8 @@ from dss.core.planner.models import AskEvidence, Evidence
 from dss.core.settlement.ask_slots import frame_for
 from dss.core.settlement.models import AskRequirements, NeedsClarification
 from dss.core.shared.models import ConversationMessage, TextQuery, UserTurn
-from dss.entrypoint.composition.root import _resolve_model
-from dss.observability.stages import Stage
+from dss.entrypoint.composition.root import _intent_llm
+from dss.ports.llm import LLMProvider
 from tests.support.live_model import missing_model_key
 
 
@@ -98,20 +97,13 @@ def _live_env(monkeypatch: pytest.MonkeyPatch) -> None:
 LOOKUP = CsvAreaLookup.load(DEFAULT_AREA_CSV)
 
 
-def _live_llm() -> PydanticAILLMProvider:
+def _live_llm() -> LLMProvider:
     # Plain `Settings()` so .env applies: the deployment's DSS_INTENT_MODEL
     # decides the provider (`azure:...` or `openai:...`). Constructing it with
     # overrides would fall back to the field default and call OpenAI with
     # whatever key happens to be set.
-    settings = Settings()
-    return PydanticAILLMProvider(
-        _resolve_model(settings.intent_model, settings),
-        name="intent-classifier",
-        stage=Stage.INTENT,
-        temperature=settings.intent_temperature,
-        timeout=settings.intent_timeout_seconds,
-        retries=settings.intent_retries,
-    )
+    # The app's own binding: how the model is asked is part of what is tested.
+    return _intent_llm(Settings())
 
 
 def _turn(

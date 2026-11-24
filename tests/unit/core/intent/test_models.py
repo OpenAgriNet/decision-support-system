@@ -14,6 +14,7 @@ from dss.core.intent.models import (
     InteractionType,
     PlaceSource,
     ResolvedPlace,
+    SchemeConfidence,
     SubjectCategory,
     UnclearAction,
     UnresolvedPlace,
@@ -397,6 +398,29 @@ def test_non_bcp47_language_raises() -> None:
 
 def test_a_turn_reads_plain_strings_as_language_tags(a_turn) -> None:
     assert a_turn(target_lang="HI-in").target_lang == LanguageTag("hi-IN")
+
+
+def test_the_models_short_names_are_read() -> None:
+    """The model answers in short names: its reply takes as long as the
+    tokens it writes, and most of them were field names."""
+
+    ask = ClassifiedAsk.model_validate_json(
+        '{"category": "Grievance", "interaction": "act", "subject": "PMFBY",'
+        ' "place": "Pune", "from_history": true, "scheme_code": "PMFBY",'
+        ' "sure": "high", "unlisted": "Kisan Card", "action": "support"}'
+    )
+
+    assert ask == ClassifiedAsk(
+        subject_categories=SubjectCategory.GRIEVANCE,
+        interaction_type=InteractionType.ACT,
+        agriculture_subjects="PMFBY",
+        place_name="Pune",
+        place_from_history=True,
+        scheme_code="PMFBY",
+        scheme_confidence=SchemeConfidence.HIGH,
+        unlisted_scheme_name="Kisan Card",
+        action=ProviderAction.SUPPORT,
+    )
 
 
 def test_the_model_is_never_shown_the_scheme_field() -> None:
