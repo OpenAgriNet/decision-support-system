@@ -86,14 +86,3 @@ class PromptProvider(Protocol):
         """The planner's Agent Skills for those intent categories, in ``lang``
         or English when it has none. ``None`` when none of them has one."""
         ...
-
-    def get_category_guidance(
-        self,
-        prompt_identifier: PromptIdentifier,
-        lang: LanguageTag,
-        categories: Collection[SubjectCategory],
-    ) -> str:
-        """The guidance configured for those intent categories beside that
-        prompt, with the same language fallback. Empty when none of them has
-        any — a prompt carries a category's rules only on a turn about it."""
-        ...

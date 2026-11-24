@@ -149,11 +149,9 @@ class FakePromptProvider:
     def __init__(
         self,
         skills: Sequence[Skill] = (),
-        category_guidance: Mapping[SubjectCategory, str] | None = None,
         capability_skills: CapabilitySkills | None = None,
     ) -> None:
         self._skills = tuple(skills)
-        self._category_guidance = dict(category_guidance or {})
         self._capability_skills = capability_skills
         self.calls: list[tuple[PromptIdentifier, LanguageTag, dict[str, Any]]] = []
 
@@ -191,18 +189,6 @@ class FakePromptProvider:
         asked = {category.value.lower() for category in categories}
         names = tuple(name for name in self._capability_skills.names if name in asked)
         return replace(self._capability_skills, names=names) if names else None
-
-    def get_category_guidance(
-        self,
-        prompt_identifier: PromptIdentifier,
-        lang: LanguageTag,
-        categories: Collection[SubjectCategory],
-    ) -> str:
-        return "\n\n".join(
-            guidance
-            for category, guidance in self._category_guidance.items()
-            if category in categories
-        )
 
 
 class FakeLocalizer:
