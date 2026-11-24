@@ -27,7 +27,8 @@
   moves out of the composer's general prompt into the Market guidance
   (#242, ADR-0025)
 - The planner is offered an Agent Skill for each intent category the turn
-  asks about, from the folder `capability_skills` names per language, and
+  asks about, from `category_guidance/<lang>/` (set by
+  `DSS_CATEGORY_GUIDANCE_DIR`), and
   loads it with `load_capability` when it needs it. Market is the first.
   Adds `pydantic-ai-harness` 0.54.0, which pins `pydantic-ai-slim` 2.54.0
   (#242, ADR-0025)

@@ -81,14 +81,10 @@ class PromptProvider(Protocol):
         ...
 
     def get_capability_skills(
-        self,
-        prompt_identifier: PromptIdentifier,
-        lang: LanguageTag,
-        categories: Collection[SubjectCategory],
+        self, lang: LanguageTag, categories: Collection[SubjectCategory]
     ) -> CapabilitySkills | None:
-        """The Agent Skills configured beside that prompt for those intent
-        categories, with the same language fallback. ``None`` when none of
-        them has one."""
+        """The planner's Agent Skills for those intent categories, in ``lang``
+        or English when it has none. ``None`` when none of them has one."""
         ...
 
     def get_category_guidance(

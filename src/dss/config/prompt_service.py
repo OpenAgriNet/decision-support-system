@@ -2,10 +2,11 @@
 
 ``configs/prompts.yaml`` names, per LLM component and per language, which
 template under ``prompts/`` is the system prompt (and, for the planner, which
-skill files ride with it, and which Agent Skills it may load per intent
-category; for any component, which guidance is added for which intent
-category). This module loads that registry once at boot and
-answers ``get_prompt(PromptIdentifier.INTENT, lang=LanguageTag("hi"),
+skill files ride with it; for any component, which guidance is added for
+which intent category). The planner's Agent Skills, one per intent category,
+come from a separate folder (``category_guidance/`` by default). This module
+loads both once at boot and answers
+``get_prompt(PromptIdentifier.INTENT, lang=LanguageTag("hi"),
 placeholder_values={...})`` per turn.
 
 The two properties the design leans on:
@@ -24,7 +25,7 @@ The two properties the design leans on:
   placeholder is the bug this guards against — see the old
   ``core/planner/prompt._checked``), that every skill file parses, that
   configured category guidance has a placeholder to go into, and that every
-  Agent Skill is named for an intent category.
+  Agent Skill is under a language tag and named for an intent category.
 
 Rendering is Jinja2 with ``StrictUndefined``: a value the template needs but
 the caller did not send raises instead of printing nothing.
@@ -82,9 +83,6 @@ class _LanguageSpec(BaseModel):
     skills: tuple[str, ...] = ()
     # Intent category → guidance file, in the order the guidance is added.
     category_guidance: dict[str, str] = {}
-    # A folder of Agent Skills, one per intent category, named for it in
-    # lowercase (`market/SKILL.md`).
-    capability_skills: str | None = None
 
 
 class _ComponentSpec(BaseModel):
@@ -110,7 +108,6 @@ class _LanguageEntry:
     template: Template
     skills: tuple[Skill, ...]
     category_guidance: Mapping[SubjectCategory, str]
-    capability_skills: _CapabilitySkillLibrary | None
 
 
 @dataclass(frozen=True)
@@ -127,8 +124,13 @@ class PromptService:
     back to English when that language has no version. Satisfies
     ``ports.prompts.PromptProvider``."""
 
-    def __init__(self, components: dict[str, _ComponentPrompts]) -> None:
+    def __init__(
+        self,
+        components: dict[str, _ComponentPrompts],
+        capability_skills: Mapping[LanguageTag, _CapabilitySkillLibrary] | None = None,
+    ) -> None:
         self._components = components
+        self._capability_skills = dict(capability_skills or {})
 
     def get_prompt(
         self,
@@ -167,16 +169,15 @@ class PromptService:
         return component.languages[FALLBACK_LANGUAGE].skills
 
     def get_capability_skills(
-        self,
-        prompt_identifier: PromptIdentifier,
-        lang: LanguageTag,
-        categories: Collection[SubjectCategory],
+        self, lang: LanguageTag, categories: Collection[SubjectCategory]
     ) -> CapabilitySkills | None:
-        component = self._components[prompt_identifier.value]
-        served = self._resolve(prompt_identifier, component, lang)
-        library = (
-            component.languages[served].capability_skills
-            or component.languages[FALLBACK_LANGUAGE].capability_skills
+        library = next(
+            (
+                self._capability_skills[tag]
+                for tag in (*lang.lookup_order, FALLBACK_LANGUAGE)
+                if tag in self._capability_skills
+            ),
+            None,
         )
         if library is None:
             return None
@@ -245,12 +246,16 @@ class PromptService:
         return FALLBACK_LANGUAGE
 
 
-def build_prompt_service(path: Path | None = None) -> PromptService:
+def build_prompt_service(
+    path: Path | None = None, *, category_guidance_dir: Path | None = None
+) -> PromptService:
     """Load and validate the prompt registry; raise on anything broken.
 
     - ``path`` unset → ``configs/prompts.yaml`` under the working directory.
     - ``path`` set but missing → ``FileNotFoundError`` (I have a config + it
       isn't there; do not boot on a different one).
+    - ``category_guidance_dir`` unset → the planner is offered no Agent Skills;
+      set but missing → ``FileNotFoundError``, same stance.
     """
 
     source = DEFAULT_CONFIG if path is None else path
@@ -290,7 +295,12 @@ def build_prompt_service(path: Path | None = None) -> PromptService:
             name,
             ", ".join(sorted(map(str, component.languages))),
         )
-    return PromptService(components)
+    capability_skills = (
+        {}
+        if category_guidance_dir is None
+        else _load_capability_skill_libraries(category_guidance_dir)
+    )
+    return PromptService(components, capability_skills)
 
 
 def _load_component(
@@ -363,22 +373,38 @@ def _load_language(
         template=environment.from_string(text),
         skills=skills,
         category_guidance=category_guidance,
-        capability_skills=(
-            _load_capability_skills(_resolved(base, entry.capability_skills), label)
-            if entry.capability_skills
-            else None
-        ),
     )
 
 
-def _load_capability_skills(library: Path, label: str) -> _CapabilitySkillLibrary:
-    """Only the folder is checked here; the model reads the skill files."""
+def _load_capability_skill_libraries(
+    root: Path,
+) -> dict[LanguageTag, _CapabilitySkillLibrary]:
+    """One library per language folder. Only the folders are checked here;
+    the model reads the skill files."""
 
-    if not library.is_dir():
+    if not root.is_dir():
         raise FileNotFoundError(
-            f"prompt {label} points at capability skills {library} but no "
-            "folder is there"
+            f"category guidance dir is set to {root} but no folder is there — "
+            "refusing to boot without the skills it was given"
         )
+    return {
+        _skill_language(folder): _load_capability_skills(folder.resolve())
+        for folder in sorted(root.iterdir())
+        if folder.is_dir()
+    }
+
+
+def _skill_language(folder: Path) -> LanguageTag:
+    try:
+        return LanguageTag(folder.name)
+    except ValidationError:
+        raise ValueError(
+            f"category guidance folder {folder} is not named for a language tag"
+        ) from None
+
+
+def _load_capability_skills(library: Path) -> _CapabilitySkillLibrary:
+    label = f"{library.parent.name}/{library.name}"
     return _CapabilitySkillLibrary(
         library=library,
         skill_names={
@@ -398,7 +424,7 @@ def _skill_category(skill_name: str, label: str) -> SubjectCategory:
         return by_skill_name[skill_name]
     except KeyError:
         raise ValueError(
-            f"prompt {label} has capability skill {skill_name!r}, which is not "
+            f"category guidance {label} has skill {skill_name!r}, which is not "
             f"an intent category in lowercase ({', '.join(by_skill_name)})"
         ) from None
 

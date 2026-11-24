@@ -29,9 +29,9 @@
 # intent found asking about it — so the prompt stays general, and a
 # category's rules ride along only when needed. Keys are intent categories (Market, Weather, ...).
 #
-# `capability_skills` is a folder of Agent Skills for the planner, one per
-# intent category, each `<category in lowercase>/SKILL.md`. A turn offers the
-# skills for the categories intent found; the model loads one when it needs it.
+# The planner's Agent Skills are not named here: they live in the folder
+# DSS_CATEGORY_GUIDANCE_DIR names (`category_guidance/` by default), as
+# `<lang>/<category in lowercase>/SKILL.md`.
 
 intent:
   placeholders:
@@ -69,12 +69,10 @@ planner:
       system_prompt: prompts/planner/en/prompt.j2
       skills:
         - prompts/planner/en/skills/provider-invocation.md
-      capability_skills: prompts/planner/en/capability_skills
     hi:
       system_prompt: prompts/planner/hi/prompt.j2
       skills:
         - prompts/planner/hi/skills/provider-invocation.md
-      capability_skills: prompts/planner/hi/capability_skills
 
 composer:
   placeholders:

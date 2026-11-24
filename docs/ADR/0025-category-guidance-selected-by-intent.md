@@ -69,11 +69,14 @@ than be joined into one by our code.
   Guidance with no placeholder to go into refuses to boot. It is told to give
   the asked market's latest price, or say it had none and give each other
   market's latest, and to name the market and date of every price.
-- **Planner.** A language entry may carry `capability_skills: <folder>`, a
-  folder of Agent Skills, one per intent category, each
-  `<category in lowercase>/SKILL.md` (`market/SKILL.md`). A folder named for
-  no intent category, or a missing folder, refuses to boot.
-  `PromptProvider.get_capability_skills(identifier, lang, categories)` names
+- **Planner.** Its Agent Skills live outside the prompt registry, in the
+  folder `DSS_CATEGORY_GUIDANCE_DIR` names (`category_guidance/` at the repo
+  root by default): one folder per language, each holding one
+  `<category in lowercase>/SKILL.md` per intent category
+  (`category_guidance/en/market/SKILL.md`). A language with no folder uses
+  English's. A folder named for no language or no intent category, or a set
+  path with no folder, refuses to boot.
+  `PromptProvider.get_capability_skills(lang, categories)` names
   the skills for the turn's categories, and the planner agent is built with
   `Skills(..., include=those names)`. The model sees each offered skill's
   name and description, and loads its rules with `load_capability`; its
@@ -106,7 +109,7 @@ than be joined into one by our code.
   releases.
 - **Neutral:** two kinds of skill now sit beside each other: the planner's
   own (`skills:`, always in its prompt, binding its tools) and Agent Skills
-  (`capability_skills:`, loaded on demand, instructions only).
+  (`category_guidance/`, loaded on demand, instructions only).
 - **Neutral:** the one category-specific line of code left is the MandiPrice
   validity window. See §6.
 

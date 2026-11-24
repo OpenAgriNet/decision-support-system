@@ -253,7 +253,10 @@ def _load_boot_config(settings: Settings) -> _BootConfig:
     )
     # Every LLM component's system prompt, per language (configs/prompts.yaml):
     # a missing template, a placeholder typo or no English entry refuses here.
-    prompts = build_prompt_service(settings.prompt_config_path)
+    prompts = build_prompt_service(
+        settings.prompt_config_path,
+        category_guidance_dir=settings.category_guidance_dir,
+    )
     return _BootConfig(
         policies=policies,
         identity=load_identity(),  # bundled default until an adopter mounts one
