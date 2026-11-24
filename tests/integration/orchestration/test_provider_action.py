@@ -7,11 +7,11 @@ from dss.core.forms.models import (
     FormContext,
 )
 from dss.core.planner.models import Failure
-from dss.core.provider_discovery.models import DiscoveredAnswer, FailureClass
+from dss.core.provider_discovery.models import DiscoveredAnswer
 from dss.core.redaction.visibility import NOTHING_HELD
-from dss.core.shared.models import ProviderAction
+from dss.core.shared.models import ProviderAction, ProviderFailureKind
 from dss.orchestration.provider_action import call_provider_action
-from dss.ports.invocation import ProviderActionFailedError
+from dss.ports.invocation import ProviderCallFailedError
 from tests.support.fakes import RecordingActionInvocation
 from tests.support.providers import grievance_provider
 
@@ -134,12 +134,12 @@ async def test_the_reply_loses_the_farmers_values() -> None:
     assert response.attributes == {"case": {"ticketNo": "100626000099001"}}
 
 
-async def test_a_failed_call_becomes_a_failure() -> None:
-    refused = ProviderActionFailedError(
-        ProviderAction.SUPPORT,
+async def test_a_failed_call_becomes_a_failure_with_its_kind_and_reason() -> None:
+    refused = ProviderCallFailedError(
+        "support",
         "openagrinet:Grievance",
-        503,
-        FailureClass.TRANSIENT,
+        ProviderFailureKind.REFUSED,
+        reason="No PMFBY application was found.",
         retry_after_seconds=120,
     )
 
@@ -148,21 +148,7 @@ async def test_a_failed_call_becomes_a_failure() -> None:
     assert response == Failure(
         ask_id=0,
         capability="openagrinet:Grievance",
-        reason="support failed with status 503",
-        retryable=True,
+        kind=ProviderFailureKind.REFUSED,
+        reason="No PMFBY application was found.",
         retry_after_seconds=120,
-        status_code=503,
     )
-
-
-async def test_a_refused_status_is_not_retryable() -> None:
-    refused = ProviderActionFailedError(
-        ProviderAction.STATUS, "openagrinet:Grievance", 404, FailureClass.DEFECT
-    )
-
-    response = await _call(STATUS, RecordingActionInvocation(failure=refused))
-
-    assert isinstance(response, Failure)
-    assert response.retryable is False
-    assert response.reason == "status failed with status 404"
-    assert response.status_code == 404

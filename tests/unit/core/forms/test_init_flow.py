@@ -21,12 +21,10 @@ from dss.core.forms.init_flow import (
     find_init_call,
     find_init_failure,
     find_waiting_flow,
-    outcome_of_failed_call,
     with_details_form_done,
 )
 from dss.core.forms.models import (
     ActionSchema,
-    FailedCallOutcome,
     FieldErrorEntry,
     FieldValue,
     FlowEnding,
@@ -42,9 +40,14 @@ from dss.core.forms.models import (
 )
 from dss.core.forms.service import validate_submission
 from dss.core.intent.models import Ask
-from dss.core.planner.models import NO_READABLE_REPLY, Failure
+from dss.core.planner.models import Failure
 from dss.core.provider_discovery.models import DiscoveredAnswer
-from dss.core.shared.models import Cause, TextBlock, TurnStatus
+from dss.core.shared.models import (
+    Cause,
+    ProviderFailureKind,
+    TextBlock,
+    TurnStatus,
+)
 from tests.support.asks import an_ask
 from tests.support.grievance_pack import (
     PMKISAN_INIT,
@@ -88,15 +91,12 @@ def _valid(submission: FormSubmission) -> ValidSubmission:
 
 
 def _failure(
-    status_code: int | None, *, retry_after_seconds: int | None = None
+    kind: ProviderFailureKind, *, retry_after_seconds: int | None = None
 ) -> Failure:
-    # retryable says a 404 is worth retrying; the init rules read the status alone.
     return Failure(
         ask_id=0,
         capability="openagrinet:Grievance",
-        reason="call failed",
-        retryable=True,
-        status_code=status_code,
+        kind=kind,
         retry_after_seconds=retry_after_seconds,
     )
 
@@ -113,26 +113,6 @@ def _reply(attributes: dict) -> DiscoveredAnswer:
 
 
 _DETAILS = _submission(PMKISAN_SUPPORT, _KISAN_VALUES)
-
-
-@pytest.mark.parametrize(
-    ("status_code", "expected"),
-    [
-        (400, FailedCallOutcome.REFUSED),
-        (404, FailedCallOutcome.REFUSED),
-        (422, FailedCallOutcome.REFUSED),
-        (408, FailedCallOutcome.NOT_SENT),
-        (429, FailedCallOutcome.NOT_SENT),
-        (None, FailedCallOutcome.NOT_SENT),
-        (500, FailedCallOutcome.OUTCOME_UNKNOWN),
-        (503, FailedCallOutcome.OUTCOME_UNKNOWN),
-        (NO_READABLE_REPLY, FailedCallOutcome.OUTCOME_UNKNOWN),
-    ],
-)
-def test_a_failure_is_read_from_its_status_code_alone(
-    status_code: int | None, expected: FailedCallOutcome
-) -> None:
-    assert outcome_of_failed_call(_failure(status_code)) is expected
 
 
 def test_a_details_form_needing_init_finds_the_init_call_and_form() -> None:
@@ -182,7 +162,7 @@ def test_an_init_reply_without_a_challenge_is_a_failure(attributes: dict) -> Non
 
 
 def test_a_failed_init_call_is_its_own_failure() -> None:
-    failure = _failure(503)
+    failure = _failure(ProviderFailureKind.OUTCOME_UNKNOWN)
 
     assert find_init_failure(failure) is failure
 
@@ -197,25 +177,23 @@ def _details_handed_back(text: str) -> tuple[TextBlock, FormErrorBlock]:
 
 
 @pytest.mark.parametrize(
-    ("status_code", "cause", "text"),
+    ("kind", "cause", "text"),
     [
-        (503, Cause.PROVIDER_UNAVAILABLE, _TEXT.init_not_sent),
-        (NO_READABLE_REPLY, Cause.PROVIDER_UNAVAILABLE, _TEXT.init_not_sent),
-        (408, Cause.PROVIDER_UNAVAILABLE, _TEXT.init_not_sent),
-        (429, Cause.PROVIDER_UNAVAILABLE, _TEXT.init_not_sent),
-        (None, Cause.PROVIDER_UNAVAILABLE, _TEXT.init_not_sent),
-        (400, Cause.PROVIDER_REJECTED, _TEXT.init_rejected),
-        (404, Cause.PROVIDER_REJECTED, _TEXT.init_rejected),
-        (422, Cause.PROVIDER_REJECTED, _TEXT.init_rejected),
+        (
+            ProviderFailureKind.OUTCOME_UNKNOWN,
+            Cause.PROVIDER_UNAVAILABLE,
+            _TEXT.init_not_sent,
+        ),
+        (ProviderFailureKind.NOT_SENT, Cause.PROVIDER_UNAVAILABLE, _TEXT.init_not_sent),
+        (ProviderFailureKind.REFUSED, Cause.PROVIDER_REJECTED, _TEXT.init_rejected),
     ],
-    ids=["E8-5xx", "E8-unreadable", "E8-408", "E8-429", "E8-unsent"]
-    + ["E9-400", "E9-404", "E9-422"],
+    ids=["E8-outcome-unknown", "E8-not-sent", "E9-refused"],
 )
 def test_a_failed_init_hands_the_details_form_back(
-    status_code: int | None, cause: Cause, text: str
+    kind: ProviderFailureKind, cause: Cause, text: str
 ) -> None:
     ending = end_for_failed_init(
-        _failure(status_code, retry_after_seconds=30), details=_DETAILS, text=_TEXT
+        _failure(kind, retry_after_seconds=30), details=_DETAILS, text=_TEXT
     )
 
     assert ending.status is TurnStatus.UNAVAILABLE
@@ -237,8 +215,8 @@ def test_an_init_reply_without_a_challenge_reads_as_refused() -> None:
 
 @pytest.mark.parametrize(
     "failure",
-    [InitNotConfigured(), _failure(401), _failure(403)],
-    ids=["E11-not-configured", "E17a-401", "E17a-403"],
+    [InitNotConfigured(), _failure(ProviderFailureKind.UNAUTHORISED)],
+    ids=["E11-not-configured", "E17a-unauthorised"],
 )
 def test_an_init_failing_on_our_side_ends_text_only(
     failure: InitNotConfigured | Failure,
@@ -383,7 +361,7 @@ def test_nothing_pending_asks_for_the_details_again_and_keeps_the_forms() -> Non
     assert decision.ending.answer.content == (TextBlock(text=_TEXT.no_init_pending),)
 
 
-def test_unusable_saved_details_end_the_flow_as_our_fault() -> None:
+def test_unusable_saved_details_end_the_flow_as_an_internal_error() -> None:
     forms = {"offer-1": _waiting()}
 
     decision = decide_with_no_waiting_flow(
@@ -415,7 +393,7 @@ _INIT_RESPONSE = _submission(
 
 
 def _decide(
-    status_code: int | None,
+    kind: ProviderFailureKind,
     *,
     details: FormSubmission = _DETAILS,
     retry_after_seconds: int | None = None,
@@ -425,7 +403,7 @@ def _decide(
     return decide_after_failed_init_response(
         {},
         _flow(details),
-        _failure(status_code, retry_after_seconds=retry_after_seconds),
+        _failure(kind, retry_after_seconds=retry_after_seconds),
         init_response=_INIT_RESPONSE,
         init_form=init_form,
         text=_TEXT,
@@ -461,11 +439,8 @@ def test_a_filed_init_response_leaves_the_details_done() -> None:
     assert isinstance(forms["offer-1"], FormDone)
 
 
-@pytest.mark.parametrize("status_code", [400, 404, 422])
-def test_a_refused_response_hands_the_init_form_back_and_waits(
-    status_code: int,
-) -> None:
-    decision = _decide(status_code)
+def test_a_refused_response_hands_the_init_form_back_and_waits() -> None:
+    decision = _decide(ProviderFailureKind.REFUSED)
 
     assert decision.ending.status is TurnStatus.REQUIRES_INPUT
     assert decision.ending.cause is Cause.INIT_RESPONSE_REFUSED
@@ -475,11 +450,8 @@ def test_a_refused_response_hands_the_init_form_back_and_waits(
     assert decision.forms == _awaiting_again()
 
 
-@pytest.mark.parametrize("status_code", [408, 429, None])
-def test_a_response_never_taken_in_hands_the_init_form_back_and_waits(
-    status_code: int | None,
-) -> None:
-    decision = _decide(status_code, retry_after_seconds=30)
+def test_a_response_never_taken_in_hands_the_init_form_back_and_waits() -> None:
+    decision = _decide(ProviderFailureKind.NOT_SENT, retry_after_seconds=30)
 
     assert decision.ending.status is TurnStatus.UNAVAILABLE
     assert decision.ending.cause is Cause.PROVIDER_UNAVAILABLE
@@ -490,11 +462,8 @@ def test_a_response_never_taken_in_hands_the_init_form_back_and_waits(
     assert decision.forms == _awaiting_again()
 
 
-@pytest.mark.parametrize("status_code", [500, 503, NO_READABLE_REPLY])
-def test_a_response_that_may_have_gone_through_ends_the_flow_text_only(
-    status_code: int,
-) -> None:
-    decision = _decide(status_code, retry_after_seconds=30)
+def test_a_response_that_may_have_gone_through_ends_the_flow_text_only() -> None:
+    decision = _decide(ProviderFailureKind.OUTCOME_UNKNOWN, retry_after_seconds=30)
 
     assert decision.ending == FlowEnding(
         status=TurnStatus.UNAVAILABLE,
@@ -506,9 +475,8 @@ def test_a_response_that_may_have_gone_through_ends_the_flow_text_only(
     assert decision.forms == {}
 
 
-@pytest.mark.parametrize("status_code", [401, 403])
-def test_our_credentials_refused_end_the_flow_as_our_fault(status_code: int) -> None:
-    decision = _decide(status_code)
+def test_our_credentials_refused_end_the_flow_as_an_internal_error() -> None:
+    decision = _decide(ProviderFailureKind.UNAUTHORISED)
 
     assert decision.ending.status is TurnStatus.UNAVAILABLE
     assert decision.ending.cause is Cause.INTERNAL
@@ -519,11 +487,8 @@ def test_our_credentials_refused_end_the_flow_as_our_fault(status_code: int) -> 
 _STATUS_DETAILS = _submission(PMKISAN_STATUS, _KISAN_LOOKUP)
 
 
-@pytest.mark.parametrize("status_code", [400, 404, 422])
-def test_a_refused_status_check_ends_the_flow_with_no_such_case(
-    status_code: int,
-) -> None:
-    decision = _decide(status_code, details=_STATUS_DETAILS)
+def test_a_refused_status_check_ends_the_flow_with_no_such_case() -> None:
+    decision = _decide(ProviderFailureKind.REFUSED, details=_STATUS_DETAILS)
 
     assert decision.ending.status is TurnStatus.UNAVAILABLE
     assert decision.ending.cause is Cause.PROVIDER_REJECTED
@@ -531,12 +496,19 @@ def test_a_refused_status_check_ends_the_flow_with_no_such_case(
     assert decision.forms == {}
 
 
-@pytest.mark.parametrize("status_code", [429, 503, 401])
+@pytest.mark.parametrize(
+    "kind",
+    [
+        ProviderFailureKind.NOT_SENT,
+        ProviderFailureKind.OUTCOME_UNKNOWN,
+        ProviderFailureKind.UNAUTHORISED,
+    ],
+)
 def test_a_status_check_reads_every_other_failure_as_support_does(
-    status_code: int,
+    kind: ProviderFailureKind,
 ) -> None:
-    support = _decide(status_code, retry_after_seconds=30)
+    support = _decide(kind, retry_after_seconds=30)
 
-    status = _decide(status_code, details=_STATUS_DETAILS, retry_after_seconds=30)
+    status = _decide(kind, details=_STATUS_DETAILS, retry_after_seconds=30)
 
     assert status.ending == support.ending

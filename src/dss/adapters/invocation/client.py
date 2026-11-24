@@ -6,6 +6,7 @@ assembled by the caller; this module only wraps them in the network envelope.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -14,15 +15,18 @@ from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 import httpx
+from pydantic import ValidationError
 
 from dss.adapters.http_client import HttpClient, RetryPredicate
+from dss.adapters.invocation.failures import kind_of, reason_of, was_not_taken_in
+from dss.adapters.invocation.replies import (
+    read_commitment_attributes,
+    read_select_answers,
+    read_support_channel,
+)
 from dss.adapters.network import SelectContext
 from dss.adapters.network.models import InitContext, StatusContext, SupportContext
-from dss.adapters.network_common import (
-    NO_STATUS_CODE,
-    classify_status_code,
-    extract_source_reference,
-)
+from dss.adapters.network_common import classify_status_code
 from dss.adapters.observability.tracing import open_span
 from dss.core.forms.models import ActionReply
 from dss.core.provider_discovery.models import (
@@ -31,7 +35,7 @@ from dss.core.provider_discovery.models import (
     ProviderCapability,
 )
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
-from dss.core.shared.models import ProviderAction
+from dss.core.shared.models import ProviderFailureKind
 from dss.core.shared.network import NetworkTransactionID
 from dss.observability.trace_log import (
     log_external_request,
@@ -39,32 +43,24 @@ from dss.observability.trace_log import (
     log_failure,
 )
 
-# Defined on the port, not here: a failed select is part of the contract, so
+# Defined on the port, not here: a failed call is part of the contract, so
 # a caller can catch it without importing this adapter. Re-exported because
 # this module raises it.
-from dss.ports.invocation import (
-    ProviderActionFailedError,
-    ProviderCallFailedError,
-    SelectFailedError,
-)
+from dss.ports.invocation import ProviderCallFailedError, ProviderEndpoint
 
 if TYPE_CHECKING:
     from opentelemetry.trace import Span
 
 __all__ = [
     "HttpCapabilityInvocation",
-    "ProviderActionFailedError",
-    "SelectFailedError",
+    "ProviderCallFailedError",
     "build_init_request",
     "build_select_request",
     "build_status_request",
     "build_support_request",
 ]
 
-# A 200 whose body we cannot read. KeyError/IndexError for a missing key or
-# an empty commitments list, TypeError for a wrong shape, ValueError because
-# json.JSONDecodeError is one — a body that is not JSON at all.
-_MALFORMED_RESPONSE = (KeyError, IndexError, TypeError, ValueError)
+_MALFORMED_RESPONSE = (json.JSONDecodeError, UnicodeDecodeError, ValidationError)
 
 _DEFAULT_STATUS_DESCRIPTOR = {"code": "DRAFT", "name": "Draft"}
 _DEFAULT_OFFER_ID = "offer:open-data"
@@ -165,17 +161,6 @@ def build_support_request(  # noqa: PLR0913
     }
 
 
-def map_support_response(response: dict[str, Any]) -> dict[str, Any]:
-    """The reply rides where the request did: the first support channel."""
-
-    attributes = response["message"]["support"]["channels"][0]
-    if not isinstance(attributes, dict):
-        raise TypeError(
-            f"support channel is {type(attributes).__name__}, not an object"
-        )
-    return attributes
-
-
 def build_status_request(  # noqa: PLR0913
     capability: ProviderCapability,
     attributes: dict,
@@ -261,85 +246,6 @@ def _commitment_message(
     }
 
 
-def _first_commitment_attributes(response: dict[str, Any]) -> dict[str, Any]:
-    commitment = response["message"]["contract"]["commitments"][0]
-    attributes = commitment["commitmentAttributes"]
-    if not isinstance(attributes, dict):
-        raise TypeError(
-            f"commitmentAttributes is {type(attributes).__name__}, not an object"
-        )
-    return attributes
-
-
-def map_select_response(
-    response: dict[str, Any], *, provider_id: str, provider_name: str
-) -> list[DiscoveredAnswer]:
-    """The provider may assign its own resource id in the response — distinct
-    from the discovered id we named in the request. A search resource answers
-    with one id per result found, not the id that was selected.
-
-    Every resource goes into ``attributes["resources"]``, even when there is
-    only one, so the model always reads the same shape. A forecast sends one
-    resource per day, and the model needs all of them.
-
-    Resources are grouped by the document they came from, one answer per
-    document. A forecast's five days share a source and stay one answer. A
-    knowledge search returning passages from two documents becomes two, because
-    a single answer carries a single source: lumping them together made every
-    passage inherit the first one's, and half the advice was then cited to a
-    document it never came from.
-
-    Resources from every commitment are read, and a response committing to
-    nothing yields no answers — an empty 200 is a real answer shape, not a body
-    we failed to parse.
-    """
-
-    grouped: dict[tuple[str | None, str | None, str | None], list[dict[str, Any]]] = {}
-    for commitment in response["message"]["contract"]["commitments"]:
-        for resource in commitment["resources"]:
-            attributes = resource["resourceAttributes"]
-            reference = extract_source_reference(attributes) or (None, None, None)
-            grouped.setdefault(reference, []).append(resource)
-
-    return [
-        _to_answer(
-            resources,
-            provider_id=provider_id,
-            provider_name=provider_name,
-            reference=reference,
-        )
-        for reference, resources in grouped.items()
-    ]
-
-
-def _to_answer(
-    resources: list[dict[str, Any]],
-    *,
-    provider_id: str,
-    provider_name: str,
-    reference: tuple[str | None, str | None, str | None],
-) -> DiscoveredAnswer:
-    source_id, source_name, source_url = reference
-    first = resources[0]["resourceAttributes"]
-    return DiscoveredAnswer(
-        provider_id=provider_id,
-        provider_name=provider_name,
-        capability=first["@type"],
-        resource_id=resources[0]["id"],
-        attributes={
-            "resources": [
-                {"id": resource["id"], **resource["resourceAttributes"]}
-                for resource in resources
-            ]
-        },
-        # Each resource keeps its own validity in `attributes`.
-        validity=None,
-        source_id=source_id,
-        source_name=source_name,
-        source_url=source_url,
-    )
-
-
 class HttpCapabilityInvocation:
     """Implements CapabilityInvocation over the Network Adapter's /select.
 
@@ -377,7 +283,7 @@ class HttpCapabilityInvocation:
         """Call /select, retrying a transient failure.
 
         ``resource_attributes`` holds tags. ``visibility.reveal`` swaps the real
-        values in on the wire only; the logs, a failure's detail and the answer
+        values in on the wire only; the logs, a failure's reason and the answer
         hold the tags. Without a map nothing is revealed, so a provider gets the tag.
         """
 
@@ -403,29 +309,18 @@ class HttpCapabilityInvocation:
                     should_retry=_is_transient,
                 )
             except httpx.HTTPError as error:
-                raise _as_select_error(
-                    capability, error, visibility=visibility
+                raise _as_call_error(
+                    "select", capability, error, visibility=visibility
                 ) from error
-            # Inside a guard, not after it: the port promises "an answer or
-            # SelectFailedError", and a 200 with an unreadable body would
-            # otherwise raise KeyError/IndexError straight past the planner
-            # tool's handler and abort the whole run, losing every other ask's
-            # answers. Same treatment the discovery adapter gives its own mapper.
+            # Guarded: an unreadable 200 must not escape the planner's handler.
             try:
-                answers = map_select_response(
+                answers = read_select_answers(
                     visibility.conceal_body(response.json()),
                     provider_id=capability.provider_id,
                     provider_name=capability.provider_name,
                 )
             except _MALFORMED_RESPONSE as exc:
-                raise SelectFailedError(
-                    capability.capability,
-                    NO_STATUS_CODE,
-                    # A defect, never transient: the same body reads the same
-                    # way, so retrying would only delay the failure.
-                    FailureClass.DEFECT,
-                    f"malformed response: {exc!r}",
-                ) from exc
+                raise _unreadable_reply_error("select", capability) from exc
             for key, value in _select_outcome(answers).items():
                 call.set_attribute(key, value)
             return answers
@@ -458,21 +353,15 @@ class HttpCapabilityInvocation:
                     visibility=visibility,
                 )
             except httpx.HTTPError as error:
-                raise _as_action_error(
-                    ProviderAction.INIT, capability, error
+                raise _as_call_error(
+                    "init", capability, error, visibility=visibility
                 ) from error
             try:
-                attributes_back = _first_commitment_attributes(
+                attributes_back = read_commitment_attributes(
                     visibility.conceal_body(response.json())
                 )
             except _MALFORMED_RESPONSE as exc:
-                # A defect, never transient: the same body reads the same way.
-                raise ProviderActionFailedError(
-                    ProviderAction.INIT,
-                    capability.capability,
-                    NO_STATUS_CODE,
-                    FailureClass.DEFECT,
-                ) from exc
+                raise _unreadable_reply_error("init", capability) from exc
             return ActionReply(attributes=attributes_back)
 
     async def support(
@@ -483,9 +372,7 @@ class HttpCapabilityInvocation:
         *,
         visibility: Visibility = NOTHING_HELD,
     ) -> ActionReply:
-        """Call /support, retrying a transient failure exactly as `select`
-        does. The path is the Beckn convention; the pack's README never names
-        it."""
+        """The path is the Beckn convention; the pack's README never names it."""
 
         with _record_provider_call("dss.support", capability):
             # One message id for the whole filing, kept across the retries: a
@@ -506,24 +393,18 @@ class HttpCapabilityInvocation:
                     capability=capability,
                     visibility=visibility,
                     retries=self._retries,
-                    should_retry=_is_transient_and_no_retry_after,
+                    should_retry=_was_not_taken_in_and_no_retry_after,
                 )
             except httpx.HTTPError as error:
-                raise _as_action_error(
-                    ProviderAction.SUPPORT, capability, error
+                raise _as_call_error(
+                    "support", capability, error, visibility=visibility
                 ) from error
             try:
-                attributes_back = map_support_response(
+                attributes_back = read_support_channel(
                     visibility.conceal_body(response.json())
                 )
             except _MALFORMED_RESPONSE as exc:
-                # A defect, never transient: the same body reads the same way.
-                raise ProviderActionFailedError(
-                    ProviderAction.SUPPORT,
-                    capability.capability,
-                    NO_STATUS_CODE,
-                    FailureClass.DEFECT,
-                ) from exc
+                raise _unreadable_reply_error("support", capability) from exc
             return ActionReply(attributes=attributes_back)
 
     async def status(
@@ -534,8 +415,7 @@ class HttpCapabilityInvocation:
         *,
         visibility: Visibility = NOTHING_HELD,
     ) -> ActionReply:
-        """Call /status, retrying a transient failure exactly as `select`
-        does. The path is the Beckn convention, as `/support` is."""
+        """The path is the Beckn convention, as `/support` is."""
 
         with _record_provider_call("dss.status", capability):
             # One message and one contract for the whole read, kept across
@@ -560,21 +440,15 @@ class HttpCapabilityInvocation:
                     should_retry=_is_transient_and_no_retry_after,
                 )
             except httpx.HTTPError as error:
-                raise _as_action_error(
-                    ProviderAction.STATUS, capability, error
+                raise _as_call_error(
+                    "status", capability, error, visibility=visibility
                 ) from error
             try:
-                attributes_back = _first_commitment_attributes(
+                attributes_back = read_commitment_attributes(
                     visibility.conceal_body(response.json())
                 )
             except _MALFORMED_RESPONSE as exc:
-                # A defect, never transient: the same body reads the same way.
-                raise ProviderActionFailedError(
-                    ProviderAction.STATUS,
-                    capability.capability,
-                    NO_STATUS_CODE,
-                    FailureClass.DEFECT,
-                ) from exc
+                raise _unreadable_reply_error("status", capability) from exc
             return ActionReply(attributes=attributes_back)
 
     async def _post(  # noqa: PLR0913
@@ -655,7 +529,7 @@ def _record_provider_call(
         try:
             yield call
         except ProviderCallFailedError as failure:
-            call.set_attribute("failure_class", failure.failure_class.value)
+            call.set_attribute("failure_kind", failure.kind.value)
             _log_given_up(capability, failure)
             raise
 
@@ -675,43 +549,33 @@ def _is_transient(error: httpx.HTTPError) -> bool:
 
 # The provider named its own time: it is passed up, and the caller decides when.
 def _is_transient_and_no_retry_after(error: httpx.HTTPError) -> bool:
-    has_retry_after = (
+    return _is_transient(error) and not _has_retry_after(error)
+
+
+def _was_not_taken_in_and_no_retry_after(error: httpx.HTTPError) -> bool:
+    return was_not_taken_in(error) and not _has_retry_after(error)
+
+
+def _has_retry_after(error: httpx.HTTPError) -> bool:
+    return (
         isinstance(error, httpx.HTTPStatusError)
         and _retry_after_seconds(error.response) is not None
     )
-    return _is_transient(error) and not has_retry_after
 
 
-def _as_select_error(
+def _as_call_error(
+    endpoint: ProviderEndpoint,
     capability: ProviderCapability,
     error: httpx.HTTPError,
     *,
     visibility: Visibility,
-) -> SelectFailedError:
-    status_code = _status_code_of(error)
-    # The detail reaches the planner's prompt.
-    detail = (
-        error.response.text if isinstance(error, httpx.HTTPStatusError) else str(error)
-    )
-    return SelectFailedError(
+) -> ProviderCallFailedError:
+    reason = reason_of(error)
+    return ProviderCallFailedError(
+        endpoint,
         capability.capability,
-        status_code,
-        classify_status_code(status_code),
-        visibility.conceal(detail),
-    )
-
-
-def _as_action_error(
-    action: ProviderAction,
-    capability: ProviderCapability,
-    error: httpx.HTTPError,
-) -> ProviderActionFailedError:
-    status_code = _status_code_of(error)
-    return ProviderActionFailedError(
-        action,
-        capability.capability,
-        status_code,
-        classify_status_code(status_code),
+        kind_of(error),
+        reason=visibility.conceal(reason) if reason is not None else None,
         retry_after_seconds=(
             _retry_after_seconds(error.response)
             if isinstance(error, httpx.HTTPStatusError)
@@ -720,10 +584,12 @@ def _as_action_error(
     )
 
 
-def _status_code_of(error: httpx.HTTPError) -> int:
-    if isinstance(error, httpx.HTTPStatusError):
-        return error.response.status_code
-    return NO_STATUS_CODE
+def _unreadable_reply_error(
+    endpoint: ProviderEndpoint, capability: ProviderCapability
+) -> ProviderCallFailedError:
+    return ProviderCallFailedError(
+        endpoint, capability.capability, ProviderFailureKind.OUTCOME_UNKNOWN
+    )
 
 
 def _log_failed_response(
@@ -761,8 +627,7 @@ def _log_given_up(
         event="provider_call_failed",
         provider_id=capability.provider_id,
         capability=capability.capability,
-        status_code=failure.status_code,
-        failure_class=failure.failure_class.value,
+        failure_kind=failure.kind.value,
     )
 
 

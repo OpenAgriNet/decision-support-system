@@ -200,6 +200,13 @@ class ProviderAction(StrEnum):
     INIT = "init"
 
 
+class ProviderFailureKind(StrEnum):
+    NOT_SENT = "not_sent"
+    OUTCOME_UNKNOWN = "outcome_unknown"
+    REFUSED = "refused"
+    UNAUTHORISED = "unauthorised"
+
+
 # What a user can ask for. ``init`` is a step inside filing or checking, never
 # a choice of its own.
 type RequestedAction = Literal[ProviderAction.SUPPORT, ProviderAction.STATUS]

@@ -1,16 +1,15 @@
-"""Contract tests for classifying a failed /select call.
-
-429/500/NET_* are transient; 400/401/403 are defects — same classification
-discover already uses.
-"""
+"""Contract tests for reading a failed /select call into its kind."""
 
 from __future__ import annotations
+
+import json
 
 import httpx
 import pytest
 
-from dss.adapters.invocation.client import HttpCapabilityInvocation, SelectFailedError
-from dss.core.provider_discovery.models import FailureClass
+from dss.adapters.invocation.client import HttpCapabilityInvocation
+from dss.core.shared.models import ProviderFailureKind
+from dss.ports.invocation import ProviderCallFailedError
 from tests.support.providers import build_capability
 
 CAPABILITY = build_capability(
@@ -22,9 +21,11 @@ CAPABILITY = build_capability(
 )
 
 
-def _invocation_returning_status(status_code: int) -> HttpCapabilityInvocation:
+def _invocation_returning_status(
+    status_code: int, *, body: str = '{"error": "simulated"}'
+) -> HttpCapabilityInvocation:
     def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(status_code, json={"error": "simulated"})
+        return httpx.Response(status_code, text=body)
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     return HttpCapabilityInvocation(
@@ -50,46 +51,51 @@ def _invocation_raising_connection_error() -> HttpCapabilityInvocation:
     )
 
 
-@pytest.mark.parametrize("status_code", [429, 500])
-async def test_transient_status_codes_raise_selectfailed_transient(
-    status_code: int,
+@pytest.mark.parametrize(
+    ("status_code", "kind"),
+    [
+        (500, ProviderFailureKind.OUTCOME_UNKNOWN),
+        (400, ProviderFailureKind.REFUSED),
+    ],
+)
+async def test_a_failed_select_carries_its_endpoint_and_kind(
+    status_code: int, kind: ProviderFailureKind
 ) -> None:
     invocation = _invocation_returning_status(status_code)
 
-    with pytest.raises(SelectFailedError) as exc_info:
+    with pytest.raises(ProviderCallFailedError) as exc_info:
         await invocation.select(CAPABILITY, {}, transaction_id="txn-test")
 
-    assert exc_info.value.status_code == status_code
-    assert exc_info.value.failure_class == FailureClass.TRANSIENT
+    assert exc_info.value.endpoint == "select"
+    assert exc_info.value.kind is kind
     assert exc_info.value.capability == "openagrinet:WeatherObservation"
-    assert "simulated" in exc_info.value.detail
 
 
-@pytest.mark.parametrize("status_code", [400, 401, 403])
-async def test_defect_status_codes_raise_selectfailed_defect(status_code: int) -> None:
-    invocation = _invocation_returning_status(status_code)
+async def test_a_select_refusal_keeps_its_body() -> None:
+    body = '{"message":{"status":"NACK","error":{"message":"No such district."}}}'
+    invocation = _invocation_returning_status(404, body=body)
 
-    with pytest.raises(SelectFailedError) as exc_info:
+    with pytest.raises(ProviderCallFailedError) as exc_info:
         await invocation.select(CAPABILITY, {}, transaction_id="txn-test")
 
-    assert exc_info.value.status_code == status_code
-    assert exc_info.value.failure_class == FailureClass.DEFECT
+    assert exc_info.value.reason == body
 
 
-async def test_a_connection_error_raises_selectfailed_transient() -> None:
+async def test_a_connection_error_is_not_sent_with_no_reason() -> None:
     invocation = _invocation_raising_connection_error()
 
-    with pytest.raises(SelectFailedError) as exc_info:
+    with pytest.raises(ProviderCallFailedError) as exc_info:
         await invocation.select(CAPABILITY, {}, transaction_id="txn-test")
 
-    assert exc_info.value.failure_class == FailureClass.TRANSIENT
-    assert exc_info.value.status_code == 0
-    assert "connection refused" in exc_info.value.detail
+    assert exc_info.value.kind is ProviderFailureKind.NOT_SENT
+    assert exc_info.value.reason is None
 
 
-def _invocation_returning_body(body: dict) -> HttpCapabilityInvocation:
+def _invocation_returning_body(body: dict | bytes) -> HttpCapabilityInvocation:
+    content = body if isinstance(body, bytes) else json.dumps(body).encode()
+
     def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json=body)
+        return httpx.Response(200, content=content)
 
     return HttpCapabilityInvocation(
         client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
@@ -109,13 +115,36 @@ def _invocation_returning_body(body: dict) -> HttpCapabilityInvocation:
             "resource missing resourceAttributes",
             {"message": {"contract": {"commitments": [{"resources": [{"id": "r"}]}]}}},
         ),
+        ("not UTF-8", b"\x80<html>gateway splash page</html>"),
+        (
+            "source without a sourceId",
+            {
+                "message": {
+                    "contract": {
+                        "commitments": [
+                            {
+                                "resources": [
+                                    {
+                                        "id": "r",
+                                        "resourceAttributes": {
+                                            "@type": "openagrinet:WeatherObservation",
+                                            "source": {"sourceName": "IMD"},
+                                        },
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                }
+            },
+        ),
     ],
     ids=lambda value: value if isinstance(value, str) else "",
 )
-async def test_a_malformed_200_raises_selectfailed_not_a_bare_keyerror(
-    label: str, body: dict
+async def test_a_malformed_200_raises_the_call_failure_not_a_bare_keyerror(
+    label: str, body: dict | bytes
 ) -> None:
-    """The port's contract is "an answer or ``SelectFailedError``". The response
+    """The port's contract is "an answer or ``ProviderCallFailedError``". The response
     mapper sat outside the try, so a 200 with an unreadable body raised
     ``KeyError``/``IndexError`` straight past the planner tool's handler and
     aborted the whole agent run — losing every other ask's answers.
@@ -126,11 +155,10 @@ async def test_a_malformed_200_raises_selectfailed_not_a_bare_keyerror(
 
     invocation = _invocation_returning_body(body)
 
-    with pytest.raises(SelectFailedError) as exc_info:
+    with pytest.raises(ProviderCallFailedError) as exc_info:
         await invocation.select(CAPABILITY, {}, transaction_id="txn-test")
 
-    # a defect, not transient: the same body will fail the same way
-    assert exc_info.value.failure_class == FailureClass.DEFECT
+    assert exc_info.value.kind is ProviderFailureKind.OUTCOME_UNKNOWN
     assert exc_info.value.capability == "openagrinet:WeatherObservation"
 
 
@@ -147,8 +175,8 @@ async def test_a_200_that_committed_to_nothing_is_empty_not_malformed() -> None:
 
 
 async def test_a_malformed_200_is_not_retried() -> None:
-    """A defect means retrying sends the same request and reads the same bad
-    body. Three attempts would only delay the failure."""
+    """Retrying sends the same request and reads the same bad body. Three
+    attempts would only delay the failure."""
 
     calls = 0
 
@@ -165,7 +193,7 @@ async def test_a_malformed_200_is_not_retried() -> None:
         backoff_seconds=0.0,
     )
 
-    with pytest.raises(SelectFailedError):
+    with pytest.raises(ProviderCallFailedError):
         await invocation.select(CAPABILITY, {}, transaction_id="txn-test")
 
     assert calls == 1

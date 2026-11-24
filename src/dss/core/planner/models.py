@@ -13,6 +13,7 @@ from dss.core.forms.models import FormDefinition
 from dss.core.intent.models import Ask, AskId
 from dss.core.moderation.models import ModerationDecision
 from dss.core.settlement.models import CannotServe, NeedsClarification
+from dss.core.shared.models import ProviderFailureKind
 
 
 class Verdict:
@@ -101,11 +102,6 @@ class Result(BaseModel):
     data: dict
 
 
-# A failure's status code when no readable reply came back: a timeout, a
-# dropped connection, or a 2xx whose body could not be read.
-NO_READABLE_REPLY = 0
-
-
 class Failure(BaseModel):
     """An ask that did not produce a result.
 
@@ -117,12 +113,11 @@ class Failure(BaseModel):
 
     ask_id: AskId
     capability: str
-    reason: str
-    retryable: bool
+    kind: ProviderFailureKind
+    # The provider's reply body, masked; None when it sent none.
+    reason: str | None = None
     # The provider's own `Retry-After`, when it sent one on a failed filing.
     retry_after_seconds: int | None = None
-    # None: the provider was never called.
-    status_code: int | None = None
 
 
 class Identity(BaseModel):

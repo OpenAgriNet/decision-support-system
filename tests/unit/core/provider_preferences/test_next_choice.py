@@ -4,16 +4,13 @@ is covered in
 
 from __future__ import annotations
 
-from dss.core.provider_discovery.models import (
-    DiscoveredAnswer,
-    FailureClass,
-    ProviderCapability,
-)
+from dss.core.provider_discovery.models import DiscoveredAnswer, ProviderCapability
 from dss.core.provider_preferences.next_choice import (
     Consulted,
     NextChoices,
 )
-from dss.ports.invocation import SelectFailedError
+from dss.core.shared.models import ProviderFailureKind
+from dss.ports.invocation import ProviderCallFailedError
 from tests.support.providers import build_capability
 
 ADVISORY = "openagrinet:KnowledgeAdvisory"
@@ -51,7 +48,9 @@ def _empty(provider: str) -> Consulted:
 def _failed(provider: str) -> Consulted:
     return Consulted(
         capability=_capability(provider),
-        failure=SelectFailedError(ADVISORY, 503, FailureClass.TRANSIENT, "down"),
+        failure=ProviderCallFailedError(
+            "select", ADVISORY, ProviderFailureKind.OUTCOME_UNKNOWN, reason="down"
+        ),
     )
 
 

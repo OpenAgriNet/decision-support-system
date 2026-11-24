@@ -63,6 +63,7 @@ from dss.core.shared.models import (
     ClaimDelta,
     Geometry,
     Location,
+    ProviderFailureKind,
     RefusalBlock,
     TextBlock,
     TextQuery,
@@ -582,8 +583,8 @@ async def test_all_calls_failing_is_unavailable() -> None:
                 Failure(
                     ask_id=0,
                     capability="openagrinet:MandiPrice",
+                    kind=ProviderFailureKind.OUTCOME_UNKNOWN,
                     reason="502",
-                    retryable=True,
                 ),
             ),
         )

@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 
 from dss.core.intent.models import AskId
 from dss.core.provider_discovery.models import DiscoveredAnswer, ProviderCapability
-from dss.ports.invocation import SelectFailedError
+from dss.ports.invocation import ProviderCallFailedError
 
 
 @dataclass
@@ -26,7 +26,7 @@ class Consulted:
 
     capability: ProviderCapability
     answers: tuple[DiscoveredAnswer, ...] = ()
-    failure: SelectFailedError | None = None
+    failure: ProviderCallFailedError | None = None
 
 
 @dataclass

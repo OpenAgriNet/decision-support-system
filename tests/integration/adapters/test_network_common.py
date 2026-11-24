@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 
 from dss.adapters.network_common import (
+    SourceReference,
     classify_status_code,
     extract_source_reference,
     extract_validity,
@@ -77,17 +79,19 @@ def test_extract_source_reference_reads_all_three_fields() -> None:
         }
     )
 
-    assert source == ("agmarknet-mock", "Agmarknet Vistaar", "https://agmarknet.gov.in")
+    assert source == SourceReference(
+        source_id="agmarknet-mock",
+        source_name="Agmarknet Vistaar",
+        source_url="https://agmarknet.gov.in",
+    )
 
 
 def test_extract_source_reference_tolerates_the_optional_fields() -> None:
     """Only `sourceId` is required by SourceReference."""
 
-    assert extract_source_reference({"source": {"sourceId": "mausamgram"}}) == (
-        "mausamgram",
-        None,
-        None,
-    )
+    assert extract_source_reference(
+        {"source": {"sourceId": "mausamgram"}}
+    ) == SourceReference(source_id="mausamgram", source_name=None, source_url=None)
 
 
 @pytest.mark.parametrize(
@@ -104,7 +108,21 @@ def test_a_source_uri_a_farmer_cannot_open_is_dropped(uri: str) -> None:
     """`sourceUri` is typed `format: uri`, so it may be a JSON-LD identifier
     rather than a page. `Source.url` is farmer-visible, so only http(s) passes."""
 
-    assert (
-        extract_source_reference({"source": {"sourceId": "s", "sourceUri": uri}})[2]
-        is None
-    )
+    assert extract_source_reference(
+        {"source": {"sourceId": "s", "sourceUri": uri}}
+    ) == SourceReference(source_id="s", source_name=None, source_url=None)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        {"sourceName": "IMD"},
+        "imd",
+        ["imd"],
+        {"sourceId": "s", "sourceUri": 5},
+    ],
+    ids=["no-source-id", "a-string", "a-list", "a-uri-that-is-not-text"],
+)
+def test_a_source_that_is_not_a_source_block_is_malformed(source: object) -> None:
+    with pytest.raises(ValidationError):
+        extract_source_reference({"source": source})

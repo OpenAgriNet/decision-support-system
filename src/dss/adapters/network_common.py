@@ -5,11 +5,15 @@ Pure translation only — no business logic.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlsplit
 
 import httpx
+from pydantic import BaseModel, ConfigDict
+from pydantic.alias_generators import to_camel
 
 from dss.core.provider_discovery.models import FailureClass, Validity
 
@@ -58,19 +62,38 @@ def extract_validity(attributes: dict[str, Any]) -> Validity | None:
     )
 
 
-def extract_source_reference(
-    attributes: dict[str, Any],
-) -> tuple[str, str | None, str | None] | None:
-    """Read `resourceAttributes.source` as `(id, name, url)`.
+class _Source(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, frozen=True)
+
+    source_id: str
+    source_name: str | None = None
+    source_uri: str | None = None
+
+
+@dataclass(frozen=True)
+class SourceReference:
+    source_id: str
+    source_name: str | None
+    source_url: str | None
+
+
+def extract_source_reference(attributes: Mapping[str, Any]) -> SourceReference | None:
+    """Read `resourceAttributes.source`. Raises `pydantic.ValidationError` when
+    it is not a source block.
 
     - Names who authored the data, which is not always who served it.
     - `sourceUri` is typed `format: uri`, so it may be a JSON-LD identifier
       rather than a page; only http(s) reaches a farmer.
     """
 
-    source = attributes.get("source")
-    if not source:
+    raw_source = attributes.get("source")
+    if not raw_source:
         return None
-    uri = source.get("sourceUri") or ""
+    source = _Source.model_validate(raw_source)
+    uri = source.source_uri or ""
     openable = urlsplit(uri).scheme in _FARMER_OPENABLE_SCHEMES
-    return source["sourceId"], source.get("sourceName"), uri if openable else None
+    return SourceReference(
+        source_id=source.source_id,
+        source_name=source.source_name,
+        source_url=uri if openable else None,
+    )

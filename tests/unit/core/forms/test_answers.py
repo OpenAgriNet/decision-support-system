@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from dss.config.clarification_text_loader import load_clarification_text
+from dss.core.channel.models import ComposedAnswer
 from dss.core.channel.service import answer_for_unserved_asks
 from dss.core.forms.models import (
     FieldError,
@@ -17,13 +18,11 @@ from dss.core.forms.models import (
     UnknownForm,
 )
 from dss.core.forms.service import (
-    answer_for_failed_call,
     answer_for_form_errors,
     answer_for_init_form,
     answer_for_unknown_form,
     answer_with_text,
     end_for_already_filed,
-    end_for_call_cause,
     end_for_failed_call,
     end_for_invalid_form,
     end_for_no_provider,
@@ -33,13 +32,18 @@ from dss.core.forms.service import (
 )
 from dss.core.intent.models import InteractionType, SubjectCategory
 from dss.core.planner.models import Failure
-from dss.core.shared.models import Cause, ProviderAction, TextBlock, TurnStatus
+from dss.core.shared.models import (
+    Cause,
+    ProviderAction,
+    ProviderFailureKind,
+    TextBlock,
+    TurnStatus,
+)
 from tests.support.asks import an_ask
 from tests.support.grievance_pack import (
     PMFBY_SUPPORT,
     PMKISAN_INIT,
     build_grievance_forms,
-    find_action_schema,
 )
 
 
@@ -117,75 +121,120 @@ _SUBMISSION = FormSubmission(
 )
 
 
-@pytest.mark.parametrize(
-    ("is_retryable", "cause"),
-    [(True, Cause.PROVIDER_UNAVAILABLE), (False, Cause.PROVIDER_REJECTED)],
-)
-def test_a_failed_call_is_rejected_unless_trying_again_may_work(
-    is_retryable: bool, cause: Cause
-) -> None:
-    failure = Failure(
+def _failure(
+    kind: ProviderFailureKind, *, retry_after_seconds: int | None = None
+) -> Failure:
+    return Failure(
         ask_id=0,
         capability="openagrinet:Grievance",
-        reason="-",
-        retryable=is_retryable,
-        retry_after_seconds=30,
-    )
-
-    ending = end_for_failed_call(
-        _SUBMISSION, failure, _TEXT, action=find_action_schema(PMFBY_SUPPORT)
-    )
-
-    assert ending == FlowEnding(
-        status=TurnStatus.UNAVAILABLE,
-        cause=cause,
-        answer=answer_for_failed_call(
-            _SUBMISSION, cause, _TEXT, action=ProviderAction.SUPPORT
-        ),
-        retry_after_seconds=30,
+        kind=kind,
+        retry_after_seconds=retry_after_seconds,
     )
 
 
-def test_a_call_ended_by_a_given_cause_is_unavailable_and_keeps_the_form() -> None:
-    ending = end_for_call_cause(
-        _SUBMISSION, Cause.PROVIDER_REJECTED, _TEXT, action=ProviderAction.INIT
+def _form_handed_back(text: str) -> ComposedAnswer:
+    return ComposedAnswer(
+        content=(
+            TextBlock(text=text),
+            FormErrorBlock(
+                form_id="offer-1", context=PMFBY_SUPPORT, submission_id="submission-1"
+            ),
+        )
     )
+
+
+def _end_for(
+    action: ProviderAction,
+    kind: ProviderFailureKind,
+    *,
+    retry_after_seconds: int | None = None,
+) -> FlowEnding:
+    return end_for_failed_call(
+        _SUBMISSION,
+        _failure(kind, retry_after_seconds=retry_after_seconds),
+        _TEXT,
+        action=action,
+    )
+
+
+@pytest.mark.parametrize(
+    ("action", "text"),
+    [
+        (ProviderAction.SUPPORT, _TEXT.not_filed_rejected),
+        (ProviderAction.STATUS, _TEXT.status_not_found),
+        (ProviderAction.INIT, _TEXT.init_rejected),
+    ],
+)
+def test_a_refused_call_is_rejected(action: ProviderAction, text: str) -> None:
+    ending = _end_for(action, ProviderFailureKind.REFUSED)
 
     assert ending == FlowEnding(
         status=TurnStatus.UNAVAILABLE,
         cause=Cause.PROVIDER_REJECTED,
-        answer=answer_for_failed_call(
-            _SUBMISSION, Cause.PROVIDER_REJECTED, _TEXT, action=ProviderAction.INIT
-        ),
+        answer=_form_handed_back(text),
     )
 
 
 @pytest.mark.parametrize(
-    ("action", "cause", "expected_text"),
+    ("action", "text"),
     [
-        (ProviderAction.SUPPORT, Cause.PROVIDER_UNAVAILABLE, _TEXT.not_filed),
-        (ProviderAction.SUPPORT, Cause.PROVIDER_REJECTED, _TEXT.not_filed_rejected),
-        (ProviderAction.STATUS, Cause.PROVIDER_UNAVAILABLE, _TEXT.status_not_checked),
-        (ProviderAction.STATUS, Cause.PROVIDER_REJECTED, _TEXT.status_not_found),
-        (ProviderAction.INIT, Cause.PROVIDER_UNAVAILABLE, _TEXT.init_not_sent),
-        (ProviderAction.INIT, Cause.PROVIDER_REJECTED, _TEXT.init_rejected),
+        (ProviderAction.SUPPORT, _TEXT.not_filed),
+        (ProviderAction.STATUS, _TEXT.status_not_checked),
+        (ProviderAction.INIT, _TEXT.init_not_sent),
     ],
 )
-def test_a_failed_call_is_told_in_the_words_for_its_action_and_cause(
-    action: ProviderAction, cause: Cause, expected_text: str
-) -> None:
-    submission = FormSubmission(
-        form_id="offer-1",
-        context=PMFBY_SUPPORT,
-        submission_id="submission-1",
-        values=(),
+def test_a_call_not_sent_is_try_later(action: ProviderAction, text: str) -> None:
+    ending = _end_for(action, ProviderFailureKind.NOT_SENT, retry_after_seconds=30)
+
+    assert ending == FlowEnding(
+        status=TurnStatus.UNAVAILABLE,
+        cause=Cause.PROVIDER_UNAVAILABLE,
+        answer=_form_handed_back(text),
+        retry_after_seconds=30,
     )
 
-    told, kept = answer_for_failed_call(submission, cause, _TEXT, action=action).content
 
-    assert told == TextBlock(text=expected_text)
-    assert kept == FormErrorBlock(
-        form_id="offer-1", context=submission.context, submission_id="submission-1"
+def test_a_filing_that_may_have_gone_through_hands_no_form_back() -> None:
+    ending = _end_for(
+        ProviderAction.SUPPORT,
+        ProviderFailureKind.OUTCOME_UNKNOWN,
+        retry_after_seconds=30,
+    )
+
+    assert ending == FlowEnding(
+        status=TurnStatus.UNAVAILABLE,
+        cause=Cause.PROVIDER_OUTCOME_UNKNOWN,
+        answer=answer_with_text(_TEXT.outcome_unknown),
+    )
+
+
+@pytest.mark.parametrize(
+    ("action", "text"),
+    [
+        (ProviderAction.STATUS, _TEXT.status_not_checked),
+        (ProviderAction.INIT, _TEXT.init_not_sent),
+    ],
+)
+def test_a_read_that_may_have_gone_through_hands_the_form_back(
+    action: ProviderAction, text: str
+) -> None:
+    ending = _end_for(action, ProviderFailureKind.OUTCOME_UNKNOWN)
+
+    assert ending == FlowEnding(
+        status=TurnStatus.UNAVAILABLE,
+        cause=Cause.PROVIDER_UNAVAILABLE,
+        answer=_form_handed_back(text),
+    )
+
+
+@pytest.mark.parametrize("action", list(ProviderAction))
+def test_an_internal_error_says_went_wrong(action: ProviderAction) -> None:
+    ending = _end_for(action, ProviderFailureKind.UNAUTHORISED)
+
+    assert ending == FlowEnding(
+        status=TurnStatus.UNAVAILABLE,
+        cause=Cause.INTERNAL,
+        answer=answer_with_text(_TEXT.went_wrong),
     )
 
 

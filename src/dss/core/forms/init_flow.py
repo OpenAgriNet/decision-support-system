@@ -3,12 +3,14 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from http import HTTPStatus
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from dss.core.channel.models import ClarificationText, ComposedAnswer
 from dss.core.forms.models import (
     ActionSchema,
-    FailedCallOutcome,
+    FailureExit,
     FieldErrorEntry,
     FlowEnding,
     FormAwaitingInit,
@@ -21,25 +23,44 @@ from dss.core.forms.models import (
 )
 from dss.core.forms.registry import FormLookup
 from dss.core.forms.service import (
-    TextChoice,
+    INTERNAL_ERROR_EXIT,
     answer_for_init_form,
     answer_with_text,
     clear_awaiting_init_record,
-    end_for_call_cause,
+    end_for_failed_call,
+    end_for_init_without_challenge,
+    exit_with_form_back,
+    exit_with_text_only,
     find_awaiting_init,
-    is_auth_refused,
     validate_submission,
     with_form_done,
     with_init_awaited,
 )
 from dss.core.intent.models import Ask
-from dss.core.planner.models import NO_READABLE_REPLY, Failure
+from dss.core.planner.models import Failure
 from dss.core.provider_discovery.models import DiscoveredAnswer, ProviderCapability
-from dss.core.shared.models import Cause, ProviderAction, TextBlock, TurnStatus
+from dss.core.shared.models import (
+    Cause,
+    ProviderAction,
+    ProviderFailureKind,
+    TextBlock,
+    TurnStatus,
+)
+
 
 # The pack does not say what init returns yet; v2 packs will. Until then:
 # what the init form answers is issued under `challenge.issued`.
-_INIT_REPLY_PATH = ("challenge", "issued")
+class _Challenge(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    issued: dict[str, Any]
+
+
+class _InitReply(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    challenge: _Challenge
+
 
 type AskFor = Callable[[FormContext], Ask | None]
 
@@ -104,12 +125,11 @@ def find_init_failure(
 
 
 def _has_init_challenge(attributes: Mapping[str, object]) -> bool:
-    node: object = attributes
-    for segment in _INIT_REPLY_PATH:
-        if not isinstance(node, Mapping):
-            return False
-        node = node.get(segment)
-    return isinstance(node, Mapping)
+    try:
+        _InitReply.model_validate(attributes)
+    except ValidationError:
+        return False
+    return True
 
 
 def end_for_failed_init(
@@ -117,20 +137,12 @@ def end_for_failed_init(
 ) -> FlowEnding:
     match failure:
         case InitNotConfigured():
-            return _ended_by_our_fault(text)
+            return _ended_for_good(INTERNAL_ERROR_EXIT, text)
         case InitReplyWithoutChallenge():
-            return end_for_call_cause(
-                details, Cause.PROVIDER_REJECTED, text, action=ProviderAction.INIT
-            )
-        case Failure() if is_auth_refused(failure):
-            return _ended_by_our_fault(text)
+            return end_for_init_without_challenge(details, text)
         case Failure():
-            return end_for_call_cause(
-                details,
-                _cause_for_failed_init(failure),
-                text,
-                action=ProviderAction.INIT,
-                retry_after_seconds=failure.retry_after_seconds,
+            return end_for_failed_call(
+                details, failure, text, action=ProviderAction.INIT
             )
 
 
@@ -161,45 +173,6 @@ def end_for_session_not_kept(text: ClarificationText) -> FlowEnding:
         cause=Cause.INTERNAL,
         answer=answer_with_text(text.form_cannot_complete),
     )
-
-
-def _ended_by_our_fault(text: ClarificationText) -> FlowEnding:
-    return FlowEnding(
-        status=TurnStatus.UNAVAILABLE,
-        cause=Cause.INTERNAL,
-        answer=answer_with_text(text.went_wrong),
-    )
-
-
-# Init is never retried, so `retryable` does not matter; the status says
-# whether the provider refused the details.
-def _cause_for_failed_init(failure: Failure) -> Cause:
-    if outcome_of_failed_call(failure) is FailedCallOutcome.REFUSED:
-        return Cause.PROVIDER_REJECTED
-    return Cause.PROVIDER_UNAVAILABLE
-
-
-# The provider said it did not take the request in.
-_NOT_TAKEN_IN_STATUS_CODES = frozenset(
-    {HTTPStatus.REQUEST_TIMEOUT, HTTPStatus.TOO_MANY_REQUESTS}
-)
-
-
-# Read from the status alone, not `retryable`: the client calls only
-# 400/401/403 a defect, so a 404 or 422 refusal would read as retryable.
-def outcome_of_failed_call(failure: Failure) -> FailedCallOutcome:
-    status_code = failure.status_code
-    if status_code is None or status_code in _NOT_TAKEN_IN_STATUS_CODES:
-        return FailedCallOutcome.NOT_SENT
-    if status_code == NO_READABLE_REPLY:
-        return FailedCallOutcome.OUTCOME_UNKNOWN
-    if _is_client_error(status_code):
-        return FailedCallOutcome.REFUSED
-    return FailedCallOutcome.OUTCOME_UNKNOWN
-
-
-def _is_client_error(status_code: int) -> bool:
-    return HTTPStatus.BAD_REQUEST <= status_code < HTTPStatus.INTERNAL_SERVER_ERROR
 
 
 @dataclass(frozen=True)
@@ -279,10 +252,9 @@ def decide_after_failed_init_response(  # noqa: PLR0913
     text: ClarificationText,
     now: datetime,
 ) -> FlowDecision:
-    exit_for_failure = _init_response_exit_for(
-        failure, ProviderAction(flow.action.context.action)
-    )
-    if not exit_for_failure.should_await_init:
+    action = ProviderAction(flow.action.context.action)
+    exit_for_failure = _INIT_RESPONSE_EXITS[action][failure.kind]
+    if not exit_for_failure.hands_form_back:
         return FlowDecision(forms=forms, ending=_ended_for_good(exit_for_failure, text))
     return FlowDecision(
         forms=with_init_awaited(
@@ -294,74 +266,41 @@ def decide_after_failed_init_response(  # noqa: PLR0913
     )
 
 
-@dataclass(frozen=True)
-class _InitResponseExit:
-    status: TurnStatus
-    cause: Cause
-    text: TextChoice
-    # The provider did not use the response: the farmer may answer again.
-    should_await_init: bool
-
-
-# Turn 3's exits when the call with the init response failed, by what the
-# status code says happened to the response.
-_INIT_RESPONSE_EXITS: Mapping[FailedCallOutcome, _InitResponseExit] = {
-    FailedCallOutcome.REFUSED: _InitResponseExit(
-        TurnStatus.REQUIRES_INPUT,
-        Cause.INIT_RESPONSE_REFUSED,
-        lambda text: text.init_response_refused,
-        should_await_init=True,
-    ),
-    FailedCallOutcome.NOT_SENT: _InitResponseExit(
-        TurnStatus.UNAVAILABLE,
-        Cause.PROVIDER_UNAVAILABLE,
-        lambda text: text.init_response_not_sent,
-        should_await_init=True,
-    ),
-    # It may have reached the provider: no form back, a resend might file twice.
-    FailedCallOutcome.OUTCOME_UNKNOWN: _InitResponseExit(
-        TurnStatus.UNAVAILABLE,
-        Cause.PROVIDER_OUTCOME_UNKNOWN,
-        lambda text: text.outcome_unknown,
-        should_await_init=False,
-    ),
-}
-# Where an action reads a refusal its own way. A wrong case.filedOn must not
-# loop the farmer through the init form: no such case.
-_INIT_RESPONSE_EXITS_FOR_ACTION: Mapping[
-    ProviderAction, Mapping[FailedCallOutcome, _InitResponseExit]
+_INIT_RESPONSE_EXITS: Mapping[
+    ProviderAction, Mapping[ProviderFailureKind, FailureExit]
 ] = {
-    ProviderAction.STATUS: {
-        FailedCallOutcome.REFUSED: _InitResponseExit(
-            TurnStatus.UNAVAILABLE,
-            Cause.PROVIDER_REJECTED,
-            lambda text: text.case_not_found,
-            should_await_init=False,
+    ProviderAction.SUPPORT: {
+        ProviderFailureKind.REFUSED: FailureExit(
+            TurnStatus.REQUIRES_INPUT,
+            Cause.INIT_RESPONSE_REFUSED,
+            lambda text: text.init_response_refused,
+            hands_form_back=True,
         ),
+        ProviderFailureKind.NOT_SENT: exit_with_form_back(
+            Cause.PROVIDER_UNAVAILABLE, lambda text: text.init_response_not_sent
+        ),
+        ProviderFailureKind.OUTCOME_UNKNOWN: exit_with_text_only(
+            Cause.PROVIDER_OUTCOME_UNKNOWN, lambda text: text.outcome_unknown
+        ),
+        ProviderFailureKind.UNAUTHORISED: INTERNAL_ERROR_EXIT,
+    },
+    ProviderAction.STATUS: {
+        ProviderFailureKind.REFUSED: exit_with_text_only(
+            Cause.PROVIDER_REJECTED, lambda text: text.case_not_found
+        ),
+        ProviderFailureKind.NOT_SENT: exit_with_form_back(
+            Cause.PROVIDER_UNAVAILABLE, lambda text: text.init_response_not_sent
+        ),
+        ProviderFailureKind.OUTCOME_UNKNOWN: exit_with_text_only(
+            Cause.PROVIDER_OUTCOME_UNKNOWN, lambda text: text.outcome_unknown
+        ),
+        ProviderFailureKind.UNAUTHORISED: INTERNAL_ERROR_EXIT,
     },
 }
-# 401/403 refuse our own credentials: asking for the response again cannot help.
-_AUTH_REFUSED_EXIT = _InitResponseExit(
-    TurnStatus.UNAVAILABLE,
-    Cause.INTERNAL,
-    lambda text: text.went_wrong,
-    should_await_init=False,
-)
-
-
-def _init_response_exit_for(
-    failure: Failure, action: ProviderAction
-) -> _InitResponseExit:
-    if is_auth_refused(failure):
-        return _AUTH_REFUSED_EXIT
-    outcome = outcome_of_failed_call(failure)
-    return _INIT_RESPONSE_EXITS_FOR_ACTION.get(action, {}).get(
-        outcome, _INIT_RESPONSE_EXITS[outcome]
-    )
 
 
 def _ended_for_good(
-    exit_for_failure: _InitResponseExit, text: ClarificationText
+    exit_for_failure: FailureExit, text: ClarificationText
 ) -> FlowEnding:
     return FlowEnding(
         status=exit_for_failure.status,
@@ -372,7 +311,7 @@ def _ended_for_good(
 
 # Only a form handed back says when to send it again.
 def _ended_with_init_form_back(
-    exit_for_failure: _InitResponseExit,
+    exit_for_failure: FailureExit,
     failure: Failure,
     init_response: FormSubmission,
     init_form: FormDefinition,

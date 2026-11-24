@@ -4,6 +4,7 @@ ride in, the reply they come back in, and how a failed filing is reported."""
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 
 import httpx
 import pytest
@@ -11,11 +12,10 @@ import pytest
 from dss.adapters.invocation.client import (
     HttpCapabilityInvocation,
     build_support_request,
-    map_support_response,
 )
-from dss.core.provider_discovery.models import FailureClass
-from dss.core.shared.models import ProviderAction
-from dss.ports.invocation import ProviderActionFailedError
+from dss.core.redaction.visibility import Visibility
+from dss.core.shared.models import ProviderFailureKind
+from dss.ports.invocation import ProviderCallFailedError
 from tests.support.providers import build_capability
 
 SENDER_ID = "seeker-network-vistaar.da.gov.in"
@@ -96,15 +96,6 @@ _FILED = {
 }
 
 
-def test_the_reply_is_the_first_support_channel() -> None:
-    assert map_support_response(_FILED) == _FILED["message"]["support"]["channels"][0]
-
-
-def test_a_channel_that_is_not_an_object_is_malformed() -> None:
-    with pytest.raises(TypeError):
-        map_support_response({"message": {"support": {"channels": ["ticket"]}}})
-
-
 class _Replies:
     """Answers ``status_code`` with ``headers`` for the first ``fail_times``
     calls, then files the grievance. Counts the calls."""
@@ -133,7 +124,9 @@ class _Replies:
         return httpx.Response(200, json=_FILED)
 
 
-def _invocation(handler: _Replies, **kwargs) -> HttpCapabilityInvocation:
+def _invocation(
+    handler: Callable[[httpx.Request], httpx.Response], **kwargs
+) -> HttpCapabilityInvocation:
     return HttpCapabilityInvocation(
         client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
         base_url="https://provider-network-vistaar.da.gov.in/oan",
@@ -161,7 +154,7 @@ async def test_the_wire_names_the_bpp_as_receiver() -> None:
     assert handler.receiver_ids == ["provider-network-vistaar.da.gov.in"]
 
 
-async def test_a_transient_failure_is_retried_as_a_select_is() -> None:
+async def test_a_filing_the_provider_did_not_take_in_is_retried() -> None:
     handler = _Replies(429, fail_times=2)
 
     reply = await _invocation(handler).support(PROVIDER, ATTRIBUTES, "txn-1")
@@ -170,17 +163,92 @@ async def test_a_transient_failure_is_retried_as_a_select_is() -> None:
     assert reply.attributes["case"]["ticketNo"] == "100626000099001"
 
 
-async def test_a_rejected_filing_is_a_defect_with_no_retry_hint() -> None:
-    handler = _Replies(400, fail_times=99)
+async def test_support_is_not_retried_after_a_5xx() -> None:
+    handler = _Replies(503, fail_times=99)
 
-    with pytest.raises(ProviderActionFailedError) as failed:
+    with pytest.raises(ProviderCallFailedError):
         await _invocation(handler).support(PROVIDER, ATTRIBUTES, "txn-1")
 
-    assert failed.value.action is ProviderAction.SUPPORT
     assert handler.calls == 1
-    assert failed.value.failure_class is FailureClass.DEFECT
-    assert failed.value.status_code == 400
+
+
+async def test_support_is_not_retried_after_a_read_timeout() -> None:
+    calls: list[httpx.Request] = []
+
+    def time_out(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        raise httpx.ReadTimeout("timed out", request=request)
+
+    with pytest.raises(ProviderCallFailedError):
+        await _invocation(time_out).support(PROVIDER, ATTRIBUTES, "txn-1")
+
+    assert len(calls) == 1
+
+
+async def test_a_rejected_filing_is_refused_with_no_retry_hint() -> None:
+    handler = _Replies(400, fail_times=99)
+
+    with pytest.raises(ProviderCallFailedError) as failed:
+        await _invocation(handler).support(PROVIDER, ATTRIBUTES, "txn-1")
+
+    assert failed.value.endpoint == "support"
+    assert handler.calls == 1
+    assert failed.value.kind is ProviderFailureKind.REFUSED
     assert failed.value.retry_after_seconds is None
+
+
+_NOT_FOUND = (
+    '{"message":{"status":"NACK","error":{"code":"BIZ_GENERIC_ERROR",'
+    '"message":"No PMFBY application was found for this application number."}}}'
+)
+
+
+async def test_a_404_is_refused_with_its_body() -> None:
+    def not_found(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, text=_NOT_FOUND)
+
+    with pytest.raises(ProviderCallFailedError) as failed:
+        await _invocation(not_found).support(PROVIDER, ATTRIBUTES, "txn-1")
+
+    assert failed.value.kind is ProviderFailureKind.REFUSED
+    assert failed.value.reason == _NOT_FOUND
+
+
+async def test_a_refused_connection_is_not_sent() -> None:
+    def refuse(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused", request=request)
+
+    with pytest.raises(ProviderCallFailedError) as failed:
+        await _invocation(refuse, attempts=1).support(PROVIDER, ATTRIBUTES, "txn-1")
+
+    assert failed.value.kind is ProviderFailureKind.NOT_SENT
+    assert failed.value.reason is None
+
+
+async def test_the_reason_is_masked() -> None:
+    def echo_phone(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(422, text="No case for applicantMobile 9876543210")
+
+    with pytest.raises(ProviderCallFailedError) as failed:
+        await _invocation(echo_phone).support(
+            PROVIDER,
+            {**ATTRIBUTES, "applicantMobile": "«phone_1»"},
+            "txn-1",
+            visibility=Visibility(values={"«phone_1»": "9876543210"}),
+        )
+
+    assert failed.value.reason == "No case for applicantMobile «phone_1»"
+
+
+async def test_an_unreadable_2xx_is_outcome_unknown() -> None:
+    def nack(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"message": {"status": "NACK"}})
+
+    with pytest.raises(ProviderCallFailedError) as failed:
+        await _invocation(nack).support(PROVIDER, ATTRIBUTES, "txn-1")
+
+    assert failed.value.kind is ProviderFailureKind.OUTCOME_UNKNOWN
+    assert failed.value.reason is None
 
 
 async def test_a_provider_naming_its_own_time_is_not_retried() -> None:
@@ -189,12 +257,12 @@ async def test_a_provider_naming_its_own_time_is_not_retried() -> None:
 
     handler = _Replies(503, fail_times=99, headers={"Retry-After": "120"})
 
-    with pytest.raises(ProviderActionFailedError) as failed:
+    with pytest.raises(ProviderCallFailedError) as failed:
         await _invocation(handler).support(PROVIDER, ATTRIBUTES, "txn-1")
 
-    assert failed.value.action is ProviderAction.SUPPORT
+    assert failed.value.endpoint == "support"
     assert handler.calls == 1
-    assert failed.value.failure_class is FailureClass.TRANSIENT
+    assert failed.value.kind is ProviderFailureKind.OUTCOME_UNKNOWN
     assert failed.value.retry_after_seconds == 120
 
 

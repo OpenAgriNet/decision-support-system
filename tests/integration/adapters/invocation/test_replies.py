@@ -1,4 +1,4 @@
-"""Contract tests for mapping select responses.
+"""Contract tests for reading provider replies.
 
 Pure translation only — no business logic.
 """
@@ -9,7 +9,14 @@ import json
 from copy import deepcopy
 from pathlib import Path
 
-from dss.adapters.invocation.client import map_select_response
+import pytest
+from pydantic import ValidationError
+
+from dss.adapters.invocation.replies import (
+    read_commitment_attributes,
+    read_select_answers,
+    read_support_channel,
+)
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -17,7 +24,7 @@ FIXTURES = Path(__file__).parent / "fixtures"
 def test_maps_the_response_into_a_discovered_answer() -> None:
     response = json.loads((FIXTURES / "select_response.json").read_text())
 
-    [answer] = map_select_response(
+    [answer] = read_select_answers(
         response, provider_id="mausamgram", provider_name="IMD Mausamgram NWP"
     )
 
@@ -30,7 +37,7 @@ def test_maps_the_response_into_a_discovered_answer() -> None:
 def test_attributes_carry_the_real_data() -> None:
     response = json.loads((FIXTURES / "select_response.json").read_text())
 
-    [answer] = map_select_response(
+    [answer] = read_select_answers(
         response, provider_id="mausamgram", provider_name="IMD Mausamgram NWP"
     )
 
@@ -53,7 +60,7 @@ def test_every_resource_in_the_response_reaches_the_answer() -> None:
         (FIXTURES / "select_response_five_day_forecast.json").read_text()
     )
 
-    [answer] = map_select_response(
+    [answer] = read_select_answers(
         response, provider_id="mausamgram", provider_name="IMD Mausamgram"
     )
 
@@ -74,7 +81,7 @@ def test_validity_stays_on_each_resource_not_the_answer() -> None:
         (FIXTURES / "select_response_five_day_forecast.json").read_text()
     )
 
-    [answer] = map_select_response(
+    [answer] = read_select_answers(
         response, provider_id="mausamgram", provider_name="IMD Mausamgram"
     )
 
@@ -91,7 +98,7 @@ def test_the_payloads_source_block_is_promoted() -> None:
 
     response = json.loads((FIXTURES / "select_response.json").read_text())
 
-    [answer] = map_select_response(
+    [answer] = read_select_answers(
         response, provider_id="aws-network", provider_name="Weather Station Network"
     )
 
@@ -106,7 +113,7 @@ def test_a_response_without_a_source_block_maps_to_none() -> None:
     resource = response["message"]["contract"]["commitments"][0]["resources"][0]
     del resource["resourceAttributes"]["source"]
 
-    [answer] = map_select_response(
+    [answer] = read_select_answers(
         response, provider_id="mausamgram", provider_name="IMD"
     )
 
@@ -122,7 +129,7 @@ def test_a_source_uri_is_promoted_when_a_farmer_can_open_it() -> None:
     resource = response["message"]["contract"]["commitments"][0]["resources"][0]
     resource["resourceAttributes"]["source"]["sourceUri"] = "https://mausam.imd.gov.in"
 
-    [answer] = map_select_response(
+    [answer] = read_select_answers(
         response, provider_id="mausamgram", provider_name="IMD"
     )
 
@@ -135,7 +142,7 @@ def test_the_source_block_stays_in_attributes_as_well() -> None:
 
     response = json.loads((FIXTURES / "select_response.json").read_text())
 
-    [answer] = map_select_response(
+    [answer] = read_select_answers(
         response, provider_id="mausamgram", provider_name="IMD"
     )
 
@@ -159,7 +166,7 @@ def test_resources_are_grouped_by_the_document_they_came_from() -> None:
     }
     resources.append(other)
 
-    answers = map_select_response(
+    answers = read_select_answers(
         response, provider_id="bharat-vistaar", provider_name="Knowledge retrieval"
     )
 
@@ -178,7 +185,7 @@ def test_one_documents_resources_stay_in_one_answer() -> None:
         (FIXTURES / "select_response_five_day_forecast.json").read_text()
     )
 
-    answers = map_select_response(
+    answers = read_select_answers(
         response, provider_id="mausamgram", provider_name="IMD Mausamgram NWP"
     )
 
@@ -193,7 +200,7 @@ def test_resources_across_every_commitment_are_kept() -> None:
     second["resources"][0]["id"] = "res:second-offer"
     commitments.append(second)
 
-    answers = map_select_response(
+    answers = read_select_answers(
         response, provider_id="mausamgram", provider_name="IMD Mausamgram NWP"
     )
 
@@ -210,6 +217,60 @@ def test_a_commitment_with_no_resources_is_not_an_answer() -> None:
     response["message"]["contract"]["commitments"][0]["resources"] = []
 
     assert (
-        map_select_response(response, provider_id="mausamgram", provider_name="IMD")
+        read_select_answers(response, provider_id="mausamgram", provider_name="IMD")
         == []
     )
+
+
+def test_unknown_resource_attributes_survive() -> None:
+    response = json.loads((FIXTURES / "select_response.json").read_text())
+    resource = response["message"]["contract"]["commitments"][0]["resources"][0]
+    resource["resourceAttributes"]["cropAdvisory"] = {"stage": "sowing"}
+
+    [answer] = read_select_answers(
+        response, provider_id="mausamgram", provider_name="IMD"
+    )
+
+    assert answer.attributes["resources"] == [
+        {"id": resource["id"], **resource["resourceAttributes"]}
+    ]
+
+
+def test_no_commitments_is_no_answers() -> None:
+    response = {"message": {"contract": {"commitments": []}}}
+
+    assert (
+        read_select_answers(response, provider_id="mausamgram", provider_name="IMD")
+        == []
+    )
+
+
+def test_a_resource_without_a_type_is_malformed() -> None:
+    response = json.loads((FIXTURES / "select_response.json").read_text())
+    resource = response["message"]["contract"]["commitments"][0]["resources"][0]
+    del resource["resourceAttributes"]["@type"]
+
+    with pytest.raises(ValidationError):
+        read_select_answers(response, provider_id="mausamgram", provider_name="IMD")
+
+
+def test_an_init_reply_without_commitments_is_malformed() -> None:
+    with pytest.raises(ValidationError):
+        read_commitment_attributes({"message": {"contract": {"commitments": []}}})
+
+
+def test_the_reply_is_the_first_support_channel() -> None:
+    channel = {
+        "@type": "openagrinet:Grievance",
+        "scheme": {"code": "PMFBY"},
+        "case": {"ticketNo": "100626000099001", "status": {"code": "Registered"}},
+    }
+
+    reply = {"message": {"support": {"channels": [channel]}}}
+
+    assert read_support_channel(reply) == channel
+
+
+def test_a_channel_that_is_not_an_object_is_malformed() -> None:
+    with pytest.raises(ValidationError):
+        read_support_channel({"message": {"support": {"channels": ["ticket"]}}})

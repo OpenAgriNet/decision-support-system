@@ -66,7 +66,7 @@ NEEDED = (
     "provider_id",
     "capability",
     "answered",
-    "failure_class",
+    "failure_kind",
     "offered_provider_ids",
     "answered_provider_ids",
 )

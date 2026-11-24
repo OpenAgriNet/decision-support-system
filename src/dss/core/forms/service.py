@@ -6,7 +6,6 @@ from collections import Counter
 from collections.abc import Callable, Container, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from http import HTTPStatus
 from uuid import uuid4
 
 import yaml
@@ -16,6 +15,7 @@ from dss.core.channel.service import answer_for_unserved_asks
 from dss.core.forms.models import (
     ActionField,
     ActionSchema,
+    FailureExit,
     FieldDefinition,
     FieldError,
     FieldErrorCode,
@@ -37,6 +37,7 @@ from dss.core.forms.models import (
     JsonScalar,
     MaskedSubmission,
     PiiClass,
+    TextChoice,
     UnknownForm,
     ValidSubmission,
 )
@@ -47,7 +48,13 @@ from dss.core.provider_discovery.models import DiscoveryResult, ProviderCapabili
 from dss.core.redaction.visibility import Visibility
 from dss.core.schema_packs.models import SchemaPackFiles, SchemaPackSkipped
 from dss.core.schema_packs.service import PACK_DEFECTS, is_api_pack
-from dss.core.shared.models import Cause, ProviderAction, TextBlock, TurnStatus
+from dss.core.shared.models import (
+    Cause,
+    ProviderAction,
+    ProviderFailureKind,
+    TextBlock,
+    TurnStatus,
+)
 from dss.core.shared.schema import resolve_schema
 
 _ACTION_MAP = "x-oan-schema-by-action"
@@ -463,58 +470,56 @@ def answer_for_form_errors(
     )
 
 
-type TextChoice = Callable[[ClarificationText], str]
+def exit_with_form_back(cause: Cause, text: TextChoice) -> FailureExit:
+    return FailureExit(TurnStatus.UNAVAILABLE, cause, text, hands_form_back=True)
 
-# What the farmer reads for each way a form's call can fail, by the call. A
-# `form_error` with no fields says the form is still theirs; the values were
-# fine. A status check the provider refused is read as no such case (#206).
-_NOT_SENT_TEXT: Mapping[ProviderAction, Mapping[Cause, TextChoice]] = {
+
+def exit_with_text_only(cause: Cause, text: TextChoice) -> FailureExit:
+    return FailureExit(TurnStatus.UNAVAILABLE, cause, text, hands_form_back=False)
+
+
+INTERNAL_ERROR_EXIT = exit_with_text_only(Cause.INTERNAL, lambda text: text.went_wrong)
+
+_FIRST_CALL_EXITS: Mapping[
+    ProviderAction, Mapping[ProviderFailureKind, FailureExit]
+] = {
     ProviderAction.SUPPORT: {
-        Cause.PROVIDER_UNAVAILABLE: lambda text: text.not_filed,
-        Cause.PROVIDER_REJECTED: lambda text: text.not_filed_rejected,
+        ProviderFailureKind.NOT_SENT: exit_with_form_back(
+            Cause.PROVIDER_UNAVAILABLE, lambda text: text.not_filed
+        ),
+        ProviderFailureKind.REFUSED: exit_with_form_back(
+            Cause.PROVIDER_REJECTED, lambda text: text.not_filed_rejected
+        ),
+        ProviderFailureKind.OUTCOME_UNKNOWN: exit_with_text_only(
+            Cause.PROVIDER_OUTCOME_UNKNOWN, lambda text: text.outcome_unknown
+        ),
+        ProviderFailureKind.UNAUTHORISED: INTERNAL_ERROR_EXIT,
     },
     ProviderAction.STATUS: {
-        Cause.PROVIDER_UNAVAILABLE: lambda text: text.status_not_checked,
-        Cause.PROVIDER_REJECTED: lambda text: text.status_not_found,
+        ProviderFailureKind.NOT_SENT: exit_with_form_back(
+            Cause.PROVIDER_UNAVAILABLE, lambda text: text.status_not_checked
+        ),
+        ProviderFailureKind.REFUSED: exit_with_form_back(
+            Cause.PROVIDER_REJECTED, lambda text: text.status_not_found
+        ),
+        ProviderFailureKind.OUTCOME_UNKNOWN: exit_with_form_back(
+            Cause.PROVIDER_UNAVAILABLE, lambda text: text.status_not_checked
+        ),
+        ProviderFailureKind.UNAUTHORISED: INTERNAL_ERROR_EXIT,
     },
     ProviderAction.INIT: {
-        Cause.PROVIDER_UNAVAILABLE: lambda text: text.init_not_sent,
-        Cause.PROVIDER_REJECTED: lambda text: text.init_rejected,
+        ProviderFailureKind.NOT_SENT: exit_with_form_back(
+            Cause.PROVIDER_UNAVAILABLE, lambda text: text.init_not_sent
+        ),
+        ProviderFailureKind.REFUSED: exit_with_form_back(
+            Cause.PROVIDER_REJECTED, lambda text: text.init_rejected
+        ),
+        ProviderFailureKind.OUTCOME_UNKNOWN: exit_with_form_back(
+            Cause.PROVIDER_UNAVAILABLE, lambda text: text.init_not_sent
+        ),
+        ProviderFailureKind.UNAUTHORISED: INTERNAL_ERROR_EXIT,
     },
 }
-
-
-def _cause_for_failed_call(failure: Failure) -> Cause:
-    if failure.retryable:
-        return Cause.PROVIDER_UNAVAILABLE
-    return Cause.PROVIDER_REJECTED
-
-
-_AUTH_REFUSED_STATUS_CODES = frozenset({HTTPStatus.UNAUTHORIZED, HTTPStatus.FORBIDDEN})
-
-
-# The network refused our own credentials, not the farmer's details or response.
-def is_auth_refused(failure: Failure) -> bool:
-    return failure.status_code in _AUTH_REFUSED_STATUS_CODES
-
-
-def answer_for_failed_call(
-    submission: FormSubmission,
-    cause: Cause,
-    text: ClarificationText,
-    *,
-    action: ProviderAction,
-) -> ComposedAnswer:
-    return ComposedAnswer(
-        content=(
-            TextBlock(text=_NOT_SENT_TEXT[action][cause](text)),
-            FormErrorBlock(
-                form_id=submission.form_id,
-                context=submission.context,
-                submission_id=submission.submission_id,
-            ),
-        )
-    )
 
 
 def end_for_failed_call(
@@ -522,29 +527,52 @@ def end_for_failed_call(
     failure: Failure,
     text: ClarificationText,
     *,
-    action: ActionSchema,
+    action: ProviderAction,
 ) -> FlowEnding:
-    return end_for_call_cause(
+    return _end_with(
         submission,
-        _cause_for_failed_call(failure),
+        _FIRST_CALL_EXITS[action][failure.kind],
         text,
-        action=ProviderAction(action.context.action),
         retry_after_seconds=failure.retry_after_seconds,
     )
 
 
-def end_for_call_cause(
+def end_for_init_without_challenge(
+    submission: FormSubmission, text: ClarificationText
+) -> FlowEnding:
+    return _end_with(
+        submission,
+        _FIRST_CALL_EXITS[ProviderAction.INIT][ProviderFailureKind.REFUSED],
+        text,
+        retry_after_seconds=None,
+    )
+
+
+def _end_with(
     submission: FormSubmission,
-    cause: Cause,
+    failure_exit: FailureExit,
     text: ClarificationText,
     *,
-    action: ProviderAction,
-    retry_after_seconds: int | None = None,
+    retry_after_seconds: int | None,
 ) -> FlowEnding:
+    told = answer_with_text(failure_exit.text(text))
+    if not failure_exit.hands_form_back:
+        return FlowEnding(
+            status=failure_exit.status, cause=failure_exit.cause, answer=told
+        )
     return FlowEnding(
-        status=TurnStatus.UNAVAILABLE,
-        cause=cause,
-        answer=answer_for_failed_call(submission, cause, text, action=action),
+        status=failure_exit.status,
+        cause=failure_exit.cause,
+        answer=ComposedAnswer(
+            content=(
+                *told.content,
+                FormErrorBlock(
+                    form_id=submission.form_id,
+                    context=submission.context,
+                    submission_id=submission.submission_id,
+                ),
+            )
+        ),
         retry_after_seconds=retry_after_seconds,
     )
 

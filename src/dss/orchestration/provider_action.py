@@ -7,11 +7,7 @@ from dss.core.forms.models import ActionReply, ActionSchema
 from dss.core.forms.service import build_action_attributes, without_farmer_values
 from dss.core.intent.models import AskId
 from dss.core.planner.models import Failure
-from dss.core.provider_discovery.models import (
-    DiscoveredAnswer,
-    FailureClass,
-    ProviderCapability,
-)
+from dss.core.provider_discovery.models import DiscoveredAnswer, ProviderCapability
 from dss.core.redaction.visibility import Visibility
 from dss.core.shared.models import ProviderAction
 from dss.core.shared.network import NetworkTransactionID
@@ -42,7 +38,7 @@ async def call_provider_action(  # noqa: PLR0913
             provider, body, transaction_id, visibility=visibility
         )
     except ProviderCallFailedError as failed:
-        return _as_failure(failed, action)
+        return _as_failure(failed)
     return _as_answer(provider, reply, action)
 
 
@@ -57,15 +53,13 @@ def _invocation_call_for(
     return calls_by_action[action.context.action]
 
 
-def _as_failure(failed: ProviderCallFailedError, action: ActionSchema) -> Failure:
-    # No provider text: the farmer is told in the DSS's own words.
+def _as_failure(failed: ProviderCallFailedError) -> Failure:
     return Failure(
         ask_id=FORM_ASK_ID,
         capability=failed.capability,
-        reason=f"{action.context.action} failed with status {failed.status_code}",
-        retryable=failed.failure_class is FailureClass.TRANSIENT,
+        kind=failed.kind,
+        reason=failed.reason,
         retry_after_seconds=failed.retry_after_seconds,
-        status_code=failed.status_code,
     )
 
 
@@ -83,11 +77,9 @@ def _as_answer(
     )
 
 
-# For an operator: the farmer is not told our credentials were refused. The
-# status alone, never the body.
+# Never log the reason: it is the provider's body.
 def warn_auth_refused(failure: Failure, *, request_id: str) -> None:
     logger.warning(
-        "request_id=%s provider_auth_refused status_code=%s",
-        request_id,
-        failure.status_code,
+        "provider_auth_refused",
+        extra={"request_id": request_id, "capability": failure.capability},
     )

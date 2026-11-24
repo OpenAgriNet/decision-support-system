@@ -141,7 +141,8 @@ def evidence_text(evidence: Evidence) -> str:
     )
     lines = [f"served asks: {served or 'none'}", sources_text(evidence)]
     lines += [
-        f"failed ask {entry.ask.id}: {failure.capability or '-'}: {failure.reason}"
+        f"failed ask {entry.ask.id}: {failure.capability or '-'}: "
+        f"{_failure_text(failure)}"
         for entry in evidence.ask_evidences
         for failure in _failures_of(entry)
     ]
@@ -157,5 +158,9 @@ def _failures_of(ask_evidence: AskEvidence) -> tuple[Failure, ...]:
 
 def provider_response_text(response: DiscoveredAnswer | Failure) -> str:
     if isinstance(response, Failure):
-        return response.reason
+        return _failure_text(response)
     return json.dumps(response.attributes, ensure_ascii=False, sort_keys=True)
+
+
+def _failure_text(failure: Failure) -> str:
+    return failure.reason or failure.kind

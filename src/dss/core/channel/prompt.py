@@ -54,7 +54,12 @@ from dss.core.settlement.models import (
     Unservable,
     UnservableReason,
 )
-from dss.core.shared.models import ProviderAction, TextQuery, UserTurn
+from dss.core.shared.models import (
+    ProviderAction,
+    ProviderFailureKind,
+    TextQuery,
+    UserTurn,
+)
 from dss.ports.prompts import PromptIdentifier, PromptProvider
 
 # A reply like "2" means nothing without the question it answers. Three
@@ -206,7 +211,8 @@ def _render_failures(ask_evidence: AskEvidence) -> list[str]:
         case Attempted(failures=failures):
             label = _place_label(ask_evidence.ask)
             return [
-                f"{_failure_lead(failure)}{label}: {failure.reason}"
+                f"{_failure_lead(failure)}{label}: "
+                f"{farmer_safe_reason(failure) or failure.kind}"
                 for failure in failures
             ]
     return []
@@ -300,5 +306,21 @@ def _slot_brief(slot: Slot) -> str:
             raise ValueError(f"{slot.name} is not waiting on the farmer")
 
 
+_UNREACHED_LEAD = "Could not reach a provider for {capability}"
+
+_FAILURE_LEADS: Mapping[ProviderFailureKind, str] = {
+    ProviderFailureKind.REFUSED: "The provider turned this down for {capability}",
+}
+
+
+# A refusal of our credentials is an internal error; its body is never shown
+# to the farmer.
+def farmer_safe_reason(failure: Failure) -> str | None:
+    if failure.kind is ProviderFailureKind.UNAUTHORISED:
+        return None
+    return failure.reason
+
+
 def _failure_lead(failure: Failure) -> str:
-    return f"Could not reach a provider for {failure.capability}"
+    lead = _FAILURE_LEADS.get(failure.kind, _UNREACHED_LEAD)
+    return lead.format(capability=failure.capability)

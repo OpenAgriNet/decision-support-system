@@ -28,6 +28,7 @@ from dss.core.settlement.models import (
     Unservable,
     UnservableReason,
 )
+from dss.core.shared.models import ProviderFailureKind
 from tests.support.asks import an_ask
 
 
@@ -96,20 +97,23 @@ def test_result_is_frozen() -> None:
 
 def test_failure_carries_capability_and_reason() -> None:
     failure = Failure(
-        ask_id=0, capability="MandiPrice", reason="timeout", retryable=True
+        ask_id=0,
+        capability="MandiPrice",
+        kind=ProviderFailureKind.REFUSED,
+        reason="timeout",
     )
     assert failure.ask_id == 0
     assert failure.capability == "MandiPrice"
+    assert failure.kind is ProviderFailureKind.REFUSED
     assert failure.reason == "timeout"
-    assert failure.retryable is True
 
 
 def test_failure_is_frozen() -> None:
     failure = Failure(
-        ask_id=0, capability="MandiPrice", reason="timeout", retryable=True
+        ask_id=0, capability="MandiPrice", kind=ProviderFailureKind.NOT_SENT
     )
     with pytest.raises(ValidationError):
-        failure.retryable = False
+        failure.kind = ProviderFailureKind.REFUSED
 
 
 _ASK = an_ask(
@@ -117,7 +121,10 @@ _ASK = an_ask(
 )
 _RESULT = Result(ask_id=0, source=_AGMARKNET, data={"modal_price": "2100"})
 _PROVIDER_FAILURE = Failure(
-    ask_id=0, capability="MandiPrice", reason="timeout", retryable=True
+    ask_id=0,
+    capability="MandiPrice",
+    kind=ProviderFailureKind.OUTCOME_UNKNOWN,
+    reason="timeout",
 )
 
 

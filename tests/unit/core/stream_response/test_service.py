@@ -27,7 +27,12 @@ from dss.core.planner.models import (
     Source,
     SourceKind,
 )
-from dss.core.shared.models import Geometry, TextQuery, UserTurn
+from dss.core.shared.models import (
+    Geometry,
+    ProviderFailureKind,
+    TextQuery,
+    UserTurn,
+)
 from dss.core.stream_response.service import stream_response
 from tests.support.asks import an_ask
 from tests.support.evidence import attempted, build_evidence
@@ -59,8 +64,8 @@ UNREACHABLE = build_evidence(
         Failure(
             ask_id=0,
             capability="openagrinet:MandiPrice",
+            kind=ProviderFailureKind.NOT_SENT,
             reason="429 too many requests",
-            retryable=True,
         ),
     ),
 )

@@ -63,7 +63,7 @@ class ClarificationText(BaseModel):
     init_rejected: str
     # Sent with the init form: what the farmer answers, e.g. an OTP.
     init_response_needed: str
-    # Our own fault, e.g. a pack that gives no init for a scheme that needs one.
+    # An internal error, e.g. a pack that gives no init for a scheme that needs one.
     went_wrong: str
     # A form that needs init, on a session nothing keeps past this turn.
     form_cannot_complete: str

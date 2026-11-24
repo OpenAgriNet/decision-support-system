@@ -7,17 +7,15 @@ enforceable, even before anything calls it.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Protocol
+from typing import Literal, Protocol
 
 from dss.core.forms.models import ActionReply
-from dss.core.provider_discovery.models import (
-    DiscoveredAnswer,
-    FailureClass,
-    ProviderCapability,
-)
+from dss.core.provider_discovery.models import DiscoveredAnswer, ProviderCapability
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
-from dss.core.shared.models import ProviderAction
+from dss.core.shared.models import ProviderFailureKind
 from dss.core.shared.network import NetworkTransactionID
+
+type ProviderEndpoint = Literal["select", "init", "support", "status"]
 
 
 class ProviderCallFailedError(Exception):
@@ -27,56 +25,24 @@ class ProviderCallFailedError(Exception):
     this", and a caller that wants to keep the turn alive has to be able to
     catch it without importing an adapter.
 
-    Raised only once the adapter's retries are exhausted. ``failure_class``
-    says whether retrying could ever have helped — ``TRANSIENT`` for a
-    timeout or 429, ``DEFECT`` for a malformed request.
+    Raised only once the adapter's retries are exhausted. ``reason`` is the
+    provider's reply body, masked; ``None`` when it sent none.
     """
 
     def __init__(
         self,
-        action: str,
+        endpoint: ProviderEndpoint,
         capability: str,
-        status_code: int,
-        failure_class: FailureClass,
-    ) -> None:
-        super().__init__(f"{action} failed for {capability}: {status_code}")
-        self.capability = capability
-        self.status_code = status_code
-        self.failure_class = failure_class
-        # The provider's own `Retry-After`, when it sent one. Set by the
-        # actions that read it.
-        self.retry_after_seconds: int | None = None
-
-
-class SelectFailedError(ProviderCallFailedError):
-    """``detail`` is the provider's response body, concealed; it reaches the
-    planner's prompt."""
-
-    def __init__(
-        self,
-        capability: str,
-        status_code: int,
-        failure_class: FailureClass,
-        detail: str | None,
-    ) -> None:
-        super().__init__("select", capability, status_code, failure_class)
-        self.detail = detail
-
-
-class ProviderActionFailedError(ProviderCallFailedError):
-    # No provider text: the farmer is told in the DSS's own words.
-
-    def __init__(
-        self,
-        action: ProviderAction,
-        capability: str,
-        status_code: int,
-        failure_class: FailureClass,
+        kind: ProviderFailureKind,
         *,
+        reason: str | None = None,
         retry_after_seconds: int | None = None,
     ) -> None:
-        super().__init__(action, capability, status_code, failure_class)
-        self.action = action
+        super().__init__(f"{endpoint} failed for {capability}: {kind}")
+        self.endpoint = endpoint
+        self.capability = capability
+        self.kind = kind
+        self.reason = reason
         self.retry_after_seconds = retry_after_seconds
 
 
@@ -99,11 +65,11 @@ class ProviderActionInvocation(Protocol):
         *,
         visibility: Visibility = NOTHING_HELD,
     ) -> ActionReply:
-        """File ``attributes`` with the provider, or raise ``SupportFailedError``.
+        """File ``attributes`` with the provider, or raise ``ProviderCallFailedError``.
 
         ``attributes`` is the whole body the pack's action schema calls for,
-        already built. Retried like ``select``: a slow provider may receive
-        the same filing twice until the pack gives a duplicate key.
+        already built. Retried only when the provider surely did not take it
+        in: there is no duplicate key yet.
         """
         ...
 
@@ -115,7 +81,7 @@ class ProviderActionInvocation(Protocol):
         *,
         visibility: Visibility = NOTHING_HELD,
     ) -> ActionReply:
-        """Read the case ``attributes`` name, or raise ``StatusFailedError``.
+        """Read the case ``attributes`` name, or raise ``ProviderCallFailedError``.
 
         ``attributes`` is the whole body the pack's action schema calls for,
         already built. Retried like ``select``: a read is safe to send twice.
@@ -132,7 +98,7 @@ class CapabilityInvocation(ProviderActionInvocation, Protocol):
         *,
         visibility: Visibility = NOTHING_HELD,
     ) -> Sequence[DiscoveredAnswer]:
-        """Return every answer the provider gave, or raise ``SelectFailedError``.
+        """Return every answer the provider gave, or raise ``ProviderCallFailedError``.
 
         A sequence, not one answer: one call's resources are grouped by the
         document they came from, and a search provider can draw on several.
