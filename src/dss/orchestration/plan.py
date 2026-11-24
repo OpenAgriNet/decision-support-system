@@ -42,6 +42,7 @@ from dss.core.shared.models import TextQuery, TurnInput, UserTurn
 from dss.observability.stages import Stage
 from dss.observability.trace_log import log_external_response, trace_agent_call
 from dss.orchestration.planner import PlannerDeps, build_planner_agent, utc_today
+from dss.ports.capability_tools import CapabilityToolProvider
 from dss.ports.invocation import CapabilityInvocation
 from dss.ports.prompts import PromptIdentifier, PromptProvider
 
@@ -77,6 +78,7 @@ def build_plan(  # noqa: PLR0913
     timeout_seconds: float = 30.0,
     retries: int = 3,
     today: Callable[[], date] = utc_today,
+    capability_tools: CapabilityToolProvider | None = None,
 ) -> Plan:
     """Bake in the per-deployment configuration; return the per-turn callable.
 
@@ -90,6 +92,9 @@ def build_plan(  # noqa: PLR0913
     turn's target language when the deployment configured a version for it —
     English otherwise. Skills ride with the prompt (configs/prompts.yaml), so
     the guidance and the agent's tools stay the pair the same reviewer shipped.
+
+    ``capability_tools`` offers the planner the Agent Skills for the turn's
+    intent categories (ADR-0025). Unset, it is offered none.
     """
 
     model_settings = {"temperature": temperature, "timeout": timeout_seconds}
@@ -117,8 +122,12 @@ def build_plan(  # noqa: PLR0913
             skills=skills,
             model=model,
             retries=retries,
-            capability_skills=prompts.get_capability_skills(
-                turn.target_lang, discovery.asked_categories
+            capability_tools=(
+                capability_tools.get_capability_tools(
+                    turn.target_lang, discovery.asked_categories
+                )
+                if capability_tools is not None
+                else None
             ),
             system_prompt=prompts.get_prompt(
                 PromptIdentifier.PLANNER,

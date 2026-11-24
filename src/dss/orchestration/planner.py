@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, tzinfo
 from functools import partial
 
 import anyio
@@ -45,15 +45,23 @@ from dss.core.provider_preferences.next_choice import (
 from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import UserTurn
 from dss.observability.trace_log import log_event
+from dss.ports.capability_tools import CapabilityTools
 from dss.ports.invocation import (
     CapabilityInvocation,
     SelectFailedError,
 )
-from dss.ports.prompts import CapabilitySkills
 
 
 def utc_today() -> date:
     return datetime.now(UTC).date()
+
+
+def today_in(zone: tzinfo) -> Callable[[], date]:
+    """Today by the deployment's clock. The UTC date is a day behind India's
+    from 00:00 to 05:30 IST, so a price window counted from it would end
+    yesterday."""
+
+    return lambda: datetime.now(zone).date()
 
 
 @dataclass
@@ -482,14 +490,14 @@ async def _describe_capability(ctx: RunContext[PlannerDeps], ask_id: AskId) -> s
 
 
 def _offered_skills(
-    capability_skills: CapabilitySkills | None,
+    capability_tools: CapabilityTools | None,
 ) -> list[AbstractCapability[PlannerDeps]]:
-    if capability_skills is None:
+    if capability_tools is None:
         return []
     library = ReadOnlyWorkspace(
-        Workspace(LocalWorkspaceBackend(capability_skills.library_path))
+        Workspace(LocalWorkspaceBackend(capability_tools.library_path))
     )
-    return [Skills(".", include=capability_skills.names, workspace=library)]
+    return [Skills(".", include=capability_tools.names, workspace=library)]
 
 
 _TOOLS = {
@@ -505,7 +513,7 @@ def build_planner_agent(
     model: Model | str | None = None,
     system_prompt: str = "",
     retries: int = 1,
-    capability_skills: CapabilitySkills | None = None,
+    capability_tools: CapabilityTools | None = None,
 ) -> Agent[PlannerDeps, str]:
     """Construct the planner agent, binding the union of the selected skills'
     ``tool_names`` (ADR-0006). An unselected skill's tools are never in the
@@ -527,7 +535,7 @@ def build_planner_agent(
     a capability with no loaded schema, an invented field — so the framework's
     default of 1 is too few for a real turn.
 
-    ``capability_skills`` are offered as Agent Skills: the model sees each
+    ``capability_tools`` are offered as Agent Skills: the model sees each
     one's name and description, and reads its rules with ``load_capability``.
     """
 
@@ -537,7 +545,7 @@ def build_planner_agent(
         deps_type=PlannerDeps,
         system_prompt=system_prompt,
         retries=retries,
-        capabilities=_offered_skills(capability_skills),
+        capabilities=_offered_skills(capability_tools),
     )
     for name in tool_names_for(skills):
         agent.tool(_TOOLS[name], name=name)

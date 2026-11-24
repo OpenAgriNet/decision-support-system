@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import shutil
 from pathlib import Path
+from zoneinfo import ZoneInfoNotFoundError
 
 import httpx
 import pytest
@@ -70,6 +71,18 @@ def _wire(settings: Settings, **fetch) -> _Network:
         packs=load_schema_packs(settings, **fetch),
         preferences=_no_preferences(),
     )
+
+
+def test_an_unknown_timezone_refuses_to_boot(tmp_path: Path) -> None:
+    """Caught at boot, not when the first planner turn reads the date."""
+
+    with pytest.raises(ZoneInfoNotFoundError):
+        build_runner(_settings(tmp_path, local_timezone="Asia/Atlantis"))
+
+
+def test_an_absent_capability_tools_folder_refuses_to_boot(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError, match="capability tools dir"):
+        build_runner(_settings(tmp_path, capability_tools_dir=tmp_path / "missing"))
 
 
 def test_build_runner_returns_a_turn_runner(tmp_path: Path) -> None:

@@ -25,9 +25,10 @@ import warnings
 from collections.abc import Awaitable, Callable, Sequence
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from functools import partial
 from typing import Never
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -50,6 +51,7 @@ from dss.adapters.scheme_catalog.csv_file import load_scheme_catalog
 from dss.adapters.sinks.file import FileTelemetrySink, FileTurnSink
 from dss.adapters.translator.llm import LLMTranslator
 from dss.adapters.translator.stub import StubTranslator
+from dss.config.capability_tools_service import build_capability_tools_service
 from dss.config.clarification_text_loader import load_clarification_text
 from dss.config.edge_translation_loader import (
     LLMBinding,
@@ -115,10 +117,12 @@ from dss.orchestration.orchestrator import (
     unrouted_input_types,
 )
 from dss.orchestration.plan import InvocationFor, build_plan
+from dss.orchestration.planner import today_in
 from dss.orchestration.redaction import RedactTexts, pass_through, redact_texts
 from dss.orchestration.session import NoSessionStore, SessionStore
 from dss.orchestration.settlement import SettleAsks, build_settle_asks
 from dss.ports.area_lookup import AreaLookup
+from dss.ports.capability_tools import CapabilityToolProvider
 from dss.ports.discovery import CapabilityDiscovery
 from dss.ports.invocation import CapabilityInvocation
 from dss.ports.key_value_store import KeyValueStore
@@ -237,6 +241,8 @@ class _BootConfig:
     identity: Identity
     clarification_text: ClarificationText
     prompts: PromptProvider
+    capability_tools: CapabilityToolProvider
+    planner_today: Callable[[], date]
     scheme_catalog: SchemeCatalog
     redact: RedactTexts
     translation_routes: dict[str, TranslationRoute]
@@ -253,15 +259,17 @@ def _load_boot_config(settings: Settings) -> _BootConfig:
     )
     # Every LLM component's system prompt, per language (configs/prompts.yaml):
     # a missing template, a placeholder typo or no English entry refuses here.
-    prompts = build_prompt_service(
-        settings.prompt_config_path,
-        category_guidance_dir=settings.category_guidance_dir,
-    )
+    prompts = build_prompt_service(settings.prompt_config_path)
     return _BootConfig(
         policies=policies,
         identity=load_identity(),  # bundled default until an adopter mounts one
         clarification_text=load_clarification_text(),  # bundled default, same
         prompts=prompts,
+        # The planner's Agent Skills (ADR-0025): a missing folder, or one not
+        # named for a language or an intent category, refuses here.
+        capability_tools=build_capability_tools_service(settings.capability_tools_dir),
+        # An unknown timezone name refuses here, not on the first turn.
+        planner_today=today_in(ZoneInfo(settings.local_timezone)),
         # Nothing ships: which schemes a deployment serves is the tenant's call.
         scheme_catalog=load_scheme_catalog(settings.schemes_config_path),
         redact=_redaction(settings),
@@ -298,6 +306,8 @@ def _build_components(
             temperature=settings.planner_temperature,
             timeout_seconds=settings.planner_timeout_seconds,
             retries=settings.planner_retries,
+            today=boot.planner_today,
+            capability_tools=boot.capability_tools,
         ),
         compose=build_stream_response(
             identity=boot.identity, llm=composer_llm, prompts=boot.prompts

@@ -22,12 +22,10 @@ depend on this Protocol the same way it depends on ``LLMProvider``.
 
 from __future__ import annotations
 
-from collections.abc import Collection, Mapping
-from dataclasses import dataclass
+from collections.abc import Mapping
 from enum import StrEnum
 from typing import Any, Protocol, runtime_checkable
 
-from dss.core.intent.models import SubjectCategory
 from dss.core.planner.models import Skill
 from dss.core.shared.language import LanguageTag
 
@@ -51,16 +49,6 @@ class PromptIdentifier(StrEnum):
     TRANSLATOR = "translator"
 
 
-@dataclass(frozen=True)
-class CapabilitySkills:
-    """The Agent Skills a turn may load: those in the ``library_path`` folder
-    named for the intent categories its asks are about. The model reads one
-    only when it loads it."""
-
-    library_path: str
-    names: tuple[str, ...]
-
-
 @runtime_checkable
 class PromptProvider(Protocol):
     def get_prompt(
@@ -78,11 +66,4 @@ class PromptProvider(Protocol):
     ) -> tuple[Skill, ...]:
         """The skills configured beside that prompt, with the same language
         fallback. Empty for components that declare none."""
-        ...
-
-    def get_capability_skills(
-        self, lang: LanguageTag, categories: Collection[SubjectCategory]
-    ) -> CapabilitySkills | None:
-        """The planner's Agent Skills for those intent categories, in ``lang``
-        or English when it has none. ``None`` when none of them has one."""
         ...

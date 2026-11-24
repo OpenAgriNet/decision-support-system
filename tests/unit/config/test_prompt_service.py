@@ -18,7 +18,6 @@ import pytest
 from jinja2 import UndefinedError
 
 from dss.config.prompt_service import build_prompt_service
-from dss.core.intent.models import SubjectCategory
 from dss.core.shared.language import ENGLISH, LanguageTag
 from dss.ports.prompts import PromptIdentifier
 
@@ -33,20 +32,6 @@ Guidance line one.
 
 # Any member does for probing behaviour that is the same for every component.
 _PROBE = PromptIdentifier.INTENT
-
-
-def _category_guidance(root: Path, language_tag: str, *names: str) -> Path:
-    """Write an Agent Skill per name under ``root/<language_tag>/`` and
-    return ``root``, laid out like the shipped ``category_guidance/``."""
-
-    for name in names:
-        folder = root / language_tag / name
-        folder.mkdir(parents=True)
-        (folder / "SKILL.md").write_text(
-            f"---\nname: {name}\ndescription: The {name} rules.\n---\n",
-            encoding="utf-8",
-        )
-    return root
 
 
 def _registry(
@@ -313,98 +298,3 @@ def test_a_language_entry_without_skills_falls_back_to_english_skills(
 def test_a_component_without_skills_has_none(tmp_path: Path) -> None:
     service = build_prompt_service(_registry(tmp_path))
     assert service.get_skills(_PROBE, LanguageTag("en")) == ()
-
-
-# --- capability skills ------------------------------------------------------
-
-
-def test_a_turn_is_offered_the_skills_for_the_categories_asked_about(
-    tmp_path: Path,
-) -> None:
-    root = _category_guidance(tmp_path / "guidance", "en", "market", "weather")
-    service = build_prompt_service(_registry(tmp_path), category_guidance_dir=root)
-
-    offered = service.get_capability_skills(
-        LanguageTag("en"), frozenset({SubjectCategory.MARKET})
-    )
-
-    assert offered is not None
-    assert offered.names == ("market",)
-    assert Path(offered.library_path) == root.resolve() / "en"
-
-
-def test_a_turn_about_a_category_with_no_skill_is_offered_none(
-    tmp_path: Path,
-) -> None:
-    root = _category_guidance(tmp_path / "guidance", "en", "market")
-    service = build_prompt_service(_registry(tmp_path), category_guidance_dir=root)
-
-    assert (
-        service.get_capability_skills(
-            LanguageTag("en"), frozenset({SubjectCategory.CROP})
-        )
-        is None
-    )
-
-
-def test_a_language_is_offered_its_own_skills(tmp_path: Path) -> None:
-    root = _category_guidance(tmp_path / "guidance", "en", "market")
-    _category_guidance(root, "hi", "market")
-    service = build_prompt_service(_registry(tmp_path), category_guidance_dir=root)
-
-    offered = service.get_capability_skills(
-        LanguageTag("hi-IN"), frozenset({SubjectCategory.MARKET})
-    )
-
-    assert offered is not None
-    assert Path(offered.library_path) == root.resolve() / "hi"
-
-
-def test_a_language_without_skills_falls_back_to_english(tmp_path: Path) -> None:
-    root = _category_guidance(tmp_path / "guidance", "en", "market")
-    service = build_prompt_service(_registry(tmp_path), category_guidance_dir=root)
-
-    offered = service.get_capability_skills(
-        LanguageTag("gu"), frozenset({SubjectCategory.MARKET})
-    )
-
-    assert offered is not None
-    assert Path(offered.library_path) == root.resolve() / "en"
-
-
-def test_no_category_guidance_dir_offers_no_skills(tmp_path: Path) -> None:
-    service = build_prompt_service(_registry(tmp_path))
-
-    assert (
-        service.get_capability_skills(
-            LanguageTag("en"), frozenset({SubjectCategory.MARKET})
-        )
-        is None
-    )
-
-
-def test_a_capability_skill_named_for_no_category_refuses_to_boot(
-    tmp_path: Path,
-) -> None:
-    """Intent never asks for it, so it would never be offered."""
-
-    root = _category_guidance(tmp_path / "guidance", "en", "mandi")
-
-    with pytest.raises(ValueError, match="mandi"):
-        build_prompt_service(_registry(tmp_path), category_guidance_dir=root)
-
-
-def test_a_folder_not_named_for_a_language_refuses_to_boot(tmp_path: Path) -> None:
-    """Skills put straight under the root, with no language folder."""
-
-    root = _category_guidance(tmp_path / "guidance", "market", "market")
-
-    with pytest.raises(ValueError, match="language tag"):
-        build_prompt_service(_registry(tmp_path), category_guidance_dir=root)
-
-
-def test_an_absent_category_guidance_dir_refuses_to_boot(tmp_path: Path) -> None:
-    with pytest.raises(FileNotFoundError, match="category guidance dir"):
-        build_prompt_service(
-            _registry(tmp_path), category_guidance_dir=tmp_path / "missing"
-        )

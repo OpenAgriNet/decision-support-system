@@ -28,7 +28,8 @@ from dss.core.shared.models import (
 )
 from dss.core.shared.network import NetworkTransactionID
 from dss.ports.area_lookup import AreaMatch
-from dss.ports.prompts import CapabilitySkills, PromptIdentifier
+from dss.ports.capability_tools import CapabilityTools
+from dss.ports.prompts import PromptIdentifier
 
 
 class FakeSchemeCatalog:
@@ -149,10 +150,8 @@ class FakePromptProvider:
     def __init__(
         self,
         skills: Sequence[Skill] = (),
-        capability_skills: CapabilitySkills | None = None,
     ) -> None:
         self._skills = tuple(skills)
-        self._capability_skills = capability_skills
         self.calls: list[tuple[PromptIdentifier, LanguageTag, dict[str, Any]]] = []
 
     def get_prompt(
@@ -178,17 +177,20 @@ class FakePromptProvider:
     ) -> tuple[Skill, ...]:
         return self._skills
 
-    def get_capability_skills(
-        self, lang: LanguageTag, categories: Collection[SubjectCategory]
-    ) -> CapabilitySkills | None:
-        """The configured skills named, as the real library names them, for
-        an asked category."""
 
-        if self._capability_skills is None:
-            return None
+class FakeCapabilityTools:
+    """A `CapabilityToolProvider` double serving one library, named as the
+    real service names it: the lowercase intent category."""
+
+    def __init__(self, tools: CapabilityTools) -> None:
+        self._tools = tools
+
+    def get_capability_tools(
+        self, lang: LanguageTag, categories: Collection[SubjectCategory]
+    ) -> CapabilityTools | None:
         asked = {category.value.lower() for category in categories}
-        names = tuple(name for name in self._capability_skills.names if name in asked)
-        return replace(self._capability_skills, names=names) if names else None
+        names = tuple(name for name in self._tools.names if name in asked)
+        return replace(self._tools, names=names) if names else None
 
 
 class FakeLocalizer:
