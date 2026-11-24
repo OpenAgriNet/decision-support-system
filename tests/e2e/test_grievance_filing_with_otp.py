@@ -215,13 +215,13 @@ def _submission(
     }
 
 
-def _resend(form: dict[str, Any], *, action_id: str) -> dict[str, Any]:
+def _resend(form: dict[str, Any], *, submission_id: str) -> dict[str, Any]:
     return {
-        "type": "form_action",
+        "type": "form",
         "formId": form["formId"],
         "context": form["context"],
-        "name": "resend_init",
-        "actionId": action_id,
+        "action": "resend_init",
+        "submissionId": submission_id,
     }
 
 
@@ -269,7 +269,7 @@ def test_a_pm_kisan_grievance_is_filed_after_an_otp(live_app, live_network, a_bo
 
         thread += [
             {"role": "assistant", "content": waiting["content"]},
-            {"role": "user", "content": [_resend(init_form, action_id="press-1")]},
+            {"role": "user", "content": [_resend(init_form, submission_id="press-1")]},
         ]
 
         resent = _message(_post(client, a_body, thread))

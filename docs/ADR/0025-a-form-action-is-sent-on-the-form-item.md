@@ -1,4 +1,4 @@
-# ADR-0025: A Form Action Is Its Own Input
+# ADR-0025: A Form Action Is Sent on the Form Item
 
 - **Status:** ACCEPTED
 - **Date:** 2026-11-20
@@ -16,7 +16,8 @@ Resend OTP button, and the app needs a way to say it was pressed.
 
 1. The app keeps no personal data to resend.
 2. No model needed to understand a press.
-3. An older DSS must refuse a press, not misread it.
+3. Submit is a button too: one way to send a form back, whichever
+   button was pressed.
 4. The same shape works on web, WhatsApp and voice.
 5. Room for a cap and a cooldown later, without breaking apps.
 
@@ -24,7 +25,8 @@ Resend OTP button, and the app needs a way to say it was pressed.
 
 1. **A new input item, `form_action`.** The form lists its buttons in
    `actions`; a press sends `{formId, context, name, actionId}`.
-2. **A flag on the form item** (`command: resend_init`).
+2. **The button on the form item.** The form is sent back with
+   `action: resend_init` and no values; no `action` means submit.
 3. **Send the details form again.**
 
 Others do both. Ory Kratos and Adaptive Cards put a flag on the same
@@ -34,11 +36,16 @@ Resend carries none.
 
 ## 4. Decision Outcome
 
-Chosen option: **1.**
+Chosen option: **2.** Option 1 was built first, then changed in
+review, before release.
 
 - A form may carry `actions`: a `name` and a `label` each. Known today:
   `resend_init`. An app skips a name it does not know.
-- A press is its own input, with its own path. It calls `init` again
+- A press is the `form` item with `action` set to the button's `name`,
+  a new `submissionId`, and no field values. No `action`, or `submit`,
+  is the submission.
+- The wire has one item; the DSS does not. The mapper makes a press its
+  own input, `FormAction`, with its own path. It calls `init` again
   with the waiting details, at the same provider. No moderation, no
   discovery, no composer.
 - Which buttons an init form offers depends on the challenge method,
@@ -50,14 +57,19 @@ Chosen option: **1.**
 - A pack that gives no init answers a press text only, as for the details
   form.
 
-Option 2 fails open. An older DSS ignores the flag and reads the press
-as an OTP submission. It also bends "a form item is a submission".
+Option 1 gave the app two ways to send one form back, though a press is
+a form sent with another button. Its gain, an older DSS refusing a
+press, does not apply: no DSS without the button was ever sent one.
 Option 3 makes the app keep the enrolment number, runs moderation and
 discovery again, and may pick another provider.
 
 ## 5. Consequences
 
-- A new kind of input, so an older DSS answers a press with 422.
+- `form` gains an optional `action`; the change is additive and stays
+  `/v1`. The schema cannot say "no values when `action` is set", so the
+  mapper refuses values on a press.
+- An older DSS ignores `action` and reads a press as a submission with
+  no OTP. It hands the form back as missing a value; nothing is filed.
 - Each resend restarts the waiting entry's 180 seconds (ADR-0022), so
   the details are held longer.
 - No cap, no cooldown, no expiry shown yet. A double tap sends two

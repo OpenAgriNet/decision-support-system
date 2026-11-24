@@ -118,32 +118,43 @@ def _text_query(parts: Sequence[schema.InputContent]) -> TextQuery:
     return TextQuery(text=_joined_text(parts))
 
 
-def _submission(parts: Sequence[schema.InputContent]) -> FormSubmission:
+def _form_sent(
+    parts: Sequence[schema.InputContent],
+) -> FormSubmission | FormAction:
     match parts:
         case [schema.FormContent(submission_id=None)]:
-            raise ValueError("a submitted form needs a submissionId")
-        case [schema.FormContent(submission_id=str() as submission_id) as form]:
-            return FormSubmission(
-                form_id=form.form_id,
-                context=_form_context(form.context),
-                submission_id=submission_id,
-                values=tuple(_field_value(f) for f in form.fields),
-            )
+            raise ValueError("a sent form needs a submissionId")
+        case [schema.FormContent(submission_id=str() as sent_id) as form] if _is_submit(
+            form
+        ):
+            return _submission(form, submission_id=sent_id)
+        case [schema.FormContent(submission_id=str() as sent_id) as form]:
+            return _pressed(form, action_id=sent_id)
     raise ValueError("a message carries one form")
 
 
-def _form_action(parts: Sequence[schema.InputContent]) -> FormAction:
-    match parts:
-        case [schema.FormActionContent(action_id=None)]:
-            raise ValueError("a pressed button needs an actionId")
-        case [schema.FormActionContent(action_id=str() as action_id) as pressed]:
-            return FormAction(
-                form_id=pressed.form_id,
-                context=_form_context(pressed.context),
-                name=_action_name(pressed.name),
-                action_id=action_id,
-            )
-    raise ValueError("a message carries one pressed button")
+def _is_submit(form: schema.FormContent) -> bool:
+    return form.action in (None, _SUBMIT)
+
+
+def _submission(form: schema.FormContent, *, submission_id: str) -> FormSubmission:
+    return FormSubmission(
+        form_id=form.form_id,
+        context=_form_context(form.context),
+        submission_id=submission_id,
+        values=tuple(_field_value(f) for f in form.fields),
+    )
+
+
+def _pressed(form: schema.FormContent, *, action_id: str) -> FormAction:
+    if any(field.value is not None for field in form.fields):
+        raise ValueError(f"the {form.action} button sends no field values")
+    return FormAction(
+        form_id=form.form_id,
+        context=_form_context(form.context),
+        name=_action_name(str(form.action)),
+        action_id=action_id,
+    )
 
 
 def _action_name(name: str) -> FormActionName:
@@ -172,6 +183,12 @@ def _history_message(message: schema.InputMessage) -> ConversationMessage:
 
 def _form_reference(part: schema.InputContent) -> FormReference | None:
     match part:
+        case schema.FormContent() if not _is_submit(part):
+            return FormReference(
+                form_id=part.form_id,
+                context=_form_context(part.context),
+                item="form_action",
+            )
         case schema.FormContent() | schema.FormErrorContent():
             return FormReference(
                 form_id=part.form_id,
@@ -179,21 +196,17 @@ def _form_reference(part: schema.InputContent) -> FormReference | None:
                 submission_id=part.submission_id,
                 item=part.type,
             )
-        case schema.FormActionContent():
-            return FormReference(
-                form_id=part.form_id,
-                context=_form_context(part.context),
-                item=part.type,
-            )
     return None
 
+
+# A form item names the button pressed; no name means submit.
+_SUBMIT = "submit"
 
 # How each kind of item becomes the turn's input. A kind absent here is not
 # something the farmer sends, such as the DSS's own form_error reply.
 _INPUT_FOR: Mapping[type, Callable[[Sequence[schema.InputContent]], TurnInput]] = {
     schema.TextContent: _text_query,
-    schema.FormContent: _submission,
-    schema.FormActionContent: _form_action,
+    schema.FormContent: _form_sent,
 }
 
 

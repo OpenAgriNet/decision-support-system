@@ -255,14 +255,13 @@ components:
 
     InputContentItem:
       description: |
-        Closed set for v1 — `text`, `image`, `form`, `form_action` or
-        `form_error`. `file` is not accepted. A message carries one kind of
+        Closed set for v1 — `text`, `image`, `form` or `form_error`. `file`
+        is not accepted. A message carries one kind of
         content: text beside a form is a 422.
       oneOf:
         - $ref: '#/components/schemas/InputText'
         - $ref: '#/components/schemas/InputImage'
         - $ref: '#/components/schemas/InputForm'
-        - $ref: '#/components/schemas/InputFormAction'
         - $ref: '#/components/schemas/InputFormError'
       discriminator:
         propertyName: type
@@ -270,7 +269,6 @@ components:
           text: '#/components/schemas/InputText'
           image: '#/components/schemas/InputImage'
           form: '#/components/schemas/InputForm'
-          form_action: '#/components/schemas/InputFormAction'
           form_error: '#/components/schemas/InputFormError'
 
     FormContext:
@@ -289,8 +287,10 @@ components:
       type: object
       required: [type, formId, context]
       description: |
-        A form the farmer filled in. In the current user message it is the
-        submission, and `submissionId` is required. In the history it is a
+        A form the farmer sent back, with the button they pressed. In the
+        current user message `submissionId` is required: with no `action` (or
+        `submit`) it is the submission; with one of the form's `actions` it is
+        that press, and carries no field values. In the history it is a
         reference: its ids are read, its `fields` are not.
       properties:
         type:
@@ -300,9 +300,16 @@ components:
           type: string
         context:
           $ref: '#/components/schemas/FormContext'
+        action:
+          type: string
+          description: |
+            The button pressed: `submit` (the default), or the `name` of one
+            of the offered form's `actions`, e.g. `resend_init`. A name the
+            DSS does not offer is a 422. Not `context.action`, which names
+            the form's provider call.
         submissionId:
           type: string
-          description: Minted by the client per submission; a resubmission gets a new one.
+          description: Minted by the client per send; a resubmission or a second press gets a new one.
         fields:
           type: array
           items:
@@ -313,30 +320,6 @@ components:
                 type: string
               value:
                 type: string
-
-    InputFormAction:
-      type: object
-      required: [type, formId, context, name]
-      description: |
-        A button the farmer pressed on an offered form (one of its `actions`).
-        It carries no field values. In the current user message `actionId` is
-        required; in the history it is a reference only. A `name` the DSS does
-        not offer is a 422. Send it only for a form that offered it.
-      properties:
-        type:
-          type: string
-          const: form_action
-        formId:
-          type: string
-          description: The offered form the button was on.
-        context:
-          $ref: '#/components/schemas/FormContext'
-        name:
-          type: string
-          description: The action's `name`, e.g. `resend_init`.
-        actionId:
-          type: string
-          description: Minted by the client per press.
 
     InputFormError:
       type: object
@@ -585,8 +568,8 @@ components:
       required: [type, formId, context, fields]
       description: |
         An empty form for the farmer to fill in. The turn ends `requires_input`;
-        the next turn carries the form back as an `InputForm`, or presses one
-        of its `actions` as an `InputFormAction`. A field is flat: its rules
+        the next turn carries the form back as an `InputForm`, submitted or
+        with one of its `actions` pressed. A field is flat: its rules
         sit on it. Nothing about PII is sent.
       properties:
         type:
