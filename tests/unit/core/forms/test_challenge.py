@@ -18,22 +18,23 @@ def test_an_otp_challenge_is_read_with_its_method() -> None:
     assert read_issued_challenge(attributes) is ChallengeMethod.OTP
 
 
-@pytest.mark.parametrize(
-    ("issued", "sent_method"),
-    [({"method": "FACE"}, "FACE"), ({}, None)],
-    ids=["unknown-method", "no-method"],
-)
-def test_a_challenge_with_no_known_method_is_still_issued(
-    issued: dict, sent_method: str | None
-) -> None:
-    attributes = {"challenge": {"issued": issued}}
+def test_a_challenge_with_a_method_we_do_not_know_is_still_issued() -> None:
+    attributes = {"challenge": {"issued": {"method": "FACE"}}}
 
-    assert read_issued_challenge(attributes) == UnknownChallenge(sent_method)
+    assert read_issued_challenge(attributes) == UnknownChallenge(sent_method="FACE")
 
 
 @pytest.mark.parametrize(
     "attributes",
-    [{}, {"challenge": {}}, {"challenge": "OTP"}, {"challenge": {"issued": "OTP"}}],
+    [
+        {},
+        {"challenge": {}},
+        {"challenge": "OTP"},
+        {"challenge": {"issued": "OTP"}},
+        {"challenge": {"issued": {}}},
+        {"challenge": {"issued": {"method": 1}}},
+    ],
+    ids=["none", "empty", "text", "issued-text", "no-method", "method-not-text"],
 )
 def test_a_reply_without_an_issued_challenge_says_so(attributes: dict) -> None:
     assert read_issued_challenge(attributes) == InitReplyWithoutChallenge()

@@ -12,9 +12,9 @@ from dss.core.forms.models import ChallengeMethod, FormDefinition
 
 @dataclass(frozen=True)
 class UnknownChallenge:
-    """Issued, but with a method this DSS does not know, or none."""
+    """Issued, but with a method this DSS does not know."""
 
-    sent_method: str | None
+    sent_method: str
 
 
 @dataclass(frozen=True)
@@ -28,7 +28,7 @@ type IssuedChallenge = ChallengeMethod | UnknownChallenge
 # The pack does not say what init returns yet; v2 packs will. Until then:
 # what the init form answers is issued under `challenge.issued`.
 class _Issued(BaseModel):
-    method: str | None = None
+    method: str
 
 
 class _Challenge(BaseModel):
