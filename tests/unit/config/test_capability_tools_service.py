@@ -78,6 +78,19 @@ def test_a_language_without_skills_falls_back_to_english(tmp_path: Path) -> None
     assert Path(offered.library_path) == root.resolve() / "en"
 
 
+def test_a_language_with_no_skills_and_no_english_is_offered_none(
+    tmp_path: Path,
+) -> None:
+    root = _capability_tools(tmp_path, "hi", "market")
+
+    assert (
+        build_capability_tools_service(root).get_capability_tools(
+            LanguageTag("gu"), frozenset({SubjectCategory.MARKET})
+        )
+        is None
+    )
+
+
 def test_a_skill_named_for_no_category_refuses_to_boot(tmp_path: Path) -> None:
     """Intent never asks for it, so it would never be offered."""
 
