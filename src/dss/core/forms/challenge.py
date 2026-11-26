@@ -1,5 +1,3 @@
-"""What a provider's init reply says it sent the farmer to answer."""
-
 from __future__ import annotations
 
 from collections.abc import Mapping
