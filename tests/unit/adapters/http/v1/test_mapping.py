@@ -7,6 +7,8 @@ import pytest
 from dss.adapters.http.v1 import mapping, schema
 from dss.core.forms.models import (
     FieldValue,
+    FormAction,
+    FormActionName,
     FormContext,
     FormReference,
     FormSubmission,
@@ -339,3 +341,75 @@ def test_a_submitted_field_without_a_value_is_refused(a_body):
 
     with pytest.raises(ValueError, match="value"):
         mapping.to_user_turn(body)
+
+
+def _pressed_item(**overrides) -> dict:
+    item = {
+        "type": "form",
+        "formId": "otp-1",
+        "context": {"scheme": "PM-KISAN", "category": "Grievance", "action": "init"},
+        "action": "resend_init",
+        "submissionId": "press-1",
+    }
+    return {**item, **overrides}
+
+
+def test_a_form_sent_with_an_action_is_a_button_press(a_body):
+    thread = [{"role": "user", "content": [_pressed_item()]}]
+    body = schema.TurnRequest.model_validate(a_body(message__input=thread))
+
+    assert mapping.to_user_turn(body).input == FormAction(
+        form_id="otp-1",
+        context=FormContext(scheme="PM-KISAN", category="Grievance", action="init"),
+        name=FormActionName.RESEND_INIT,
+        action_id="press-1",
+    )
+
+
+def test_a_form_sent_with_the_submit_action_is_a_submission(a_body):
+    thread = [{"role": "user", "content": [_form_item(action="submit")]}]
+    body = schema.TurnRequest.model_validate(a_body(message__input=thread))
+
+    assert isinstance(mapping.to_user_turn(body).input, FormSubmission)
+
+
+def test_a_pressed_button_sends_no_values(a_body):
+    item = _pressed_item(fields=[{"name": "challenge.response.value", "value": "1"}])
+    thread = [{"role": "user", "content": [item]}]
+    body = schema.TurnRequest.model_validate(a_body(message__input=thread))
+
+    with pytest.raises(ValueError, match="no field values"):
+        mapping.to_user_turn(body)
+
+
+def test_one_message_carries_one_form(a_body):
+    pressed = _pressed_item()
+    thread = [{"role": "user", "content": [pressed, pressed]}]
+    body = schema.TurnRequest.model_validate(a_body(message__input=thread))
+
+    with pytest.raises(ValueError, match="one form"):
+        mapping.to_user_turn(body)
+
+
+def test_a_button_the_dss_does_not_offer_is_refused(a_body):
+    thread = [{"role": "user", "content": [_pressed_item(action="cancel")]}]
+    body = schema.TurnRequest.model_validate(a_body(message__input=thread))
+
+    with pytest.raises(ValueError, match="cancel"):
+        mapping.to_user_turn(body)
+
+
+def test_a_button_press_in_history_is_a_reference(a_body):
+    thread = [
+        {"role": "user", "content": [_pressed_item()]},
+        {"role": "user", "content": [{"type": "text", "text": "Got it?"}]},
+    ]
+    body = schema.TurnRequest.model_validate(a_body(message__input=thread))
+
+    (earlier,) = mapping.to_user_turn(body).history
+
+    assert earlier.reference == FormReference(
+        form_id="otp-1",
+        context=FormContext(scheme="PM-KISAN", category="Grievance", action="init"),
+        item="form_action",
+    )

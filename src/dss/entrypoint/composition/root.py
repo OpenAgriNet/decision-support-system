@@ -70,7 +70,7 @@ from dss.config.settings import Settings
 from dss.core.channel.localize import build_localizer
 from dss.core.channel.models import ClarificationText
 from dss.core.channel.service import answer_for_session_busy
-from dss.core.forms.models import FormSubmission
+from dss.core.forms.models import FormAction, FormSubmission
 from dss.core.forms.registry import FormRegistry
 from dss.core.intent.models import Ask
 from dss.core.planner.models import Identity
@@ -103,6 +103,7 @@ from dss.orchestration.discovery import (
     build_capability_discovery,
     build_discover_providers,
 )
+from dss.orchestration.form_action_path import FormActionPath
 from dss.orchestration.form_path import FormPath, FormPathComponents
 from dss.orchestration.network_sender import (
     NetworkSenderFor,
@@ -192,6 +193,7 @@ def build_runner_with_lifecycle(
     paths: TurnPaths = {
         TextQuery: _build_text_path(settings, wiring),
         FormSubmission: _build_form_path(wiring),
+        FormAction: _build_form_action_path(wiring),
     }
     _refuse_unrouted_input_types(paths)
     store = _key_value_store(settings)
@@ -372,6 +374,18 @@ def _build_form_path(wiring: _Wiring) -> FormPath:
         turns=wiring.turns,
         telemetry=wiring.telemetry,
         clarification_text=boot.clarification_text,
+    )
+
+
+def _build_form_action_path(wiring: _Wiring) -> FormActionPath:
+    return FormActionPath(
+        forms=wiring.forms,
+        scheme_catalog=wiring.boot.scheme_catalog,
+        redact=wiring.components.redact,
+        localize=wiring.components.localize,
+        invocation_for=wiring.network.invocation_for,
+        turns=wiring.turns,
+        clarification_text=wiring.boot.clarification_text,
     )
 
 

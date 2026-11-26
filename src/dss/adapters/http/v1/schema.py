@@ -87,13 +87,15 @@ class InputFormField(_WireIn):
 
 
 class FormContent(_WireIn):
-    """A form the farmer filled in (#205). In the current user message it is
-    the submission; in the history it is a reference, and its fields are
-    not read."""
+    """A form the farmer sent back (#205), with the button they pressed:
+    submit when `action` is absent, else one of the form's actions, such as
+    Resend OTP, with no values. In the history it is a reference, and its
+    fields are not read."""
 
     type: Literal["form"]
     form_id: str
     context: InputFormContext
+    action: str | None = None
     submission_id: str | None = None
     fields: list[InputFormField] = []
 
@@ -109,7 +111,8 @@ class FormErrorContent(_WireIn):
 
 
 type InputContent = Annotated[
-    TextContent | FormContent | FormErrorContent, Field(discriminator="type")
+    TextContent | FormContent | FormErrorContent,
+    Field(discriminator="type"),
 ]
 
 
@@ -271,6 +274,13 @@ class OutputFormContext(_WireOut):
     action: str
 
 
+class OutputFormAction(_WireOut):
+    """A button beside submit. A client skips a name it does not know."""
+
+    name: str
+    label: str
+
+
 class OutputForm(_WireOut):
     """An empty form for the farmer to fill in (#205). `context` comes back
     verbatim with the submission, so the DSS can find the form again."""
@@ -279,6 +289,7 @@ class OutputForm(_WireOut):
     form_id: str
     context: OutputFormContext
     fields: list[OutputFormField]
+    actions: list[OutputFormAction] = []
 
 
 class OutputFormErrorField(_WireOut):

@@ -255,9 +255,9 @@ components:
 
     InputContentItem:
       description: |
-        Closed set for v1 — `text`, `image`, `form` or `form_error`. `file` is
-        not accepted. A message carries one kind of content: text beside a
-        form is a 422.
+        Closed set for v1 — `text`, `image`, `form` or `form_error`. `file`
+        is not accepted. A message carries one kind of
+        content: text beside a form is a 422.
       oneOf:
         - $ref: '#/components/schemas/InputText'
         - $ref: '#/components/schemas/InputImage'
@@ -287,8 +287,10 @@ components:
       type: object
       required: [type, formId, context]
       description: |
-        A form the farmer filled in. In the current user message it is the
-        submission, and `submissionId` is required. In the history it is a
+        A form the farmer sent back, with the button they pressed. In the
+        current user message `submissionId` is required: with no `action` (or
+        `submit`) it is the submission; with one of the form's `actions` it is
+        that press, and carries no field values. In the history it is a
         reference: its ids are read, its `fields` are not.
       properties:
         type:
@@ -298,9 +300,16 @@ components:
           type: string
         context:
           $ref: '#/components/schemas/FormContext'
+        action:
+          type: string
+          description: |
+            The button pressed: `submit` (the default), or the `name` of one
+            of the offered form's `actions`, e.g. `resend_init`. A name the
+            DSS does not offer is a 422. Not `context.action`, which names
+            the form's provider call.
         submissionId:
           type: string
-          description: Minted by the client per submission; a resubmission gets a new one.
+          description: Minted by the client per send; a resubmission or a second press gets a new one.
         fields:
           type: array
           items:
@@ -559,8 +568,9 @@ components:
       required: [type, formId, context, fields]
       description: |
         An empty form for the farmer to fill in. The turn ends `requires_input`;
-        the next turn carries the form back as an `InputForm`. A field is flat:
-        its rules sit on it. Nothing about PII is sent.
+        the next turn carries the form back as an `InputForm`, submitted or
+        with one of its `actions` pressed. A field is flat: its rules
+        sit on it. Nothing about PII is sent.
       properties:
         type:
           type: string
@@ -600,6 +610,24 @@ components:
                       type: string
                     label:
                       type: string
+        actions:
+          type: array
+          description: |
+            Buttons beside submit; empty for none. `name` is an open set: a
+            client skips a name it does not know. Known: `resend_init`, on an
+            OTP form, asks the provider to send the OTP again. `label` is in
+            the turn's target language.
+          items:
+            $ref: '#/components/schemas/OutputFormAction'
+
+    OutputFormAction:
+      type: object
+      required: [name, label]
+      properties:
+        name:
+          type: string
+        label:
+          type: string
 
     OutputFormError:
       type: object

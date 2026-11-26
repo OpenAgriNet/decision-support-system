@@ -253,6 +253,7 @@ The same canonical response object is used for non-streaming JSON and the termin
 - `message.outcome.status` is the domain result — `answered`, `rejected`, `no_match`, `requires_input`, `unavailable`, or `partially_answered`.
 - `message.outcome.cause` is a machine-readable reason for the status, or `null` when the turn is answered.
 - `message.content[].type` — `text`, `refusal`, `form` (an empty form to fill in; the turn is `requires_input`) or `form_error` (a submitted form handed back; see `openapi.yaml`). A `form` item sent back in a user message is the submission; in the history, `form` and `form_error` items are references only.
+- A `form` may list `actions`: buttons beside submit, each a `name` and a `label` in the target language. Pressing one sends the form back with `action` set to that `name`, a new `submissionId`, and no field values; with no `action` (or `submit`) the form is submitted. Today the only action is `resend_init` on an OTP form: the DSS asks the provider to send the OTP again, and the same form comes back. A client skips an action name it does not know.
 - `message.outcome.confidence` is DSS's confidence in the answer, expressed as a percentage from 0 to 100. A safe rejection, no match, or request for more information is still an HTTP 200 turn; a dependency failure is reported as an `unavailable` outcome, with details in `message.error`.
 
 ### 3.0 Types used in this response

@@ -36,6 +36,12 @@ class Visibility:
     # 4-digit OTP would match unrelated numbers there.
     never_concealed: frozenset[str] = frozenset()
 
+    def merged_with(self, other: Visibility) -> Visibility:
+        return Visibility(
+            values={**self.values, **other.values},
+            never_concealed=self.never_concealed | other.never_concealed,
+        )
+
     def reveal(self, body: Any) -> Any:
         """A copy of ``body`` with every held tag swapped for its value."""
 
