@@ -36,9 +36,10 @@ from dss.core.shared.models import (
 )
 from dss.observability.stages import Stage
 from dss.observability.trace_log import trace_component
+from dss.orchestration import provider_action
 from dss.orchestration.form_offer import ask_for_form
 from dss.orchestration.orchestrator import build_turn_finished, outcome_for, spoken_text
-from dss.orchestration.provider_action import call_provider_action, warn_auth_refused
+from dss.orchestration.provider_action import warn_auth_refused
 from dss.orchestration.redaction import RedactTexts
 from dss.orchestration.stage_content import provider_response_text
 from dss.ports.invocation import ProviderActionInvocation
@@ -91,7 +92,7 @@ async def redact_texts[InputT: TurnInput](
     )
 
 
-async def call_traced_provider_action(  # noqa: PLR0913
+async def call_provider_action(  # noqa: PLR0913
     form_turn: FormTurn,
     values: Mapping[str, str],
     action: ActionSchema,
@@ -102,7 +103,7 @@ async def call_traced_provider_action(  # noqa: PLR0913
     init_values: Mapping[str, str] | None = None,
 ) -> DiscoveredAnswer | Failure:
     with trace_component(Stage.PROVIDER_ACTION, form_turn.ctx.trace_id):
-        response = await call_provider_action(
+        response = await provider_action.call_provider_action(
             provider,
             action,
             values,

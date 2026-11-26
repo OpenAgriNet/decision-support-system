@@ -85,7 +85,7 @@ from dss.orchestration.form_turn import (
     FormTurnCloser,
     RedactedTexts,
     ask_for_form_context,
-    call_traced_provider_action,
+    call_provider_action,
     redact_texts,
     warn_if_auth_refused,
     warn_if_unknown_challenge,
@@ -478,7 +478,7 @@ class FormPath:
         visibility: Visibility,
         init_values: Mapping[str, str] | None = None,
     ) -> DiscoveredAnswer | Failure:
-        return await call_traced_provider_action(
+        return await call_provider_action(
             form_turn,
             submission.values,
             action,

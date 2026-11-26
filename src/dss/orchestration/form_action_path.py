@@ -41,7 +41,7 @@ from dss.orchestration.form_turn import (
     FormTurn,
     FormTurnCloser,
     ask_for_form_context,
-    call_traced_provider_action,
+    call_provider_action,
     redact_texts,
     warn_if_auth_refused,
     warn_if_unknown_challenge,
@@ -138,7 +138,7 @@ class FormActionPath:
     ) -> TurnFinished:
         # The saved details are kept as typed: masked here, so traces see tags.
         details = mask_pii_fields(flow.details)
-        reply = await call_traced_provider_action(
+        reply = await call_provider_action(
             action_turn,
             details.submission.values,
             init.action,
