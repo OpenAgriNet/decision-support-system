@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator, Callable
 from datetime import UTC, datetime
+from typing import assert_never
 
 from dss.adapters.observability.tracing import (
     TurnRecorder,
@@ -30,7 +31,12 @@ from dss.core.forms.init_flow import (
     offers_action,
     read_init_reply,
 )
-from dss.core.forms.models import FlowEnding, FormAction, FormContext
+from dss.core.forms.models import (
+    FlowEnding,
+    FormAction,
+    FormActionName,
+    FormContext,
+)
 from dss.core.forms.registry import FormLookup
 from dss.core.forms.service import mask_pii_fields
 from dss.core.intent.models import Ask
@@ -90,7 +96,11 @@ class FormActionPath:
         # Every exit writes the record: opened before any check.
         texts = await redact_texts(action_turn, (), redact=self._redact)
         self._turns.opened(ctx, texts.turn)
-        yield await self._resend_init(action_turn, texts.visibility, session)
+        match turn.input.name:
+            case FormActionName.RESEND_INIT:
+                yield await self._resend_init(action_turn, texts.visibility, session)
+            case unknown:
+                assert_never(unknown)
 
     async def _resend_init(
         self, action_turn: _ActionTurn, visibility: Visibility, session: Session
