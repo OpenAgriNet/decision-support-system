@@ -444,12 +444,15 @@ def test_composer_hindi_demo_keeps_the_citation_form() -> None:
 def test_composer_prompt_gives_the_asked_place_latest_figure_first() -> None:
     """A mandi price reply covers the asked market's whole district over a
     week: the asked market's latest price answers, and other markets' prices
-    still do when it has none."""
+    still do when it has none. Data for the nearest place or day is an
+    answer, not a "could not find it"."""
 
     prompt = _composer_prompt().lower()
     assert "latest figure for the place asked about" in prompt
     assert "each other place's latest" in prompt
     assert "name the place and the date of" in prompt
+    assert "nearest place or the nearest day" in prompt
+    assert "not even for a nearby place" in prompt
 
 
 # --- planner (moved from tests/unit/core/planner/test_prompt.py) -----------
