@@ -12,7 +12,6 @@ from dss.core.forms.challenge import (
     actions_for,
     known_method_of,
     labelled_for,
-    read_issued_challenge,
 )
 from dss.core.forms.models import (
     ActionSchema,
@@ -46,7 +45,7 @@ from dss.core.forms.service import (
 )
 from dss.core.intent.models import Ask
 from dss.core.planner.models import NO_READABLE_REPLY, Failure
-from dss.core.provider_discovery.models import DiscoveredAnswer, ProviderCapability
+from dss.core.provider_discovery.models import ProviderCapability
 from dss.core.shared.models import Cause, ProviderAction, TextBlock, TurnStatus
 
 type AskFor = Callable[[FormContext], Ask | None]
@@ -94,14 +93,6 @@ def _init_context_of(context: FormContext) -> FormContext:
 
 def _has_values_for(schema: ActionSchema, values: Mapping[str, str]) -> bool:
     return all(field.path in values for field in schema.request_fields())
-
-
-def read_init_reply(
-    reply: DiscoveredAnswer | Failure,
-) -> IssuedChallenge | Failure | InitReplyWithoutChallenge:
-    if isinstance(reply, Failure):
-        return reply
-    return read_issued_challenge(reply.attributes)
 
 
 def end_for_failed_init(

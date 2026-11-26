@@ -18,8 +18,9 @@ from dss.core.forms.challenge import (
     InitReplyWithoutChallenge,
     IssuedChallenge,
     UnknownChallenge,
+    read_issued_challenge,
 )
-from dss.core.forms.init_flow import InitCall, read_init_reply
+from dss.core.forms.init_flow import InitCall
 from dss.core.forms.models import ActionSchema, FlowEnding, FormContext
 from dss.core.forms.service import is_auth_refused
 from dss.core.intent.models import Ask, Scheme
@@ -125,10 +126,8 @@ async def call_provider_action(  # noqa: PLR0913
     return response
 
 
-def warn_if_auth_refused(
-    failure: Failure | InitReplyWithoutChallenge, ctx: TurnContext
-) -> None:
-    if isinstance(failure, Failure) and is_auth_refused(failure):
+def warn_if_auth_refused(failure: Failure, ctx: TurnContext) -> None:
+    if is_auth_refused(failure):
         warn_auth_refused(failure, request_id=ctx.trace_id)
 
 
@@ -152,22 +151,21 @@ async def send_init(  # noqa: PLR0913
         invocation=invocation,
         visibility=visibility,
     )
-    init_reply = read_init_reply(reply)
-    _warn_if_unknown_challenge(init_reply)
-    if isinstance(init_reply, Failure | InitReplyWithoutChallenge):
-        warn_if_auth_refused(init_reply, form_turn.ctx)
-    return init_reply
+    if isinstance(reply, Failure):
+        warn_if_auth_refused(reply, form_turn.ctx)
+        return reply
+    challenge = read_issued_challenge(reply.attributes)
+    if isinstance(challenge, UnknownChallenge):
+        _warn_unknown_challenge(challenge)
+    return challenge
 
 
 # Such a challenge is still answered, but offers no Resend: say why.
-def _warn_if_unknown_challenge(
-    init_reply: InitReply,
-) -> None:
-    if isinstance(init_reply, UnknownChallenge):
-        logger.warning(
-            "init challenge method not known",
-            extra={"challenge_method": init_reply.sent_method},
-        )
+def _warn_unknown_challenge(challenge: UnknownChallenge) -> None:
+    logger.warning(
+        "init challenge method not known",
+        extra={"challenge_method": challenge.sent_method},
+    )
 
 
 def ask_for_form_context(context: FormContext, schemes: SchemeCatalog) -> Ask | None:

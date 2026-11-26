@@ -29,7 +29,6 @@ from dss.core.forms.init_flow import (
     find_waiting_flow,
     offers_action,
     outcome_of_failed_call,
-    read_init_reply,
     with_details_form_done,
 )
 from dss.core.forms.models import (
@@ -176,26 +175,6 @@ def test_details_without_a_value_init_sends_are_not_configured() -> None:
     )
 
     assert isinstance(find_init_call(details, _FORMS), InitNotConfigured)
-
-
-def test_an_init_reply_with_a_challenge_gives_the_challenge() -> None:
-    reply = _reply({"challenge": {"issued": {"method": "OTP"}}})
-
-    assert read_init_reply(reply) is ChallengeMethod.OTP
-
-
-@pytest.mark.parametrize(
-    "attributes",
-    [{}, {"challenge": {}}, {"challenge": "OTP"}, {"enrolmentId": "x"}],
-)
-def test_an_init_reply_without_a_challenge_is_a_failure(attributes: dict) -> None:
-    assert isinstance(read_init_reply(_reply(attributes)), InitReplyWithoutChallenge)
-
-
-def test_a_failed_init_call_is_its_own_failure() -> None:
-    failure = _failure(503)
-
-    assert read_init_reply(failure) is failure
 
 
 def _details_handed_back(text: str) -> tuple[TextBlock, FormErrorBlock]:
