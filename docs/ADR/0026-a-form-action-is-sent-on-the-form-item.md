@@ -1,4 +1,4 @@
-# ADR-0025: A Form Action Is Sent on the Form Item
+# ADR-0026: A Form Action Is Sent on the Form Item
 
 - **Status:** ACCEPTED
 - **Date:** 2026-11-20

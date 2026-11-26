@@ -69,7 +69,7 @@ Chosen option: **4.**
 - **Short life.** An entry lives 180 seconds, about as long as an OTP. The
   number is ours until the provider docs give one.
   A Resend OTP press saves the entry again, so its 180 seconds start over
-  (ADR-0025).
+  (ADR-0026).
 - **The lock is redis-py's single-server lock.** Taking it writes a key only
   if no one holds it, with an expiry. Releasing it deletes the key only if it
   still holds our token. The lock key has its own prefix, so saving the state
