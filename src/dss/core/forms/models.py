@@ -108,6 +108,13 @@ class FormDefinition(BaseModel):
     def field(self, name: str) -> FieldDefinition | None:
         return next((field for field in self.fields if field.name == name), None)
 
+    def with_label(self, name: str, label: str) -> FormDefinition:
+        fields = tuple(
+            field.model_copy(update={"label": label}) if field.name == name else field
+            for field in self.fields
+        )
+        return self.model_copy(update={"fields": fields})
+
 
 type JsonScalar = str | int | float | bool
 
@@ -356,6 +363,10 @@ _FORM_NOTE: Mapping[tuple[FormItem, Role], str] = {
 }
 
 
+class ChallengeMethod(StrEnum):
+    OTP = "OTP"
+
+
 class FormStatus(StrEnum):
     AWAITING_INIT = "awaiting_init"  # init succeeded; the init form is out
     DONE = "done"  # filed or read; nothing more expected
@@ -367,6 +378,8 @@ class FormAwaitingInit(BaseModel):
     status: Literal[FormStatus.AWAITING_INIT] = FormStatus.AWAITING_INIT
     submission: FormSubmission  # raw; validated again on read
     provider: ProviderCapability  # where init went
+    # Defaulted: an entry saved before this field existed still reads.
+    challenge_method: ChallengeMethod | None = None
     # Set each time the entry waits for init again, so the session is saved
     # and its time to live starts over.
     awaited_at: datetime

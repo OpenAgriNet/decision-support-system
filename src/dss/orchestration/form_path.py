@@ -26,8 +26,8 @@ from dss.core.forms.init_flow import (
     end_for_failed_init,
     end_for_session_not_kept,
     find_init_call,
-    find_init_failure,
     find_waiting_flow,
+    read_init_reply,
     with_details_form_done,
 )
 from dss.core.forms.models import (
@@ -446,12 +446,12 @@ class FormPath:
             provider=provider,
             visibility=redaction.visibility,
         )
-        failure = find_init_failure(reply)
-        if failure is not None:
-            _warn_if_auth_refused(failure, form_turn.ctx)
+        init_reply = read_init_reply(reply)
+        if isinstance(init_reply, Failure | InitReplyWithoutChallenge):
+            _warn_if_auth_refused(init_reply, form_turn.ctx)
             return await self._finish_turn(
                 end_for_failed_init(
-                    failure, details=submission, text=self._clarification_text
+                    init_reply, details=submission, text=self._clarification_text
                 ),
                 form_turn,
             )
@@ -464,6 +464,7 @@ class FormPath:
                 form_turn.turn.input,
                 provider=provider,
                 init=init,
+                challenge=init_reply,
                 text=self._clarification_text,
                 now=datetime.now(UTC),
             ),

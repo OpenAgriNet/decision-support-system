@@ -15,6 +15,7 @@ from dss.config.clarification_text_loader import load_clarification_text
 from dss.core.channel.service import answer_for_session_busy
 from dss.core.forms.models import (
     ActionReply,
+    ChallengeMethod,
     FieldErrorEntry,
     FieldValue,
     FormAwaitingInit,
@@ -809,6 +810,7 @@ def _save_waiting(
         _stored_state(store).forms,
         details,
         provider=_KISAN_PROVIDER,
+        challenge_method=ChallengeMethod.OTP,
         now=datetime(2026, 11, 10, 9, 30, tzinfo=UTC),
     )
     store.values["c1:s1"] = SessionState(forms=waiting).model_dump_json()
@@ -857,6 +859,7 @@ async def test_after_init_the_details_form_waits_with_its_provider() -> None:
     assert isinstance(entry, FormAwaitingInit)
     assert entry.provider == _KISAN_PROVIDER
     assert entry.submission.context == _PMKISAN_SUPPORT
+    assert entry.challenge_method is ChallengeMethod.OTP
 
 
 @pytest.mark.parametrize(

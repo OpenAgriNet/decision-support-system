@@ -16,6 +16,7 @@ from dss.core.channel.service import answer_for_unserved_asks
 from dss.core.forms.models import (
     ActionField,
     ActionSchema,
+    ChallengeMethod,
     FieldDefinition,
     FieldError,
     FieldErrorCode,
@@ -805,7 +806,13 @@ def with_init_awaited(
     submission: FormSubmission,
     *,
     provider: ProviderCapability,
+    challenge_method: ChallengeMethod | None,
     now: datetime,
 ) -> FormRecords:
-    waiting = FormAwaitingInit(submission=submission, provider=provider, awaited_at=now)
+    waiting = FormAwaitingInit(
+        submission=submission,
+        provider=provider,
+        challenge_method=challenge_method,
+        awaited_at=now,
+    )
     return {**forms, submission.form_id: waiting}

@@ -5,6 +5,10 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from dss.config.clarification_text_loader import load_clarification_text
+from dss.core.forms.challenge import (
+    IssuedChallenge,
+    UnknownChallenge,
+)
 from dss.core.forms.init_flow import (
     FlowDecision,
     InitCall,
@@ -19,13 +23,14 @@ from dss.core.forms.init_flow import (
     end_for_failed_init,
     end_for_session_not_kept,
     find_init_call,
-    find_init_failure,
     find_waiting_flow,
     outcome_of_failed_call,
+    read_init_reply,
     with_details_form_done,
 )
 from dss.core.forms.models import (
     ActionSchema,
+    ChallengeMethod,
     FailedCallOutcome,
     FieldErrorEntry,
     FieldValue,
@@ -167,10 +172,10 @@ def test_details_without_a_value_init_sends_are_not_configured() -> None:
     assert isinstance(find_init_call(details, _FORMS), InitNotConfigured)
 
 
-def test_an_init_reply_with_a_challenge_is_no_failure() -> None:
+def test_an_init_reply_with_a_challenge_gives_the_challenge() -> None:
     reply = _reply({"challenge": {"issued": {"method": "OTP"}}})
 
-    assert find_init_failure(reply) is None
+    assert read_init_reply(reply) is ChallengeMethod.OTP
 
 
 @pytest.mark.parametrize(
@@ -178,13 +183,13 @@ def test_an_init_reply_with_a_challenge_is_no_failure() -> None:
     [{}, {"challenge": {}}, {"challenge": "OTP"}, {"enrolmentId": "x"}],
 )
 def test_an_init_reply_without_a_challenge_is_a_failure(attributes: dict) -> None:
-    assert isinstance(find_init_failure(_reply(attributes)), InitReplyWithoutChallenge)
+    assert isinstance(read_init_reply(_reply(attributes)), InitReplyWithoutChallenge)
 
 
 def test_a_failed_init_call_is_its_own_failure() -> None:
     failure = _failure(503)
 
-    assert find_init_failure(failure) is failure
+    assert read_init_reply(failure) is failure
 
 
 def _details_handed_back(text: str) -> tuple[TextBlock, FormErrorBlock]:
@@ -262,11 +267,16 @@ def _waiting(
     details: FormSubmission = _DETAILS, *, awaited_at: datetime = _AWAITED_AT
 ) -> FormAwaitingInit:
     return FormAwaitingInit(
-        submission=details, provider=_PROVIDER, awaited_at=awaited_at
+        submission=details,
+        provider=_PROVIDER,
+        challenge_method=ChallengeMethod.OTP,
+        awaited_at=awaited_at,
     )
 
 
-def _sent_init(forms: FormRecords) -> FlowDecision:
+def _sent_init(
+    forms: FormRecords, *, challenge: IssuedChallenge = ChallengeMethod.OTP
+) -> FlowDecision:
     init = find_init_call(_valid(_DETAILS), _FORMS)
     assert isinstance(init, InitCall)
     return decide_after_sent_init(
@@ -274,12 +284,13 @@ def _sent_init(forms: FormRecords) -> FlowDecision:
         _DETAILS,
         provider=_PROVIDER,
         init=init,
+        challenge=challenge,
         text=_TEXT,
         now=_NOW,
     )
 
 
-def test_a_sent_init_leaves_the_details_waiting_with_their_provider() -> None:
+def test_a_sent_init_leaves_the_details_waiting_with_provider_and_method() -> None:
     done = FormDone(submission=_DETAILS.model_copy(update={"form_id": "filed"}))
 
     decision = _sent_init({"filed": done})
@@ -294,6 +305,15 @@ def test_a_sent_init_asks_for_the_init_form() -> None:
     assert decision.ending.cause is None
     told, offered = decision.ending.answer.content
     assert told == TextBlock(text=_TEXT.init_response_needed)
+    assert isinstance(offered, FormBlock)
+    assert offered.form.context == PMKISAN_INIT
+    assert [field.label for field in offered.form.fields] == ["Enter OTP"]
+
+
+def test_an_unknown_challenge_keeps_the_path_in_words() -> None:
+    decision = _sent_init({}, challenge=UnknownChallenge(sent_method="FACE"))
+
+    _, offered = decision.ending.answer.content
     assert isinstance(offered, FormBlock)
     assert offered.form == _FORMS.find(PMKISAN_INIT)
 
@@ -443,7 +463,7 @@ def _init_form_handed_back(told: str) -> tuple[TextBlock, FormErrorBlock]:
             fields=(
                 FieldErrorEntry(
                     name="challenge.response.value",
-                    label="Challenge response value",
+                    label="Enter OTP",
                     error=_TEXT.field_recheck,
                 ),
             ),
