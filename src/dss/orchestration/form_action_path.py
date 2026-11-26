@@ -29,7 +29,6 @@ from dss.core.forms.init_flow import (
     find_init_call,
     find_waiting_flow,
     offers_action,
-    read_init_reply,
 )
 from dss.core.forms.models import (
     FlowEnding,
@@ -47,10 +46,8 @@ from dss.orchestration.form_turn import (
     FormTurn,
     FormTurnCloser,
     ask_for_form_context,
-    call_provider_action,
     redact_texts,
-    warn_if_auth_refused,
-    warn_if_unknown_challenge,
+    send_init,
 )
 from dss.orchestration.redaction import RedactTexts
 from dss.orchestration.session import Session
@@ -148,19 +145,16 @@ class FormActionPath:
     ) -> TurnFinished:
         # The saved details are kept as typed: masked here, so traces see tags.
         details = mask_pii_fields(flow.details)
-        reply = await call_provider_action(
+        init_reply = await send_init(
             action_turn,
             details.submission.values,
-            init.action,
+            init,
             provider=flow.entry.provider,
             invocation=self._invocation_for(action_turn.turn),
             visibility=visibility.merged_with(details.visibility),
         )
-        init_reply = read_init_reply(reply)
-        warn_if_unknown_challenge(init_reply)
         form_id = action_turn.turn.input.form_id
         if isinstance(init_reply, Failure | InitReplyWithoutChallenge):
-            warn_if_auth_refused(init_reply, action_turn.ctx)
             return await self._finish(
                 end_for_failed_resend(
                     init_reply,

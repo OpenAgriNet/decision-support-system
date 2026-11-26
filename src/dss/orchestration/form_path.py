@@ -27,7 +27,6 @@ from dss.core.forms.init_flow import (
     end_for_session_not_kept,
     find_init_call,
     find_waiting_flow,
-    read_init_reply,
     with_details_form_done,
 )
 from dss.core.forms.models import (
@@ -87,8 +86,8 @@ from dss.orchestration.form_turn import (
     ask_for_form_context,
     call_provider_action,
     redact_texts,
+    send_init,
     warn_if_auth_refused,
-    warn_if_unknown_challenge,
 )
 from dss.orchestration.orchestrator import (
     compose_answer,
@@ -421,17 +420,15 @@ class FormPath:
                 ),
                 form_turn,
             )
-        reply: DiscoveredAnswer | Failure = await self._call_provider_action(
+        init_reply = await send_init(
             form_turn,
-            details,
-            init.action,
+            details.values,
+            init,
             provider=provider,
+            invocation=self._components.invocation_for(form_turn.turn),
             visibility=redaction.visibility,
         )
-        init_reply = read_init_reply(reply)
-        warn_if_unknown_challenge(init_reply)
         if isinstance(init_reply, Failure | InitReplyWithoutChallenge):
-            warn_if_auth_refused(init_reply, form_turn.ctx)
             return await self._finish_turn(
                 end_for_failed_init(
                     init_reply, details=submission, text=self._clarification_text

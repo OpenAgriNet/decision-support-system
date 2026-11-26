@@ -19,6 +19,7 @@ from dss.core.forms.challenge import (
     IssuedChallenge,
     UnknownChallenge,
 )
+from dss.core.forms.init_flow import InitCall, read_init_reply
 from dss.core.forms.models import ActionSchema, FlowEnding, FormContext
 from dss.core.forms.service import is_auth_refused
 from dss.core.intent.models import Ask, Scheme
@@ -131,9 +132,36 @@ def warn_if_auth_refused(
         warn_auth_refused(failure, request_id=ctx.trace_id)
 
 
+type InitReply = IssuedChallenge | Failure | InitReplyWithoutChallenge
+
+
+async def send_init(  # noqa: PLR0913
+    form_turn: FormTurn,
+    values: Mapping[str, str],
+    init: InitCall,
+    *,
+    provider: ProviderCapability,
+    invocation: ProviderActionInvocation,
+    visibility: Visibility,
+) -> InitReply:
+    reply = await call_provider_action(
+        form_turn,
+        values,
+        init.action,
+        provider=provider,
+        invocation=invocation,
+        visibility=visibility,
+    )
+    init_reply = read_init_reply(reply)
+    _warn_if_unknown_challenge(init_reply)
+    if isinstance(init_reply, Failure | InitReplyWithoutChallenge):
+        warn_if_auth_refused(init_reply, form_turn.ctx)
+    return init_reply
+
+
 # Such a challenge is still answered, but offers no Resend: say why.
-def warn_if_unknown_challenge(
-    init_reply: IssuedChallenge | Failure | InitReplyWithoutChallenge,
+def _warn_if_unknown_challenge(
+    init_reply: InitReply,
 ) -> None:
     if isinstance(init_reply, UnknownChallenge):
         logger.warning(

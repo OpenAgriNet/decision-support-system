@@ -137,25 +137,12 @@ def decide_after_sent_init(  # noqa: PLR0913
     now: datetime,
 ) -> FlowDecision:
     method = known_method_of(challenge)
-    return FlowDecision(
-        forms=with_init_awaited(
-            forms,
-            submission,
-            provider=provider,
-            challenge_method=method,
-            now=now,
+    return _awaiting_init(
+        with_init_awaited(
+            forms, submission, provider=provider, challenge_method=method, now=now
         ),
-        ending=FlowEnding(
-            status=TurnStatus.REQUIRES_INPUT,
-            cause=None,
-            answer=answer_with_form(
-                offer_form(
-                    labelled_for(init.init_form, method),
-                    actions=actions_for(method),
-                ),
-                text.init_response_needed,
-            ),
-        ),
+        offer_form(labelled_for(init.init_form, method), actions=actions_for(method)),
+        text.init_response_needed,
     )
 
 
@@ -170,21 +157,26 @@ def decide_after_resent_init(  # noqa: PLR0913
     now: datetime,
 ) -> FlowDecision:
     method = known_method_of(challenge)
-    return FlowDecision(
-        forms=with_init_awaited(
+    return _awaiting_init(
+        with_init_awaited(
             forms,
             flow.entry.submission,
             provider=flow.entry.provider,
             challenge_method=method,
             now=now,
         ),
+        _init_form_again(form_id, init_form, method),
+        text.init_resent,
+    )
+
+
+def _awaiting_init(forms: FormRecords, offer: FormBlock, line: str) -> FlowDecision:
+    return FlowDecision(
+        forms=forms,
         ending=FlowEnding(
             status=TurnStatus.REQUIRES_INPUT,
             cause=None,
-            answer=answer_with_form(
-                _init_form_again(form_id, init_form, method),
-                text.init_resent,
-            ),
+            answer=answer_with_form(offer, line),
         ),
     )
 
