@@ -40,7 +40,7 @@ from dss.core.forms.registry import FormLookup
 from dss.core.forms.service import mask_pii_fields
 from dss.core.intent.models import Ask
 from dss.core.planner.models import Failure
-from dss.core.redaction.visibility import Visibility
+from dss.core.redaction.visibility import NOTHING_HELD, Visibility
 from dss.core.shared.models import TurnContext, TurnEvent, TurnFinished, UserTurn
 from dss.orchestration.form_turn import (
     FormTurn,
@@ -129,6 +129,7 @@ class FormActionPath:
                     init, details=flow.entry.submission, text=self._clarification_text
                 ),
                 action_turn,
+                visibility=NOTHING_HELD,
             )
         return await self._send_init_again(
             action_turn, flow, init, visibility=visibility, session=session
@@ -145,13 +146,14 @@ class FormActionPath:
     ) -> TurnFinished:
         # The saved details are kept as typed: masked here, so traces see tags.
         details = mask_pii_fields(flow.details)
+        call_visibility = visibility.merged_with(details.visibility)
         init_reply = await send_init(
             action_turn,
             details.submission.values,
             init,
             provider=flow.entry.provider,
             invocation=self._invocation_for(action_turn.turn),
-            visibility=visibility.merged_with(details.visibility),
+            visibility=call_visibility,
         )
         form_id = action_turn.turn.input.form_id
         if isinstance(init_reply, Failure | InitReplyWithoutChallenge):
@@ -164,6 +166,7 @@ class FormActionPath:
                     text=self._clarification_text,
                 ),
                 action_turn,
+                visibility=call_visibility,
             )
         return await self._update_forms_and_end(
             decide_after_resent_init(
@@ -183,13 +186,20 @@ class FormActionPath:
         self, decision: FlowDecision, session: Session, action_turn: _ActionTurn
     ) -> TurnFinished:
         session.update_forms(decision.forms)
-        return await self._finish(decision.ending, action_turn)
+        return await self._finish(decision.ending, action_turn, visibility=NOTHING_HELD)
 
     async def _finish(
-        self, ending: FlowEnding, action_turn: _ActionTurn
+        self,
+        ending: FlowEnding,
+        action_turn: _ActionTurn,
+        *,
+        visibility: Visibility,
     ) -> TurnFinished:
         return await self._closer.finish(
-            ending, action_turn, query=_reference_line(action_turn.turn.input)
+            ending,
+            action_turn,
+            query=_reference_line(action_turn.turn.input),
+            visibility=visibility,
         )
 
     def _ask_for(self, context: FormContext) -> Ask | None:

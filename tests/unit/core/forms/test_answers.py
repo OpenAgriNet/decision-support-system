@@ -269,3 +269,31 @@ def test_a_form_with_no_provider_ends_no_match_naming_its_ask() -> None:
         cause=None,
         answer=answer_for_unserved_asks((ask,), _TEXT),
     )
+
+
+@pytest.mark.parametrize(
+    ("is_retryable", "status_code", "expected_text"),
+    [
+        (False, 400, "No such farmer"),
+        (True, 503, _TEXT.not_filed),
+        (False, 403, _TEXT.not_filed_rejected),
+    ],
+    ids=["refused", "may-work-later", "our-credentials"],
+)
+def test_a_one_turn_filing_shows_the_providers_message_only_when_refused(
+    is_retryable: bool, status_code: int, expected_text: str
+) -> None:
+    failure = Failure(
+        ask_id=0,
+        capability="openagrinet:Grievance",
+        reason="-",
+        retryable=is_retryable,
+        status_code=status_code,
+        provider_message="No such farmer",
+    )
+
+    ending = end_for_failed_call(
+        _SUBMISSION, failure, _TEXT, action=find_action_schema(PMFBY_SUPPORT)
+    )
+
+    assert ending.answer.content[0] == TextBlock(text=expected_text)

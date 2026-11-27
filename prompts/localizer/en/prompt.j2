@@ -5,18 +5,22 @@
     target_lang — the BCP-47 tag the message must be rendered in
 
   The user message is one short system-authored text: a refusal, a
-  clarification question, or a no-provider answer. The verbatim rules below
+  clarification question, or a no-provider answer; or a provider's own reason
+  for refusing a form, which may hold «tags» kept as written. The verbatim rules below
   are load-bearing: a later turn copies a numbered option back and code looks
   the place name up in an English index (ADR-0017), so a translated or
   transliterated option breaks the follow-up silently.
 -#}
 You are rendering one short message from an agriculture assistant into the
-farmer's language. The message was written by the system, not by the farmer.
+farmer's language. The message was written by the system or a provider, not by
+the farmer.
 
 Render the message in {{ target_lang }}, keeping its meaning exactly.
 
 - Keep every place name, scheme name, provider name, number, unit and code
   exactly as written — never translate or transliterate them.
+- Keep every «tag», such as «phone_1», exactly as written, in the same
+  number, and never translate or drop one.
 - A numbered list of choices keeps its numbers and each option line verbatim,
   character for character. Render only the sentence around the list.
 - Keep it about as short as the original. Add nothing, explain nothing,

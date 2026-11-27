@@ -34,6 +34,7 @@ from dss.core.forms.service import (
     TextChoice,
     answer_with_form,
     answer_with_text,
+    choose_refusal_line,
     clear_awaiting_init_record,
     end_for_call_cause,
     find_awaiting_init,
@@ -113,7 +114,7 @@ def end_for_failed_init(
                 _cause_for_failed_init(failure),
                 text,
                 action=ProviderAction.INIT,
-                retry_after_seconds=failure.retry_after_seconds,
+                failure=failure,
             )
 
 
@@ -191,10 +192,7 @@ def end_for_failed_resend(
             return _ended_with_resend_not_sent(Cause.PROVIDER_REJECTED, offer(), text)
         case Failure():
             return _ended_with_resend_not_sent(
-                _cause_for_failed_init(failure),
-                offer(),
-                text,
-                retry_after_seconds=failure.retry_after_seconds,
+                _cause_for_failed_init(failure), offer(), text, failure=failure
             )
 
 
@@ -203,13 +201,14 @@ def _ended_with_resend_not_sent(
     offer: FormBlock,
     text: ClarificationText,
     *,
-    retry_after_seconds: int | None = None,
+    failure: Failure | None = None,
 ) -> FlowEnding:
+    told = choose_refusal_line(cause, failure, ours=text.init_resend_failed)
     return FlowEnding(
         status=TurnStatus.UNAVAILABLE,
         cause=cause,
-        answer=answer_with_form(offer, text.init_resend_failed),
-        retry_after_seconds=retry_after_seconds,
+        answer=answer_with_form(offer, told),
+        retry_after_seconds=failure.retry_after_seconds if failure else None,
     )
 
 
@@ -358,7 +357,9 @@ def decide_after_failed_init_response(  # noqa: PLR0913
         failure, ProviderAction(flow.action.context.action)
     )
     if not exit_for_failure.should_await_init:
-        return FlowDecision(forms=forms, ending=_ended_for_good(exit_for_failure, text))
+        return FlowDecision(
+            forms=forms, ending=_ended_for_good(exit_for_failure, failure, text)
+        )
     return FlowDecision(
         forms=with_init_awaited(
             forms,
@@ -444,12 +445,20 @@ def _init_response_exit_for(
 
 
 def _ended_for_good(
-    exit_for_failure: _InitResponseExit, text: ClarificationText
+    exit_for_failure: _InitResponseExit, failure: Failure, text: ClarificationText
 ) -> FlowEnding:
     return FlowEnding(
         status=exit_for_failure.status,
         cause=exit_for_failure.cause,
-        answer=answer_with_text(exit_for_failure.text(text)),
+        answer=answer_with_text(_choose_line_for(exit_for_failure, failure, text)),
+    )
+
+
+def _choose_line_for(
+    exit_for_failure: _InitResponseExit, failure: Failure, text: ClarificationText
+) -> str:
+    return choose_refusal_line(
+        exit_for_failure.cause, failure, ours=exit_for_failure.text(text)
     )
 
 
@@ -467,7 +476,7 @@ def _ended_with_init_form_back(
         answer=_init_form_handed_back(
             init_response,
             init_form,
-            told=exit_for_failure.text(text),
+            told=_choose_line_for(exit_for_failure, failure, text),
             field_error=text.field_recheck,
         ),
         retry_after_seconds=failure.retry_after_seconds,

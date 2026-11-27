@@ -64,9 +64,10 @@ class SelectFailedError(ProviderCallFailedError):
 
 
 class ProviderActionFailedError(ProviderCallFailedError):
-    # No provider text: the farmer is told in the DSS's own words.
+    # `provider_message`: the provider's own reason for refusing the farmer's
+    # request, masked. None on an outage or a refusal of our credentials.
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         action: ProviderAction,
         capability: str,
@@ -74,10 +75,12 @@ class ProviderActionFailedError(ProviderCallFailedError):
         failure_class: FailureClass,
         *,
         retry_after_seconds: int | None = None,
+        provider_message: str | None = None,
     ) -> None:
         super().__init__(action, capability, status_code, failure_class)
         self.action = action
         self.retry_after_seconds = retry_after_seconds
+        self.provider_message = provider_message
 
 
 class ProviderActionInvocation(Protocol):

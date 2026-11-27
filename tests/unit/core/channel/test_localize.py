@@ -128,6 +128,35 @@ async def test_a_model_returning_nothing_serves_the_english_text() -> None:
     assert rendered == "I can't help with that request."
 
 
+@pytest.mark.parametrize(
+    "answer",
+    ["कोई रिकॉर्ड नहीं: «फ़ोन_1»", "कोई रिकॉर्ड नहीं"],
+    ids=["tag-translated", "tag-dropped"],
+)
+async def test_a_rendering_that_loses_a_tag_serves_the_english_text(
+    answer: str,
+) -> None:
+    """A tag is swapped back for the farmer's value only as written."""
+
+    localize = build_localizer(
+        llm=_FakeLLM(answer=answer), prompts=FakePromptProvider()
+    )
+
+    rendered = await localize("no record for «phone_1»", turn=_turn("hi"))
+
+    assert rendered == "no record for «phone_1»"
+
+
+async def test_a_rendering_that_keeps_its_tags_is_served() -> None:
+    localize = build_localizer(
+        llm=_FakeLLM(answer="कोई रिकॉर्ड नहीं: «phone_1»"), prompts=FakePromptProvider()
+    )
+
+    rendered = await localize("no record for «phone_1»", turn=_turn("hi"))
+
+    assert rendered == "कोई रिकॉर्ड नहीं: «phone_1»"
+
+
 async def test_empty_text_is_left_alone_without_a_call() -> None:
     llm = _FakeLLM()
     localize = build_localizer(llm=llm, prompts=FakePromptProvider())

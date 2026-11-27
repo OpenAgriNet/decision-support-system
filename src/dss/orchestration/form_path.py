@@ -206,22 +206,30 @@ class FormPath:
 
         if isinstance(details, UnknownForm) or action is None or ask is None:
             return await self._finish_turn(
-                end_for_unknown_form(self._clarification_text), form_turn
+                end_for_unknown_form(self._clarification_text),
+                form_turn,
+                visibility=NOTHING_HELD,
             )
 
         if is_done(session.forms, submission.form_id):
             return await self._finish_turn(
-                end_for_already_filed(self._clarification_text), form_turn
+                end_for_already_filed(self._clarification_text),
+                form_turn,
+                visibility=NOTHING_HELD,
             )
 
         if isinstance(details, FormErrors):
             return await self._finish_turn(
-                end_for_form_errors(details, self._clarification_text), form_turn
+                end_for_form_errors(details, self._clarification_text),
+                form_turn,
+                visibility=NOTHING_HELD,
             )
         # Before init: an init response could never find this form again.
         if action.needs_init() and not session.is_kept:
             return await self._finish_turn(
-                end_for_session_not_kept(self._clarification_text), form_turn
+                end_for_session_not_kept(self._clarification_text),
+                form_turn,
+                visibility=NOTHING_HELD,
             )
 
         form = _FormToSend(details=details, ask=ask, action=action)
@@ -231,7 +239,9 @@ class FormPath:
         provider = await self._find_form_provider(form.ask, form_turn)
         if provider is None:
             return await self._finish_turn(
-                end_for_no_provider(form.ask, self._clarification_text), form_turn
+                end_for_no_provider(form.ask, self._clarification_text),
+                form_turn,
+                visibility=NOTHING_HELD,
             )
         # One form waits for init at a time: this form's call replaces any
         # other, even another scheme's, and even when this form needs no init.
@@ -275,6 +285,7 @@ class FormPath:
                     action=form.action,
                 ),
                 form_turn,
+                visibility=redaction.visibility,
             )
         # Before the answer streams: a closed screen must still leave it done.
         session.update_forms(with_form_done(session.forms, redaction.turn.input))
@@ -310,6 +321,7 @@ class FormPath:
                     ),
                     session,
                     form_turn,
+                    visibility=NOTHING_HELD,
                 )
 
     async def _send_init_response(
@@ -324,6 +336,7 @@ class FormPath:
             return await self._finish_turn(
                 end_for_invalid_form(init_response, self._clarification_text),
                 form_turn,
+                visibility=NOTHING_HELD,
             )
         # The saved details are a second form: masked too, and their tags held
         # with the turn's, so the answer can reveal what the provider echoes.
@@ -358,6 +371,7 @@ class FormPath:
                 ),
                 session,
                 form_turn,
+                visibility=redaction.visibility,
             )
         session.update_forms(with_details_form_done(session.forms, flow))
         return self._stream_provider_answer(response, flow.ask, redaction, form_turn)
@@ -419,6 +433,7 @@ class FormPath:
                     init, details=submission, text=self._clarification_text
                 ),
                 form_turn,
+                visibility=NOTHING_HELD,
             )
         init_reply = await send_init(
             form_turn,
@@ -434,6 +449,7 @@ class FormPath:
                     init_reply, details=submission, text=self._clarification_text
                 ),
                 form_turn,
+                visibility=redaction.visibility,
             )
         return await self._update_forms_and_end(
             # The details are kept as typed, not masked: the call after the init
@@ -450,19 +466,34 @@ class FormPath:
             ),
             session,
             form_turn,
+            visibility=NOTHING_HELD,
         )
 
     async def _update_forms_and_end(
-        self, decision: FlowDecision, session: Session, form_turn: _FormTurn
+        self,
+        decision: FlowDecision,
+        session: Session,
+        form_turn: _FormTurn,
+        *,
+        visibility: Visibility,
     ) -> TurnFinished:
         session.update_forms(decision.forms)
-        return await self._finish_turn(decision.ending, form_turn)
+        return await self._finish_turn(
+            decision.ending, form_turn, visibility=visibility
+        )
 
     async def _finish_turn(
-        self, ending: FlowEnding, form_turn: _FormTurn
+        self,
+        ending: FlowEnding,
+        form_turn: _FormTurn,
+        *,
+        visibility: Visibility,
     ) -> TurnFinished:
         return await self._closer.finish(
-            ending, form_turn, query=_reference_line(form_turn.turn.input)
+            ending,
+            form_turn,
+            query=_reference_line(form_turn.turn.input),
+            visibility=visibility,
         )
 
     async def _call_provider_action(  # noqa: PLR0913
@@ -575,7 +606,11 @@ class FormPath:
         self, outcome: TurnOutcome, answer: ComposedAnswer, form_turn: _FormTurn
     ) -> TurnFinished:
         return await self._closer.finish_with_outcome(
-            outcome, answer, form_turn, query=_reference_line(form_turn.turn.input)
+            outcome,
+            answer,
+            form_turn,
+            query=_reference_line(form_turn.turn.input),
+            visibility=NOTHING_HELD,
         )
 
     def _record(self, finished: TurnFinished, *, form_turn: _FormTurn) -> None:

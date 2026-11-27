@@ -63,6 +63,7 @@ from dss.ports.invocation import ProviderActionFailedError
 from tests.support.discovery import a_discovery, discovered
 from tests.support.evidence import attempted
 from tests.support.fakes import (
+    ActionCall,
     FakeLocalizer,
     FakePromptProvider,
     FakeSchemeCatalog,
@@ -1184,6 +1185,83 @@ async def test_a_refused_init_response_hands_the_init_form_back_and_waits() -> N
     assert isinstance(entry, FormAwaitingInit)
     assert entry.provider == _KISAN_PROVIDER
     assert store.set_calls == ["c1:s1"]
+
+
+class RefusesRepeating(RecordingActionInvocation):
+    """Refuses ``action`` with a reason that repeats ``value``, masked with
+    the call's tags as the adapter masks it. Other calls answer ``reply``."""
+
+    def __init__(
+        self,
+        action: ProviderAction,
+        value: str,
+        reply: Mapping[str, object] | None = None,
+    ) -> None:
+        super().__init__(reply)
+        self._refused = action
+        self._value = value
+
+    def _answer(self, call: ActionCall) -> ActionReply:
+        if call.action is not self._refused:
+            return super()._answer(call)
+        self.calls.append(call)
+        raise ProviderActionFailedError(
+            call.action,
+            "openagrinet:Grievance",
+            400,
+            FailureClass.DEFECT,
+            provider_message=call.visibility.conceal(f"no record for {self._value}"),
+        )
+
+
+def recorded_text(turns: MemoryTurnSink) -> str:
+    (record,) = turns.records.values()
+    assert record.finished is not None
+    told = record.finished.content[0]
+    assert isinstance(told, TextBlock)
+    return told.text
+
+
+async def test_the_farmer_reads_their_own_values_in_a_refused_init_response() -> None:
+    orch, store, _ = _build_kisan_orchestrator(
+        RefusesRepeating(ProviderAction.SUPPORT, "PMK1234567")
+    )
+    _save_waiting(store, "offer-1")
+
+    finished = _finished(await _collect(orch, _init_response_turn()))
+
+    _assert_init_form_handed_back(finished, "no record for PMK1234567")
+
+
+async def test_the_record_keeps_a_refusal_message_masked() -> None:
+    orch, store, turns = _build_kisan_orchestrator(
+        RefusesRepeating(ProviderAction.SUPPORT, "PMK1234567")
+    )
+    _save_waiting(store, "offer-1")
+
+    await _collect(orch, _init_response_turn())
+
+    assert recorded_text(turns).startswith("no record for «")
+
+
+async def test_the_farmer_reads_their_own_values_in_a_refused_one_turn_filing() -> None:
+    orch, _ = _build_orchestrator_and_turn_sink(
+        invocation=RefusesRepeating(ProviderAction.SUPPORT, "9876543210")
+    )
+
+    finished = _finished(await _collect(orch, _form_turn(_VALUES)))
+
+    assert finished.content[0] == TextBlock(text="no record for 9876543210")
+
+
+async def test_the_farmer_reads_their_own_values_in_a_refused_init() -> None:
+    orch, _, _ = _build_kisan_orchestrator(
+        RefusesRepeating(ProviderAction.INIT, "PMK1234567")
+    )
+
+    finished = _finished(await _collect(orch, _kisan_details_turn()))
+
+    assert finished.content[0] == TextBlock(text="no record for PMK1234567")
 
 
 async def test_an_init_response_never_taken_in_is_handed_back_to_send_again() -> None:

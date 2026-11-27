@@ -63,6 +63,8 @@ _JSONLD = "x-jsonld"
 # then: PM-KISAN's init issues a `challenge` (an OTP), so what the farmer fills
 # under it waits for init.
 _INIT_PREFIX = "challenge."
+# Causes where the provider refused the farmer's request, not failed to take it.
+_REFUSED_CAUSES = frozenset({Cause.PROVIDER_REJECTED, Cause.INIT_RESPONSE_REFUSED})
 
 
 @dataclass(frozen=True)
@@ -508,10 +510,12 @@ def answer_for_failed_call(
     text: ClarificationText,
     *,
     action: ProviderAction,
+    failure: Failure | None = None,
 ) -> ComposedAnswer:
+    told = choose_refusal_line(cause, failure, ours=_NOT_SENT_TEXT[action][cause](text))
     return ComposedAnswer(
         content=(
-            TextBlock(text=_NOT_SENT_TEXT[action][cause](text)),
+            TextBlock(text=told),
             FormErrorBlock(
                 form_id=submission.form_id,
                 context=submission.context,
@@ -533,7 +537,7 @@ def end_for_failed_call(
         _cause_for_failed_call(failure),
         text,
         action=ProviderAction(action.context.action),
-        retry_after_seconds=failure.retry_after_seconds,
+        failure=failure,
     )
 
 
@@ -543,14 +547,29 @@ def end_for_call_cause(
     text: ClarificationText,
     *,
     action: ProviderAction,
-    retry_after_seconds: int | None = None,
+    failure: Failure | None = None,
 ) -> FlowEnding:
     return FlowEnding(
         status=TurnStatus.UNAVAILABLE,
         cause=cause,
-        answer=answer_for_failed_call(submission, cause, text, action=action),
-        retry_after_seconds=retry_after_seconds,
+        answer=answer_for_failed_call(
+            submission, cause, text, action=action, failure=failure
+        ),
+        retry_after_seconds=failure.retry_after_seconds if failure else None,
     )
+
+
+def choose_refusal_line(cause: Cause, failure: Failure | None, *, ours: str) -> str:
+    """The provider's own reason when it refused the farmer's request, else ours."""
+
+    if (
+        failure is None
+        or not failure.provider_message
+        or cause not in _REFUSED_CAUSES
+        or is_auth_refused(failure)
+    ):
+        return ours
+    return failure.provider_message
 
 
 def answer_with_form(offer: FormBlock, text: str) -> ComposedAnswer:
