@@ -123,6 +123,8 @@ class Failure(BaseModel):
     retry_after_seconds: int | None = None
     # None: the provider was never called.
     status_code: int | None = None
+    # The provider's own reason for refusing a form, masked; shown to the farmer.
+    provider_message: str | None = None
 
 
 class Identity(BaseModel):

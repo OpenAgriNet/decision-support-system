@@ -16,6 +16,7 @@ from uuid import uuid4
 import httpx
 
 from dss.adapters.http_client import HttpClient, RetryPredicate
+from dss.adapters.invocation.refusal import refusal_message_of
 from dss.adapters.network import SelectContext
 from dss.adapters.network.models import InitContext, StatusContext, SupportContext
 from dss.adapters.network_common import (
@@ -459,7 +460,7 @@ class HttpCapabilityInvocation:
                 )
             except httpx.HTTPError as error:
                 raise _as_action_error(
-                    ProviderAction.INIT, capability, error
+                    ProviderAction.INIT, capability, error, visibility=visibility
                 ) from error
             try:
                 attributes_back = _first_commitment_attributes(
@@ -510,7 +511,7 @@ class HttpCapabilityInvocation:
                 )
             except httpx.HTTPError as error:
                 raise _as_action_error(
-                    ProviderAction.SUPPORT, capability, error
+                    ProviderAction.SUPPORT, capability, error, visibility=visibility
                 ) from error
             try:
                 attributes_back = map_support_response(
@@ -561,7 +562,7 @@ class HttpCapabilityInvocation:
                 )
             except httpx.HTTPError as error:
                 raise _as_action_error(
-                    ProviderAction.STATUS, capability, error
+                    ProviderAction.STATUS, capability, error, visibility=visibility
                 ) from error
             try:
                 attributes_back = _first_commitment_attributes(
@@ -705,16 +706,22 @@ def _as_action_error(
     action: ProviderAction,
     capability: ProviderCapability,
     error: httpx.HTTPError,
+    *,
+    visibility: Visibility,
 ) -> ProviderActionFailedError:
     status_code = _status_code_of(error)
+    response = error.response if isinstance(error, httpx.HTTPStatusError) else None
     return ProviderActionFailedError(
         action,
         capability.capability,
         status_code,
         classify_status_code(status_code),
         retry_after_seconds=(
-            _retry_after_seconds(error.response)
-            if isinstance(error, httpx.HTTPStatusError)
+            _retry_after_seconds(response) if response is not None else None
+        ),
+        provider_message=(
+            refusal_message_of(response, visibility=visibility)
+            if response is not None
             else None
         ),
     )

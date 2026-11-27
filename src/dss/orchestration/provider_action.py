@@ -15,7 +15,7 @@ from dss.core.provider_discovery.models import (
 from dss.core.redaction.visibility import Visibility
 from dss.core.shared.models import ProviderAction
 from dss.core.shared.network import NetworkTransactionID
-from dss.ports.invocation import ProviderActionInvocation, ProviderCallFailedError
+from dss.ports.invocation import ProviderActionFailedError, ProviderActionInvocation
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ async def call_provider_action(  # noqa: PLR0913
         reply = await invocation_call(
             provider, body, transaction_id, visibility=visibility
         )
-    except ProviderCallFailedError as failed:
+    except ProviderActionFailedError as failed:
         return _as_failure(failed, action)
     return _as_answer(provider, reply, action)
 
@@ -57,8 +57,7 @@ def _invocation_call_for(
     return calls_by_action[action.context.action]
 
 
-def _as_failure(failed: ProviderCallFailedError, action: ActionSchema) -> Failure:
-    # No provider text: the farmer is told in the DSS's own words.
+def _as_failure(failed: ProviderActionFailedError, action: ActionSchema) -> Failure:
     return Failure(
         ask_id=FORM_ASK_ID,
         capability=failed.capability,
@@ -66,6 +65,7 @@ def _as_failure(failed: ProviderCallFailedError, action: ActionSchema) -> Failur
         retryable=failed.failure_class is FailureClass.TRANSIENT,
         retry_after_seconds=failed.retry_after_seconds,
         status_code=failed.status_code,
+        provider_message=failed.provider_message,
     )
 
 

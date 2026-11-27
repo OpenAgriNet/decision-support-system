@@ -40,7 +40,12 @@ from dss.observability.stages import Stage
 from dss.observability.trace_log import trace_component
 from dss.orchestration import provider_action
 from dss.orchestration.form_offer import ask_for_form
-from dss.orchestration.orchestrator import build_turn_finished, outcome_for, spoken_text
+from dss.orchestration.orchestrator import (
+    build_turn_finished,
+    outcome_for,
+    reveal_finished,
+    spoken_text,
+)
 from dss.orchestration.provider_action import warn_auth_refused
 from dss.orchestration.redaction import RedactTexts
 from dss.orchestration.stage_content import provider_response_text
@@ -183,7 +188,12 @@ class FormTurnCloser:
     turns: TurnSink
 
     async def finish(
-        self, ending: FlowEnding, form_turn: FormTurn, *, query: str
+        self,
+        ending: FlowEnding,
+        form_turn: FormTurn,
+        *,
+        query: str,
+        visibility: Visibility,
     ) -> TurnFinished:
         outcome = outcome_for(
             ending.status,
@@ -191,7 +201,7 @@ class FormTurnCloser:
             retry_after_seconds=ending.retry_after_seconds,
         )
         return await self.finish_with_outcome(
-            outcome, ending.answer, form_turn, query=query
+            outcome, ending.answer, form_turn, query=query, visibility=visibility
         )
 
     async def finish_with_outcome(
@@ -201,11 +211,15 @@ class FormTurnCloser:
         form_turn: FormTurn,
         *,
         query: str,
+        visibility: Visibility,
     ) -> TurnFinished:
+        """Recorded with its tags; the farmer's copy has their values back,
+        as a provider's message can echo them."""
+
         answer = await localize_answer(answer, self.localize, turn=form_turn.turn)
         finished = build_turn_finished(outcome, answer)
         self.record(finished, form_turn=form_turn, query=query)
-        return finished
+        return reveal_finished(finished, visibility)
 
     def record(
         self, finished: TurnFinished, *, form_turn: FormTurn, query: str

@@ -29,6 +29,7 @@ apply — a streamed call has none.
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Awaitable, Callable, Sequence
 from typing import Protocol
 
@@ -43,6 +44,7 @@ from dss.core.forms.models import (
     FormBlock,
     FormErrorBlock,
 )
+from dss.core.redaction.visibility import TAG
 from dss.core.shared.language import ENGLISH
 from dss.core.shared.models import OutputBlock, RefusalBlock, TextBlock, UserTurn
 from dss.ports.llm import LLMProvider
@@ -86,9 +88,17 @@ def build_localizer(*, llm: LLMProvider, prompts: PromptProvider) -> LocalizeTex
             # The English text is the fallback the whole design leans on; the
             # adapter has already logged what went wrong.
             return text
-        return rendered.text if rendered.text.strip() else text
+        return rendered.text if _is_usable(rendered.text, text) else text
 
     return localize
+
+
+# A tag goes back to the farmer's value only as written: one lost or
+# translated would reach them broken.
+def _is_usable(rendered: str, text: str) -> bool:
+    return bool(rendered.strip()) and Counter(TAG.findall(rendered)) == Counter(
+        TAG.findall(text)
+    )
 
 
 async def localize_answer(

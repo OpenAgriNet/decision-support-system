@@ -30,6 +30,7 @@ from .test_form_path import (
     _OTP,
     _PMKISAN_INIT,
     _TICKET,
+    RefusesRepeating,
     _build_kisan_orchestrator,
     _collect,
     _finished,
@@ -98,6 +99,17 @@ async def test_a_resend_the_provider_did_not_take_keeps_the_otp_form_open() -> N
 
     assert finished.outcome.status is TurnStatus.UNAVAILABLE
     assert isinstance(_stored_state(store).forms["offer-1"], FormAwaitingInit)
+
+
+async def test_the_farmer_reads_their_own_values_in_a_refused_resend() -> None:
+    orch, store, _ = _build_kisan_orchestrator(
+        RefusesRepeating(ProviderAction.INIT, "PMK1234567")
+    )
+    _save_waiting(store, "offer-1")
+
+    finished = _finished(await _collect(orch, _resend_turn()))
+
+    assert finished.content[0] == TextBlock(text="no record for PMK1234567")
 
 
 async def test_a_button_the_waiting_form_never_offered_sends_nothing() -> None:

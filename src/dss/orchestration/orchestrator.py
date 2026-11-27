@@ -711,7 +711,7 @@ async def reveal_to_farmer(
                 yield (
                     answer_stream.finish(event.outcome)
                     if answer_stream.has_claims
-                    else _reveal_finished(event, visibility)
+                    else reveal_finished(event, visibility)
                 )
 
 
@@ -730,7 +730,7 @@ def build_turn_finished(outcome: TurnOutcome, answer: ComposedAnswer) -> TurnFin
     return TurnFinished(outcome=outcome, content=answer.content, sources=answer.sources)
 
 
-def _reveal_finished(finished: TurnFinished, visibility: Visibility) -> TurnFinished:
+def reveal_finished(finished: TurnFinished, visibility: Visibility) -> TurnFinished:
     if not visibility.values:
         return finished
     return finished.model_copy(

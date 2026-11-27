@@ -24,6 +24,8 @@ Do not duplicate architecture, domain model, or design-decision detail here — 
   `form` item, and a form handed back is a `form_error` item. A form may list
   `actions` (buttons beside submit); a press is the `form` item sent back
   with `action` set and no values, run on its own path (ADR-0026). Today only Resend OTP, on an OTP init form.
+  When a provider refuses a form, its own NACK message replaces the DSS's line
+  above the form (ADR-0027); outages stay in the DSS's words.
 - Async concurrency: anyio
 - Dependency injection: Pydantic
 - Package manager: uv

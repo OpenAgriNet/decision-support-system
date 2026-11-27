@@ -98,7 +98,10 @@ def _valid(submission: FormSubmission) -> ValidSubmission:
 
 
 def _failure(
-    status_code: int | None, *, retry_after_seconds: int | None = None
+    status_code: int | None,
+    *,
+    retry_after_seconds: int | None = None,
+    provider_message: str | None = None,
 ) -> Failure:
     # retryable says a 404 is worth retrying; the init rules read the status alone.
     return Failure(
@@ -108,6 +111,7 @@ def _failure(
         retryable=True,
         status_code=status_code,
         retry_after_seconds=retry_after_seconds,
+        provider_message=provider_message,
     )
 
 
@@ -438,13 +442,18 @@ def _decide(
     *,
     details: FormSubmission = _DETAILS,
     retry_after_seconds: int | None = None,
+    provider_message: str | None = None,
 ) -> FlowDecision:
     init_form = _FORMS.find(PMKISAN_INIT)
     assert init_form is not None
     return decide_after_failed_init_response(
         {},
         _flow(details),
-        _failure(status_code, retry_after_seconds=retry_after_seconds),
+        _failure(
+            status_code,
+            retry_after_seconds=retry_after_seconds,
+            provider_message=provider_message,
+        ),
         init_response=_INIT_RESPONSE,
         init_form=init_form,
         text=_TEXT,
@@ -654,3 +663,55 @@ def test_a_flow_for_a_method_we_do_not_know_offers_no_resend() -> None:
     )
 
     assert not offers_action(unknown, FormActionName.RESEND_INIT)
+
+
+_SAID = "the OTP is wrong or has expired"
+
+
+def _told(ending: FlowEnding) -> str:
+    told = ending.answer.content[0]
+    assert isinstance(told, TextBlock)
+    return told.text
+
+
+def test_a_refused_init_tells_the_farmer_the_providers_message() -> None:
+    ending = end_for_failed_init(
+        _failure(400, provider_message=_SAID), details=_DETAILS, text=_TEXT
+    )
+
+    assert _told(ending) == _SAID
+
+
+def test_a_refused_init_response_tells_the_farmer_the_providers_message() -> None:
+    decision = _decide(400, provider_message=_SAID)
+
+    assert decision.ending.answer.content == _init_form_handed_back(_SAID)
+
+
+def test_a_refused_status_check_tells_the_farmer_the_providers_message() -> None:
+    decision = _decide(404, details=_STATUS_DETAILS, provider_message=_SAID)
+
+    assert _told(decision.ending) == _SAID
+
+
+def test_a_refused_resend_tells_the_farmer_the_providers_message() -> None:
+    ending = end_for_failed_resend(
+        _failure(400, provider_message=_SAID),
+        _flow(),
+        form_id="otp-1",
+        init_form=_init_form(),
+        text=_TEXT,
+    )
+
+    assert ending.answer.content == _init_form_again(_SAID)
+
+
+@pytest.mark.parametrize("status_code", [503, 429, None])
+def test_a_failure_that_is_not_a_refusal_keeps_the_dss_words(
+    status_code: int | None,
+) -> None:
+    ending = end_for_failed_init(
+        _failure(status_code, provider_message=_SAID), details=_DETAILS, text=_TEXT
+    )
+
+    assert _told(ending) == _TEXT.init_not_sent
